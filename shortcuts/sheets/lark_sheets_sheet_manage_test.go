@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,6 +27,15 @@ func TestSheetCreateSheetValidateMissingToken(t *testing.T) {
 	err := SheetCreateSheet.Validate(context.Background(), rt)
 	if err == nil || !strings.Contains(err.Error(), "--url or --spreadsheet-token") {
 		t.Fatalf("expected token error, got: %v", err)
+	}
+}
+
+func TestSheetInfoRequiresSpreadsheetMetaAndReadScopes(t *testing.T) {
+	t.Parallel()
+
+	want := []string{"sheets:spreadsheet.meta:read", "sheets:spreadsheet:read"}
+	if !reflect.DeepEqual(SheetInfo.Scopes, want) {
+		t.Fatalf("SheetInfo scopes = %v, want %v", SheetInfo.Scopes, want)
 	}
 }
 

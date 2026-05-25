@@ -106,7 +106,7 @@
 
 ### 2.8 location
 
-用对象 `{lng, lat}`，两者都是数字；`lng` 是经度，`lat` 是纬度。
+写入对象必须使用 `{lng, lat}`，两者都是数字；`lng` 是经度，`lat` 是纬度。不需要手动传 `full_address`，平台会根据坐标解析地址。
 
 ```json
 {
@@ -116,6 +116,8 @@
     }
 }
 ```
+
+读取、筛选、转文本等场景使用 `full_address` 字符串；只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
 
 ### 2.9 attachment（不作为普通 CellValue 写入）
 

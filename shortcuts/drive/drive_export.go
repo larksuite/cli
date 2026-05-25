@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -20,18 +21,19 @@ import (
 var DriveExport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+export",
-	Description: "Export a doc/docx/sheet/bitable to a local file with limited polling",
+	Description: "Export a doc/docx/sheet/bitable/slides to a local file with limited polling",
 	Risk:        "read",
 	Scopes: []string{
 		"docs:document.content:read",
 		"docs:document:export",
+		"docx:document:readonly",
 		"drive:drive.metadata:readonly",
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "token", Desc: "source document token", Required: true},
-		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable"}},
-		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base"}},
+		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable | slides", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable", "slides"}},
+		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only) | pptx (slides only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
 		{Name: "file-name", Desc: "preferred output filename (optional)"},
 		{Name: "output-dir", Default: ".", Desc: "local output directory (default: current directory)"},
@@ -52,16 +54,15 @@ var DriveExport = common.Shortcut{
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
 		}
-		// Markdown export is a special case: docx markdown comes from docs content
-		// directly instead of the Drive export task API.
+		// Markdown export is a special case: docx markdown comes from the V2
+		// docs_ai fetch API directly instead of the Drive export task API.
 		if spec.FileExtension == "markdown" {
+			apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
 			dr := common.NewDryRunAPI().
 				Desc("2-step orchestration: fetch docx markdown -> write local file").
-				GET("/open-apis/docs/v1/content").
-				Params(map[string]interface{}{
-					"doc_token":    spec.Token,
-					"doc_type":     "docx",
-					"content_type": "markdown",
+				POST(apiPath).
+				Body(map[string]interface{}{
+					"format": "markdown",
 				}).
 				Set("output_dir", runtime.Str("output-dir"))
 			if name := strings.TrimSpace(runtime.Str("file-name")); name != "" {
@@ -101,21 +102,31 @@ var DriveExport = common.Shortcut{
 		overwrite := runtime.Bool("overwrite")
 
 		// Markdown export bypasses the async export task and writes the fetched
-		// markdown content directly to disk.
+		// markdown content directly to disk. Uses the V2 docs_ai fetch API for
+		// higher-quality Lark-flavored Markdown output.
 		if spec.FileExtension == "markdown" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
-			data, err := runtime.CallAPI(
-				"GET",
-				"/open-apis/docs/v1/content",
-				map[string]interface{}{
-					"doc_token":    spec.Token,
-					"doc_type":     "docx",
-					"content_type": "markdown",
-				},
+			apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
+			data, err := runtime.DoAPIJSONWithLogID(
+				"POST",
+				apiPath,
 				nil,
+				map[string]interface{}{
+					"format": "markdown",
+				},
 			)
 			if err != nil {
 				return err
+			}
+
+			// Extract content from the V2 response: data.document.content
+			doc, ok := data["document"].(map[string]interface{})
+			if !ok {
+				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document object")
+			}
+			content, ok := doc["content"].(string)
+			if !ok {
+				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document.content")
 			}
 
 			fileName := preferredFileName
@@ -130,7 +141,7 @@ var DriveExport = common.Shortcut{
 				fileName = title
 			}
 			fileName = ensureExportFileExtension(sanitizeExportFileName(fileName, spec.Token), spec.FileExtension)
-			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(common.GetString(data, "content")), overwrite)
+			savedPath, err := saveContentToOutputDir(runtime.FileIO(), outputDir, fileName, []byte(content), overwrite)
 			if err != nil {
 				return err
 			}
@@ -141,7 +152,7 @@ var DriveExport = common.Shortcut{
 				"file_extension": spec.FileExtension,
 				"file_name":      filepath.Base(savedPath),
 				"saved_path":     savedPath,
-				"size_bytes":     len([]byte(common.GetString(data, "content"))),
+				"size_bytes":     len(content),
 			}, nil)
 			return nil
 		}

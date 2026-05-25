@@ -171,7 +171,7 @@ func TestCompleteDomain_CommaSeparated(t *testing.T) {
 }
 
 func TestAllKnownDomains(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if len(domains) == 0 {
 		t.Fatal("expected non-empty known domains")
 	}
@@ -185,7 +185,7 @@ func TestAllKnownDomains(t *testing.T) {
 }
 
 func TestSortedKnownDomains(t *testing.T) {
-	sorted := sortedKnownDomains()
+	sorted := sortedKnownDomains("")
 	if len(sorted) == 0 {
 		t.Fatal("expected non-empty sorted domains")
 	}
@@ -195,7 +195,7 @@ func TestSortedKnownDomains(t *testing.T) {
 	}
 
 	// Should match allKnownDomains
-	known := allKnownDomains()
+	known := allKnownDomains("")
 	if len(sorted) != len(known) {
 		t.Errorf("sorted (%d) and known (%d) length mismatch", len(sorted), len(known))
 	}
@@ -220,7 +220,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 		t.Skip("no from_meta data available")
 	}
 
-	scopes := collectScopesForDomains([]string{"calendar"}, "user")
+	scopes := collectScopesForDomains([]string{"calendar"}, "user", "")
 	if len(scopes) == 0 {
 		t.Fatal("expected non-empty scopes for calendar domain")
 	}
@@ -247,7 +247,7 @@ func TestCollectScopesForDomains(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_NonexistentDomain(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user")
+	scopes := collectScopesForDomains([]string{"nonexistent_domain_xyz"}, "user", "")
 	if len(scopes) != 0 {
 		t.Errorf("expected empty scopes for nonexistent domain, got %d", len(scopes))
 	}
@@ -945,12 +945,20 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 	}
 	hint, _ := data["hint"].(string)
 	for _, want := range []string{
-		"exactly as returned by the CLI",
+		"MUST generate QR code AND display it",
+		"lark-cli auth qrcode",
+		"Prefer PNG QR code (--output)",
+		"use ASCII (--ascii) only when the user explicitly requests it",
+		"This is a required step, do NOT skip it",
+		"CRITICAL",
+		"You MUST include the QR image in your response",
+		"Generating the file alone is NOT enough",
+		"image tags, inline images, or file attachments",
+		"Display order",
+		"place the QR code image below the URL",
 		"opaque string",
-		"Do not URL-encode or decode it",
-		"do not add %20, spaces, or punctuation",
-		"do not wrap it as Markdown link text",
-		"fenced code block containing only the raw URL",
+		"cannot be modified",
+		"Prefer a fenced code block",
 		"final message of the turn",
 		"return control to the user",
 		"do not block on --device-code in the same turn",
@@ -1054,12 +1062,18 @@ func TestAuthLoginRun_JSONDeviceAuthorizationAgentHintIncludesRawURLGuidance(t *
 		"结束本轮",
 		"用户回复已完成授权",
 		"不要在同一轮里展示 URL 后立刻阻塞执行 --device-code",
-		"逐字原样转发 CLI 返回的 URL",
+		"必须生成二维码并展示",
+		"lark-cli auth qrcode",
+		"优先生成 PNG 二维码（--output）",
+		"仅当用户明确要求时才使用 ASCII（--ascii）",
+		"生成后必须在回复中展示图片",
+		"仅生成文件不算完成",
+		"image 标签或内联图片",
+		"二维码图片置于 URL 下方完整展示",
+		"URL 输出规则",
 		"opaque string",
-		"不要做 URL 编码或解码",
-		"不要补 `%20`、空格或标点",
-		"不要改写成 Markdown 链接",
-		"只包含该 URL 的代码块单独输出",
+		"不要做任何修改",
+		"仅包含该 URL 的代码块",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("agent_hint missing %q, got:\n%s", want, hint)
@@ -1077,7 +1091,7 @@ func TestGetDomainMetadata_ExcludesEvent(t *testing.T) {
 }
 
 func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
-	domains := allKnownDomains()
+	domains := allKnownDomains("")
 	if domains["whiteboard"] {
 		t.Error("whiteboard should not appear in known auth domains (it has auth_domain=docs)")
 	}
@@ -1087,7 +1101,7 @@ func TestAllKnownDomains_ExcludesAuthDomainChildren(t *testing.T) {
 }
 
 func TestCollectScopesForDomains_ExpandsAuthDomainChildren(t *testing.T) {
-	scopes := collectScopesForDomains([]string{"docs"}, "user")
+	scopes := collectScopesForDomains([]string{"docs"}, "user", "")
 	// docs domain should include whiteboard shortcut scopes (board:whiteboard:*)
 	found := false
 	for _, s := range scopes {

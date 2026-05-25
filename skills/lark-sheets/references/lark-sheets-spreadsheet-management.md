@@ -5,7 +5,7 @@
 这份 reference 汇总电子表格对象级操作：
 
 - `+create`：创建电子表格
-- `+info`：查看电子表格和工作表信息
+- `+info`：查看电子表格元信息和工作表列表
 - `+export`：导出电子表格
 
 <a id="create"></a>
@@ -60,7 +60,13 @@ lark-cli sheets +create --title "测试表" --dry-run
 用于：
 
 - 从表格 URL / token 获取 `spreadsheet_token`
+- 获取电子表格标题、URL、所有者等元信息
 - 列出工作表的 `sheet_id`、标题、行列数、冻结状态等信息
+
+权限说明：
+
+- 该 shortcut 声明了 `sheets:spreadsheet.meta:read` 和 `sheets:spreadsheet:read`，本地 scope preflight 要求两者同时满足
+- `spreadsheet` 元信息来自 `spreadsheets/:token` 查询，工作表列表来自额外的 `spreadsheets/:token/sheets/query` 查询
 
 ```bash
 # 传 URL（支持 wiki URL）

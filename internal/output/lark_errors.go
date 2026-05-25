@@ -39,6 +39,10 @@ const (
 	LarkErrDriveCrossTenantUnit    = 1064510 // cross tenant and unit not support
 	LarkErrDriveCrossBrand         = 1064511 // cross brand not support
 
+	// Wiki write-path lock contention (e.g. concurrent wiki +node-create under the
+	// same parent). Server-side write lock; transient, safe to retry with backoff.
+	LarkErrWikiLockContention = 131009
+
 	// Sheets float image: width/height/offset out of range or invalid.
 	LarkErrSheetsFloatImageInvalidDims = 1310246
 
@@ -83,6 +87,8 @@ func ClassifyLarkError(code int, msg string) (int, string, string) {
 	// drive-specific constraints that benefit from actionable hints
 	case LarkErrDriveResourceContention:
 		return ExitAPI, "conflict", "please retry later and avoid concurrent duplicate requests"
+	case LarkErrWikiLockContention:
+		return ExitAPI, "conflict", "wiki write lock contention on this parent node; retry with exponential backoff or serialize sibling-node writes"
 	case LarkErrDriveCrossTenantUnit:
 		return ExitAPI, "cross_tenant_unit", "operate on source and target within the same tenant and region/unit"
 	case LarkErrDriveCrossBrand:

@@ -37,9 +37,40 @@ func TestMarkdownCreateDryRun_Content(t *testing.T) {
 
 	output := strings.TrimSpace(result.Stdout)
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"file_name": "README.md"`)
 	assert.Contains(t, output, `"parent_node": "fldcnMarkdownDryRun"`)
 	assert.Contains(t, output, `"parent_type": "explorer"`)
+	assert.Contains(t, output, `"size": 7`)
+}
+
+func TestMarkdownCreateDryRun_WikiTarget(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+create",
+			"--name", "README.md",
+			"--content", "# hello",
+			"--wiki-token", "wikcnMarkdownDryRun",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
+	assert.Contains(t, output, `"file_name": "README.md"`)
+	assert.Contains(t, output, `"parent_node": "wikcnMarkdownDryRun"`)
+	assert.Contains(t, output, `"parent_type": "wiki"`)
 	assert.Contains(t, output, `"size": 7`)
 }
 
@@ -67,6 +98,8 @@ func TestMarkdownCreateDryRun_FileShowsConcreteSize(t *testing.T) {
 
 	output := strings.TrimSpace(result.Stdout)
 	assert.Contains(t, output, "/open-apis/drive/v1/files/upload_all")
+	assert.Contains(t, output, "/open-apis/drive/v1/metas/batch_query")
+	assert.Contains(t, output, `"with_url": true`)
 	assert.Contains(t, output, `"file": "@note.md"`)
 	assert.Contains(t, output, `"size": 5`)
 }
@@ -94,6 +127,83 @@ func TestMarkdownCreateDryRun_RejectsEmptyContent(t *testing.T) {
 	}
 	errMsg := gjson.Get(result.Stdout, "error").String()
 	assert.Contains(t, errMsg, "empty markdown content is not supported")
+}
+
+func TestMarkdownDiffDryRun_RemoteVsRemote(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+diff",
+			"--file-token", "boxcnMarkdownDryRun",
+			"--from-version", "7633658129540910621",
+			"--to-version", "7633658129540910628",
+			"--context-lines", "1",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, `"mode": "remote_vs_remote"`)
+	assert.Contains(t, output, `"version": "7633658129540910621"`)
+	assert.Contains(t, output, `"version": "7633658129540910628"`)
+	assert.Contains(t, output, `"context_lines": 1`)
+}
+
+func TestMarkdownDiffDryRun_RemoteVsLocal(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(dir+"/draft.md", []byte("# draft\n"), 0o644))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+diff",
+			"--file-token", "boxcnMarkdownDryRun",
+			"--file", "./draft.md",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+		WorkDir:   dir,
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := strings.TrimSpace(result.Stdout)
+	assert.Contains(t, output, "/open-apis/drive/v1/files/boxcnMarkdownDryRun/download")
+	assert.Contains(t, output, `"mode": "remote_vs_local"`)
+	assert.Contains(t, output, `"local_file": "./draft.md"`)
+}
+
+func TestMarkdownCreateDryRun_RejectsEmptyWikiToken(t *testing.T) {
+	setMarkdownDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"markdown", "+create",
+			"--name", "README.md",
+			"--content", "# hello",
+			"--wiki-token", "",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	assert.Contains(t, result.Stdout+result.Stderr, "--wiki-token cannot be empty")
 }
 
 func TestMarkdownFetchDryRun_OutputFile(t *testing.T) {

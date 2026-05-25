@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.0
+version: 1.2.1
 description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：搜索 Base、建表、字段管理、记录读写、记录分享链接、视图配置、历史查询，以及角色/表单/仪表盘管理/工作流；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
 metadata:
   requires:
@@ -13,7 +13,7 @@ metadata:
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 > **执行前必做：** 执行任何 `base` 命令前，必须先阅读对应命令的 reference 文档，再调用命令。
 > **查询类任务必做：** 涉及筛选、排序、Top/Bottom N、聚合、多表关联、查询后写入或判断全局结论时，必须先阅读 [`references/lark-base-data-analysis-sop.md`](references/lark-base-data-analysis-sop.md)，再选择 `record / view / data-query` 路径。
-> **命名约定：** Base 业务命令仅使用 `lark-cli base +...` 形式；如需先解析 Wiki 链接，可先调用 `lark-cli wiki ...`。
+> **命名约定：** Base 业务命令仅使用 `lark-cli base +...` 形式；解析 Wiki 链接使用 `lark-cli wiki +node-get`。
 > **分流规则：** 如果用户要“把本地文件导入成 Base / 多维表格 / bitable”，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 
 ## 1. 何时使用本 Skill
@@ -39,11 +39,12 @@ metadata:
 ### 1.2 前置约束
 
 1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
-2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令；如果输入是 Wiki 链接，可先调用 `lark-cli wiki spaces get_node` 解析真实 token。
-3. 定位到命令后，先读该命令对应的 reference，再执行命令。
-4. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
-5. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
-6. 如果用户只给 Base 名称、关键词，或说“帮我找一个多维表格”，先通过 `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` 搜索 `BITABLE` 资源；拿到 Base URL 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md)：标题精确匹配、限定创建者/群/文件夹/时间范围、只搜标题/评论、分页/全量搜索。
+2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令。
+3. 如果输入是 Wiki 链接或 Wiki token，并且用户想读取/操作其中的 Base，先执行 `lark-cli wiki +node-get --token <wiki_url_or_token>`；当返回 `data.obj_type=bitable` 时，把 `data.obj_token` 当作 `--base-token`。不要把 URL 里的 `/wiki/{token}` 当成 Base token。
+4. 定位到命令后，先读该命令对应的 reference，再执行命令。
+5. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
+6. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
+7. 如果用户只给 Base 名称、关键词，或说“帮我找一个多维表格”，先通过 `lark-cli drive +search --query <keyword> --doc-types bitable` 搜索 Base / 多维表格资源；拿到 Base URL 后再使用本 skill 的 `base +...` 命令。复杂搜索再读 [`../lark-drive/references/lark-drive-search.md`](../lark-drive/references/lark-drive-search.md)：标题精确匹配、限定 owner（`--mine` / `--creator-ids`，owner 语义非"最初创建人"）/群/文件夹/时间范围、只搜标题/评论、分页/全量搜索。
 
 ## 2. 模块与命令导航
 
@@ -69,7 +70,7 @@ metadata:
 
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
-| `lark-cli docs +search --query <keyword> --filter '{"doc_types":["BITABLE"]}'` | 按名称、关键词查找 Base / 多维表格 / bitable | 复杂搜索再读 [`../lark-doc/references/lark-doc-search.md`](../lark-doc/references/lark-doc-search.md) | 先定位资源，再回到 `base +...` 操作表内数据 |
+| `lark-cli drive +search --query <keyword> --doc-types bitable` | 按名称、关键词查找 Base / 多维表格 / bitable | 复杂搜索再读 [`../lark-drive/references/lark-drive-search.md`](../lark-drive/references/lark-drive-search.md) | 先定位资源，再回到 `base +...` 操作表内数据 |
 | `+base-create` | 创建新的 Base | [`lark-base-base-create.md`](references/lark-base-base-create.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；`--folder-token`、`--time-zone` 都是可选项 |
 | `+base-get` | 获取 Base 信息 | [`lark-base-base-get.md`](references/lark-base-base-get.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 适合确认 Base 本体信息，不替代表/字段结构读取 |
 | `+base-copy` | 复制已有 Base | [`lark-base-base-copy.md`](references/lark-base-base-copy.md)、[`lark-base-workspace.md`](references/lark-base-workspace.md) | 写入操作；执行前先读 reference；复制成功后应主动返回新 Base 标识信息 |
@@ -188,6 +189,8 @@ metadata:
 | 命令 | 用途 / 何时使用 | 必读 reference | 路由提醒 |
 |------|------------------|----------------|----------|
 | `+form-list / +form-get` | 列出表单，或获取单个表单 | [`lark-base-form-list.md`](references/lark-base-form-list.md)、[`lark-base-form-get.md`](references/lark-base-form-get.md) | `+form-list` 可用来获取 `form-id`；`+form-get` 适合查看已有表单配置 |
+| `+form-detail` | 通过表单分享链接获取表单详情（含题目列表、字段类型、校验规则） | [`lark-base-form-detail.md`](references/lark-base-form-detail.md) | 只读；仅需 `--share-token`（从分享链接提取），不需要 base-token/table-id/form-id；返回的 `questions` 可直接用于 `+form-submit` 构造参数 |
+| `+form-submit` | 通过表单分享链接填写并提交表单（支持普通字段 + 附件上传） | [`lark-base-form-submit.md`](references/lark-base-form-submit.md) | 写入操作；仅支持 share_token 模式；**当 `--json` 包含 attachments 时必须额外提供 `--base-token`**（附件上传到 Base Drive Media 需要）；附件通过 `--json.attachments` 传入本地路径，CLI 自动并行上传 |
 | `+form-create / +form-update / +form-delete` | 创建、更新或删除表单 | [`lark-base-form-create.md`](references/lark-base-form-create.md)、[`lark-base-form-update.md`](references/lark-base-form-update.md)、[`lark-base-form-delete.md`](references/lark-base-form-delete.md) | 创建后可继续进入表单问题相关操作；更新或删除前先确认目标表单 |
 | `+form-questions-list` | 列出表单题目 | [`lark-base-form-questions-list.md`](references/lark-base-form-questions-list.md) | 适合查看已有题目结构 |
 | `+form-questions-create / +form-questions-update / +form-questions-delete` | 创建、更新或删除题目 | [`lark-base-form-questions-create.md`](references/lark-base-form-questions-create.md)、[`lark-base-form-questions-update.md`](references/lark-base-form-questions-update.md)、[`lark-base-form-questions-delete.md`](references/lark-base-form-questions-delete.md) | 先确认 `form-id`；更新或删除前先确认题目目标 |
@@ -213,6 +216,7 @@ metadata:
 |----------|------|-----------------------------------------------------------|------|
 | 存储字段 | 真实存用户输入的数据 | 可以 | 常见如文本、数字、日期、单选、多选、人员、关联 |
 | 附件字段 | 存储文件附件 | 不应直接按普通字段写 | 上传附件走 `+record-upload-attachment`；下载附件走 `+record-download-attachment`；删除附件走 `+record-remove-attachment` |
+| 地理位置字段 | 存储坐标并由平台解析地址 | 可以 | 写入必须使用 `{lng,lat}`；读取、筛选和转文本等场景使用 `full_address` 字符串；只有公式能访问坐标 |
 | 系统字段 | 平台自动维护 | 不可以 | 常见如创建时间、更新时间、创建人、修改人、自动编号 |
 | `formula` 字段 | 通过表达式计算 | 不可以 | 只读字段 |
 | `lookup` 字段 | 通过跨表规则查找引用 | 不可以 | 只读字段 |
@@ -227,6 +231,7 @@ metadata:
 | 读取原始记录明细 / 关键词检索 / 导出 | `+record-search / +record-list / +record-get` | 不要拿 `+data-query` 当取数命令 |
 | 上传附件到记录 | `+record-upload-attachment` | 不要用 `+record-upsert` / `+record-batch-*` 伪造附件值 |
 | 下载记录里的附件文件 | `+record-download-attachment --record-id <record_id> --output <dir>`，可加 `--file-token <file_token>` 只下指定附件 | Base 附件必须用这个命令下载；用其他下载入口可能失败 |
+| 写入地理位置 | `+record-upsert` / `+record-batch-*` 传 `{lng,lat}` | 不要把纯地址文本当成 CellValue |
 | 基于视图做筛选读取 | `+view-set-filter` + `+record-list` | 不要跳过视图筛选直接猜条件 |
 | 本地 Excel / CSV / `.base` 导入为 Base | `lark-cli drive +import --type bitable` | 不要误走 `+base-create`、`+table-create` 或 `+record-upsert` |
 
@@ -254,11 +259,17 @@ metadata:
 | 输入类型 | 正确处理方式 | 说明 |
 |---------|--------------|------|
 | 直接 Base 链接 `/base/{token}` | 直接提取 token 作为 `--base-token` | 不要把完整 URL 直接作为 `--base-token` |
-| Wiki 链接 `/wiki/{token}` | 先 `wiki.spaces.get_node`，再取 `node.obj_token` | 不要把 `wiki_token` 直接当 `--base-token` |
+| Wiki 链接 `/wiki/{token}` | 先用下方 fast path 解析 `data.obj_token` | 不要把 `wiki_token` 直接当 `--base-token`；如果这一步失败，再看 [`lark-wiki-node-get.md`](../lark-wiki/references/lark-wiki-node-get.md) |
 | URL 中的 `?table={id}` | 先按前缀判断对象类型 | `tbl` 开头表示数据表 `table-id`，可作为 `--table-id`；`blk` 开头表示仪表盘 `dashboard-ID`；`wkf` 开头表示 `workflow-ID`；`ldx` 开头表示内嵌文档，不要一律当成 `--table-id` |
 | URL 中的 `?view={id}` | 提取为 `--view-id` | 适合直接定位视图 |
 
-| `lark-cli wiki spaces get_node` 返回的 `obj_type` | 后续路线 | 说明 |
+Wiki Base fast path:
+
+```bash
+BASE_TOKEN="$(lark-cli wiki +node-get --as user --token "<wiki_url_or_token>" --jq '.data | select(.obj_type == "bitable") | .obj_token')"
+```
+
+| `lark-cli wiki +node-get` 返回的 `data.obj_type` | 后续路线 | 说明 |
 |-----------------------------------------------|----------|------|
 | `bitable` | 优先走 `lark-cli base +...` | 如果 shortcut 不覆盖，再用 `lark-cli base <resource> <method>`；不要改走 `lark-cli api /open-apis/bitable/v1/...` |
 | `docx` | 转到文档 / Drive 相关 skill | 不继续使用本 skill 的 Base 命令 |
@@ -341,7 +352,7 @@ lark-cli auth login --domain base
 | `1254066` | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | `1254045` | 字段名不存在 | 检查字段名（含空格、大小写） |
 | `1254015` | 字段值类型不匹配 | 先 `+field-list`，再按类型构造 |
-| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki spaces get_node` 取真实 `obj_token`；当 `obj_type=bitable` 时，用 `node.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
+| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki +node-get --token <wiki_url_or_token>` 取真实 `data.obj_token`；当 `data.obj_type=bitable` 时，用 `data.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
 | `not found` 且用户给的是 wiki 链接 | 常见于把 wiki token 当成 base token | 优先回退检查 wiki 解析，而不是改走 `bitable/v1` |
 | formula / lookup 创建失败 | 指南未读或结构不合法 | 先读 `formula-field-guide.md` / `lookup-field-guide.md`，再按 guide 重建请求 |
 | `ignored_fields` / `READONLY` | 只读字段被当成可写字段，常见于系统字段、formula、lookup | 移除只读字段，只写存储字段；计算结果交给 formula / lookup / 系统字段自动产出 |

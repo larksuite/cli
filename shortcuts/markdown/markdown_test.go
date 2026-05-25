@@ -33,6 +33,13 @@ func markdownTestConfig() *core.CliConfig {
 	}
 }
 
+func markdownPermissionTestConfig(userOpenID string) *core.CliConfig {
+	return &core.CliConfig{
+		AppID: "markdown-perm-test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		UserOpenId: userOpenID,
+	}
+}
+
 func mountAndRunMarkdown(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Factory, stdout *bytes.Buffer) error {
 	t.Helper()
 	parent := &cobra.Command{Use: "markdown"}
@@ -182,7 +189,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	t.Parallel()
 
 	got := Shortcuts()
-	want := []string{"+create", "+fetch", "+patch", "+overwrite"}
+	want := []string{"+create", "+diff", "+fetch", "+patch", "+overwrite"}
 
 	if len(got) != len(want) {
 		t.Fatalf("len(Shortcuts()) = %d, want %d", len(got), len(want))
@@ -270,6 +277,27 @@ func TestMarkdownCreateValidationBranches(t *testing.T) {
 			want: "--folder-token cannot be empty",
 		},
 		{
+			name: "wiki token cannot be empty",
+			args: []string{
+				"+create",
+				"--name", "README.md",
+				"--content", "# hello",
+				"--wiki-token=",
+			},
+			want: "--wiki-token cannot be empty",
+		},
+		{
+			name: "folder and wiki tokens are mutually exclusive",
+			args: []string{
+				"+create",
+				"--name", "README.md",
+				"--content", "# hello",
+				"--folder-token", "fld_target",
+				"--wiki-token", "wikcn_target",
+			},
+			want: "--folder-token and --wiki-token are mutually exclusive",
+		},
+		{
 			name: "folder token must be valid",
 			args: []string{
 				"+create",
@@ -278,6 +306,16 @@ func TestMarkdownCreateValidationBranches(t *testing.T) {
 				"--folder-token", "../bad",
 			},
 			want: "--folder-token",
+		},
+		{
+			name: "wiki token must be valid",
+			args: []string{
+				"+create",
+				"--name", "README.md",
+				"--content", "# hello",
+				"--wiki-token", "../bad",
+			},
+			want: "--wiki-token",
 		},
 		{
 			name: "content mode still validates markdown file name",
@@ -372,8 +410,37 @@ func TestMarkdownCreateDryRunWithInlineContent(t *testing.T) {
 	if !strings.Contains(out, "/open-apis/drive/v1/files/upload_all") {
 		t.Fatalf("dry-run missing upload_all: %s", out)
 	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
+	}
 	if !strings.Contains(out, "markdown content") {
 		t.Fatalf("dry-run missing content marker: %s", out)
+	}
+}
+
+func TestMarkdownCreateDryRunWithWikiToken(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello",
+		"--wiki-token", "wikcn_markdown_dryrun_target",
+		"--dry-run",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"parent_type": "wiki"`) {
+		t.Fatalf("dry-run missing wiki parent_type: %s", out)
+	}
+	if !strings.Contains(out, `"parent_node": "wikcn_markdown_dryrun_target"`) {
+		t.Fatalf("dry-run missing wiki parent_node: %s", out)
+	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
 	}
 }
 
@@ -416,6 +483,9 @@ func TestMarkdownCreateDryRunWithFileUsesStatOnly(t *testing.T) {
 	if !strings.Contains(out, "/open-apis/drive/v1/files/upload_prepare") {
 		t.Fatalf("dry-run missing multipart prepare step: %s", out)
 	}
+	if !strings.Contains(out, "/open-apis/drive/v1/metas/batch_query") || !strings.Contains(out, `"with_url": true`) {
+		t.Fatalf("dry-run missing metadata URL lookup: %s", out)
+	}
 	if strings.Contains(out, "open should not be called in dry-run") {
 		t.Fatalf("dry-run unexpectedly tried to open the source file: %s", out)
 	}
@@ -435,6 +505,18 @@ func TestMarkdownCreateSuccessUploadAll(t *testing.T) {
 		},
 	}
 	reg.Register(uploadStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create"},
+				},
+			},
+		},
+	})
 
 	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
 		"+create",
@@ -467,8 +549,57 @@ func TestMarkdownCreateSuccessUploadAll(t *testing.T) {
 	if !strings.Contains(stdout.String(), `"file_name": "README.md"`) {
 		t.Fatalf("stdout missing file_name: %s", stdout.String())
 	}
-	if !strings.Contains(stdout.String(), `"url": "https://www.feishu.cn/file/box_md_create"`) {
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_create"`) {
 		t.Fatalf("stdout missing url: %s", stdout.String())
+	}
+}
+
+func TestMarkdownCreateSuccessUploadAllToWikiReturnsMetaURL(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_create_wiki",
+				"version":    "1002",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create_wiki", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create_wiki"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+		"--wiki-token", "wikcn_markdown_create_target",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := decodeCapturedMultipartBody(t, uploadStub)
+	if got := body.Fields["parent_type"]; got != markdownUploadParentTypeWiki {
+		t.Fatalf("parent_type = %q, want %q", got, markdownUploadParentTypeWiki)
+	}
+	if got := body.Fields["parent_node"]; got != "wikcn_markdown_create_target" {
+		t.Fatalf("parent_node = %q, want %q", got, "wikcn_markdown_create_target")
+	}
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_create_wiki"`) {
+		t.Fatalf("stdout missing metadata url for wiki-hosted markdown file: %s", stdout.String())
 	}
 }
 
@@ -481,6 +612,18 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 			"code": 0,
 			"data": map[string]interface{}{
 				"file_token": "box_md_create_pretty",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_create_pretty", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_create_pretty"},
+				},
 			},
 		},
 	})
@@ -500,7 +643,7 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	if !strings.Contains(out, "file_token: box_md_create_pretty") {
 		t.Fatalf("pretty output missing file_token: %s", out)
 	}
-	if !strings.Contains(out, "url: https://www.feishu.cn/file/box_md_create_pretty") {
+	if !strings.Contains(out, "url: https://tenant.example.com/file/box_md_create_pretty") {
 		t.Fatalf("pretty output missing url: %s", out)
 	}
 	if !strings.Contains(out, "permission_grant.status: skipped") {
@@ -508,6 +651,114 @@ func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	}
 	if !strings.Contains(out, "permission_grant.perm: full_access") {
 		t.Fatalf("pretty output missing permission_grant.perm: %s", out)
+	}
+}
+
+func TestMarkdownCreateBotAutoGrantSkippedNoUser(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownPermissionTestConfig(""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_skipped",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_skipped", "doc_type": "file", "url": "https://example.feishu.cn/file/box_md_skipped"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	grant, _ := envelope.Data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	}
+}
+
+func TestMarkdownCreateBotAutoGrantFailed(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownPermissionTestConfig("ou_current_user"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_grant_fail",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_grant_fail", "doc_type": "file", "url": "https://example.feishu.cn/file/box_md_grant_fail"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/box_md_grant_fail/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	grant, _ := envelope.Data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "Retry later") {
+		t.Fatalf("hint = %#v, want string containing 'Retry later'", grant["hint"])
 	}
 }
 
@@ -558,6 +809,18 @@ func TestMarkdownCreateMultipartUploadSuccess(t *testing.T) {
 			},
 		},
 	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_multipart", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_multipart"},
+				},
+			},
+		},
+	})
 
 	tmpDir := t.TempDir()
 	withMarkdownWorkingDir(t, tmpDir)
@@ -585,6 +848,96 @@ func TestMarkdownCreateMultipartUploadSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"file_token": "box_md_multipart"`) {
 		t.Fatalf("stdout missing multipart file_token: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_multipart"`) {
+		t.Fatalf("stdout missing multipart metadata url: %s", stdout.String())
+	}
+}
+
+func TestMarkdownCreateMultipartUploadToWikiUsesWikiParent(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	prepareStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"upload_id":  "upload_markdown_wiki_ok",
+				"block_size": float64(markdownSinglePartSizeLimit),
+				"block_num":  float64(2),
+			},
+		},
+	}
+	reg.Register(prepareStub)
+	uploadPartStub := &httpmock.Stub{
+		Method:   "POST",
+		URL:      "/open-apis/drive/v1/files/upload_part",
+		Reusable: true,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	}
+	reg.Register(uploadPartStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_finish",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_multipart_wiki",
+				"version":    "1005",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_multipart_wiki", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_multipart_wiki"},
+				},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withMarkdownWorkingDir(t, tmpDir)
+	fh, err := os.Create("large.md")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if err := fh.Truncate(markdownSinglePartSizeLimit + 1); err != nil {
+		fh.Close()
+		t.Fatalf("Truncate() error: %v", err)
+	}
+	if err := fh.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+
+	err = mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--file", "large.md",
+		"--wiki-token", "wikcn_markdown_multipart_target",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(prepareStub.CapturedBody, &body); err != nil {
+		t.Fatalf("decode upload_prepare body: %v\nraw=%s", err, string(prepareStub.CapturedBody))
+	}
+	if got := body["parent_type"]; got != markdownUploadParentTypeWiki {
+		t.Fatalf("parent_type = %#v, want %q", got, markdownUploadParentTypeWiki)
+	}
+	if got := body["parent_node"]; got != "wikcn_markdown_multipart_target" {
+		t.Fatalf("parent_node = %#v, want %q", got, "wikcn_markdown_multipart_target")
+	}
+	if !strings.Contains(stdout.String(), `"url": "https://tenant.example.com/file/box_md_multipart_wiki"`) {
+		t.Fatalf("stdout missing metadata url for wiki-hosted multipart markdown file: %s", stdout.String())
 	}
 }
 

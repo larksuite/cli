@@ -7,12 +7,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -37,6 +40,56 @@ func mountAndRunSheets(t *testing.T, s common.Shortcut, args []string, f *cmduti
 	}
 	return parent.Execute()
 }
+
+type sheetWriteImageStaticFileIOProvider struct {
+	fio fileio.FileIO
+}
+
+func (p *sheetWriteImageStaticFileIOProvider) Name() string { return "sheet-write-image-static" }
+
+func (p *sheetWriteImageStaticFileIOProvider) ResolveFileIO(context.Context) fileio.FileIO {
+	return p.fio
+}
+
+type sheetWriteImageMemoryFileIO struct {
+	files map[string][]byte
+}
+
+func (f *sheetWriteImageMemoryFileIO) Open(name string) (fileio.File, error) {
+	data, ok := f.files[name]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return sheetWriteImageMemoryFile{Reader: bytes.NewReader(data)}, nil
+}
+
+func (f *sheetWriteImageMemoryFileIO) Stat(name string) (fileio.FileInfo, error) {
+	data, ok := f.files[name]
+	if !ok {
+		return nil, os.ErrNotExist
+	}
+	return sheetWriteImageFileInfo{size: int64(len(data))}, nil
+}
+
+func (f *sheetWriteImageMemoryFileIO) ResolvePath(path string) (string, error) { return path, nil }
+
+func (f *sheetWriteImageMemoryFileIO) Save(string, fileio.SaveOptions, io.Reader) (fileio.SaveResult, error) {
+	return nil, nil
+}
+
+type sheetWriteImageMemoryFile struct {
+	*bytes.Reader
+}
+
+func (sheetWriteImageMemoryFile) Close() error { return nil }
+
+type sheetWriteImageFileInfo struct {
+	size int64
+}
+
+func (i sheetWriteImageFileInfo) Size() int64       { return i.size }
+func (i sheetWriteImageFileInfo) IsDir() bool       { return false }
+func (i sheetWriteImageFileInfo) Mode() fs.FileMode { return 0 }
 
 const existingWriteImageTestFile = "./lark_sheets_cell_images.go"
 
@@ -221,80 +274,20 @@ func TestSheetWriteImageDryRunWithSheetID(t *testing.T) {
 	}
 }
 
-func TestSheetWriteImageDryRunRejectsMissingFile(t *testing.T) {
+func TestSheetWriteImageDryRunDoesNotValidateImageFile(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
 	err := mountAndRunSheets(t, SheetWriteImage, []string{
 		"+write-image",
 		"--spreadsheet-token", "shtTOKEN",
 		"--range", "sheet1!A1:A1",
-		"--image", "./missing.png",
+		"--image", "/__bridge_url__/qKrk1wSAtS",
 		"--dry-run", "--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "image file not found") {
-		t.Fatalf("expected file-not-found error before dry-run planning, got: %v", err)
-	}
-}
-
-func TestSheetWriteImageDryRunRejectsDirectory(t *testing.T) {
-	tmpDir := t.TempDir()
-	cmdutil.TestChdir(t, tmpDir)
-	if err := os.Mkdir("imgdir", 0o755); err != nil {
-		t.Fatalf("Mkdir() error: %v", err)
-	}
-
-	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
-	err := mountAndRunSheets(t, SheetWriteImage, []string{
-		"+write-image",
-		"--spreadsheet-token", "shtTOKEN",
-		"--range", "sheet1!A1:A1",
-		"--image", "./imgdir",
-		"--dry-run", "--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "regular file") {
-		t.Fatalf("expected regular-file error before dry-run planning, got: %v", err)
-	}
-}
-
-func TestSheetWriteImageDryRunRejectsAbsolutePath(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
-	err := mountAndRunSheets(t, SheetWriteImage, []string{
-		"+write-image",
-		"--spreadsheet-token", "shtTOKEN",
-		"--range", "sheet1!A1:A1",
-		"--image", "/etc/passwd",
-		"--dry-run", "--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "unsafe image path") {
-		t.Fatalf("expected unsafe-path error before dry-run planning, got: %v", err)
-	}
-}
-
-func TestSheetWriteImageDryRunRejectsOversizedFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	cmdutil.TestChdir(t, tmpDir)
-
-	fh, err := os.Create("huge.png")
 	if err != nil {
-		t.Fatalf("Create() error: %v", err)
+		t.Fatalf("dry-run should not stat or open image files, got: %v", err)
 	}
-	if err := fh.Truncate(20*1024*1024 + 1); err != nil {
-		fh.Close()
-		t.Fatalf("Truncate() error: %v", err)
-	}
-	if err := fh.Close(); err != nil {
-		t.Fatalf("Close() error: %v", err)
-	}
-
-	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
-	err = mountAndRunSheets(t, SheetWriteImage, []string{
-		"+write-image",
-		"--spreadsheet-token", "shtTOKEN",
-		"--range", "sheet1!A1:A1",
-		"--image", "./huge.png",
-		"--dry-run", "--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "exceeds 20MB limit") {
-		t.Fatalf("expected size error before dry-run planning, got: %v", err)
+	if !strings.Contains(stdout.String(), "/__bridge_url__/qKrk1wSAtS") {
+		t.Fatalf("dry-run output should preserve image path: %s", stdout.String())
 	}
 }
 
@@ -365,6 +358,55 @@ func TestSheetWriteImageExecuteSendsJSON(t *testing.T) {
 	// Verify output contains expected fields.
 	if !strings.Contains(stdout.String(), "spreadsheetToken") {
 		t.Fatalf("stdout missing spreadsheetToken: %s", stdout.String())
+	}
+}
+
+func TestSheetWriteImageExecuteUsesFileIOForBridgeSentinelPath(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	imagePath := "/__bridge_url__/qKrk1wSAtS"
+	imageData := []byte{0x89, 0x50, 0x4E, 0x47}
+	f.FileIOProvider = &sheetWriteImageStaticFileIOProvider{
+		fio: &sheetWriteImageMemoryFileIO{
+			files: map[string][]byte{imagePath: imageData},
+		},
+	}
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v2/spreadsheets/shtTOKEN/values_image",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"spreadsheetToken": "shtTOKEN",
+				"revision":         float64(5),
+				"updateRange":      "sheet1!A1:A1",
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRunSheets(t, SheetWriteImage, []string{
+		"+write-image",
+		"--spreadsheet-token", "shtTOKEN",
+		"--range", "sheet1!A1:A1",
+		"--image", imagePath,
+		"--name", "bridge.png",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("request body is not valid JSON: %v", err)
+	}
+	if body["name"] != "bridge.png" {
+		t.Fatalf("body name = %v, want bridge.png", body["name"])
+	}
+	if body["image"] == nil {
+		t.Fatal("body image field is nil")
 	}
 }
 

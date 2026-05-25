@@ -277,6 +277,7 @@ POST /open-apis/base/v3/bases/:base_token/data/query
 | `isEmpty` / `isNotEmpty` | `[]` | 0 个 | `[]` |
 
 > **不支持** `isGreater` / `isGreaterEqual` / `isLess` / `isLessEqual`：地理位置无自然顺序。
+> location 按 `full_address` 字符串筛选，不支持经纬度空间筛选；查城市/片区时优先用 `contains`，避免用 `is` 匹配短地址词。
 
 *`checkbox`*
 

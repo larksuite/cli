@@ -1,7 +1,7 @@
 ---
 name: lark-markdown
-version: 1.1.0
-description: "飞书 Markdown：查看、创建、上传和编辑 Markdown 文件。当用户需要创建或编辑 Markdown 文件、读取或修改时使用。"
+version: 1.2.0
+description: "飞书 Markdown：查看、创建、上传、编辑和比较 Markdown 文件。当用户需要创建或编辑 Markdown 文件、读取、修改、局部 patch 或比较差异时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -15,9 +15,11 @@ metadata:
 ## 快速决策
 
 - 用户要**上传、创建一个原生 `.md` 文件**，使用 `lark-cli markdown +create`
+- 用户要**比较原生 `.md` 文件的历史版本差异**，或比较远端 Markdown 与本地草稿，使用 `lark-cli markdown +diff`
 - 用户要**读取 Drive 里某个 `.md` 文件内容**，使用 `lark-cli markdown +fetch`
 - 用户要对 Markdown 文件做**局部文本替换 / 正则替换**，优先使用 `lark-cli markdown +patch`
 - 用户要**覆盖更新 Drive 里某个 `.md` 文件内容**，使用 `lark-cli markdown +overwrite`
+- 用户要先拿 Markdown 文件的历史版本号，再做比较/下载/回滚，先用 [`lark-drive`](../lark-drive/SKILL.md) 的 `lark-cli drive +version-history`
 - 用户要把本地 Markdown **导入成在线新版文档（docx）**，不要用本 skill，改用 [`lark-drive`](../lark-drive/SKILL.md) 的 `lark-cli drive +import --type docx`
 - 用户要对 Markdown 文件做**rename / move / delete / 搜索 / 权限 / 评论**等云空间操作，不要留在本 skill，切到 [`lark-drive`](../lark-drive/SKILL.md)
 
@@ -42,6 +44,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli markdown +<verb> [flags]`
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/lark-markdown-create.md) | Create a Markdown file in Drive |
+| [`+diff`](references/lark-markdown-diff.md) | Compare two remote Markdown versions, or compare remote Markdown against a local file |
 | [`+fetch`](references/lark-markdown-fetch.md) | Fetch a Markdown file from Drive |
 | [`+patch`](references/lark-markdown-patch.md) | Patch a Markdown file in Drive via fetch-local-replace-overwrite |
 | [`+overwrite`](references/lark-markdown-overwrite.md) | Overwrite an existing Markdown file in Drive |

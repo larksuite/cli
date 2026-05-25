@@ -84,6 +84,7 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
 	if err := cmd.Flags().Set("file", "./base-import.xlsx"); err != nil {
 		t.Fatalf("set --file: %v", err)
 	}
@@ -148,6 +149,7 @@ func TestDriveImportDryRunShowsMultipartUploadForLargeFile(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
 	if err := cmd.Flags().Set("file", "./large.xlsx"); err != nil {
 		t.Fatalf("set --file: %v", err)
 	}
@@ -197,6 +199,7 @@ func TestDriveImportDryRunReturnsErrorForUnsafePath(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
 	if err := cmd.Flags().Set("file", "../outside.md"); err != nil {
 		t.Fatalf("set --file: %v", err)
 	}
@@ -250,6 +253,7 @@ func TestDriveImportDryRunReturnsErrorForOversizedMarkdown(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
 	if err := cmd.Flags().Set("file", "./large.md"); err != nil {
 		t.Fatalf("set --file: %v", err)
 	}
@@ -296,6 +300,7 @@ func TestDriveImportDryRunReturnsErrorForDirectoryInput(t *testing.T) {
 	cmd.Flags().String("type", "", "")
 	cmd.Flags().String("folder-token", "", "")
 	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
 	if err := cmd.Flags().Set("file", "./folder-input"); err != nil {
 		t.Fatalf("set --file: %v", err)
 	}
@@ -363,6 +368,165 @@ func TestDriveImportCreateTaskBodyKeepsEmptyMountKeyForRoot(t *testing.T) {
 	}
 	if got, _ := point["mount_key"].(string); got != "fld_test" {
 		t.Fatalf("mount_key = %q, want %q", got, "fld_test")
+	}
+}
+
+func TestDriveImportCreateTaskBodyWithTargetToken(t *testing.T) {
+	t.Parallel()
+
+	spec := driveImportSpec{
+		FilePath:    "/tmp/data.xlsx",
+		DocType:     "bitable",
+		TargetToken: "bascnxxxxx",
+	}
+
+	body := spec.CreateTaskBody("file_token_test")
+
+	// point stays the same as default (mount_type=1)
+	point, ok := body["point"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("point = %#v, want map", body["point"])
+	}
+	if mt := point["mount_type"]; mt != float64(1) && mt != 1 {
+		t.Fatalf("mount_type = %v (%T), want 1", mt, mt)
+	}
+
+	// token is injected at body top-level
+	if tt, _ := body["token"].(string); tt != "bascnxxxxx" {
+		t.Fatalf("token = %q, want %q", tt, "bascnxxxxx")
+	}
+}
+
+func TestDriveImportCreateTaskBodyTargetTokenIgnoredForNonBitable(t *testing.T) {
+	t.Parallel()
+
+	spec := driveImportSpec{
+		FilePath:    "/tmp/data.xlsx",
+		DocType:     "sheet",
+		TargetToken: "bascnxxxxx",
+		FolderToken: "fld_test",
+	}
+
+	body := spec.CreateTaskBody("file_token_test")
+	point, ok := body["point"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("point = %#v, want map", body["point"])
+	}
+
+	// Non-bitable should use default folder mount (type=1), ignoring TargetToken
+	if mt := point["mount_type"]; mt != float64(1) && mt != 1 {
+		t.Fatalf("mount_type = %v (%T), want 1 (folder mount)", mt, mt)
+	}
+	if _, exists := point["target_token"]; exists {
+		t.Fatal("target_token should not be present for non-bitable type")
+	}
+}
+
+func TestDriveImportDryRunWithTargetToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("data.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
+	if err := cmd.Flags().Set("file", "./data.xlsx"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "bitable"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+	if err := cmd.Flags().Set("target-token", "bascntarget123"); err != nil {
+		t.Fatalf("set --target-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		API []struct {
+			URL  string                 `json:"url"`
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal dry run json: %v", err)
+	}
+	if len(got.API) != 3 {
+		t.Fatalf("expected 3 API calls, got %d", len(got.API))
+	}
+
+	// The import task body (API[1]) should contain target_token in point
+	importTaskBody := got.API[1].Body
+	point, ok := importTaskBody["point"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("point = %#v, want map", importTaskBody["point"])
+	}
+	if mt := point["mount_type"]; mt != float64(1) && mt != 1 {
+		t.Fatalf("dry-run mount_type = %v (%T), want 1 (unchanged)", mt, mt)
+	}
+	if tt, _ := importTaskBody["token"].(string); tt != "bascntarget123" {
+		t.Fatalf("dry-run token = %q, want %q", tt, "bascntarget123")
+	}
+}
+
+func TestDriveImportDryRunTargetTokenRejectedForSheet(t *testing.T) {
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	if err := os.WriteFile("data.xlsx", []byte("fake-xlsx"), 0644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+
+	cmd := &cobra.Command{Use: "drive +import"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("folder-token", "", "")
+	cmd.Flags().String("name", "", "")
+	cmd.Flags().String("target-token", "", "")
+	if err := cmd.Flags().Set("file", "./data.xlsx"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("type", "sheet"); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+	if err := cmd.Flags().Set("target-token", "bascnxxx"); err != nil {
+		t.Fatalf("set --target-token: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
+	dry := DriveImport.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+
+	data, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("marshal dry run: %v", err)
+	}
+
+	var got struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Error == "" || !strings.Contains(got.Error, "--target-token is only supported when --type is bitable") {
+		t.Fatalf("dry-run error = %q, want target-token validation error", got.Error)
 	}
 }
 

@@ -11,6 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.17
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.4
+	github.com/sergi/go-diff v1.4.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.10.2
@@ -19,6 +20,7 @@ require (
 	github.com/tidwall/gjson v1.18.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/net v0.33.0
+	golang.org/x/sync v0.15.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/term v0.27.0
 	golang.org/x/text v0.23.0
@@ -61,5 +63,4 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/sync v0.15.0 // indirect
 )

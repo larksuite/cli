@@ -31,6 +31,7 @@ var DriveImport = common.Shortcut{
 		{Name: "type", Desc: "target document type (docx, sheet, bitable)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
+		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateDriveImportSpec(driveImportSpec{
@@ -38,6 +39,7 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		})
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -46,10 +48,14 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		}
 		fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		if valErr := validateDriveImportSpec(spec); valErr != nil {
+			return common.NewDryRunAPI().Set("error", valErr.Error())
 		}
 
 		dry := common.NewDryRunAPI()
@@ -76,6 +82,7 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		}
 		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
 			return err

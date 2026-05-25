@@ -90,3 +90,24 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 		})
 	}
 }
+
+// TestClassifyLarkError_WikiLockContention verifies the wiki write-lock
+// contention error (131009) maps to an actionable retry hint instead of
+// a generic "api_error". Surfaces during concurrent wiki +node-create
+// against the same parent (see larksuite/cli#1012).
+func TestClassifyLarkError_WikiLockContention(t *testing.T) {
+	t.Parallel()
+	gotExitCode, gotType, gotHint := ClassifyLarkError(LarkErrWikiLockContention, "raw msg")
+	if gotExitCode != ExitAPI {
+		t.Fatalf("exitCode=%d, want %d", gotExitCode, ExitAPI)
+	}
+	if gotType != "conflict" {
+		t.Fatalf("type=%q, want %q", gotType, "conflict")
+	}
+	if !strings.Contains(gotHint, "wiki write lock") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "wiki write lock")
+	}
+	if !strings.Contains(gotHint, "backoff") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "backoff")
+	}
+}

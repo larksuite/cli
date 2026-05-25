@@ -5,13 +5,18 @@ package shortcuts
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/shortcuts/apps"
 	"github.com/larksuite/cli/shortcuts/base"
 	"github.com/larksuite/cli/shortcuts/calendar"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -31,10 +36,28 @@ import (
 	"github.com/larksuite/cli/shortcuts/wiki"
 )
 
+// Empty brand (no config loaded) is treated as no-restriction so bootstrap
+// paths and tests without config still see the full service list.
+var brandRestrictedServices = map[string][]core.LarkBrand{
+	"apps": {core.BrandFeishu},
+}
+
+func IsShortcutServiceAvailable(service string, brand core.LarkBrand) bool {
+	allowed, ok := brandRestrictedServices[service]
+	if !ok {
+		return true
+	}
+	if brand == "" {
+		return true
+	}
+	return slices.Contains(allowed, brand)
+}
+
 // allShortcuts aggregates shortcuts from all domain packages.
 var allShortcuts []common.Shortcut
 
 func init() {
+	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
 	allShortcuts = append(allShortcuts, calendar.Shortcuts()...)
 	allShortcuts = append(allShortcuts, doc.Shortcuts()...)
 	allShortcuts = append(allShortcuts, drive.Shortcuts()...)
@@ -67,6 +90,14 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
+	// Factory.Config may be nil in tests that pass a zero-value factory.
+	var brand core.LarkBrand
+	if f != nil && f.Config != nil {
+		if cfg, err := f.Config(); err == nil && cfg != nil {
+			brand = cfg.Brand
+		}
+	}
+
 	// Group by service
 	byService := make(map[string][]common.Shortcut)
 	for _, s := range allShortcuts {
@@ -115,5 +146,46 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 		if service == "mail" {
 			mail.InstallOnMail(svc)
 		}
+
+		if !IsShortcutServiceAvailable(service, brand) {
+			installBrandRestrictionGuard(svc, service, brand)
+		}
 	}
+}
+
+// Mirrors internal/cmdpolicy/apply.go::installDenyStub: DisableFlagParsing +
+// ArbitraryArgs keep cobra from short-circuiting with "missing required flag"
+// before our RunE runs; leaf-level PersistentPreRunE defeats cobra's "first
+// PreRunE wins" walk-up that would otherwise shadow the stub.
+func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core.LarkBrand) {
+	stub := func(c *cobra.Command, _ []string) error {
+		c.SilenceUsage = true
+		return output.ErrValidation(
+			"the %q feature is not yet supported on the %s brand",
+			service, brand,
+		)
+	}
+	noopPreRun := func(c *cobra.Command, _ []string) error {
+		c.SilenceUsage = true
+		return nil
+	}
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		c.Hidden = true
+		c.DisableFlagParsing = true
+		c.Args = cobra.ArbitraryArgs
+		c.PreRunE = nil
+		c.PreRun = nil
+		c.PersistentPreRunE = noopPreRun
+		c.PersistentPreRun = nil
+		c.RunE = stub
+		c.Run = nil
+		for _, child := range c.Commands() {
+			walk(child)
+		}
+	}
+	walk(svc)
+
+	// --help bypasses RunE, so surface the restriction in Long too.
+	svc.Long = fmt.Sprintf("The %q feature is not yet supported on the %s brand.", service, brand)
 }

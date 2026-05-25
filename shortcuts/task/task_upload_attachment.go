@@ -38,7 +38,7 @@ const defaultTaskAttachmentResourceType = "task"
 var UploadAttachmentTask = common.Shortcut{
 	Service:     "task",
 	Command:     "+upload-attachment",
-	Description: "upload a local file as an attachment to a task; use --resource-type=task_delivery when uploading to task agents",
+	Description: "upload a local file as an attachment to a task",
 	Risk:        "write",
 	Scopes:      []string{"task:attachment:write"},
 	AuthTypes:   []string{"user", "bot"},

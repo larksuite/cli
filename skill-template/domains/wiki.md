@@ -1,7 +1,7 @@
 > **成员管理硬限制：**
 > - 如果目标是“部门”，先判断身份，再决定是否继续。
 > - `--as bot` 对应 `tenant_access_token`。官方限制：这种身份下不能使用部门 ID (`opendepartmentid`) 添加知识空间成员。
-> - 遇到“部门 + --as bot”时，禁止先调用 `lark-cli wiki members create` 试错；直接说明该路径不可行。
+> - 遇到“部门 + --as bot”时，禁止先调用 `lark-cli wiki +member-add` 试错；直接说明该路径不可行。
 > - 如果用户明确要求“以 bot 身份运行”，且目标是部门，必须停下说明 bot 路径无法完成，不要静默切到 `--as user`。
 
 ## 快速决策
@@ -14,18 +14,20 @@
   - 命中 0 条：停下来问用户是名称拼错了还是调用方无权限；**不要**自行改名字重试。
   - 用户明确选定后再执行 `lark-cli wiki +delete-space --space-id <ID> --yes`（高风险写操作，必须显式 `--yes`）。
 - 用户要在知识库中创建新节点，优先使用 `lark-cli wiki +node-create`。
-- 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门”三类之一，再决定 `member_type`，不要先调 `wiki members create` 再根据报错反推类型。
-- 用户说“部门 + bot”：这是已知不支持路径。不要继续尝试 `wiki members create --as bot`；直接提示必须改成 `--as user`，或明确告知当前要求无法完成。
-- 用户说“用户 / 群 + 添加成员”：先解析对应 ID，再执行 `wiki members create`。
+- 用户说“给知识库添加成员/管理员”：先把目标解析成“用户 / 群 / 部门”三类之一，再决定 `--member-type`，不要先调 `wiki +member-add` 再根据报错反推类型。
+- 用户说“部门 + bot”：这是已知不支持路径。不要继续尝试 `wiki +member-add --as bot`；直接提示必须改成 `--as user`，或明确告知当前要求无法完成。
+- 用户说“用户 / 群 + 添加成员”：先解析对应 ID，再执行 `wiki +member-add`。
+- 用户说“查看 / 列出空间成员”：用 `wiki +member-list`；该 shortcut 默认只取一页，多成员场景显式加 `--page-all`。
+- 用户说“移除 / 删除空间成员”：用 `wiki +member-remove`，必须传齐原始授予时的 `--member-type` 和 `--member-role`（不知道就先 `wiki +member-list` 查一下）。
 
 ## 成员添加流程
 
-- 调用 `lark-cli wiki members create` 前，先把自然语言里的“人 / 群 / 部门”解析成正确的 `member_id`，不要猜格式。
-- 用户场景默认优先 `member_type=openid`：用 `lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --format json` 获取 `open_id`。
-- 群组场景使用 `member_type=openchat`：用 `lark-cli im +chat-search --query "<群名关键词>" --format json` 获取 `chat_id`。
+- 调用 `lark-cli wiki +member-add` 前，先把自然语言里的“人 / 群 / 部门”解析成正确的 `--member-id`，不要猜格式。
+- 用户场景默认优先 `--member-type=openid`：用 `lark-cli contact +search-user --query "<姓名/邮箱/手机号>" --format json` 获取 `open_id`。
+- 群组场景使用 `--member-type=openchat`：用 `lark-cli im +chat-search --query "<群名关键词>" --format json` 获取 `chat_id`。
 - `userid` / `unionid` 只在下游明确要求时才使用；先拿到 `open_id`，再调用 `lark-cli api GET /open-apis/contact/v3/users/<open_id> --params '{"user_id_type":"open_id"}' --format json` 读取 `user_id` / `union_id`。
-- 部门场景使用 `member_type=opendepartmentid`：当前 CLI 没有 shortcut，需调用 `lark-cli api POST /open-apis/contact/v3/departments/search --as user --params '{"department_id_type":"open_department_id"}' --data '{"query":"<部门名>"}'` 获取 `open_department_id`。
-- 只有在目标类型和身份都已确认可行后，才调用 `lark-cli wiki members create`。对于部门场景，这意味着必须是 `--as user`。
+- 部门场景使用 `--member-type=opendepartmentid`：当前 CLI 没有 shortcut，需调用 `lark-cli api POST /open-apis/contact/v3/departments/search --as user --params '{"department_id_type":"open_department_id"}' --data '{"query":"<部门名>"}'` 获取 `open_department_id`。
+- 只有在目标类型和身份都已确认可行后，才调用 `lark-cli wiki +member-add`。对于部门场景，这意味着必须是 `--as user`。
 
 ## 目标语义约束
 

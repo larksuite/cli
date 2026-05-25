@@ -5,13 +5,15 @@ package sheets
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io/fs"
+	"io"
+	"os"
 	"path/filepath"
 
+	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -42,10 +44,6 @@ var SheetWriteImage = common.Shortcut{
 			return err
 		}
 		if err := validateSingleCellRange(runtime.Str("range")); err != nil {
-			return err
-		}
-		_, _, err := validateSheetWriteImageFile(runtime.Str("image"))
-		if err != nil {
 			return err
 		}
 		return nil
@@ -79,12 +77,19 @@ var SheetWriteImage = common.Shortcut{
 		pointRange := normalizePointRange(runtime.Str("sheet-id"), runtime.Str("range"))
 
 		imagePath := runtime.Str("image")
-		safePath, stat, err := validateSheetWriteImageFile(imagePath)
+		fio := runtime.FileIO()
+		stat, err := validateSheetWriteImageFile(fio, imagePath)
 		if err != nil {
 			return err
 		}
 
-		imageBytes, err := vfs.ReadFile(safePath)
+		imageFile, err := fio.Open(imagePath)
+		if err != nil {
+			return wrapSheetWriteImageOpenError(err)
+		}
+		defer imageFile.Close()
+
+		imageBytes, err := io.ReadAll(imageFile)
 		if err != nil {
 			return output.ErrValidation("cannot read image file: %s", err)
 		}
@@ -109,21 +114,37 @@ var SheetWriteImage = common.Shortcut{
 	},
 }
 
-func validateSheetWriteImageFile(imagePath string) (string, fs.FileInfo, error) {
-	safePath, err := validate.SafeInputPath(imagePath)
-	if err != nil {
-		return "", nil, output.ErrValidation("unsafe image path: %s", err)
+func validateSheetWriteImageFile(fio fileio.FileIO, imagePath string) (fileio.FileInfo, error) {
+	if fio == nil {
+		return nil, output.ErrValidation("no file I/O provider registered")
 	}
-	stat, err := vfs.Stat(safePath)
+	stat, err := fio.Stat(imagePath)
 	if err != nil {
-		return "", nil, output.ErrValidation("image file not found: %s", imagePath)
+		return nil, wrapSheetWriteImageStatError(err, imagePath)
 	}
-	if !stat.Mode().IsRegular() {
-		return "", nil, output.ErrValidation("image must be a regular file: %s", imagePath)
+	if stat.IsDir() || !stat.Mode().IsRegular() {
+		return nil, output.ErrValidation("image must be a regular file: %s", imagePath)
 	}
 	const maxImageSize int64 = 20 * 1024 * 1024
 	if stat.Size() > maxImageSize {
-		return "", nil, output.ErrValidation("image %.1fMB exceeds 20MB limit", float64(stat.Size())/1024/1024)
+		return nil, output.ErrValidation("image %.1fMB exceeds 20MB limit", float64(stat.Size())/1024/1024)
 	}
-	return safePath, stat, nil
+	return stat, nil
+}
+
+func wrapSheetWriteImageStatError(err error, imagePath string) error {
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return output.ErrValidation("unsafe image path: %s", err)
+	}
+	if os.IsNotExist(err) {
+		return output.ErrValidation("image file not found: %s", imagePath)
+	}
+	return output.ErrValidation("cannot stat image file: %s", err)
+}
+
+func wrapSheetWriteImageOpenError(err error) error {
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return output.ErrValidation("unsafe image path: %s", err)
+	}
+	return output.ErrValidation("cannot read image file: %s", err)
 }

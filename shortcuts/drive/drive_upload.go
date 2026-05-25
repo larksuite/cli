@@ -92,7 +92,7 @@ var DriveUpload = common.Shortcut{
 	Command:     "+upload",
 	Description: "Upload a local file to Drive",
 	Risk:        "write",
-	Scopes:      []string{"drive:file:upload"},
+	Scopes:      []string{"drive:file:upload", "drive:drive.metadata:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
@@ -124,11 +124,22 @@ var DriveUpload = common.Shortcut{
 			body["file_token"] = spec.FileToken
 		}
 		d := common.NewDryRunAPI().
-			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload)").
+			Desc("multipart/form-data upload (files > 20MB use chunked 3-step upload), then fetch the real Drive URL via metadata").
 			POST("/open-apis/drive/v1/files/upload_all").
 			Body(body)
+		d.POST("/open-apis/drive/v1/metas/batch_query").
+			Desc("Fetch the uploaded file's real access URL").
+			Body(map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": "<file_token from upload response>",
+						"doc_type":  "file",
+					},
+				},
+				"with_url": true,
+			})
 		if runtime.IsBot() && !isOverwrite {
-			d.Desc("After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
+			d.Set("post_upload_note", "After file upload succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new file.")
 		}
 		return d
 	},
@@ -165,13 +176,10 @@ var DriveUpload = common.Shortcut{
 		if uploadResult.Version != "" {
 			out["version"] = uploadResult.Version
 		}
-		// wiki-hosted files have no standalone /file/<token> URL — only the
-		// wiki node URL, which the upload response doesn't carry. Skip the
-		// fallback for parent_type=wiki rather than emit a link that 404s.
-		if target.ParentType == driveUploadParentTypeExplorer {
-			if u := common.BuildResourceURL(runtime.Config.Brand, "file", uploadResult.FileToken); u != "" {
-				out["url"] = u
-			}
+		if u, metaErr := common.FetchDriveMetaURL(runtime, uploadResult.FileToken, "file"); metaErr == nil && strings.TrimSpace(u) != "" {
+			out["url"] = u
+		} else if metaErr != nil {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: uploaded file URL lookup failed: %v\n", metaErr)
 		}
 		if !isOverwrite {
 			if grant := common.AutoGrantCurrentUserDrivePermission(runtime, uploadResult.FileToken, "file"); grant != nil {

@@ -27,7 +27,7 @@ When using `--as user`, the reply is sent as the authorized end user and require
 | Reply with plain text exactly as written | `--text` | Wrapped directly to `{"text":"..."}` |
 | Reply with simple Markdown and accept conversion | `--markdown` | Automatically converted to `post` JSON |
 | Precisely control the reply payload | `--content` | You provide the exact JSON |
-| Reply with media | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads local files automatically |
+| Reply with media | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads URLs, or cwd-relative local files automatically |
 
 ### `--text` vs `--markdown`
 
@@ -64,11 +64,26 @@ So `--markdown` is a convenience mode, not a full Markdown compatibility layer.
 - Block spacing and line breaks may be normalized during conversion.
 - Code blocks are preserved as code blocks.
 - Excess blank lines are compressed.
-- Only remote `http://...`, `https://...`, or already-uploaded `img_xxx` Markdown images are kept reliably.
-- Local paths in Markdown image syntax like `![x](./a.png)` are **not** auto-uploaded by `--markdown`.
-- If remote Markdown image handling fails, that image is removed with a warning.
+- Already-uploaded `img_xxx` image keys are the most reliable Markdown image input.
+- Local paths (e.g. `![x](./a.png)`) are **not** supported directly in `--markdown` and will not be auto-uploaded.
+- Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
 
 If you need exact output, use `--msg-type post --content ...` instead of `--markdown`.
+
+### Image Constraint for `--markdown`
+
+When using `--markdown` with images, prefer pre-uploading via `images.create` and referencing `![alt](img_xxx)` for predictable results. Remote URLs may work but are not guaranteed.
+
+**Steps:**
+
+```bash
+# 1. Upload image to get image_key
+lark-cli im images create --data '{"image_type":"message"}' --file ./diagram.png
+# Returns: {"image_key":"img_v3_xxxx"}
+
+# 2. Use image_key in --markdown reply
+lark-cli im +messages-reply --message-id om_xxx --markdown $'## Result\n\n![diagram](img_v3_xxxx)\n\nSee above for details.'
+```
 
 ## Preserving Formatting
 
@@ -119,6 +134,11 @@ lark-cli im +messages-reply --message-id om_xxx --text "Let's discuss this" --re
 # Reply with basic Markdown (will be converted to post JSON)
 lark-cli im +messages-reply --message-id om_xxx --markdown $'## Reply\n\n- item 1\n- item 2'
 
+# Reply with Markdown containing an image (must pre-upload via images.create)
+lark-cli im images create --data '{"image_type":"message"}' --file ./screenshot.png
+# Use the returned image_key
+lark-cli im +messages-reply --message-id om_xxx --markdown $'## Screenshot\n\n![screenshot](img_v3_xxxx)\n\nConfirmed.'
+
 # If you need exact post structure, send JSON directly
 lark-cli im +messages-reply --message-id om_xxx --msg-type post --content '{"zh_cn":{"title":"Reply","content":[[{"tag":"text","text":"Detailed content"}]]}}'
 
@@ -138,24 +158,30 @@ lark-cli im +messages-reply --message-id om_xxx --text "Received" --idempotency-
 lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' --dry-run
 ```
 
+## Media Input Rules
+
+- Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
+- Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
+- Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+
 ## Parameters
 
-| Parameter | Required | Description |
-|------|------|------|
-| `--message-id <id>` | Yes | ID of the message being replied to (`om_xxx`) |
+| Parameter | Required | Description                                                                                                                                                                                   |
+|------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--message-id <id>` | Yes | ID of the message being replied to (`om_xxx`)                                                                                                                                                 |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
-| `--content <json>` | One content option | Exact reply content as JSON. The JSON must match the effective `--msg-type` |
-| `--text <string>` | One content option | Plain text reply. Best default when you need exact text and formatting preservation |
-| `--markdown <string>` | One content option | Convenience Markdown input. Internally converted to `post` JSON with Feishu-specific normalization |
-| `--image <path\|key>` | One content option | Local image path or `image_key` (`img_xxx`) |
-| `--file <path\|key>` | One content option | Local file path or `file_key` (`file_xxx`) |
-| `--video <path\|key>` | One content option | Local video path or `file_key`; **must be used together with `--video-cover`** |
-| `--video-cover <path\|key>` | **Required with `--video`** | Video cover image path or `image_key` (`img_xxx`) |
-| `--audio <path\|key>` | One content option | Local audio path or `file_key` |
-| `--reply-in-thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream |
-| `--idempotency-key <key>` | No | Idempotency key; the same key sends only one reply within 1 hour |
-| `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`) |
-| `--dry-run` | No | Print the request only, do not execute it |
+| `--content <json>` | One content option | Exact reply content as JSON. The JSON must match the effective `--msg-type`                                                                                                                   |
+| `--text <string>` | One content option | Plain text reply. Best default when you need exact text and formatting preservation                                                                                                           |
+| `--markdown <string>` | One content option | Convenience Markdown input. Internally converted to `post` JSON with Feishu-specific normalization                                                                                            |
+| `--image <path\|url\|key>` | One content option | Cwd-relative local image path, URL, or `image_key` (`img_xxx`)                                                                                                                                |
+| `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`)                                                                                                                                 |
+| `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `--video-cover`**                                                                                |
+| `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`)                                                                                                                          |
+| `--audio <path\|url\|key>` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`)                                                                                                                                            |
+| `--reply-in-thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream                                                                                     |
+| `--idempotency-key <key>` | No | Idempotency key; the same key sends only one reply within 1 hour                                                                                                                              |
+| `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
+| `--dry-run` | No | Print the request only, do not execute it                                                                                                                                                     |
 
 > **Mutual exclusivity rule:** `--text`, `--markdown`, `--content`, and `--image`/`--file`/`--video`/`--audio` cannot be used together. Media flags are also mutually exclusive with each other.
 >
@@ -166,6 +192,7 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' -
 - Choosing `--markdown` when you actually need exact plain text. If exact line breaks and spacing matter, use `--text`, usually with `$'...'`.
 - Assuming `--markdown` supports all Markdown features. It does not; it is converted into a Feishu `post` payload and rewritten first.
 - Putting local image paths inside Markdown like `![x](./a.png)`. `--markdown` does not auto-upload those paths.
+- **Using local file paths inside Markdown image syntax** (e.g. `![x](./a.png)`) with `--markdown`. Local paths are not auto-uploaded and will not render as an image. Pre-upload via `images.create` to get an `image_key` instead.
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
@@ -211,7 +238,7 @@ The reply appears in the target message's thread and does not show up in the mai
 - When using `--content`, you are responsible for making the JSON structure match the effective `msg_type`
 - `--reply-in-thread` adds `reply_in_thread=true` to the API request
 - `--reply-in-thread` is mainly meaningful in chats that support thread replies
-- `--image`/`--file`/`--video`/`--audio`/`--video-cover` support local file paths; the shortcut uploads first and then sends the reply; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
+- `--image`/`--file`/`--video`/`--audio`/`--video-cover` support existing keys, URLs, and cwd-relative local file paths; the shortcut uploads local paths and URLs first, then sends the reply; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
 - If the provided media value starts with `img_` or `file_`, it is treated as an existing key and used directly
 - `--markdown` always sends `msg_type=post`
 - If you explicitly set `--msg-type` and it conflicts with the chosen content flag, validation fails
@@ -220,3 +247,4 @@ The reply appears in the target message's thread and does not show up in the mai
 - Failures return error codes and messages
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the reply is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT), and requires the `im:message:send_as_bot` scope
+- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported

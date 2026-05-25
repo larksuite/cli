@@ -31,9 +31,16 @@ import (
 const (
 	baseAttachmentUploadMaxFileSize int64 = 2 * 1024 * 1024 * 1024
 	baseAttachmentParentType              = "bitable_file"
+	baseFormAttachmentParentType          = "bitable_tmp_point"
 	baseAttachmentMaxBatchSize            = 50
 	baseAttachmentGetMaxRecords           = 10
 )
+
+type baseAttachmentUploadTarget struct {
+	ParentType string
+	ParentNode string
+	Extra      string
+}
 
 var BaseRecordUploadAttachment = common.Shortcut{
 	Service:     "base",
@@ -278,7 +285,10 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		if fileInfo.Size() > common.MaxDriveMediaUploadSinglePartSize {
 			fmt.Fprintf(runtime.IO().ErrOut, "File exceeds 20MB, using multipart upload\n")
 		}
-		attachment, err := uploadAttachmentToBase(runtime, filePath, fileName, runtime.Str("base-token"), fileInfo.Size())
+		attachment, err := uploadAttachmentToBase(runtime, filePath, fileName, fileInfo.Size(), baseAttachmentUploadTarget{
+			ParentType: baseAttachmentParentType,
+			ParentNode: runtime.Str("base-token"),
+		})
 		if err != nil {
 			return err
 		}
@@ -459,31 +469,33 @@ func fetchBaseAttachments(runtime *common.RuntimeContext, baseToken, tableIDValu
 	return attachments, nil
 }
 
-func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName, baseToken string, fileSize int64) (map[string]interface{}, error) {
+func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, target baseAttachmentUploadTarget) (map[string]interface{}, error) {
 	mimeType, err := detectAttachmentMIMEType(runtime.FileIO(), filePath, fileName)
 	if err != nil {
 		return nil, err
 	}
 
-	parentNode := baseToken
 	var (
 		fileToken string
 	)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
+		parentNode := target.ParentNode
 		fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
-			ParentType: baseAttachmentParentType,
+			ParentType: target.ParentType,
 			ParentNode: &parentNode,
+			Extra:      target.Extra,
 		})
 	} else {
 		fileToken, err = common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
-			ParentType: baseAttachmentParentType,
-			ParentNode: parentNode,
+			ParentType: target.ParentType,
+			ParentNode: target.ParentNode,
+			Extra:      target.Extra,
 		})
 	}
 	if err != nil {

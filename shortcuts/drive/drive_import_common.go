@@ -51,6 +51,7 @@ type driveImportSpec struct {
 	DocType     string
 	FolderToken string
 	Name        string
+	TargetToken string // existing bitable token to import data into (only for type=bitable)
 }
 
 func (s driveImportSpec) FileExtension() string {
@@ -67,7 +68,7 @@ func (s driveImportSpec) TargetFileName() string {
 
 // CreateTaskBody builds the request body expected by /drive/v1/import_tasks.
 func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{} {
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"file_extension": s.FileExtension(),
 		"file_token":     fileToken,
 		"type":           s.DocType,
@@ -79,6 +80,12 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 			"mount_key": s.FolderToken,
 		},
 	}
+
+	if s.DocType == "bitable" && s.TargetToken != "" {
+		body["token"] = s.TargetToken
+	}
+
+	return body
 }
 
 // uploadMediaForImport uploads the source file to the temporary import media
@@ -228,6 +235,15 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 
 	if strings.TrimSpace(spec.FolderToken) != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
+			return output.ErrValidation("%s", err)
+		}
+	}
+
+	if strings.TrimSpace(spec.TargetToken) != "" {
+		if spec.DocType != "bitable" {
+			return output.ErrValidation("--target-token is only supported when --type is bitable")
+		}
+		if err := validate.ResourceName(spec.TargetToken, "--target-token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
 	}

@@ -47,9 +47,10 @@ func NewCmdAuthLogin(f *cmdutil.Factory, runF func(*LoginOptions) error) *cobra.
 		Long: `Device Flow authorization login.
 
 For AI agents: this command blocks until the user completes authorization in the
-browser. If your harness only delivers final turn messages, use --no-wait --json,
-send the verification URL to the user as your final message, end the turn, then
-run --device-code in a later step after the user confirms authorization.`,
+browser. If your harness or agent tool only delivers final turn messages, use --no-wait --json,
+send the verification URL (or QR code) to the user as your final message, end the turn, then
+run --device-code in a later step after the user confirms authorization. Use 'lark-cli auth qrcode'
+to generate QR codes (supports ASCII and PNG formats).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
 				return output.ErrWithHint(output.ExitValidation, "command_denied",
@@ -68,7 +69,13 @@ run --device-code in a later step after the user confirms authorization.`,
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
-	available := sortedKnownDomains()
+	var helpBrand core.LarkBrand
+	if f != nil && f.Config != nil {
+		if cfg, err := f.Config(); err == nil && cfg != nil {
+			helpBrand = cfg.Brand
+		}
+	}
+	available := sortedKnownDomains(helpBrand)
 	cmd.Flags().StringSliceVar(&opts.Domains, "domain", nil,
 		fmt.Sprintf("domain (repeatable or comma-separated, e.g. --domain calendar,task)\navailable: %s, all", strings.Join(available, ", ")))
 	cmd.Flags().StringSliceVar(&opts.Exclude, "exclude", nil,
@@ -139,14 +146,14 @@ func authLoginRun(opts *LoginOptions) error {
 	// Expand --domain all to all available domains (from_meta projects + shortcut services)
 	for _, d := range selectedDomains {
 		if strings.EqualFold(d, "all") {
-			selectedDomains = sortedKnownDomains()
+			selectedDomains = sortedKnownDomains(config.Brand)
 			break
 		}
 	}
 
 	// Validate domain names and suggest corrections for unknown ones
 	if len(selectedDomains) > 0 {
-		knownDomains := allKnownDomains()
+		knownDomains := allKnownDomains(config.Brand)
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
@@ -170,7 +177,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang, msg)
+			result, err := runInteractiveLogin(f.IOStreams, lang, msg, config.Brand)
 			if err != nil {
 				return err
 			}
@@ -208,10 +215,10 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(selectedDomains) > 0 || opts.Recommend {
 		var candidateScopes []string
 		if len(selectedDomains) > 0 {
-			candidateScopes = collectScopesForDomains(selectedDomains, "user")
+			candidateScopes = collectScopesForDomains(selectedDomains, "user", config.Brand)
 		} else {
 			// --recommend without --domain: all domains
-			candidateScopes = collectScopesForDomains(sortedKnownDomains(), "user")
+			candidateScopes = collectScopesForDomains(sortedKnownDomains(config.Brand), "user", config.Brand)
 		}
 
 		// Filter to auto-approve scopes if --recommend or interactive "common"
@@ -269,7 +276,7 @@ func authLoginRun(opts *LoginOptions) error {
 			"verification_url": authResp.VerificationUriComplete,
 			"device_code":      authResp.DeviceCode,
 			"expires_in":       authResp.ExpiresIn,
-			"hint":             fmt.Sprintf("Show verification_url to the user exactly as returned by the CLI and treat it as an opaque string. Do not URL-encode or decode it, do not normalize or rewrite it, do not add %%20, spaces, or punctuation, and do not wrap it as Markdown link text; prefer a fenced code block containing only the raw URL. For agent harnesses that only deliver final turn messages, make the URL the final message of the turn and return control to the user; do not block on --device-code in the same turn. After the user confirms authorization in a later step, run: lark-cli auth login --device-code %s", authResp.DeviceCode),
+			"hint":             fmt.Sprintf("**MUST generate QR code AND display it:** You MUST call lark-cli auth qrcode to convert verification_url into a QR code. This is a required step, do NOT skip it. Prefer PNG QR code (--output); use ASCII (--ascii) only when the user explicitly requests it.**CRITICAL: You MUST include the QR image in your response.** Generating the file alone is NOT enough—use image tags, inline images, or file attachments to display it.**Display order:** Output the URL first, then place the QR code image below the URL so the user can either scan or copy the link.**URL Output Rules:** Treat verification_url as an opaque string that cannot be modified. Do NOT URL-encode/decode or add spaces/punctuation. Prefer a fenced code block containing only the raw URL. For agent harnesses that only deliver final turn messages, make the QR code image (or URL) the final message of the turn and return control to the user; do not block on --device-code in the same turn. After the user confirms authorization in a later step, run: lark-cli auth login --device-code %s", authResp.DeviceCode),
 		}
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
@@ -452,6 +459,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 	return nil
 }
 
+// syncLoginUserToProfile persists the logged-in user info into the named profile.
 func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
@@ -477,6 +485,7 @@ func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	return nil
 }
 
+// findProfileByName returns the AppConfig matching profileName, or nil.
 func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.AppConfig {
 	for i := range multi.Apps {
 		if multi.Apps[i].ProfileName() == profileName {
@@ -490,7 +499,7 @@ func findProfileByName(multi *core.MultiAppConfig, profileName string) *core.App
 // shortcut scopes for the given domain names.
 // Domains with auth_domain children are automatically expanded to include
 // their children's scopes.
-func collectScopesForDomains(domains []string, identity string) []string {
+func collectScopesForDomains(domains []string, identity string, brand core.LarkBrand) []string {
 	scopeSet := make(map[string]bool)
 
 	// 1. API scopes from from_meta projects
@@ -509,6 +518,9 @@ func collectScopesForDomains(domains []string, identity string) []string {
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range shortcuts.AllShortcuts() {
+		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+			continue
+		}
 		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
 			for _, s := range sc.DeclaredScopesForIdentity(identity) {
 				scopeSet[s] = true
@@ -528,7 +540,7 @@ func collectScopesForDomains(domains []string, identity string) []string {
 // allKnownDomains returns all valid auth domain names (from_meta projects +
 // shortcut services), excluding domains that have auth_domain set (they are
 // folded into their parent domain).
-func allKnownDomains() map[string]bool {
+func allKnownDomains(brand core.LarkBrand) map[string]bool {
 	domains := make(map[string]bool)
 	for _, p := range registry.ListFromMetaProjects() {
 		if !registry.HasAuthDomain(p) {
@@ -536,6 +548,9 @@ func allKnownDomains() map[string]bool {
 		}
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
+		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+			continue
+		}
 		if !registry.HasAuthDomain(sc.Service) {
 			domains[sc.Service] = true
 		}
@@ -544,8 +559,8 @@ func allKnownDomains() map[string]bool {
 }
 
 // sortedKnownDomains returns all valid domain names sorted alphabetically.
-func sortedKnownDomains() []string {
-	m := allKnownDomains()
+func sortedKnownDomains(brand core.LarkBrand) []string {
+	m := allKnownDomains(brand)
 	domains := make([]string, 0, len(m))
 	for d := range m {
 		domains = append(domains, d)

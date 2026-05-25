@@ -304,3 +304,88 @@ func decodeSheetCreateEnvelope(t *testing.T, stdout *bytes.Buffer) map[string]in
 	}
 	return data
 }
+
+func TestSheetCreateBotAutoGrantSkippedNoUser(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_skipped",
+					"url":               "https://example.feishu.cn/sheets/shtcn_skipped",
+				},
+			},
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "No User Sheet",
+		"--as", "bot",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantSkipped {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantSkipped)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	}
+}
+
+func TestSheetCreateBotAutoGrantFailed(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetCreateTestConfig(t, "ou_current_user"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/sheets/v3/spreadsheets",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"spreadsheet": map[string]interface{}{
+					"spreadsheet_token": "shtcn_grant_fail",
+					"url":               "https://example.feishu.cn/sheets/shtcn_grant_fail",
+				},
+			},
+		},
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/shtcn_grant_fail/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	err := runSheetCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Grant Fail Sheet",
+		"--as", "bot",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSheetCreateEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "Retry later") {
+		t.Fatalf("hint = %#v, want string containing 'Retry later'", grant["hint"])
+	}
+}

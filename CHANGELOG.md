@@ -2,6 +2,101 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.39] - 2026-05-22
+
+### Features
+
+- **slides**: Add `+export` shortcut to export slides (#988)
+- **sidecar**: Support multi-client identity isolation in `server-demo` via per-client HMAC keys, preventing UAT cross-contamination when multiple CLI sandboxes share one sidecar (#934)
+- **im**: Support Markdown image rendering in post content (#893)
+
+### Bug Fixes
+
+- **scope**: Add 22 new scope entries to scope priorities (#1050)
+
+### Documentation
+
+- **base**: Update location `full_address` guidance (#754)
+- **apps**: Refine `lark-apps` skill description and surface, document `index.html` / `--path` hard constraints (#1040)
+
+## [v1.0.38] - 2026-05-22
+
+### Features
+
+- **apps**: Gate the Miaoda apps domain off on the Lark brand — the `apps` shortcut subtree returns a structured brand-restriction error, `auth login --domain apps` is rejected, `--domain all` skips it, and `spark:*` scopes are no longer requested (#1025)
+
+## [v1.0.37] - 2026-05-21
+
+### Features
+
+- **apps**: Add miaoda apps domain with 6 shortcuts covering `+create` / `+update` / `+list` / `+access-scope-get` / `+access-scope-set` / `+html-publish` (#1002)
+
+### Bug Fixes
+
+- **permission**: Surface auto-grant skipped/failed cases via stderr warnings and a `hint` field in the `permission_grant` JSON output (#1015)
+- **sheets**: Use `FileIO` for `+write-image` input so stdin / `-` works consistently (#996)
+
+## [v1.0.36] - 2026-05-21
+
+### Features
+
+- **drive/markdown**: Return real tenant URLs for `drive +upload` and `markdown +create` (#992)
+
+### Bug Fixes
+
+- **auth**: Return validation error when `--scope` is empty in `auth check` (#999)
+
+### Documentation
+
+- **lark-drive**: Improve search evidence guidance (#864)
+
+## [v1.0.35] - 2026-05-20
+
+### Features
+
+- **markdown**: Support wiki node target in `+create` (#883)
+- **markdown**: Add `+diff` shortcut (#876)
+- **base**: Add form `+detail` / `+submit` shortcuts (#759)
+- **skills**: Add incremental skills sync (#965)
+- **doc**: Warn before overwrite when document contains whiteboard or file blocks (#825)
+
+### Documentation
+
+- **im**: Clarify media key formats for message media flags (#991)
+- **im**: Add media-preview reference (#990)
+- **drive**: Migrate `docs +search` to `drive +search` and fix `creator_ids` owner semantic (#951)
+- **drive**: Prefer local comments for drive reviews (#981)
+- **wiki**: Add wiki base fast path (#982)
+
+## [v1.0.34] - 2026-05-19
+
+### Features
+
+- **drive**: Switch markdown export to V2 `docs_ai` fetch API (#948)
+- **drive**: Add `+inspect` shortcut for document URL inspection with wiki unwrapping (#947)
+- **wiki**: Add `+node-get` / `+node-delete` / `+space-create` shortcuts (#904)
+- **base**: Support Base attachment APIs (#887)
+- **mail**: Validate `bot` + `mailbox=me` and add dynamic `--as` help tests (#895)
+- **mail**: Expose draft priority in `--inspect` projection and document `--set-priority` (#779)
+
+### Bug Fixes
+
+- **identitydiag**: Harden verify path and tighten status semantics (#961)
+- **wiki**: Surface real node URL for `+node-create` / `+node-copy` (#960)
+- **auth**: Split bot and user identity diagnostics (#957)
+- **base**: Address Base attachment review follow-ups (#958)
+- **docs**: Clarify `replace_all` selection errors (#954)
+
+### Documentation
+
+- **drive**: Clarify add comment constraints (#967)
+- **lark-im**: Clarify message activity search (#865)
+
+### Tests
+
+- Verify e2e resource cleanup (#949)
+- **lint**: Exclude `bidichk` from test files (#959)
+
 ## [v1.0.33] - 2026-05-18
 
 ### Features
@@ -745,6 +840,12 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.39]: https://github.com/larksuite/cli/releases/tag/v1.0.39
+[v1.0.38]: https://github.com/larksuite/cli/releases/tag/v1.0.38
+[v1.0.37]: https://github.com/larksuite/cli/releases/tag/v1.0.37
+[v1.0.36]: https://github.com/larksuite/cli/releases/tag/v1.0.36
+[v1.0.35]: https://github.com/larksuite/cli/releases/tag/v1.0.35
+[v1.0.34]: https://github.com/larksuite/cli/releases/tag/v1.0.34
 [v1.0.33]: https://github.com/larksuite/cli/releases/tag/v1.0.33
 [v1.0.32]: https://github.com/larksuite/cli/releases/tag/v1.0.32
 [v1.0.31]: https://github.com/larksuite/cli/releases/tag/v1.0.31
