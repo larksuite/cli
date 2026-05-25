@@ -52,3 +52,51 @@ func TestResolveOpenBaseURL(t *testing.T) {
 		t.Errorf("ResolveOpenBaseURL(lark) = %q", got)
 	}
 }
+
+func TestResolveEndpoints_EnvOverride(t *testing.T) {
+	t.Setenv(EnvOpenBaseURL, "https://open.example.internal/")
+	t.Setenv(EnvAccountsBaseURL, "  https://accounts.example.internal  ")
+	t.Setenv(EnvMCPBaseURL, "https://mcp.example.internal")
+	t.Setenv(EnvAppLinkBaseURL, "https://applink.example.internal///")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "https://open.example.internal" {
+		t.Errorf("Open = %q, want env override", ep.Open)
+	}
+	if ep.Accounts != "https://accounts.example.internal" {
+		t.Errorf("Accounts = %q, want env override (whitespace trimmed)", ep.Accounts)
+	}
+	if ep.MCP != "https://mcp.example.internal" {
+		t.Errorf("MCP = %q, want env override", ep.MCP)
+	}
+	if ep.AppLink != "https://applink.example.internal" {
+		t.Errorf("AppLink = %q, want env override (trailing slashes stripped)", ep.AppLink)
+	}
+}
+
+func TestResolveEndpoints_EnvOverride_PartialKeepsBrandDefaults(t *testing.T) {
+	t.Setenv(EnvOpenBaseURL, "https://open.example.internal")
+
+	ep := ResolveEndpoints(BrandLark)
+	if ep.Open != "https://open.example.internal" {
+		t.Errorf("Open = %q, want env override", ep.Open)
+	}
+	if ep.Accounts != "https://accounts.larksuite.com" {
+		t.Errorf("Accounts = %q, want lark default (no env set)", ep.Accounts)
+	}
+	if ep.MCP != "https://mcp.larksuite.com" {
+		t.Errorf("MCP = %q, want lark default", ep.MCP)
+	}
+	if ep.AppLink != "https://applink.larksuite.com" {
+		t.Errorf("AppLink = %q, want lark default", ep.AppLink)
+	}
+}
+
+func TestResolveEndpoints_EnvOverride_EmptyIgnored(t *testing.T) {
+	t.Setenv(EnvOpenBaseURL, "   ")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "https://open.feishu.cn" {
+		t.Errorf("Open = %q, want feishu default (whitespace-only env should be ignored)", ep.Open)
+	}
+}
