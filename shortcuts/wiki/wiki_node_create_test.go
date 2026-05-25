@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -31,6 +34,7 @@ type fakeWikiNodeCreateClient struct {
 	createNode    *wikiNodeRecord
 	returnNilNode bool
 	createErr     error
+	createErrs    []error // consumed in order; takes precedence over createErr
 	getSpaceErr   error
 	getNodeErr    error
 	createInvoked []fakeWikiNodeCreateCall
@@ -63,6 +67,11 @@ func (fake *fakeWikiNodeCreateClient) CreateNode(ctx context.Context, spaceID st
 		SpaceID: spaceID,
 		Spec:    spec,
 	})
+	if len(fake.createErrs) > 0 {
+		err := fake.createErrs[0]
+		fake.createErrs = fake.createErrs[1:]
+		return nil, err
+	}
 	if fake.createErr != nil {
 		return nil, fake.createErr
 	}
@@ -248,7 +257,7 @@ func TestRunWikiNodeCreateCreatesNodeInResolvedSpace(t *testing.T) {
 		ObjType:  "docx",
 		Title:    "Roadmap",
 	}
-	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec)
+	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, io.Discard)
 	if err != nil {
 		t.Fatalf("runWikiNodeCreate() error = %v", err)
 	}
@@ -280,7 +289,7 @@ func TestRunWikiNodeCreateRejectsNilCreatedNode(t *testing.T) {
 		NodeType: wikiNodeTypeOrigin,
 		ObjType:  "docx",
 		Title:    "Roadmap",
-	})
+	}, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "wiki node create returned no node") {
 		t.Fatalf("expected missing node error, got %v", err)
 	}
@@ -770,5 +779,239 @@ func TestWikiNodeURL(t *testing.T) {
 				t.Fatalf("wikiNodeURL() = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestRunWikiNodeCreateRetriesOnLockContention(t *testing.T) {
+	t.Parallel()
+
+	lockErr := output.ErrAPI(output.LarkErrWikiLockContention, "lock contention", nil)
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createNode: &wikiNodeRecord{
+			SpaceID:   "space_my_library",
+			NodeToken: "wik_created",
+			NodeType:  wikiNodeTypeOrigin,
+			ObjType:   "docx",
+			Title:     "Roadmap",
+		},
+		createErrs: []error{lockErr, lockErr}, // fail twice, then succeed
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	if err != nil {
+		t.Fatalf("runWikiNodeCreate() error = %v", err)
+	}
+	if len(client.createInvoked) != 3 {
+		t.Fatalf("create invoked %d times, want 3", len(client.createInvoked))
+	}
+	if execution.Node.NodeToken != "wik_created" {
+		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
+	}
+	if !strings.Contains(stderr.String(), "lock contention") {
+		t.Fatalf("stderr = %q, want lock contention log", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
+		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "retrying (attempt 2/") {
+		t.Fatalf("stderr = %q, want attempt 2 log", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCreateRetriesExhausted(t *testing.T) {
+	t.Parallel()
+
+	lockErr := output.ErrAPI(output.LarkErrWikiLockContention, "lock contention", nil)
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createErrs: []error{lockErr, lockErr, lockErr}, // all 3 attempts fail
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	if err == nil {
+		t.Fatalf("expected error after retries exhausted")
+	}
+	if len(client.createInvoked) != 3 {
+		t.Fatalf("create invoked %d times, want 3", len(client.createInvoked))
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Detail.Code != output.LarkErrWikiLockContention {
+		t.Fatalf("error code = %d, want %d", exitErr.Detail.Code, output.LarkErrWikiLockContention)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "failed after 2 retries") {
+		t.Fatalf("hint = %q, want retry exhaustion message", exitErr.Detail.Hint)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "lock contention") {
+		t.Fatalf("hint = %q, want original classification hint preserved", exitErr.Detail.Hint)
+	}
+}
+
+func TestRunWikiNodeCreateNoRetryOnNonContentionError(t *testing.T) {
+	t.Parallel()
+
+	otherErr := output.ErrAPI(output.LarkErrRateLimit, "rate limit", nil) // rate limit, not lock contention
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createErrs: []error{otherErr},
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+	_, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1 (no retry)", len(client.createInvoked))
+	}
+	if strings.Contains(stderr.String(), "retrying") {
+		t.Fatalf("stderr = %q, should not contain retry log for non-contention error", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCreateRetriesOnFirstLockThenSucceeds(t *testing.T) {
+	t.Parallel()
+
+	lockErr := output.ErrAPI(output.LarkErrWikiLockContention, "lock contention", nil)
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createNode: &wikiNodeRecord{
+			SpaceID:   "space_my_library",
+			NodeToken: "wik_created",
+			NodeType:  wikiNodeTypeOrigin,
+			ObjType:   "docx",
+			Title:     "Roadmap",
+		},
+		createErrs: []error{lockErr}, // fail once, then succeed
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	if err != nil {
+		t.Fatalf("runWikiNodeCreate() error = %v", err)
+	}
+	if len(client.createInvoked) != 2 {
+		t.Fatalf("create invoked %d times, want 2", len(client.createInvoked))
+	}
+	if execution.Node.NodeToken != "wik_created" {
+		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
+	}
+	if !strings.Contains(stderr.String(), "retrying (attempt 1/") {
+		t.Fatalf("stderr = %q, want attempt 1 log", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "retrying (attempt 2/") {
+		t.Fatalf("stderr = %q, should not contain attempt 2 log", stderr.String())
+	}
+}
+
+func TestRunWikiNodeCreateRetryContextCancelled(t *testing.T) {
+	t.Parallel()
+
+	lockErr := output.ErrAPI(output.LarkErrWikiLockContention, "lock contention", nil)
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createErrs: []error{lockErr, lockErr, lockErr}, // always fail
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+
+	// Pre-cancel the context so the retry loop's select picks up
+	// ctx.Done() immediately during the first backoff wait.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := runWikiNodeCreate(ctx, client, core.AsUser, spec, &stderr)
+	if err == nil {
+		t.Fatalf("expected error due to context cancellation")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	// The initial attempt runs (context is checked only during backoff
+	// wait), but no retries should complete.
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1 (no retries after cancel)", len(client.createInvoked))
+	}
+}
+
+func TestRunWikiNodeCreateNoRetryOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	client := &fakeWikiNodeCreateClient{
+		spaces: map[string]*wikiSpaceRecord{
+			wikiMyLibrarySpaceID: {SpaceID: "space_my_library"},
+		},
+		createNode: &wikiNodeRecord{
+			SpaceID:   "space_my_library",
+			NodeToken: "wik_created",
+			NodeType:  wikiNodeTypeOrigin,
+			ObjType:   "docx",
+			Title:     "Roadmap",
+		},
+	}
+
+	var stderr bytes.Buffer
+	spec := wikiNodeCreateSpec{
+		NodeType: wikiNodeTypeOrigin,
+		ObjType:  "docx",
+		Title:    "Roadmap",
+	}
+	execution, err := runWikiNodeCreate(context.Background(), client, core.AsUser, spec, &stderr)
+	if err != nil {
+		t.Fatalf("runWikiNodeCreate() error = %v", err)
+	}
+	if len(client.createInvoked) != 1 {
+		t.Fatalf("create invoked %d times, want 1", len(client.createInvoked))
+	}
+	if execution.Node.NodeToken != "wik_created" {
+		t.Fatalf("node token = %q, want %q", execution.Node.NodeToken, "wik_created")
+	}
+	if strings.Contains(stderr.String(), "retrying") {
+		t.Fatalf("stderr = %q, should not contain retry log on success", stderr.String())
 	}
 }
