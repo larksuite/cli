@@ -195,3 +195,9 @@ its identity flipped (bot↔user) or its auth-header redirected (e.g. into
 | `allowlist.go` | Target host / identity allowlists |
 | `audit.go` | Log path/error sanitization |
 | `handler_test.go` | Unit tests for all of the above |
+
+## See also
+
+- [server-multi-tenant-demo](../server-multi-tenant-demo/) — extends this demo
+  with per-client HMAC key isolation, OAuth device-flow login, and persistent
+  client → user mapping for multi-tenant deployments

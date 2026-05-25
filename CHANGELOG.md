@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.39] - 2026-05-22
+
+### Features
+
+- **slides**: Add `+export` shortcut to export slides (#988)
+- **sidecar**: Support multi-client identity isolation in `server-demo` via per-client HMAC keys, preventing UAT cross-contamination when multiple CLI sandboxes share one sidecar (#934)
+- **im**: Support Markdown image rendering in post content (#893)
+
+### Bug Fixes
+
+- **scope**: Add 22 new scope entries to scope priorities (#1050)
+
+### Documentation
+
+- **base**: Update location `full_address` guidance (#754)
+- **apps**: Refine `lark-apps` skill description and surface, document `index.html` / `--path` hard constraints (#1040)
+
 ## [v1.0.38] - 2026-05-22
 
 ### Features
@@ -823,6 +840,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.39]: https://github.com/larksuite/cli/releases/tag/v1.0.39
 [v1.0.38]: https://github.com/larksuite/cli/releases/tag/v1.0.38
 [v1.0.37]: https://github.com/larksuite/cli/releases/tag/v1.0.37
 [v1.0.36]: https://github.com/larksuite/cli/releases/tag/v1.0.36

@@ -131,15 +131,15 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 	}
 
 	switch spec.DocType {
-	case "doc", "docx", "sheet", "bitable":
+	case "doc", "docx", "sheet", "bitable", "slides":
 	default:
-		return output.ErrValidation("invalid --doc-type %q: allowed values are doc, docx, sheet, bitable", spec.DocType)
+		return output.ErrValidation("invalid --doc-type %q: allowed values are doc, docx, sheet, bitable, slides", spec.DocType)
 	}
 
 	switch spec.FileExtension {
-	case "docx", "pdf", "xlsx", "csv", "markdown", "base":
+	case "docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx":
 	default:
-		return output.ErrValidation("invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base", spec.FileExtension)
+		return output.ErrValidation("invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base, pptx", spec.FileExtension)
 	}
 
 	if spec.FileExtension == "markdown" && spec.DocType != "docx" {
@@ -148,6 +148,14 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 
 	if spec.FileExtension == "base" && spec.DocType != "bitable" {
 		return output.ErrValidation("--file-extension base only supports --doc-type bitable")
+	}
+
+	if spec.FileExtension == "pptx" && spec.DocType != "slides" {
+		return output.ErrValidation("--file-extension pptx only supports --doc-type slides")
+	}
+
+	if spec.DocType == "slides" && spec.FileExtension != "pptx" && spec.FileExtension != "pdf" {
+		return output.ErrValidation("--doc-type slides only supports --file-extension pptx or pdf")
 	}
 
 	if strings.TrimSpace(spec.SubID) != "" {
@@ -345,6 +353,8 @@ func exportFileSuffix(fileExtension string) string {
 		return ".csv"
 	case "base":
 		return ".base"
+	case "pptx":
+		return ".pptx"
 	default:
 		return ""
 	}

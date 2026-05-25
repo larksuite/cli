@@ -51,9 +51,32 @@ func TestValidateDriveExportSpec(t *testing.T) {
 			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base"},
 		},
 		{
+			name: "slides pptx ok",
+			spec: driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "pptx"},
+		},
+		{
+			name: "slides pdf ok",
+			spec: driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "pdf"},
+		},
+		{
 			name:    "base non bitable rejected",
 			spec:    driveExportSpec{Token: "sheet123", DocType: "sheet", FileExtension: "base"},
 			wantErr: "only supports --doc-type bitable",
+		},
+		{
+			name:    "pptx non slides rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "pptx"},
+			wantErr: "only supports --doc-type slides",
+		},
+		{
+			name:    "slides csv rejected",
+			spec:    driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "csv"},
+			wantErr: "slides only supports",
+		},
+		{
+			name:    "unknown doc type rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "unknown", FileExtension: "pdf"},
+			wantErr: "invalid --doc-type",
 		},
 		{
 			name:    "unknown file extension rejected",
