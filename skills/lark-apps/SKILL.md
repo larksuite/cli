@@ -45,7 +45,7 @@ lark-cli auth login --domain apps
 ## 写 HTML 前的硬约束（避免 publish 阶段被拒）
 
 - **入口文件必须叫 `index.html`** — 妙搭以 `index.html` 作为应用入口；目录形态时根目录下要有 `index.html`，单文件形态时文件名就是 `index.html`。命名成 `app.html` / `demo.html` 等会被 `+html-publish` 直接拒绝
-- **`--path` 内不能含已知凭据文件** — Validate 阶段会扫描 `.env` / `.env.*` / `.npmrc` / `.netrc` / `.git-credentials` / `.aws/credentials` / `.gcloud/credentials*` / `.docker/config.json` / `.kube/config`，命中就 exit 非 0 拒绝（dry-run 也一样拦）。要么从产物目录里清掉这些文件，要么明确传 `--allow-sensitive` 跳过这道检查（例如教程站故意 shipping `.env.example` 作为示例素材）。`--path .` 本身不再硬拒，cwd 干净就能发
+- **`--path` 内不能含已知凭据文件** — Validate 阶段会扫描 `.env` / `.env.*` / `.npmrc` / `.netrc` / `.git-credentials` / `.aws/credentials` / `.docker/config.json` / `.kube/config`，命中就 exit 非 0 拒绝（dry-run 也一样拦）。要么从产物目录里清掉这些文件，要么明确传 `--allow-sensitive` 跳过这道检查（例如教程站故意 shipping `.env.example` 作为示例素材）。`--path .` 本身不再硬拒，cwd 干净就能发
 
 ## 端到端流程（HTML / PPT / 静态网站发布）
 

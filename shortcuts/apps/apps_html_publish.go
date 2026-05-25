@@ -132,7 +132,8 @@ type appsHTMLPublishSpec struct {
 
 // maxSensitiveListInError caps how many credential-file matches we list inline
 // in the validation error, so the message stays readable when a misconfigured
-// payload has hundreds of hits (e.g. a `.gcloud/legacy_credentials/*` tree).
+// payload has many hits (e.g. a directory tree accidentally containing
+// per-environment .env.* files for every stage).
 const maxSensitiveListInError = 5
 
 // sensitiveCandidatesError builds the Validate-time rejection when --path

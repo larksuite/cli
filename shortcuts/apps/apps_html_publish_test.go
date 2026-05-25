@@ -393,8 +393,8 @@ func TestAppsHTMLPublish_AllowSensitiveOverride(t *testing.T) {
 }
 
 // TestSensitiveCandidatesError_Truncation pins the inline-list truncation so a
-// payload with hundreds of credential files (e.g. a misconfigured copy of
-// ~/.gcloud) produces a readable, length-bounded error.
+// payload with many credential files (e.g. an accidentally-copied tree of
+// per-stage .env.* files) produces a readable, length-bounded error.
 func TestSensitiveCandidatesError_Truncation(t *testing.T) {
 	hits := []string{"a.env", "b.env", "c.env", "d.env", "e.env", "f.env", "g.env"}
 	err := sensitiveCandidatesError(hits)

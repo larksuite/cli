@@ -30,9 +30,6 @@ func TestIsSensitiveRelPath(t *testing.T) {
 		// Cloud SDK credentials (require conventional parent dir)
 		{".aws/credentials", true},
 		{"home/.aws/credentials", true},
-		{".gcloud/credentials", true},
-		{".gcloud/credentials.db", true},
-		{".gcloud/credentials.json", true},
 		{".docker/config.json", true},
 		{"backup/.docker/config.json", true},
 		{".kube/config", true},
@@ -51,14 +48,12 @@ func TestIsSensitiveRelPath(t *testing.T) {
 		{"path/to/whatever.pem", false},
 
 		// Lookalikes that should NOT match
-		{".envrc", false},                  // direnv config, no tokens
-		{"environment.yml", false},         // conda env, not .env
-		{"my.env.file.txt", false},         // segment doesn't start with .env
-		{".gcloud/credentialsx", false},    // not credentials or credentials.*
-		{".gcloud/credentials_old", false}, // same
-		{".kube/configmap.yaml", false},    // segment is configmap.yaml not config
-		{".docker/config", false},          // .docker/config (not .json) doesn't carry token
-		{"aws/credentials", false},         // missing leading dot on aws
+		{".envrc", false},               // direnv config, no tokens
+		{"environment.yml", false},      // conda env, not .env
+		{"my.env.file.txt", false},      // segment doesn't start with .env
+		{".kube/configmap.yaml", false}, // segment is configmap.yaml not config
+		{".docker/config", false},       // .docker/config (not .json) doesn't carry token
+		{"aws/credentials", false},      // missing leading dot on aws
 
 		// Benign
 		{"index.html", false},

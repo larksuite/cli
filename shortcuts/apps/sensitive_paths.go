@@ -44,11 +44,6 @@ func isSensitiveRelPath(rel string) bool {
 			if p == "credentials" {
 				return true
 			}
-		case ".gcloud":
-			// Covers credentials and credentials.db / credentials.json etc.
-			if p == "credentials" || strings.HasPrefix(p, "credentials.") {
-				return true
-			}
 		case ".docker":
 			if p == "config.json" {
 				return true

@@ -126,7 +126,7 @@ Validate 阶段会扫描 `--path` 下所有候选文件，命中以下任一模�
 - `.env` / `.env.*`（环境变量 / API key）
 - `.npmrc` / `.netrc`（HTTP 凭据）
 - `.git-credentials`（Git over HTTPS 凭据）
-- `.aws/credentials`、`.gcloud/credentials` 及 `credentials.*`、`.docker/config.json`、`.kube/config`（云 SDK 凭据）
+- `.aws/credentials`、`.docker/config.json`、`.kube/config`（云 SDK 凭据）
 
 报错形态：
 
