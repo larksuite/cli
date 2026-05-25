@@ -473,7 +473,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 		"accessTokens": []interface{}{"tenant"},
 		"docUrl":       "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create",
 	}
-	m := buildMeta(method, "im", []string{"images"}, "create")
+	m := buildMeta(method)
 
 	if m.EnvelopeVersion != "1.0" {
 		t.Errorf("EnvelopeVersion = %q", m.EnvelopeVersion)
@@ -500,7 +500,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 		t.Errorf("RequiredScopes should be empty for this method, got %v", m.RequiredScopes)
 	}
 	if m.Affordance != nil {
-		t.Errorf("Affordance must be nil in PR-1")
+		t.Errorf("Affordance must be nil when method has no affordance field, got %+v", m.Affordance)
 	}
 }
 
@@ -510,7 +510,7 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 		"accessTokens": []interface{}{"user"},
 		// no risk field
 	}
-	m := buildMeta(method, "svc", []string{"res"}, "method")
+	m := buildMeta(method)
 	if m.Risk != "read" {
 		t.Errorf("Risk = %q, want \"read\" (default for missing risk)", m.Risk)
 	}
@@ -518,25 +518,81 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 
 func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
 	method := loadMethodFromRegistry(t, "mail", []string{"user_mailbox", "messages"}, "get")
-	m := buildMeta(method, "mail", []string{"user_mailbox", "messages"}, "get")
+	m := buildMeta(method)
 	if len(m.RequiredScopes) == 0 {
 		t.Errorf("RequiredScopes should be non-empty for mail.user_mailbox.messages.get")
 	}
 }
 
-func TestLoadAffordance_AlwaysNilInPR1(t *testing.T) {
-	cases := []string{
-		"im.images.create",
-		"im.reactions.list",
-		"nonexistent.foo.bar",
-		"",
+func TestParseAffordance_NilOrEmpty(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  interface{}
+	}{
+		{"nil", nil},
+		{"empty object", map[string]interface{}{}},
+		{"all-five-empty-arrays", map[string]interface{}{
+			"use_when":        []interface{}{},
+			"do_not_use_when": []interface{}{},
+			"prerequisites":   []interface{}{},
+			"examples":        []interface{}{},
+			"related":         []interface{}{},
+		}},
+		{"malformed (string)", "not an object"},
+		{"malformed (number)", 42},
+		{"malformed (nested type mismatch)", map[string]interface{}{
+			"examples": "should be a list, not a string",
+		}},
 	}
 	for _, c := range cases {
-		t.Run(c, func(t *testing.T) {
-			if got := loadAffordance(c); got != nil {
-				t.Errorf("loadAffordance(%q) = %+v, want nil (PR-1 has no overlays)", c, got)
+		t.Run(c.name, func(t *testing.T) {
+			if got := parseAffordance(c.raw); got != nil {
+				t.Errorf("parseAffordance(%v) = %+v, want nil", c.raw, got)
 			}
 		})
+	}
+}
+
+func TestParseAffordance_FullPopulated(t *testing.T) {
+	raw := map[string]interface{}{
+		"use_when":        []interface{}{"需要拿到当前用户的主日历 ID"},
+		"do_not_use_when": []interface{}{"已知具体某一个非主日历的 calendar_id"},
+		"prerequisites":   []interface{}{"user 身份登录"},
+		"examples": []interface{}{
+			map[string]interface{}{"title": "获取主日历", "input": map[string]interface{}{}},
+		},
+		"related": []interface{}{"calendars.list"},
+	}
+	a := parseAffordance(raw)
+	if a == nil {
+		t.Fatal("parseAffordance returned nil, want populated")
+	}
+	if len(a.UseWhen) != 1 || a.UseWhen[0] != "需要拿到当前用户的主日历 ID" {
+		t.Errorf("UseWhen = %v", a.UseWhen)
+	}
+	if len(a.Examples) != 1 || a.Examples[0].Title != "获取主日历" {
+		t.Errorf("Examples = %+v", a.Examples)
+	}
+	if len(a.Related) != 1 || a.Related[0] != "calendars.list" {
+		t.Errorf("Related = %v", a.Related)
+	}
+}
+
+func TestBuildMeta_AffordanceFromMethod(t *testing.T) {
+	method := map[string]interface{}{
+		"scopes":       []interface{}{"x"},
+		"accessTokens": []interface{}{"user"},
+		"risk":         "read",
+		"affordance": map[string]interface{}{
+			"use_when": []interface{}{"trigger"},
+		},
+	}
+	m := buildMeta(method)
+	if m.Affordance == nil {
+		t.Fatal("Affordance should be populated from method[\"affordance\"]")
+	}
+	if len(m.Affordance.UseWhen) != 1 || m.Affordance.UseWhen[0] != "trigger" {
+		t.Errorf("UseWhen = %v", m.Affordance.UseWhen)
 	}
 }
 
@@ -547,7 +603,7 @@ func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 		"risk":         "read",
 		// no docUrl
 	}
-	m := buildMeta(method, "svc", []string{"res"}, "method")
+	m := buildMeta(method)
 	if m.DocURL != "" {
 		t.Errorf("DocURL = %q, want empty (will be omitempty)", m.DocURL)
 	}

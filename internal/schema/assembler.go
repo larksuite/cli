@@ -5,7 +5,6 @@ package schema
 
 import (
 	"bytes"
-	"embed"
 	"encoding/json"
 	"sort"
 	"strconv"
@@ -13,9 +12,6 @@ import (
 
 	"github.com/larksuite/cli/internal/registry"
 )
-
-//go:embed all:annotations
-var annotationsFS embed.FS
 
 // MethodKeyOrder records the natural meta_data.json key order for one method's
 // parameters / requestBody / responseBody. Nested object key orders are stored
@@ -490,15 +486,29 @@ func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedPr
 // It is set inside AssembleEnvelope (under assembleMu) and reset on return.
 var currentMethodOrder *MethodKeyOrder
 
-// loadAffordance loads a hand-written affordance overlay for the given dotted
-// command path. In PR-1 the annotations directory is empty and this function
-// always returns nil. Future PRs may add YAML files under
-// annotations/<service>/<resource>.<method>.yaml.
-func loadAffordance(dotted string) *Affordance {
-	// Reserved for future PRs. annotations/ is empty in PR-1.
-	_ = dotted
-	_ = annotationsFS
-	return nil
+// parseAffordance lifts the affordance overlay from a method's raw meta_data.json
+// entry into a typed *Affordance. Returns nil when the field is absent, malformed,
+// or carries no populated subfields.
+//
+// Affordance is authored in larksuite-cli-registry's registry-config.yaml under
+// overrides.<resource>.<method>.affordance and flows through gen-registry.py's
+// deep_merge into the embedded meta_data.json.
+func parseAffordance(raw interface{}) *Affordance {
+	if raw == nil {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var a Affordance
+	if err := json.Unmarshal(b, &a); err != nil {
+		return nil
+	}
+	if len(a.UseWhen) == 0 && len(a.DoNotUseWhen) == 0 && len(a.Prerequisites) == 0 && len(a.Examples) == 0 && len(a.Related) == 0 {
+		return nil
+	}
+	return &a
 }
 
 // convertAccessTokens translates from_meta accessTokens (uses "tenant") into
@@ -527,7 +537,7 @@ func convertAccessTokens(raw []interface{}) []string {
 }
 
 // buildMeta produces the _meta extension namespace.
-func buildMeta(method map[string]interface{}, service string, resourcePath []string, methodName string) *Meta {
+func buildMeta(method map[string]interface{}) *Meta {
 	m := &Meta{
 		EnvelopeVersion: "1.0",
 		RequiredScopes:  []string{}, // never nil for stable JSON
@@ -563,7 +573,7 @@ func buildMeta(method map[string]interface{}, service string, resourcePath []str
 		m.DocURL = docURL
 	}
 
-	m.Affordance = loadAffordance(dottedPath(service, resourcePath, methodName))
+	m.Affordance = parseAffordance(method["affordance"])
 	return m
 }
 
@@ -665,7 +675,7 @@ func AssembleEnvelope(serviceName string, resourcePath []string, methodName stri
 		Description:  desc,
 		InputSchema:  buildInputSchema(method),
 		OutputSchema: buildOutputSchema(method),
-		Meta:         buildMeta(method, serviceName, resourcePath, methodName),
+		Meta:         buildMeta(method),
 	}
 }
 

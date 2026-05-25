@@ -9,6 +9,12 @@
       "xml_presentation_id"
     ],
     "properties": {
+      "xml_presentation_id": {
+        "type": "string",
+        "description": "演示文稿唯一标识",
+        "example": "zTqAwsEb4clrjOLd3drAcNZabcef",
+        "x-in": "path"
+      },
       "slide_id": {
         "type": "string",
         "description": "页面唯一标识",
@@ -32,18 +38,17 @@
         "example": "idMock",
         "x-in": "query"
       },
-      "xml_presentation_id": {
-        "type": "string",
-        "description": "演示文稿唯一标识",
-        "example": "zTqAwsEb4clrjOLd3drAcNZabcef",
-        "x-in": "path"
-      },
       "parts": {
         "type": "array",
         "description": "替换操作列表，每项包含一个元素级别的编辑操作，最少1条，最多200条",
         "items": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "操作类型：str_replace（字符串替换）、block_replace（块替换）、block_insert（块插入）",
+              "example": "str_replace"
+            },
             "pattern": {
               "type": "string",
               "description": "查找的字符串模式，str_replace 时使用",
@@ -73,11 +78,6 @@
               "type": "string",
               "description": "在指定块之前插入，为空时追加到末尾，block_insert 时使用，格式为 3 位 short element ID",
               "example": "baa"
-            },
-            "action": {
-              "type": "string",
-              "description": "操作类型：str_replace（字符串替换）、block_replace（块替换）、block_insert（块插入）",
-              "example": "str_replace"
             }
           }
         },

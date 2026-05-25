@@ -87,10 +87,20 @@
             "description": "文件标识符",
             "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
           },
+          "name": {
+            "type": "string",
+            "description": "文件名",
+            "example": "测试"
+          },
           "type": {
             "type": "string",
             "description": "文件类型",
             "example": "docx"
+          },
+          "parent_token": {
+            "type": "string",
+            "description": "父文件夹标识",
+            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
           },
           "url": {
             "type": "string",
@@ -118,25 +128,15 @@
             "description": "文件创建时间",
             "example": "1686125119"
           },
-          "owner_id": {
-            "type": "string",
-            "description": "文件所有者",
-            "example": "ou_b13d41c02edc52ce66aaae67bf1abcef"
-          },
-          "name": {
-            "type": "string",
-            "description": "文件名",
-            "example": "测试"
-          },
-          "parent_token": {
-            "type": "string",
-            "description": "父文件夹标识",
-            "example": "fldcnP8B5Fpr3UwVi24JykpuOic"
-          },
           "modified_time": {
             "type": "string",
             "description": "文件最近修改时间",
             "example": "1686125119"
+          },
+          "owner_id": {
+            "type": "string",
+            "description": "文件所有者",
+            "example": "ou_b13d41c02edc52ce66aaae67bf1abcef"
           }
         }
       }

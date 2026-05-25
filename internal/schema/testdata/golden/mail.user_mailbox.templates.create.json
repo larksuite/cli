@@ -18,6 +18,26 @@
         "type": "object",
         "description": "待创建的模板内容",
         "properties": {
+          "name": {
+            "type": "string",
+            "description": "模板名称，不超过 100 字符",
+            "example": "销售跟进模板"
+          },
+          "subject": {
+            "type": "string",
+            "description": "邮件主题",
+            "example": "关于本周订单跟进"
+          },
+          "template_content": {
+            "type": "string",
+            "description": "模板正文（HTML 或纯文本）",
+            "example": "\u003cp\u003eHi ${name},\u003c/p\u003e"
+          },
+          "is_plain_text_mode": {
+            "type": "boolean",
+            "description": "是否为纯文本模式",
+            "example": "false"
+          },
           "tos": {
             "type": "array",
             "description": "默认收件人地址列表",
@@ -81,6 +101,16 @@
             "items": {
               "type": "object",
               "properties": {
+                "filename": {
+                  "type": "string",
+                  "description": "附件文件名",
+                  "example": "plan.xlsx"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "附件 id（Drive file_key，用于引用 Drive medias 上传接口返回的 file_key）",
+                  "example": "boxcnrHpsg1QDqXPrJXWPwbqsKh"
+                },
                 "attachment_type": {
                   "type": "integer",
                   "description": "附件类型",
@@ -101,39 +131,9 @@
                   "type": "string",
                   "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
                   "example": "image1@example.com"
-                },
-                "filename": {
-                  "type": "string",
-                  "description": "附件文件名",
-                  "example": "plan.xlsx"
-                },
-                "id": {
-                  "type": "string",
-                  "description": "附件 id（Drive file_key，用于引用 Drive medias 上传接口返回的 file_key）",
-                  "example": "boxcnrHpsg1QDqXPrJXWPwbqsKh"
                 }
               }
             }
-          },
-          "name": {
-            "type": "string",
-            "description": "模板名称，不超过 100 字符",
-            "example": "销售跟进模板"
-          },
-          "subject": {
-            "type": "string",
-            "description": "邮件主题",
-            "example": "关于本周订单跟进"
-          },
-          "template_content": {
-            "type": "string",
-            "description": "模板正文（HTML 或纯文本）",
-            "example": "\u003cp\u003eHi ${name},\u003c/p\u003e"
-          },
-          "is_plain_text_mode": {
-            "type": "boolean",
-            "description": "是否为纯文本模式",
-            "example": "false"
           }
         },
         "x-in": "body"
@@ -167,6 +167,11 @@
             "description": "模板正文（HTML 或纯文本）",
             "example": "\u003cp\u003eHi ${name},\u003c/p\u003e"
           },
+          "is_plain_text_mode": {
+            "type": "boolean",
+            "description": "是否为纯文本模式",
+            "example": "false"
+          },
           "tos": {
             "type": "array",
             "description": "默认收件人地址列表",
@@ -192,15 +197,34 @@
             "items": {
               "type": "object",
               "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
-                },
                 "mail_address": {
                   "type": "string",
                   "description": "邮件地址",
                   "example": "user@xxx.xx"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "名称",
+                  "example": "Mike"
+                }
+              }
+            }
+          },
+          "bccs": {
+            "type": "array",
+            "description": "默认密送地址列表",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mail_address": {
+                  "type": "string",
+                  "description": "邮件地址",
+                  "example": "user@xxx.xx"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "名称",
+                  "example": "Mike"
                 }
               }
             }
@@ -249,30 +273,6 @@
             "type": "string",
             "description": "模板创建时间（毫秒级时间戳字符串，避免 JS 弱类型侧 i64 精度丢失）",
             "example": "1716279320000"
-          },
-          "is_plain_text_mode": {
-            "type": "boolean",
-            "description": "是否为纯文本模式",
-            "example": "false"
-          },
-          "bccs": {
-            "type": "array",
-            "description": "默认密送地址列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "mail_address": {
-                  "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
-                }
-              }
-            }
           }
         }
       }

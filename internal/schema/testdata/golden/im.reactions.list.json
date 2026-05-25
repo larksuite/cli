@@ -50,22 +50,42 @@
   "outputSchema": {
     "type": "object",
     "properties": {
-      "has_more": {
-        "type": "boolean",
-        "description": "是否还有更多项",
-        "example": "true"
-      },
-      "page_token": {
-        "type": "string",
-        "description": "分页标记，当 has_more 为 true 时，会同时返回新的 page_token，否则不返回 page_token",
-        "example": "YhljsPiGfUgnVAg9urvRFd-BvSqRL****"
-      },
       "items": {
         "type": "array",
         "description": "表情回复列表。",
         "items": {
           "type": "object",
           "properties": {
+            "reaction_id": {
+              "type": "string",
+              "description": "表情回复 ID。",
+              "example": "ZCaCIjUBVVWSrm5L-3ZTw*************sNa8dHVplEzzSfJVUVLMLcS_"
+            },
+            "operator": {
+              "type": "object",
+              "description": "添加表情回复的操作人",
+              "properties": {
+                "operator_id": {
+                  "type": "string",
+                  "description": "操作人 ID，具体的取值与 `operator_type` 相关：;      ;- 当 `operator_type` 取值 `app` 时返回机器人的应用 ID（app_id）。;- 当 `operator_type` 取值 `user` 时返回用户的 ID（ID 类型与查询参数 `user_id_type` 的取值一致）。",
+                  "example": "ou_ff0b7ba35fb********67dfc8b885136"
+                },
+                "operator_type": {
+                  "type": "string",
+                  "description": "操作人身份。",
+                  "enum": [
+                    "app",
+                    "user"
+                  ],
+                  "example": "app/user"
+                }
+              }
+            },
+            "action_time": {
+              "type": "string",
+              "description": "添加消息表情回复的时间。Unix 时间戳，单位：ms",
+              "example": "1663054162546"
+            },
             "reaction_type": {
               "type": "object",
               "description": "表情类型",
@@ -76,39 +96,19 @@
                   "example": "SMILE"
                 }
               }
-            },
-            "reaction_id": {
-              "type": "string",
-              "description": "表情回复 ID。",
-              "example": "ZCaCIjUBVVWSrm5L-3ZTw*************sNa8dHVplEzzSfJVUVLMLcS_"
-            },
-            "operator": {
-              "type": "object",
-              "description": "添加表情回复的操作人",
-              "properties": {
-                "operator_type": {
-                  "type": "string",
-                  "description": "操作人身份。",
-                  "enum": [
-                    "app",
-                    "user"
-                  ],
-                  "example": "app/user"
-                },
-                "operator_id": {
-                  "type": "string",
-                  "description": "操作人 ID，具体的取值与 `operator_type` 相关：;      ;- 当 `operator_type` 取值 `app` 时返回机器人的应用 ID（app_id）。;- 当 `operator_type` 取值 `user` 时返回用户的 ID（ID 类型与查询参数 `user_id_type` 的取值一致）。",
-                  "example": "ou_ff0b7ba35fb********67dfc8b885136"
-                }
-              }
-            },
-            "action_time": {
-              "type": "string",
-              "description": "添加消息表情回复的时间。Unix 时间戳，单位：ms",
-              "example": "1663054162546"
             }
           }
         }
+      },
+      "has_more": {
+        "type": "boolean",
+        "description": "是否还有更多项",
+        "example": "true"
+      },
+      "page_token": {
+        "type": "string",
+        "description": "分页标记，当 has_more 为 true 时，会同时返回新的 page_token，否则不返回 page_token",
+        "example": "YhljsPiGfUgnVAg9urvRFd-BvSqRL****"
       }
     }
   },
