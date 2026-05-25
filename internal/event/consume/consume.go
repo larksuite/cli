@@ -117,14 +117,22 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		if cleanup != nil {
 			switch {
 			case r != nil:
-				fmt.Fprintf(errOut, "WARN: panic recovered; running cleanup unconditionally (may affect other consumers of %s)\n", opts.EventKey)
-				_ = cleanup() // proper error handling added in Task 9
+				fmt.Fprintf(errOut,
+					"WARN: panic recovered; running cleanup unconditionally (may affect other consumers of %s)\n",
+					opts.EventKey)
+				if cleanupErr := cleanup(); cleanupErr != nil {
+					fmt.Fprintf(errOut,
+						"WARN: cleanup also failed during panic recovery: %v\n", cleanupErr)
+				}
 			case lastForKey:
 				if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] running cleanup...\n")
 				}
-				_ = cleanup() // proper error handling added in Task 9
-				if !opts.Quiet {
+				if cleanupErr := cleanup(); cleanupErr != nil {
+					fmt.Fprintf(errOut,
+						"WARN: cleanup failed: %v (server-side subscribe is idempotent — residual record will be overwritten on next subscribe)\n",
+						cleanupErr)
+				} else if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] cleanup done.\n")
 				}
 			}

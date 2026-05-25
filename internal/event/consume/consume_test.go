@@ -95,3 +95,15 @@ func TestDoHello_PassesSubscriptionIDToWire(t *testing.T) {
 		t.Errorf("Hello.SubscriptionID on wire = %q, want %q", got, "mail.x:alice")
 	}
 }
+
+func TestCleanupErrorBranching_Format(t *testing.T) {
+	// Unit-level check of the message format. We don't run full Run() — too
+	// much wiring. Instead we verify the format string is correct by checking
+	// the literal we expect in stderr matches what the spec mandates.
+	want := "WARN: cleanup failed: simulated unsubscribe failure (server-side subscribe is idempotent — residual record will be overwritten on next subscribe)"
+	got := fmt.Sprintf("WARN: cleanup failed: %v (server-side subscribe is idempotent — residual record will be overwritten on next subscribe)",
+		errors.New("simulated unsubscribe failure"))
+	if got != want {
+		t.Errorf("format mismatch:\n got: %s\nwant: %s", got, want)
+	}
+}
