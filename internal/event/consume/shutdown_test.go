@@ -4,6 +4,8 @@
 package consume
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net"
@@ -38,7 +40,7 @@ func TestCheckLastForKey_IgnoresNonAckFrames(t *testing.T) {
 		}
 	}()
 
-	got := checkLastForKey(client, "im.msg")
+	got := checkLastForKey(client, "im.msg", "")
 	if got != false {
 		t.Errorf("checkLastForKey = %v, want false", got)
 	}
@@ -62,7 +64,7 @@ func TestCheckLastForKey_ReturnsAckValue(t *testing.T) {
 		_ = protocol.Encode(server, ack)
 	}()
 
-	got := checkLastForKey(client, "im.msg")
+	got := checkLastForKey(client, "im.msg", "")
 	if got != true {
 		t.Errorf("checkLastForKey = %v, want true", got)
 	}
@@ -83,7 +85,7 @@ func TestCheckLastForKey_DefaultsToTrueOnTimeout(t *testing.T) {
 	}()
 
 	start := time.Now()
-	got := checkLastForKey(client, "im.msg")
+	got := checkLastForKey(client, "im.msg", "")
 	elapsed := time.Since(start)
 
 	if got != true {
@@ -91,5 +93,41 @@ func TestCheckLastForKey_DefaultsToTrueOnTimeout(t *testing.T) {
 	}
 	if elapsed > preShutdownAckTimeout+2*time.Second {
 		t.Errorf("elapsed = %v, expected ~%v (timeout-bounded)", elapsed, preShutdownAckTimeout)
+	}
+}
+
+func TestCheckLastForKey_SendsSubscriptionID(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+
+	done := make(chan string, 1)
+	go func() {
+		br := bufio.NewReader(b)
+		line, err := protocol.ReadFrame(br)
+		if err != nil {
+			done <- "READ_ERR"
+			return
+		}
+		msg, err := protocol.Decode(bytes.TrimRight(line, "\n"))
+		if err != nil {
+			done <- "DECODE_ERR"
+			return
+		}
+		check, ok := msg.(*protocol.PreShutdownCheck)
+		if !ok {
+			done <- "WRONG_TYPE"
+			return
+		}
+		done <- check.SubscriptionID
+		// Reply with ack so client returns
+		ack := protocol.NewPreShutdownAck(true)
+		_ = protocol.EncodeWithDeadline(b, ack, protocol.WriteTimeout)
+	}()
+
+	_ = checkLastForKey(a, "mail.x", "mail.x:alice")
+	got := <-done
+	if got != "mail.x:alice" {
+		t.Errorf("PreShutdownCheck.SubscriptionID on wire = %q, want %q", got, "mail.x:alice")
 	}
 }

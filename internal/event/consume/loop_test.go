@@ -89,7 +89,7 @@ func TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted)
+	err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted)
 	if err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted); err != nil {
+	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted); err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
 	if got := emitted.Load(); got != 2 {
@@ -169,7 +169,7 @@ func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted); err != nil {
+	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted); err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
 	if got := emitted.Load(); got != 1 {
@@ -196,7 +196,7 @@ func TestConsumeLoop_CompileJQFailsEarly(t *testing.T) {
 
 	var lastForKey bool
 	var emitted atomic.Int64
-	err := consumeLoop(context.Background(), client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted)
+	err := consumeLoop(context.Background(), client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted)
 	if err == nil {
 		t.Fatal("consumeLoop should fail immediately on bad jq expression")
 	}

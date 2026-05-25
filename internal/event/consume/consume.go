@@ -148,7 +148,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	writeReadyMarker(errOut, opts)
 
-	return consumeLoop(ctx, conn, br, keyDef, opts, &lastForKey, &emitted)
+	return consumeLoop(ctx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
 }
 
 func truncateDuration(d time.Duration) time.Duration {

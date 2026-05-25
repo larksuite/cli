@@ -22,7 +22,7 @@ import (
 )
 
 // consumeLoop reads events and dispatches to workers; cancels on terminal sink errors.
-func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *event.KeyDefinition, opts Options, lastForKey *bool, emitted *atomic.Int64) error {
+func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *event.KeyDefinition, opts Options, subscriptionID string, lastForKey *bool, emitted *atomic.Int64) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -185,7 +185,7 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 		close(stopReader)
 		<-readerDone
 		conn.SetReadDeadline(time.Time{})
-		*lastForKey = checkLastForKey(conn, opts.EventKey)
+		*lastForKey = checkLastForKey(conn, opts.EventKey, subscriptionID)
 		conn.Close()
 	case <-allDone:
 		// bus-side close; can't query, assume last
