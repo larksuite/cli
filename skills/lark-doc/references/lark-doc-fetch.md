@@ -101,7 +101,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--api-version` | 是 | 固定传 `v2` |
-| `--doc` | 是 | 文档 URL 或 token（支持 `/docx/` 和 `/wiki/`） |
+| `--doc` | 是 | 文档 URL 或 token（支持 `/docx/` 和 `/wiki/` 路径，lark-cli 自动提取 token；域名不限，见下方 URL 识别规则） |
 | `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `text` |
 | `--detail` | 否 | `simple`（默认）\| `with-ids` \| `full` |
 | `--revision-id` | 否 | 文档版本号，`-1` = 最新（默认） |
@@ -113,6 +113,19 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 | `--context-after` | 否 | 命中后拉几个兄弟块（仅对顶层单元生效，默认 `0`） |
 | `--max-depth` | 否 | `outline` = 标题层级上限；其它 = 子树深度（`-1` 不限，默认） |
 | `--format` | 否 | `json`（默认）\| `pretty` |
+
+### URL 识别规则
+
+`--doc` 的判断依据是 **URL 路径模式**，而非域名。lark-cli 会自动从 URL 路径中提取 token，任何域名的 URL 只要路径匹配以下模式，都应使用 `docs +fetch` 读取：
+
+| 路径模式 | 示例 | 说明 |
+|----------|------|------|
+| `/docx/TOKEN` | `https://xxx.feishu.cn/docx/Z1Fj...tnAc` | 飞书云文档 |
+| `/wiki/TOKEN` | `https://xxx.feishu.cn/wiki/Z1Fj...tnAc` | 飞书知识库 |
+| `/docx/TOKEN` | `https://www.doubao.com/docx/UN0vdw8...` | 豆包云文档 |
+| `/wiki/TOKEN` | `https://www.doubao.com/wiki/UN0vdw8...` | 豆包知识库 |
+
+**策略**：遇到匹配路径模式的 URL 时，直接用 `docs +fetch --api-version v2 --doc <URL>` 尝试读取。如果返回权限错误或 404，再告知用户可能无法访问。不要因为域名不是 `feishu.cn` 就跳过 lark-cli 而改用 WebFetch。
 
 ## 图片、文件、画板的处理
 
