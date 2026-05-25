@@ -732,3 +732,33 @@ func TestDriveImportFallbackURLWhenServerTypeIsAlias(t *testing.T) {
 		t.Fatalf("data.url = %#v, want %q (alias normalized via spec.DocType fallback)", got, want)
 	}
 }
+
+func TestDriveImportFallbackURLForSlides(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("slides"))
+	driveImportMockEnv(t, reg, "ticket_slides", map[string]interface{}{
+		"token":      "sldcn_imported",
+		"type":       "slides",
+		"job_status": float64(0),
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("deck.pptx", []byte("fake-pptx"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "deck.pptx", "--type", "slides", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["url"], "https://www.feishu.cn/slides/sldcn_imported"; got != want {
+		t.Fatalf("data.url = %#v, want %q (slides fallback)", got, want)
+	}
+}
