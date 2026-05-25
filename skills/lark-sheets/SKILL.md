@@ -95,7 +95,7 @@ Wiki Space (知识空间)
     └── obj_type: file/slides/mindnote
         └── obj_token (真实文档 token)
 
-Drive Folder (云空间/云盘/云存储文件夹)
+Drive Folder (云空间/云盘文件夹)
 └── File (文件/文档)
     └── file_token (直接使用)
 ```

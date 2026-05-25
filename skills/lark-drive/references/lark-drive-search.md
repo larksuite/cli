@@ -1,5 +1,5 @@
 
-# drive +search（云空间（云盘/云存储）搜索：扁平 flag，面向自然语言场景）
+# drive +search（云空间/云盘/云存储搜索：扁平 flag，面向自然语言场景）
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 

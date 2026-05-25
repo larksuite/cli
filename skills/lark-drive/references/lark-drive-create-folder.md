@@ -1,4 +1,4 @@
-# drive +create-folder（创建云空间（云盘/云存储）文件夹）
+# drive +create-folder（创建云空间/云盘/云存储文件夹）
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
