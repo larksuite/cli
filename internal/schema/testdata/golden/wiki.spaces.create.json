@@ -5,29 +5,40 @@
     "type": "object",
     "required": [],
     "properties": {
-      "name": {
-        "type": "string",
-        "description": "知识空间名称",
-        "example": "知识空间"
+      "data": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "知识空间名称",
+            "example": "知识空间"
+          },
+          "description": {
+            "type": "string",
+            "description": "知识空间描述",
+            "example": "知识空间描述"
+          },
+          "open_sharing": {
+            "type": "string",
+            "description": "表示知识空间的分享状态",
+            "enum": [
+              "open",
+              "closed"
+            ],
+            "example": "open"
+          }
+        }
       },
-      "description": {
-        "type": "string",
-        "description": "知识空间描述",
-        "example": "知识空间描述"
-      },
-      "open_sharing": {
-        "type": "string",
-        "description": "表示知识空间的分享状态",
-        "enum": [
-          "open",
-          "closed"
-        ],
-        "example": "open"
-      },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
+      "flags": {
+        "type": "object",
+        "description": "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
+        "properties": {
+          "yes": {
+            "type": "boolean",
+            "description": "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
+            "default": false
+          }
+        }
       }
     }
   },

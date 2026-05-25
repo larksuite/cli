@@ -4,41 +4,49 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "message_id"
+      "params"
     ],
     "properties": {
-      "message_id": {
-        "type": "string",
-        "description": "待查询的消息ID。ID 获取方式：;  ;- 调用[发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)接口后，从响应结果的 `message_id` 参数获取。;- 监听[接收消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive)事件，当触发该事件后可以从事件体内获取消息的 `message_id`。;- 调用[获取会话历史消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list)接口，从响应结果的 `message_id` 参数获取。",
-        "example": "om_8964d1b4*********2b31383276113"
-      },
-      "reaction_type": {
-        "type": "string",
-        "description": "待查询的表情类型，支持的枚举值参考[表情文案说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)中的 emoji_type 值。;;**注意**：该参数为可选参数，不传入该参数时将查询消息内所有的表情回复。",
-        "default": "",
-        "example": "LAUGH"
-      },
-      "page_token": {
-        "type": "string",
-        "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时，会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
-        "default": "",
-        "example": "YhljsPiGfUgnVAg9urvRFd-BvSqRL20wMZNAWfa9xXkud6UKCybPuUgQ1vM26dj6"
-      },
-      "page_size": {
-        "type": "integer",
-        "description": "分页大小，用于限制一次请求返回的数据条目数。;;**默认值**：20",
-        "example": "10",
-        "maximum": 50
-      },
-      "user_id_type": {
-        "type": "string",
-        "description": "当操作人为用户时返回用户ID的类型",
-        "enum": [
-          "open_id",
-          "union_id",
-          "user_id"
+      "params": {
+        "type": "object",
+        "required": [
+          "message_id"
         ],
-        "default": ""
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "description": "待查询的消息ID。ID 获取方式：;  ;- 调用[发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create)接口后，从响应结果的 `message_id` 参数获取。;- 监听[接收消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/events/receive)事件，当触发该事件后可以从事件体内获取消息的 `message_id`。;- 调用[获取会话历史消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/list)接口，从响应结果的 `message_id` 参数获取。",
+            "example": "om_8964d1b4*********2b31383276113"
+          },
+          "reaction_type": {
+            "type": "string",
+            "description": "待查询的表情类型，支持的枚举值参考[表情文案说明](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message-reaction/emojis-introduce)中的 emoji_type 值。;;**注意**：该参数为可选参数，不传入该参数时将查询消息内所有的表情回复。",
+            "default": "",
+            "example": "LAUGH"
+          },
+          "page_token": {
+            "type": "string",
+            "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时，会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+            "default": "",
+            "example": "YhljsPiGfUgnVAg9urvRFd-BvSqRL20wMZNAWfa9xXkud6UKCybPuUgQ1vM26dj6"
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "分页大小，用于限制一次请求返回的数据条目数。;;**默认值**：20",
+            "example": "10",
+            "maximum": 50
+          },
+          "user_id_type": {
+            "type": "string",
+            "description": "当操作人为用户时返回用户ID的类型",
+            "enum": [
+              "open_id",
+              "union_id",
+              "user_id"
+            ],
+            "default": ""
+          }
+        }
       }
     }
   },

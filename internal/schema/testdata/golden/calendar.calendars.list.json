@@ -5,25 +5,30 @@
     "type": "object",
     "required": [],
     "properties": {
-      "page_size": {
-        "type": "integer",
-        "description": "一次请求要求返回的最大日历数量。实际返回的日历数量可能小于该值，也可能为空，可以根据响应体里的has_more字段来判断是否还有更多日历。",
-        "default": 500,
-        "example": "`50`",
-        "minimum": 50,
-        "maximum": 1000
-      },
-      "page_token": {
-        "type": "string",
-        "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
-        "default": "",
-        "example": "ListCalendarsPageToken_xxx"
-      },
-      "sync_token": {
-        "type": "string",
-        "description": "增量同步标记，第一次请求不填。当分页查询结束（page_token 返回值为空）时，接口会返回 sync_token 字段，下次调用可使用该 sync_token 增量获取日历变更数据。;;**默认值**：空",
-        "default": "",
-        "example": "ListCalendarsSyncToken_xxx"
+      "params": {
+        "type": "object",
+        "properties": {
+          "page_size": {
+            "type": "integer",
+            "description": "一次请求要求返回的最大日历数量。实际返回的日历数量可能小于该值，也可能为空，可以根据响应体里的has_more字段来判断是否还有更多日历。",
+            "default": 500,
+            "example": "`50`",
+            "minimum": 50,
+            "maximum": 1000
+          },
+          "page_token": {
+            "type": "string",
+            "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果",
+            "default": "",
+            "example": "ListCalendarsPageToken_xxx"
+          },
+          "sync_token": {
+            "type": "string",
+            "description": "增量同步标记，第一次请求不填。当分页查询结束（page_token 返回值为空）时，接口会返回 sync_token 字段，下次调用可使用该 sync_token 增量获取日历变更数据。;;**默认值**：空",
+            "default": "",
+            "example": "ListCalendarsSyncToken_xxx"
+          }
+        }
       }
     }
   },

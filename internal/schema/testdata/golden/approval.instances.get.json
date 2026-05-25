@@ -4,48 +4,56 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "instance_code"
+      "params"
     ],
     "properties": {
-      "instance_code": {
-        "type": "string",
-        "description": "审批实例 Code",
-        "default": "",
-        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
-      },
-      "locale": {
-        "type": "string",
-        "description": "语言",
-        "enum": [
-          "zh-CN",
-          "en-US",
-          "ja-JP",
-          "zh-HK",
-          "zh-TW",
-          "de-DE",
-          "es-ES",
-          "fr-FR",
-          "id-ID",
-          "it-IT",
-          "ko-KR",
-          "pt-BR",
-          "th-TH",
-          "vi-VN",
-          "ms-MY",
-          "ru-RU"
+      "params": {
+        "type": "object",
+        "required": [
+          "instance_code"
         ],
-        "default": "",
-        "example": "zh-CN"
-      },
-      "user_id_type": {
-        "type": "string",
-        "description": "此次调用中使用的用户ID的类型",
-        "enum": [
-          "user_id",
-          "union_id",
-          "open_id"
-        ],
-        "default": ""
+        "properties": {
+          "instance_code": {
+            "type": "string",
+            "description": "审批实例 Code",
+            "default": "",
+            "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+          },
+          "locale": {
+            "type": "string",
+            "description": "语言",
+            "enum": [
+              "zh-CN",
+              "en-US",
+              "ja-JP",
+              "zh-HK",
+              "zh-TW",
+              "de-DE",
+              "es-ES",
+              "fr-FR",
+              "id-ID",
+              "it-IT",
+              "ko-KR",
+              "pt-BR",
+              "th-TH",
+              "vi-VN",
+              "ms-MY",
+              "ru-RU"
+            ],
+            "default": "",
+            "example": "zh-CN"
+          },
+          "user_id_type": {
+            "type": "string",
+            "description": "此次调用中使用的用户ID的类型",
+            "enum": [
+              "user_id",
+              "union_id",
+              "open_id"
+            ],
+            "default": ""
+          }
+        }
       }
     }
   },

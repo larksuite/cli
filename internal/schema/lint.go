@@ -67,16 +67,10 @@ func lintEnvelope(env Envelope) []error {
 
 	// ---- L2: type-level consistency ----
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
-		for _, k := range env.InputSchema.Properties.Order {
-			p := env.InputSchema.Properties.Map[k]
-			if p.Format == "binary" && p.Type != "string" {
-				errs = append(errs, fmt.Errorf("L2: field %q has format: binary but type = %q (want string)", k, p.Type))
-			}
-			if p.Minimum != nil && p.Maximum != nil && *p.Minimum >= *p.Maximum {
-				errs = append(errs, fmt.Errorf("L2: field %q minimum (%v) >= maximum (%v)", k, *p.Minimum, *p.Maximum))
-			}
-		}
-		// required keys must exist in properties
+		// Walk the whole property tree so format/min-max checks reach leaf
+		// fields nested under the params/data wrapper.
+		walkForL2(env.InputSchema.Properties, &errs)
+		// Top-level required keys must exist in top-level properties.
 		for _, r := range env.InputSchema.Required {
 			if _, ok := env.InputSchema.Properties.Map[r]; !ok {
 				errs = append(errs, fmt.Errorf("L2: required key %q not found in properties", r))
@@ -90,13 +84,17 @@ func lintEnvelope(env Envelope) []error {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
 
-	hasYes := env.InputSchema != nil && env.InputSchema.Properties != nil && env.InputSchema.Properties.Map != nil
-	if hasYes {
-		_, hasYes = env.InputSchema.Properties.Map["yes"]
+	// `yes` lives under inputSchema.properties.flags.properties.yes, injected
+	// only for risk == "high-risk-write".
+	hasYes := false
+	if env.InputSchema != nil && env.InputSchema.Properties != nil {
+		if flags, ok := env.InputSchema.Properties.Map["flags"]; ok && flags.Properties != nil {
+			_, hasYes = flags.Properties.Map["yes"]
+		}
 	}
 	wantYes := env.Meta.Risk == "high-risk-write"
 	if hasYes != wantYes {
-		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
+		errs = append(errs, fmt.Errorf("L3: inputSchema flags.yes property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}
 
 	if len(env.Meta.AccessTokens) == 0 {
@@ -109,6 +107,35 @@ func lintEnvelope(env Envelope) []error {
 	}
 
 	return errs
+}
+
+// walkForL2 recursively applies per-field L2 checks (format:binary on
+// non-string; minimum>=maximum) plus the sub-object required-exists invariant.
+// Required only matters on object-typed Properties (e.g. the params / data
+// wrappers); leaf scalars ignore it.
+func walkForL2(props *OrderedProps, errs *[]error) {
+	if props == nil {
+		return
+	}
+	for _, k := range props.Order {
+		p := props.Map[k]
+		if p.Format == "binary" && p.Type != "string" {
+			*errs = append(*errs, fmt.Errorf("L2: field %q has format: binary but type = %q (want string)", k, p.Type))
+		}
+		if p.Minimum != nil && p.Maximum != nil && *p.Minimum >= *p.Maximum {
+			*errs = append(*errs, fmt.Errorf("L2: field %q minimum (%v) >= maximum (%v)", k, *p.Minimum, *p.Maximum))
+		}
+		if len(p.Required) > 0 && p.Properties != nil {
+			for _, r := range p.Required {
+				if _, ok := p.Properties.Map[r]; !ok {
+					*errs = append(*errs, fmt.Errorf("L2: required key %q in %q not found in its properties", r, k))
+				}
+			}
+		}
+		if p.Properties != nil {
+			walkForL2(p.Properties, errs)
+		}
+	}
 }
 
 // validatePropertyTypes walks an OrderedProps tree and asserts:

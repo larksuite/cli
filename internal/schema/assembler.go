@@ -578,6 +578,21 @@ func buildMeta(method map[string]interface{}) *Meta {
 }
 
 // buildInputSchema produces the inputSchema for one API method.
+//
+// Top-level shape:
+//
+//	{ type: object,
+//	  required: [<"params" if any param required>, <"data" if any body required>],
+//	  properties: {
+//	    params: { type: object, required: [...], properties: { ...path/query fields } },  // only if method has parameters
+//	    data:   { type: object, required: [...], properties: { ...body fields } },         // only if method has requestBody
+//	    yes:    { type: boolean, default: false, ... }                                     // only when risk == "high-risk-write"
+//	  } }
+//
+// The params / data wrapping mirrors the CLI's actual flag layout:
+// path+query → --params JSON, body → --data JSON, file → --file. AI consumers
+// can pluck inputSchema.properties.params and pass it verbatim to --params.
+//
 // Caller must set currentMethodOrder for property-order preservation.
 func buildInputSchema(method map[string]interface{}) *InputSchema {
 	is := &InputSchema{
@@ -586,40 +601,82 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 		Properties: &OrderedProps{Map: make(map[string]Property)},
 	}
 
-	// Path/query parameters
+	// Build the "params" sub-object from method.parameters (path + query).
 	paramsRaw, _ := method["parameters"].(map[string]interface{})
+	paramsProps := &OrderedProps{Map: make(map[string]Property)}
+	var paramsRequired []string
 	for _, k := range orderedKeys(paramsRaw, "parameters") {
 		field, _ := paramsRaw[k].(map[string]interface{})
 		prop := convertProperty(field, "parameters."+k+".properties")
-		is.Properties.Order = append(is.Properties.Order, k)
-		is.Properties.Map[k] = prop
+		paramsProps.Order = append(paramsProps.Order, k)
+		paramsProps.Map[k] = prop
 		if req, _ := field["required"].(bool); req {
-			is.Required = append(is.Required, k)
+			paramsRequired = append(paramsRequired, k)
+		}
+	}
+	if len(paramsProps.Order) > 0 {
+		sort.Strings(paramsRequired)
+		is.Properties.Order = append(is.Properties.Order, "params")
+		is.Properties.Map["params"] = Property{
+			Type:       "object",
+			Required:   paramsRequired,
+			Properties: paramsProps,
+		}
+		if len(paramsRequired) > 0 {
+			is.Required = append(is.Required, "params")
 		}
 	}
 
-	// Request body fields
+	// Build the "data" sub-object from method.requestBody.
 	bodyRaw, _ := method["requestBody"].(map[string]interface{})
+	dataProps := &OrderedProps{Map: make(map[string]Property)}
+	var dataRequired []string
 	for _, k := range orderedKeys(bodyRaw, "requestBody") {
 		field, _ := bodyRaw[k].(map[string]interface{})
 		prop := convertProperty(field, "requestBody."+k+".properties")
-		is.Properties.Order = append(is.Properties.Order, k)
-		is.Properties.Map[k] = prop
+		dataProps.Order = append(dataProps.Order, k)
+		dataProps.Map[k] = prop
 		if req, _ := field["required"].(bool); req {
-			is.Required = append(is.Required, k)
+			dataRequired = append(dataRequired, k)
+		}
+	}
+	if len(dataProps.Order) > 0 {
+		sort.Strings(dataRequired)
+		is.Properties.Order = append(is.Properties.Order, "data")
+		is.Properties.Map["data"] = Property{
+			Type:       "object",
+			Required:   dataRequired,
+			Properties: dataProps,
+		}
+		if len(dataRequired) > 0 {
+			is.Required = append(is.Required, "data")
 		}
 	}
 
-	// high-risk-write injects `yes`
+	// high-risk-write injects a `flags` sibling next to params/data, grouping
+	// CLI-side controls (currently only `yes`). The wrapper makes it explicit
+	// to AI consumers that these are CLI confirmation flags, not API fields —
+	// they will not be sent to the backend, only consumed by lark-cli.
 	if risk, _ := method["risk"].(string); risk == "high-risk-write" {
-		is.Properties.Order = append(is.Properties.Order, "yes")
 		falseVal := false
-		is.Properties.Map["yes"] = Property{
-			Type:        "boolean",
-			Default:     falseVal,
-			Description: "Must be true to execute; CLI rejects with confirmation_required if absent",
+		flagsProps := &OrderedProps{
+			Order: []string{"yes"},
+			Map: map[string]Property{
+				"yes": {
+					Type:        "boolean",
+					Default:     falseVal,
+					Description: "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
+				},
+			},
 		}
-		// yes is intentionally NOT added to Required.
+		is.Properties.Order = append(is.Properties.Order, "flags")
+		is.Properties.Map["flags"] = Property{
+			Type:        "object",
+			Description: "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
+			Properties:  flagsProps,
+		}
+		// flags itself is intentionally NOT added to Required; the gate is
+		// enforced semantically (yes==true) by the CLI, not structurally.
 	}
 
 	sort.Strings(is.Required) // alphabetical

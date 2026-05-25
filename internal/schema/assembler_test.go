@@ -297,17 +297,25 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	if is.Type != "object" {
 		t.Errorf("Type = %q, want \"object\"", is.Type)
 	}
-	// required is alphabetical
-	if !reflect.DeepEqual(is.Required, []string{"message_id"}) {
-		t.Errorf("Required = %v, want [message_id]", is.Required)
+	// top-level required: ["params"] because message_id is a required path param
+	if !reflect.DeepEqual(is.Required, []string{"params"}) {
+		t.Errorf("Required = %v, want [params]", is.Required)
 	}
-	// properties preserve the key order discovered by lookupKeyOrder, whatever
-	// that order happens to be — that is the real ordering invariant we want
-	// to test, not a hard-coded absolute sequence (which is fragile because
-	// meta_data.json key order varies across fetches).
-	if !reflect.DeepEqual(is.Properties.Order, mko.Parameters) {
-		t.Errorf("properties order = %v, want (from key index) %v",
-			is.Properties.Order, mko.Parameters)
+	// top-level properties only contains "params" (no body fields, no high-risk-write)
+	if !reflect.DeepEqual(is.Properties.Order, []string{"params"}) {
+		t.Errorf("top-level properties order = %v, want [params]", is.Properties.Order)
+	}
+	// params sub-object: required + property order
+	params := is.Properties.Map["params"]
+	if params.Type != "object" {
+		t.Errorf("params.Type = %q, want \"object\"", params.Type)
+	}
+	if !reflect.DeepEqual(params.Required, []string{"message_id"}) {
+		t.Errorf("params.Required = %v, want [message_id]", params.Required)
+	}
+	if !reflect.DeepEqual(params.Properties.Order, mko.Parameters) {
+		t.Errorf("params.properties order = %v, want (from key index) %v",
+			params.Properties.Order, mko.Parameters)
 	}
 }
 
@@ -319,18 +327,25 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 
 	is := buildInputSchema(method)
 
-	// required is alphabetical: image, image_type
-	if !reflect.DeepEqual(is.Required, []string{"image", "image_type"}) {
-		t.Errorf("Required = %v, want [image, image_type]", is.Required)
+	// top-level required: ["data"] — body fields image / image_type are required
+	if !reflect.DeepEqual(is.Required, []string{"data"}) {
+		t.Errorf("Required = %v, want [data]", is.Required)
 	}
-	// properties preserve whatever order the key index extracted from
-	// meta_data — see comment in TestBuildInputSchema_ReactionsList.
-	if !reflect.DeepEqual(is.Properties.Order, mko.RequestBody) {
-		t.Errorf("properties order = %v, want (from key index) %v",
-			is.Properties.Order, mko.RequestBody)
+	// top-level properties only contains "data" (no path/query params)
+	if !reflect.DeepEqual(is.Properties.Order, []string{"data"}) {
+		t.Errorf("top-level properties order = %v, want [data]", is.Properties.Order)
+	}
+	// data sub-object carries body fields
+	data := is.Properties.Map["data"]
+	if !reflect.DeepEqual(data.Required, []string{"image", "image_type"}) {
+		t.Errorf("data.Required = %v, want [image, image_type]", data.Required)
+	}
+	if !reflect.DeepEqual(data.Properties.Order, mko.RequestBody) {
+		t.Errorf("data.properties order = %v, want (from key index) %v",
+			data.Properties.Order, mko.RequestBody)
 	}
 	// image field: string + binary
-	img := is.Properties.Map["image"]
+	img := data.Properties.Map["image"]
 	if img.Type != "string" {
 		t.Errorf("image.Type = %q, want \"string\"", img.Type)
 	}
@@ -338,7 +353,7 @@ func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 		t.Errorf("image.Format = %q, want \"binary\"", img.Format)
 	}
 	// image_type: enum present
-	if it := is.Properties.Map["image_type"]; !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
+	if it := data.Properties.Map["image_type"]; !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
 		t.Errorf("image_type unexpected: %+v", it)
 	}
 }
@@ -361,9 +376,17 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 
 	is := buildInputSchema(method)
 
-	yes, ok := is.Properties.Map["yes"]
+	// yes lives under inputSchema.properties.flags.properties.yes
+	flags, ok := is.Properties.Map["flags"]
 	if !ok {
-		t.Fatal("expected `yes` property in high-risk-write envelope, not found")
+		t.Fatal("expected `flags` wrapper in high-risk-write envelope, not found")
+	}
+	if flags.Type != "object" {
+		t.Errorf("flags.Type = %q, want \"object\"", flags.Type)
+	}
+	yes, ok := flags.Properties.Map["yes"]
+	if !ok {
+		t.Fatal("expected `yes` property under flags, not found")
 	}
 	if yes.Type != "boolean" {
 		t.Errorf("yes.Type = %q, want \"boolean\"", yes.Type)
@@ -371,16 +394,16 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 	if v, _ := yes.Default.(bool); v != false {
 		t.Errorf("yes.Default = %v, want false", yes.Default)
 	}
-	// yes must NOT be in required
+	// flags itself must NOT be in top-level required
 	for _, r := range is.Required {
-		if r == "yes" {
-			t.Errorf("`yes` should not appear in required")
+		if r == "flags" {
+			t.Errorf("`flags` should not appear in top-level required")
 		}
 	}
-	// yes is appended to properties.Order
+	// flags is appended to properties.Order
 	last := is.Properties.Order[len(is.Properties.Order)-1]
-	if last != "yes" {
-		t.Errorf("`yes` should be last in properties.Order, got: %v", is.Properties.Order)
+	if last != "flags" {
+		t.Errorf("`flags` should be last in properties.Order, got: %v", is.Properties.Order)
 	}
 }
 

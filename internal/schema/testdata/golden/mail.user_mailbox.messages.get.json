@@ -4,30 +4,38 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "message_id",
-      "user_mailbox_id"
+      "params"
     ],
     "properties": {
-      "user_mailbox_id": {
-        "type": "string",
-        "description": "用户邮箱地址 或 输入me代表当前调用接口用户",
-        "example": "user@xxx.xx 或 me"
-      },
-      "message_id": {
-        "type": "string",
-        "description": "用户邮件 id，获取方式见 [列出邮件](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-message/list)",
-        "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
-      },
-      "format": {
-        "type": "string",
-        "description": "需要获取的邮件内容。支持选择full/plain_text_full/metadata",
-        "enum": [
-          "full",
-          "plain_text_full",
-          "metadata"
+      "params": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "user_mailbox_id"
         ],
-        "default": "",
-        "example": "full"
+        "properties": {
+          "user_mailbox_id": {
+            "type": "string",
+            "description": "用户邮箱地址 或 输入me代表当前调用接口用户",
+            "example": "user@xxx.xx 或 me"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "用户邮件 id，获取方式见 [列出邮件](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-message/list)",
+            "example": "TUlHc1NoWFhJMXgyUi9VZTNVL3h6UnlkRUdzPQ=="
+          },
+          "format": {
+            "type": "string",
+            "description": "需要获取的邮件内容。支持选择full/plain_text_full/metadata",
+            "enum": [
+              "full",
+              "plain_text_full",
+              "metadata"
+            ],
+            "default": "",
+            "example": "full"
+          }
+        }
       }
     }
   },

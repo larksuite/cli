@@ -4,84 +4,100 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "parts",
-      "slide_id",
-      "xml_presentation_id"
+      "data",
+      "params"
     ],
     "properties": {
-      "xml_presentation_id": {
-        "type": "string",
-        "description": "演示文稿唯一标识",
-        "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
-      },
-      "slide_id": {
-        "type": "string",
-        "description": "页面唯一标识",
-        "default": "",
-        "example": "slidecn20m4XJ1hJXXxXXX"
-      },
-      "revision_id": {
-        "type": "integer",
-        "description": "演示文稿的版本号，-1 表示最新版本",
-        "default": -1,
-        "example": "-1",
-        "minimum": -1,
-        "maximum": 2147483647
-      },
-      "tid": {
-        "type": "string",
-        "description": "锁的事务 ID，用于并发控制",
-        "default": "",
-        "example": "idMock"
-      },
-      "parts": {
-        "type": "array",
-        "description": "替换操作列表，每项包含一个元素级别的编辑操作，最少1条，最多200条",
-        "items": {
-          "type": "object",
-          "properties": {
-            "action": {
-              "type": "string",
-              "description": "操作类型：str_replace（字符串替换）、block_replace（块替换）、block_insert（块插入）",
-              "example": "str_replace"
-            },
-            "pattern": {
-              "type": "string",
-              "description": "查找的字符串模式，str_replace 时使用",
-              "example": "test from"
-            },
-            "replacement": {
-              "type": "string",
-              "description": "替换内容，str_replace 和 block_replace 时使用",
-              "example": "test from1"
-            },
-            "is_multiple": {
-              "type": "boolean",
-              "description": "是否替换所有匹配项，默认只替换第一个，str_replace 时使用",
-              "example": "true"
-            },
-            "block_id": {
-              "type": "string",
-              "description": "目标块的唯一标识，block_replace 时使用，格式为 3 位 short element ID",
-              "example": "bab"
-            },
-            "insertion": {
-              "type": "string",
-              "description": "要插入的 XML 元素片段，block_insert 时使用",
-              "example": "\u003cshape\u003e\u003cp\u003einserted element\u003c/p\u003e\u003c/shape\u003e"
-            },
-            "insert_before_block_id": {
-              "type": "string",
-              "description": "在指定块之前插入，为空时追加到末尾，block_insert 时使用，格式为 3 位 short element ID",
-              "example": "baa"
-            }
+      "params": {
+        "type": "object",
+        "required": [
+          "slide_id",
+          "xml_presentation_id"
+        ],
+        "properties": {
+          "xml_presentation_id": {
+            "type": "string",
+            "description": "演示文稿唯一标识",
+            "example": "zTqAwsEb4clrjOLd3drAcNZabcef"
+          },
+          "slide_id": {
+            "type": "string",
+            "description": "页面唯一标识",
+            "default": "",
+            "example": "slidecn20m4XJ1hJXXxXXX"
+          },
+          "revision_id": {
+            "type": "integer",
+            "description": "演示文稿的版本号，-1 表示最新版本",
+            "default": -1,
+            "example": "-1",
+            "minimum": -1,
+            "maximum": 2147483647
+          },
+          "tid": {
+            "type": "string",
+            "description": "锁的事务 ID，用于并发控制",
+            "default": "",
+            "example": "idMock"
           }
         }
       },
-      "comment": {
-        "type": "string",
-        "description": "操作备注",
-        "example": "批量替换文本内容"
+      "data": {
+        "type": "object",
+        "required": [
+          "parts"
+        ],
+        "properties": {
+          "parts": {
+            "type": "array",
+            "description": "替换操作列表，每项包含一个元素级别的编辑操作，最少1条，最多200条",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "description": "操作类型：str_replace（字符串替换）、block_replace（块替换）、block_insert（块插入）",
+                  "example": "str_replace"
+                },
+                "pattern": {
+                  "type": "string",
+                  "description": "查找的字符串模式，str_replace 时使用",
+                  "example": "test from"
+                },
+                "replacement": {
+                  "type": "string",
+                  "description": "替换内容，str_replace 和 block_replace 时使用",
+                  "example": "test from1"
+                },
+                "is_multiple": {
+                  "type": "boolean",
+                  "description": "是否替换所有匹配项，默认只替换第一个，str_replace 时使用",
+                  "example": "true"
+                },
+                "block_id": {
+                  "type": "string",
+                  "description": "目标块的唯一标识，block_replace 时使用，格式为 3 位 short element ID",
+                  "example": "bab"
+                },
+                "insertion": {
+                  "type": "string",
+                  "description": "要插入的 XML 元素片段，block_insert 时使用",
+                  "example": "\u003cshape\u003e\u003cp\u003einserted element\u003c/p\u003e\u003c/shape\u003e"
+                },
+                "insert_before_block_id": {
+                  "type": "string",
+                  "description": "在指定块之前插入，为空时追加到末尾，block_insert 时使用，格式为 3 位 short element ID",
+                  "example": "baa"
+                }
+              }
+            }
+          },
+          "comment": {
+            "type": "string",
+            "description": "操作备注",
+            "example": "批量替换文本内容"
+          }
+        }
       }
     }
   },

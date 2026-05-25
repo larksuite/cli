@@ -4,26 +4,34 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "attachment_ids",
-      "template_id",
-      "user_mailbox_id"
+      "params"
     ],
     "properties": {
-      "user_mailbox_id": {
-        "type": "string",
-        "description": "用户邮箱地址。使用 user_access_token 时可使用 me",
-        "example": "user@xxx.xx 或 me"
-      },
-      "template_id": {
-        "type": "string",
-        "description": "模板 id",
-        "example": "7281187859195772947"
-      },
-      "attachment_ids": {
-        "type": "array",
-        "description": "待获取下载链接的附件 id 列表",
-        "default": "",
-        "items": {}
+      "params": {
+        "type": "object",
+        "required": [
+          "attachment_ids",
+          "template_id",
+          "user_mailbox_id"
+        ],
+        "properties": {
+          "user_mailbox_id": {
+            "type": "string",
+            "description": "用户邮箱地址。使用 user_access_token 时可使用 me",
+            "example": "user@xxx.xx 或 me"
+          },
+          "template_id": {
+            "type": "string",
+            "description": "模板 id",
+            "example": "7281187859195772947"
+          },
+          "attachment_ids": {
+            "type": "array",
+            "description": "待获取下载链接的附件 id 列表",
+            "default": "",
+            "items": {}
+          }
+        }
       }
     }
   },

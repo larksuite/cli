@@ -4,24 +4,32 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "image",
-      "image_type"
+      "data"
     ],
     "properties": {
-      "image_type": {
-        "type": "string",
-        "description": "图片类型",
-        "enum": [
-          "message",
-          "avatar"
+      "data": {
+        "type": "object",
+        "required": [
+          "image",
+          "image_type"
         ],
-        "example": "message"
-      },
-      "image": {
-        "type": "string",
-        "description": "图片内容。传值方式可以参考请求体示例。;;**注意**：;;- 上传的图片大小不能超过 10 MB，也不能上传大小为 0 的图片。;- 分辨率限制：;\t- GIF 图片分辨率不能超过 2000 x 2000，其他图片分辨率不能超过 12000 x 12000。;\t- 用于设置头像的图片分辨率不能超过 4096 x 4096。",
-        "example": "二进制文件",
-        "format": "binary"
+        "properties": {
+          "image_type": {
+            "type": "string",
+            "description": "图片类型",
+            "enum": [
+              "message",
+              "avatar"
+            ],
+            "example": "message"
+          },
+          "image": {
+            "type": "string",
+            "description": "图片内容。传值方式可以参考请求体示例。;;**注意**：;;- 上传的图片大小不能超过 10 MB，也不能上传大小为 0 的图片。;- 分辨率限制：;\t- GIF 图片分辨率不能超过 2000 x 2000，其他图片分辨率不能超过 12000 x 12000。;\t- 用于设置头像的图片分辨率不能超过 4096 x 4096。",
+            "example": "二进制文件",
+            "format": "binary"
+          }
+        }
       }
     }
   },

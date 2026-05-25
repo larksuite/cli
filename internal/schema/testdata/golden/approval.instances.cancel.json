@@ -4,18 +4,32 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "instance_code"
+      "data"
     ],
     "properties": {
-      "instance_code": {
-        "type": "string",
-        "description": "审批实例 Code",
-        "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+      "data": {
+        "type": "object",
+        "required": [
+          "instance_code"
+        ],
+        "properties": {
+          "instance_code": {
+            "type": "string",
+            "description": "审批实例 Code",
+            "example": "81D31358-93AF-92D6-7425-01A5D67C4E71"
+          }
+        }
       },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
+      "flags": {
+        "type": "object",
+        "description": "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
+        "properties": {
+          "yes": {
+            "type": "boolean",
+            "description": "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
+            "default": false
+          }
+        }
       }
     }
   },

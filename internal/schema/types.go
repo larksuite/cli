@@ -37,6 +37,10 @@ type OutputSchema struct {
 }
 
 // Property is one field's JSON Schema shape, recursive.
+//
+// Required is used when Property describes a nested object (e.g. the
+// "params" / "data" sub-objects inside inputSchema): it lists which keys
+// inside that object's Properties are mandatory. Leaf fields ignore it.
 type Property struct {
 	Type        string        `json:"type,omitempty"`
 	Description string        `json:"description,omitempty"`
@@ -46,6 +50,7 @@ type Property struct {
 	Minimum     *float64      `json:"minimum,omitempty"`
 	Maximum     *float64      `json:"maximum,omitempty"`
 	Format      string        `json:"format,omitempty"`
+	Required    []string      `json:"required,omitempty"`
 	Properties  *OrderedProps `json:"properties,omitempty"`
 	Items       *Property     `json:"items,omitempty"`
 }

@@ -4,24 +4,38 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "folder_id",
-      "user_mailbox_id"
+      "params"
     ],
     "properties": {
-      "user_mailbox_id": {
-        "type": "string",
-        "description": "用户邮箱地址。当使用用户身份访问时，可以输入\"me\"代表当前调用接口用户",
-        "example": "user@xxx.xx 或 me"
+      "params": {
+        "type": "object",
+        "required": [
+          "folder_id",
+          "user_mailbox_id"
+        ],
+        "properties": {
+          "user_mailbox_id": {
+            "type": "string",
+            "description": "用户邮箱地址。当使用用户身份访问时，可以输入\"me\"代表当前调用接口用户",
+            "example": "user@xxx.xx 或 me"
+          },
+          "folder_id": {
+            "type": "string",
+            "description": "文件夹 id，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
+            "example": "7620003644728938013"
+          }
+        }
       },
-      "folder_id": {
-        "type": "string",
-        "description": "文件夹 id，id 获取方式见 [列出邮箱文件夹](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/mail-v1/user_mailbox-folder/list)",
-        "example": "7620003644728938013"
-      },
-      "yes": {
-        "type": "boolean",
-        "description": "Must be true to execute; CLI rejects with confirmation_required if absent",
-        "default": false
+      "flags": {
+        "type": "object",
+        "description": "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
+        "properties": {
+          "yes": {
+            "type": "boolean",
+            "description": "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
+            "default": false
+          }
+        }
       }
     }
   },

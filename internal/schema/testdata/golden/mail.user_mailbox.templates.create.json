@@ -4,132 +4,148 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "template",
-      "user_mailbox_id"
+      "data",
+      "params"
     ],
     "properties": {
-      "user_mailbox_id": {
-        "type": "string",
-        "description": "用户邮箱地址。使用 user_access_token 时可使用 me",
-        "example": "user@xxx.xx 或 me"
-      },
-      "template": {
+      "params": {
         "type": "object",
-        "description": "待创建的模板内容",
+        "required": [
+          "user_mailbox_id"
+        ],
         "properties": {
-          "name": {
+          "user_mailbox_id": {
             "type": "string",
-            "description": "模板名称，不超过 100 字符",
-            "example": "销售跟进模板"
-          },
-          "subject": {
-            "type": "string",
-            "description": "邮件主题",
-            "example": "关于本周订单跟进"
-          },
-          "template_content": {
-            "type": "string",
-            "description": "模板正文（HTML 或纯文本）",
-            "example": "\u003cp\u003eHi ${name},\u003c/p\u003e"
-          },
-          "is_plain_text_mode": {
-            "type": "boolean",
-            "description": "是否为纯文本模式",
-            "example": "false"
-          },
-          "tos": {
-            "type": "array",
-            "description": "默认收件人地址列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "mail_address": {
-                  "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
+            "description": "用户邮箱地址。使用 user_access_token 时可使用 me",
+            "example": "user@xxx.xx 或 me"
+          }
+        }
+      },
+      "data": {
+        "type": "object",
+        "required": [
+          "template"
+        ],
+        "properties": {
+          "template": {
+            "type": "object",
+            "description": "待创建的模板内容",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "模板名称，不超过 100 字符",
+                "example": "销售跟进模板"
+              },
+              "subject": {
+                "type": "string",
+                "description": "邮件主题",
+                "example": "关于本周订单跟进"
+              },
+              "template_content": {
+                "type": "string",
+                "description": "模板正文（HTML 或纯文本）",
+                "example": "\u003cp\u003eHi ${name},\u003c/p\u003e"
+              },
+              "is_plain_text_mode": {
+                "type": "boolean",
+                "description": "是否为纯文本模式",
+                "example": "false"
+              },
+              "tos": {
+                "type": "array",
+                "description": "默认收件人地址列表",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "example": "user@xxx.xx"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "example": "Mike"
+                    }
+                  }
                 }
-              }
-            }
-          },
-          "ccs": {
-            "type": "array",
-            "description": "默认抄送地址列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "mail_address": {
-                  "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
+              },
+              "ccs": {
+                "type": "array",
+                "description": "默认抄送地址列表",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "example": "user@xxx.xx"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "example": "Mike"
+                    }
+                  }
                 }
-              }
-            }
-          },
-          "bccs": {
-            "type": "array",
-            "description": "默认密送地址列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "mail_address": {
-                  "type": "string",
-                  "description": "邮件地址",
-                  "example": "user@xxx.xx"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "名称",
-                  "example": "Mike"
+              },
+              "bccs": {
+                "type": "array",
+                "description": "默认密送地址列表",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "mail_address": {
+                      "type": "string",
+                      "description": "邮件地址",
+                      "example": "user@xxx.xx"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "名称",
+                      "example": "Mike"
+                    }
+                  }
                 }
-              }
-            }
-          },
-          "attachments": {
-            "type": "array",
-            "description": "模板附件与内嵌图片列表",
-            "items": {
-              "type": "object",
-              "properties": {
-                "filename": {
-                  "type": "string",
-                  "description": "附件文件名",
-                  "example": "plan.xlsx"
-                },
-                "id": {
-                  "type": "string",
-                  "description": "附件 id（Drive file_key，用于引用 Drive medias 上传接口返回的 file_key）",
-                  "example": "boxcnrHpsg1QDqXPrJXWPwbqsKh"
-                },
-                "attachment_type": {
-                  "type": "integer",
-                  "description": "附件类型",
-                  "enum": [
-                    1,
-                    2
-                  ],
-                  "example": "1",
-                  "minimum": 1,
-                  "maximum": 2
-                },
-                "is_inline": {
-                  "type": "boolean",
-                  "description": "是否为内联图片，true 表示是内联图片",
-                  "example": "false"
-                },
-                "cid": {
-                  "type": "string",
-                  "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
-                  "example": "image1@example.com"
+              },
+              "attachments": {
+                "type": "array",
+                "description": "模板附件与内嵌图片列表",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {
+                      "type": "string",
+                      "description": "附件文件名",
+                      "example": "plan.xlsx"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "附件 id（Drive file_key，用于引用 Drive medias 上传接口返回的 file_key）",
+                      "example": "boxcnrHpsg1QDqXPrJXWPwbqsKh"
+                    },
+                    "attachment_type": {
+                      "type": "integer",
+                      "description": "附件类型",
+                      "enum": [
+                        1,
+                        2
+                      ],
+                      "example": "1",
+                      "minimum": 1,
+                      "maximum": 2
+                    },
+                    "is_inline": {
+                      "type": "boolean",
+                      "description": "是否为内联图片，true 表示是内联图片",
+                      "example": "false"
+                    },
+                    "cid": {
+                      "type": "string",
+                      "description": "内容 ID，HTML 中通过 cid: 协议引用该图片",
+                      "example": "image1@example.com"
+                    }
+                  }
                 }
               }
             }
