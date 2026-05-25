@@ -95,15 +95,19 @@ func TestNewCmdAuthQRCode_ExactOneArg(t *testing.T) {
 func TestNewCmdAuthQRCode_RunE_PNGEndToEnd(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 	tmpDir := t.TempDir()
-	outputPath := filepath.Join(tmpDir, "qr.png")
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
 
 	cmd := NewCmdAuthQRCode(f, nil)
-	cmd.SetArgs([]string{"https://example.com", "--output", outputPath})
+	cmd.SetArgs([]string{"https://example.com", "--output", "qr.png"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	data, err := os.ReadFile(outputPath)
+	data, err := os.ReadFile("qr.png")
 	if err != nil {
 		t.Fatalf("output file not created: %v", err)
 	}
@@ -117,9 +121,6 @@ func TestNewCmdAuthQRCode_RunE_PNGEndToEnd(t *testing.T) {
 	}
 	if result["ok"] != true {
 		t.Errorf("ok = %v, want true", result["ok"])
-	}
-	if result["file_path"] != outputPath {
-		t.Errorf("file_path = %v, want %q", result["file_path"], outputPath)
 	}
 	hint, _ := result["hint"].(string)
 	if hint == "" {
@@ -160,6 +161,7 @@ func TestNewCmdAuthQRCode_HelpText(t *testing.T) {
 		"QR code",
 		"--output",
 		"--ascii",
+		"relative path",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help missing %q", want)
@@ -213,26 +215,59 @@ func TestRunQRCode_InvalidSize(t *testing.T) {
 	}
 }
 
-func TestRunQRCode_PNGWritesFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	outputPath := filepath.Join(tmpDir, "qr.png")
+func TestRunQRCode_SizeTooLarge(t *testing.T) {
+	err := runQRCode(&QRCodeOptions{
+		URL:    "https://example.com",
+		Size:   2048,
+		Output: "qr.png",
+	})
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail.Type != "invalid_size" {
+		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "invalid_size")
+	}
+}
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	t.Cleanup(func() { os.Stdout = old })
-
+func TestRunQRCode_UnsafeOutputPath(t *testing.T) {
 	err := runQRCode(&QRCodeOptions{
 		URL:    "https://example.com",
 		Size:   256,
-		Output: outputPath,
+		Output: "/etc/passwd",
 	})
-	w.Close()
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+}
+
+func TestRunQRCode_PNGWritesFile(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	tmpDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(oldWd) })
+
+	err := runQRCode(&QRCodeOptions{
+		URL:     "https://example.com",
+		Size:    256,
+		Output:  "qr.png",
+		Factory: f,
+	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	info, err := os.Stat(outputPath)
+	info, err := os.Stat("qr.png")
 	if err != nil {
 		t.Fatalf("output file not created: %v", err)
 	}
@@ -240,42 +275,28 @@ func TestRunQRCode_PNGWritesFile(t *testing.T) {
 		t.Error("output file is empty")
 	}
 
-	var buf strings.Builder
-	if _, ioErr := io.Copy(&buf, r); ioErr != nil {
-		t.Fatalf("failed to read captured stdout: %v", ioErr)
-	}
 	var result map[string]interface{}
-	if jsonErr := json.Unmarshal([]byte(buf.String()), &result); jsonErr != nil {
-		t.Fatalf("stdout is not valid JSON: %v, got: %s", jsonErr, buf.String())
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &result); jsonErr != nil {
+		t.Fatalf("stdout is not valid JSON: %v, got: %s", jsonErr, stdout.String())
 	}
 	if result["ok"] != true {
 		t.Errorf("ok = %v, want true", result["ok"])
 	}
-	if result["file_path"] != outputPath {
-		t.Errorf("file_path = %v, want %q", result["file_path"], outputPath)
-	}
 }
 
 func TestRunQRCode_ASCIIOutputsToStdout(t *testing.T) {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	t.Cleanup(func() { os.Stdout = old })
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 
 	err := runQRCode(&QRCodeOptions{
-		URL:   "https://example.com",
-		ASCII: true,
+		URL:     "https://example.com",
+		ASCII:   true,
+		Factory: f,
 	})
-	w.Close()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var buf strings.Builder
-	if _, ioErr := io.Copy(&buf, r); ioErr != nil {
-		t.Fatalf("failed to read captured stdout: %v", ioErr)
-	}
-	if buf.Len() == 0 {
+	if stdout.Len() == 0 {
 		t.Error("ASCII QR code produced no output")
 	}
 }
@@ -321,14 +342,19 @@ func TestGenerateImageQRCode_WriteError(t *testing.T) {
 }
 
 func TestGenerateASCIIQRCode_Success(t *testing.T) {
-	err := generateASCIIQRCode("https://example.com")
+	var buf strings.Builder
+	err := generateASCIIQRCode("https://example.com", &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("ASCII QR code produced no output")
 	}
 }
 
 func TestGenerateASCIIQRCode_EmptyString(t *testing.T) {
-	err := generateASCIIQRCode("")
+	var buf strings.Builder
+	err := generateASCIIQRCode("", &buf)
 	if err == nil {
 		t.Fatal("expected error for empty string")
 	}

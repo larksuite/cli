@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -39,7 +40,7 @@ func NewCmdAuthQRCode(f *cmdutil.Factory, runF func(*QRCodeOptions) error) *cobr
 
 This command is designed for AI agents to generate QR codes for OAuth authorization URLs.
 
-For PNG output, the --output flag is required to specify the output file path.
+For PNG output, the --output flag is required to specify the output file path (must be a relative path within the current directory).
 For ASCII output, the result is printed to stdout with fixed size.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,7 +55,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 
 	cmd.Flags().IntVar(&opts.Size, "size", 256, "Size of the QR code image in pixels (default: 256, for PNG mode only)")
 	cmd.Flags().BoolVar(&opts.ASCII, "ascii", false, "Output ASCII QR code to stdout")
-	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (required for non-ASCII mode)")
+	cmd.Flags().StringVarP(&opts.Output, "output", "o", "", "Output file path for PNG image (relative path within current directory, required for non-ASCII mode)")
 
 	return cmd
 }
@@ -66,7 +67,11 @@ func runQRCode(opts *QRCodeOptions) error {
 	}
 
 	if opts.ASCII {
-		return generateASCIIQRCode(opts.URL)
+		var out io.Writer = os.Stdout
+		if opts.Factory != nil {
+			out = opts.Factory.IOStreams.Out
+		}
+		return generateASCIIQRCode(opts.URL, out)
 	}
 
 	if opts.Output == "" {
@@ -77,13 +82,22 @@ func runQRCode(opts *QRCodeOptions) error {
 		return output.Errorf(output.ExitValidation, "invalid_size", fmt.Sprintf("size must be at least 32, got %d", opts.Size))
 	}
 
-	if err := generateImageQRCode(opts.URL, opts.Size, opts.Output); err != nil {
+	if opts.Size > 1024 {
+		return output.Errorf(output.ExitValidation, "invalid_size", fmt.Sprintf("size must be at most 1024, got %d", opts.Size))
+	}
+
+	safePath, err := validate.SafeOutputPath(opts.Output)
+	if err != nil {
+		return output.ErrValidation("unsafe output path: %s", err)
+	}
+
+	if err := generateImageQRCode(opts.URL, opts.Size, safePath); err != nil {
 		return err
 	}
 
 	result := map[string]interface{}{
 		"ok":        true,
-		"file_path": opts.Output,
+		"file_path": safePath,
 		"hint":      "You MUST include the QR image in your response. Generating the file alone is NOT enough—use image tags, inline images, or file attachments to display it.",
 	}
 
@@ -116,13 +130,13 @@ func generateImageQRCode(url string, size int, outputPath string) error {
 }
 
 // generateASCIIQRCode encodes the URL as an ASCII QR code and prints it to stdout.
-func generateASCIIQRCode(url string) error {
+func generateASCIIQRCode(url string, w io.Writer) error {
 	q, err := qrcode.New(url, qrcode.Medium)
 	if err != nil {
 		return output.Errorf(output.ExitInternal, "encode_error", fmt.Sprintf("failed to create QR code: %v", err))
 	}
 
-	fmt.Print(q.ToSmallString(false))
+	fmt.Fprint(w, q.ToSmallString(false))
 
 	return nil
 }
