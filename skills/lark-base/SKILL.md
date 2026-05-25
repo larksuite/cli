@@ -1,6 +1,6 @@
 ---
 name: lark-base
-version: 1.2.1
+version: 1.2.2
 description: "当需要用 lark-cli 操作飞书多维表格（Base）时调用：搜索 Base、建表、字段管理、记录读写、记录分享链接、视图配置、历史查询，以及角色/表单/仪表盘管理/工作流；也适用于把旧的 +table / +field / +record 写法改成当前命令写法。涉及字段设计、公式字段、查找引用、跨表计算、行级派生指标、数据分析需求时也必须使用本 skill。"
 metadata:
   requires:
@@ -178,6 +178,7 @@ metadata:
 | `+dashboard-list / +dashboard-get` | 列出仪表盘，或获取仪表盘详情 | [`lark-base-dashboard-list.md`](references/lark-base-dashboard-list.md)、[`lark-base-dashboard-get.md`](references/lark-base-dashboard-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 进入仪表盘语义后先读 guide；`+dashboard-list` 只能串行执行 |
 | `+dashboard-create / +dashboard-update / +dashboard-delete` | 创建、更新或删除仪表盘 | [`lark-base-dashboard-create.md`](references/lark-base-dashboard-create.md)、[`lark-base-dashboard-update.md`](references/lark-base-dashboard-update.md)、[`lark-base-dashboard-delete.md`](references/lark-base-dashboard-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md) | 创建前先明确看板目标和展示场景；更新前先读取当前配置；删除前先确认目标 |
 | `+dashboard-block-list / +dashboard-block-get` | 列出图表组件，或获取单个 block 详情 | [`lark-base-dashboard-block-list.md`](references/lark-base-dashboard-block-list.md)、[`lark-base-dashboard-block-get.md`](references/lark-base-dashboard-block-get.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | `+dashboard-block-list` 只能串行执行；查看配置细节时读 block config 文档 |
+| `+dashboard-block-get-data` | 获取图表组件的计算结果 | [`lark-base-dashboard-block-get-data.md`](references/lark-base-dashboard-block-get-data.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 适合读取图表组件的最终计算结果；此命令不返回 block 元数据，只返回计算结果 |
 | `+dashboard-block-create / +dashboard-block-update / +dashboard-block-delete` | 创建、更新或删除图表组件 | [`lark-base-dashboard-block-create.md`](references/lark-base-dashboard-block-create.md)、[`lark-base-dashboard-block-update.md`](references/lark-base-dashboard-block-update.md)、[`lark-base-dashboard-block-delete.md`](references/lark-base-dashboard-block-delete.md)、[`lark-base-dashboard.md`](references/lark-base-dashboard.md)、[`dashboard-block-data-config.md`](references/dashboard-block-data-config.md) | 涉及 `data_config`、图表类型、filter 时要读 block config 文档；删除前先确认目标 |
 
 ### 2.8 表单模块
