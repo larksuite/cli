@@ -40,14 +40,14 @@ func TestNormalizeMailParams(t *testing.T) {
 		{
 			name:        "me resolves to real email",
 			input:       "me",
-			response:    json.RawMessage(`{"data":{"email":"liuxinyang@example.com"}}`),
+			response:    json.RawMessage(`{"data":{"primary_email_address":"liuxinyang@example.com"}}`),
 			wantOut:     "liuxinyang@example.com",
 			wantAPICall: true,
 		},
 		{
 			name:        "empty resolves to real email",
 			input:       "",
-			response:    json.RawMessage(`{"data":{"email":"liuxinyang@example.com"}}`),
+			response:    json.RawMessage(`{"data":{"primary_email_address":"liuxinyang@example.com"}}`),
 			wantOut:     "liuxinyang@example.com",
 			wantAPICall: true,
 		},
@@ -72,8 +72,8 @@ func TestNormalizeMailParams(t *testing.T) {
 		{
 			name:       "empty email in response is error",
 			input:      "me",
-			response:   json.RawMessage(`{"data":{"email":""}}`),
-			wantErrSub: "empty email",
+			response:   json.RawMessage(`{"data":{"primary_email_address":""}}`),
+			wantErrSub: "empty primary_email_address",
 		},
 	}
 	for _, tt := range tests {
