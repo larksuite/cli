@@ -4,9 +4,17 @@
 package core
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
+
+// endpointEnvWarner is where invalid-env-override warnings are written.
+// Defaults to os.Stderr; overridden in tests.
+var endpointEnvWarner = func(env, value string) {
+	fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] %s=%q is not a valid absolute URL (need http/https scheme and host); falling back to brand default\n", env, value)
+}
 
 // LarkBrand represents the Lark platform brand.
 // "feishu" targets China-mainland, "lark" targets international.
@@ -74,18 +82,48 @@ func ResolveEndpoints(brand LarkBrand) Endpoints {
 }
 
 func applyEndpointEnvOverrides(ep *Endpoints) {
-	if v := normalizeBaseURL(os.Getenv(EnvOpenBaseURL)); v != "" {
+	if v, ok := readEndpointEnv(EnvOpenBaseURL); ok {
 		ep.Open = v
 	}
-	if v := normalizeBaseURL(os.Getenv(EnvAccountsBaseURL)); v != "" {
+	if v, ok := readEndpointEnv(EnvAccountsBaseURL); ok {
 		ep.Accounts = v
 	}
-	if v := normalizeBaseURL(os.Getenv(EnvMCPBaseURL)); v != "" {
+	if v, ok := readEndpointEnv(EnvMCPBaseURL); ok {
 		ep.MCP = v
 	}
-	if v := normalizeBaseURL(os.Getenv(EnvAppLinkBaseURL)); v != "" {
+	if v, ok := readEndpointEnv(EnvAppLinkBaseURL); ok {
 		ep.AppLink = v
 	}
+}
+
+// readEndpointEnv reads an endpoint-override env var. Returns (value, true)
+// when the env var holds a valid absolute http/https URL; returns ("", false)
+// when unset/whitespace-only. When set but malformed, warns on stderr and
+// returns ("", false) so the brand default is used.
+func readEndpointEnv(env string) (string, bool) {
+	raw := os.Getenv(env)
+	v := normalizeBaseURL(raw)
+	if v == "" {
+		return "", false
+	}
+	if !isValidBaseURL(v) {
+		endpointEnvWarner(env, raw)
+		return "", false
+	}
+	return v, true
+}
+
+// isValidBaseURL reports whether v is an absolute http/https URL with a host.
+// A non-empty path is allowed (some deployments serve the API under a prefix).
+func isValidBaseURL(v string) bool {
+	if v == "" {
+		return false
+	}
+	u, err := url.Parse(v)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return u.Scheme == "https" || u.Scheme == "http"
 }
 
 // normalizeBaseURL trims whitespace and any trailing slashes from a

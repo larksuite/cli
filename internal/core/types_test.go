@@ -100,3 +100,54 @@ func TestResolveEndpoints_EnvOverride_EmptyIgnored(t *testing.T) {
 		t.Errorf("Open = %q, want feishu default (whitespace-only env should be ignored)", ep.Open)
 	}
 }
+
+func TestResolveEndpoints_EnvOverride_InvalidFallsBackAndWarns(t *testing.T) {
+	cases := []struct {
+		name, value string
+	}{
+		{"missing scheme", "fsopen.bytedance.net"},
+		{"unsupported scheme", "ftp://fsopen.bytedance.net"},
+		{"scheme only", "https://"},
+		{"path only", "/open-apis"},
+		{"garbage", "::::not a url::::"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvOpenBaseURL, tc.value)
+
+			var warnedEnv, warnedValue string
+			prev := endpointEnvWarner
+			endpointEnvWarner = func(env, value string) {
+				warnedEnv = env
+				warnedValue = value
+			}
+			t.Cleanup(func() { endpointEnvWarner = prev })
+
+			ep := ResolveEndpoints(BrandFeishu)
+			if ep.Open != "https://open.feishu.cn" {
+				t.Errorf("Open = %q, want feishu default after invalid override", ep.Open)
+			}
+			if warnedEnv != EnvOpenBaseURL || warnedValue != tc.value {
+				t.Errorf("warn = (%q, %q), want (%q, %q)", warnedEnv, warnedValue, EnvOpenBaseURL, tc.value)
+			}
+		})
+	}
+}
+
+func TestResolveEndpoints_EnvOverride_PathPrefixAllowed(t *testing.T) {
+	t.Setenv(EnvOpenBaseURL, "https://gateway.example.internal/lark")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "https://gateway.example.internal/lark" {
+		t.Errorf("Open = %q, want path-prefixed override to be accepted", ep.Open)
+	}
+}
+
+func TestResolveEndpoints_EnvOverride_HTTPAllowed(t *testing.T) {
+	t.Setenv(EnvOpenBaseURL, "http://127.0.0.1:18443")
+
+	ep := ResolveEndpoints(BrandFeishu)
+	if ep.Open != "http://127.0.0.1:18443" {
+		t.Errorf("Open = %q, want http override to be accepted (needed for local testing / inner-plain-HTTP fabrics)", ep.Open)
+	}
+}
