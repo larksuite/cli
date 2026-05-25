@@ -185,25 +185,19 @@ func TestLintEnvelope_L3_CrossFieldChecks(t *testing.T) {
 			wantSub: "danger",
 		},
 		{
-			name: "high-risk-write without flags.yes",
+			name: "high-risk-write without yes",
 			mutate: func(e *Envelope) {
 				e.Meta.Risk = "high-risk-write"
 				e.Meta.Danger = true
-				// no flags wrapper / yes injection
+				// no yes injection
 			},
 			wantSub: "yes",
 		},
 		{
-			name: "flags.yes injected but risk not high-risk-write",
+			name: "yes injected but risk not high-risk-write",
 			mutate: func(e *Envelope) {
-				e.InputSchema.Properties.Order = []string{"flags"}
-				e.InputSchema.Properties.Map["flags"] = Property{
-					Type: "object",
-					Properties: &OrderedProps{
-						Order: []string{"yes"},
-						Map:   map[string]Property{"yes": {Type: "boolean"}},
-					},
-				}
+				e.InputSchema.Properties.Order = []string{"yes"}
+				e.InputSchema.Properties.Map["yes"] = Property{Type: "boolean"}
 			},
 			wantSub: "yes",
 		},

@@ -20,16 +20,10 @@
           }
         }
       },
-      "flags": {
-        "type": "object",
-        "description": "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
-        "properties": {
-          "yes": {
-            "type": "boolean",
-            "description": "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
-            "default": false
-          }
-        }
+      "yes": {
+        "type": "boolean",
+        "description": "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false. Not sent to the backend.",
+        "default": false
       }
     }
   },

@@ -376,17 +376,10 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 
 	is := buildInputSchema(method)
 
-	// yes lives under inputSchema.properties.flags.properties.yes
-	flags, ok := is.Properties.Map["flags"]
+	// yes lives at inputSchema.properties.yes (sibling of params/data)
+	yes, ok := is.Properties.Map["yes"]
 	if !ok {
-		t.Fatal("expected `flags` wrapper in high-risk-write envelope, not found")
-	}
-	if flags.Type != "object" {
-		t.Errorf("flags.Type = %q, want \"object\"", flags.Type)
-	}
-	yes, ok := flags.Properties.Map["yes"]
-	if !ok {
-		t.Fatal("expected `yes` property under flags, not found")
+		t.Fatal("expected top-level `yes` property in high-risk-write envelope, not found")
 	}
 	if yes.Type != "boolean" {
 		t.Errorf("yes.Type = %q, want \"boolean\"", yes.Type)
@@ -394,16 +387,16 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 	if v, _ := yes.Default.(bool); v != false {
 		t.Errorf("yes.Default = %v, want false", yes.Default)
 	}
-	// flags itself must NOT be in top-level required
+	// yes must NOT be in top-level required
 	for _, r := range is.Required {
-		if r == "flags" {
-			t.Errorf("`flags` should not appear in top-level required")
+		if r == "yes" {
+			t.Errorf("`yes` should not appear in top-level required")
 		}
 	}
-	// flags is appended to properties.Order
+	// yes is appended to properties.Order
 	last := is.Properties.Order[len(is.Properties.Order)-1]
-	if last != "flags" {
-		t.Errorf("`flags` should be last in properties.Order, got: %v", is.Properties.Order)
+	if last != "yes" {
+		t.Errorf("`yes` should be last in properties.Order, got: %v", is.Properties.Order)
 	}
 }
 

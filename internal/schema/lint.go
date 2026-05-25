@@ -84,17 +84,15 @@ func lintEnvelope(env Envelope) []error {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
 
-	// `yes` lives under inputSchema.properties.flags.properties.yes, injected
-	// only for risk == "high-risk-write".
+	// `yes` lives at inputSchema.properties.yes (sibling of params/data),
+	// injected only for risk == "high-risk-write".
 	hasYes := false
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
-		if flags, ok := env.InputSchema.Properties.Map["flags"]; ok && flags.Properties != nil {
-			_, hasYes = flags.Properties.Map["yes"]
-		}
+		_, hasYes = env.InputSchema.Properties.Map["yes"]
 	}
 	wantYes := env.Meta.Risk == "high-risk-write"
 	if hasYes != wantYes {
-		errs = append(errs, fmt.Errorf("L3: inputSchema flags.yes property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
+		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}
 
 	if len(env.Meta.AccessTokens) == 0 {

@@ -653,29 +653,18 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 		}
 	}
 
-	// high-risk-write injects a `flags` sibling next to params/data, grouping
-	// CLI-side controls (currently only `yes`). The wrapper makes it explicit
-	// to AI consumers that these are CLI confirmation flags, not API fields —
-	// they will not be sent to the backend, only consumed by lark-cli.
+	// high-risk-write injects a top-level `yes` confirmation flag — sibling
+	// of params/data. It is a CLI gate (consumed by lark-cli, not sent to
+	// the backend), not an API field.
 	if risk, _ := method["risk"].(string); risk == "high-risk-write" {
+		is.Properties.Order = append(is.Properties.Order, "yes")
 		falseVal := false
-		flagsProps := &OrderedProps{
-			Order: []string{"yes"},
-			Map: map[string]Property{
-				"yes": {
-					Type:        "boolean",
-					Default:     falseVal,
-					Description: "Must be true to execute; CLI rejects with confirmation_required if absent. Maps to the --yes CLI flag.",
-				},
-			},
+		is.Properties.Map["yes"] = Property{
+			Type:        "boolean",
+			Default:     falseVal,
+			Description: "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false. Not sent to the backend.",
 		}
-		is.Properties.Order = append(is.Properties.Order, "flags")
-		is.Properties.Map["flags"] = Property{
-			Type:        "object",
-			Description: "CLI control flags (not API fields). Forwarded to lark-cli, not sent to the backend.",
-			Properties:  flagsProps,
-		}
-		// flags itself is intentionally NOT added to Required; the gate is
+		// yes is intentionally NOT added to top-level Required; the gate is
 		// enforced semantically (yes==true) by the CLI, not structurally.
 	}
 
