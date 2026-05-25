@@ -42,6 +42,14 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 lark-cli auth login --domain apps
 ```
 
+**命令失败且 `error.hint` 是授权类提示时（hint 含 `auth login` / `permission_violations` / `scope` / `unauthorized` 等关键词，或 envelope 含 `permission_violations` 字段），不要按 hint 里的 `--scope <single>` 逐个补**——本域命令链路（create → html-publish → access-scope-set/get）通常会接连触发多个 scope，逐个补会让用户反复授权。统一引导用户跑：
+
+```bash
+lark-cli auth login --domain apps
+```
+
+一次性把整个 apps 域的 scope 都拿到，授权成功后再重试失败的那条命令。Bot 身份（`--as bot`）不适用本规则，仍按 `lark-shared` 的 `console_url` 路径走。
+
 ## 写 HTML 前的硬约束（避免 publish 阶段被拒）
 
 - **入口文件必须叫 `index.html`** — 妙搭以 `index.html` 作为应用入口；目录形态时根目录下要有 `index.html`，单文件形态时文件名就是 `index.html`。命名成 `app.html` / `demo.html` 等会被 `+html-publish` 直接拒绝
@@ -84,7 +92,7 @@ lark-cli auth login --domain apps
 - `--path` 既可传单个 HTML 文件也可传目录；目录会**递归打包成 tar.gz 不做过滤**，要提醒用户传干净的产物目录（如 `./dist`），避免把 `.git` / `node_modules` 一起打进去
 - `apps +update` 只更新传入字段，未传字段保持不变；`--name` / `--description` 至少传一个，否则 Validate 阶段直接拦截
 - `apps +access-scope-set` 三种 scope **互斥**：specific 必传 `--targets`、不允许 `--require-login`；public 必传 `--require-login`、不允许 `--targets` / `--apply-enabled` / `--approver`；tenant 不允许任何其他 flag
-- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户
+- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户。**例外**：hint 是授权类（含 `auth login` / `permission_violations` / `scope` / `unauthorized` 等关键词）时，不要照抄 hint 里的 `--scope <single>`，按上面「身份与一次性授权」的恢复规则统一引导 `lark-cli auth login --domain apps`
 
 ## Shortcuts（推荐优先使用）
 

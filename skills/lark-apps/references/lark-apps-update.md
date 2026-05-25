@@ -30,12 +30,14 @@ lark-cli apps +update --app-id app_xxx --name "v2" --description "新描述"
 {
   "ok": true,
   "data": {
-    "app_id": "app_4k5jepcbjmv6m",
-    "name": "调研问卷 v2",
-    "description": "...",
-    "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
-    "created_at": "2026-05-18T10:00:00Z",
-    "updated_at": "2026-05-18T10:05:00Z"
+    "app": {
+      "app_id": "app_4k5jepcbjmv6m",
+      "name": "调研问卷 v2",
+      "description": "...",
+      "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
+      "created_at": "2026-05-18T10:00:00Z",
+      "updated_at": "2026-05-18T10:05:00Z"
+    }
   }
 }
 ```
@@ -51,7 +53,7 @@ lark-cli apps +update --app-id app_xxx --name "v2" --description "新描述"
 
 ## 字段语义
 
-- 响应 `data` 含完整应用对象（所有字段），不只是被改的
+- 响应 `data.app` 含完整应用对象（所有字段），不只是被改的
 - `created_at` / `updated_at` 都是 ISO 8601 UTC 时间字符串
 - 失败时优先转述 `error.hint`
 

@@ -38,11 +38,13 @@ lark-cli apps +create --name "Demo" --app-type HTML --dry-run
 {
   "ok": true,
   "data": {
-    "app_id": "app_4k5jepcbjmv6m",
-    "name": "客户调研问卷",
-    "description": "本季度客户满意度调研",
-    "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
-    "created_at": "2026-05-18T10:00:00Z"
+    "app": {
+      "app_id": "app_4k5jepcbjmv6m",
+      "name": "客户调研问卷",
+      "description": "本季度客户满意度调研",
+      "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
+      "created_at": "2026-05-18T10:00:00Z"
+    }
   }
 }
 ```
