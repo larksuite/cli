@@ -392,6 +392,106 @@ func TestAppsHTMLPublish_AllowSensitiveOverride(t *testing.T) {
 	}
 }
 
+// TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialParentDir pins that
+// the credential-file scan still rejects when --path itself is the
+// conventional parent dir (e.g. ./.aws, ./.docker, ./.kube). Without joining
+// the candidate back to its absolute path, walker would strip the parent
+// segment via filepath.Rel and the cloud-SDK matchers — which anchor on
+// parent/file pairs — would silently pass.
+func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialParentDir(t *testing.T) {
+	cases := []struct {
+		name       string
+		parent     string
+		fileName   string
+		wantSubstr string
+	}{
+		{"aws_credentials", ".aws", "credentials", "credentials"},
+		{"docker_config_json", ".docker", "config.json", "config.json"},
+		{"kube_config", ".kube", "config", "config"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(cwd) })
+			root := filepath.Join(dir, tc.parent)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(root, tc.fileName), []byte("fake credential"), 0o600); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+				t.Fatalf("write index: %v", err)
+			}
+
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err = runAppsShortcut(t, AppsHTMLPublish,
+				[]string{"+html-publish", "--app-id", "app_x", "--path", "./" + tc.parent, "--dry-run", "--as", "user"},
+				factory, stdout)
+			if err == nil {
+				t.Fatalf("expected rejection when --path is %s/ (would leak %s), got success", tc.parent, tc.fileName)
+			}
+			var exitErr *output.ExitError
+			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+				t.Fatalf("expected ExitError with detail, got %v", err)
+			}
+			if exitErr.Detail.Type != "validation" {
+				t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+			}
+			if !strings.Contains(exitErr.Detail.Message, tc.wantSubstr) {
+				t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+			}
+		})
+	}
+}
+
+// TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself pins the
+// single-file form: --path pointing directly at a credential file (e.g.
+// ./.aws/credentials) must also reject. Walker's single-file branch sets
+// RelPath = filepath.Base(rootPath), so the .aws segment is lost the same way.
+func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.MkdirAll(filepath.Join(dir, ".aws"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".aws", "credentials"), []byte("fake credential"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err = runAppsShortcut(t, AppsHTMLPublish,
+		[]string{"+html-publish", "--app-id", "app_x", "--path", "./.aws/credentials", "--dry-run", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("expected rejection when --path points directly at .aws/credentials, got success")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "credentials") {
+		t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+	}
+}
+
 // TestSensitiveCandidatesError_Truncation pins the inline-list truncation so a
 // payload with many credential files (e.g. an accidentally-copied tree of
 // per-stage .env.* files) produces a readable, length-bounded error.

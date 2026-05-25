@@ -3,7 +3,10 @@
 
 package apps
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // isSensitiveRelPath reports whether a relative path inside the candidate
 // manifest is a well-known env / credential file that should not ship to a
@@ -55,4 +58,27 @@ func isSensitiveRelPath(rel string) bool {
 		}
 	}
 	return false
+}
+
+// isSensitiveCandidate is the call-site wrapper used by +html-publish. It
+// catches the cloud-SDK matchers (.aws/credentials, .docker/config.json,
+// .kube/config) when --path itself is the conventional parent dir, in which
+// case walker strips that segment via filepath.Rel and RelPath alone no
+// longer carries enough context for isSensitiveRelPath to anchor on.
+//
+// Strategy: scan RelPath first (covers the common in-tree case and is the
+// only path with stable, user-facing semantics); on miss, fall back to the
+// absolute filesystem path so the parent segment becomes visible again.
+// The element-wise matcher inside isSensitiveRelPath only fires on adjacent
+// "parent/file" pairs, so unrelated absolute prefixes (e.g. /Users/alice)
+// can't cause false positives.
+func isSensitiveCandidate(c htmlPublishCandidate) bool {
+	if isSensitiveRelPath(c.RelPath) {
+		return true
+	}
+	abs, err := filepath.Abs(c.AbsPath)
+	if err != nil {
+		return false
+	}
+	return isSensitiveRelPath(filepath.ToSlash(abs))
 }
