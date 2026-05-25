@@ -202,6 +202,89 @@ func TestConsumeLoop_CompileJQFailsEarly(t *testing.T) {
 	}
 }
 
+// captureSink is a minimal Sink for unit-testing processAndOutput directly.
+type captureSink struct {
+	written []json.RawMessage
+}
+
+func (s *captureSink) Write(data json.RawMessage) error {
+	s.written = append(s.written, data)
+	return nil
+}
+
+func TestProcessAndOutput_Match_DropsEvent(t *testing.T) {
+	calledProcess := false
+	keyDef := &event.KeyDefinition{
+		Key: "test.evt",
+		Match: func(raw *event.RawEvent, params map[string]string) bool {
+			return false
+		},
+		Process: func(ctx context.Context, rt event.APIClient, raw *event.RawEvent, params map[string]string) (json.RawMessage, error) {
+			calledProcess = true
+			return json.RawMessage(`{}`), nil
+		},
+	}
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{"x":1}`)},
+		Options{}, sink, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrote {
+		t.Error("Match returned false but event was written")
+	}
+	if calledProcess {
+		t.Error("Process was called even though Match returned false")
+	}
+	if len(sink.written) != 0 {
+		t.Errorf("sink received %d events, want 0", len(sink.written))
+	}
+}
+
+func TestProcessAndOutput_Match_NilAcceptsAll(t *testing.T) {
+	keyDef := &event.KeyDefinition{Key: "test.evt"} // no Match, no Process
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{"x":1}`)},
+		Options{}, sink, nil)
+	if err != nil || !wrote {
+		t.Errorf("expected wrote=true err=nil; got wrote=%v err=%v", wrote, err)
+	}
+	if len(sink.written) != 1 {
+		t.Errorf("sink received %d events, want 1", len(sink.written))
+	}
+}
+
+func TestProcessAndOutput_Match_RunsBeforeProcess(t *testing.T) {
+	processCalls := 0
+	matchCalls := 0
+	keyDef := &event.KeyDefinition{
+		Key: "test.evt",
+		Match: func(raw *event.RawEvent, params map[string]string) bool {
+			matchCalls++
+			return true
+		},
+		Process: func(ctx context.Context, rt event.APIClient, raw *event.RawEvent, params map[string]string) (json.RawMessage, error) {
+			processCalls++
+			return raw.Payload, nil
+		},
+	}
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{}`)},
+		Options{}, sink, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wrote {
+		t.Error("expected wrote=true")
+	}
+	if matchCalls != 1 || processCalls != 1 {
+		t.Errorf("match=%d process=%d, want 1/1", matchCalls, processCalls)
+	}
+}
+
 func TestIsTerminalSinkError(t *testing.T) {
 	for _, tc := range []struct {
 		name string

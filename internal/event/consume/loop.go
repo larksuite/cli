@@ -199,13 +199,19 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
+	raw := &event.RawEvent{
+		EventType: evt.EventType,
+		Payload:   evt.Payload,
+	}
+
+	// Synchronous Match filter runs before any work (Process / sink write).
+	if keyDef.Match != nil && !keyDef.Match(raw, opts.Params) {
+		return false, nil
+	}
+
 	var result json.RawMessage
 
 	if keyDef.Process != nil {
-		raw := &event.RawEvent{
-			EventType: evt.EventType,
-			Payload:   evt.Payload,
-		}
 		var err error
 		result, err = keyDef.Process(ctx, opts.Runtime, raw, opts.Params)
 		if err != nil {
