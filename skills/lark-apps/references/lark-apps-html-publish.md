@@ -98,7 +98,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist
 ### 场景 2：用户没有 app_id
 
 ```bash
-APP=$(lark-cli apps +create --name "..." -q '.data.app.app_id' | tr -d '"')
+APP=$(lark-cli apps +create --name "..." --app-type HTML -q '.data.app.app_id' | tr -d '"')
 lark-cli apps +html-publish --app-id "$APP" --path ./dist
 ```
 
