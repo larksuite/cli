@@ -180,6 +180,47 @@ func TestConfigInitCmd_LangDefault(t *testing.T) {
 	}
 }
 
+// TestConfigInitCmd_InvalidLang verifies --lang on config init is strictly
+// validated the same way bind validates: empty / wrong-case / typo / removed
+// codes all exit with ExitValidation.
+func TestConfigInitCmd_InvalidLang(t *testing.T) {
+	clearAgentEnv(t)
+
+	cases := []struct {
+		name string
+		lang string
+	}{
+		{"wrong case ZH", "ZH"},
+		{"typo frr", "frr"},
+		{"removed code ar", "ar"},
+		{"unknown xx", "xx"},
+		{"empty string explicit", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			cmd := NewCmdConfigInit(f, nil)
+			f.IOStreams.In = strings.NewReader("sec\n")
+			cmd.SetArgs([]string{"--lang", tc.lang, "--app-id", "x", "--app-secret-stdin"})
+			err := cmd.Execute()
+			if err == nil {
+				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
+			}
+			exitErr, ok := err.(*output.ExitError)
+			if !ok {
+				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.Code != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", exitErr.Code, output.ExitValidation)
+			}
+			if !strings.Contains(exitErr.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			}
+		})
+	}
+}
+
 func TestHasAnyNonInteractiveFlag(t *testing.T) {
 	tests := []struct {
 		name string

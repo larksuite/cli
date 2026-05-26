@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -74,6 +75,9 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
 			opts.langExplicit = cmd.Flags().Changed("lang")
+			if err := validateInitLang(opts); err != nil {
+				return err
+			}
 			if err := guardAgentWorkspace(opts); err != nil {
 				return err
 			}
@@ -94,6 +98,22 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
+}
+
+// validateInitLang strictly validates the --lang flag value. Empty string
+// explicitly passed and any value not in i18n.ValidLanguages exit with
+// ExitValidation. When --lang was not passed at all and opts.Lang is
+// empty (test paths bypassing cobra), normalize to "zh".
+func validateInitLang(opts *ConfigInitOptions) error {
+	if opts.Lang == "" && !opts.langExplicit {
+		opts.Lang = "zh"
+	}
+	if !i18n.IsValidLang(opts.Lang) {
+		return output.ErrValidation(
+			"invalid --lang %q; valid values: %s",
+			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
+	}
+	return nil
 }
 
 // guardAgentWorkspace refuses 'config init' when run inside an OpenClaw or

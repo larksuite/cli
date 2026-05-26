@@ -113,6 +113,57 @@ func TestConfigBindCmd_LangDefault(t *testing.T) {
 	}
 }
 
+// TestConfigBindRun_InvalidLang verifies --lang is strictly validated:
+// empty string, wrong case, typos, and removed codes (post 20→14 cull)
+// all exit with ExitValidation (code 2) and a message identifying the
+// offending value and listing valid codes.
+func TestConfigBindRun_InvalidLang(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		lang string
+	}{
+		{"wrong case ZH", "ZH"},
+		{"typo frr", "frr"},
+		{"removed code ar", "ar"},
+		{"unknown xx", "xx"},
+		{"empty string explicit", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			err := configBindRun(&BindOptions{
+				Factory:      f,
+				Source:       "hermes",
+				Lang:         tc.lang,
+				langExplicit: true,
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
+			}
+			exitErr, ok := err.(*output.ExitError)
+			if !ok {
+				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.Code != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", exitErr.Code, output.ExitValidation)
+			}
+			if !strings.Contains(exitErr.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			}
+		})
+	}
+}
+
 // ── Run function tests (aligned with TestConfigShowRun pattern) ──
 
 func TestConfigBindRun_InvalidSource(t *testing.T) {

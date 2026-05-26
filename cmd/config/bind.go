@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -611,6 +612,23 @@ func validateBindFlags(opts *BindOptions) error {
 		default:
 			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
 		}
+	}
+	// Lang is the persisted preference. Strict validation:
+	//   - explicit empty string → error
+	//   - any value not in i18n.ValidLanguages → error (case-sensitive)
+	//
+	// When opts.Lang is empty but langExplicit is false (test paths bypassing
+	// cobra), we treat it as if the cobra default would apply and normalize
+	// to "zh". This preserves the user-facing contract ("--lang '' errors")
+	// while keeping the option struct usable from unit tests that don't
+	// route through cobra.
+	if opts.Lang == "" && !opts.langExplicit {
+		opts.Lang = "zh"
+	}
+	if !i18n.IsValidLang(opts.Lang) {
+		return output.ErrValidation(
+			"invalid --lang %q; valid values: %s",
+			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
 	}
 	return nil
 }
