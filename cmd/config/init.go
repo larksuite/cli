@@ -298,15 +298,11 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return nil
 	}
 
-	// For interactive modes, prompt language selection if --lang was not explicitly set
+	// For interactive modes, prompt language selection if --lang was not explicitly set.
+	// Picker offers 2 options (中文 / English) and drives BOTH opts.Lang
+	// (preference) and opts.UILang (TUI rendering).
 	if f.IOStreams.IsTerminal && !opts.langExplicit && !opts.hasAnyNonInteractiveFlag() {
-		savedLang := ""
-		if existing != nil {
-			if app := existing.CurrentAppConfig(""); app != nil {
-				savedLang = app.Lang
-			}
-		}
-		lang, err := promptLangSelection(savedLang)
+		lang, err := promptLangSelection()
 		if err != nil {
 			if err == huh.ErrUserAborted {
 				return output.ErrBare(1)
@@ -314,6 +310,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return err
 		}
 		opts.Lang = lang
+		opts.UILang = lang
 	}
 
 	msg := getInitMsg(opts.UILang)

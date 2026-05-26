@@ -213,9 +213,10 @@ func finalizeSource(opts *BindOptions) (string, error) {
 
 	// TUI: prompt for language before any downstream prompts. The source
 	// selection itself may still be skipped entirely if --source or the
-	// env already pinned it.
+	// env already pinned it. Picker offers 2 options (中文 / English) and
+	// drives BOTH opts.Lang (preference) and opts.UILang (TUI rendering).
 	if opts.IsTUI && !opts.langExplicit {
-		lang, err := promptLangSelection("")
+		lang, err := promptLangSelection()
 		if err != nil {
 			if err == huh.ErrUserAborted {
 				return "", output.ErrBare(1)
@@ -223,6 +224,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 			return "", err
 		}
 		opts.Lang = lang
+		opts.UILang = lang
 	}
 
 	if explicit != "" {

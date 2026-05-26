@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/i18n"
 )
 
 type initMsg struct {
@@ -79,11 +78,13 @@ func getInitMsg(lang string) *initMsg {
 	return initMsgZh
 }
 
-// promptLangSelection shows an interactive language picker and returns the chosen lang code.
-// savedLang is used as the pre-selected default (from existing config).
-func promptLangSelection(savedLang string) (string, error) {
-	lang := i18n.NormalizeLang(savedLang)
-
+// promptLangSelection shows an interactive 2-option language picker
+// (中文 / English) and returns the chosen lang code ("zh" or "en"). The
+// picker is the sole writer of opts.UILang. Callers also propagate the
+// result into opts.Lang so the persisted preference matches what the
+// user just picked.
+func promptLangSelection() (string, error) {
+	lang := "zh"
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
@@ -91,18 +92,6 @@ func promptLangSelection(savedLang string) (string, error) {
 				Options(
 					huh.NewOption("中文", "zh"),
 					huh.NewOption("English", "en"),
-					huh.NewOption("日本語", "ja"),
-					huh.NewOption("한국어", "ko"),
-					huh.NewOption("Français", "fr"),
-					huh.NewOption("Deutsch", "de"),
-					huh.NewOption("Español", "es"),
-					huh.NewOption("Italiano", "it"),
-					huh.NewOption("Русский", "ru"),
-					huh.NewOption("Português", "pt"),
-					huh.NewOption("ไทย", "th"),
-					huh.NewOption("Tiếng Việt", "vi"),
-					huh.NewOption("Bahasa Indonesia", "id"),
-					huh.NewOption("Bahasa Melayu", "ms"),
 				).
 				Value(&lang),
 		),
