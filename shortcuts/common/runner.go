@@ -1029,6 +1029,9 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
+		if cmd.Flags().Lookup("json") == nil {
+			cmd.Flags().Bool("json", false, "shorthand for --format json")
+		}
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")

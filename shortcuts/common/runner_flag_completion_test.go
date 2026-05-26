@@ -96,3 +96,76 @@ func TestShortcutMount_FlagCompletionsDisabled(t *testing.T) {
 		t.Fatal("did not expect completion func for --format when disabled")
 	}
 }
+
+func TestShortcutMount_JsonFlag_AcceptedWhenHasFormat(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "test",
+		Command:     "+read",
+		Description: "test read",
+		HasFormat:   true,
+		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+	}
+	shortcut.Mount(parent, f)
+
+	cmd, _, err := parent.Find([]string{"+read"})
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+	if flag := cmd.Flags().Lookup("json"); flag == nil {
+		t.Fatal("expected --json flag to be registered on HasFormat shortcut")
+	}
+}
+
+func TestShortcutMount_JsonFlag_SkippedWhenConflict(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "test",
+		Command:     "+update",
+		Description: "test update",
+		HasFormat:   true,
+		Flags: []Flag{
+			{Name: "json", Desc: "body JSON object", Required: true},
+		},
+		Execute: func(context.Context, *RuntimeContext) error { return nil },
+	}
+	shortcut.Mount(parent, f)
+
+	cmd, _, err := parent.Find([]string{"+update"})
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+	// --json flag exists (from custom Flags), but should be the string type, not bool.
+	flag := cmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("expected --json flag from custom Flags")
+	}
+	if flag.DefValue != "" {
+		t.Errorf("expected empty default (string flag), got %q", flag.DefValue)
+	}
+}
+
+func TestShortcutMount_JsonFlag_RegisteredWithoutHasFormat(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "test",
+		Command:     "+write",
+		Description: "test write",
+		HasFormat:   false,
+		Execute:     func(context.Context, *RuntimeContext) error { return nil },
+	}
+	shortcut.Mount(parent, f)
+
+	cmd, _, err := parent.Find([]string{"+write"})
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+	// --format is now registered for all shortcuts (regardless of HasFormat),
+	// so --json should also be present.
+	if flag := cmd.Flags().Lookup("json"); flag == nil {
+		t.Fatal("expected --json flag to be registered even when HasFormat is false")
+	}
+}
