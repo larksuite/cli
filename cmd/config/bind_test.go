@@ -1457,18 +1457,15 @@ func TestGetBindMsg_En(t *testing.T) {
 	}
 }
 
-func TestGetBindMsg_PlaceholderLang_DefaultsToEn(t *testing.T) {
-	// Languages without full translations (fr, de, etc.) fall back to English
-	msg := getBindMsg("fr")
-	if want := "Which Agent are you running?"; msg.SelectSource != want {
-		t.Errorf("fr (placeholder) SelectSource = %q, want %q", msg.SelectSource, want)
-	}
-}
-
-func TestGetBindMsg_UnknownLang_DefaultsToZh(t *testing.T) {
-	msg := getBindMsg("unknown")
-	if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
-		t.Errorf("unknown (default) SelectSource = %q, want %q", msg.SelectSource, want)
+func TestGetBindMsg_NonEnLang_FallsBackToZh(t *testing.T) {
+	// Post-refactor: only zh and en TUI struct exist; any other code (including
+	// valid preference codes like "fr", or invalid ones like "unknown") falls
+	// back to zh — this is the bilingual collapse defined in §3.4 of the spec.
+	for _, lang := range []string{"fr", "ja", "ko", "unknown", ""} {
+		msg := getBindMsg(lang)
+		if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
+			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (zh fallback)", lang, msg.SelectSource, want)
+		}
 	}
 }
 

@@ -87,18 +87,21 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 	}
 }
 
-func TestGetInitMsg_Multilang(t *testing.T) {
+func TestGetInitMsg_BilingualCollapse(t *testing.T) {
+	// Post-refactor: TUI is bilingual (zh + en). Only "en" returns the
+	// English struct; everything else (zh, ja, ko, fr, invalid, "") returns
+	// the Chinese struct. This is the bilingual collapse defined in spec §3.4.
 	tests := []struct {
-		lang         string
-		shouldBeZh   bool
-		shouldBeEn   bool
-		shouldBeLang string // specific lang to check non-nil
+		lang       string
+		shouldBeEn bool
 	}{
-		{"zh", true, false, ""},
-		{"en", false, true, ""},
-		{"ja", false, false, "ja"},
-		{"ko", false, false, "ko"},
-		{"invalid", true, false, ""}, // fallback to zh
+		{"zh", false},
+		{"en", true},
+		{"ja", false},
+		{"ko", false},
+		{"fr", false},
+		{"invalid", false},
+		{"", false},
 	}
 
 	for _, tt := range tests {
@@ -107,13 +110,12 @@ func TestGetInitMsg_Multilang(t *testing.T) {
 			if msg == nil {
 				t.Fatal("getInitMsg returned nil")
 			}
-
-			// Check fallback behavior
-			if tt.shouldBeZh && msg.SelectAction != initMsgZh.SelectAction {
-				t.Error("Expected Chinese message for fallback")
+			want := initMsgZh
+			if tt.shouldBeEn {
+				want = initMsgEn
 			}
-			if tt.shouldBeEn && msg.SelectAction != initMsgEn.SelectAction {
-				t.Error("Expected English message")
+			if msg != want {
+				t.Errorf("getInitMsg(%q) returned wrong struct", tt.lang)
 			}
 		})
 	}

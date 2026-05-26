@@ -316,7 +316,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		opts.Lang = lang
 	}
 
-	msg := getInitMsg(opts.Lang)
+	msg := getInitMsg(opts.UILang)
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {

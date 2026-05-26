@@ -256,7 +256,7 @@ func reconcileExistingBinding(opts *BindOptions, source, configPath string) (exi
 			return existingBinding{}, err
 		}
 		if action == "cancel" {
-			msg := getBindMsg(opts.Lang)
+			msg := getBindMsg(opts.UILang)
 			fmt.Fprintln(opts.Factory.IOStreams.ErrOut, msg.ConflictCancelled)
 			return existingBinding{Cancelled: true}, nil
 		}
@@ -340,7 +340,7 @@ func warnIdentityEscalation(opts *BindOptions, previousConfigBytes []byte) error
 	if !hasStrictBotLock(previousConfigBytes) {
 		return nil
 	}
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	return output.ErrWithHint(output.ExitValidation, "bind",
 		msg.IdentityEscalationMessage, msg.IdentityEscalationHint)
 }
@@ -358,7 +358,7 @@ func noticeUserDefaultRisk(opts *BindOptions) {
 	if opts.IsTUI || opts.Identity != "user-default" {
 		return
 	}
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut, "⚠️ "+msg.IdentityEscalationMessage)
 }
 
@@ -404,7 +404,10 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	}
 
 	replaced := previousConfigBytes != nil
-	msg := getBindMsg(opts.Lang)
+	// uiMsg renders human-facing TUI text (stderr success banner). Follows
+	// opts.UILang — zh by default; picker can flip it to en. --lang does
+	// not influence the TUI language.
+	uiMsg := getBindMsg(opts.UILang)
 	display := sourceDisplayName(source)
 
 	if replaced {
@@ -412,7 +415,7 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	}
 
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
-		fmt.Sprintf(msg.BindSuccessHeader, display)+"\n"+msg.BindSuccessNotice)
+		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+uiMsg.BindSuccessNotice)
 
 	// TUI mode is a human sitting at a terminal; the BindSuccess notice on
 	// stderr is enough and a machine-readable JSON dump on stdout is just
@@ -430,12 +433,17 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 		"replaced":    replaced,
 		"identity":    opts.Identity,
 	}
+	// prefMsg renders the JSON envelope's "message" field for downstream AI
+	// agent consumption. Follows opts.Lang (the user's preference) via the
+	// bilingual collapse — --lang en yields English; --lang fr falls back
+	// to zh since only zh/en TUI structs exist.
+	prefMsg := getBindMsg(opts.Lang)
 	brand := brandDisplay(string(appConfig.Brand), opts.Lang)
 	switch opts.Identity {
 	case "bot-only":
-		envelope["message"] = fmt.Sprintf(msg.MessageBotOnly, appConfig.AppId, display, brand)
+		envelope["message"] = fmt.Sprintf(prefMsg.MessageBotOnly, appConfig.AppId, display, brand)
 	case "user-default":
-		envelope["message"] = fmt.Sprintf(msg.MessageUserDefault, appConfig.AppId, display, display)
+		envelope["message"] = fmt.Sprintf(prefMsg.MessageUserDefault, appConfig.AppId, display, display)
 	}
 
 	resultJSON, _ := json.Marshal(envelope)
@@ -472,7 +480,7 @@ func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core
 
 // tuiSelectSource prompts user to choose bind source.
 func tuiSelectSource(opts *BindOptions) (string, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	var source string
 
 	// Pre-select based on detected env signals
@@ -497,7 +505,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title(msg.SelectSource).
-				Description(fmt.Sprintf(msg.SelectSourceDesc, brandDisplay(opts.Brand, opts.Lang))).
+				Description(fmt.Sprintf(msg.SelectSourceDesc, brandDisplay(opts.Brand, opts.UILang))).
 				Options(
 					huh.NewOption(fmt.Sprintf(msg.SourceOpenClaw, openclawPath), "openclaw"),
 					huh.NewOption(fmt.Sprintf(msg.SourceHermes, hermesEnvPath), "hermes"),
@@ -519,7 +527,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 // tuiSelectApp prompts the user to choose from multiple account candidates.
 // Invoked only via selectCandidate's tuiPrompt callback, and only in TUI mode.
 func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Candidate, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	options := make([]huh.Option[int], 0, len(candidates))
 	for i, c := range candidates {
 		label := c.AppID
@@ -533,7 +541,7 @@ func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Ca
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[int]().
-				Title(fmt.Sprintf(msg.SelectAccount, sourceDisplayName(source), brandDisplay(opts.Brand, opts.Lang))).
+				Title(fmt.Sprintf(msg.SelectAccount, sourceDisplayName(source), brandDisplay(opts.Brand, opts.UILang))).
 				Options(options...).
 				Value(&selected),
 		),
@@ -550,7 +558,7 @@ func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Ca
 
 // tuiConflictPrompt shows existing binding and asks user to Force or Cancel.
 func tuiConflictPrompt(opts *BindOptions, source, configPath string) (string, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 
 	// Build existing binding summary
 	existingSummary := fmt.Sprintf(msg.ConflictDesc, source, "?", "?", configPath)
@@ -617,8 +625,8 @@ func validateBindFlags(opts *BindOptions) error {
 // DescriptionFunc approach breaks here because a longer description on
 // hover pushes options out of the field's initial viewport.
 func tuiSelectIdentity(opts *BindOptions) (string, error) {
-	msg := getBindMsg(opts.Lang)
-	brand := brandDisplay(opts.Brand, opts.Lang)
+	msg := getBindMsg(opts.UILang)
+	brand := brandDisplay(opts.Brand, opts.UILang)
 	botLabel := msg.IdentityBotOnly + "\n" + indent(fmt.Sprintf(msg.IdentityBotOnlyDesc, brand))
 	userLabel := msg.IdentityUserDefault + "\n" + indent(fmt.Sprintf(msg.IdentityUserDefaultDesc, brand, brand))
 	var value string
