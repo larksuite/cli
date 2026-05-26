@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 type initMsg struct {
@@ -63,17 +64,113 @@ var initMsgEn = &initMsg{
 }
 
 func getInitMsg(lang string) *initMsg {
-	if lang == "en" {
+	switch lang {
+	case "en":
 		return initMsgEn
+	case "ja":
+		return initMsgJa
+	case "ko":
+		return initMsgKo
+	case "fr":
+		return initMsgFr
+	case "de":
+		return initMsgDe
+	case "es":
+		return initMsgEs
+	case "it":
+		return initMsgIt
+	case "ru":
+		return initMsgRu
+	case "pt":
+		return initMsgPt
+	case "ar":
+		return initMsgAr
+	case "hi":
+		return initMsgHi
+	case "tr":
+		return initMsgTr
+	case "pl":
+		return initMsgPl
+	case "nl":
+		return initMsgNl
+	case "sv":
+		return initMsgSv
+	case "th":
+		return initMsgTh
+	case "vi":
+		return initMsgVi
+	case "id":
+		return initMsgId
+	case "ms":
+		return initMsgMs
+	default:
+		return initMsgZh
 	}
-	return initMsgZh
 }
+
+var initMsgJa = &initMsg{
+	SelectAction:         "操作を選択",
+	CreateNewApp:         "ワンクリックでアプリを設定 (推奨)",
+	ConfigExistingApp:    "アプリの認証情報を手動入力",
+	Platform:             "プラットフォーム",
+	SelectPlatform:       "プラットフォームを選択",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nFeishu/LarkでQRコードをスキャン:\n\n",
+	ScanOrOpenLink:       "\nまたは以下のリンクをブラウザで開く:\n",
+	WaitingForScan:       "設定結果を取得中...",
+	OpenLinkNonTTY:       "\n以下のリンクを開いてアプリを設定:\n\n",
+	WaitingForScanNonTTY: "アプリ設定を待機中...",
+	DetectedLarkTenant:   "[lark-cli] Larkテナントを検出、エンドポイントを切り替え...",
+	AppCreated:           "アプリ設定完了! App ID: %s",
+	ConfigSaved:          "アプリ設定完了! App ID: %s",
+}
+
+var initMsgKo = &initMsg{
+	SelectAction:         "작업 선택",
+	CreateNewApp:         "원클릭 앱 설정 (권장)",
+	ConfigExistingApp:    "앱 인증 정보 직접 입력",
+	Platform:             "플랫폼",
+	SelectPlatform:       "플랫폼 선택",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nFeishu/Lark으로 QR 코드 스캔:\n\n",
+	ScanOrOpenLink:       "\n또는 아래 링크를 브라우저에서 열기:\n",
+	WaitingForScan:       "설정 결과 가져오는 중...",
+	OpenLinkNonTTY:       "\n아래 링크를 열어 앱 설정:\n\n",
+	WaitingForScanNonTTY: "앱 설정 대기 중...",
+	DetectedLarkTenant:   "[lark-cli] Lark 테넌트 감지, 엔드포인트 전환...",
+	AppCreated:           "앱 설정 완료! App ID: %s",
+	ConfigSaved:          "앱 설정 완료! App ID: %s",
+}
+
+// Placeholder variables for remaining languages - will be implemented in subsequent commits
+var (
+	initMsgFr = initMsgEn // French
+	initMsgDe = initMsgEn // German
+	initMsgEs = initMsgEn // Spanish
+	initMsgIt = initMsgEn // Italian
+	initMsgRu = initMsgEn // Russian
+	initMsgPt = initMsgEn // Portuguese
+	initMsgAr = initMsgEn // Arabic
+	initMsgHi = initMsgEn // Hindi
+	initMsgTr = initMsgEn // Turkish
+	initMsgPl = initMsgEn // Polish
+	initMsgNl = initMsgEn // Dutch
+	initMsgSv = initMsgEn // Swedish
+	initMsgTh = initMsgEn // Thai
+	initMsgVi = initMsgEn // Vietnamese
+	initMsgId = initMsgEn // Indonesian
+	initMsgMs = initMsgEn // Malay
+)
+
+// TODO: Add proper translations for remaining 16 languages (fr, de, es, it, ru, pt, ar, hi, tr, pl, nl, sv, th, vi, id, ms)
+// For Phase 1, we implement ja and ko as proof of concept
+// The remaining languages will be added in subsequent commits
 
 // promptLangSelection shows an interactive language picker and returns the chosen lang code.
 // savedLang is used as the pre-selected default (from existing config).
 func promptLangSelection(savedLang string) (string, error) {
 	lang := savedLang
-	if lang != "en" {
+	if !i18n.IsValidLang(lang) {
 		lang = "zh"
 	}
 	form := huh.NewForm(

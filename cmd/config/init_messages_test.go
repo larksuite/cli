@@ -6,6 +6,8 @@ package config
 import (
 	"fmt"
 	"testing"
+
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 func TestGetInitMsg_Zh(t *testing.T) {
@@ -29,7 +31,7 @@ func TestGetInitMsg_En(t *testing.T) {
 }
 
 func TestGetInitMsg_DefaultsToZh(t *testing.T) {
-	for _, lang := range []string{"", "fr", "ja", "unknown"} {
+	for _, lang := range []string{"", "unknown", "xyz", "invalid"} {
 		msg := getInitMsg(lang)
 		if msg != initMsgZh {
 			t.Errorf("getInitMsg(%q) should default to zh", lang)
@@ -81,6 +83,47 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 		got = fmt.Sprintf(msg.ConfigSaved, "cli_test123")
 		if got == msg.ConfigSaved {
 			t.Errorf("%s ConfigSaved has no format verb", lang)
+		}
+	}
+}
+
+func TestGetInitMsg_Multilang(t *testing.T) {
+	tests := []struct {
+		lang         string
+		shouldBeZh   bool
+		shouldBeEn   bool
+		shouldBeLang string // specific lang to check non-nil
+	}{
+		{"zh", true, false, ""},
+		{"en", false, true, ""},
+		{"ja", false, false, "ja"},
+		{"ko", false, false, "ko"},
+		{"invalid", true, false, ""}, // fallback to zh
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.lang, func(t *testing.T) {
+			msg := getInitMsg(tt.lang)
+			if msg == nil {
+				t.Fatal("getInitMsg returned nil")
+			}
+
+			// Check fallback behavior
+			if tt.shouldBeZh && msg.SelectAction != initMsgZh.SelectAction {
+				t.Error("Expected Chinese message for fallback")
+			}
+			if tt.shouldBeEn && msg.SelectAction != initMsgEn.SelectAction {
+				t.Error("Expected English message")
+			}
+		})
+	}
+}
+
+func TestPromptLangSelection_Validation(t *testing.T) {
+	// Test that all valid languages are accepted
+	for _, lang := range i18n.ValidLanguages {
+		if !i18n.IsValidLang(lang) {
+			t.Errorf("Language %s should be valid", lang)
 		}
 	}
 }
