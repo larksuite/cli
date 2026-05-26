@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.41] - 2026-05-26
+
+### Features
+
+- **minutes**: Add minutes edit shortcuts (#1036)
+- **minutes**: Get minutes keywords (#1079)
+- **slides**: Support importing pptx as slides (#1068)
+- **config**: Add `keychain-downgrade` subcommand (macOS) (#1085)
+- **errors**: Add structured CLI error contract (#984)
+- **apps**: Replace `+html-publish` cwd hard-reject with credential-file scan (#1072)
+
+### Bug Fixes
+
+- **drive**: Support doubao drive inspect URL variants (#1106)
+- **skills**: Sync skills incrementally during update (#1042)
+- **apps**: Read app object from `data.app` for `+create` and `+update` (#1087)
+- **common**: Escape special chars in multipart form filenames (#1037)
+- **auth**: Remove fenced code block guidance from auth URL output hints (#1088)
+
+### Documentation
+
+- **skills**: Fix agent routing for doubao.com URLs (#1082)
+- **task**: Require `--complete=false` for pending standup summaries (#1101)
+- **base**: Document UI-only field settings (#1078)
+- **contributing**: Clarify contributor guidance (#1096)
+
 ## [v1.0.40] - 2026-05-25
 
 ### Features
@@ -860,6 +886,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.41]: https://github.com/larksuite/cli/releases/tag/v1.0.41
 [v1.0.40]: https://github.com/larksuite/cli/releases/tag/v1.0.40
 [v1.0.39]: https://github.com/larksuite/cli/releases/tag/v1.0.39
 [v1.0.38]: https://github.com/larksuite/cli/releases/tag/v1.0.38
