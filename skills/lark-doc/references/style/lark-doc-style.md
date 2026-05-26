@@ -12,21 +12,20 @@
 
 ## 二、元素选择指南
 
-涉及图表需求时，先判定简单/复杂：简单图启动 SubAgent 直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`，不读取 **lark-whiteboard**；复杂图才使用空白画板 + **lark-whiteboard** SubAgent。
+涉及图表需求时，按类型选择插入方式：思维导图/时序图/类图/饼图/甘特图用 `<whiteboard type="mermaid">` 直接内嵌；其他新图表启动 SubAgent 插入 `<whiteboard type="svg">完整 SVG</whiteboard>`；只有编辑**已有**画板时才调用 **lark-whiteboard** skill。
 
-| 场景 | 推荐方案                                                          |
-|-|---------------------------------------------------------------|
-| 核心结论 / 摘要 / 注意事项 | `<callout>` + emoji + 背景色                                     |
-| 重要方案对比 / 优劣势 / Before vs After | `<grid>` 2 列分栏；简单 SVG SubAgent；复杂矩阵用 lark-whiteboard SubAgent |
-| 简短低风险对比 | `<grid>` 2 列分栏                                                |
-| 3+ 属性的结构化数据 / 指标表 | `<table>` + 表头背景色                                             |
-| 任务清单 / 检查项 | `<checkbox>`                                                  |
-| 代码片段 | `<pre lang="x" caption="说明">`                                 |
-| 引用 / 公式 | `<blockquote>` / `<latex>`                                    |
-| 操作入口 / 跳转链接 | `<button>` / `<a type="url-preview">`                         |
-| 简单流程图 / 小型状态机 / 小型时间线 | 简单 SVG SubAgent                                               |
-| 简单自定义图形 / 小型 SVG 示意图 | 简单 SVG SubAgent                                               |
-| 复杂架构图 / 数据图 / 思维导图 / 组织架构 | 空白画板 + lark-whiteboard SubAgent                               |
+| 场景                                         | 推荐方案                                  |
+|--------------------------------------------|---------------------------------------|
+| 核心结论 / 摘要 / 注意事项                           | `<callout>` + emoji + 背景色             |
+| 重要方案对比 / 优劣势 / Before vs After             | `<grid>` 2 列分栏；SVG SubAgent           |
+| 简短低风险对比                                    | `<grid>` 2 列分栏                        |
+| 3+ 属性的结构化数据 / 指标表                          | `<table>` + 表头背景色                     |
+| 任务清单 / 检查项                                 | `<checkbox>`                          |
+| 代码片段                                       | `<pre lang="x" caption="说明">`         |
+| 引用 / 公式                                    | `<blockquote>` / `<latex>`            |
+| 操作入口 / 跳转链接                                | `<button>` / `<a type="url-preview">` |
+| 流程图 / 时间线 / 示意图 / 自定义图形 / 架构图 / 数据图 /思维导图等 | 画板图表                                  |
+
 
 ### 画板意图识别
 
@@ -49,28 +48,8 @@
 
 **判断规则：**
 - 重要信息能图示就图示；不要为了省步骤把关键流程、架构、对比、风险链路写成纯文本
-- 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整 SVG</whiteboard>`，不读取 **lark-whiteboard**
-- 复杂图或已有画板更新才先插入 `<whiteboard type="blank"></whiteboard>`，再启动 SubAgent 使用 **lark-whiteboard** skill 写入内容
 - 低重要度、局部辅助信息才用 `<table>` / `<grid>` / `<callout>` 承载
-
-### 画板语法与插入
-
-> **提醒：** `docs +update` 不能编辑已有画板内容；下面的语法都是**新增**画板块。修改已有画板需启动 SubAgent 读取 [`lark-whiteboard`](../../../lark-whiteboard/SKILL.md)。
-
-#### 简单 SVG 画板（SubAgent 插入）
-
-1. 主 Agent 启动 SubAgent，传入 doc token、插入位置、图表目标和源内容
-2. SubAgent 使用 `<whiteboard type="svg">完整自包含 SVG</whiteboard>` 通过 `docs +create --api-version v2` / `docs +update --api-version v2` 插入
-3. SVG 必须包含 `<svg>` 根节点和 `viewBox`，不要引用外部图片、脚本或远程资源
-
-#### 复杂画板（空白画板 + lark-whiteboard SubAgent）
-
-1. 用 `<whiteboard type="blank"></whiteboard>` 通过 `docs +create --api-version v2` / `docs +update --api-version v2` 插入空白画板
-2. 从 v2 响应 `data.document.new_blocks` 中提取画板 `block_token`
-3. 必须启动 SubAgent，把 `block_token`、图表目标、推荐画板类型和源内容交给它
-4. SubAgent 读取 [`lark-whiteboard`](../../../lark-whiteboard/SKILL.md) skill 并写入该画板；主 Agent 不直接调用画板渲染流程
-
-更完整的协同流程见 [`lark-doc-whiteboard.md`](../lark-doc-whiteboard.md)。
+- 确定需要插入哪些图表后，参照 [lark-doc-whiteboard.md](../lark-doc-whiteboard.md) 中的方式，插入图表画板。
 
 ## 三、颜色语义
 
