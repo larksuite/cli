@@ -718,3 +718,23 @@ func TestApiCmd_PermissionError_DerivesFirstClassFields(t *testing.T) {
 		t.Errorf("LogID = %q, want %q", pe.LogID, "20260527-test-log")
 	}
 }
+
+func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("--json should be accepted without error, got: %v", err)
+	}
+	if gotOpts.Method != "GET" {
+		t.Errorf("expected method GET, got %s", gotOpts.Method)
+	}
+}
