@@ -143,5 +143,5 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 | Topic | Reference | Coverage |
 |---|---|---|
 | IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
-| VC | [`references/lark-event-vc.md`](references/lark-event-vc.md) | Catalog of 1 VC EventKey (`vc.meeting.participant_meeting_ended_v1`) + field reference + time conversion gotchas (unix seconds → local RFC3339) |
-| Minutes | [`references/lark-event-minutes.md`](references/lark-event-minutes.md) | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + enrichment & degradation semantics (minute detail API fills `title`; `minute_source` from event payload survives enrichment failure) |
+| VC | [`references/lark-event-vc.md`](references/lark-event-vc.md) | Catalog of 2 VC EventKeys (`vc.meeting.participant_meeting_ended_v1`, `vc.note.generated_v1`) + field reference + source type semantics (meeting only) |
+| Minutes | [`references/lark-event-minutes.md`](references/lark-event-minutes.md) | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + source type semantics (meeting only) |

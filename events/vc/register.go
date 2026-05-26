@@ -18,6 +18,8 @@ const (
 	pathMeetingUnsubscribe = "/open-apis/vc/v1/meetings/unsubscription"
 	pathNoteSubscribe      = "/open-apis/vc/v1/notes/subscription"
 	pathNoteUnsubscribe    = "/open-apis/vc/v1/notes/unsubscription"
+
+	pathNoteDetailFmt = "/open-apis/vc/v1/notes/%s"
 )
 
 // Keys returns all VC-domain EventKey definitions.
@@ -38,6 +40,22 @@ func Keys() []event.KeyDefinition {
 				"user",
 			},
 			RequiredConsoleEvents: []string{eventTypeMeetingEnded},
+		},
+		{
+			Key:         eventTypeNoteGenerated,
+			DisplayName: "Note generated",
+			Description: "Triggered when a note has been generated",
+			EventType:   eventTypeNoteGenerated,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCNoteGeneratedOutput{})},
+			},
+			Process:    processVCNoteGenerated,
+			PreConsume: subscriptionPreConsume(eventTypeNoteGenerated, pathNoteSubscribe, pathNoteUnsubscribe),
+			Scopes:     []string{"vc:note:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeNoteGenerated},
 		},
 	}
 }
