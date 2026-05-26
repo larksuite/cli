@@ -456,6 +456,7 @@ func TestDryRunListComments_NoReactionsDropsParam(t *testing.T) {
 // --- End-to-end execution with httpmock ---
 
 func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := &core.CliConfig{AppID: "drive-listcomments-e2e", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -544,6 +545,7 @@ func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
 }
 
 func TestDriveListComments_E2E_IncludeOrphanedKeepsAll(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := &core.CliConfig{AppID: "drive-listcomments-include-orphan", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
