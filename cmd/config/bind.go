@@ -14,7 +14,6 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -38,8 +37,19 @@ type BindOptions struct {
 	// this flag because its own prompts already require human confirmation.
 	Force bool
 
+	// Lang is the persistent language preference written to appConfig.Lang.
+	// Set by --lang flag or by the picker. Always one of i18n.ValidLanguages
+	// (14 codes); empty string and out-of-enum values are rejected by
+	// validateBindFlags. Default "zh".
 	Lang         string
 	langExplicit bool // true when --lang was explicitly passed
+
+	// UILang is the TUI display language for this invocation only. Either
+	// "zh" or "en". Default "zh". The only writer is the picker. --lang
+	// does NOT influence this field — that's intentional: picker selects
+	// what the user sees in the TUI; --lang is a persistent preference
+	// intended for downstream API consumers and output formatting.
+	UILang string
 
 	// Brand holds the resolved Lark product brand ("feishu" | "lark") for
 	// the account being bound. Populated after resolveAccount; TUI stages
@@ -56,7 +66,7 @@ type BindOptions struct {
 
 // NewCmdConfigBind creates the config bind subcommand.
 func NewCmdConfigBind(f *cmdutil.Factory, runF func(*BindOptions) error) *cobra.Command {
-	opts := &BindOptions{Factory: f}
+	opts := &BindOptions{Factory: f, UILang: "zh"}
 
 	cmd := &cobra.Command{
 		Use:   "bind",
@@ -103,7 +113,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|ar|hi|tr|pl|nl|sv|th|vi|id|ms)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
@@ -591,10 +601,6 @@ func validateBindFlags(opts *BindOptions) error {
 		default:
 			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
 		}
-	}
-	if opts.Lang != "" && !i18n.IsValidLang(opts.Lang) {
-		return output.ErrValidation("invalid --lang %q; valid values: %s",
-			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
 	}
 	return nil
 }

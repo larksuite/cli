@@ -18,7 +18,6 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -32,9 +31,20 @@ type ConfigInitOptions struct {
 	AppSecretStdin bool   // read app-secret from stdin (avoids process list exposure)
 	Brand          string
 	New            bool
-	Lang           string
-	langExplicit   bool   // true when --lang was explicitly passed
-	ProfileName    string // when set, create/update a named profile instead of replacing Apps[0]
+
+	// Lang is the persistent language preference written to appConfig.Lang.
+	// Set by --lang flag or by the picker. Always one of i18n.ValidLanguages
+	// (14 codes); empty string and out-of-enum values are rejected upfront
+	// in RunE. Default "zh".
+	Lang         string
+	langExplicit bool // true when --lang was explicitly passed
+
+	// UILang is the TUI display language for this invocation only. Either
+	// "zh" or "en". Default "zh". The only writer is the picker. --lang
+	// does NOT influence this field.
+	UILang string
+
+	ProfileName string // when set, create/update a named profile instead of replacing Apps[0]
 
 	// ForceInit overrides the agent-workspace guard. Without it, running
 	// init under OPENCLAW_HOME / HERMES_HOME refuses and points the caller
@@ -46,7 +56,7 @@ type ConfigInitOptions struct {
 
 // NewCmdConfigInit creates the config init subcommand.
 func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *cobra.Command {
-	opts := &ConfigInitOptions{Factory: f}
+	opts := &ConfigInitOptions{Factory: f, UILang: "zh"}
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -67,9 +77,6 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 			if err := guardAgentWorkspace(opts); err != nil {
 				return err
 			}
-			if err := validateInitFlags(opts); err != nil {
-				return err
-			}
 			if runF != nil {
 				return runF(opts)
 			}
@@ -81,7 +88,7 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|ar|hi|tr|pl|nl|sv|th|vi|id|ms)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app")
 	cmdutil.SetRisk(cmd, "write")
@@ -109,15 +116,6 @@ func guardAgentWorkspace(opts *ConfigInitOptions) error {
 		Message: fmt.Sprintf("config init is refused inside %s context (would create a parallel app and shadow the existing %s binding)", ws.Display(), ws.Display()),
 		Hint:    "see `lark-cli config bind --help` to bind lark-cli to the Agent's existing app instead. Pass --force-init only if the user explicitly wants a separate app in this workspace.",
 	}
-}
-
-// validateInitFlags validates init command flags before execution.
-func validateInitFlags(opts *ConfigInitOptions) error {
-	if opts.Lang != "" && !i18n.IsValidLang(opts.Lang) {
-		return output.ErrValidation("invalid --lang %q; valid values: %s",
-			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
-	}
-	return nil
 }
 
 // hasAnyNonInteractiveFlag returns true if any non-interactive flag is set.
