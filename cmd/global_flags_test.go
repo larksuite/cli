@@ -101,6 +101,23 @@ func TestBuildInternal_DefaultShowsProfileFlag(t *testing.T) {
 	}
 }
 
+func TestRegisterGlobalFlags_AsFlag(t *testing.T) {
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts := &GlobalOptions{}
+	RegisterGlobalFlags(fs, opts)
+
+	f := fs.Lookup("as")
+	if f == nil {
+		t.Fatal("expected --as flag to be registered in global flags")
+	}
+	if err := fs.Parse([]string{"--as", "user"}); err != nil {
+		t.Fatalf("expected --as user to parse without error, got: %v", err)
+	}
+	if opts.IdentityType != "user" {
+		t.Errorf("expected IdentityType=user, got %q", opts.IdentityType)
+	}
+}
+
 func saveAppsForTest(t *testing.T, apps []core.AppConfig) {
 	t.Helper()
 	multi := &core.MultiAppConfig{CurrentApp: apps[0].Name, Apps: apps}

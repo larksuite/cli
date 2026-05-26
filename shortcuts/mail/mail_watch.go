@@ -24,6 +24,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -93,7 +94,7 @@ func detectPromptInjection(content string) bool {
 var MailWatch = common.Shortcut{
 	Service:     "mail",
 	Command:     "+watch",
-	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
+	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output. For unified subscription with console preflight, consider 'lark-cli event consume mail.user_mailbox.event.message_received_v1 --param mailbox=<email>[,<email>...] --as user'; mail +watch keeps providing label/folder filter and msg-format multi-mode and remains supported. Acquires the same app-level subscribe lock as event +subscribe; use --force to bypass (NOT recommended).",
 	Risk:        "read",
 	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
@@ -107,6 +108,7 @@ var MailWatch = common.Shortcut{
 		{Name: "label-ids", Desc: "filter: label IDs JSON array, e.g. [\"FLAGGED\",\"IMPORTANT\"]"},
 		{Name: "folder-ids", Desc: "filter: folder IDs JSON array, e.g. [\"INBOX\",\"SENT\"]"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference per --msg-format (run this first to learn field names before parsing output)"},
+		{Name: "force", Type: "bool", Default: "false", Desc: "bypass appID-level subscribe lock; allow concurrent subscribe-class processes for the same app (NOT recommended; concurrent unsubscribe may cancel each other's server-side subscription)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailbox := resolveMailboxID(runtime)
@@ -181,8 +183,45 @@ var MailWatch = common.Shortcut{
 			printWatchOutputSchema(runtime)
 			return nil
 		}
+
+		// [NEW] appID-level single-instance lock; shared with event +subscribe
+		// (Hidden) via the same lockfile.ForSubscribe(appID) implementation
+		// so cross-command concurrent subscribes are mutually excluded.
+		// event consume mail.user_mailbox.event.message_received_v1 does NOT
+		// hold this lock (PreConsume cannot access appID through APIClient);
+		// see R12 for the partial-mitigation analysis.
+		if !runtime.Bool("force") {
+			lock, err := lockfile.ForSubscribe(runtime.Config.AppID)
+			if err != nil {
+				return fmt.Errorf("failed to create lock: %w", err)
+			}
+			if err := lock.TryLock(); err != nil {
+				return output.ErrValidation(
+					"another subscribe-class instance is already running for app %s\n"+
+						"  Only one subscribe-class process per app is allowed to prevent concurrent unsubscribe canceling each other's server-side subscription.\n"+
+						"  Recommended: use 'lark-cli event consume mail.user_mailbox.event.message_received_v1 --as user' for unified entry with console preflight.\n"+
+						"  Or pass --force to bypass this check (NOT recommended).",
+					runtime.Config.AppID,
+				)
+			}
+			defer lock.Unlock()
+		}
+
 		mailbox := resolveMailboxID(runtime)
 		hintIdentityFirst(runtime, mailbox)
+
+		// [NEW] Migration hint — recommend unified event consume entrypoint.
+		errOut := runtime.IO().ErrOut
+		out := runtime.IO().Out
+
+		info := func(msg string) {
+			fmt.Fprintln(errOut, msg)
+		}
+
+		info("Tip: prefer 'lark-cli event consume " + mailEventType +
+			" --param mailbox=<email>[,<email>...] --as user' for unified entry with console preflight. " +
+			"mail +watch keeps providing label/folder filter and msg-format multi-mode, and remains supported.")
+
 		outFormat := runtime.Str("format")
 		switch outFormat {
 		case "json", "data", "":
@@ -214,13 +253,6 @@ var MailWatch = common.Shortcut{
 		folderIDsInput := runtime.Str("folder-ids")
 		labelsInput := runtime.Str("labels")
 		foldersInput := runtime.Str("folders")
-
-		errOut := runtime.IO().ErrOut
-		out := runtime.IO().Out
-
-		info := func(msg string) {
-			fmt.Fprintln(errOut, msg)
-		}
 
 		// Resolve --labels / --folders strictly as names, and --label-ids / --folder-ids strictly as IDs.
 		resolvedLabelIDs, err := resolveWatchFilterIDs(runtime, mailbox, labelIDsInput, labelsInput, resolveLabelID, resolveLabelNames, resolveLabelSystemID, "label-ids", "labels", "label")

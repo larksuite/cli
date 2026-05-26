@@ -53,6 +53,10 @@ lark-cli event consume im.message.receive_v1          --as bot > receive.ndjson 
 lark-cli event consume im.message.reaction.created_v1 --as bot > reaction.ndjson &
 wait
 
+# Receive new mail for one or more mailboxes (comma-separated); requires --as user
+# PreConsume automatically subscribes each mailbox via OAPI and unsubscribes on exit
+lark-cli event consume mail.user_mailbox.event.message_received_v1 --param mailbox=alice@x.com,bob@x.com --as user
+
 ```
 
 ## Call flow
@@ -143,3 +147,4 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 | Topic | Reference | Coverage |
 |---|---|---|
 | IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
+| Mail | `events/mail/` (mail.user_mailbox.event.message_received_v1) | Receive new mail across one or more mailboxes; 7 user scopes; PreConsume opens mailbox business subscribe + cleanup reverse unsubscribe |

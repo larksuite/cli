@@ -13,8 +13,9 @@ import (
 // is a build-time policy — when true, --profile stays parseable but is marked
 // hidden from help and shell completion.
 type GlobalOptions struct {
-	Profile     string
-	HideProfile bool
+	Profile      string
+	HideProfile  bool
+	IdentityType string
 }
 
 // RegisterGlobalFlags registers the root-level persistent flags on fs and
@@ -25,6 +26,7 @@ func RegisterGlobalFlags(fs *pflag.FlagSet, opts *GlobalOptions) {
 	if opts.HideProfile {
 		_ = fs.MarkHidden("profile")
 	}
+	fs.StringVar(&opts.IdentityType, "as", "", "identity type: user | bot")
 }
 
 // isSingleAppMode reports whether the on-disk config has at most one app.
