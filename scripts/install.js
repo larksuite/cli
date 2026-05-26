@@ -110,6 +110,31 @@ function getMirrorUrls(env) {
   return urls;
 }
 
+/**
+ * Detect whether the system curl supports --ssl-revoke-best-effort.
+ * This flag was introduced in curl 7.70.0 (2020-04-29). Older versions
+ * (notably the curl 7.55.1 shipped with older Windows 10 builds) will
+ * exit with "unknown option" if it is passed.
+ *
+ * @returns {boolean} true when curl >= 7.70.0 is available
+ */
+function curlSupportsSslRevokeBestEffort() {
+  try {
+    const output = execFileSync("curl", ["--version"], {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const match = output.match(/curl\s+(\d+)\.(\d+)\.(\d+)/i);
+    if (!match) return false;
+    const major = parseInt(match[1], 10);
+    const minor = parseInt(match[2], 10);
+    return major > 7 || (major === 7 && minor >= 70);
+  } catch (_) {
+    return false;
+  }
+}
+
 function download(url, destPath) {
   assertAllowedHost(url);
   const args = [
@@ -119,8 +144,11 @@ function download(url, destPath) {
     "--output", destPath,
   ];
   // --ssl-revoke-best-effort: on Windows (Schannel), avoid CRYPT_E_REVOCATION_OFFLINE
-  // errors when the certificate revocation list server is unreachable
-  if (isWindows) args.unshift("--ssl-revoke-best-effort");
+  // errors when the certificate revocation list server is unreachable.
+  // Only use it when the system curl is new enough (>= 7.70.0).
+  if (isWindows && curlSupportsSslRevokeBestEffort()) {
+    args.unshift("--ssl-revoke-best-effort");
+  }
   args.push(url);
   execFileSync("curl", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
@@ -294,4 +322,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls };
+module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, curlSupportsSslRevokeBestEffort };
