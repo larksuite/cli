@@ -119,4 +119,4 @@ tip: use mail +message --message-id <id> to read full content
 ## 参考
 
 - [lark-mail](../SKILL.md) — 邮箱域总览
-- [lark-mail-watch](lark-mail-watch.md) — 实时监听新邮件
+- [lark-event](../../lark-event/SKILL.md) — 实时监听新邮件（`event consume mail.user_mailbox.event.message_received_v1`）

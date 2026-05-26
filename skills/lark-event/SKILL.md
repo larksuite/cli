@@ -1,7 +1,7 @@
 ---
 name: lark-event
 version: 1.0.0
-description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM message receive, reactions, chat member changes, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
+description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM message receive, reactions, chat member changes, mail new-message arrival, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -53,6 +53,8 @@ lark-cli event consume im.message.receive_v1          --as bot > receive.ndjson 
 lark-cli event consume im.message.reaction.created_v1 --as bot > reaction.ndjson &
 wait
 
+# Mail: subscribe to new-message arrival for the current user (--as user required)
+lark-cli event consume mail.user_mailbox.event.message_received_v1 -p mailbox=me --as user
 ```
 
 ## Call flow
@@ -164,3 +166,4 @@ When the consumer exits gracefully and is the last for its subscription scope, t
 | Topic | Reference | Coverage |
 |---|---|---|
 | IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
+| Mail | [`references/lark-event-mail.md`](references/lark-event-mail.md) | `mail.user_mailbox.event.message_received_v1` EventKey + per-mailbox subscription identity (`-p mailbox=...`) + msg-format levels (event / metadata / plain_text_full / full) + folders/labels filters + cleanup semantics. |
