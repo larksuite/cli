@@ -79,8 +79,8 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+messages-search`](references/lark-im-messages-search.md) | Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, supports auto-pagination via `--page-all` / `--page-limit`, enriches results via batched mget and chats batch_query |
 | [`+messages-send`](references/lark-im-messages-send.md) | Send a message to a chat or direct message; user/bot; sends to chat-id or user-id with text/markdown/post/media, supports idempotency key |
 | [`+threads-messages-list`](references/lark-im-threads-messages-list.md) | List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination |
-| [`+flag-create`](references/lark-im-flag-create.md) | Create a bookmark on a message or thread; user-only; defaults to message-layer flag; feed-layer flag requires explicit --item-type + --flag-type |
-| [`+flag-cancel`](references/lark-im-flag-cancel.md) | Cancel (remove) a bookmark. When no --flag-type is given, checks if the message is a thread root message; if so, cancels both message and feed layers |
+| [`+flag-create`](references/lark-im-flag-create.md) | Create a bookmark on a message; user-only; defaults to message-layer flag; use --flag-type feed for feed-layer flag (item_type auto-detected from chat mode) |
+| [`+flag-cancel`](references/lark-im-flag-cancel.md) | Cancel (remove) a bookmark. When no --flag-type is given, best-effort double-cancel: removes message layer and (when chat_type is determinable) feed layer |
 | [`+flag-list`](references/lark-im-flag-list.md) | List bookmarks; user-only; auto-enriches feed-type thread entries with message content; supports `--page-all` auto-pagination |
 
 ## API Resources
@@ -134,6 +134,18 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `delete` — 移除 Pin 消息。Identity: supports `user` and `bot`.
   - `list` — 获取群内 Pin 消息。Identity: supports `user` and `bot`.
 
+### feed.groups
+
+  - `batch_add_item` — Batch add feed cards to a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `batch_query` — Batch query feed groups. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `batch_query_item` — Batch query feed cards in a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `batch_remove_item` — Batch remove feed cards from a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `create` — Create a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `delete` — Delete a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `list` — List feed groups. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `list_item` — List feed cards in a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+  - `update` — Update a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -159,4 +171,13 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `pins.create` | `im:message.pins:write_only` |
 | `pins.delete` | `im:message.pins:write_only` |
 | `pins.list` | `im:message.pins:read` |
+| `feed.groups.batch_add_item` | `im:feed_group_v1:write` |
+| `feed.groups.batch_query` | `im:feed_group_v1:read` |
+| `feed.groups.batch_query_item` | `im:feed_group_v1:read` |
+| `feed.groups.batch_remove_item` | `im:feed_group_v1:write` |
+| `feed.groups.create` | `im:feed_group_v1:write` |
+| `feed.groups.delete` | `im:feed_group_v1:write` |
+| `feed.groups.list` | `im:feed_group_v1:read` |
+| `feed.groups.list_item` | `im:feed_group_v1:read` |
+| `feed.groups.update` | `im:feed_group_v1:write` |
 
