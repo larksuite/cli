@@ -1457,10 +1457,18 @@ func TestGetBindMsg_En(t *testing.T) {
 	}
 }
 
-func TestGetBindMsg_UnknownLang_DefaultsToZh(t *testing.T) {
+func TestGetBindMsg_PlaceholderLang_DefaultsToEn(t *testing.T) {
+	// Languages without full translations (fr, de, etc.) fall back to English
 	msg := getBindMsg("fr")
+	if want := "Which Agent are you running?"; msg.SelectSource != want {
+		t.Errorf("fr (placeholder) SelectSource = %q, want %q", msg.SelectSource, want)
+	}
+}
+
+func TestGetBindMsg_UnknownLang_DefaultsToZh(t *testing.T) {
+	msg := getBindMsg("unknown")
 	if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
-		t.Errorf("fr (default) SelectSource = %q, want %q", msg.SelectSource, want)
+		t.Errorf("unknown (default) SelectSource = %q, want %q", msg.SelectSource, want)
 	}
 }
 

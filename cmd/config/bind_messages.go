@@ -160,8 +160,38 @@ func getBindMsg(lang string) *bindMsg {
 		return bindMsgJa
 	case "ko":
 		return bindMsgKo
-	case "fr", "de", "es", "it", "ru", "pt", "ar", "hi", "tr", "pl", "nl", "sv", "th", "vi", "id", "ms":
-		return bindMsgEn
+	case "fr":
+		return bindMsgFr
+	case "de":
+		return bindMsgDe
+	case "es":
+		return bindMsgEs
+	case "it":
+		return bindMsgIt
+	case "ru":
+		return bindMsgRu
+	case "pt":
+		return bindMsgPt
+	case "ar":
+		return bindMsgAr
+	case "hi":
+		return bindMsgHi
+	case "tr":
+		return bindMsgTr
+	case "pl":
+		return bindMsgPl
+	case "nl":
+		return bindMsgNl
+	case "sv":
+		return bindMsgSv
+	case "th":
+		return bindMsgTh
+	case "vi":
+		return bindMsgVi
+	case "id":
+		return bindMsgId
+	case "ms":
+		return bindMsgMs
 	default:
 		return bindMsgZh
 	}
@@ -231,3 +261,22 @@ var bindMsgKo = &bindMsg{
 	IdentityEscalationMessage: "bot-only에서 user-default로 전환 중 — AI가 모든 작업을 귀하의 Feishu 신원으로 수행하게 됩니다。⚠️ 이 봇을 다른 사람과 공유하거나 그룹 채팅에 추가하지 마세요。",
 	IdentityEscalationHint:    "사용자가 전환을 확인한 경우 `--force`로 재실행: `lark-cli config bind --identity user-default --force`",
 }
+
+// Placeholder variables for remaining languages - point to English
+// TODO: Add full translations for these languages
+var bindMsgFr = bindMsgEn // French
+var bindMsgDe = bindMsgEn // German
+var bindMsgEs = bindMsgEn // Spanish
+var bindMsgIt = bindMsgEn // Italian
+var bindMsgRu = bindMsgEn // Russian
+var bindMsgPt = bindMsgEn // Portuguese
+var bindMsgAr = bindMsgEn // Arabic
+var bindMsgHi = bindMsgEn // Hindi
+var bindMsgTr = bindMsgEn // Turkish
+var bindMsgPl = bindMsgEn // Polish
+var bindMsgNl = bindMsgEn // Dutch
+var bindMsgSv = bindMsgEn // Swedish
+var bindMsgTh = bindMsgEn // Thai
+var bindMsgVi = bindMsgEn // Vietnamese
+var bindMsgId = bindMsgEn // Indonesian
+var bindMsgMs = bindMsgEn // Malay
