@@ -160,6 +160,8 @@ func getBindMsg(lang string) *bindMsg {
 		return bindMsgJa
 	case "ko":
 		return bindMsgKo
+	case "fr", "de", "es", "it", "ru", "pt", "ar", "hi", "tr", "pl", "nl", "sv", "th", "vi", "id", "ms":
+		return bindMsgEn
 	default:
 		return bindMsgZh
 	}
