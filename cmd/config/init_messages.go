@@ -169,17 +169,33 @@ var (
 // promptLangSelection shows an interactive language picker and returns the chosen lang code.
 // savedLang is used as the pre-selected default (from existing config).
 func promptLangSelection(savedLang string) (string, error) {
-	lang := savedLang
-	if !i18n.IsValidLang(lang) {
-		lang = "zh"
-	}
+	lang := i18n.NormalizeLang(savedLang)
+
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Language / 语言").
+				Title("Language / 语言 / 言語 / 언어").
 				Options(
 					huh.NewOption("中文", "zh"),
 					huh.NewOption("English", "en"),
+					huh.NewOption("日本語", "ja"),
+					huh.NewOption("한국어", "ko"),
+					huh.NewOption("Français", "fr"),
+					huh.NewOption("Deutsch", "de"),
+					huh.NewOption("Español", "es"),
+					huh.NewOption("Italiano", "it"),
+					huh.NewOption("Русский", "ru"),
+					huh.NewOption("Português", "pt"),
+					huh.NewOption("العربية", "ar"),
+					huh.NewOption("हिन्दी", "hi"),
+					huh.NewOption("Türkçe", "tr"),
+					huh.NewOption("Polski", "pl"),
+					huh.NewOption("Nederlands", "nl"),
+					huh.NewOption("Svenska", "sv"),
+					huh.NewOption("ไทย", "th"),
+					huh.NewOption("Tiếng Việt", "vi"),
+					huh.NewOption("Bahasa Indonesia", "id"),
+					huh.NewOption("Bahasa Melayu", "ms"),
 				).
 				Value(&lang),
 		),
