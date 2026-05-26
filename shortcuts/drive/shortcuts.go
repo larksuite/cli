@@ -34,5 +34,6 @@ func Shortcuts() []common.Shortcut {
 		DriveSecureLabelUpdate,
 		DriveSearch,
 		DriveInspect,
+		DriveListComments,
 	}
 }
