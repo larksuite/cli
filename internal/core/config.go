@@ -159,7 +159,8 @@ type CliConfig struct {
 	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
 	UserOpenId          string
 	UserName            string
-	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	Lang                string // UI language (zh, en, ja, ko, etc.)
+	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -265,6 +266,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		AppSecret:   secret,
 		Brand:       app.Brand,
 		DefaultAs:   app.DefaultAs,
+		Lang:        app.Lang,
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId
