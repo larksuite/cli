@@ -6,6 +6,8 @@ package schema
 import (
 	"errors"
 	"fmt"
+
+	"github.com/larksuite/cli/internal/cmdutil"
 )
 
 var validJSONSchemaTypes = map[string]bool{
@@ -79,18 +81,18 @@ func lintEnvelope(env Envelope) []error {
 	}
 
 	// ---- L3: cross-field self-consistency ----
-	dangerExpected := env.Meta.Risk == "write" || env.Meta.Risk == "high-risk-write"
+	dangerExpected := env.Meta.Risk == cmdutil.RiskWrite || env.Meta.Risk == cmdutil.RiskHighRiskWrite
 	if env.Meta.Danger != dangerExpected {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
 
 	// `yes` lives at inputSchema.properties.yes (sibling of params/data),
-	// injected only for risk == "high-risk-write".
+	// injected only for risk == RiskHighRiskWrite.
 	hasYes := false
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
 		_, hasYes = env.InputSchema.Properties.Map["yes"]
 	}
-	wantYes := env.Meta.Risk == "high-risk-write"
+	wantYes := env.Meta.Risk == cmdutil.RiskHighRiskWrite
 	if hasYes != wantYes {
 		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}

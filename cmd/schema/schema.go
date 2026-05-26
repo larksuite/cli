@@ -362,7 +362,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 
 	cmd := &cobra.Command{
 		Use:   "schema [path | service resource method]",
-		Short: "View API method MCP envelope schema",
+		Short: "View API method parameters, types, and scopes",
 		Args:  cobra.MaximumNArgs(8),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -385,7 +385,7 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"json", "pretty"}, cobra.ShellCompDirectiveNoFileComp
 	})
-	cmdutil.SetRisk(cmd, "read")
+	cmdutil.SetRisk(cmd, cmdutil.RiskRead)
 
 	return cmd
 }
@@ -594,15 +594,6 @@ func runJSONForPath(out io.Writer, parts []string, filter schema.MethodFilter) e
 		return nil
 	}
 	methodName := remaining[0]
-	if len(remaining) > 1 {
-		// Reject trailing segments so callers don't silently get a sibling
-		// method's schema when they typo'd a longer path.
-		return output.ErrWithHint(output.ExitValidation, "validation",
-			fmt.Sprintf("Unknown path: %s.%s.%s",
-				serviceName, resName, strings.Join(remaining, ".")),
-			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
-				methodName, strings.Join(remaining[1:], ".")))
-	}
 	methods, _ := resource["methods"].(map[string]interface{})
 	method, ok := methods[methodName].(map[string]interface{})
 	if !ok {
@@ -614,6 +605,15 @@ func runJSONForPath(out io.Writer, parts []string, filter schema.MethodFilter) e
 		return output.ErrWithHint(output.ExitValidation, "validation",
 			fmt.Sprintf("Unknown method: %s.%s.%s", serviceName, resName, methodName),
 			fmt.Sprintf("Available: %s", strings.Join(names, ", ")))
+	}
+	if len(remaining) > 1 {
+		// Method exists but caller appended extra segments — reject so they
+		// don't silently get this method's schema when they typo'd the path.
+		return output.ErrWithHint(output.ExitValidation, "validation",
+			fmt.Sprintf("Unknown path: %s.%s.%s",
+				serviceName, resName, strings.Join(remaining, ".")),
+			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
+				methodName, strings.Join(remaining[1:], ".")))
 	}
 	if filter != nil && !filter(method) {
 		// Method exists in spec but filtered out by strict mode
@@ -686,13 +686,6 @@ func runPrettyMode(out io.Writer, parts []string, mode core.StrictMode) error {
 		return nil
 	}
 	methodName := remaining[0]
-	if len(remaining) > 1 {
-		return output.ErrWithHint(output.ExitValidation, "validation",
-			fmt.Sprintf("Unknown path: %s.%s.%s",
-				serviceName, resName, strings.Join(remaining, ".")),
-			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
-				methodName, strings.Join(remaining[1:], ".")))
-	}
 	methods, _ := resource["methods"].(map[string]interface{})
 	methods = filterMethodsByStrictMode(methods, mode)
 	method, ok := methods[methodName].(map[string]interface{})
@@ -705,6 +698,13 @@ func runPrettyMode(out io.Writer, parts []string, mode core.StrictMode) error {
 		return output.ErrWithHint(output.ExitValidation, "validation",
 			fmt.Sprintf("Unknown method: %s.%s.%s", serviceName, resName, methodName),
 			fmt.Sprintf("Available: %s", strings.Join(names, ", ")))
+	}
+	if len(remaining) > 1 {
+		return output.ErrWithHint(output.ExitValidation, "validation",
+			fmt.Sprintf("Unknown path: %s.%s.%s",
+				serviceName, resName, strings.Join(remaining, ".")),
+			fmt.Sprintf("Method %q exists but the trailing segments %q do not resolve",
+				methodName, strings.Join(remaining[1:], ".")))
 	}
 	printMethodDetail(out, spec, resName, methodName, method)
 	return nil

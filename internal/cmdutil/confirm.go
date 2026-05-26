@@ -34,7 +34,7 @@ func RequireConfirmation(action string) error {
 			Message: fmt.Sprintf("%s requires confirmation", action),
 			Hint:    "add --yes to confirm",
 			Risk: &output.RiskDetail{
-				Level:  "high-risk-write",
+				Level:  RiskHighRiskWrite,
 				Action: action,
 			},
 		},

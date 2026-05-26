@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -287,13 +288,14 @@ func skipValueAfterToken(dec *json.Decoder, tok json.Token) {
 	}
 }
 
-// coerceEnumValue converts a meta_data enum literal to the JSON Schema type
-// declared by the field (integer/number/boolean/string). meta_data stores
-// every enum literal as a string, so without coercion an `integer` field
-// would emit string enums and fail any standard validator. Already-typed
-// values pass through unchanged. Returns (value, true) on success, or
-// (nil, false) when the literal cannot be coerced (caller should drop it).
-func coerceEnumValue(fieldType string, raw interface{}) (interface{}, bool) {
+// coerceLiteral converts a meta_data literal (default / enum / example) to
+// the JSON Schema type declared by the field (integer/number/boolean/string).
+// meta_data stores every literal as a string, so without coercion an
+// `integer` field would emit string literals and fail any standard validator.
+// Already-typed values pass through unchanged. Returns (value, true) on
+// success, or (nil, false) when the literal cannot be coerced (caller should
+// drop it).
+func coerceLiteral(fieldType string, raw interface{}) (interface{}, bool) {
 	s, isStr := raw.(string)
 	if !isStr {
 		// Already typed (e.g. meta_data emitted a JSON number/bool directly).
@@ -379,12 +381,17 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 		// meta_data uses to mean "no default"), omit the field entirely
 		// instead of emitting a type-mismatched default — the result is a
 		// missing `default` key rather than a contract violation.
-		if coerced, ok := coerceEnumValue(p.Type, v); ok {
+		if coerced, ok := coerceLiteral(p.Type, v); ok {
 			p.Default = coerced
 		}
 	}
 	if v, ok := field["example"]; ok {
-		p.Example = v
+		// meta_data stores examples as strings even when the field is integer/
+		// boolean/number; coerce to the declared type so downstream validators
+		// accept the envelope. Drop on coerce failure (same policy as default).
+		if coerced, ok := coerceLiteral(p.Type, v); ok {
+			p.Example = coerced
+		}
 	}
 
 	// min / max are stored as strings in meta_data; parse on best-effort.
@@ -405,7 +412,7 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 	// type — meta_data stores everything as strings.)
 	if enumRaw, ok := field["enum"].([]interface{}); ok && len(enumRaw) > 0 {
 		for _, e := range enumRaw {
-			if v, ok := coerceEnumValue(p.Type, e); ok {
+			if v, ok := coerceLiteral(p.Type, e); ok {
 				p.Enum = append(p.Enum, v)
 			}
 		}
@@ -427,7 +434,7 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 				continue
 			}
 			seen[raw] = true
-			if v, ok := coerceEnumValue(p.Type, raw); ok {
+			if v, ok := coerceLiteral(p.Type, raw); ok {
 				p.Enum = append(p.Enum, v)
 			}
 		}
@@ -441,13 +448,14 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 
 	// nested properties: recurse
 	if propsRaw, ok := field["properties"].(map[string]interface{}); ok && len(propsRaw) > 0 {
-		nested := buildOrderedProps(propsRaw, nestedPath)
+		nested, nestedRequired := buildOrderedProps(propsRaw, nestedPath)
 		if p.Type == "array" {
 			// meta_data quirk: array element schema is wrapped in "properties".
 			// Unfold into Items: { type: "object", properties: <nested> }
 			p.Items = &Property{
 				Type:       "object",
 				Properties: nested,
+				Required:   nestedRequired,
 			}
 			// Property.Properties stays nil for arrays
 		} else {
@@ -455,6 +463,7 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 				p.Type = "object" // infer
 			}
 			p.Properties = nested
+			p.Required = nestedRequired
 		}
 	}
 
@@ -468,18 +477,25 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 }
 
 // buildOrderedProps converts a map[string]interface{} of field specs into an
-// OrderedProps, using the key-order index for the given nested path if
-// available; otherwise falls back to alphabetical order.
-func buildOrderedProps(raw map[string]interface{}, nestedPath string) *OrderedProps {
+// OrderedProps plus the alphabetized list of child keys marked `required:true`
+// in meta_data. Callers attach that list to the enclosing object's `required`,
+// so nested objects faithfully report their call contract (top-level required
+// is handled separately by buildInputSchema).
+func buildOrderedProps(raw map[string]interface{}, nestedPath string) (*OrderedProps, []string) {
 	op := &OrderedProps{Map: make(map[string]Property, len(raw))}
 
+	var required []string
 	keys := orderedKeys(raw, nestedPath)
 	for _, k := range keys {
 		fieldRaw, _ := raw[k].(map[string]interface{})
 		op.Order = append(op.Order, k)
 		op.Map[k] = convertProperty(fieldRaw, nestedPath+"."+k+".properties")
+		if req, _ := fieldRaw["required"].(bool); req {
+			required = append(required, k)
+		}
 	}
-	return op
+	sort.Strings(required)
+	return op, required
 }
 
 // currentMethodOrder is the per-method key-order context used by orderedKeys.
@@ -566,7 +582,7 @@ func buildMeta(method map[string]interface{}) *Meta {
 	if risk, _ := method["risk"].(string); risk != "" {
 		m.Risk = risk
 	} else {
-		m.Risk = "read"
+		m.Risk = cmdutil.RiskRead
 	}
 
 	if docURL, _ := method["docUrl"].(string); docURL != "" {
@@ -688,7 +704,7 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 	// high-risk-write injects a top-level `yes` confirmation flag — sibling
 	// of params/data. It is a CLI gate (consumed by lark-cli, not sent to
 	// the backend), not an API field.
-	if risk, _ := method["risk"].(string); risk == "high-risk-write" {
+	if risk, _ := method["risk"].(string); risk == cmdutil.RiskHighRiskWrite {
 		is.Properties.Order = append(is.Properties.Order, "yes")
 		falseVal := false
 		is.Properties.Map["yes"] = Property{
@@ -725,11 +741,15 @@ var assembleMu sync.Mutex
 
 // AssembleEnvelope is the main entry point: takes a service / resource path /
 // method name plus its meta_data spec, and produces a fully assembled MCP
-// envelope. Stateless — safe to call concurrently as long as the
-// currentMethodOrder mutex (handled internally) is respected.
+// envelope. Output is fully determined by inputs (same arguments → same
+// envelope), but assembly briefly publishes the per-method key-order context
+// through the package-level currentMethodOrder so orderedKeys can reach it
+// without threading it through every helper. assembleMu serializes that
+// publish, which is why concurrent callers are still safe — they queue
+// rather than run in parallel.
 //
-// Concurrency note: convertProperty reads currentMethodOrder via package
-// variable for simplicity. We serialize access with a mutex.
+// If parallelism becomes a bottleneck, replace currentMethodOrder with an
+// assembler struct or pass *MethodKeyOrder explicitly down the call chain.
 func AssembleEnvelope(serviceName string, resourcePath []string, methodName string, method map[string]interface{}) Envelope {
 	assembleMu.Lock()
 	defer assembleMu.Unlock()

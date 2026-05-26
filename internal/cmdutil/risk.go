@@ -7,11 +7,20 @@ import "github.com/spf13/cobra"
 
 const riskLevelAnnotationKey = "risk_level"
 
+// Risk level constants — the three-tier convention used across the CLI.
+// Use these in place of string literals so the typo radius is one place,
+// not every call site.
+const (
+	RiskRead          = "read"
+	RiskWrite         = "write"
+	RiskHighRiskWrite = "high-risk-write"
+)
+
 // SetRisk stores a command's static risk level on cobra annotations so the
 // help renderer (cmd/root.go) can surface a Risk: line without importing
-// shortcuts/common. Levels follow the three-tier convention: "read" | "write"
-// | "high-risk-write". Framework-level confirmation gating only acts on
-// "high-risk-write".
+// shortcuts/common. Levels follow the three-tier convention: RiskRead |
+// RiskWrite | RiskHighRiskWrite. Framework-level confirmation gating only
+// acts on RiskHighRiskWrite.
 func SetRisk(cmd *cobra.Command, level string) {
 	if level == "" {
 		return
