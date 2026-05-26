@@ -352,6 +352,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
 			if err := updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang); err != nil {
+				// Deprecated: legacy *output.ExitError passthrough; removed after typed migration.
 				var exitErr *output.ExitError
 				if errors.As(err, &exitErr) {
 					return err

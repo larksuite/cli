@@ -176,6 +176,11 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 			"granted":   issue.Summary.Granted,
 			"missing":   issue.Summary.Missing,
 		}
+		// Legacy *output.ExitError producer: this literal predates the typed
+		// error contract introduced by errs/. New code MUST NOT construct
+		// *output.ExitError directly — missing-scope signals should move to
+		// *errs.PermissionError (with MissingScopes/ConsoleURL as typed
+		// extension fields) when the login flow migrates to typed errors.
 		return &output.ExitError{
 			Code: output.ExitAuth,
 			Detail: &output.ErrDetail{

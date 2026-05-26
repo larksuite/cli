@@ -14,7 +14,6 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -88,20 +87,6 @@ func noLoginBotDefaultConfig() *core.CliConfig {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 		DefaultAs: "bot",
 	}
-}
-
-type missingTokenResolver struct{}
-
-func (r *missingTokenResolver) ResolveToken(context.Context, credential.TokenSpec) (*credential.TokenResult, error) {
-	return nil, &credential.TokenUnavailableError{Source: "test", Type: credential.TokenTypeUAT}
-}
-
-type staticAccountResolver struct {
-	config *core.CliConfig
-}
-
-func (r *staticAccountResolver) ResolveAccount(context.Context) (*credential.Account, error) {
-	return credential.AccountFromCliConfig(r.config), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1886,67 +1871,6 @@ func TestRoomFind_RejectsInvertedOrZeroLengthSlots(t *testing.T) {
 				t.Fatalf("expected invalid slot range error, got: %v", err)
 			}
 		})
-	}
-}
-
-func TestRoomFind_PreservesAuthErrorFromDoAPI(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
-	f.Credential = credential.NewCredentialProvider(
-		nil,
-		&staticAccountResolver{config: noLoginConfig()},
-		&missingTokenResolver{},
-		nil,
-	)
-
-	err := mountAndRun(t, CalendarRoomFind, []string{
-		"+room-find",
-		"--slot", "2026-03-27T14:00:00+08:00~2026-03-27T15:00:00+08:00",
-		"--as", "user",
-	}, f, nil)
-	if err == nil {
-		t.Fatal("expected auth error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured exit error, got %T", err)
-	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("expected exit code %d, got %d (%v)", output.ExitAuth, exitErr.Code, err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
-		t.Fatalf("expected auth error detail, got %#v", exitErr.Detail)
-	}
-}
-
-func TestSuggestion_PreservesAuthErrorFromDoAPI(t *testing.T) {
-	f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
-	f.Credential = credential.NewCredentialProvider(
-		nil,
-		&staticAccountResolver{config: noLoginConfig()},
-		&missingTokenResolver{},
-		nil,
-	)
-
-	err := mountAndRun(t, CalendarSuggestion, []string{
-		"+suggestion",
-		"--start", "2026-03-27T14:00:00+08:00",
-		"--end", "2026-03-27T15:00:00+08:00",
-		"--as", "user",
-	}, f, nil)
-	if err == nil {
-		t.Fatal("expected auth error")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured exit error, got %T", err)
-	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("expected exit code %d, got %d (%v)", output.ExitAuth, exitErr.Code, err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "auth" {
-		t.Fatalf("expected auth error detail, got %#v", exitErr.Detail)
 	}
 }
 

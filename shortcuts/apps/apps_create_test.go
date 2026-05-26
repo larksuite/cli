@@ -56,10 +56,12 @@ func TestAppsCreate_Success(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"app_id":     "app_x",
-				"name":       "Demo",
-				"icon_url":   "https://lf3-static.bytednsdoc.com/.../default.svg",
-				"created_at": "2026-05-18T10:00:00Z",
+				"app": map[string]interface{}{
+					"app_id":     "app_x",
+					"name":       "Demo",
+					"icon_url":   "https://lf3-static.bytednsdoc.com/.../default.svg",
+					"created_at": "2026-05-18T10:00:00Z",
+				},
 			},
 		},
 	}
@@ -99,7 +101,9 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 		URL:    "/open-apis/spark/v1/apps",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
+			},
 		},
 	})
 
@@ -107,6 +111,34 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--icon-url", "https://example.com/icon.svg", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
+	}
+}
+
+// TestAppsCreate_PrettyOutputReadsNestedAppID exercises the prettyFn callback
+// passed to OutFormat (only invoked under --format pretty) so the new
+// data.app.app_id nesting is actually read by the text writer. Without this,
+// default --format json dumps the whole envelope and the substring assertion
+// in TestAppsCreate_Success would pass even if the GetString path were wrong.
+func TestAppsCreate_PrettyOutputReadsNestedAppID(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{"app_id": "app_x", "name": "Demo"},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsCreate,
+		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "created: app_x") {
+		t.Fatalf("pretty output should read app_id from data.app.app_id, got: %q", got)
 	}
 }
 

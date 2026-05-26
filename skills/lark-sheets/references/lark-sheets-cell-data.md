@@ -121,7 +121,7 @@ lark-cli sheets +append --spreadsheet-token "shtxxxxxxxx" \
 
 对应命令：`lark-cli sheets +find`
 
-只在一个已知 spreadsheet 内查找单元格内容，不是云空间搜索。
+只在一个已知 spreadsheet 内查找单元格内容，不是云空间（云盘/云存储）搜索。
 
 ```bash
 lark-cli sheets +find --url "https://example.larksuite.com/sheets/shtxxxxxxxx" \

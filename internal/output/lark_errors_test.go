@@ -30,7 +30,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "cross tenant unit",
 			code:         LarkErrDriveCrossTenantUnit,
 			wantExitCode: ExitAPI,
-			wantType:     "cross_tenant_unit",
+			wantType:     "cross_tenant",
 			wantHint:     "same tenant and region/unit",
 		},
 		{
@@ -44,7 +44,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "sheets float image invalid dims",
 			code:         LarkErrSheetsFloatImageInvalidDims,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "--width / --height / --offset-x / --offset-y",
 		},
 		{
@@ -58,7 +58,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "drive permission apply not applicable",
 			code:         LarkErrDrivePermApplyNotApplicable,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "does not accept a permission-apply request",
 		},
 		{
@@ -88,5 +88,26 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 				t.Fatalf("hint=%q, want substring %q", gotHint, tt.wantHint)
 			}
 		})
+	}
+}
+
+// TestClassifyLarkError_WikiLockContention verifies the wiki write-lock
+// contention error (131009) maps to an actionable retry hint instead of
+// a generic "api_error". Surfaces during concurrent wiki +node-create
+// against the same parent (see larksuite/cli#1012).
+func TestClassifyLarkError_WikiLockContention(t *testing.T) {
+	t.Parallel()
+	gotExitCode, gotType, gotHint := ClassifyLarkError(LarkErrWikiLockContention, "raw msg")
+	if gotExitCode != ExitAPI {
+		t.Fatalf("exitCode=%d, want %d", gotExitCode, ExitAPI)
+	}
+	if gotType != "conflict" {
+		t.Fatalf("type=%q, want %q", gotType, "conflict")
+	}
+	if !strings.Contains(gotHint, "wiki write lock") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "wiki write lock")
+	}
+	if !strings.Contains(gotHint, "backoff") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "backoff")
 	}
 }

@@ -53,7 +53,7 @@ var AppsUpdate = common.Shortcut{
 			return err
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "updated: %s\n", common.GetString(data, "app_id"))
+			fmt.Fprintf(w, "updated: %s\n", common.GetString(data, "app", "app_id"))
 		})
 		return nil
 	},

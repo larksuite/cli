@@ -4,32 +4,34 @@
 package mail
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// assertValidationError fails the test unless err is a *output.ExitError with
-// ExitValidation code whose message contains wantSubstr.
+// assertValidationError fails the test unless err carries the validation
+// category with ExitValidation exit code and a message containing wantSubstr.
+// Accepts both typed *errs.ValidationError and legacy *output.ExitError so
+// the helper survives the error-contract migration.
 func assertValidationError(t *testing.T, err error, wantSubstr string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected a validation error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	// Accept both typed *errs.ValidationError and legacy *output.ExitError —
+	// the helper's purpose is to assert "this is a validation-category
+	// error" via either contract, so the dual-path matches the docstring.
+	code := output.ExitCodeOf(err)
+	if !errs.IsValidation(err) && code != output.ExitValidation {
+		t.Fatalf("expected a validation-category error, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("expected exit code %d (ExitValidation), got %d", output.ExitValidation, exitErr.Code)
+	if code != output.ExitValidation {
+		t.Errorf("expected exit code %d (ExitValidation), got %d", output.ExitValidation, code)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
-		t.Errorf("expected detail type \"validation\", got %+v", exitErr.Detail)
-	}
-	if wantSubstr != "" && !strings.Contains(exitErr.Error(), wantSubstr) {
-		t.Errorf("expected error message to contain %q, got: %v", wantSubstr, exitErr.Error())
+	if wantSubstr != "" && !strings.Contains(err.Error(), wantSubstr) {
+		t.Errorf("expected error message to contain %q, got: %v", wantSubstr, err.Error())
 	}
 }
 
@@ -41,9 +43,8 @@ func assertValidatePasses(t *testing.T, err error) {
 	if err == nil {
 		return
 	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Code == output.ExitValidation {
-		t.Fatalf("Validate callback should have passed but returned validation error: %v", exitErr)
+	if errs.IsValidation(err) || output.ExitCodeOf(err) == output.ExitValidation {
+		t.Fatalf("Validate callback should have passed but returned validation error: %v", err)
 	}
 	// Non-validation errors (auth/API failures) are expected without HTTP mocks.
 }

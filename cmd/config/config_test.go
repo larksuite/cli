@@ -95,8 +95,9 @@ func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("error type = %T, want *core.ConfigError", err)
 	}
-	if cfgErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", cfgErr.Code, output.ExitValidation)
+	// Config errors share ExitAuth (3), not ExitValidation.
+	if cfgErr.Code != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d (config category → ExitAuth)", cfgErr.Code, output.ExitAuth)
 	}
 	if cfgErr.Type != "config" || cfgErr.Message != "not configured" {
 		t.Fatalf("detail = %+v, want config/not configured", cfgErr)

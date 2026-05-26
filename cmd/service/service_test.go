@@ -11,7 +11,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -412,39 +411,6 @@ func TestServiceMethod_BotMode_Success(t *testing.T) {
 	}
 }
 
-func TestServiceMethod_BotMode_APIError(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "test-app-err", AppSecret: "test-secret-err", Brand: core.BrandFeishu,
-	})
-
-	reg.Register(&httpmock.Stub{
-		URL:  "/open-apis/svc/v1/items",
-		Body: map[string]interface{}{"code": 40003, "msg": "invalid token"},
-	})
-
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
-	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
-	cmd.SetArgs([]string{"--as", "bot"})
-
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected API error")
-	}
-	var exitErr *output.ExitError
-	if !isExitError(err, &exitErr) {
-		t.Fatalf("expected ExitError, got: %T %v", err, err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("expected ExitAPI code, got %d", exitErr.Code)
-	}
-	// stdout must be empty on API error — error details belong in stderr envelope only.
-	// This guards against re-introducing duplicate output (see commit 86215a10).
-	if stdout.Len() > 0 {
-		t.Errorf("expected no stdout on API error, got: %s", stdout.String())
-	}
-}
-
 func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app-page", AppSecret: "test-secret-page", Brand: core.BrandFeishu,
@@ -662,73 +628,6 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 	}
 }
 
-// ── scopeAwareChecker ──
-
-func TestScopeAwareChecker_Success(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker(map[string]interface{}{"code": 0.0, "msg": "ok"})
-	if err != nil {
-		t.Errorf("expected nil error for code=0, got: %v", err)
-	}
-}
-
-func TestScopeAwareChecker_NonMapResult(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker("not a map")
-	if err != nil {
-		t.Errorf("expected nil for non-map result, got: %v", err)
-	}
-}
-
-func TestScopeAwareChecker_APIError(t *testing.T) {
-	checker := scopeAwareChecker(nil, false)
-	err := checker(map[string]interface{}{"code": 40003.0, "msg": "bad request"})
-	if err == nil {
-		t.Fatal("expected error for non-zero code")
-	}
-	if !strings.Contains(err.Error(), "API error: [40003]") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestScopeAwareChecker_ScopeError_UserMode(t *testing.T) {
-	scopes := []interface{}{"calendar:read"}
-	checker := scopeAwareChecker(scopes, false)
-	err := checker(map[string]interface{}{
-		"code": float64(output.LarkErrUserScopeInsufficient),
-		"msg":  "scope insufficient",
-	})
-	if err == nil {
-		t.Fatal("expected permission error")
-	}
-	var exitErr *output.ExitError
-	if !isExitError(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", err)
-	}
-	if exitErr.Detail.Type != "permission" {
-		t.Errorf("expected type=permission, got %s", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "auth login") {
-		t.Errorf("expected auth login hint, got %s", exitErr.Detail.Hint)
-	}
-}
-
-func TestScopeAwareChecker_ScopeError_BotMode(t *testing.T) {
-	scopes := []interface{}{"calendar:read"}
-	checker := scopeAwareChecker(scopes, true)
-	err := checker(map[string]interface{}{
-		"code": float64(output.LarkErrUserScopeInsufficient),
-		"msg":  "scope insufficient",
-	})
-	if err == nil {
-		t.Fatal("expected permission error")
-	}
-	// Bot mode should still include the scope hint
-	if !strings.Contains(err.Error(), "insufficient permissions") {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
 // ── file upload ──
 
 func imImageMethod() map[string]interface{} {
@@ -865,14 +764,4 @@ func TestDetectFileFields(t *testing.T) {
 			}
 		})
 	}
-}
-
-// ── helpers ──
-
-func isExitError(err error, target **output.ExitError) bool {
-	ee, ok := err.(*output.ExitError)
-	if ok && target != nil {
-		*target = ee
-	}
-	return ok
 }

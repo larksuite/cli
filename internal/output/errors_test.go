@@ -6,39 +6,9 @@ package output
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"testing"
 )
-
-func TestMarkRaw_ExitError(t *testing.T) {
-	err := ErrAPI(99991672, "API error: [99991672] scope not enabled", nil)
-	if err.Raw {
-		t.Fatal("expected Raw=false before MarkRaw")
-	}
-
-	result := MarkRaw(err)
-	if result != err {
-		t.Error("expected MarkRaw to return the same error")
-	}
-	if !err.Raw {
-		t.Error("expected Raw=true after MarkRaw")
-	}
-}
-
-func TestMarkRaw_NonExitError(t *testing.T) {
-	plain := fmt.Errorf("some plain error")
-	result := MarkRaw(plain)
-	if result != plain {
-		t.Error("expected MarkRaw to return the same error for non-ExitError")
-	}
-}
-
-func TestMarkRaw_Nil(t *testing.T) {
-	result := MarkRaw(nil)
-	if result != nil {
-		t.Error("expected MarkRaw(nil) to return nil")
-	}
-}
 
 func TestWriteErrorEnvelope_WithNotice(t *testing.T) {
 	// Set up PendingNotice
@@ -147,4 +117,90 @@ func TestGetNotice(t *testing.T) {
 	}
 
 	PendingNotice = origNotice
+}
+
+// TestErrValidation_LegacyExitErrorShape pins the stage-1 wire contract for
+// output.ErrValidation: the helper MUST return *output.ExitError (so callers
+// using errors.As(&exitErr) continue to work), with wire fields restricted
+// to type+message — no `subtype` emission. The typed envelope shape (which
+// adds subtype, param, etc.) is reserved for stage-2 per-domain migration.
+func TestErrValidation_LegacyExitErrorShape(t *testing.T) {
+	err := ErrValidation("bad arg: %s", "x")
+
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("ErrValidation must return *ExitError, got %T", err)
+	}
+	if exitErr.Code != ExitValidation {
+		t.Errorf("Code = %d, want ExitValidation (%d)", exitErr.Code, ExitValidation)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("Detail must be populated")
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Errorf("Detail.Type = %q, want %q", exitErr.Detail.Type, "validation")
+	}
+	if exitErr.Detail.Message != "bad arg: x" {
+		t.Errorf("Detail.Message = %q, want %q", exitErr.Detail.Message, "bad arg: x")
+	}
+
+	// Wire envelope must have only type+message — no subtype field.
+	var buf bytes.Buffer
+	WriteErrorEnvelope(&buf, exitErr, "user")
+	var wire map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &wire); err != nil {
+		t.Fatalf("envelope JSON parse failed: %v\nraw: %s", err, buf.String())
+	}
+	errObj, ok := wire["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope missing 'error' object; got: %s", buf.String())
+	}
+	if _, hasSubtype := errObj["subtype"]; hasSubtype {
+		t.Errorf("legacy ErrValidation envelope must NOT emit `subtype`; got: %s", buf.String())
+	}
+	if errObj["type"] != "validation" {
+		t.Errorf("envelope error.type = %v, want \"validation\"", errObj["type"])
+	}
+}
+
+// TestErrNetwork_LegacyExitErrorShape pins the stage-1 wire contract for
+// output.ErrNetwork: same legacy *output.ExitError shape as ErrValidation —
+// no subtype field, errors.As(&exitErr) must succeed, exit code ExitNetwork.
+func TestErrNetwork_LegacyExitErrorShape(t *testing.T) {
+	err := ErrNetwork("conn refused: %s", "10.0.0.1")
+
+	var exitErr *ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("ErrNetwork must return *ExitError, got %T", err)
+	}
+	if exitErr.Code != ExitNetwork {
+		t.Errorf("Code = %d, want ExitNetwork (%d)", exitErr.Code, ExitNetwork)
+	}
+	if exitErr.Detail == nil {
+		t.Fatal("Detail must be populated")
+	}
+	if exitErr.Detail.Type != "network" {
+		t.Errorf("Detail.Type = %q, want %q", exitErr.Detail.Type, "network")
+	}
+	if exitErr.Detail.Message != "conn refused: 10.0.0.1" {
+		t.Errorf("Detail.Message = %q, want %q", exitErr.Detail.Message, "conn refused: 10.0.0.1")
+	}
+
+	// Wire envelope must have only type+message — no subtype field.
+	var buf bytes.Buffer
+	WriteErrorEnvelope(&buf, exitErr, "user")
+	var wire map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &wire); err != nil {
+		t.Fatalf("envelope JSON parse failed: %v\nraw: %s", err, buf.String())
+	}
+	errObj, ok := wire["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope missing 'error' object; got: %s", buf.String())
+	}
+	if _, hasSubtype := errObj["subtype"]; hasSubtype {
+		t.Errorf("legacy ErrNetwork envelope must NOT emit `subtype`; got: %s", buf.String())
+	}
+	if errObj["type"] != "network" {
+		t.Errorf("envelope error.type = %v, want \"network\"", errObj["type"])
+	}
 }

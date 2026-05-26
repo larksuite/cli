@@ -1,6 +1,6 @@
 ---
 name: lark-apps
-description: "把本地 HTML 文件或目录部署到飞书妙搭（Miaoda），生成一个公网可访问的应用及其链接（URL）。当用户要创建 HTML 或要把 HTML、静态网站或 Web demo 发布成公网可访问的链接 / 可分享链接、设置应用共享范围，或提到妙搭 / Miaoda 时使用。凡产出可独立访问的 HTML 产物都属本 skill 的潜在归宿，是否真要部署由 skill 内部协议判断。不用于：上传普通文件到云空间（用 lark-drive）、编辑飞书云文档内容（用 lark-doc）、创建飞书原生幻灯片 / 演示文稿（用 lark-slides）。"
+description: "把本地 HTML 文件或目录部署到飞书妙搭（Miaoda），生成一个公网可访问的应用及其链接（URL）。当用户要创建 HTML 或要把 HTML、静态网站或 Web demo 发布成公网可访问的链接 / 可分享链接、设置应用共享范围，或提到妙搭 / Miaoda 时使用。凡产出可独立访问的 HTML 产物都属本 skill 的潜在归宿，是否真要部署由 skill 内部协议判断。不用于：上传普通文件到云空间/云盘/云存储（用 lark-drive）、编辑飞书云文档内容（用 lark-doc）、创建飞书原生幻灯片 / 演示文稿（用 lark-slides）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -42,10 +42,16 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 lark-cli auth login --domain apps
 ```
 
+命令失败且 `error.type == "missing_scope"` 时，统一引导用户跑：
+
+```bash
+lark-cli auth login --domain apps
+```
+
 ## 写 HTML 前的硬约束（避免 publish 阶段被拒）
 
 - **入口文件必须叫 `index.html`** — 妙搭以 `index.html` 作为应用入口；目录形态时根目录下要有 `index.html`，单文件形态时文件名就是 `index.html`。命名成 `app.html` / `demo.html` 等会被 `+html-publish` 直接拒绝
-- **`--path` 不能等于当前工作目录（`.` / cwd）** — 源码硬拒，避免误把 `.git` / `.env` / `node_modules` 一并打包并通过 share URL 公开。HTML 产物放进具体子目录（如 `./dist`、`./public`、`./<page-name>/`）或单文件路径
+- **`--path` 内不能含已知凭据文件** — Validate 阶段会扫描 `.env` / `.env.*` / `.npmrc` / `.netrc` / `.git-credentials` / `.aws/credentials` / `.docker/config.json` / `.kube/config`，命中就 exit 非 0 拒绝（dry-run 也一样拦）。要么从产物目录里清掉这些文件，要么明确传 `--allow-sensitive` 跳过这道检查（例如教程站故意 shipping `.env.example` 作为示例素材）。`--path .` 本身不再硬拒，cwd 干净就能发
 
 ## 端到端流程（HTML / PPT / 静态网站发布）
 
@@ -61,7 +67,7 @@ lark-cli auth login --domain apps
 | 步骤 | 命令 | 说明 |
 |------|------|------|
 | 1. 新建应用 | `apps +create --name "<根据内容主题起的应用名>" --app-type HTML` → 从响应里拿 `app_id` | 默认都走新建（**不要尝试搜索 / 枚举已有应用**）。用户明确要复用现有应用时让他提供 **妙搭应用链接** 或 **app_id 字符串**（详见下方"快速决策"）；`--app-type` 必填，当前只支持 `HTML`（区分大小写），未来扩展 |
-| 1.5 预检 | `apps +html-publish --app-id <id> --path <path> --dry-run` 看 `warnings` 字段 | 命中 `.git` / `.env*` / `*.pem` / `*.key` 等敏感文件时**停下来**，把 warnings 列给用户看，确认要继续才走 step 2；用户没确认前不要去掉 `--dry-run` 真发 |
+| 1.5 预检（可选） | `apps +html-publish --app-id <id> --path <path> --dry-run` 看 manifest | 主要用来看 `files` / `total_size_bytes`。**凭据文件已经在 Validate 阶段直接 exit 非 0**（不再是 advisory warning），所以预检通过就说明走真发也通过；预检报 `.env` 等命中时，先清产物或加 `--allow-sensitive` 再 publish |
 | 2. 发布 HTML | `apps +html-publish --app-id <id> --path <文件或目录>` | 必走 |
 | 3. 设置可用范围（可选） | `apps +access-scope-set --app-id <id> --scope tenant\|public\|specific ...` | 用户说"公开 / 全员可见 / 让 Alice 看 / 互联网可分享"等 |
 
@@ -84,7 +90,7 @@ lark-cli auth login --domain apps
 - `--path` 既可传单个 HTML 文件也可传目录；目录会**递归打包成 tar.gz 不做过滤**，要提醒用户传干净的产物目录（如 `./dist`），避免把 `.git` / `node_modules` 一起打进去
 - `apps +update` 只更新传入字段，未传字段保持不变；`--name` / `--description` 至少传一个，否则 Validate 阶段直接拦截
 - `apps +access-scope-set` 三种 scope **互斥**：specific 必传 `--targets`、不允许 `--require-login`；public 必传 `--require-login`、不允许 `--targets` / `--apply-enabled` / `--approver`；tenant 不允许任何其他 flag
-- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户
+- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户。`error.type == "missing_scope"` 例外：按上面「身份与一次性授权」走
 
 ## Shortcuts（推荐优先使用）
 

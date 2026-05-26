@@ -40,7 +40,7 @@ metadata:
 
 1. 先阅读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)。
 2. Base 业务命令仅使用 `lark-cli base +...` 形式的 shortcut 命令。
-3. 如果输入是 Wiki 链接或 Wiki token，并且用户想读取/操作其中的 Base，先执行 `lark-cli wiki +node-get --token <wiki_url_or_token>`；当返回 `data.obj_type=bitable` 时，把 `data.obj_token` 当作 `--base-token`。不要把 URL 里的 `/wiki/{token}` 当成 Base token。
+3. 如果输入是 Wiki 链接或 Wiki token，并且用户想读取/操作其中的 Base，先执行 `lark-cli wiki +node-get --node-token <wiki_url_or_token>`；当返回 `data.obj_type=bitable` 时，把 `data.obj_token` 当作 `--base-token`。不要把 URL 里的 `/wiki/{token}` 当成 Base token。（旧的 `--token` flag 仍可用，但已 deprecated，会在 stderr 打印迁移提示。）
 4. 定位到命令后，先读该命令对应的 reference，再执行命令。
 5. 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，第一步不是 `base`，而是 `lark-cli drive +import --type bitable`；导入完成后再回到 `lark-cli base +...` 做表内操作。
 6. 不要在 Base 场景改走 `lark-cli api /open-apis/bitable/v1/...`。
@@ -266,7 +266,7 @@ metadata:
 Wiki Base fast path:
 
 ```bash
-BASE_TOKEN="$(lark-cli wiki +node-get --as user --token "<wiki_url_or_token>" --jq '.data | select(.obj_type == "bitable") | .obj_token')"
+BASE_TOKEN="$(lark-cli wiki +node-get --as user --node-token "<wiki_url_or_token>" --jq '.data | select(.obj_type == "bitable") | .obj_token')"
 ```
 
 | `lark-cli wiki +node-get` 返回的 `data.obj_type` | 后续路线 | 说明 |
@@ -352,7 +352,7 @@ lark-cli auth login --domain base
 | `1254066` | 人员字段错误 | `[{ "id": "ou_xxx" }]` |
 | `1254045` | 字段名不存在 | 检查字段名（含空格、大小写） |
 | `1254015` | 字段值类型不匹配 | 先 `+field-list`，再按类型构造 |
-| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki +node-get --token <wiki_url_or_token>` 取真实 `data.obj_token`；当 `data.obj_type=bitable` 时，用 `data.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
+| `param baseToken is invalid` / `base_token invalid` | 把 wiki token、workspace token 或其他 token 当成了 `base_token` | 如果输入来自 `/wiki/...`，先用 `lark-cli wiki +node-get --node-token <wiki_url_or_token>` 取真实 `data.obj_token`；当 `data.obj_type=bitable` 时，用 `data.obj_token` 作为 `--base-token` 重试，不要改走 `bitable/v1` |
 | `not found` 且用户给的是 wiki 链接 | 常见于把 wiki token 当成 base token | 优先回退检查 wiki 解析，而不是改走 `bitable/v1` |
 | formula / lookup 创建失败 | 指南未读或结构不合法 | 先读 `formula-field-guide.md` / `lookup-field-guide.md`，再按 guide 重建请求 |
 | `ignored_fields` / `READONLY` | 只读字段被当成可写字段，常见于系统字段、formula、lookup | 移除只读字段，只写存储字段；计算结果交给 formula / lookup / 系统字段自动产出 |

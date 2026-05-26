@@ -271,6 +271,11 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, "warning: unknown format %q, falling back to json\n", opts.Format)
 	}
 
+	// Stage 1: enrich the 99991679 (LarkErrUserScopeInsufficient) response
+	// with a per-method recommended `--scope` hint, matching the pre-PR
+	// behaviour. Per-domain typed migration in stage 2+ will lift this
+	// into PermissionError.MissingScopes / ConsoleURL on the typed
+	// envelope; until then the legacy ExitError envelope is preserved.
 	checkErr := scopeAwareChecker(scopes, opts.As.IsBot())
 
 	if opts.PageAll {
@@ -280,7 +285,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		return output.ErrNetwork("API call failed: %s", err)
+		return err
 	}
 	return client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath:  opts.Output,
@@ -290,8 +295,54 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		ErrOut:      f.IOStreams.ErrOut,
 		FileIO:      f.ResolveFileIO(opts.Ctx),
 		CommandPath: opts.Cmd.CommandPath(),
+		Identity:    opts.As,
 		CheckError:  checkErr,
 	})
+}
+
+// scopeAwareChecker returns an error checker that enriches the
+// LarkErrUserScopeInsufficient (99991679) business error with a
+// per-method recommended `--scope` hint. All other non-zero codes fall
+// through to legacy output.ErrAPI (matching pre-PR behaviour). The
+// identity parameter is accepted to match the client.ResponseOptions
+// CheckError signature; isBotMode is captured from the enclosing call so
+// the recommended scope reflects the caller's identity at request time.
+//
+// Deprecated: stage-1 enrichment for the legacy *output.ExitError envelope.
+// Stage-2 typed migration will lift this into PermissionError.MissingScopes
+// + ConsoleURL on the typed envelope and remove this helper.
+func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}, core.Identity) error {
+	return func(result interface{}, _ core.Identity) error {
+		resultMap, ok := result.(map[string]interface{})
+		if !ok || resultMap == nil {
+			return nil
+		}
+		code, _ := util.ToFloat64(resultMap["code"])
+		if code == 0 {
+			return nil
+		}
+		larkCode := int(code)
+		msg := registry.GetStrFromMap(resultMap, "msg")
+
+		if larkCode == output.LarkErrUserScopeInsufficient && len(scopes) > 0 {
+			identity := "user"
+			if isBotMode {
+				identity = "tenant"
+			}
+			recommended := registry.SelectRecommendedScope(scopes, identity)
+			// Stage-1 carve-out: this restores the pre-PR scope-insufficient
+			// enrichment (recommended scope + auth-login hint) on the legacy
+			// envelope. The typed migration in stage 2+ will lift this into
+			// PermissionError.MissingScopes / ConsoleURL on the typed wire.
+			return output.ErrWithHint(output.ExitAPI, "permission",
+				fmt.Sprintf("insufficient permissions: [%d] %s", larkCode, msg),
+				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended))
+		}
+
+		// Stage-1 carve-out: matches pre-PR behaviour (legacy ExitError +
+		// ClassifyLarkError). Typed migration is stage-2+.
+		return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
+	}
 }
 
 // checkServiceScopes pre-checks user scopes before making the API call.
@@ -339,7 +390,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 	recommended := registry.SelectRecommendedScope(scopes, "user")
 	return output.ErrWithHint(output.ExitAPI, "permission",
 		fmt.Sprintf("insufficient permissions (required scope: %s)", recommended),
-		fmt.Sprintf(`run `+"`"+`lark-cli auth login --scope "%s"`+"`"+` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.`, recommended))
+		fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended))
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
@@ -474,36 +525,10 @@ func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *cor
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-// scopeAwareChecker returns an error checker that enriches scope-related errors with login hints.
-func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}) error {
-	return func(result interface{}) error {
-		resultMap, ok := result.(map[string]interface{})
-		if !ok || resultMap == nil {
-			return nil
-		}
-		code, _ := util.ToFloat64(resultMap["code"])
-		if code == 0 {
-			return nil
-		}
-		larkCode := int(code)
-		msg := registry.GetStrFromMap(resultMap, "msg")
-
-		if larkCode == output.LarkErrUserScopeInsufficient && len(scopes) > 0 {
-			identity := "user"
-			if isBotMode {
-				identity = "tenant"
-			}
-			recommended := registry.SelectRecommendedScope(scopes, identity)
-			return output.ErrWithHint(output.ExitAPI, "permission",
-				fmt.Sprintf("insufficient permissions: [%d] %s", larkCode, msg),
-				fmt.Sprintf(`run `+"`"+`lark-cli auth login --scope "%s"`+"`"+` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.`, recommended))
-		}
-
-		return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
+	if pagOpts.Identity == "" {
+		pagOpts.Identity = request.As
 	}
-}
-
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}) error) error {
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
 		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
@@ -516,9 +541,9 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 			pf.FormatPage(items)
 		}, pagOpts)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %s", err)
+			return err
 		}
-		if apiErr := checkErr(result); apiErr != nil {
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
 			return apiErr
 		}
 		if !hasItems {
@@ -529,9 +554,9 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 	default:
 		result, err := ac.PaginateAll(ctx, request, pagOpts)
 		if err != nil {
-			return output.ErrNetwork("API call failed: %s", err)
+			return err
 		}
-		if apiErr := checkErr(result); apiErr != nil {
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
 			return apiErr
 		}
 		output.FormatValue(out, result, format)

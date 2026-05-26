@@ -212,6 +212,7 @@
 - `dynamic_options_source.table_id` 填来源表 id 或表名
 - `dynamic_options_source.field_id` 填来源字段 id 或字段名
 - `dynamic_options_source` 仅创建支持；更新已有字段时不要传
+- 引用选项条件 / 级联筛选条件：这个功能在 Base 前端支持，属于 UI-only 属性，OpenAPI 里不支持，CLI 不能读取、创建或更新；不要根据接口返回缺失判断未配置
 
 ```json
 {
@@ -310,6 +311,7 @@
 - `bidirectional` 默认 `false`
 - `bidirectional=true` 时，会在被关联表自动创建一个反向关联字段。任一侧记录的关联关系发生变更时，另一侧对应记录会自动同步更新
 - `bidirectional_link_field_name` 仅在 `bidirectional=true` 时使用
+- 关联字段筛选：这个功能在 Base 前端支持，属于 UI-only 属性，OpenAPI 里不支持，CLI 不能读取、创建或更新；不要根据接口返回缺失判断未配置
 
 ```json
 {
@@ -475,7 +477,11 @@
 - `+field-create`：按目标字段配置直接构造 `--json`。
 - `+field-update`：使用同样的 JSON 结构，但语义是 `PUT`；建议先 `+field-get`，再按目标完整状态提交，并带 `--yes`。
 
-## 5. 易错点
+## 5. 暂不支持字段
+
+Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂时都没有被 CLI 支持。这些字段会展示为 `not_support` 字段并被保护：不允许修改，不允许读取内容。
+
+## 6. 易错点
 
 - `select` 只有一个类型；不要写 `single_select` / `multi_select`，用 `multiple` 控制是否多选。
 - `number` 的精度、货币、进度、评分配置都放在 `style` 下，不要写顶层 `precision`。

@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/util"
 )
 
@@ -85,34 +87,56 @@ func (t *SecurityPolicyTransport) RoundTrip(req *http.Request) (*http.Response, 
 	return resp, nil
 }
 
-// tryHandleMCPResponse attempts to parse a JSON-RPC (MCP) formatted error response.
+// tryHandleMCPResponse attempts to parse a JSON-RPC (MCP) formatted error
+// response coming back from a remote server (this transport is installed on
+// lark-cli's outbound HTTP client; the bodies it inspects are produced by the
+// remote, not by lark-cli itself).
+//
+// Observed production shape from the MCP gateway — Lark code in the outer
+// `error.code` slot, hint under `data.cli_hint`:
+//
+//	{"jsonrpc": "2.0", "id": 1,
+//	 "error": {"code": 21000, "message": "...",
+//	           "data": {"challenge_url": "...", "cli_hint": "..."}}}
+//
+// The parser also accepts a JSON-RPC-canonical shape (outer `error.code`
+// carrying the JSON-RPC status like -32603, Lark code under `error.data.code`,
+// hint under `data.hint`) so a future server-side migration to that layout
+// would not silently drop policy detection. The Lark code is looked up in the
+// central code registry; the hint key is read from `data.hint` first and
+// falls back to `data.cli_hint`.
 func (t *SecurityPolicyTransport) tryHandleMCPResponse(result map[string]interface{}) error {
-	// MCP (JSON-RPC) response format:
-	// {
-	//   "error": {
-	//     "code": 21000,
-	//     "message": "...",
-	//     "data": { "challenge_url": "...", "cli_hint": "..." }
-	//   }
-	// }
 	errMap, ok := result["error"].(map[string]interface{})
 	if !ok {
 		return nil
 	}
 
-	code := getInt(errMap, "code", 0)
-	if code != LarkErrBlockByPolicyTryAuth && code != LarkErrBlockByPolicy {
+	dataMap, _ := errMap["data"].(map[string]interface{})
+
+	// Try data.code first (shape B); fall back to outer error.code (shape A).
+	code := 0
+	if dataMap != nil {
+		code = getInt(dataMap, "code", 0)
+	}
+	if code == 0 {
+		code = getInt(errMap, "code", 0)
+	}
+	meta, ok := errclass.LookupCodeMeta(code)
+	if !ok || meta.Category != errs.CategoryPolicy {
 		return nil
 	}
 
-	dataMap, ok := errMap["data"].(map[string]interface{})
-	if !ok {
+	if dataMap == nil {
 		return nil
 	}
 
 	// Clean up backticks and spaces from challenge_url
 	challengeUrl := strings.Trim(getStr(dataMap, "challenge_url"), " `")
-	cliHint := getStr(dataMap, "cli_hint")
+	// Read `hint` first; fall back to `cli_hint` so either spelling surfaces.
+	cliHint := getStr(dataMap, "hint")
+	if cliHint == "" {
+		cliHint = getStr(dataMap, "cli_hint")
+	}
 	msg := getStr(errMap, "message")
 
 	if challengeUrl != "" || cliHint != "" {
@@ -122,11 +146,15 @@ func (t *SecurityPolicyTransport) tryHandleMCPResponse(result map[string]interfa
 		}
 
 		if challengeUrl != "" || cliHint != "" {
-			return &SecurityPolicyError{
-				Code:         code,
-				Message:      msg,
+			return &errs.SecurityPolicyError{
+				Problem: errs.Problem{
+					Category: errs.CategoryPolicy,
+					Subtype:  meta.Subtype,
+					Code:     code,
+					Message:  msg,
+					Hint:     cliHint,
+				},
 				ChallengeURL: challengeUrl,
-				CLIHint:      cliHint,
 			}
 		}
 	}
@@ -146,8 +174,9 @@ func (t *SecurityPolicyTransport) tryHandleOAPIResponse(result map[string]interf
 		}
 	}
 
-	// 2. Check if it's a security policy error
-	if code != LarkErrBlockByPolicyTryAuth && code != LarkErrBlockByPolicy {
+	// 2. Check if it's a security policy error (consult central code registry)
+	meta, ok := errclass.LookupCodeMeta(code)
+	if !ok || meta.Category != errs.CategoryPolicy {
 		return nil
 	}
 
@@ -173,11 +202,15 @@ func (t *SecurityPolicyTransport) tryHandleOAPIResponse(result map[string]interf
 		}
 
 		if msg != "" || challengeUrl != "" || cliHint != "" {
-			return &SecurityPolicyError{
-				Code:         code,
-				Message:      msg,
+			return &errs.SecurityPolicyError{
+				Problem: errs.Problem{
+					Category: errs.CategoryPolicy,
+					Subtype:  meta.Subtype,
+					Code:     code,
+					Message:  msg,
+					Hint:     cliHint,
+				},
 				ChallengeURL: challengeUrl,
-				CLIHint:      cliHint,
 			}
 		}
 	}

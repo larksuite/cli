@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 // wikiNodeGetURLObjTypes maps a Lark URL path prefix (slash-bounded) to the
@@ -57,14 +58,26 @@ var WikiNodeGet = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "token", Desc: "wiki node_token, obj_token, or a Lark URL embedding one of them", Required: true},
-		{Name: "obj-type", Desc: "obj_type when --token is an obj_token; auto-inferred from URL path when omitted", Enum: wikiNodeGetObjTypeEnum},
+		// --node-token is the canonical flag, matching sibling wiki commands
+		// (+node-delete / +node-copy / +move). --token is the original name
+		// and is kept as a hidden deprecated alias for backward compatibility;
+		// MarkDeprecated (registered in PostMount) prints a stderr warning
+		// when --token is used.
+		{Name: "node-token", Desc: "wiki node_token, obj_token, or a Lark URL embedding one of them"},
+		{Name: "token", Desc: "DEPRECATED: use --node-token", Hidden: true},
+		{Name: "obj-type", Desc: "obj_type when --node-token is an obj_token; auto-inferred from URL path when omitted", Enum: wikiNodeGetObjTypeEnum},
 		{Name: "space-id", Desc: "optional: assert the resolved node lives in this space"},
 	},
 	Tips: []string{
-		"--token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>.",
+		"--node-token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>.",
 		"For raw obj_tokens (not starting with wik), pass --obj-type so the API knows how to resolve them; URL inputs infer it from the path.",
 		"Pair with +move / +node-copy / +delete-space to confirm space_id, obj_type, and parent before mutating.",
+		"--token is the deprecated original name and still works for backward compatibility; new scripts should use --node-token.",
+	},
+	PostMount: func(cmd *cobra.Command) {
+		// cobra's MarkDeprecated prints "Flag --token has been deprecated, use --node-token instead"
+		// to stderr on use, and hides the flag from --help (matching the Hidden: true marker above).
+		_ = cmd.Flags().MarkDeprecated("token", "use --node-token instead")
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := readWikiNodeGetSpec(runtime)
@@ -142,11 +155,36 @@ func (spec wikiNodeGetSpec) RequestParams() map[string]interface{} {
 }
 
 func readWikiNodeGetSpec(runtime *common.RuntimeContext) (wikiNodeGetSpec, error) {
-	return parseWikiNodeGetSpec(
+	rawToken, err := resolveWikiNodeGetRawToken(
+		runtime.Str("node-token"),
 		runtime.Str("token"),
+	)
+	if err != nil {
+		return wikiNodeGetSpec{}, err
+	}
+	return parseWikiNodeGetSpec(
+		rawToken,
 		runtime.Str("obj-type"),
 		runtime.Str("space-id"),
 	)
+}
+
+// resolveWikiNodeGetRawToken picks between the canonical --node-token and the
+// deprecated --token alias. Both empty is fine (parseWikiNodeGetSpec will
+// surface the required-flag error). Both set with different values is rejected
+// upfront so callers fix the obvious bug rather than silently picking one.
+func resolveWikiNodeGetRawToken(nodeToken, legacyToken string) (string, error) {
+	canonical := strings.TrimSpace(nodeToken)
+	legacy := strings.TrimSpace(legacyToken)
+	switch {
+	case canonical != "" && legacy != "" && canonical != legacy:
+		return "", output.ErrValidation(
+			"--node-token and --token are both set with different values; pass --node-token only (--token is deprecated)")
+	case canonical != "":
+		return nodeToken, nil
+	default:
+		return legacyToken, nil
+	}
 }
 
 // parseWikiNodeGetSpec normalizes the raw flag values: extracts a token from a
@@ -155,7 +193,7 @@ func readWikiNodeGetSpec(runtime *common.RuntimeContext) (wikiNodeGetSpec, error
 func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetSpec, error) {
 	tokenInput := strings.TrimSpace(rawToken)
 	if tokenInput == "" {
-		return wikiNodeGetSpec{}, output.ErrValidation("--token is required")
+		return wikiNodeGetSpec{}, output.ErrValidation("--node-token is required")
 	}
 
 	spec := wikiNodeGetSpec{
@@ -166,12 +204,12 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 	if strings.Contains(tokenInput, "://") {
 		u, err := url.Parse(tokenInput)
 		if err != nil || u.Path == "" {
-			return wikiNodeGetSpec{}, output.ErrValidation("--token URL is malformed: %q", tokenInput)
+			return wikiNodeGetSpec{}, output.ErrValidation("--node-token URL is malformed: %q", tokenInput)
 		}
 		token, urlObjType, ok := tokenAndObjTypeFromWikiURL(u.Path)
 		if !ok {
 			return wikiNodeGetSpec{}, output.ErrValidation(
-				"unsupported --token URL path %q: expected /wiki/, /docx/, /doc/, /sheets/, /base/, /mindnote/, /slides/, or /file/ followed by a token",
+				"unsupported --node-token URL path %q: expected /wiki/, /docx/, /doc/, /sheets/, /base/, /mindnote/, /slides/, or /file/ followed by a token",
 				u.Path,
 			)
 		}
@@ -192,7 +230,7 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		}
 	} else if strings.ContainsAny(tokenInput, "/?#") {
 		return wikiNodeGetSpec{}, output.ErrValidation(
-			"--token must be a raw token or a full URL; partial paths are not accepted: %q",
+			"--node-token must be a raw token or a full URL; partial paths are not accepted: %q",
 			tokenInput,
 		)
 	} else {
@@ -223,7 +261,7 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		}
 	}
 
-	if err := validateOptionalResourceName(spec.Token, "--token"); err != nil {
+	if err := validateOptionalResourceName(spec.Token, "--node-token"); err != nil {
 		return wikiNodeGetSpec{}, err
 	}
 	if err := validateOptionalResourceName(spec.SpaceID, "--space-id"); err != nil {

@@ -199,6 +199,13 @@ func runObserverSafe(ctx context.Context, obs ObserverEntry, inv platform.Invoca
 // *output.ExitError so cmd/root.go's envelope writer emits the right
 // JSON structure (type="hook"). Non-AbortError values pass through
 // unchanged.
+//
+// Deprecated: wrapAbortError converts to a legacy *output.ExitError that
+// predates the typed error contract introduced by errs/. New code MUST NOT
+// add producers of this shape — hook abort signals should move to a typed
+// *errs.XxxError (typed hook error is tracked for the hook framework
+// migration PR). This helper is retained only while existing call sites are
+// migrated; it will be removed once they have moved to the typed surface.
 func wrapAbortError(err error) error {
 	if err == nil {
 		return nil

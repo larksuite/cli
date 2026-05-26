@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -463,7 +464,7 @@ func validateExpectedFlag(s string) error {
 	}
 	var arr []interface{}
 	if err := json.Unmarshal([]byte(s), &arr); err != nil {
-		return fmt.Errorf("--expected must be a JSON array (e.g. [\"6\"]), got: %s", s)
+		return output.ErrValidation("--expected must be a JSON array (e.g. [\"6\"]), got: %s", s)
 	}
 	return nil
 }

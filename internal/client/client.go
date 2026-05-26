@@ -91,12 +91,28 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 // DoSDKRequest resolves auth for the given identity and executes a pre-built SDK request.
 // This is the shared auth+execute path used by both DoAPI (generic API calls via RawApiRequest)
 // and shortcut RuntimeContext.DoAPI (direct larkcore.ApiReq calls).
+//
+// SDK Do() failures are normalised through WrapDoAPIError so every caller
+// (cmd/api, RuntimeContext, shortcuts) gets the same wire shape without each
+// one remembering to wrap. In stage 1 that wire shape is still the legacy
+// *output.ExitError envelope (network / api_error) — the stage-4 framework
+// boundary migration flips WrapDoAPIError to typed *errs.NetworkError /
+// *errs.InternalError per the contract in errs/ERROR_CONTRACT.md.
+// Errors that arrive already-classified (legacy *output.ExitError from
+// resolveAccessToken's missing-credential paths, or a typed *errs.* from
+// future stages) flow through unchanged.
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
-		return nil, err
+		// WrapDoAPIError is idempotent on already-classified errors:
+		// the *output.ExitError that resolveAccessToken returns for missing
+		// tokens (via output.ErrAuth) passes through with its auth category
+		// and exit 3 intact, and any future typed *errs.* error from the
+		// credential chain survives the same way. Only stray untyped errors
+		// (raw fmt.Errorf) get the transport-or-internal fallback.
+		return nil, WrapDoAPIError(err)
 	}
 	if as.IsBot() {
 		req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
@@ -107,7 +123,11 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	}
 
 	opts = append(opts, extraOpts...)
-	return c.SDK.Do(ctx, req, opts...)
+	resp, err := c.SDK.Do(ctx, req, opts...)
+	if err != nil {
+		return nil, WrapDoAPIError(err)
+	}
+	return resp, nil
 }
 
 // DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
@@ -123,7 +143,10 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	// Resolve auth
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
-		return nil, err
+		// See DoSDKRequest comment on the same wrap pattern; the typed
+		// auth-error pass-through plus untyped fallback applies equally to
+		// streaming requests.
+		return nil, WrapDoAPIError(err)
 	}
 
 	// Build URL
@@ -259,14 +282,27 @@ func (c *APIClient) DoAPI(ctx context.Context, request RawApiRequest) (*larkcore
 	return c.DoSDKRequest(ctx, apiReq, request.As, extraOpts...)
 }
 
-// CallAPI is a convenience wrapper: DoAPI + ParseJSONResponse.
-// Use DoAPI directly when the response may not be JSON (e.g. file downloads).
+// CallAPI is a convenience wrapper: DoAPI + ParseJSONResponse. Use DoAPI
+// directly when the response may not be JSON (e.g. file downloads).
+//
+// JSON parse failures are wrapped via WrapJSONResponseParseError so callers
+// (notably the pagination loop and --page-all paths in cmd/api / cmd/service)
+// see an *output.ExitError envelope (api_error for malformed JSON, network
+// for everything else) instead of a bare fmt.Errorf. Without this, an empty
+// or malformed page body would surface to the root handler as a plain-text
+// "Error: ..." line, bypassing the JSON stderr envelope contract. Stage-4
+// framework-boundary migration will flip this wrapper to typed
+// *errs.InternalError / *errs.NetworkError.
 func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interface{}, error) {
 	resp, err := c.DoAPI(ctx, request)
 	if err != nil {
 		return nil, err
 	}
-	return ParseJSONResponse(resp)
+	result, parseErr := ParseJSONResponse(resp)
+	if parseErr != nil {
+		return nil, WrapJSONResponseParseError(parseErr, resp.RawBody)
+	}
+	return result, nil
 }
 
 // paginateLoop runs the core pagination loop. For each successful page (code == 0),
@@ -410,10 +446,14 @@ func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onIt
 	return map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{}}, false, nil
 }
 
-// CheckLarkResponse inspects a Lark API response for business-level errors (non-zero code).
-// Uses type assertion instead of interface{} == nil to satisfy interface_nil_check lint.
-// Returns nil if result is not a map, map is nil, or code is 0.
-func CheckLarkResponse(result interface{}) error {
+// CheckResponse inspects a Lark API response for business-level errors (non-zero code).
+//
+// Deprecated: legacy *output.ExitError wire shape via output.ErrAPI /
+// ClassifyLarkError (type "api_error" / "permission" / etc). Preserved so
+// existing callers keep emitting the same envelope until per-domain
+// migration to typed errors. The identity parameter is reserved for the
+// stage-2 typed path; stage-1 ignores it.
+func (c *APIClient) CheckResponse(result interface{}, identity core.Identity) error {
 	resultMap, ok := result.(map[string]interface{})
 	if !ok || resultMap == nil {
 		return nil

@@ -10,14 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -200,22 +199,52 @@ func configureFlagCompletions(args []string) {
 
 // handleRootError dispatches a command error to the appropriate handler
 // and returns the process exit code.
+//
+// Dispatch order:
+//  1. *errs.SecurityPolicyError: keeps the legacy custom envelope
+//     (type=auth_error, string code, retryable, challenge_url) and exit 1.
+//     Carve-out from the typed taxonomy — wire migration deferred to a later PR.
+//  2. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError):
+//     render via the typed envelope writer, which lifts extension fields
+//     (missing_scopes, console_url, ...) to the top level. Routed by
+//     errs.CategoryOf via ExitCodeOf.
+//  3. *core.ConfigError + Legacy *output.ExitError: asExitError adapts them
+//     to a legacy envelope; written via WriteErrorEnvelope. Stage-1 keeps
+//     this path so existing wire shapes are preserved byte-for-byte until
+//     per-domain typed migration in stage 2+.
+//  4. Cobra errors (required flags, unknown commands, etc.): plain text.
 func handleRootError(f *cmdutil.Factory, err error) int {
 	errOut := f.IOStreams.ErrOut
 
-	// SecurityPolicyError uses a custom envelope format (string codes, challenge_url, retryable)
-	// that differs from the standard ErrDetail, so it's handled separately.
-	var spErr *internalauth.SecurityPolicyError
+	// SecurityPolicyError keeps the legacy custom envelope (string codes,
+	// challenge_url, retryable) and exit code 1 — its wire shape predates the
+	// typed taxonomy and downstream OAuth/policy consumers depend on it.
+	// The taxonomy migration for this category is deferred to a later PR.
+	var spErr *errs.SecurityPolicyError
 	if errors.As(err, &spErr) {
 		writeSecurityPolicyError(errOut, spErr)
 		return 1
 	}
 
-	// All other structured errors normalize to ExitError.
+	// *core.ConfigError flows raw to the legacy envelope path in stage 1
+	// (asExitError → output.ErrWithHint). Typed migration via
+	// errcompat.PromoteConfigError happens in stage 2+.
+
+	// When the typed error is a need_user_authorization signal, fold in the
+	// current command's declared scopes as a Hint so the user/AI sees the
+	// concrete scope(s) to re-auth with. The hint is computed on the fly from
+	// local shortcut/service metadata — it never depends on server state.
+	applyNeedAuthorizationHint(f, err)
+
+	if output.WriteTypedErrorEnvelope(errOut, err, string(f.ResolvedIdentity)) {
+		return output.ExitCodeOf(err)
+	}
+
 	if exitErr := asExitError(err); exitErr != nil {
 		if !exitErr.Raw {
-			// Raw errors (e.g. from `api` command) preserve the original API
-			// error detail; skip enrichment which would clear it.
+			// Raw errors (e.g. from `api` command via output.MarkRaw)
+			// preserve the original API error detail; skip enrichment
+			// which would clear it.
 			enrichMissingScopeError(f, exitErr)
 			enrichPermissionError(f, exitErr)
 		}
@@ -223,35 +252,21 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 		return exitErr.Code
 	}
 
-	// Cobra errors (required flags, unknown commands, etc.)
 	fmt.Fprintln(errOut, "Error:", err)
 	return 1
 }
 
-// asExitError converts known structured error types to *output.ExitError.
-// Returns nil for unrecognized errors (e.g. cobra flag errors).
-func asExitError(err error) *output.ExitError {
-	var cfgErr *core.ConfigError
-	if errors.As(err, &cfgErr) {
-		return output.ErrWithHint(cfgErr.Code, cfgErr.Type, cfgErr.Message, cfgErr.Hint)
-	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr
-	}
-	return nil
-}
-
-// writeSecurityPolicyError writes the security-policy-specific JSON envelope to w.
-// This format intentionally differs from the standard ErrDetail envelope:
-// it uses string codes ("challenge_required"/"access_denied") and extra fields
-// (retryable, challenge_url) for machine-readable policy error handling.
-func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyError) {
+// writeSecurityPolicyError writes the security-policy-specific JSON envelope.
+// This wire format intentionally differs from the typed envelope writer: it
+// uses string codes ("challenge_required"/"access_denied"), a "auth_error"
+// type literal, and a top-level "retryable" field — the shape OAuth/policy
+// consumers have been parsing since before the typed taxonomy existed.
+func writeSecurityPolicyError(w io.Writer, spErr *errs.SecurityPolicyError) {
 	var codeStr string
-	switch spErr.Code {
-	case internalauth.LarkErrBlockByPolicyTryAuth:
+	switch spErr.Subtype {
+	case errs.SubtypeChallengeRequired:
 		codeStr = "challenge_required"
-	case internalauth.LarkErrBlockByPolicy:
+	case errs.SubtypeAccessDenied:
 		codeStr = "access_denied"
 	default:
 		codeStr = strconv.Itoa(spErr.Code)
@@ -266,8 +281,8 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 	if spErr.ChallengeURL != "" {
 		errData["challenge_url"] = spErr.ChallengeURL
 	}
-	if spErr.CLIHint != "" {
-		errData["hint"] = spErr.CLIHint
+	if spErr.Hint != "" {
+		errData["hint"] = spErr.Hint
 	}
 
 	env := map[string]interface{}{"ok": false, "error": errData}
@@ -276,13 +291,27 @@ func writeSecurityPolicyError(w io.Writer, spErr *internalauth.SecurityPolicyErr
 	encoder := json.NewEncoder(buffer)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
-	err := encoder.Encode(env)
-
-	if err != nil {
+	if encErr := encoder.Encode(env); encErr != nil {
 		fmt.Fprintln(w, `{"ok":false,"error":{"type":"internal_error","code":"marshal_error","message":"failed to marshal error"}}`)
 		return
 	}
 	fmt.Fprint(w, buffer.String())
+}
+
+// asExitError converts known structured error types to *output.ExitError.
+// Returns nil for unrecognized errors (e.g. cobra flag errors).
+//
+// Deprecated: legacy *output.ExitError bridge; removed after typed migration.
+func asExitError(err error) *output.ExitError {
+	var cfgErr *core.ConfigError
+	if errors.As(err, &cfgErr) {
+		return output.ErrWithHint(cfgErr.Code, cfgErr.Type, cfgErr.Message, cfgErr.Hint)
+	}
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr
+	}
+	return nil
 }
 
 // installUnknownSubcommandGuard replaces cobra's silent help fallback on
@@ -307,6 +336,13 @@ func installUnknownSubcommandGuard(cmd *cobra.Command) {
 	}
 }
 
+// Deprecated: unknownSubcommandRunE produces a legacy *output.ExitError that
+// predates the typed error contract introduced by errs/. New code MUST NOT
+// add producers of this shape — unknown-subcommand signals should move to
+// a typed *errs.ValidationError (or a dedicated typed error) carrying the
+// agent-protocol metadata as typed extension fields. This helper is retained
+// only while existing dispatch sites are migrated; it will be removed once
+// they have moved to the typed surface.
 func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return cmd.Help()
@@ -381,16 +417,22 @@ func installTipsHelpFunc(root *cobra.Command) {
 	})
 }
 
-// enrichPermissionError adds console_url and improves the hint for permission errors.
-// It differentiates between:
-//   - LarkErrAppScopeNotEnabled (99991672): app has not enabled the API scope → hint to admin console
-//   - LarkErrUserScopeInsufficient (99991679): user has not authorized the scope → hint to auth login --scope
+// enrichPermissionError adds console_url and improves the hint for legacy
+// *output.ExitError permission errors. Differentiates between:
+//   - LarkErrAppScopeNotEnabled (99991672): app has not enabled the scope
+//   - LarkErrUserScopeInsufficient (99991679) / LarkErrUserNotAuthorized:
+//     user has not authorized the scope → hint to auth login
+//   - default: other permission errors → console + auth-login fallback
+//
+// Deprecated: stage-1 enrichment for the legacy *output.ExitError envelope.
+// Stage-2 typed migration will lift this into PermissionError.MissingScopes
+// + ConsoleURL on the typed envelope and remove this helper.
 func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr.Detail == nil || exitErr.Detail.Type != "permission" {
 		return
 	}
-	// Extract required scopes from API error detail
-	scopes := extractRequiredScopes(exitErr.Detail.Detail)
+	// Extract required scopes from API error detail (shared helper)
+	scopes := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
 	if len(scopes) == 0 {
 		return
 	}
@@ -401,31 +443,18 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	}
 
 	// Select the recommended (least-privilege) scope
-	scopeIfaces := make([]interface{}, len(scopes))
-	for i, s := range scopes {
-		scopeIfaces[i] = s
-	}
-	recommended := registry.SelectRecommendedScope(scopeIfaces, "tenant")
-	if recommended == "" {
-		recommended = scopes[0]
-	}
+	recommended := registry.SelectRecommendedScopeFromStrings(scopes, "tenant")
 
 	// Build admin console URL with the recommended scope
-	host := "open.feishu.cn"
-	if cfg.Brand == "lark" {
-		host = "open.larksuite.com"
-	}
-	consoleURL := fmt.Sprintf("https://%s/page/scope-apply?clientID=%s&scopes=%s", host, url.QueryEscape(cfg.AppID), url.QueryEscape(recommended))
+	consoleURL := registry.BuildConsoleScopeURL(cfg.Brand, cfg.AppID, recommended)
 
-	// Clear raw API detail — useful info is now in message/hint/console_url
+	// Clear raw API detail — useful info is now in message/hint/console_url.
 	exitErr.Detail.Detail = nil
 
 	isBot := f.ResolvedIdentity.IsBot()
-
 	larkCode := exitErr.Detail.Code
 	switch larkCode {
 	case output.LarkErrUserScopeInsufficient, output.LarkErrUserNotAuthorized:
-		// User has not authorized the scope → re-authorize
 		exitErr.Detail.Message = fmt.Sprintf("User not authorized: required scope %s [%d]", recommended, larkCode)
 		if isBot {
 			exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
@@ -435,13 +464,11 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		exitErr.Detail.ConsoleURL = consoleURL
 
 	case output.LarkErrAppScopeNotEnabled:
-		// App has not enabled the API scope → admin console
 		exitErr.Detail.Message = fmt.Sprintf("App scope not enabled: required scope %s [%d]", recommended, larkCode)
 		exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
 		exitErr.Detail.ConsoleURL = consoleURL
 
 	default:
-		// Other permission errors (matched by keyword)
 		exitErr.Detail.Message = fmt.Sprintf("Permission denied: required scope %s [%d]", recommended, larkCode)
 		if isBot {
 			exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
@@ -451,27 +478,4 @@ func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
 		}
 		exitErr.Detail.ConsoleURL = consoleURL
 	}
-}
-
-// extractRequiredScopes extracts scope names from the API error's permission_violations field.
-func extractRequiredScopes(detail interface{}) []string {
-	m, ok := detail.(map[string]interface{})
-	if !ok {
-		return nil
-	}
-	violations, ok := m["permission_violations"].([]interface{})
-	if !ok {
-		return nil
-	}
-	var scopes []string
-	for _, v := range violations {
-		vm, ok := v.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if subject, ok := vm["subject"].(string); ok {
-			scopes = append(scopes, subject)
-		}
-	}
-	return scopes
 }

@@ -19,9 +19,11 @@ func TestAppsUpdate_PartialFields(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"app_id":     "app_x",
-				"name":       "renamed",
-				"updated_at": "2026-05-18T10:05:00Z",
+				"app": map[string]interface{}{
+					"app_id":     "app_x",
+					"name":       "renamed",
+					"updated_at": "2026-05-18T10:05:00Z",
+				},
 			},
 		},
 	}
@@ -73,7 +75,9 @@ func TestAppsUpdate_TrimsAppIDInPath(t *testing.T) {
 		URL:    "/open-apis/spark/v1/apps/app_x",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"app_id": "app_x"},
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{"app_id": "app_x"},
+			},
 		},
 	}
 	reg.Register(stub)
@@ -82,5 +86,31 @@ func TestAppsUpdate_TrimsAppIDInPath(t *testing.T) {
 		[]string{"+update", "--app-id", "  app_x  ", "--name", "renamed", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
+	}
+}
+
+// TestAppsUpdate_PrettyOutputReadsNestedAppID exercises the prettyFn callback
+// passed to OutFormat (only invoked under --format pretty) so the new
+// data.app.app_id nesting is actually read by the text writer.
+func TestAppsUpdate_PrettyOutputReadsNestedAppID(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/spark/v1/apps/app_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{"app_id": "app_x", "name": "renamed"},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsUpdate,
+		[]string{"+update", "--app-id", "app_x", "--name", "renamed", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "updated: app_x") {
+		t.Fatalf("pretty output should read app_id from data.app.app_id, got: %q", got)
 	}
 }

@@ -8,7 +8,7 @@ import "fmt"
 // ConfigError is a structured error from config resolution.
 // It carries enough information for main.go to convert it into an output.ExitError.
 type ConfigError struct {
-	Code    int    // exit code: 2=validation, 3=auth
+	Code    int    // exit code: 3 (config errors share the auth exit code)
 	Type    string // "config" or "auth"
 	Message string
 	Hint    string

@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-把本地目录**单向、文件级**镜像到飞书云空间的某个文件夹（本地 → Drive）。命令递归列出 `--folder-token` 下的远端清单，遍历 `--local-dir` 的所有常规文件，按相对路径在 Drive 上新建、覆盖或跳过；可选地（`--delete-remote --yes`）删除云端"本地没有"的 `type=file`。
+把本地目录**单向、文件级**镜像到飞书云空间（云盘/云存储）的某个文件夹（本地 → Drive）。命令递归列出 `--folder-token` 下的远端清单，遍历 `--local-dir` 的所有常规文件，按相对路径在 Drive 上新建、覆盖或跳过；可选地（`--delete-remote --yes`）删除云端"本地没有"的 `type=file`。
 
 > **"文件级镜像"≠"目录镜像"。** 命令只在文件维度收敛差异：本地多了文件就上传，本地少了文件且开了 `--delete-remote --yes` 就删远端文件。**远端只有的空目录、本地已删除的目录**都不会被收敛，云端目录树的多余结构不会被清理。如果需要"目录也要保持完全一致"，得自行先 `+status` 找差异、再手动处理多余目录。
 
@@ -155,7 +155,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) —— 云空间全部命令
+- [lark-drive](../SKILL.md) —— 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) —— 认证和全局参数
 - [lark-drive-status](lark-drive-status.md) —— 上传前先看差异（避免全量回写）
 - [lark-drive-pull](lark-drive-pull.md) —— Drive → 本地的对称命令

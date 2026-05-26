@@ -13,30 +13,45 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// assertExitError checks the full structured error in one assertion.
+// assertExitError checks the full structured error in one assertion. It
+// accepts both *output.ExitError (used by output.ErrWithHint) and the
+// typed validation error — they normalize to the same wantDetail fields.
 func assertExitError(t *testing.T, err error, wantCode int, wantDetail output.ErrDetail) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+	if errors.As(err, &exitErr) {
+		if exitErr.Code != wantCode {
+			t.Errorf("exit code = %d, want %d", exitErr.Code, wantCode)
+		}
+		if exitErr.Detail == nil {
+			t.Fatal("expected non-nil error detail")
+		}
+		if !reflect.DeepEqual(*exitErr.Detail, wantDetail) {
+			t.Errorf("error detail mismatch:\n  got:  %+v\n  want: %+v", *exitErr.Detail, wantDetail)
+		}
+		return
 	}
-	if exitErr.Code != wantCode {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, wantCode)
+	var ve *errs.ValidationError
+	if errors.As(err, &ve) {
+		if got := output.ExitCodeOf(err); got != wantCode {
+			t.Errorf("exit code = %d, want %d", got, wantCode)
+		}
+		gotDetail := output.ErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
+		if !reflect.DeepEqual(gotDetail, wantDetail) {
+			t.Errorf("validation error mismatch:\n  got:  %+v\n  want: %+v", gotDetail, wantDetail)
+		}
+		return
 	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected non-nil error detail")
-	}
-	if !reflect.DeepEqual(*exitErr.Detail, wantDetail) {
-		t.Errorf("error detail mismatch:\n  got:  %+v\n  want: %+v", *exitErr.Detail, wantDetail)
-	}
+	t.Fatalf("error type = %T, want *output.ExitError or *errs.ValidationError; error = %v", err, err)
 }
 
 // assertEnvelope decodes stdout and checks it matches want exactly — every key
@@ -595,8 +610,10 @@ func TestConfigShowRun_AgentWorkspaceNotBound(t *testing.T) {
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("error type = %T, want *core.ConfigError", err)
 	}
-	if cfgErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", cfgErr.Code, output.ExitValidation)
+	// Config errors share ExitAuth (3); the workspace is detected but no
+	// binding exists yet, which is a config error.
+	if cfgErr.Code != output.ExitAuth {
+		t.Errorf("exit code = %d, want %d (config category → ExitAuth)", cfgErr.Code, output.ExitAuth)
 	}
 	if cfgErr.Type != "openclaw" {
 		t.Errorf("type = %q, want %q", cfgErr.Type, "openclaw")

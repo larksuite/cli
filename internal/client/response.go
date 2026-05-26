@@ -15,6 +15,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -30,8 +31,13 @@ type ResponseOptions struct {
 	ErrOut      io.Writer     // stderr
 	FileIO      fileio.FileIO // file transfer abstraction; required when saving files (--output or binary response)
 	CommandPath string        // raw cobra CommandPath() for content safety scanning
-	// CheckError is called on parsed JSON results. Nil defaults to CheckLarkResponse.
-	CheckError func(interface{}) error
+	// Identity is forwarded to CheckError (default or caller-supplied) so the
+	// classifier can populate identity-aware fields (e.g. PermissionError.Identity).
+	// Defaults to core.AsUser when empty.
+	Identity core.Identity
+	// CheckError is called on parsed JSON results. Nil defaults to (*APIClient).CheckResponse
+	// with the Identity field (or AsUser when unset).
+	CheckError func(result interface{}, identity core.Identity) error
 }
 
 // HandleResponse routes a raw *larkcore.ApiResp to the appropriate output:
@@ -40,9 +46,21 @@ type ResponseOptions struct {
 //  3. If Content-Type is non-JSON and no --output, auto-save binary to file.
 func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 	ct := resp.Header.Get("Content-Type")
+	identity := opts.Identity
+	if identity == "" {
+		identity = core.AsUser
+	}
 	check := opts.CheckError
 	if check == nil {
-		check = CheckLarkResponse
+		// Stage 1: default check routes through legacy CheckResponse
+		// (output.ErrAPI / ClassifyLarkError). Stage-2+ migration will
+		// switch this to errclass.BuildAPIError so PermissionError carries
+		// MissingScopes / ConsoleURL — at that point a zero-value
+		// *APIClient still works because BuildAPIError short-circuits on
+		// empty AppID, gracefully degrading identity-aware fields.
+		check = func(r interface{}, id core.Identity) error {
+			return (&APIClient{}).CheckResponse(r, id)
+		}
 	}
 
 	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error directly
@@ -58,7 +76,7 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		if err != nil {
 			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
-		if apiErr := check(result); apiErr != nil {
+		if apiErr := check(result, identity); apiErr != nil {
 			return apiErr
 		}
 		// Content safety scanning

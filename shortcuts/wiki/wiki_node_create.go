@@ -5,8 +5,11 @@ package wiki
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -22,6 +25,16 @@ const (
 	wikiResolvedByExplicitSpaceID = "explicit_space_id"
 	wikiResolvedByParentNode      = "parent_node_token"
 	wikiResolvedByMyLibrary       = "my_library"
+)
+
+const (
+	// wikiNodeCreateMaxRetries is the maximum number of retry attempts after
+	// the initial request when the API returns lock contention (code 131009).
+	wikiNodeCreateMaxRetries = 2
+
+	// wikiNodeCreateRetryBaseDelay is the initial backoff delay for lock
+	// contention retries. Subsequent retries double the delay (250ms, 500ms).
+	wikiNodeCreateRetryBaseDelay = 250 * time.Millisecond
 )
 
 var wikiObjectTypes = []string{
@@ -68,7 +81,7 @@ var WikiNodeCreate = common.Shortcut{
 		spec := readWikiNodeCreateSpec(runtime)
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating wiki node...\n")
-		execution, err := runWikiNodeCreate(ctx, wikiNodeCreateAPI{runtime: runtime}, runtime.As(), spec)
+		execution, err := runWikiNodeCreate(ctx, wikiNodeCreateAPI{runtime: runtime}, runtime.As(), spec, runtime.IO().ErrOut)
 		if err != nil {
 			return err
 		}
@@ -288,15 +301,37 @@ func needsMyLibraryLookup(spec wikiNodeCreateSpec) bool {
 	return spec.SpaceID == "" || spec.SpaceID == wikiMyLibrarySpaceID
 }
 
-func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec) (*wikiNodeCreateExecution, error) {
+func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identity core.Identity, spec wikiNodeCreateSpec, errOut io.Writer) (*wikiNodeCreateExecution, error) {
 	resolvedSpace, err := resolveWikiNodeCreateSpace(ctx, client, identity, spec)
 	if err != nil {
 		return nil, err
 	}
 
-	node, err := client.CreateNode(ctx, resolvedSpace.SpaceID, spec)
-	if err != nil {
-		return nil, err
+	var (
+		node    *wikiNodeRecord
+		lastErr error
+	)
+	for attempt := 0; attempt <= wikiNodeCreateMaxRetries; attempt++ {
+		if attempt > 0 {
+			delay := wikiNodeCreateRetryBaseDelay << uint(attempt-1)
+			fmt.Fprintf(errOut, "Wiki node create encountered lock contention, retrying (attempt %d/%d) in %v...\n", attempt, wikiNodeCreateMaxRetries, delay)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		node, lastErr = client.CreateNode(ctx, resolvedSpace.SpaceID, spec)
+		if lastErr == nil {
+			break
+		}
+		if !isWikiNodeLockContention(lastErr) {
+			return nil, lastErr
+		}
+	}
+	if lastErr != nil {
+		return nil, wrapWikiNodeCreateRetryError(lastErr)
 	}
 	if node == nil {
 		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki node create returned no node")
@@ -306,6 +341,50 @@ func runWikiNodeCreate(ctx context.Context, client wikiNodeCreateClient, identit
 		Node:          node,
 		ResolvedSpace: resolvedSpace,
 	}, nil
+}
+
+// isWikiNodeLockContention returns true if the error is a Lark API error with
+// code 131009 (wiki node lock contention), which is retryable with backoff.
+func isWikiNodeLockContention(err error) bool {
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		return false
+	}
+	return exitErr.Detail.Code == output.LarkErrWikiLockContention
+}
+
+// wrapWikiNodeCreateRetryError appends a retry-exhaustion hint to the original
+// API error. It builds the ExitError by hand (instead of using ErrWithHint) so
+// the original Lark error code survives in the envelope.
+func wrapWikiNodeCreateRetryError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		return err
+	}
+	hint := fmt.Sprintf(
+		"wiki node create failed after %d retries due to lock contention; try again later or reduce concurrent node creations under the same parent",
+		wikiNodeCreateMaxRetries,
+	)
+	if existing := strings.TrimSpace(exitErr.Detail.Hint); existing != "" {
+		hint = existing + "\n" + hint
+	}
+	return &output.ExitError{
+		Code: exitErr.Code,
+		Detail: &output.ErrDetail{
+			Type:       exitErr.Detail.Type,
+			Code:       exitErr.Detail.Code,
+			Message:    exitErr.Detail.Message,
+			Hint:       hint,
+			ConsoleURL: exitErr.Detail.ConsoleURL,
+			Risk:       exitErr.Detail.Risk,
+			Detail:     exitErr.Detail.Detail,
+		},
+		Err: exitErr.Err,
+		Raw: exitErr.Raw,
+	}
 }
 
 // resolveWikiNodeCreateSpace applies the shortcut's precedence rules:

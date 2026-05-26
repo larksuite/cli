@@ -4,9 +4,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -14,12 +18,49 @@ import (
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
-	"github.com/spf13/cobra"
 )
 
-// enrichMissingScopeError preserves the original need_user_authorization
-// message and appends a scope hint when the current command declares the
-// required scopes locally.
+// applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
+// "current command requires scope(s): X, Y" hint when the underlying error is
+// a need_user_authorization signal AND the current command declares scopes
+// locally (via shortcut registration or service-method metadata).
+//
+// Stage-1: this typed path is dormant — no production code returns a typed
+// *errs.AuthenticationError. Kept so per-domain stage-2 migrations can plug
+// in without re-architecting. The active stage-1 path is
+// enrichMissingScopeError below, which operates on legacy *output.ExitError.
+func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
+	if err == nil || f == nil {
+		return
+	}
+	if !internalauth.IsNeedUserAuthorizationError(err) {
+		return
+	}
+	var authErr *errs.AuthenticationError
+	if !errors.As(err, &authErr) {
+		return
+	}
+	scopes := resolveDeclaredScopesForCurrentCommand(f)
+	if len(scopes) == 0 {
+		return
+	}
+	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
+	if authErr.Hint == "" {
+		authErr.Hint = scopeHint
+		return
+	}
+	authErr.Hint += "\n" + scopeHint
+}
+
+// enrichMissingScopeError appends a "current command requires scope(s): X"
+// hint to a legacy *output.ExitError when the underlying error carries the
+// need_user_authorization marker AND the current command declares scopes
+// locally. Matches pre-PR behaviour byte-for-byte; lives on the legacy
+// envelope path until per-domain stage-2 typed migration.
+//
+// Deprecated: stage-1 enrichment for the legacy *output.ExitError surface.
+// Stage-2 typed migration will lift this into AuthenticationError.Hint on
+// the typed envelope via applyNeedAuthorizationHint and remove this helper.
 func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr == nil || exitErr.Detail == nil {
 		return
@@ -27,12 +68,10 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if !internalauth.IsNeedUserAuthorizationError(exitErr) {
 		return
 	}
-
 	scopes := resolveDeclaredScopesForCurrentCommand(f)
 	if len(scopes) == 0 {
 		return
 	}
-
 	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
 	if exitErr.Detail.Hint == "" {
 		exitErr.Detail.Hint = scopeHint

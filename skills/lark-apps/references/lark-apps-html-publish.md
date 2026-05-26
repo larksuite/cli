@@ -23,6 +23,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 |---|---|---|
 | `--app-id <id>` | ✅ | 应用 ID。从 `apps +create` 响应里拿；或者从用户给的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取（详见 `../SKILL.md` "用户没给 app_id" 一节） |
 | `--path <path>` | ✅ | 本地文件或目录路径；目录会递归打包成 tar.gz。**必须含 `index.html`**：目录形态时根目录下，单文件形态时文件名必须就是 `index.html`（妙搭统一以 `index.html` 作为应用入口） |
+| `--allow-sensitive` | ❌ | 跳过 Validate 的凭据文件扫描（详见下面"凭据文件拦截"一节）。默认不传；仅在用户明示要发布凭据示例文件（如教程站的 `.env.example`）时才加 |
 
 ## 返回值
 
@@ -98,7 +99,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist
 ### 场景 2：用户没有 app_id
 
 ```bash
-APP=$(lark-cli apps +create --name "..." -q '.data.app_id' | tr -d '"')
+APP=$(lark-cli apps +create --name "..." --app-type HTML -q '.data.app.app_id' | tr -d '"')
 lark-cli apps +html-publish --app-id "$APP" --path ./dist
 ```
 
@@ -118,24 +119,41 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 > 服务暂时不可用，建议稍后重试。
 
-## 敏感文件警告
+## 凭据文件拦截
 
-dry-run 输出会扫描 manifest 里的相对路径，命中以下任一模式时把它们列入 envelope 的 `warnings` 字段（advisory，不阻断 dry-run）：
+Validate 阶段会扫描 `--path` 下所有候选文件，命中以下任一模式 **直接 exit 非 0**（dry-run 和真发都拦，不再是 advisory warning）：
 
-- `.git/`（任意 SCM 内部文件）
-- `.env` 或 `.env.*`（环境变量 / API key）
+- `.env` / `.env.*`（环境变量 / API key）
 - `.npmrc` / `.netrc`（HTTP 凭据）
-- `.ssh/id_rsa*` / `.ssh/id_ed25519*` / `.ssh/id_ecdsa*` / `.ssh/id_dsa*`
-- `.aws/credentials` / `.aws/config` / `.docker/config.json` / `.gcloud/...` / `.kube/...`
-- `*.pem` / `*.key`（私钥）
+- `.git-credentials`（Git over HTTPS 凭据）
+- `.aws/credentials`、`.docker/config.json`、`.kube/config`（云 SDK 凭据）
 
-**Agent 行为契约**：dry-run 看到 `warnings` 非空，**必须停下来向用户报告并询问是否继续**；用户确认后才能调真实的 `apps +html-publish`（去掉 `--dry-run`）。
+报错形态：
+
+```json
+{
+  "ok": false,
+  "error": {
+    "type": "validation",
+    "message": "--path contains 1 credential file(s) that should not be published: dist/.env",
+    "hint": "remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)"
+  }
+}
+```
+
+**Agent 行为契约**：
+
+- 默认必须从产物里清掉命中的文件后再 publish
+- 只有当用户**明确**意图是 shipping 凭据示例（文档 / 教程站等）时，才追加 `--allow-sensitive` 旁路；旁路时 dry-run 会在 `sensitive_waived` 字段列出被放行的文件名，转述给用户确认
+
+不在拦截范围内（旧版扫过、新版**不再**扫）：`.git/` SCM 历史、SSH 私钥 `id_rsa*` / `id_ed25519*` 等、`*.pem` / `*.key`、`.aws/config`。如果产物里有这些文件且确实敏感，要靠用户自己保持产物目录干净。
 
 ## 提示
 
-- `--path` **不能等于 cwd**（`.` 或 cwd 等价写法均拒）。原因：递归打包 + 互联网公开的组合下，cwd 根的项目级文件（`.git/` / `.env` / `node_modules` / `.aws/credentials`）会被一并打包并通过 share URL 公开访问。强制指定具体子目录或文件，如 `./dist` / `./public/` / `./index.html`
+- `--path` 既可以是 cwd（`.`）也可以是子目录或单文件；**不再硬拒 cwd**，cwd 干净（没有命中上面凭据列表）就能发。仍然建议传具体子目录（`./dist`、`./public/` 等）以减少误打包风险
 - `--path` **必须**是 cwd 内的相对路径（如 `./dist`、`./index.html`）；绝对路径或越界路径（`../`、`/Users/...`）CLI 会直接拒绝。需要发布 cwd 外的目录时，先切到 agent 工作目录再调，**不要**私自 `cd` 绕过
-- 目录打包成 tar.gz 时**不做过滤**（`.git` / `node_modules` 等会一并打包），让用户传干净的产物目录（如 `./dist`）
+- 目录打包成 tar.gz 时**不做过滤**（`.git` / `node_modules` 等会一并打包，只有上面那张凭据 list 才会被 Validate 拦），让用户传干净的产物目录（如 `./dist`）
+- 旁路写法：`apps +html-publish --app-id <id> --path <path> --allow-sensitive`
 - **不要**原样把 envelope JSON 转述给用户
 
 ## 协同命令

@@ -19,7 +19,7 @@ import (
 var DriveImport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+import",
-	Description: "Import a local file to Drive as a cloud document (docx, sheet, bitable)",
+	Description: "Import a local file to Drive as a cloud document (docx, sheet, bitable, slides)",
 	Risk:        "write",
 	Scopes: []string{
 		"docs:document.media:upload",
@@ -27,8 +27,8 @@ var DriveImport = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md, .base; large files auto use multipart upload; .base is capped at 20MB)", Required: true},
-		{Name: "type", Desc: "target document type (docx, sheet, bitable)", Required: true},
+		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md, .base, .pptx; large files auto use multipart upload; .base is capped at 20MB, .pptx at 500MB)", Required: true},
+		{Name: "type", Desc: "target document type (docx, sheet, bitable, slides)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
 		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
@@ -221,10 +221,10 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 // from the API and isn't normalized; if it ever returns aliases like "sheets"
 // or "sheet_v2" the URL construction would silently fall through. Fall back
 // to the user-supplied --type, which is already validated to docx/sheet/
-// bitable, so out.url stays populated whenever status.Token is set.
+// bitable/slides, so out.url stays populated whenever status.Token is set.
 func normalizeDriveImportKindForURL(serverType, fallback string) string {
 	switch strings.ToLower(strings.TrimSpace(serverType)) {
-	case "docx", "sheet", "bitable":
+	case "docx", "sheet", "bitable", "slides":
 		return strings.ToLower(strings.TrimSpace(serverType))
 	}
 	return fallback

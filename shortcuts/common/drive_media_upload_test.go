@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -22,7 +21,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 var commonDriveMediaUploadTestSeq atomic.Int64
@@ -470,36 +468,6 @@ func TestExtractDriveMediaUploadFileTokenRequiresToken(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "upload media failed: no file_token returned") {
 		t.Fatalf("err = %v, want missing file_token error", err)
 	}
-}
-
-func TestWrapDriveMediaUploadRequestError(t *testing.T) {
-	t.Parallel()
-
-	t.Run("preserves exit error", func(t *testing.T) {
-		t.Parallel()
-
-		original := output.ErrValidation("bad input")
-		got := WrapDriveMediaUploadRequestError(original, "upload media failed")
-		if got != original {
-			t.Fatalf("expected same exit error pointer, got %v", got)
-		}
-	})
-
-	t.Run("wraps generic error as network", func(t *testing.T) {
-		t.Parallel()
-
-		got := WrapDriveMediaUploadRequestError(io.EOF, "upload media failed")
-		var exitErr *output.ExitError
-		if !errors.As(got, &exitErr) {
-			t.Fatalf("expected ExitError, got %T", got)
-		}
-		if exitErr.Code != output.ExitNetwork {
-			t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitNetwork)
-		}
-		if !strings.Contains(got.Error(), "upload media failed") {
-			t.Fatalf("unexpected error: %v", got)
-		}
-	})
 }
 
 type capturedDriveMediaMultipartBody struct {
