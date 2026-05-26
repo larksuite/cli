@@ -45,9 +45,27 @@ func TestDriveInspectDryRun_FileURL(t *testing.T) {
 	assertOneStepBatchQuery(t, result)
 }
 
+func TestDriveInspectDryRun_DoubaoDriveFileURL(t *testing.T) {
+	setDriveInspectE2EEnv(t)
+	result := runInspectDryRun(t, "https://feishu.doubao.com/drive/file/boxcnDryRunE2E")
+	assertOneStepBatchQuery(t, result)
+}
+
 func TestDriveInspectDryRun_FolderURL(t *testing.T) {
 	setDriveInspectE2EEnv(t)
 	result := runInspectDryRun(t, "https://xxx.feishu.cn/drive/folder/fldcnDryRunE2E")
+	assertOneStepBatchQuery(t, result)
+}
+
+func TestDriveInspectDryRun_DoubaoChatDriveFolderURL(t *testing.T) {
+	setDriveInspectE2EEnv(t)
+	result := runInspectDryRun(t, "https://feishu.doubao.com/chat/drive/fldcnDryRunE2E")
+	assertOneStepBatchQuery(t, result)
+}
+
+func TestDriveInspectDryRun_DoubaoDriveShareFolderURL(t *testing.T) {
+	setDriveInspectE2EEnv(t)
+	result := runInspectDryRun(t, "https://feishu.doubao.com/drive/shr/fldcnDryRunE2E")
 	assertOneStepBatchQuery(t, result)
 }
 
