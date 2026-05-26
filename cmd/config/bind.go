@@ -420,6 +420,13 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
 		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+uiMsg.BindSuccessNotice)
 
+	// Confirmation line printed only when --lang was explicit. Without this,
+	// a flag-mode caller has no visual evidence the preference write took
+	// effect (the BindSuccess line above doesn't mention language).
+	if opts.langExplicit {
+		fmt.Fprintln(opts.Factory.IOStreams.ErrOut, fmt.Sprintf(uiMsg.LangPreferenceSet, opts.Lang))
+	}
+
 	// TUI mode is a human sitting at a terminal; the BindSuccess notice on
 	// stderr is enough and a machine-readable JSON dump on stdout is just
 	// noise. Flag mode (Agent orchestration, scripts, piped output) still

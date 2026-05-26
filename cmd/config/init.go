@@ -100,6 +100,18 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	return cmd
 }
 
+// printLangPreferenceConfirmation writes the "language preference set"
+// confirmation to stderr, but only when --lang was explicitly passed.
+// Uses the TUI display language (opts.UILang) for the prompt itself;
+// embeds the preference value (opts.Lang) verbatim.
+func printLangPreferenceConfirmation(opts *ConfigInitOptions) {
+	if !opts.langExplicit {
+		return
+	}
+	msg := getInitMsg(opts.UILang)
+	fmt.Fprintln(opts.Factory.IOStreams.ErrOut, fmt.Sprintf(msg.LangPreferenceSet, opts.Lang))
+}
+
 // validateInitLang strictly validates the --lang flag value. Empty string
 // explicitly passed and any value not in i18n.ValidLanguages exit with
 // ExitValidation. When --lang was not passed at all and opts.Lang is
@@ -314,6 +326,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
+		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": opts.AppID, "appSecret": "****", "brand": brand})
 		return nil
 	}
@@ -352,6 +365,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
 			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 		}
+		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
 		return nil
 	}
@@ -393,6 +407,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if result.Mode == "existing" {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
+		printLangPreferenceConfirmation(opts)
 		return nil
 	}
 
@@ -479,5 +494,6 @@ func configInitRun(opts *ConfigInitOptions) error {
 		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
+	printLangPreferenceConfirmation(opts)
 	return nil
 }
