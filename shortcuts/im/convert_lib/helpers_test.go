@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestParseJSONObject(t *testing.T) {
@@ -169,6 +171,114 @@ func TestResolveSenderNames(t *testing.T) {
 	}
 	if got["ou_missing"] != "" {
 		t.Fatalf("missing sender = %#v, want empty", got["ou_missing"])
+	}
+}
+
+func TestResolveSenderNamesAddsCurrentBotAppName(t *testing.T) {
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+	runtime.Config.AppID = "cli_current"
+	botInfoCalls := 0
+	setConvertlibRuntimeField(t, runtime, "botInfoFunc", func() (*common.BotInfo, error) {
+		botInfoCalls++
+		return &common.BotInfo{OpenID: "ou_bot_current", AppName: "Release Bot"}, nil
+	})
+
+	messages := []map[string]interface{}{
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_current"}},
+		{"sender": map[string]interface{}{"sender_type": "bot", "id": "ou_bot_current"}},
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "cli_other"}},
+	}
+
+	nameMap := ResolveSenderNames(runtime, messages, nil)
+	AttachSenderNames(messages, nameMap)
+
+	if botInfoCalls != 1 {
+		t.Fatalf("BotInfo() calls = %d, want 1", botInfoCalls)
+	}
+	for i := 0; i < 2; i++ {
+		sender := messages[i]["sender"].(map[string]interface{})
+		if sender["name"] != "Release Bot" {
+			t.Fatalf("sender %d name = %#v, want %#v", i, sender["name"], "Release Bot")
+		}
+	}
+	otherSender := messages[2]["sender"].(map[string]interface{})
+	if _, hasName := otherSender["name"]; hasName {
+		t.Fatalf("other bot sender should remain unresolved, got %#v", otherSender["name"])
+	}
+}
+
+func TestResolveSenderNamesBatchResolvesBotOpenIDs(t *testing.T) {
+	var requestedBotIDs []string
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/bot/v3/bots/basic_batch"):
+			requestedBotIDs = append(requestedBotIDs, req.URL.Query()["bot_ids"]...)
+			return convertlibJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"bots": map[string]interface{}{
+						"ou_bot_alpha": map[string]interface{}{"bot_id": "ou_bot_alpha", "name": "Alpha Bot"},
+						"ou_bot_beta":  map[string]interface{}{"bot_id": "ou_bot_beta", "name": "Beta Bot"},
+					},
+					"failed_bots": map[string]interface{}{
+						"ou_bot_missing": map[string]interface{}{"code": 20002, "reason": "bot not found"},
+					},
+				},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	messages := []map[string]interface{}{
+		{"sender": map[string]interface{}{"sender_type": "bot", "id": "ou_bot_alpha"}},
+		{"sender": map[string]interface{}{"sender_type": "app", "id": "ou_bot_beta"}},
+		{"sender": map[string]interface{}{"sender_type": "bot", "id": "ou_bot_missing"}},
+		{"sender": map[string]interface{}{"sender_type": "bot", "id": "ou_bot_alpha"}},
+	}
+
+	nameMap := ResolveSenderNames(runtime, messages, nil)
+	AttachSenderNames(messages, nameMap)
+
+	if want := []string{"ou_bot_alpha", "ou_bot_beta", "ou_bot_missing"}; !reflect.DeepEqual(requestedBotIDs, want) {
+		t.Fatalf("bot_ids = %#v, want %#v", requestedBotIDs, want)
+	}
+	if got := messages[0]["sender"].(map[string]interface{})["name"]; got != "Alpha Bot" {
+		t.Fatalf("alpha sender name = %#v, want Alpha Bot", got)
+	}
+	if got := messages[1]["sender"].(map[string]interface{})["name"]; got != "Beta Bot" {
+		t.Fatalf("beta sender name = %#v, want Beta Bot", got)
+	}
+	missingSender := messages[2]["sender"].(map[string]interface{})
+	if _, hasName := missingSender["name"]; hasName {
+		t.Fatalf("failed bot sender should remain unresolved, got %#v", missingSender["name"])
+	}
+}
+
+func TestResolveSenderNamesExtractsAppSenderNameFromWelcomeCard(t *testing.T) {
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+	}))
+
+	messages := []map[string]interface{}{
+		{
+			"content": "<card>\n同学们好！我是 **生活bot**，由 @ou_401dd1d6257568b71f210c84ec3d98d1 邀请入群，并由 AIME 提供能力支持。\n</card>",
+			"sender": map[string]interface{}{
+				"id":          "cli_a97a8cbfdf38dcbc",
+				"id_type":     "app_id",
+				"sender_type": "app",
+			},
+		},
+	}
+
+	nameMap := ResolveSenderNames(runtime, messages, nil)
+	AttachSenderNames(messages, nameMap)
+
+	sender := messages[0]["sender"].(map[string]interface{})
+	if sender["name"] != "生活bot" {
+		t.Fatalf("sender name = %#v, want 生活bot", sender["name"])
 	}
 }
 

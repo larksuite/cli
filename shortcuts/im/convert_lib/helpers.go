@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -72,12 +73,14 @@ func formatTimestamp(ts string) string {
 	return time.Unix(n, 0).Local().Format("2006-01-02 15:04:05")
 }
 
-// ResolveSenderNames batch-resolves sender open_ids to display names.
+// ResolveSenderNames batch-resolves sender IDs to display names.
 // The cache map is used to share already-resolved IDs across calls; newly resolved
 // names are written back into it. Pass an empty map if no prior cache exists.
 //
 // Step 1: extract names from message mentions (free, no API call).
-// Step 2: for remaining unresolved IDs, call contact batch API (requires contact:user.base:readonly).
+// Step 2: batch-resolve bot open_ids via bot basic info API.
+// Step 3: resolve the current bot/app sender from bot metadata as fallback.
+// Step 4: for remaining unresolved user IDs, call contact batch API (requires contact:user.base:readonly).
 // Silently returns partial results on API error.
 //
 // [#22] Changed from variadic `cache ...map[string]string` to a required parameter.
@@ -113,6 +116,10 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 		}
 	}
 
+	resolveAppSenderNamesFromContent(messages, nameMap)
+	resolveBotSenderNames(runtime, messages, nameMap)
+	resolveCurrentBotSenderName(runtime, messages, nameMap)
+
 	// Collect sender IDs still missing a name
 	seen := make(map[string]bool)
 	var missingIDs []string
@@ -136,7 +143,7 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 		return nameMap
 	}
 
-	// Step 2: batch resolve remaining via contact API.
+	// Step 4: batch resolve remaining users via contact API.
 	// Use basic_batch for user identity (lighter permission requirement),
 	// full batch for bot identity.
 	if runtime.As().IsBot() {
@@ -146,6 +153,147 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 	}
 
 	return nameMap
+}
+
+var appWelcomeNameRe = regexp.MustCompile(`我是\s+\*\*([^*\n]+)\*\*`)
+
+func resolveAppSenderNamesFromContent(messages []map[string]interface{}, nameMap map[string]string) {
+	for _, msg := range messages {
+		sender, ok := msg["sender"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		senderType, _ := sender["sender_type"].(string)
+		idType, _ := sender["id_type"].(string)
+		id, _ := sender["id"].(string)
+		if !isBotSenderType(senderType) || idType != "app_id" || id == "" || nameMap[id] != "" || senderHasName(sender) {
+			continue
+		}
+		content, _ := msg["content"].(string)
+		name := extractAppWelcomeName(content)
+		if name != "" {
+			nameMap[id] = name
+		}
+	}
+}
+
+func extractAppWelcomeName(content string) string {
+	match := appWelcomeNameRe.FindStringSubmatch(content)
+	if len(match) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(match[1])
+}
+
+func resolveBotSenderNames(runtime *common.RuntimeContext, messages []map[string]interface{}, nameMap map[string]string) {
+	if runtime == nil {
+		return
+	}
+
+	seen := make(map[string]bool)
+	var missingIDs []string
+	for _, msg := range messages {
+		sender, ok := msg["sender"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		senderType, _ := sender["sender_type"].(string)
+		if !isBotSenderType(senderType) {
+			continue
+		}
+		id, _ := sender["id"].(string)
+		if id == "" || !strings.HasPrefix(id, "ou_") || seen[id] || nameMap[id] != "" || senderHasName(sender) {
+			continue
+		}
+		seen[id] = true
+		missingIDs = append(missingIDs, id)
+	}
+	if len(missingIDs) == 0 {
+		return
+	}
+
+	batchResolveBots(runtime, missingIDs, nameMap)
+}
+
+func resolveCurrentBotSenderName(runtime *common.RuntimeContext, messages []map[string]interface{}, nameMap map[string]string) {
+	if runtime == nil {
+		return
+	}
+
+	seen := make(map[string]bool)
+	var missingIDs []string
+	for _, msg := range messages {
+		sender, ok := msg["sender"].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		senderType, _ := sender["sender_type"].(string)
+		if !isBotSenderType(senderType) {
+			continue
+		}
+		id, _ := sender["id"].(string)
+		if id == "" || seen[id] || nameMap[id] != "" || senderHasName(sender) {
+			continue
+		}
+		seen[id] = true
+		missingIDs = append(missingIDs, id)
+	}
+	if len(missingIDs) == 0 {
+		return
+	}
+
+	info, err := runtime.BotInfo()
+	if err != nil || info == nil || strings.TrimSpace(info.AppName) == "" {
+		return
+	}
+
+	currentBotIDs := make(map[string]bool, 2)
+	if info.OpenID != "" {
+		currentBotIDs[info.OpenID] = true
+	}
+	if runtime.Config != nil && runtime.Config.AppID != "" {
+		currentBotIDs[runtime.Config.AppID] = true
+	}
+	for _, id := range missingIDs {
+		if currentBotIDs[id] {
+			nameMap[id] = info.AppName
+		}
+	}
+}
+
+func isBotSenderType(senderType string) bool {
+	return senderType == "bot" || senderType == "app"
+}
+
+func senderHasName(sender map[string]interface{}) bool {
+	name, _ := sender["name"].(string)
+	return strings.TrimSpace(name) != ""
+}
+
+func batchResolveBots(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
+	const batchSize = 10
+	for i := 0; i < len(missingIDs); i += batchSize {
+		end := i + batchSize
+		if end > len(missingIDs) {
+			end = len(missingIDs)
+		}
+		batch := missingIDs[i:end]
+
+		query := larkcore.QueryParams{"bot_ids": batch}
+		data, err := runtime.DoAPIJSON(http.MethodGet, "/open-apis/bot/v3/bots/basic_batch", query, nil)
+		if err != nil {
+			break
+		}
+
+		bots, _ := data["bots"].(map[string]interface{})
+		for requestedID, raw := range bots {
+			bot, _ := raw.(map[string]interface{})
+			name, _ := bot["name"].(string)
+			if requestedID != "" && name != "" {
+				nameMap[requestedID] = name
+			}
+		}
+	}
 }
 
 // batchResolveByBasicContact resolves user names via POST /contact/v3/users/basic_batch.

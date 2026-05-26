@@ -982,6 +982,7 @@ func TestFlagListDryRunMentionsConditionalEnrichmentScopes(t *testing.T) {
 	for _, want := range []string{
 		"im:message.group_msg:get_as_user",
 		"im:message.p2p_msg:get_as_user",
+		botBasicInfoReadScope,
 		"--enrich-feed-thread=false",
 	} {
 		if !strings.Contains(got, want) {
@@ -1148,6 +1149,65 @@ func TestEnrichFeedThreadItems(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEnrichFeedThreadItems_ResolvesFetchedBotSenderName(t *testing.T) {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/mget"):
+			// Regression coverage: flag-list's mget fallback returns raw nested
+			// messages, so bot sender names must be resolved before attachment.
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"items": []any{
+						map[string]any{
+							"message_id": "omt_456",
+							"sender": map[string]any{
+								"id":          "ou_bot_456",
+								"sender_type": "bot",
+							},
+						},
+					},
+				},
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/bot/v3/bots/basic_batch"):
+			// Keep the mock shape aligned with the real bot basic_batch map form
+			// so the test covers the exact lookup path used in production.
+			return shortcutJSONResponse(200, map[string]any{
+				"code": 0,
+				"data": map[string]any{
+					"bots": map[string]any{
+						"ou_bot_456": map[string]any{"name": "Release Bot"},
+					},
+				},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.Path)
+		}
+	}))
+	setRuntimeScopes(t, rt, strings.Join(flagMessageReadScopes, " "))
+
+	data := map[string]any{
+		"flag_items": []any{
+			map[string]any{
+				"item_id":   "omt_456",
+				"item_type": "4",
+				"flag_type": "1",
+			},
+		},
+	}
+
+	if err := enrichFeedThreadItems(rt, data); err != nil {
+		t.Fatalf("enrichFeedThreadItems() error = %v", err)
+	}
+
+	item := data["flag_items"].([]any)[0].(map[string]any)
+	message := item["message"].(map[string]any)
+	sender := message["sender"].(map[string]any)
+	if got := sender["name"]; got != "Release Bot" {
+		t.Fatalf("sender name = %#v, want Release Bot", got)
 	}
 }
 

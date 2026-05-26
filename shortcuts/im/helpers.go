@@ -34,6 +34,8 @@ var mentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+
 var threadIDRe = regexp.MustCompile(`^omt_`)
 var messageIDRe = regexp.MustCompile(`^om_`)
 
+const botBasicInfoReadScope = "application:bot.basic_info:read"
+
 func flagMessageID(rt *common.RuntimeContext) (string, error) {
 	id := strings.TrimSpace(rt.Str("message-id"))
 	if id == "" {
@@ -1309,9 +1311,12 @@ const (
 
 var (
 	flagWriteLookupScopes = append([]string{flagWriteScope}, flagLookupScopes...)
+	// Feed-thread flag enrichment can expose nested messages sent by bots, so keep
+	// the dynamic scope check aligned with sender-name resolution's bot lookup.
 	flagMessageReadScopes = []string{
 		"im:message.group_msg:get_as_user",
 		"im:message.p2p_msg:get_as_user",
+		botBasicInfoReadScope,
 	}
 	flagLookupScopes = []string{
 		"im:message.group_msg:get_as_user",
