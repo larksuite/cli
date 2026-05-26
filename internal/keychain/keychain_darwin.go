@@ -385,15 +385,34 @@ func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return 0, err
 	}
-	tmpPath := keyPath + "." + uuid.New().String() + ".tmp"
-	if err := vfs.WriteFile(tmpPath, key, 0600); err != nil {
-		_ = vfs.Remove(tmpPath)
+	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			concurrent, readErr := vfs.ReadFile(keyPath)
+			if readErr == nil && len(concurrent) == masterKeyBytes {
+				return DowngradeAlreadyDone, nil
+			}
+			if readErr != nil {
+				return 0, readErr
+			}
+			return 0, errors.New("keychain is corrupted")
+		}
 		return 0, err
 	}
-	if err := vfs.Rename(tmpPath, keyPath); err != nil {
-		_ = vfs.Remove(tmpPath)
+	writeFailed := true
+	defer func() {
+		if writeFailed {
+			_ = vfs.Remove(keyPath)
+		}
+	}()
+	if _, err := file.Write(key); err != nil {
+		_ = file.Close()
 		return 0, err
 	}
+	if err := file.Close(); err != nil {
+		return 0, err
+	}
+	writeFailed = false
 	return result, nil
 }
 
@@ -408,7 +427,7 @@ func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
 // fail; the right fix there is to delete the corrupt Keychain entry first.
 func extraHint(err error) string {
 	if errors.Is(err, errNotInitialized) || errors.Is(err, errKeychainBlocked) {
-		return " On macOS, you can also open an interactive Terminal session (where the system Keychain is reachable) and run `lark-cli config keychain-downgrade` to materialize the master key into a local file; subsequent runs in this sandbox/automation context will then read from the file and succeed."
+		return " On macOS, you can also open an interactive Terminal session (where the system Keychain is reachable) and run `lark-cli config keychain-downgrade` to materialize the master key into a local file; subsequent runs in this sandbox/automation context will then read from the file and succeed. Trade-off: after downgrade, any process running as your macOS user can read that file (file permissions replace the Keychain's per-app ACL)."
 	}
 	return ""
 }

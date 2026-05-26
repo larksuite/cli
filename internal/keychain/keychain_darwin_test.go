@@ -254,6 +254,67 @@ func TestDowngradeCreatesNewKeyWhenStorageEmpty(t *testing.T) {
 	}
 }
 
+// TestDowngradeDoesNotClobberConcurrentlyWrittenKey is the regression guard
+// for the TOCTOU between the initial existence check and the final write.
+// Race trace the fix closes:
+//
+//	T0 proc A: ReadFile(keyPath) → ErrNotExist        (initial check passes)
+//	T1 proc B: platformSet → getFileMasterKey(_, true) creates keyPath with K_B
+//	           then writes .enc encrypted with K_B
+//	T2 proc A: rand.Read → K_A; would overwrite K_B and orphan B's .enc
+//
+// We simulate proc B's interleaving by performing the concurrent file write
+// inside the keyringGet hook — by the time DowngradeMasterKeyToFile gets back
+// to the final OpenFile call, the file already exists, the O_EXCL branch
+// fires, and the concurrent key is preserved verbatim.
+func TestDowngradeDoesNotClobberConcurrentlyWrittenKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	service := "test-service"
+	dir := StorageDir(service)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	concurrentKey := make([]byte, masterKeyBytes)
+	for i := range concurrentKey {
+		concurrentKey[i] = byte(i + 77)
+	}
+
+	origGet := keyringGet
+	origSet := keyringSet
+	keyringGet = func(svc, user string) (string, error) {
+		if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), concurrentKey, 0600); err != nil {
+			t.Fatalf("simulated concurrent write failed: %v", err)
+		}
+		return "", keyring.ErrNotFound
+	}
+	keyringSet = func(svc, user, password string) error {
+		t.Fatalf("keyringSet must not be called; keychain-downgrade never writes to the system Keychain")
+		return nil
+	}
+	t.Cleanup(func() {
+		keyringGet = origGet
+		keyringSet = origSet
+	})
+
+	result, err := DowngradeMasterKeyToFile(service)
+	if err != nil {
+		t.Fatalf("DowngradeMasterKeyToFile() error = %v", err)
+	}
+	if result != DowngradeAlreadyDone {
+		t.Fatalf("result = %v, want DowngradeAlreadyDone (concurrent write must be preserved)", result)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, fileMasterKeyName))
+	if err != nil {
+		t.Fatalf("ReadFile error = %v", err)
+	}
+	if !bytesEqual(got, concurrentKey) {
+		t.Fatalf("master.key.file was clobbered; concurrent platformSet's encrypted credentials would be orphaned")
+	}
+}
+
 // TestPlatformGetSurfacesKeychainBlocked verifies that "keychain access blocked"
 // (the sandbox case) propagates as errKeychainBlocked through platformGet, so
 // the wrapError hint chain can attach the keychain-downgrade suggestion.
