@@ -5,6 +5,8 @@
 
 实时监听新邮件事件（`mail.user_mailbox.event.message_received_v1`）。
 
+> **同等能力的统一入口**：`lark-cli event consume mail.user_mailbox.event.message_received_v1 --as user`。该路径走 `lark event` 通用契约（`--max-events` / `--timeout` / stderr ready-marker），与 IM 等其他 EventKey 接口一致；底层 PreConsume 钩子自动调用同一组 subscribe / unsubscribe API，并在退出时清理服务端订阅。新场景建议优先用 `event consume`；本文档保留是为了 `+watch` 的富格式输出（`--msg-format minimal/metadata/plain_text_full/full`）和 `--folders` / `--labels` 过滤等便利能力。
+
 **权限要求：** 应用需要 `mail:event`、`mail:user_mailbox.message:readonly` 权限，以及字段权限 `mail:user_mailbox.message.address:read`、`mail:user_mailbox.message.subject:read`、`mail:user_mailbox.message.body:read`，且机器人需订阅事件 `mail.user_mailbox.event.message_received_v1`。按需权限（缺失时会提示申请）：使用 `--folders` / `--folder-ids` 筛选自定义文件夹时需要 `mail:user_mailbox.folder:read`；使用 `--labels` / `--label-ids` 筛选自定义标签时需要 `mail:user_mailbox.message:modify`。
 
 ## 命令

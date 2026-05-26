@@ -1,7 +1,7 @@
 ---
 name: lark-event
 version: 1.0.0
-description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM message receive, reactions, chat member changes, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
+description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM message receive, reactions, chat member changes, mail new-message-received, and more). Use for Lark bots, real-time message processing, mailbox watchers, long-running subscribers, streaming webhook/push handlers. EventKeys that need a per-user/per-resource server-side subscription (e.g. mail) are opened automatically before consume and cleaned up on graceful shutdown. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -53,7 +53,31 @@ lark-cli event consume im.message.receive_v1          --as bot > receive.ndjson 
 lark-cli event consume im.message.reaction.created_v1 --as bot > reaction.ndjson &
 wait
 
+# Mailbox new-message stream — emits {message_id, mail_address, mailbox_type}
+# only; subject/body/attachments need a follow-up `mail +message <id>` call.
+# Server-side subscription opened by PreConsume, auto-unsubscribed on
+# graceful exit; --as user since mail is user-scoped.
+lark-cli event consume mail.user_mailbox.event.message_received_v1 --as user
+
+# Typical pipeline: stream new-mail events, fetch full content per event.
+lark-cli event consume mail.user_mailbox.event.message_received_v1 --as user \
+    --jq '.event.message_id' \
+  | xargs -I {} lark-cli mail +message --message-id {} --as user
+
+# Same, for a non-default mailbox identifier.
+lark-cli event consume mail.user_mailbox.event.message_received_v1 \
+    --as user -p mailbox=alice@example.com
 ```
+
+## Per-EventKey payload model
+
+The stdout payload "thickness" is determined by Feishu's per-event design, not unified by this framework. Rule of thumb: when the WS event itself carries the full content (IM), the EventKey's `Process` function flattens it onto stdout; when it carries only a resource identifier (mail), the agent must follow up with a domain-specific command to fetch the body — this is Open Platform API design, not a framework limitation.
+
+| EventKey | Self-contained payload fields | Follow-up needed for full content |
+|---|---|---|
+| `im.message.receive_v1` | `message_id` + `chat_id` + `sender_id` + `content` (already rendered as human-readable text / card JSON) | None (ready to use) |
+| `im.message.reaction.created_v1` | `message_id` + `reaction` + `user` | Usually none |
+| `mail.user_mailbox.event.message_received_v1` | `mail_address` + `message_id` + `mailbox_type` + `subscriber` | Subject / body / attachments require `lark-cli mail +message --message-id <id> --as user`, or `mail +messages` for batches |
 
 ## Call flow
 
