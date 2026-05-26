@@ -536,11 +536,8 @@ func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 	})
 }
 
-// TestSetupNotices_ColdStart_NoNotice verifies that a missing stamp
-// produces no skills key in the composed notice. Users who installed
-// skills via `npx skills add` (no stamp) must not see the misleading
-// "not installed" notice — only `lark-cli update` users opt into the
-// drift tracker.
+// TestSetupNotices_ColdStart_NoNotice verifies that missing state
+// produces no skills key in the composed notice.
 func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 	clearNoticeEnv(t)
 	dir := t.TempDir()
@@ -571,13 +568,13 @@ func TestSetupNotices_ColdStart_NoNotice(t *testing.T) {
 	}
 }
 
-// TestSetupNotices_InSync verifies that a matching stamp produces no
+// TestSetupNotices_InSync verifies that matching state produces no
 // skills key in the composed notice.
 func TestSetupNotices_InSync(t *testing.T) {
 	clearNoticeEnv(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := skillscheck.WriteStamp("1.0.21"); err != nil {
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.21"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -604,13 +601,13 @@ func TestSetupNotices_InSync(t *testing.T) {
 	}
 }
 
-// TestSetupNotices_Drift verifies a mismatching stamp produces the
+// TestSetupNotices_Drift verifies mismatching state produces the
 // drift message with both current and target populated.
 func TestSetupNotices_Drift(t *testing.T) {
 	clearNoticeEnv(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := skillscheck.WriteStamp("1.0.20"); err != nil {
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -659,7 +656,7 @@ func TestSetupNotices_BothUpdateAndSkills(t *testing.T) {
 	clearNoticeEnv(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := skillscheck.WriteStamp("1.0.20"); err != nil {
+	if err := skillscheck.WriteState(skillscheck.SkillsState{Version: "1.0.20"}); err != nil {
 		t.Fatal(err)
 	}
 

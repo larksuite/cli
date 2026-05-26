@@ -3,9 +3,8 @@
 
 // Package skillscheck verifies that the locally installed lark-cli
 // skills are in sync with the running binary version, by comparing
-// the current binary version against a stamp file written when skills
-// are last synced (by `lark-cli update`). On mismatch it stores a
-// notice for injection into JSON envelopes via output.PendingNotice.
+// the current binary version against skills-state.json. On mismatch it
+// stores a notice for injection into JSON envelopes via output.PendingNotice.
 package skillscheck
 
 import (
@@ -26,8 +25,7 @@ type StaleNotice struct {
 // Message returns a single-line, AI-agent-parseable description of the
 // drift plus the canonical fix command. Mirrors internal/update.UpdateInfo.Message
 // in style ("..., run: lark-cli update" suffix). Current is guaranteed
-// non-empty because Init only emits a StaleNotice for the drift case
-// (stamp present and != binary version).
+// non-empty because Init only emits a StaleNotice for the drift case.
 func (s *StaleNotice) Message() string {
 	return fmt.Sprintf(
 		"lark-cli skills %s out of sync with binary %s, run: lark-cli update",
