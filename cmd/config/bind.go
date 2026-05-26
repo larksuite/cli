@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -102,7 +103,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|ar|hi|tr|pl|nl|sv|th|vi|id|ms)")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
@@ -590,6 +591,10 @@ func validateBindFlags(opts *BindOptions) error {
 		default:
 			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
 		}
+	}
+	if opts.Lang != "" && !i18n.IsValidLang(opts.Lang) {
+		return output.ErrValidation("invalid --lang %q; valid values: %s",
+			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
 	}
 	return nil
 }
