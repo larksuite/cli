@@ -27,6 +27,10 @@ type initMsg struct {
 	DetectedLarkTenant   string
 	AppCreated           string
 	ConfigSaved          string
+
+	// LangPreferenceSet is printed to stderr after a successful init when the
+	// user explicitly passed --lang. Format: language code.
+	LangPreferenceSet string
 }
 
 var initMsgZh = &initMsg{
@@ -44,6 +48,7 @@ var initMsgZh = &initMsg{
 	DetectedLarkTenant:   "[lark-cli] 检测到 Lark 租户，切换端点重试...",
 	AppCreated:           "应用配置成功! App ID: %s",
 	ConfigSaved:          "应用配置成功! App ID: %s",
+	LangPreferenceSet:    "语言偏好已设置：%s",
 }
 
 var initMsgEn = &initMsg{
@@ -61,6 +66,7 @@ var initMsgEn = &initMsg{
 	DetectedLarkTenant:   "[lark-cli] Detected Lark tenant, switching endpoint...",
 	AppCreated:           "App configured! App ID: %s",
 	ConfigSaved:          "App configured! App ID: %s",
+	LangPreferenceSet:    "Language preference set to: %s",
 }
 
 func getInitMsg(lang string) *initMsg {
@@ -83,18 +89,6 @@ func getInitMsg(lang string) *initMsg {
 		return initMsgRu
 	case "pt":
 		return initMsgPt
-	case "ar":
-		return initMsgAr
-	case "hi":
-		return initMsgHi
-	case "tr":
-		return initMsgTr
-	case "pl":
-		return initMsgPl
-	case "nl":
-		return initMsgNl
-	case "sv":
-		return initMsgSv
 	case "th":
 		return initMsgTh
 	case "vi":
@@ -142,29 +136,175 @@ var initMsgKo = &initMsg{
 	ConfigSaved:          "앱 설정 완료! App ID: %s",
 }
 
-// Placeholder variables for remaining languages - will be implemented in subsequent commits
-var (
-	initMsgFr = initMsgEn // French
-	initMsgDe = initMsgEn // German
-	initMsgEs = initMsgEn // Spanish
-	initMsgIt = initMsgEn // Italian
-	initMsgRu = initMsgEn // Russian
-	initMsgPt = initMsgEn // Portuguese
-	initMsgAr = initMsgEn // Arabic
-	initMsgHi = initMsgEn // Hindi
-	initMsgTr = initMsgEn // Turkish
-	initMsgPl = initMsgEn // Polish
-	initMsgNl = initMsgEn // Dutch
-	initMsgSv = initMsgEn // Swedish
-	initMsgTh = initMsgEn // Thai
-	initMsgVi = initMsgEn // Vietnamese
-	initMsgId = initMsgEn // Indonesian
-	initMsgMs = initMsgEn // Malay
-)
+var initMsgFr = &initMsg{
+	SelectAction:         "Sélectionner l'action",
+	CreateNewApp:         "Configurer l'app en un clic (Recommandé)",
+	ConfigExistingApp:    "Saisir les informations d'identification manuellement",
+	Platform:             "Plateforme",
+	SelectPlatform:       "Sélectionner la plateforme",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nScannez le QR code avec Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nOu ouvrez le lien ci-dessous dans votre navigateur:\n",
+	WaitingForScan:       "Récupération des résultats de configuration...",
+	OpenLinkNonTTY:       "\nOuvrez le lien ci-dessous pour configurer l'app:\n\n",
+	WaitingForScanNonTTY: "En attente de la configuration de l'app...",
+	DetectedLarkTenant:   "[lark-cli] Tenant Lark détecté, changement d'endpoint...",
+	AppCreated:           "App configurée! App ID: %s",
+	ConfigSaved:          "App configurée! App ID: %s",
+}
 
-// TODO: Add proper translations for remaining 16 languages (fr, de, es, it, ru, pt, ar, hi, tr, pl, nl, sv, th, vi, id, ms)
-// For Phase 1, we implement ja and ko as proof of concept
-// The remaining languages will be added in subsequent commits
+var initMsgDe = &initMsg{
+	SelectAction:         "Aktion auswählen",
+	CreateNewApp:         "App mit einem Klick einrichten (Empfohlen)",
+	ConfigExistingApp:    "App-Anmeldeinformationen manuell eingeben",
+	Platform:             "Plattform",
+	SelectPlatform:       "Plattform auswählen",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nScannen Sie den QR-Code mit Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nOder öffnen Sie den folgenden Link in Ihrem Browser:\n",
+	WaitingForScan:       "Konfigurationsergebnisse werden abgerufen...",
+	OpenLinkNonTTY:       "\nÖffnen Sie den folgenden Link, um die App zu konfigurieren:\n\n",
+	WaitingForScanNonTTY: "Warte auf App-Konfiguration...",
+	DetectedLarkTenant:   "[lark-cli] Lark-Mandant erkannt, Endpunkt wird gewechselt...",
+	AppCreated:           "App konfiguriert! App ID: %s",
+	ConfigSaved:          "App konfiguriert! App ID: %s",
+}
+
+var initMsgEs = &initMsg{
+	SelectAction:         "Seleccionar acción",
+	CreateNewApp:         "Configurar app con un clic (Recomendado)",
+	ConfigExistingApp:    "Ingresar credenciales de app manualmente",
+	Platform:             "Plataforma",
+	SelectPlatform:       "Seleccionar plataforma",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nEscanee el código QR con Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nO abra el siguiente enlace en su navegador:\n",
+	WaitingForScan:       "Obteniendo resultados de configuración...",
+	OpenLinkNonTTY:       "\nAbra el siguiente enlace para configurar la app:\n\n",
+	WaitingForScanNonTTY: "Esperando configuración de la app...",
+	DetectedLarkTenant:   "[lark-cli] Detectado inquilino Lark, cambiando endpoint...",
+	AppCreated:           "¡App configurada! App ID: %s",
+	ConfigSaved:          "¡App configurada! App ID: %s",
+}
+
+var initMsgIt = &initMsg{
+	SelectAction:         "Seleziona azione",
+	CreateNewApp:         "Configura app con un click (Consigliato)",
+	ConfigExistingApp:    "Inserisci le credenziali dell'app manualmente",
+	Platform:             "Piattaforma",
+	SelectPlatform:       "Seleziona piattaforma",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nScansiona il codice QR con Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nOppure apri il link qui sotto nel tuo browser:\n",
+	WaitingForScan:       "Recupero dei risultati di configurazione...",
+	OpenLinkNonTTY:       "\nApri il link qui sotto per configurare l'app:\n\n",
+	WaitingForScanNonTTY: "In attesa della configurazione dell'app...",
+	DetectedLarkTenant:   "[lark-cli] Rilevato tenant Lark, cambio endpoint...",
+	AppCreated:           "App configurata! App ID: %s",
+	ConfigSaved:          "App configurata! App ID: %s",
+}
+
+var initMsgRu = &initMsg{
+	SelectAction:         "Выберите действие",
+	CreateNewApp:         "Настроить приложение одним кликом (Рекомендуется)",
+	ConfigExistingApp:    "Ввести учетные данные приложения вручную",
+	Platform:             "Платформа",
+	SelectPlatform:       "Выберите платформу",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nОтсканируйте QR-код с помощью Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nИли откройте ссылку ниже в браузере:\n",
+	WaitingForScan:       "Получение результатов настройки...",
+	OpenLinkNonTTY:       "\nОткройте ссылку ниже, чтобы настроить приложение:\n\n",
+	WaitingForScanNonTTY: "Ожидание настройки приложения...",
+	DetectedLarkTenant:   "[lark-cli] Обнаружен арендатор Lark, переключение endpoint...",
+	AppCreated:           "Приложение настроено! App ID: %s",
+	ConfigSaved:          "Приложение настроено! App ID: %s",
+}
+
+var initMsgPt = &initMsg{
+	SelectAction:         "Selecionar ação",
+	CreateNewApp:         "Configurar app com um clique (Recomendado)",
+	ConfigExistingApp:    "Inserir credenciais do app manualmente",
+	Platform:             "Plataforma",
+	SelectPlatform:       "Selecionar plataforma",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nEscaneie o código QR com Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nOu abra o link abaixo no seu navegador:\n",
+	WaitingForScan:       "Obtendo resultados da configuração...",
+	OpenLinkNonTTY:       "\nAbra o link abaixo para configurar o app:\n\n",
+	WaitingForScanNonTTY: "Aguardando configuração do app...",
+	DetectedLarkTenant:   "[lark-cli] Tenant Lark detectado, mudando endpoint...",
+	AppCreated:           "App configurado! App ID: %s",
+	ConfigSaved:          "App configurado! App ID: %s",
+}
+
+var initMsgTh = &initMsg{
+	SelectAction:         "เลือกการดำเนินการ",
+	CreateNewApp:         "ตั้งค่าแอปด้วยคลิกเดียว (แนะนำ)",
+	ConfigExistingApp:    "ป้อนข้อมูลประจำตัวแอปด้วยตนเอง",
+	Platform:             "แพลตฟอร์ม",
+	SelectPlatform:       "เลือกแพลตฟอร์ม",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nสแกนรหัส QR ด้วย Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nหรือเปิดลิงก์ด้านล่างในเบราว์เซอร์ของคุณ:\n",
+	WaitingForScan:       "กำลังดึงผลลัพธ์การกำหนดค่า...",
+	OpenLinkNonTTY:       "\nเปิดลิงก์ด้านล่างเพื่อกำหนดค่าแอป:\n\n",
+	WaitingForScanNonTTY: "กำลังรอการกำหนดค่าแอป...",
+	DetectedLarkTenant:   "[lark-cli] ตรวจพบผู้เช่า Lark กำลังสลับ endpoint...",
+	AppCreated:           "กำหนดค่าแอปสำเร็จ! App ID: %s",
+	ConfigSaved:          "กำหนดค่าแอปสำเร็จ! App ID: %s",
+}
+
+var initMsgVi = &initMsg{
+	SelectAction:         "Chọn hành động",
+	CreateNewApp:         "Thiết lập ứng dụng bằng một cú nhấp chuột (Khuyến nghị)",
+	ConfigExistingApp:    "Nhập thông tin xác thực ứng dụng thủ công",
+	Platform:             "Nền tảng",
+	SelectPlatform:       "Chọn nền tảng",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nQuét mã QR bằng Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nHoặc mở liên kết bên dưới trong trình duyệt của bạn:\n",
+	WaitingForScan:       "Đang lấy kết quả cấu hình...",
+	OpenLinkNonTTY:       "\nMở liên kết bên dưới để cấu hình ứng dụng:\n\n",
+	WaitingForScanNonTTY: "Đang chờ cấu hình ứng dụng...",
+	DetectedLarkTenant:   "[lark-cli] Đã phát hiện người thuê Lark, chuyển đổi endpoint...",
+	AppCreated:           "Ứng dụng đã được cấu hình! App ID: %s",
+	ConfigSaved:          "Ứng dụng đã được cấu hình! App ID: %s",
+}
+
+var initMsgId = &initMsg{
+	SelectAction:         "Pilih tindakan",
+	CreateNewApp:         "Siapkan aplikasi dengan satu klik (Direkomendasikan)",
+	ConfigExistingApp:    "Masukkan kredensial aplikasi secara manual",
+	Platform:             "Platform",
+	SelectPlatform:       "Pilih platform",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nPindai kode QR dengan Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nAtau buka tautan di bawah ini di browser Anda:\n",
+	WaitingForScan:       "Mengambil hasil konfigurasi...",
+	OpenLinkNonTTY:       "\nBuka tautan di bawah ini untuk mengkonfigurasi aplikasi:\n\n",
+	WaitingForScanNonTTY: "Menunggu konfigurasi aplikasi...",
+	DetectedLarkTenant:   "[lark-cli] Tenant Lark terdeteksi, mengalihkan endpoint...",
+	AppCreated:           "Aplikasi dikonfigurasi! App ID: %s",
+	ConfigSaved:          "Aplikasi dikonfigurasi! App ID: %s",
+}
+
+var initMsgMs = &initMsg{
+	SelectAction:         "Pilih tindakan",
+	CreateNewApp:         "Sediakan aplikasi dengan satu klik (Disyorkan)",
+	ConfigExistingApp:    "Masukkan kelayakan aplikasi secara manual",
+	Platform:             "Platform",
+	SelectPlatform:       "Pilih platform",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nImbas kod QR dengan Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nAtau buka pautan di bawah dalam pelayar anda:\n",
+	WaitingForScan:       "Mengambil hasil konfigurasi...",
+	OpenLinkNonTTY:       "\nBuka pautan di bawah untuk mengkonfigurasi aplikasi:\n\n",
+	WaitingForScanNonTTY: "Menunggu konfigurasi aplikasi...",
+	DetectedLarkTenant:   "[lark-cli] Penyewa Lark dikesan, menukar endpoint...",
+	AppCreated:           "Aplikasi dikonfigurasi! App ID: %s",
+	ConfigSaved:          "Aplikasi dikonfigurasi! App ID: %s",
+}
 
 // promptLangSelection shows an interactive language picker and returns the chosen lang code.
 // savedLang is used as the pre-selected default (from existing config).
@@ -174,7 +314,7 @@ func promptLangSelection(savedLang string) (string, error) {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Language / 语言 / 言語 / 언어").
+				Title("Language / 语言").
 				Options(
 					huh.NewOption("中文", "zh"),
 					huh.NewOption("English", "en"),
@@ -186,12 +326,6 @@ func promptLangSelection(savedLang string) (string, error) {
 					huh.NewOption("Italiano", "it"),
 					huh.NewOption("Русский", "ru"),
 					huh.NewOption("Português", "pt"),
-					huh.NewOption("العربية", "ar"),
-					huh.NewOption("हिन्दी", "hi"),
-					huh.NewOption("Türkçe", "tr"),
-					huh.NewOption("Polski", "pl"),
-					huh.NewOption("Nederlands", "nl"),
-					huh.NewOption("Svenska", "sv"),
 					huh.NewOption("ไทย", "th"),
 					huh.NewOption("Tiếng Việt", "vi"),
 					huh.NewOption("Bahasa Indonesia", "id"),

@@ -84,6 +84,11 @@ type bindMsg struct {
 	// require in-flow human confirmation.
 	IdentityEscalationMessage string
 	IdentityEscalationHint    string
+
+	// LangPreferenceSet is printed to stderr after a successful bind when the
+	// user explicitly passed --lang. Format: language code. Not printed when
+	// --lang was not explicit (i.e., the cobra default zh stayed in effect).
+	LangPreferenceSet string
 }
 
 var bindMsgZh = &bindMsg{
@@ -116,6 +121,8 @@ var bindMsgZh = &bindMsg{
 
 	IdentityEscalationMessage: "你正在从应用身份切换到用户身份 —— 切换后 AI 将以你的名义在飞书中执行所有操作（读写文档、搜索消息、修改日程等）。⚠️ 请勿将此机器人分享给他人或拉入群聊中使用，以免泄露你的飞书数据。",
 	IdentityEscalationHint:    "若用户确认切换，附加 --force 重新运行：`lark-cli config bind --identity user-default --force`",
+
+	LangPreferenceSet: "语言偏好已设置：%s",
 }
 
 var bindMsgEn = &bindMsg{
@@ -150,6 +157,8 @@ var bindMsgEn = &bindMsg{
 
 	IdentityEscalationMessage: "you are switching from bot-only to user-default — the AI will then act under your Feishu identity for all operations (docs, messages, calendar, etc.). ⚠️ Don't share this bot with others or add it to group chats. It has access to your personal Feishu data.",
 	IdentityEscalationHint:    "if the user confirms the switch, re-run with --force: `lark-cli config bind --identity user-default --force`",
+
+	LangPreferenceSet: "Language preference set to: %s",
 }
 
 func getBindMsg(lang string) *bindMsg {
@@ -172,18 +181,6 @@ func getBindMsg(lang string) *bindMsg {
 		return bindMsgRu
 	case "pt":
 		return bindMsgPt
-	case "ar":
-		return bindMsgAr
-	case "hi":
-		return bindMsgHi
-	case "tr":
-		return bindMsgTr
-	case "pl":
-		return bindMsgPl
-	case "nl":
-		return bindMsgNl
-	case "sv":
-		return bindMsgSv
 	case "th":
 		return bindMsgTh
 	case "vi":
@@ -262,21 +259,252 @@ var bindMsgKo = &bindMsg{
 	IdentityEscalationHint:    "사용자가 전환을 확인한 경우 `--force`로 재실행: `lark-cli config bind --identity user-default --force`",
 }
 
-// Placeholder variables for remaining languages - point to English
-// TODO: Add full translations for these languages
-var bindMsgFr = bindMsgEn // French
-var bindMsgDe = bindMsgEn // German
-var bindMsgEs = bindMsgEn // Spanish
-var bindMsgIt = bindMsgEn // Italian
-var bindMsgRu = bindMsgEn // Russian
-var bindMsgPt = bindMsgEn // Portuguese
-var bindMsgAr = bindMsgEn // Arabic
-var bindMsgHi = bindMsgEn // Hindi
-var bindMsgTr = bindMsgEn // Turkish
-var bindMsgPl = bindMsgEn // Polish
-var bindMsgNl = bindMsgEn // Dutch
-var bindMsgSv = bindMsgEn // Swedish
-var bindMsgTh = bindMsgEn // Thai
-var bindMsgVi = bindMsgEn // Vietnamese
-var bindMsgId = bindMsgEn // Indonesian
-var bindMsgMs = bindMsgEn // Malay
+var bindMsgFr = &bindMsg{
+	SelectSource:              "Quel Agent utilisez-vous?",
+	SelectSourceDesc:          "lark-cli lira vos informations d'identification %s depuis l'Agent sélectionné et les appliquera automatiquement.",
+	SourceOpenClaw:            "OpenClaw — config: %s",
+	SourceHermes:              "Hermes — config: %s",
+	SourceLarkChannel:         "Lark Channel — config: %s",
+	SelectAccount:             "Plusieurs apps %[2]s configurées dans %[1]s — sélectionnez-en une pour continuer.",
+	ConflictTitle:             "Configuration existante trouvée",
+	ConflictDesc:              "lark-cli est déjà configuré pour %q:\n  App ID:  %s\n  Marque:   %s\n  Config:  %s",
+	ConflictForce:             "Mettre à jour la config",
+	ConflictCancel:            "Garder la config actuelle",
+	ConflictCancelled:         "Config actuelle conservée. Aucune modification.",
+	MessageBotOnly:            "App %s liée à %s. L'identity %s (bot) est prête — vous pouvez maintenant continuer avec la requête de l'utilisateur.",
+	MessageUserDefault:        "App %s liée à %s. Ensuite, dans ce chat %s, exécutez `lark-cli auth login --recommend`. La commande affiche l'URL de vérification sur stderr et attend que l'utilisateur l'autorise.",
+	SelectIdentity:            "Comment l'AI doit-elle travailler avec vous?",
+	IdentityBotOnly:           "En tant que bot",
+	IdentityUserDefault:       "En tant que vous",
+	IdentityBotOnlyDesc:       "Fonctionne sous sa propre identity dans %s. Idéal pour les chats de groupe, notifications d'équipe et documents partagés.",
+	IdentityUserDefaultDesc:   "Fonctionne sous votre identity dans %s, gérant documents, messages, calendrier, etc. Uniquement pour usage personnel.\n⚠️  Ne partagez pas ce bot avec d'autres ou ne l'ajoutez pas aux chats de groupe. Il a accès à vos données %s personnelles.",
+	BindSuccessHeader:         "Prêt! lark-cli est maintenant utilisable dans %s.",
+	BindSuccessNotice:         "Note: C'est une synchronisation unique. Pour re-synchroniser, exécutez `lark-cli config bind`",
+	IdentityEscalationMessage: "Vous passez de bot-only à user-default — l'AI agira alors sous votre identity Feishu pour toutes les opérations. ⚠️ Ne partagez pas ce bot avec d'autres.",
+	IdentityEscalationHint:    "Si l'utilisateur confirme, re-exécutez avec --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgDe = &bindMsg{
+	SelectSource:              "Welchen Agent verwenden Sie?",
+	SelectSourceDesc:          "lark-cli liest Ihre %s-App-Anmeldeinformationen aus dem ausgewählten Agent und wendet sie automatisch an.",
+	SourceOpenClaw:            "OpenClaw — Konfig: %s",
+	SourceHermes:              "Hermes — Konfig: %s",
+	SourceLarkChannel:         "Lark Channel — Konfig: %s",
+	SelectAccount:             "Mehrere %[2]s-Apps in %[1]s konfiguriert — wählen Sie eine zum Fortfahren.",
+	ConflictTitle:             "Bestehende Konfiguration gefunden",
+	ConflictDesc:              "lark-cli ist bereits für %q eingerichtet:\n  App ID:  %s\n  Marke:   %s\n  Konfig:  %s",
+	ConflictForce:             "Konfig aktualisieren",
+	ConflictCancel:            "Aktuelle Konfig behalten",
+	ConflictCancelled:         "Aktuelle Konfig beibehalten. Keine Änderungen.",
+	MessageBotOnly:            "App %s an %s gebunden. Die %s-App (Bot)-Identity ist bereit — Sie können nun mit der Anfrage des Benutzers fortfahren.",
+	MessageUserDefault:        "App %s an %s gebunden. Führen Sie als Nächstes in diesem %s-Chat `lark-cli auth login --recommend` aus.",
+	SelectIdentity:            "Wie soll die AI mit Ihnen arbeiten?",
+	IdentityBotOnly:           "Als Bot",
+	IdentityUserDefault:       "Als Sie",
+	IdentityBotOnlyDesc:       "Funktioniert unter eigener Identity in %s. Am besten für Gruppenchats, Team-Benachrichtigungen und gemeinsame Dokumente.",
+	IdentityUserDefaultDesc:   "Funktioniert unter Ihrer Identity in %s und verwaltet Dokumente, Nachrichten, Kalender usw. Nur für persönliche Nutzung.\n⚠️  Teilen Sie diesen Bot nicht mit anderen oder fügen Sie ihn zu Gruppenchats hinzu. Er hat Zugriff auf Ihre persönlichen %s-Daten.",
+	BindSuccessHeader:         "Fertig! lark-cli ist jetzt in %s einsatzbereit.",
+	BindSuccessNotice:         "Hinweis: Dies ist eine einmalige Synchronisation. Für Re-Sync: `lark-cli config bind`",
+	IdentityEscalationMessage: "Sie wechseln von Bot-only zu User-default — die AI wird dann unter Ihrer Feishu-Identity agieren. ⚠️ Teilen Sie diesen Bot nicht.",
+	IdentityEscalationHint:    "Wenn der Benutzer bestätigt, mit --force erneut ausführen: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgEs = &bindMsg{
+	SelectSource:              "¿Qué Agent está ejecutando?",
+	SelectSourceDesc:          "lark-cli leerá las credenciales de su app %s desde el Agent seleccionado y las aplicará automáticamente.",
+	SourceOpenClaw:            "OpenClaw — config: %s",
+	SourceHermes:              "Hermes — config: %s",
+	SourceLarkChannel:         "Lark Channel — config: %s",
+	SelectAccount:             "Múltiples apps %[2]s configuradas en %[1]s — seleccione una para continuar.",
+	ConflictTitle:             "Configuración existente encontrada",
+	ConflictDesc:              "lark-cli ya está configurado para %q:\n  App ID:  %s\n  Marca:   %s\n  Config:  %s",
+	ConflictForce:             "Actualizar config",
+	ConflictCancel:            "Mantener config actual",
+	ConflictCancelled:         "Config actual mantenida. Sin cambios.",
+	MessageBotOnly:            "App %s vinculada a %s. La identity %s (bot) está lista — ahora puede continuar con la solicitud del usuario.",
+	MessageUserDefault:        "App %s vinculada a %s. A continuación, en este chat %s, ejecute `lark-cli auth login --recommend`.",
+	SelectIdentity:            "¿Cómo debería trabajar la AI con usted?",
+	IdentityBotOnly:           "Como bot",
+	IdentityUserDefault:       "Como usted",
+	IdentityBotOnlyDesc:       "Funciona bajo su propia identity en %s. Mejor para chats grupales, notificaciones de equipo y documentos compartidos.",
+	IdentityUserDefaultDesc:   "Funciona bajo su identity en %s, gestionando documentos, mensajes, calendario, etc. Solo uso personal.\n⚠️  No comparta este bot con otros ni lo agregue a chats grupales. Tiene acceso a sus datos %s personales.",
+	BindSuccessHeader:         "¡Listo! lark-cli ahora está listo para usar en %s.",
+	BindSuccessNotice:         "Nota: Esta es una sincronización única. Para re-sincronizar: `lark-cli config bind`",
+	IdentityEscalationMessage: "Está cambiando de bot-only a user-default — la AI actuará bajo su identity Feishu. ⚠️ No comparta este bot.",
+	IdentityEscalationHint:    "Si el usuario confirma, vuelva a ejecutar con --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgIt = &bindMsg{
+	SelectSource:              "Quale Agent stai eseguendo?",
+	SelectSourceDesc:          "lark-cli leggerà le credenziali della tua app %s dall'Agent selezionato e le applicherà automaticamente.",
+	SourceOpenClaw:            "OpenClaw — config: %s",
+	SourceHermes:              "Hermes — config: %s",
+	SourceLarkChannel:         "Lark Channel — config: %s",
+	SelectAccount:             "Più app %[2]s configurate in %[1]s — selezionane una per continuare.",
+	ConflictTitle:             "Configurazione esistente trovata",
+	ConflictDesc:              "lark-cli è già configurato per %q:\n  App ID:  %s\n  Marchio:   %s\n  Config:  %s",
+	ConflictForce:             "Aggiorna config",
+	ConflictCancel:            "Mantieni config attuale",
+	ConflictCancelled:         "Config attuale mantenuta. Nessuna modifica.",
+	MessageBotOnly:            "App %s collegata a %s. L'identity %s (bot) è pronta — ora puoi continuare con la richiesta dell'utente.",
+	MessageUserDefault:        "App %s collegata a %s. Successivamente, in questa chat %s, esegui `lark-cli auth login --recommend`.",
+	SelectIdentity:            "Come dovrebbe lavorare l'AI con te?",
+	IdentityBotOnly:           "Come bot",
+	IdentityUserDefault:       "Come te",
+	IdentityBotOnlyDesc:       "Funziona con la propria identity in %s. Ideale per chat di gruppo, notifiche di squadra e documenti condivisi.",
+	IdentityUserDefaultDesc:   "Funziona con la tua identity in %s, gestendo documenti, messaggi, calendario, ecc. Solo uso personale.\n⚠️  Non condividere questo bot con altri o aggiungerlo a chat di gruppo. Ha accesso ai tuoi dati %s personali.",
+	BindSuccessHeader:         "Tutto pronto! lark-cli è ora pronto per l'uso in %s.",
+	BindSuccessNotice:         "Nota: Questa è una sincronizzazione una tantum. Per re-sincronizzare: `lark-cli config bind`",
+	IdentityEscalationMessage: "Stai passando da bot-only a user-default — l'AI agirà con la tua identity Feishu. ⚠️ Non condividere questo bot.",
+	IdentityEscalationHint:    "Se l'utente conferma, riesegui con --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgRu = &bindMsg{
+	SelectSource:              "Какой Agent вы используете?",
+	SelectSourceDesc:          "lark-cli прочитает учетные данные вашего приложения %s из выбранного Agent и применит их автоматически.",
+	SourceOpenClaw:            "OpenClaw — конфиг: %s",
+	SourceHermes:              "Hermes — конфиг: %s",
+	SourceLarkChannel:         "Lark Channel — конфиг: %s",
+	SelectAccount:             "Несколько приложений %[2]s настроены в %[1]s — выберите одно для продолжения.",
+	ConflictTitle:             "Найдена существующая конфигурация",
+	ConflictDesc:              "lark-cli уже настроен для %q:\n  App ID:  %s\n  Бренд:   %s\n  Конфиг:  %s",
+	ConflictForce:             "Обновить конфиг",
+	ConflictCancel:            "Сохранить текущий конфиг",
+	ConflictCancelled:         "Текущий конфиг сохранен. Изменений нет.",
+	MessageBotOnly:            "Приложение %s привязано к %s. Identity %s (бот) готова — теперь вы можете продолжить запрос пользователя.",
+	MessageUserDefault:        "Приложение %s привязано к %s. Далее, в этом чате %s, выполните `lark-cli auth login --recommend`.",
+	SelectIdentity:            "Как AI должен работать с вами?",
+	IdentityBotOnly:           "Как бот",
+	IdentityUserDefault:       "Как вы",
+	IdentityBotOnlyDesc:       "Работает под собственной identity в %s. Лучше всего подходит для групповых чатов, уведомлений команды и общих документов.",
+	IdentityUserDefaultDesc:   "Работает под вашей identity в %s, управляя документами, сообщениями, календарем и т.д. Только для личного использования.\n⚠️  Не делитесь этим ботом с другими и не добавляйте его в групповые чаты. У него есть доступ к вашим личным данным %s.",
+	BindSuccessHeader:         "Готово! lark-cli теперь готов к использованию в %s.",
+	BindSuccessNotice:         "Примечание: Это одноразовая синхронизация. Для повторной синхронизации: `lark-cli config bind`",
+	IdentityEscalationMessage: "Вы переключаетесь с bot-only на user-default — AI будет действовать под вашей identity Feishu. ⚠️ Не делитесь этим ботом.",
+	IdentityEscalationHint:    "Если пользователь подтвердил, повторите с --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgPt = &bindMsg{
+	SelectSource:              "Qual Agent você está executando?",
+	SelectSourceDesc:          "lark-cli lerá as credenciais do seu app %s do Agent selecionado e as aplicará automaticamente.",
+	SourceOpenClaw:            "OpenClaw — config: %s",
+	SourceHermes:              "Hermes — config: %s",
+	SourceLarkChannel:         "Lark Channel — config: %s",
+	SelectAccount:             "Múltiplos apps %[2]s configurados em %[1]s — selecione um para continuar.",
+	ConflictTitle:             "Configuração existente encontrada",
+	ConflictDesc:              "lark-cli já está configurado para %q:\n  App ID:  %s\n  Marca:   %s\n  Config:  %s",
+	ConflictForce:             "Atualizar config",
+	ConflictCancel:            "Manter config atual",
+	ConflictCancelled:         "Config atual mantida. Sem alterações.",
+	MessageBotOnly:            "App %s vinculado a %s. A identity %s (bot) está pronta — agora você pode continuar com a solicitação do usuário.",
+	MessageUserDefault:        "App %s vinculado a %s. Em seguida, neste chat %s, execute `lark-cli auth login --recommend`.",
+	SelectIdentity:            "Como a AI deve trabalhar com você?",
+	IdentityBotOnly:           "Como bot",
+	IdentityUserDefault:       "Como você",
+	IdentityBotOnlyDesc:       "Funciona sob sua própria identity em %s. Melhor para chats em grupo, notificações de equipe e documentos compartilhados.",
+	IdentityUserDefaultDesc:   "Funciona sob sua identity em %s, gerenciando documentos, mensagens, calendário, etc. Apenas para uso pessoal.\n⚠️  Não compartilhe este bot com outros ou o adicione a chats em grupo. Ele tem acesso aos seus dados %s pessoais.",
+	BindSuccessHeader:         "Pronto! lark-cli agora está pronto para uso em %s.",
+	BindSuccessNotice:         "Nota: Esta é uma sincronização única. Para re-sincronizar: `lark-cli config bind`",
+	IdentityEscalationMessage: "Você está mudando de bot-only para user-default — a AI agirá sob sua identity Feishu. ⚠️ Não compartilhe este bot.",
+	IdentityEscalationHint:    "Se o usuário confirmar, execute novamente com --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgTh = &bindMsg{
+	SelectSource:              "คุณกำลังรัน Agent ใด?",
+	SelectSourceDesc:          "lark-cli จะอ่านข้อมูลประจำตัวแอป %s ของคุณจาก Agent ที่เลือกและนำไปใช้โดยอัตโนมัติ",
+	SourceOpenClaw:            "OpenClaw — การกำหนดค่า: %s",
+	SourceHermes:              "Hermes — การกำหนดค่า: %s",
+	SourceLarkChannel:         "Lark Channel — การกำหนดค่า: %s",
+	SelectAccount:             "มีแอป %[2]s หลายตัวที่กำหนดค่าไว้ใน %[1]s — เลือกหนึ่งตัวเพื่อดำเนินการต่อ",
+	ConflictTitle:             "พบการกำหนดค่าที่มีอยู่",
+	ConflictDesc:              "lark-cli ได้รับการตั้งค่าสำหรับ %q แล้ว:\n  App ID:  %s\n  แบรนด์:   %s\n  การกำหนดค่า:  %s",
+	ConflictForce:             "อัปเดตการกำหนดค่า",
+	ConflictCancel:            "เก็บการกำหนดค่าปัจจุบัน",
+	ConflictCancelled:         "เก็บการกำหนดค่าปัจจุบัน ไม่มีการเปลี่ยนแปลง",
+	MessageBotOnly:            "ผูกแอป %s กับ %s แล้ว identity %s (บอท) พร้อมใช้งาน — ตอนนี้คุณสามารถดำเนินการตามคำขอของผู้ใช้ต่อได้",
+	MessageUserDefault:        "ผูกแอป %s กับ %s แล้ว จากนั้น ในแชท %s นี้ ให้รัน `lark-cli auth login --recommend`",
+	SelectIdentity:            "AI ควรทำงานกับคุณอย่างไร?",
+	IdentityBotOnly:           "ในฐานะบอท",
+	IdentityUserDefault:       "ในฐานะคุณ",
+	IdentityBotOnlyDesc:       "ทำงานภายใต้ identity ของตนเองใน %s เหมาะสำหรับแชทกลุ่ม การแจ้งเตือนทีม และเอกสารที่ใช้ร่วมกัน",
+	IdentityUserDefaultDesc:   "ทำงานภายใต้ identity ของคุณใน %s และจัดการเอกสาร ข้อความ ปฏิทิน ฯลฯ สำหรับใช้ส่วนบุคคลเท่านั้น\n⚠️  อย่าแชร์บอทนี้กับผู้อื่นหรือเพิ่มเข้าไปในแชทกลุ่ม บอทมีสิทธิ์เข้าถึงข้อมูล %s ส่วนบุคคลของคุณ",
+	BindSuccessHeader:         "พร้อมใช้งาน! lark-cli พร้อมใช้งานใน %s แล้ว",
+	BindSuccessNotice:         "หมายเหตุ: นี่คือการซิงค์ครั้งเดียว หากต้องการซิงค์ใหม่: `lark-cli config bind`",
+	IdentityEscalationMessage: "คุณกำลังเปลี่ยนจาก bot-only เป็น user-default — AI จะทำงานภายใต้ identity Feishu ของคุณ ⚠️ อย่าแชร์บอทนี้",
+	IdentityEscalationHint:    "หากผู้ใช้ยืนยัน ให้รันอีกครั้งด้วย --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgVi = &bindMsg{
+	SelectSource:              "Bạn đang chạy Agent nào?",
+	SelectSourceDesc:          "lark-cli sẽ đọc thông tin xác thực ứng dụng %s của bạn từ Agent đã chọn và tự động áp dụng chúng.",
+	SourceOpenClaw:            "OpenClaw — cấu hình: %s",
+	SourceHermes:              "Hermes — cấu hình: %s",
+	SourceLarkChannel:         "Lark Channel — cấu hình: %s",
+	SelectAccount:             "Nhiều ứng dụng %[2]s được cấu hình trong %[1]s — chọn một để tiếp tục.",
+	ConflictTitle:             "Đã tìm thấy cấu hình hiện có",
+	ConflictDesc:              "lark-cli đã được thiết lập cho %q:\n  App ID:  %s\n  Thương hiệu:   %s\n  Cấu hình:  %s",
+	ConflictForce:             "Cập nhật cấu hình",
+	ConflictCancel:            "Giữ cấu hình hiện tại",
+	ConflictCancelled:         "Đã giữ cấu hình hiện tại. Không có thay đổi.",
+	MessageBotOnly:            "Đã liên kết ứng dụng %s với %s. identity %s (bot) đã sẵn sàng — bây giờ bạn có thể tiếp tục với yêu cầu của người dùng.",
+	MessageUserDefault:        "Đã liên kết ứng dụng %s với %s. Tiếp theo, trong cuộc trò chuyện %s này, hãy chạy `lark-cli auth login --recommend`.",
+	SelectIdentity:            "AI nên làm việc với bạn như thế nào?",
+	IdentityBotOnly:           "Với tư cách bot",
+	IdentityUserDefault:       "Với tư cách bạn",
+	IdentityBotOnlyDesc:       "Hoạt động dưới identity của riêng mình trong %s. Tốt nhất cho trò chuyện nhóm, thông báo nhóm và tài liệu được chia sẻ.",
+	IdentityUserDefaultDesc:   "Hoạt động dưới identity của bạn trong %s, quản lý tài liệu, tin nhắn, lịch, v.v. Chỉ dành cho sử dụng cá nhân.\n⚠️  Đừng chia sẻ bot này với người khác hoặc thêm vào trò chuyện nhóm. Nó có quyền truy cập vào dữ liệu %s cá nhân của bạn.",
+	BindSuccessHeader:         "Sẵn sàng! lark-cli hiện đã sẵn sàng để sử dụng trong %s.",
+	BindSuccessNotice:         "Lưu ý: Đây là đồng bộ hóa một lần. Để đồng bộ lại: `lark-cli config bind`",
+	IdentityEscalationMessage: "Bạn đang chuyển từ bot-only sang user-default — AI sau đó sẽ hoạt động dưới identity Feishu của bạn. ⚠️ Đừng chia sẻ bot này.",
+	IdentityEscalationHint:    "Nếu người dùng xác nhận, chạy lại với --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgId = &bindMsg{
+	SelectSource:              "Agent mana yang Anda jalankan?",
+	SelectSourceDesc:          "lark-cli akan membaca kredensial aplikasi %s Anda dari Agent yang dipilih dan menerapkannya secara otomatis.",
+	SourceOpenClaw:            "OpenClaw — konfig: %s",
+	SourceHermes:              "Hermes — konfig: %s",
+	SourceLarkChannel:         "Lark Channel — konfig: %s",
+	SelectAccount:             "Beberapa aplikasi %[2]s dikonfigurasi di %[1]s — pilih satu untuk melanjutkan.",
+	ConflictTitle:             "Konfigurasi yang ada ditemukan",
+	ConflictDesc:              "lark-cli sudah diatur untuk %q:\n  App ID:  %s\n  Merek:   %s\n  Konfig:  %s",
+	ConflictForce:             "Perbarui konfig",
+	ConflictCancel:            "Pertahankan konfig saat ini",
+	ConflictCancelled:         "Konfig saat ini dipertahankan. Tidak ada perubahan.",
+	MessageBotOnly:            "Aplikasi %s terikat ke %s. identity %s (bot) siap — sekarang Anda dapat melanjutkan dengan permintaan pengguna.",
+	MessageUserDefault:        "Aplikasi %s terikat ke %s. Selanjutnya, dalam obrolan %s ini, jalankan `lark-cli auth login --recommend`.",
+	SelectIdentity:            "Bagaimana AI harus bekerja dengan Anda?",
+	IdentityBotOnly:           "Sebagai bot",
+	IdentityUserDefault:       "Sebagai Anda",
+	IdentityBotOnlyDesc:       "Bekerja di bawah identity sendiri di %s. Terbaik untuk obrolan grup, notifikasi tim, dan dokumen bersama.",
+	IdentityUserDefaultDesc:   "Bekerja di bawah identity Anda di %s, mengelola dokumen, pesan, kalender, dll. Hanya untuk penggunaan pribadi.\n⚠️  Jangan bagikan bot ini dengan orang lain atau tambahkan ke obrolan grup. Bot memiliki akses ke data %s pribadi Anda.",
+	BindSuccessHeader:         "Siap! lark-cli sekarang siap digunakan di %s.",
+	BindSuccessNotice:         "Catatan: Ini adalah sinkronisasi satu kali. Untuk menyinkronkan ulang: `lark-cli config bind`",
+	IdentityEscalationMessage: "Anda beralih dari bot-only ke user-default — AI kemudian akan bertindak di bawah identity Feishu Anda. ⚠️ Jangan bagikan bot ini.",
+	IdentityEscalationHint:    "Jika pengguna mengonfirmasi, jalankan ulang dengan --force: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgMs = &bindMsg{
+	SelectSource:              "Agent mana yang anda jalankan?",
+	SelectSourceDesc:          "lark-cli akan membaca kelayakan aplikasi %s anda daripada Agent yang dipilih dan menggunakannya secara automatik.",
+	SourceOpenClaw:            "OpenClaw — konfig: %s",
+	SourceHermes:              "Hermes — konfig: %s",
+	SourceLarkChannel:         "Lark Channel — konfig: %s",
+	SelectAccount:             "Beberapa aplikasi %[2]s dikonfigurasi dalam %[1]s — pilih satu untuk meneruskan.",
+	ConflictTitle:             "Konfigurasi sedia ada ditemui",
+	ConflictDesc:              "lark-cli sudah disediakan untuk %q:\n  App ID:  %s\n  Jenama:   %s\n  Konfig:  %s",
+	ConflictForce:             "Kemas kini konfig",
+	ConflictCancel:            "Kekalkan konfig semasa",
+	ConflictCancelled:         "Konfig semasa dikekalkan. Tiada perubahan.",
+	MessageBotOnly:            "Aplikasi %s diikat ke %s. identity %s (bot) sedia — sekarang anda boleh meneruskan dengan permintaan pengguna.",
+	MessageUserDefault:        "Aplikasi %s diikat ke %s. Seterusnya, dalam sembang %s ini, jalankan `lark-cli auth login --recommend`.",
+	SelectIdentity:            "Bagaimana AI harus bekerja dengan anda?",
+	IdentityBotOnly:           "Sebagai bot",
+	IdentityUserDefault:       "Sebagai anda",
+	IdentityBotOnlyDesc:       "Bekerja di bawah identity sendiri dalam %s. Terbaik untuk sembang berkumpulan, pemberitahuan pasukan, dan dokumen dikongsi.",
+	IdentityUserDefaultDesc:   "Bekerja di bawah identity anda dalam %s, mengurus dokumen, mesej, kalendar, dll. Hanya untuk kegunaan peribadi.\n⚠️  Jangan kongsi bot ini dengan orang lain atau tambahkan ke sembang berkumpulan. Ia mempunyai akses kepada data %s peribadi anda.",
+	BindSuccessHeader:         "Sedia! lark-cli kini sedia untuk digunakan dalam %s.",
+	BindSuccessNotice:         "Nota: Ini adalah penyegerakan sekali. Untuk menyerak semula: `lark-cli config bind`",
+	IdentityEscalationMessage: "Anda beralih dari bot-only ke user-default — AI kemudian akan bertindak di bawah identity Feishu anda. ⚠️ Jangan kongsi bot ini.",
+	IdentityEscalationHint:    "Jika pengguna mengesahkan, jalankan semula dengan --force: `lark-cli config bind --identity user-default --force`",
+}
