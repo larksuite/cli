@@ -1,0 +1,27 @@
+cmd/auth/qrcode.go
+  f0c3e8c60d474faa 19,37-42,44-57,59-69,75-84,115-132,134-138,140-141
+cmd/auth/qrcode_test.go
+  f0c3e8c60d474faa 1-6,8-95,97,103-104,106-109,111-116,135-163,165-203,265-269,271-276,285-287,289-290,294-298,300-344,347-349,353-355,358-368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9300051ab41b1f634748ca00baa72c9d40cc9172",
+  "prompts": {
+    "f0c3e8c60d474faa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0b20b01b3cde019b04d56e",
+        "model": "glm-5.1__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 40,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
