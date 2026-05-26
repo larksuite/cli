@@ -14,17 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// KeychainDowngradeOptions holds inputs for `config keychain-downgrade`.
-type KeychainDowngradeOptions struct {
-	Factory *cmdutil.Factory
-}
-
 // NewCmdConfigKeychainDowngrade creates the macOS-only subcommand that pins
 // the master key to the local file fallback (master.key.file) so subsequent
 // operations bypass the OS Keychain. Useful inside sandboxes like Codex
 // where the system Keychain is unreachable.
-func NewCmdConfigKeychainDowngrade(f *cmdutil.Factory, runF func(*KeychainDowngradeOptions) error) *cobra.Command {
-	opts := &KeychainDowngradeOptions{Factory: f}
+func NewCmdConfigKeychainDowngrade(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "keychain-downgrade",
 		Short: "Downgrade keychain storage to a local file (macOS only)",
@@ -46,18 +40,14 @@ The OS Keychain entry is preserved as a cold backup; nothing is deleted there.
 The command is idempotent: re-running it on an already-downgraded install
 reports "already downgraded" and exits 0.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if runF != nil {
-				return runF(opts)
-			}
-			return configKeychainDowngradeRun(opts)
+			return configKeychainDowngradeRun(f)
 		},
 	}
 	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 
-func configKeychainDowngradeRun(opts *KeychainDowngradeOptions) error {
-	f := opts.Factory
+func configKeychainDowngradeRun(f *cmdutil.Factory) error {
 	service := keychain.LarkCliService
 	keyPath := keychain.MasterKeyFilePath(service)
 

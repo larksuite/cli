@@ -11,16 +11,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// KeychainDowngradeOptions exists only to keep NewCmdConfigKeychainDowngrade's
-// signature identical to the darwin build.
-type KeychainDowngradeOptions struct {
-	Factory *cmdutil.Factory
-}
-
 // NewCmdConfigKeychainDowngrade is registered on all platforms so that
 // `lark-cli config --help` reads the same everywhere. On non-macOS it
 // refuses with a clear message.
-func NewCmdConfigKeychainDowngrade(f *cmdutil.Factory, runF func(*KeychainDowngradeOptions) error) *cobra.Command {
+func NewCmdConfigKeychainDowngrade(f *cmdutil.Factory) *cobra.Command {
+	_ = f
 	cmd := &cobra.Command{
 		Use:   "keychain-downgrade",
 		Short: "Downgrade keychain storage to a local file (macOS only)",
