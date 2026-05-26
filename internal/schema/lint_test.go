@@ -147,6 +147,40 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 			},
 			wantSub: "minimum",
 		},
+		{
+			// Regression guard: walkForL2 must recurse into the params/data
+			// sub-objects introduced by the 4-bucket inputSchema, not only the
+			// top-level Properties map.
+			name: "format binary on non-string inside params sub-object",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"params"}
+				e.InputSchema.Properties.Map["params"] = Property{
+					Type: "object",
+					Properties: &OrderedProps{
+						Order: []string{"id"},
+						Map: map[string]Property{
+							"id": {Type: "integer", Format: "binary"}, // wrong: binary on integer
+						},
+					},
+				}
+			},
+			wantSub: "format: binary",
+		},
+		{
+			name: "sub-object required references missing property",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"data"}
+				e.InputSchema.Properties.Map["data"] = Property{
+					Type:     "object",
+					Required: []string{"ghost"}, // not in properties below
+					Properties: &OrderedProps{
+						Order: []string{"real"},
+						Map:   map[string]Property{"real": {Type: "string"}},
+					},
+				}
+			},
+			wantSub: "ghost",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
