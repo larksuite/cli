@@ -153,10 +153,16 @@ var bindMsgEn = &bindMsg{
 }
 
 func getBindMsg(lang string) *bindMsg {
-	if lang == "en" {
+	switch lang {
+	case "en":
 		return bindMsgEn
+	case "ja":
+		return bindMsgJa
+	case "ko":
+		return bindMsgKo
+	default:
+		return bindMsgZh
 	}
-	return bindMsgZh
 }
 
 // brandDisplay returns the UI-friendly product name for the given brand
@@ -172,4 +178,54 @@ func brandDisplay(brand, lang string) string {
 		return "Feishu"
 	}
 	return "飞书"
+}
+
+var bindMsgJa = &bindMsg{
+	SelectSource:              "どの Agent で実行していますか?",
+	SelectSourceDesc:          "選択した Agent から%sアプリ情報を取得し、lark-cli に自動設定します",
+	SourceOpenClaw:            "OpenClaw — 設定ファイル: %s",
+	SourceHermes:              "Hermes — 設定ファイル: %s",
+	SourceLarkChannel:         "Lark Channel — 設定ファイル: %s",
+	SelectAccount:             "%[1]s で複数の%[2]sアプリが検出 — 続行するものを選択",
+	ConflictTitle:             "既存の設定が見つかりました",
+	ConflictDesc:              "%q は既に lark-cli を設定:\n  App ID:  %s\n  ブランド:   %s\n  設定ファイル:  %s",
+	ConflictForce:             "設定を更新",
+	ConflictCancel:            "現在の設定を保持",
+	ConflictCancelled:         "現在の設定を保持しました。変更はありません。",
+	MessageBotOnly:            "アプリ %s を %s にバインド。%s アプリ (bot)  identity の準備が完了 — ユーザーのリクエストを続行できます。",
+	MessageUserDefault:        "アプリ %s を %s にバインド。次に、この %s チャットで `lark-cli auth login --recommend` を実行。コマンドは検証 URL を stderr に出力し、ユーザーが承認するまでブロックします。",
+	SelectIdentity:            "AI はどのように動作しますか?",
+	IdentityBotOnly:           "Bot として",
+	IdentityUserDefault:       "あなたとして",
+	IdentityBotOnlyDesc:       "%s で独自の identity で動作。グループチャット、チーム通知、共有ドキュメントに最適。",
+	IdentityUserDefaultDesc:   "%s であなたの identity で動作し、ドキュメント、メッセージ、カレンダーなどを管理。個人使用のみ。\n⚠️  このボットを他の人と共有したり、グループチャットに追加したりしないでください。あなたの個人 %s データにアクセスできます。",
+	BindSuccessHeader:         "準備完了! lark-cli は %s で使用可能です。",
+	BindSuccessNotice:         "注: これは一回限りの同期です。将来の変更を再同期するには、`lark-cli config bind` を実行してください。",
+	IdentityEscalationMessage: "bot-only から user-default に切り替え中 — AI はあなたの Feishu identity ですべての操作を実行します (ドキュメント、メッセージ、カレンダーなど)。⚠️ このボットを他の人と共有したり、グループチャットに追加したりしないでください。あなたの個人 Feishu データにアクセスできます。",
+	IdentityEscalationHint:    "ユーザーが切り替えを確認した場合、`--force` で再実行: `lark-cli config bind --identity user-default --force`",
+}
+
+var bindMsgKo = &bindMsg{
+	SelectSource:              "어떤 Agent를 실행 중인가요?",
+	SelectSourceDesc:          "선택한 Agent에서 %s 앱 인증 정보를 읽어 lark-cli에 자동 적용합니다",
+	SourceOpenClaw:            "OpenClaw — 설정 파일: %s",
+	SourceHermes:              "Hermes — 설정 파일: %s",
+	SourceLarkChannel:         "Lark Channel — 설정 파일: %s",
+	SelectAccount:             "%[1]s에서 여러 %[2]s 앱이 설정됨 — 계속할 것을 선택",
+	ConflictTitle:             "기존 설정 발견",
+	ConflictDesc:              "%q는 이미 lark-cli가 설정됨:\n  App ID:  %s\n  브랜드:   %s\n  설정 파일:  %s",
+	ConflictForce:             "설정 업데이트",
+	ConflictCancel:            "현재 설정 유지",
+	ConflictCancelled:         "현재 설정을 유지했습니다. 변경 사항 없음。",
+	MessageBotOnly:            "앱 %s를 %s에 바인드。%s 앱 (bot) identity 준비 완료 — 사용자 요청을 계속할 수 있습니다。",
+	MessageUserDefault:        "앱 %s를 %s에 바인드。다음으로, 이 %s 채팅에서 `lark-cli auth login --recommend`를 실행합니다。",
+	SelectIdentity:            "AI는 어떻게 작동하나요?",
+	IdentityBotOnly:           "Bot으로",
+	IdentityUserDefault:       "사용자로",
+	IdentityBotOnlyDesc:       "%s에서 자체 identity로 작동。그룹 채팅, 팀 알림, 공유 문서에 가장 적합。",
+	IdentityUserDefaultDesc:   "%s에서 사용자를 대신하여 작동하여 문서, 메시지, 일정 등을 관리합니다。개인용으로만 사용。\n⚠️  이 봇을 다른 사람과 공유하거나 그룹 채팅에 추가하지 마세요。사용자의 개인 %s 데이터에 접근할 수 있습니다。",
+	BindSuccessHeader:         "준비 완료! lark-cli가 %s에서 사용 가능합니다。",
+	BindSuccessNotice:         "참고: 이것은 일회성 동기화입니다。향후 변경 사항을 재동기화하려면 `lark-cli config bind`를 실행하세요。",
+	IdentityEscalationMessage: "bot-only에서 user-default로 전환 중 — AI가 모든 작업을 귀하의 Feishu 신원으로 수행하게 됩니다。⚠️ 이 봇을 다른 사람과 공유하거나 그룹 채팅에 추가하지 마세요。",
+	IdentityEscalationHint:    "사용자가 전환을 확인한 경우 `--force`로 재실행: `lark-cli config bind --identity user-default --force`",
 }
