@@ -627,17 +627,36 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 		}
 	}
 
-	// Build the "data" sub-object from method.requestBody.
+	// Split method.requestBody into two buckets:
+	//   - data: non-file body fields → corresponds to CLI --data JSON
+	//   - file: type:file body fields → corresponds to CLI --file <key>=<path>
+	// File fields are kept *out* of `data` so the schema mirrors the actual
+	// CLI flag dispatch: --file owns one wire format (multipart upload),
+	// --data owns the rest (JSON body).
 	bodyRaw, _ := method["requestBody"].(map[string]interface{})
 	dataProps := &OrderedProps{Map: make(map[string]Property)}
+	fileProps := &OrderedProps{Map: make(map[string]Property)}
 	var dataRequired []string
+	var fileRequired []string
 	for _, k := range orderedKeys(bodyRaw, "requestBody") {
 		field, _ := bodyRaw[k].(map[string]interface{})
 		prop := convertProperty(field, "requestBody."+k+".properties")
-		dataProps.Order = append(dataProps.Order, k)
-		dataProps.Map[k] = prop
-		if req, _ := field["required"].(bool); req {
-			dataRequired = append(dataRequired, k)
+		isFile := false
+		if t, _ := field["type"].(string); t == "file" {
+			isFile = true
+		}
+		if isFile {
+			fileProps.Order = append(fileProps.Order, k)
+			fileProps.Map[k] = prop
+			if req, _ := field["required"].(bool); req {
+				fileRequired = append(fileRequired, k)
+			}
+		} else {
+			dataProps.Order = append(dataProps.Order, k)
+			dataProps.Map[k] = prop
+			if req, _ := field["required"].(bool); req {
+				dataRequired = append(dataRequired, k)
+			}
 		}
 	}
 	if len(dataProps.Order) > 0 {
@@ -650,6 +669,19 @@ func buildInputSchema(method map[string]interface{}) *InputSchema {
 		}
 		if len(dataRequired) > 0 {
 			is.Required = append(is.Required, "data")
+		}
+	}
+	if len(fileProps.Order) > 0 {
+		sort.Strings(fileRequired)
+		is.Properties.Order = append(is.Properties.Order, "file")
+		is.Properties.Map["file"] = Property{
+			Type:        "object",
+			Description: "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.",
+			Required:    fileRequired,
+			Properties:  fileProps,
+		}
+		if len(fileRequired) > 0 {
+			is.Required = append(is.Required, "file")
 		}
 	}
 

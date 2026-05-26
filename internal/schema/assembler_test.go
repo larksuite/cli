@@ -321,40 +321,51 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 
 func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"images"}, "create")
-	mko := lookupKeyOrder("im", []string{"images"}, "create")
-	currentMethodOrder = mko
+	currentMethodOrder = lookupKeyOrder("im", []string{"images"}, "create")
 	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 
-	// top-level required: ["data"] — body fields image / image_type are required
-	if !reflect.DeepEqual(is.Required, []string{"data"}) {
-		t.Errorf("Required = %v, want [data]", is.Required)
+	// top-level required: ["data", "file"] — image_type body required + image file required
+	if !reflect.DeepEqual(is.Required, []string{"data", "file"}) {
+		t.Errorf("Required = %v, want [data, file]", is.Required)
 	}
-	// top-level properties only contains "data" (no path/query params)
-	if !reflect.DeepEqual(is.Properties.Order, []string{"data"}) {
-		t.Errorf("top-level properties order = %v, want [data]", is.Properties.Order)
+	// top-level properties: data (for non-file body) + file (for binary upload)
+	if !reflect.DeepEqual(is.Properties.Order, []string{"data", "file"}) {
+		t.Errorf("top-level properties order = %v, want [data, file]", is.Properties.Order)
 	}
-	// data sub-object carries body fields
+	// data sub-object carries only non-file body fields (image_type)
 	data := is.Properties.Map["data"]
-	if !reflect.DeepEqual(data.Required, []string{"image", "image_type"}) {
-		t.Errorf("data.Required = %v, want [image, image_type]", data.Required)
+	if !reflect.DeepEqual(data.Required, []string{"image_type"}) {
+		t.Errorf("data.Required = %v, want [image_type]", data.Required)
 	}
-	if !reflect.DeepEqual(data.Properties.Order, mko.RequestBody) {
-		t.Errorf("data.properties order = %v, want (from key index) %v",
-			data.Properties.Order, mko.RequestBody)
+	if !reflect.DeepEqual(data.Properties.Order, []string{"image_type"}) {
+		t.Errorf("data.properties order = %v, want [image_type]", data.Properties.Order)
 	}
-	// image field: string + binary
-	img := data.Properties.Map["image"]
+	if it := data.Properties.Map["image_type"]; !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
+		t.Errorf("image_type unexpected: %+v", it)
+	}
+	if _, isFile := data.Properties.Map["image"]; isFile {
+		t.Errorf("image (file field) should NOT appear in data sub-object")
+	}
+
+	// file sub-object carries the binary upload field
+	file := is.Properties.Map["file"]
+	if file.Type != "object" {
+		t.Errorf("file.Type = %q, want \"object\"", file.Type)
+	}
+	if !reflect.DeepEqual(file.Required, []string{"image"}) {
+		t.Errorf("file.Required = %v, want [image]", file.Required)
+	}
+	if !reflect.DeepEqual(file.Properties.Order, []string{"image"}) {
+		t.Errorf("file.properties order = %v, want [image]", file.Properties.Order)
+	}
+	img := file.Properties.Map["image"]
 	if img.Type != "string" {
 		t.Errorf("image.Type = %q, want \"string\"", img.Type)
 	}
 	if img.Format != "binary" {
 		t.Errorf("image.Format = %q, want \"binary\"", img.Format)
-	}
-	// image_type: enum present
-	if it := data.Properties.Map["image_type"]; !reflect.DeepEqual(it.Enum, []interface{}{"message", "avatar"}) {
-		t.Errorf("image_type unexpected: %+v", it)
 	}
 }
 

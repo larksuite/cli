@@ -4,13 +4,13 @@
   "inputSchema": {
     "type": "object",
     "required": [
-      "data"
+      "data",
+      "file"
     ],
     "properties": {
       "data": {
         "type": "object",
         "required": [
-          "image",
           "image_type"
         ],
         "properties": {
@@ -22,7 +22,16 @@
               "avatar"
             ],
             "example": "message"
-          },
+          }
+        }
+      },
+      "file": {
+        "type": "object",
+        "description": "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file \u003ckey\u003e=\u003cpath\u003e.",
+        "required": [
+          "image"
+        ],
+        "properties": {
           "image": {
             "type": "string",
             "description": "图片内容。传值方式可以参考请求体示例。;;**注意**：;;- 上传的图片大小不能超过 10 MB，也不能上传大小为 0 的图片。;- 分辨率限制：;\t- GIF 图片分辨率不能超过 2000 x 2000，其他图片分辨率不能超过 12000 x 12000。;\t- 用于设置头像的图片分辨率不能超过 4096 x 4096。",
