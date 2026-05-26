@@ -269,20 +269,9 @@ func platformGet(service, account string) (string, error) {
 	}
 	key, err := getMasterKey(service, false)
 	if err != nil {
-		if errors.Is(err, errNotInitialized) {
-			// .enc exists but no master key anywhere can be used → orphan.
-			return "", ErrOrphanedCredentials
-		}
-		// Other keychain errors (e.g. access blocked in sandbox) are
-		// transient from the caller's perspective — surface as-is so the
-		// existing hint chain can point them to keychain-downgrade.
 		return "", err
 	}
-	if plaintext, derr := decryptData(data, key); derr == nil {
-		return plaintext, nil
-	}
-	// Both reachable keys failed to decrypt → the encrypting key is gone.
-	return "", ErrOrphanedCredentials
+	return decryptData(data, key)
 }
 
 // platformSet stores a value in the macOS keychain.
@@ -342,46 +331,16 @@ const (
 	// copied verbatim into the local file fallback. Existing .enc credentials
 	// remain readable via the file path.
 	DowngradeUsedKeychainKey
-	// DowngradeCreatedNewKey means the OS Keychain held no master key and no
-	// encrypted credentials existed on disk, so a fresh random key was
-	// generated and written to the file fallback only. The OS Keychain was
-	// not touched.
+	// DowngradeCreatedNewKey means the OS Keychain held no master key, so a
+	// fresh random key was generated and written to the file fallback only.
+	// The OS Keychain was not touched.
 	DowngradeCreatedNewKey
-	// DowngradeCreatedNewKeyOrphaned is like DowngradeCreatedNewKey, but
-	// encrypted credentials already exist on disk that were written under
-	// the previous (now-lost) master key. The file was still written so
-	// future operations have a working fallback, but those existing .enc
-	// files are permanently unreadable — the caller should direct the user
-	// to `lark-cli config init` to reconfigure.
-	DowngradeCreatedNewKeyOrphaned
 )
 
 // MasterKeyFilePath returns the absolute path of the file fallback master key
 // for the given service.
 func MasterKeyFilePath(service string) string {
 	return filepath.Join(StorageDir(service), fileMasterKeyName)
-}
-
-// hasEncryptedCredentials reports whether the storage directory contains any
-// previously-encrypted credential files (anything with a .enc suffix written
-// by safeFileName). Returns (false, nil) when the directory does not exist.
-func hasEncryptedCredentials(dir string) (bool, error) {
-	entries, err := vfs.ReadDir(dir)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		if filepath.Ext(e.Name()) == ".enc" {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // DowngradeMasterKeyToFile materializes the OS Keychain master key into the
@@ -421,18 +380,6 @@ func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
 			return 0, err
 		}
 		result = DowngradeCreatedNewKey
-		// If encrypted credentials already exist on disk, they were
-		// written under the previous (now-lost) master key and the new
-		// random key cannot decrypt them. The file is still written so
-		// future config init has a working fallback, but signal the
-		// orphan state so the cmd layer can surface it to the user.
-		hasEnc, scanErr := hasEncryptedCredentials(dir)
-		if scanErr != nil {
-			return 0, scanErr
-		}
-		if hasEnc {
-			result = DowngradeCreatedNewKeyOrphaned
-		}
 	}
 
 	if err := vfs.MkdirAll(dir, 0700); err != nil {

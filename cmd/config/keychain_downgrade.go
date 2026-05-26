@@ -68,14 +68,6 @@ func configKeychainDowngradeRun(f *cmdutil.Factory) error {
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("downgraded: copied master key from system Keychain to %s. Subsequent operations will read from file, bypassing the OS Keychain (useful inside sandboxes like Codex).", keyPath))
 	case keychain.DowngradeCreatedNewKey:
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("system Keychain was empty; generated a new master key and wrote it to %s. The OS Keychain was not modified.", keyPath))
-	case keychain.DowngradeCreatedNewKeyOrphaned:
-		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("system Keychain was empty; generated a new master key and wrote it to %s. The OS Keychain was not modified.", keyPath))
-		return output.ErrWithHint(
-			output.ExitValidation,
-			"config",
-			fmt.Sprintf("encrypted credentials still exist on disk that were written under a now-lost master key — the freshly generated key cannot decrypt them (%v)", keychain.ErrOrphanedCredentials),
-			"Run `lark-cli config init` to reconfigure from scratch. Previously stored credentials cannot be recovered without the original master key; future operations will use the new master key in the file fallback.",
-		)
 	}
 	return nil
 }

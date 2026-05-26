@@ -18,18 +18,6 @@ var (
 
 	// errNotInitialized is an internal error indicating the master key is missing or invalid.
 	errNotInitialized = errors.New("keychain not initialized")
-
-	// ErrOrphanedCredentials signals that encrypted credentials exist on disk
-	// but cannot be decrypted with any available master key. This happens when
-	// the master key that originally encrypted them has been lost — typically
-	// because the OS Keychain entry was deleted (e.g., via Keychain Access)
-	// after credentials were stored, leaving the on-disk .enc files
-	// permanently unreadable. The only recovery is `lark-cli config init`.
-	//
-	// Returned by:
-	//   - DowngradeMasterKeyToFile (preemptive: would orphan future reads)
-	//   - platformGet (diagnostic: this read can never succeed)
-	ErrOrphanedCredentials = errors.New("encrypted credentials cannot be decrypted with any available master key (original key appears to be lost)")
 )
 
 const (
@@ -50,21 +38,10 @@ func wrapError(op string, err error) error {
 	msg := fmt.Sprintf("keychain %s failed: %v", op, err)
 	hint := "Check if the OS keychain/credential manager is locked or accessible. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox."
 
-	switch {
-	case errors.Is(err, ErrOrphanedCredentials):
-		// Override the keychain-centric message — the issue is not keychain
-		// access but lost data. Do NOT append extraHint(): the
-		// keychain-downgrade suggestion would mislead the user (downgrade
-		// cannot recover the lost key, and would either no-op via
-		// AlreadyDone or refuse via the orphan guard).
-		msg = fmt.Sprintf("cannot read stored credential: %v", err)
-		hint = "The master key that encrypted this credential is no longer available, so the on-disk data cannot be decrypted. This typically happens after the OS Keychain entry was deleted (manually via Keychain Access, by system maintenance, or by a botched migration). Run `lark-cli config init` to reconfigure from scratch — previously stored credentials cannot be recovered without the original master key."
-	case errors.Is(err, errNotInitialized):
+	if errors.Is(err, errNotInitialized) {
 		hint = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox. Otherwise, please reconfigure the CLI by running lark-cli config init."
-		hint += extraHint(err)
-	default:
-		hint += extraHint(err)
 	}
+	hint += extraHint(err)
 
 	func() {
 		defer func() { recover() }()

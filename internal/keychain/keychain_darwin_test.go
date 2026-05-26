@@ -212,57 +212,6 @@ func TestDowngradeCopiesKeychainKeyToFile(t *testing.T) {
 	}
 }
 
-// TestDowngradeCreatesNewKeyAndFlagsOrphaned verifies the safety-via-warning
-// path: when the OS Keychain is empty AND encrypted credentials already exist
-// on disk, downgrade still writes a fresh file key (so future config init has
-// a working fallback) but returns DowngradeCreatedNewKeyOrphaned so the cmd
-// layer can warn the user that the existing .enc files are now unreadable.
-// Crucially also verifies keyringSet is NEVER called — keychain-downgrade
-// must not write to the system Keychain.
-func TestDowngradeCreatesNewKeyAndFlagsOrphaned(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	origGet := keyringGet
-	origSet := keyringSet
-	keyringGet = func(service, user string) (string, error) {
-		return "", keyring.ErrNotFound
-	}
-	keyringSet = func(service, user, password string) error {
-		t.Fatalf("keyringSet must not be called; keychain-downgrade never writes to the system Keychain")
-		return nil
-	}
-	t.Cleanup(func() {
-		keyringGet = origGet
-		keyringSet = origSet
-	})
-
-	service := "test-service"
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, safeFileName("appsecret:cli_test")), []byte("garbage-ciphertext"), 0600); err != nil {
-		t.Fatalf("WriteFile(stale .enc) error = %v", err)
-	}
-
-	result, err := DowngradeMasterKeyToFile(service)
-	if err != nil {
-		t.Fatalf("DowngradeMasterKeyToFile() error = %v; expected success-with-orphan-flag", err)
-	}
-	if result != DowngradeCreatedNewKeyOrphaned {
-		t.Fatalf("result = %v, want DowngradeCreatedNewKeyOrphaned", result)
-	}
-
-	info, ferr := os.Stat(MasterKeyFilePath(service))
-	if ferr != nil {
-		t.Fatalf("master.key.file must be written even when orphans exist: %v", ferr)
-	}
-	if info.Size() != masterKeyBytes {
-		t.Fatalf("master.key.file size = %d, want %d", info.Size(), masterKeyBytes)
-	}
-}
-
 // TestDowngradeCreatesNewKeyWhenStorageEmpty verifies the "fresh user"
 // path: keychain is empty and no .enc files exist, so we generate a new
 // random key and write it to the file fallback. The OS Keychain is NOT
@@ -305,80 +254,16 @@ func TestDowngradeCreatesNewKeyWhenStorageEmpty(t *testing.T) {
 	}
 }
 
-// TestPlatformGetReportsOrphanedCredentials verifies that platformGet returns
-// ErrOrphanedCredentials when an .enc file is present on disk but no
-// reachable master key (file or keychain) can decrypt it. This is the
-// diagnostic path the user hits when they delete the OS Keychain entry
-// after credentials were stored — the old "keychain not initialized" error
-// was misleading because it implied keychain-downgrade could fix it.
-func TestPlatformGetReportsOrphanedCredentials(t *testing.T) {
+// TestPlatformGetSurfacesKeychainBlocked verifies that "keychain access blocked"
+// (the sandbox case) propagates as errKeychainBlocked through platformGet, so
+// the wrapError hint chain can attach the keychain-downgrade suggestion.
+func TestPlatformGetSurfacesKeychainBlocked(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
 	origGet := keyringGet
 	origSet := keyringSet
 	keyringGet = func(service, user string) (string, error) {
-		// Keychain is empty (the realistic "user deleted via GUI" scenario).
-		return "", keyring.ErrNotFound
-	}
-	keyringSet = func(service, user, password string) error {
-		t.Fatalf("keyringSet should not be called from platformGet")
-		return nil
-	}
-	t.Cleanup(func() {
-		keyringGet = origGet
-		keyringSet = origSet
-	})
-
-	service := "test-service"
-	account := "test-account"
-	dir := StorageDir(service)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
-
-	// Seed a file master key (key B) and an .enc encrypted with a different
-	// key (key A) — the situation the user lands in after a botched downgrade
-	// followed by deleting the keychain entry.
-	fileKey := make([]byte, masterKeyBytes)
-	for i := range fileKey {
-		fileKey[i] = byte(i + 1)
-	}
-	if err := os.WriteFile(filepath.Join(dir, fileMasterKeyName), fileKey, 0600); err != nil {
-		t.Fatalf("WriteFile(file key) error = %v", err)
-	}
-
-	lostKey := make([]byte, masterKeyBytes)
-	for i := range lostKey {
-		lostKey[i] = byte(i + 99)
-	}
-	encrypted, err := encryptData("orphaned-secret", lostKey)
-	if err != nil {
-		t.Fatalf("encryptData() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, safeFileName(account)), encrypted, 0600); err != nil {
-		t.Fatalf("WriteFile(.enc) error = %v", err)
-	}
-
-	_, err = platformGet(service, account)
-	if !errors.Is(err, ErrOrphanedCredentials) {
-		t.Fatalf("err = %v, want ErrOrphanedCredentials", err)
-	}
-}
-
-// TestPlatformGetSurfacesKeychainBlockedNotOrphan verifies that
-// "keychain access blocked" (the sandbox case) is NOT misreported as
-// ErrOrphanedCredentials — that error is transient and the existing
-// hint chain (keychain-downgrade in an interactive session) is the
-// right escape hatch.
-func TestPlatformGetSurfacesKeychainBlockedNotOrphan(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-
-	origGet := keyringGet
-	origSet := keyringSet
-	keyringGet = func(service, user string) (string, error) {
-		// Not ErrNotFound → triggers "keychain access blocked" path in getMasterKey.
 		return "", errors.New("sandbox denied keychain access")
 	}
 	keyringSet = func(service, user, password string) error {
@@ -396,7 +281,6 @@ func TestPlatformGetSurfacesKeychainBlockedNotOrphan(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 
-	// .enc exists, no file key — sandbox-only access path.
 	lostKey := make([]byte, masterKeyBytes)
 	for i := range lostKey {
 		lostKey[i] = byte(i + 55)
@@ -410,11 +294,8 @@ func TestPlatformGetSurfacesKeychainBlockedNotOrphan(t *testing.T) {
 	}
 
 	_, err = platformGet(service, account)
-	if err == nil {
-		t.Fatalf("expected error, got nil")
-	}
-	if errors.Is(err, ErrOrphanedCredentials) {
-		t.Fatalf("err = %v; access-blocked must NOT be reported as orphan (would suppress the keychain-downgrade hint)", err)
+	if !errors.Is(err, errKeychainBlocked) {
+		t.Fatalf("err = %v, want errKeychainBlocked", err)
 	}
 }
 
@@ -427,7 +308,6 @@ func TestPlatformGetSurfacesKeychainBlockedNotOrphan(t *testing.T) {
 //
 // Asserts the full wrapError → ExitError.Detail.Hint pipeline:
 //   - errKeychainBlocked + errNotInitialized → hint mentions keychain-downgrade
-//   - ErrOrphanedCredentials (downgrade can't recover lost data) → no mention
 //   - "keychain is corrupted" (downgrade would re-read the same bad bytes) → no mention
 //   - generic errors → no mention
 //
@@ -442,7 +322,6 @@ func TestWrapErrorHintMentionsDowngradeForRecoverableCases(t *testing.T) {
 		{"access blocked (sandbox / denied prompt / timeout)", errKeychainBlocked, true},
 		{"not initialized (missing master key)", errNotInitialized, true},
 		{"corrupted (downgrade would re-read the same bad bytes)", errors.New("keychain is corrupted"), false},
-		{"orphaned credentials (downgrade cannot recover lost data)", ErrOrphanedCredentials, false},
 		{"unrelated generic error", errors.New("something else entirely"), false},
 	}
 	for _, tc := range cases {
