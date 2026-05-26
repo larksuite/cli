@@ -82,10 +82,11 @@ func symArrow() string {
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
-	Factory *cmdutil.Factory
-	JSON    bool
-	Force   bool
-	Check   bool
+	Factory       *cmdutil.Factory
+	JSON          bool
+	Force         bool
+	Check         bool
+	ProjectSkills bool
 }
 
 // NewCmdUpdate creates the update command.
@@ -102,7 +103,8 @@ Detects the installation method automatically:
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.`,
+Use --check to only check for updates without installing.
+Use --project to sync AI skills into the current project instead of globally.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -111,6 +113,7 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmd.Flags().BoolVar(&opts.ProjectSkills, "project", false, "sync AI skills into the current project instead of globally")
 	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	return cmd
@@ -143,7 +146,7 @@ func updateRun(opts *UpdateOptions) error {
 		// Skip side-effects under --check (pure report path per spec §3.6).
 		var skillsResult *selfupdate.NpmResult
 		if !opts.Check {
-			skillsResult = runSkillsAndStamp(updater, io, cur, opts.Force)
+			skillsResult = runSkillsAndStamp(updater, io, cur, opts.Force, opts.ProjectSkills)
 		}
 		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
@@ -210,7 +213,7 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 }
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	skillsResult := runSkillsAndStamp(updater, io, cur, opts.Force)
+	skillsResult := runSkillsAndStamp(updater, io, cur, opts.Force, opts.ProjectSkills)
 
 	reason := detect.ManualReason()
 	if opts.JSON {
@@ -228,8 +231,8 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
-	emitSkillsTextHints(io, skillsResult)
+	fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  %s   # sync skills separately\n", selfupdate.NpmPackage, latest, skillsManualCommand(opts.ProjectSkills))
+	emitSkillsTextHints(io, skillsResult, opts.ProjectSkills)
 	return nil
 }
 
@@ -275,7 +278,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 	if err := updater.VerifyBinary(latest); err != nil {
 		restore()
 		msg := fmt.Sprintf("new binary verification failed: %s", err)
-		hint := verificationFailureHint(updater, latest)
+		hint := verificationFailureHint(updater, latest, opts.ProjectSkills)
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok":    false,
@@ -291,7 +294,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 	// Skills update (best-effort) — uses runSkillsAndStamp so the
 	// stamp gets persisted on success and dedup applies if a previous
 	// run already stamped this version.
-	skillsResult := runSkillsAndStamp(updater, io, latest, opts.Force)
+	skillsResult := runSkillsAndStamp(updater, io, latest, opts.Force, opts.ProjectSkills)
 
 	if opts.JSON {
 		result := map[string]interface{}{
@@ -310,7 +313,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 	if skillsResult != nil {
 		fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
 	}
-	emitSkillsTextHints(io, skillsResult)
+	emitSkillsTextHints(io, skillsResult, opts.ProjectSkills)
 	return nil
 }
 
@@ -321,11 +324,11 @@ func permissionHint(npmOutput string) string {
 	return ""
 }
 
-func verificationFailureHint(updater *selfupdate.Updater, latest string) string {
+func verificationFailureHint(updater *selfupdate.Updater, latest string, projectSkills bool) string {
 	if updater.CanRestorePreviousVersion() {
 		return "the previous version has been restored"
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && %s, or download %s", selfupdate.NpmPackage, latest, skillsManualCommand(projectSkills), releaseURL(latest))
 }
 
 // runSkillsAndStamp triggers updater.RunSkillsUpdate and persists the
@@ -336,13 +339,16 @@ func verificationFailureHint(updater *selfupdate.Updater, latest string) string 
 // out-of-sync, so npx re-runs). Returns nil iff skipped due to stamp
 // dedup; otherwise returns the underlying *NpmResult with Err semantics
 // from RunSkillsUpdate.
-func runSkillsAndStamp(updater *selfupdate.Updater, io *cmdutil.IOStreams, stampVersion string, force bool) *selfupdate.NpmResult {
+func runSkillsAndStamp(updater *selfupdate.Updater, io *cmdutil.IOStreams, stampVersion string, force bool, projectSkills bool) *selfupdate.NpmResult {
+	if projectSkills {
+		return updater.RunSkillsUpdateWithScope(true)
+	}
 	if !force {
 		if existing, _ := skillscheck.ReadStamp(); normalizeVersion(existing) == normalizeVersion(stampVersion) {
 			return nil
 		}
 	}
-	r := updater.RunSkillsUpdate()
+	r := updater.RunSkillsUpdateWithScope(false)
 	if r.Err == nil {
 		if err := skillscheck.WriteStamp(stampVersion); err != nil {
 			fmt.Fprintf(io.ErrOut, "warning: skills synced but stamp not written: %v\n", err)
@@ -382,7 +388,7 @@ func reportAlreadyUpToDate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, late
 	}
 	fmt.Fprintf(io.ErrOut, "%s lark-cli %s is already up to date\n", symOK(), cur)
 	if !check {
-		emitSkillsTextHints(io, skillsResult)
+		emitSkillsTextHints(io, skillsResult, opts.ProjectSkills)
 	}
 	return nil
 }
@@ -406,7 +412,7 @@ func applySkillsResult(env map[string]interface{}, r *selfupdate.NpmResult) {
 
 // emitSkillsTextHints prints human-readable feedback about the skills
 // sync result for non-JSON output.
-func emitSkillsTextHints(io *cmdutil.IOStreams, r *selfupdate.NpmResult) {
+func emitSkillsTextHints(io *cmdutil.IOStreams, r *selfupdate.NpmResult, projectSkills bool) {
 	switch {
 	case r == nil:
 		// dedup hit — silent (already up to date)
@@ -415,8 +421,16 @@ func emitSkillsTextHints(io *cmdutil.IOStreams, r *selfupdate.NpmResult) {
 		if detail := strings.TrimSpace(r.Stderr.String()); detail != "" {
 			fmt.Fprintf(io.ErrOut, "  %s\n", selfupdate.Truncate(detail, maxStderrDetail))
 		}
-		fmt.Fprintf(io.ErrOut, "  Run manually: npx -y skills add larksuite/cli -g -y\n")
+		fmt.Fprintf(io.ErrOut, "  Run manually: %s\n", skillsManualCommand(projectSkills))
 	default:
 		fmt.Fprintf(io.ErrOut, "%s Skills updated\n", symOK())
 	}
+}
+
+func skillsManualCommand(projectSkills bool) string {
+	scopeFlag := "-g"
+	if projectSkills {
+		scopeFlag = "-p"
+	}
+	return fmt.Sprintf("npx -y skills add larksuite/cli %s -y", scopeFlag)
 }

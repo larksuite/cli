@@ -484,7 +484,7 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if !strings.Contains(out, "skills will not be synced") {
 		t.Errorf("expected skills-not-synced warning in rollback hint, got: %s", out)
 	}
-	if !strings.Contains(out, "npx skills add larksuite/cli -y -g") {
+	if !strings.Contains(out, "npx -y skills add larksuite/cli -g -y") {
 		t.Errorf("expected npx skills add hint for skills sync, got: %s", out)
 	}
 }
@@ -886,7 +886,7 @@ func TestRunSkillsAndStamp_DedupHit(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false, false)
 	if got != nil {
 		t.Errorf("runSkillsAndStamp() = %+v, want nil for dedup hit", got)
 	}
@@ -908,7 +908,7 @@ func TestRunSkillsAndStamp_DedupForceBypass(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", true)
+	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", true, false)
 	if got == nil {
 		t.Fatal("runSkillsAndStamp(force=true) = nil, want non-nil")
 	}
@@ -925,7 +925,7 @@ func TestRunSkillsAndStamp_SuccessWritesStamp(t *testing.T) {
 			return &selfupdate.NpmResult{}
 		},
 	}
-	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false, false)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndStamp() = %+v, want non-nil with nil Err", got)
 	}
@@ -948,13 +948,44 @@ func TestRunSkillsAndStamp_FailureKeepsOldStamp(t *testing.T) {
 			return r
 		},
 	}
-	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false)
+	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false, false)
 	if got == nil || got.Err == nil {
 		t.Fatalf("runSkillsAndStamp() = %+v, want non-nil with non-nil Err", got)
 	}
 	stamp, _ := skillscheck.ReadStamp()
 	if stamp != "1.0.20" {
 		t.Errorf("stamp = %q, want \"1.0.20\" (failure must not overwrite)", stamp)
+	}
+}
+
+func TestRunSkillsAndStamp_ProjectScopeBypassesGlobalStamp(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := skillscheck.WriteStamp("1.0.21"); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	projectScope := false
+	updater := &selfupdate.Updater{
+		SkillsUpdateWithScopeOverride: func(project bool) *selfupdate.NpmResult {
+			called = true
+			projectScope = project
+			return &selfupdate.NpmResult{}
+		},
+	}
+	got := runSkillsAndStamp(updater, newTestIO(), "1.0.21", false, true)
+	if got == nil || got.Err != nil {
+		t.Fatalf("runSkillsAndStamp(project=true) = %+v, want non-nil success", got)
+	}
+	if !called {
+		t.Fatal("RunSkillsUpdateWithScope not called for project scope")
+	}
+	if !projectScope {
+		t.Fatal("RunSkillsUpdateWithScope called with project=false, want true")
+	}
+	stamp, _ := skillscheck.ReadStamp()
+	if stamp != "1.0.21" {
+		t.Errorf("project scope must not mutate global stamp, got %q", stamp)
 	}
 }
 
@@ -1222,7 +1253,7 @@ func TestRunSkillsAndStamp_StampWriteFailureWarns(t *testing.T) {
 			return &selfupdate.NpmResult{} // success
 		},
 	}
-	got := runSkillsAndStamp(updater, f.IOStreams, "1.0.21", false)
+	got := runSkillsAndStamp(updater, f.IOStreams, "1.0.21", false, false)
 	if got == nil || got.Err != nil {
 		t.Fatalf("runSkillsAndStamp() = %+v, want non-nil with nil Err", got)
 	}
@@ -1235,8 +1266,46 @@ func TestRunSkillsAndStamp_StampWriteFailureWarns(t *testing.T) {
 // message is printed to ErrOut on a successful (Err == nil) result.
 func TestEmitSkillsTextHints_Success(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
-	emitSkillsTextHints(f.IOStreams, &selfupdate.NpmResult{}) // Err==nil → success
+	emitSkillsTextHints(f.IOStreams, &selfupdate.NpmResult{}, false) // Err==nil → success
 	if !strings.Contains(stderr.String(), "Skills updated") {
 		t.Errorf("stderr does not contain 'Skills updated': %q", stderr.String())
+	}
+}
+
+func TestUpdateProjectFlagPassesProjectScope(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	origFetch := fetchLatest
+	origCur := currentVersion
+	t.Cleanup(func() { fetchLatest = origFetch; currentVersion = origCur })
+	fetchLatest = func() (string, error) { return "1.0.21", nil }
+	currentVersion = func() string { return "1.0.21" }
+
+	called := false
+	projectScope := false
+	origNew := newUpdater
+	t.Cleanup(func() { newUpdater = origNew })
+	newUpdater = func() *selfupdate.Updater {
+		return &selfupdate.Updater{
+			SkillsUpdateWithScopeOverride: func(project bool) *selfupdate.NpmResult {
+				called = true
+				projectScope = project
+				return &selfupdate.NpmResult{}
+			},
+		}
+	}
+
+	f, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--project", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cmd.Execute() err = %v, want nil", err)
+	}
+	if !called {
+		t.Fatal("skills update was not called")
+	}
+	if !projectScope {
+		t.Fatal("skills update got project=false, want true")
 	}
 }

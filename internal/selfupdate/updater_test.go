@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 
@@ -164,5 +165,21 @@ func TestVerifyBinaryEmptyOutput(t *testing.T) {
 
 	if err := New().VerifyBinary("2.0.0"); err == nil {
 		t.Fatal("VerifyBinary(empty output) expected error, got nil")
+	}
+}
+
+func TestSkillsAddArgs_GlobalScope(t *testing.T) {
+	got := skillsAddArgs("larksuite/cli", false)
+	want := []string{"-y", "skills", "add", "larksuite/cli", "-g", "-y"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skillsAddArgs(global) = %#v, want %#v", got, want)
+	}
+}
+
+func TestSkillsAddArgs_ProjectScope(t *testing.T) {
+	got := skillsAddArgs("larksuite/cli", true)
+	want := []string{"-y", "skills", "add", "larksuite/cli", "-p", "-y"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("skillsAddArgs(project) = %#v, want %#v", got, want)
 	}
 }

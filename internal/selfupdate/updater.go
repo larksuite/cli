@@ -78,14 +78,16 @@ func (r *NpmResult) CombinedOutput() string {
 // Platform-specific methods (PrepareSelfReplace, CleanupStaleFiles)
 // are in updater_unix.go and updater_windows.go.
 //
-// Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride / VerifyOverride
-// / RestoreAvailableOverride for testing.
+// Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride /
+// SkillsUpdateWithScopeOverride / VerifyOverride / RestoreAvailableOverride
+// for testing.
 type Updater struct {
-	DetectOverride           func() DetectResult
-	NpmInstallOverride       func(version string) *NpmResult
-	SkillsUpdateOverride     func() *NpmResult
-	VerifyOverride           func(expectedVersion string) error
-	RestoreAvailableOverride func() bool
+	DetectOverride                func() DetectResult
+	NpmInstallOverride            func(version string) *NpmResult
+	SkillsUpdateOverride          func() *NpmResult
+	SkillsUpdateWithScopeOverride func(project bool) *NpmResult
+	VerifyOverride                func(expectedVersion string) error
+	RestoreAvailableOverride      func() bool
 
 	// backupCreated is set to true by PrepareSelfReplace (Windows) when the
 	// running binary is successfully renamed to .old. Used by
@@ -153,20 +155,29 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	return r
 }
 
-// RunSkillsUpdate installs skills, trying the .well-known source first and
-// falling back to the GitHub repo on failure or timeout.
+// RunSkillsUpdate installs skills globally, trying the .well-known source
+// first and falling back to the GitHub repo on failure or timeout.
 func (u *Updater) RunSkillsUpdate() *NpmResult {
+	return u.RunSkillsUpdateWithScope(false)
+}
+
+// RunSkillsUpdateWithScope installs skills, optionally into the current
+// project instead of the global skills directory.
+func (u *Updater) RunSkillsUpdateWithScope(project bool) *NpmResult {
+	if u.SkillsUpdateWithScopeOverride != nil {
+		return u.SkillsUpdateWithScopeOverride(project)
+	}
 	if u.SkillsUpdateOverride != nil {
 		return u.SkillsUpdateOverride()
 	}
-	r := u.runSkillsAdd("https://open.feishu.cn")
+	r := u.runSkillsAdd("https://open.feishu.cn", project)
 	if r.Err != nil {
-		r = u.runSkillsAdd("larksuite/cli")
+		r = u.runSkillsAdd("larksuite/cli", project)
 	}
 	return r
 }
 
-func (u *Updater) runSkillsAdd(source string) *NpmResult {
+func (u *Updater) runSkillsAdd(source string, project bool) *NpmResult {
 	r := &NpmResult{}
 	npxPath, err := exec.LookPath("npx")
 	if err != nil {
@@ -175,7 +186,7 @@ func (u *Updater) runSkillsAdd(source string) *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", source, "-g", "-y")
+	cmd := exec.CommandContext(ctx, npxPath, skillsAddArgs(source, project)...)
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
@@ -183,6 +194,14 @@ func (u *Updater) runSkillsAdd(source string) *NpmResult {
 		r.Err = fmt.Errorf("skills update timed out after %s", skillsUpdateTimeout)
 	}
 	return r
+}
+
+func skillsAddArgs(source string, project bool) []string {
+	scopeFlag := "-g"
+	if project {
+		scopeFlag = "-p"
+	}
+	return []string{"-y", "skills", "add", source, scopeFlag, "-y"}
 }
 
 // VerifyBinary checks that the installed binary reports the expected version
