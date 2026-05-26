@@ -43,6 +43,12 @@ var keyringGet = keyring.Get
 // keyringSet is overridden in tests to simulate system keychain writes.
 var keyringSet = keyring.Set
 
+// errKeychainBlocked is returned when the OS Keychain is reachable but
+// denies access — sandbox restriction, user-denied prompt, or a 5-second
+// timeout (typically caused by an ignored permission dialog). Distinct
+// from errNotInitialized (master key entry genuinely absent).
+var errKeychainBlocked = errors.New("keychain access blocked")
+
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
 	home, err := vfs.UserHomeDir()
@@ -85,7 +91,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 			return
 		} else if !errors.Is(err, keyring.ErrNotFound) {
 			// Not ErrNotFound, which means access was denied or blocked by the system
-			resCh <- result{key: nil, err: errors.New("keychain access blocked")}
+			resCh <- result{key: nil, err: errKeychainBlocked}
 			return
 		}
 
@@ -117,7 +123,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		return res.key, res.err
 	case <-ctx.Done():
 		// Timeout is usually caused by ignored/blocked permission prompts
-		return nil, errors.New("keychain access blocked")
+		return nil, errKeychainBlocked
 	}
 }
 
@@ -445,12 +451,16 @@ func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
 }
 
 // extraHint appends a darwin-specific suggestion to wrapError's hint message
-// when the failure indicates the master key is missing. On macOS, the user
-// can sidestep an unreliable system Keychain by running keychain-downgrade
-// from an interactive Terminal session, after which the file fallback is
-// readable from any context (sandbox, automation, CI, etc.).
+// when the failure is one keychain-downgrade can recover from: either the
+// master key is missing (errNotInitialized) or the OS Keychain is reachable
+// but blocking access (errKeychainBlocked — sandbox, denied prompt, timeout).
+// In both cases the user can run keychain-downgrade from an interactive
+// Terminal session, after which the file fallback is readable from any
+// context (sandbox, automation, CI, etc.). Corruption errors are
+// deliberately excluded — downgrade would re-read the same bad bytes and
+// fail; the right fix there is to delete the corrupt Keychain entry first.
 func extraHint(err error) string {
-	if errors.Is(err, errNotInitialized) {
+	if errors.Is(err, errNotInitialized) || errors.Is(err, errKeychainBlocked) {
 		return " On macOS, you can also open an interactive Terminal session (where the system Keychain is reachable) and run `lark-cli config keychain-downgrade` to materialize the master key into a local file; subsequent runs in this sandbox/automation context will then read from the file and succeed."
 	}
 	return ""

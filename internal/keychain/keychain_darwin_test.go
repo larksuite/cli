@@ -10,8 +10,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/output"
 	"github.com/zalando/go-keyring"
 )
 
@@ -413,6 +415,48 @@ func TestPlatformGetSurfacesKeychainBlockedNotOrphan(t *testing.T) {
 	}
 	if errors.Is(err, ErrOrphanedCredentials) {
 		t.Fatalf("err = %v; access-blocked must NOT be reported as orphan (would suppress the keychain-downgrade hint)", err)
+	}
+}
+
+// TestWrapErrorHintMentionsDowngradeForRecoverableCases is the regression
+// guard for the bug where `lark-cli api ...` inside a sandbox surfaced
+// "keychain access blocked" but the hint did NOT mention keychain-downgrade
+// — the very command meant to recover from that exact situation. Root cause:
+// the blocked path used an anonymous errors.New string, so the extraHint
+// `errors.Is` check (only matched errNotInitialized) couldn't recognize it.
+//
+// Asserts the full wrapError → ExitError.Detail.Hint pipeline:
+//   - errKeychainBlocked + errNotInitialized → hint mentions keychain-downgrade
+//   - ErrOrphanedCredentials (downgrade can't recover lost data) → no mention
+//   - "keychain is corrupted" (downgrade would re-read the same bad bytes) → no mention
+//   - generic errors → no mention
+//
+// Add new cases here whenever extraHint's matcher widens, to keep the
+// promise that the hint is suggested iff downgrade can actually help.
+func TestWrapErrorHintMentionsDowngradeForRecoverableCases(t *testing.T) {
+	cases := []struct {
+		name     string
+		err      error
+		wantHint bool
+	}{
+		{"access blocked (sandbox / denied prompt / timeout)", errKeychainBlocked, true},
+		{"not initialized (missing master key)", errNotInitialized, true},
+		{"corrupted (downgrade would re-read the same bad bytes)", errors.New("keychain is corrupted"), false},
+		{"orphaned credentials (downgrade cannot recover lost data)", ErrOrphanedCredentials, false},
+		{"unrelated generic error", errors.New("something else entirely"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := wrapError("Get", tc.err)
+			var ee *output.ExitError
+			if !errors.As(err, &ee) || ee.Detail == nil {
+				t.Fatalf("wrapError returned %#v; expected *output.ExitError with Detail", err)
+			}
+			got := strings.Contains(ee.Detail.Hint, "keychain-downgrade")
+			if got != tc.wantHint {
+				t.Fatalf("hint mentions keychain-downgrade = %v, want %v\n  full hint: %q", got, tc.wantHint, ee.Detail.Hint)
+			}
+		})
 	}
 }
 
