@@ -36,9 +36,8 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 | 意图 | `--detail` | 说明 |
 |------|-----------|------|
 | **只读**：浏览或总结文档内容 | `simple`（默认） | 简洁 XML/Markdown，不含 block ID、样式属性、引用元数据 |
-| **定位**：需要 block ID 与其他业务交互 | `with-ids` | 包含 block ID（如 `<p id="blkcnXXXX">`），可用于 `+update` 的 `--block-id` |
+| **定位**：需要 block ID 与其他业务交互 | `with-ids` | 包含 block ID（如 `<p id="blkcnXXXX">`），可用于 `+update` 的 `--block-id`，也可用于拼接 `文档URL#block_id` 形式的直达链接 |
 | **编辑**：任何修改文档内容的需求 | `full` | 包含 block ID + 样式属性 + 引用元数据，提供完整文档结构信息 |
-
 
 ## 选 `--scope`（读取范围）
 
