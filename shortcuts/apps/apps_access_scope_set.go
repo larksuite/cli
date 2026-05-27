@@ -27,7 +27,7 @@ var AppsAccessScopeSet = common.Shortcut{
 	Command:     "+access-scope-set",
 	Description: "Set Miaoda app access scope (specific / public / tenant)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app.access_scope:write"},
+	Scopes:      []string{"spark:app:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
