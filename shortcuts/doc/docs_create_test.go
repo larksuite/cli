@@ -249,6 +249,84 @@ func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2RejectsV1OnlyFlags(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name: "markdown",
+			args: []string{
+				"+create",
+				"--api-version", "v2",
+				"--markdown", "## legacy",
+			},
+			wantErr: "use --content with --doc-format markdown",
+		},
+		{
+			name: "wiki node",
+			args: []string{
+				"+create",
+				"--api-version", "v2",
+				"--content", "<title>内容</title><p>正文</p>",
+				"--wiki-node", "wikcn_legacy_node",
+			},
+			wantErr: "use --parent-token",
+		},
+		{
+			name: "title",
+			args: []string{
+				"+create",
+				"--api-version", "v2",
+				"--content", "<p>正文</p>",
+				"--title", "Legacy title",
+			},
+			wantErr: "include the document title in --content",
+		},
+		{
+			name: "folder token",
+			args: []string{
+				"+create",
+				"--api-version", "v2",
+				"--content", "<title>内容</title><p>正文</p>",
+				"--folder-token", "fldcn_legacy_folder",
+			},
+			wantErr: "use --parent-token",
+		},
+		{
+			name: "wiki space",
+			args: []string{
+				"+create",
+				"--api-version", "v2",
+				"--content", "<title>内容</title><p>正文</p>",
+				"--wiki-space", "my_library",
+			},
+			wantErr: "use --parent-position or --parent-token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+			err := runDocsCreateShortcut(t, f, stdout, tt.args)
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want to contain %q", err, tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), "--api-version v2") {
+				t.Fatalf("error = %v, want v2 guidance", err)
+			}
+		})
+	}
+}
+
 // ── V1 (MCP) tests ──
 
 func TestDocsCreateV1BotAutoGrantSuccess(t *testing.T) {

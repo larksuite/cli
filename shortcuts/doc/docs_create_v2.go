@@ -21,11 +21,33 @@ func v2CreateFlags() []common.Flag {
 }
 
 func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
+	if err := rejectV1CreateFlagsForV2(runtime); err != nil {
+		return err
+	}
 	if runtime.Str("content") == "" {
 		return common.FlagErrorf("--content is required")
 	}
 	if runtime.Str("parent-token") != "" && runtime.Str("parent-position") != "" {
 		return common.FlagErrorf("--parent-token and --parent-position are mutually exclusive")
+	}
+	return nil
+}
+
+func rejectV1CreateFlagsForV2(runtime *common.RuntimeContext) error {
+	v1Flags := []struct {
+		name string
+		hint string
+	}{
+		{name: "markdown", hint: "use --content with --doc-format markdown"},
+		{name: "title", hint: "include the document title in --content"},
+		{name: "folder-token", hint: "use --parent-token"},
+		{name: "wiki-node", hint: "use --parent-token"},
+		{name: "wiki-space", hint: "use --parent-position or --parent-token"},
+	}
+	for _, flag := range v1Flags {
+		if runtime.Str(flag.name) != "" {
+			return common.FlagErrorf("--%s is only supported by docs +create v1; for --api-version v2, %s", flag.name, flag.hint)
+		}
 	}
 	return nil
 }
