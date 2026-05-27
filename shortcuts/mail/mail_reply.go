@@ -24,9 +24,11 @@ var MailReply = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to reply to", Required: true},
-		{Name: "body", Desc: "Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode. Required unless --template-id supplies a non-empty body."},
+		{Name: "body", Desc: "Reply body. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the reply body and the original message. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
+		bodyFileFlag,
 		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "to", Desc: "Additional To address(es), comma-separated (appended to original sender's address)"},
@@ -42,7 +44,8 @@ var MailReply = common.Shortcut{
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are appended to the reply-derived values (no de-duplication; see warning in Execute output)."},
 		signatureFlag,
 		priorityFlag,
-		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
+		showLintDetailsFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
@@ -70,8 +73,14 @@ var MailReply = common.Shortcut{
 			return err
 		}
 		hasTemplate := runtime.Str("template-id") != ""
-		if !hasTemplate && strings.TrimSpace(runtime.Str("body")) == "" {
-			return output.ErrValidation("--body is required; pass the reply body (or use --template-id)")
+		bodyFlag := runtime.Str("body")
+		bodyFile := strings.TrimSpace(runtime.Str("body-file"))
+		bodyEmpty := strings.TrimSpace(bodyFlag) == ""
+		if err := validateBodyFileMutex(bodyFlag, bodyFile, runtime.ValidatePath); err != nil {
+			return err
+		}
+		if !hasTemplate && bodyEmpty && bodyFile == "" {
+			return output.ErrValidation("--body or --body-file is required; pass the reply body (or use --template-id)")
 		}
 		if err := validateConfirmSendScope(runtime); err != nil {
 			return err
@@ -95,7 +104,10 @@ var MailReply = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
-		body := runtime.Str("body")
+		body, bErr := resolveBodyFromFlags(runtime)
+		if bErr != nil {
+			return bErr
+		}
 		toFlag := runtime.Str("to")
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
@@ -244,6 +256,10 @@ var MailReply = common.Shortcut{
 		var composedHTMLBody string
 		var composedTextBody string
 		var srcInlineBytes int64
+		// Lint findings flowing into the writing-path stdout envelope.
+		// Initialise empty (non-nil) so the envelope always carries
+		// `lint_applied[]` / `original_blocked[]` even on the plain-text path.
+		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply blocked: %w", err)
@@ -261,6 +277,15 @@ var MailReply = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
+			// Writing-path lint: operate on the user-authored body + signature
+			// ONLY — NOT on `quoted` (the <blockquote> derived from the
+			// original message). Double-sanitising risks dropping legitimate
+			// Lark quote markup such as adit-html-block* / history-quote-* /
+			// lark-mail-doc-quote (these classes are intentionally allow-listed
+			// in the tag classification "通过" row).
+			cleaned, rep := runWritePathLint(bodyWithSig)
+			bodyWithSig = cleaned
+			lintApplied, lintBlocked = rep.Applied, rep.Blocked
 			composedHTMLBody = bodyWithSig + quoted
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
@@ -316,8 +341,12 @@ var MailReply = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
+		showLintDetails := runtime.Bool("show-lint-details")
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			out := buildDraftSavedOutput(draftResult, mailboxID)
+			applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+			addComposeHint(out)
+			runtime.Out(out, nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
@@ -325,7 +354,10 @@ var MailReply = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send reply (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		out := buildDraftSendOutput(resData, mailboxID)
+		applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+		addComposeHint(out)
+		runtime.Out(out, nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

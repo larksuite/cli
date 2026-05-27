@@ -26,10 +26,12 @@ var MailForward = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:modify", "mail:user_mailbox.message:readonly", "mail:user_mailbox:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "Required. Message ID to forward", Required: true},
 		{Name: "to", Desc: "Recipient email address(es), comma-separated"},
-		{Name: "body", Desc: "Body prepended before the forwarded message. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the forward body and the original message. Use --plain-text to force plain-text mode."},
+		{Name: "body", Desc: "Body prepended before the forwarded message. Prefer HTML for rich formatting; plain text is also supported. Body type is auto-detected from the forward body and the original message. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file."},
+		bodyFileFlag,
 		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "CC email address(es), comma-separated"},
@@ -44,7 +46,8 @@ var MailForward = common.Shortcut{
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are merged into the forward draft (template values appended to user flags / forward-derived values; no de-duplication)."},
 		signatureFlag,
 		priorityFlag,
-		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
+		showLintDetailsFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		to := runtime.Str("to")
@@ -70,6 +73,11 @@ var MailForward = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateTemplateID(runtime.Str("template-id")); err != nil {
+			return err
+		}
+		bodyFlag := runtime.Str("body")
+		bodyFile := strings.TrimSpace(runtime.Str("body-file"))
+		if err := validateBodyFileMutex(bodyFlag, bodyFile, runtime.ValidatePath); err != nil {
 			return err
 		}
 		if err := validateConfirmSendScope(runtime); err != nil {
@@ -102,7 +110,10 @@ var MailForward = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		messageId := runtime.Str("message-id")
 		to := runtime.Str("to")
-		body := runtime.Str("body")
+		body, bErr := resolveBodyFromFlags(runtime)
+		if bErr != nil {
+			return bErr
+		}
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
 		plainText := runtime.Bool("plain-text")
@@ -242,6 +253,8 @@ var MailForward = common.Shortcut{
 		var composedHTMLBody string
 		var composedTextBody string
 		var srcInlineBytes int64
+		// Lint findings flowing into the writing-path stdout envelope.
+		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("forward blocked: %w", err)
@@ -267,6 +280,13 @@ var MailForward = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
+			// Writing-path lint: lint user-authored body + signature, NOT the
+			// forward quote / large-attachment card derived from the original
+			// message (re-linting quote blocks risks dropping allow-listed
+			// Feishu-native quote markup).
+			cleaned, rep := runWritePathLint(bodyWithSig)
+			bodyWithSig = cleaned
+			lintApplied, lintBlocked = rep.Applied, rep.Blocked
 			composedHTMLBody = bodyWithSig + origLargeAttCard + forwardQuote
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
@@ -479,8 +499,12 @@ var MailForward = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
+		showLintDetails := runtime.Bool("show-lint-details")
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			out := buildDraftSavedOutput(draftResult, mailboxID)
+			applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+			addComposeHint(out)
+			runtime.Out(out, nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
@@ -488,7 +512,10 @@ var MailForward = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		out := buildDraftSendOutput(resData, mailboxID)
+		applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+		addComposeHint(out)
+		runtime.Out(out, nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

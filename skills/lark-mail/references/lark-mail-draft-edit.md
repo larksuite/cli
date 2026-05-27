@@ -10,7 +10,9 @@
 - `--set-cc`
 - `--set-bcc`
 
-**正文编辑和其他高级操作必须通过 `--patch-file`**。没有 `--set-body` flag。
+**正文整体替换的快捷方式：** `--body <text>` / `--body-file <path>`（二选一互斥）会自动展开为 `set_body` op。如果只想做整段正文替换且不需要保留引用区，用这两个 flag 即可，无需写 patch-file。要保留引用区或做更精细的 op 组合，仍走 `--patch-file`。两个入口与 `--patch-file` 内的 `set_body` / `set_reply_body` 互斥。
+
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
 
 ### 正文编辑：两个 op 的选择
 
@@ -72,6 +74,8 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
 | `--set-cc <emails>` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `--set-bcc <emails>` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
+| `--body <text>` | 否 | 整段替换正文（自动展开为 `set_body` op）。与 `--body-file` 互斥；与 `--patch-file` 内的 `set_body` / `set_reply_body` op 互斥 |
+| `--body-file <path>` | 否 | 从文件读取正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
 | `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
 | `--set-event-summary <text>` | 否 | 设置日程标题。需同时设置 `--set-event-start` 和 `--set-event-end` |
 | `--set-event-start <time>` | 条件必填 | 设置日程开始时间（ISO 8601） |

@@ -62,7 +62,7 @@ func TestBuildRawEMLForDraftCreate_ResolvesLocalImages(t *testing.T) {
 		Body:    `<p>Hello</p><p><img src="./test_image.png" /></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -88,7 +88,7 @@ func TestBuildRawEMLForDraftCreate_NoLocalImages(t *testing.T) {
 		Body:    `<p>Hello <b>world</b></p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -124,7 +124,7 @@ func TestBuildRawEMLForDraftCreate_AutoResolveCountedInSizeLimit(t *testing.T) {
 		Attach:  "./big.txt",
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	_, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected size limit error when auto-resolved image + attachment exceed 25MB")
 	}
@@ -145,7 +145,7 @@ func TestBuildRawEMLForDraftCreate_OrphanedInlineSpecError(t *testing.T) {
 		Inline:  `[{"cid":"orphan","file_path":"./unused.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	_, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for orphaned --inline CID not referenced in body")
 	}
@@ -166,7 +166,7 @@ func TestBuildRawEMLForDraftCreate_MissingCIDRefError(t *testing.T) {
 		Inline:  `[{"cid":"present","file_path":"./present.png"}]`,
 	}
 
-	_, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	_, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for missing CID reference")
 	}
@@ -183,7 +183,7 @@ func TestBuildRawEMLForDraftCreate_WithPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "1", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "1", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -201,7 +201,7 @@ func TestBuildRawEMLForDraftCreate_NoPriority(t *testing.T) {
 		Body:    `<p>Hello</p>`,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -236,7 +236,7 @@ func TestBuildRawEMLForDraftCreate_RequestReceiptAddsHeader(t *testing.T) {
 		Body:    "<p>hi</p>",
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(),
 		newRuntimeWithFromAndRequestReceipt("sender@example.com", true), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
@@ -259,7 +259,7 @@ func TestBuildRawEMLForDraftCreate_RequestReceiptOmittedByDefault(t *testing.T) 
 		Body:    "<p>hi</p>",
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(),
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(),
 		newRuntimeWithFromAndRequestReceipt("sender@example.com", false), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
@@ -283,7 +283,7 @@ func TestBuildRawEMLForDraftCreate_PlainTextSkipsResolve(t *testing.T) {
 		PlainText: true,
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), newRuntimeWithFrom("sender@example.com"), input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
@@ -304,7 +304,7 @@ func TestBuildRawEMLForDraftCreate_WithCalendarEvent(t *testing.T) {
 		Body:    "<p>Please join us</p>",
 	}
 
-	rawEML, err := buildRawEMLForDraftCreate(context.Background(), rt, input, nil, "", nil, "", "", nil, nil)
+	rawEML, _, _, err := buildRawEMLForDraftCreate(context.Background(), rt, input, nil, "", nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildRawEMLForDraftCreate() error = %v", err)
 	}
