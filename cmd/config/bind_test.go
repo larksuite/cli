@@ -1679,3 +1679,34 @@ func TestHasStrictBotLock(t *testing.T) {
 		})
 	}
 }
+
+// TestConfigBindRun_LangExplicit_PrintsConfirmation covers the flag-mode
+// confirmation line: when --lang is explicit, bind prints "language preference
+// set" to stderr (rendered in the TUI language, embedding the preference value).
+func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{
+		Factory:      f,
+		Source:       "hermes",
+		Identity:     "bot-only",
+		Lang:         "en",
+		langExplicit: true,
+	})
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	want := fmt.Sprintf(getBindMsg("zh").LangPreferenceSet, "en")
+	if got := stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
+	}
+}

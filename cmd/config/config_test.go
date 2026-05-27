@@ -453,3 +453,36 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateInitLang_NormalizesEmptyImplicitToZh covers the implicit-default
+// branch: when --lang was never passed and Lang is empty (test paths bypassing
+// cobra), validateInitLang normalizes to "zh" rather than erroring.
+func TestValidateInitLang_NormalizesEmptyImplicitToZh(t *testing.T) {
+	opts := &ConfigInitOptions{Lang: "", langExplicit: false}
+	if err := validateInitLang(opts); err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if opts.Lang != "zh" {
+		t.Errorf("Lang = %q, want zh", opts.Lang)
+	}
+}
+
+// TestPrintLangPreferenceConfirmation covers both branches of the
+// confirmation helper: it prints to stderr only when --lang was explicit.
+func TestPrintLangPreferenceConfirmation(t *testing.T) {
+	t.Run("explicit prints confirmation", func(t *testing.T) {
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en", UILang: "zh", langExplicit: true})
+		got := stderr.String()
+		if !strings.Contains(got, "语言偏好") || !strings.Contains(got, "en") {
+			t.Errorf("stderr = %q, want confirmation mentioning the preference and en", got)
+		}
+	})
+	t.Run("implicit prints nothing", func(t *testing.T) {
+		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en", UILang: "zh", langExplicit: false})
+		if got := stderr.String(); got != "" {
+			t.Errorf("stderr = %q, want empty when --lang is implicit", got)
+		}
+	})
+}
