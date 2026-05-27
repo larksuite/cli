@@ -458,6 +458,7 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 // branch: when --lang was never passed and Lang is empty (test paths bypassing
 // cobra), validateInitLang normalizes to "zh" rather than erroring.
 func TestValidateInitLang_NormalizesEmptyImplicitToZh(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	opts := &ConfigInitOptions{Lang: "", langExplicit: false}
 	if err := validateInitLang(opts); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
@@ -470,6 +471,7 @@ func TestValidateInitLang_NormalizesEmptyImplicitToZh(t *testing.T) {
 // TestPrintLangPreferenceConfirmation covers both branches of the
 // confirmation helper: it prints to stderr only when --lang was explicit.
 func TestPrintLangPreferenceConfirmation(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Run("explicit prints confirmation", func(t *testing.T) {
 		f, _, stderr, _ := cmdutil.TestFactory(t, nil)
 		printLangPreferenceConfirmation(&ConfigInitOptions{Factory: f, Lang: "en", UILang: "zh", langExplicit: true})
