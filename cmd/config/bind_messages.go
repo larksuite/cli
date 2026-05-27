@@ -3,6 +3,8 @@
 
 package config
 
+import "github.com/larksuite/cli/internal/i18n"
+
 // bindMsg holds all TUI text for config bind, supporting zh/en via --lang.
 //
 // Brand-aware strings use a %s slot where the UI-friendly product name
@@ -161,12 +163,9 @@ var bindMsgEn = &bindMsg{
 	LangPreferenceSet: "Language preference set to: %s",
 }
 
-// getBindMsg returns the bindMsg for the TUI display language. The input
-// is opts.UILang which is always either "" / "zh" (default) or "en"
-// (picker result). Any other value falls through to zh — a defensive
-// behavior, not an expected code path.
-func getBindMsg(lang string) *bindMsg {
-	if lang == "en" {
+// getBindMsg picks the zh/en TUI bundle; non-English falls back to zh.
+func getBindMsg(lang i18n.Lang) *bindMsg {
+	if lang.IsEnglish() {
 		return bindMsgEn
 	}
 	return bindMsgZh
@@ -177,11 +176,11 @@ func getBindMsg(lang string) *bindMsg {
 // "feishu" (or empty / unknown) maps to "飞书" in zh and "Feishu" in en —
 // this is the safe default when the brand hasn't been resolved yet (for
 // example, on the pre-binding source-selection screen).
-func brandDisplay(brand, lang string) string {
+func brandDisplay(brand string, lang i18n.Lang) string {
 	if brand == "lark" || brand == "Lark" || brand == "LARK" {
 		return "Lark"
 	}
-	if lang == "en" {
+	if lang.IsEnglish() {
 		return "Feishu"
 	}
 	return "飞书"

@@ -38,19 +38,10 @@ type BindOptions struct {
 	// this flag because its own prompts already require human confirmation.
 	Force bool
 
-	// Lang is the persistent language preference written to appConfig.Lang.
-	// Set by --lang flag or by the picker. Always one of i18n.ValidLanguages
-	// (14 codes); empty string and out-of-enum values are rejected by
-	// validateBindFlags. Default "zh".
-	Lang         string
-	langExplicit bool // true when --lang was explicitly passed
+	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateBindFlags
+	langExplicit bool   // true when --lang was explicitly passed
 
-	// UILang is the TUI display language for this invocation only. Either
-	// "zh" or "en". Default "zh". The only writer is the picker. --lang
-	// does NOT influence this field — that's intentional: picker selects
-	// what the user sees in the TUI; --lang is a persistent preference
-	// intended for downstream API consumers and output formatting.
-	UILang string
+	UILang i18n.Lang // TUI display language (picker-only); intentionally separate from --lang
 
 	// Brand holds the resolved Lark product brand ("feishu" | "lark") for
 	// the account being bound. Populated after resolveAccount; TUI stages
@@ -67,7 +58,7 @@ type BindOptions struct {
 
 // NewCmdConfigBind creates the config bind subcommand.
 func NewCmdConfigBind(f *cmdutil.Factory, runF func(*BindOptions) error) *cobra.Command {
-	opts := &BindOptions{Factory: f, UILang: "zh"}
+	opts := &BindOptions{Factory: f, UILang: i18n.LangZhCN}
 
 	cmd := &cobra.Command{
 		Use:   "bind",
@@ -114,7 +105,7 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language preference for downstream API responses and output; does not change this command's TUI language (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
@@ -224,7 +215,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 			}
 			return "", output.Errorf(output.ExitInternal, "internal", "language selection failed: %v", err)
 		}
-		opts.Lang = lang
+		opts.Lang = string(lang)
 		opts.UILang = lang
 	}
 
@@ -379,8 +370,8 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions) {
 		appConfig.StrictMode = &sm
 		appConfig.DefaultAs = core.AsUser
 	}
-	if opts.Lang != "" {
-		appConfig.Lang = opts.Lang
+	if opts.Lang != "" { // guard: unset --lang must not clobber an existing preference
+		appConfig.Lang = i18n.Lang(opts.Lang)
 	}
 }
 
@@ -420,10 +411,7 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
 		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+uiMsg.BindSuccessNotice)
 
-	// Confirmation line printed only when --lang was explicit. Without this,
-	// a flag-mode caller has no visual evidence the preference write took
-	// effect (the BindSuccess line above doesn't mention language).
-	if opts.langExplicit {
+	if opts.langExplicit && opts.Lang != "" {
 		fmt.Fprintln(opts.Factory.IOStreams.ErrOut, fmt.Sprintf(uiMsg.LangPreferenceSet, opts.Lang))
 	}
 
@@ -443,12 +431,9 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 		"replaced":    replaced,
 		"identity":    opts.Identity,
 	}
-	// prefMsg renders the JSON envelope's "message" field for downstream AI
-	// agent consumption. Follows opts.Lang (the user's preference) via the
-	// bilingual collapse — --lang en yields English; --lang fr falls back
-	// to zh since only zh/en TUI structs exist.
-	prefMsg := getBindMsg(opts.Lang)
-	brand := brandDisplay(string(appConfig.Brand), opts.Lang)
+	// JSON "message" follows the preference (opts.Lang); stderr above follows UILang.
+	prefMsg := getBindMsg(i18n.Lang(opts.Lang))
+	brand := brandDisplay(string(appConfig.Brand), i18n.Lang(opts.Lang))
 	switch opts.Identity {
 	case "bot-only":
 		envelope["message"] = fmt.Sprintf(prefMsg.MessageBotOnly, appConfig.AppId, display, brand)
@@ -620,23 +605,11 @@ func validateBindFlags(opts *BindOptions) error {
 			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
 		}
 	}
-	// Lang is the persisted preference. Strict validation:
-	//   - explicit empty string → error
-	//   - any value not in i18n.ValidLanguages → error (case-sensitive)
-	//
-	// When opts.Lang is empty but langExplicit is false (test paths bypassing
-	// cobra), we treat it as if the cobra default would apply and normalize
-	// to "zh". This preserves the user-facing contract ("--lang '' errors")
-	// while keeping the option struct usable from unit tests that don't
-	// route through cobra.
-	if opts.Lang == "" && !opts.langExplicit {
-		opts.Lang = "zh"
+	lang, err := cmdutil.ParseLangFlag(opts.Lang)
+	if err != nil {
+		return err
 	}
-	if !i18n.IsValidLang(opts.Lang) {
-		return output.ErrValidation(
-			"invalid --lang %q; valid values: %s",
-			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
-	}
+	opts.Lang = string(lang)
 	return nil
 }
 

@@ -5,36 +5,92 @@ package i18n
 
 import "testing"
 
-func TestIsValidLang(t *testing.T) {
+func TestParse(t *testing.T) {
 	tests := []struct {
-		lang     string
-		expected bool
+		in     string
+		want   Lang
+		wantOK bool
 	}{
-		{"zh", true},
-		{"en", true},
-		{"ja", true},
-		{"ko", true},
-		{"invalid", false},
-		{"", false},
-		{"ZH", false}, // case sensitive
+		{"zh", LangZhCN, true},    // short code
+		{"zh_cn", LangZhCN, true}, // canonical locale
+		{"en", LangEnUS, true},    // short code
+		{"en_us", LangEnUS, true}, // canonical locale
+		{"ja", LangJaJP, true},    // short code
+		{"pt", LangPtBR, true},    // pt → pt_br, not pt_pt
+		{"ms", LangMsMY, true},    // ms → ms_my
+		{"", "", false},           // unset
+		{"ZH", "", false},         // case-sensitive
+		{"zh-CN", "", false},      // hyphen form not accepted
+		{"zh_CN", "", false},      // case-sensitive region
+		{"ar", "", false},         // not in the supported set
+		{"xx", "", false},         // unknown
 	}
 	for _, tt := range tests {
-		t.Run(tt.lang, func(t *testing.T) {
-			if got := IsValidLang(tt.lang); got != tt.expected {
-				t.Errorf("IsValidLang(%q) = %v, want %v", tt.lang, got, tt.expected)
+		t.Run(tt.in, func(t *testing.T) {
+			got, ok := Parse(tt.in)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("Parse(%q) = (%q, %v), want (%q, %v)", tt.in, got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}
-	// Guard against drift between ValidLanguages and IsValidLang.
-	for _, lang := range ValidLanguages {
-		if !IsValidLang(lang) {
-			t.Errorf("IsValidLang(%q) = false, want true", lang)
-		}
+}
+
+func TestIsEnglish(t *testing.T) {
+	tests := []struct {
+		lang Lang
+		want bool
+	}{
+		{LangEnUS, true},
+		{Lang("en"), true}, // legacy short value on disk stays robust
+		{LangZhCN, false},
+		{LangJaJP, false},
+		{Lang("zh"), false},
+		{Lang(""), false}, // unset → not English (zh bundle)
+		{Lang("garbage"), false},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.lang), func(t *testing.T) {
+			if got := tt.lang.IsEnglish(); got != tt.want {
+				t.Errorf("Lang(%q).IsEnglish() = %v, want %v", tt.lang, got, tt.want)
+			}
+		})
 	}
 }
 
-func TestValidLanguages(t *testing.T) {
-	if len(ValidLanguages) != 14 {
-		t.Errorf("Expected 14 languages, got %d", len(ValidLanguages))
+func TestBase(t *testing.T) {
+	tests := []struct {
+		lang Lang
+		want string
+	}{
+		{LangEnUS, "en"},
+		{LangZhCN, "zh"},
+		{LangJaJP, "ja"},
+		{Lang("en"), "en"}, // legacy short value
+		{Lang("zh"), "zh"},
+		{Lang(""), ""},        // unset
+		{Lang("garbage"), ""}, // unknown
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.lang), func(t *testing.T) {
+			if got := tt.lang.Base(); got != tt.want {
+				t.Errorf("Lang(%q).Base() = %q, want %q", tt.lang, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCodes(t *testing.T) {
+	codes := Codes()
+	if len(codes) != 14 {
+		t.Fatalf("len(Codes()) = %d, want 14", len(codes))
+	}
+	if codes[0] != "zh_cn" {
+		t.Errorf("Codes()[0] = %q, want %q (catalog order)", codes[0], "zh_cn")
+	}
+	// Every code must round-trip through Parse to itself (canonical).
+	for _, c := range codes {
+		if got, ok := Parse(c); !ok || string(got) != c {
+			t.Errorf("Parse(%q) = (%q, %v), want (%q, true)", c, got, ok, c)
+		}
 	}
 }

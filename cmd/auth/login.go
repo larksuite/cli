@@ -16,6 +16,7 @@ import (
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
@@ -121,7 +122,7 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	// Determine UI language from saved config
-	lang := "zh"
+	var lang i18n.Lang
 	if multi, _ := core.LoadMultiAppConfig(); multi != nil {
 		if app := multi.FindApp(config.ProfileName); app != nil {
 			lang = app.Lang
@@ -177,7 +178,7 @@ func authLoginRun(opts *LoginOptions) error {
 
 	if !hasAnyOption {
 		if !opts.JSON && f.IOStreams.IsTerminal {
-			result, err := runInteractiveLogin(f.IOStreams, lang, msg, config.Brand)
+			result, err := runInteractiveLogin(f.IOStreams, lang.Base(), msg, config.Brand)
 			if err != nil {
 				return err
 			}

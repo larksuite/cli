@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/larksuite/cli/shortcuts/mail/signature"
@@ -154,26 +154,14 @@ func executeSignatureDetail(runtime *common.RuntimeContext, resp *signature.GetS
 }
 
 // resolveLang maps CLI config lang ("zh"/"en") to i18n key ("zh_cn"/"en_us").
+// resolveLang maps the preference to a locale the mail API accepts (it supports
+// only zh_cn / en_us / ja_jp; anything else falls back to zh_cn).
 func resolveLang(runtime *common.RuntimeContext) string {
-	multi, err := core.LoadMultiAppConfig()
-	if err != nil {
-		return "zh_cn"
-	}
-	cfg, err := runtime.Factory.Config()
-	if err != nil {
-		return "zh_cn"
-	}
-	app := multi.FindApp(cfg.ProfileName)
-	if app == nil {
-		return "zh_cn"
-	}
-	switch app.Lang {
-	case "en":
-		return "en_us"
-	case "ja":
-		return "ja_jp"
+	switch runtime.Lang() {
+	case i18n.LangEnUS, i18n.LangJaJP:
+		return string(runtime.Lang())
 	default:
-		return "zh_cn"
+		return string(i18n.LangZhCN)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -40,7 +41,7 @@ func NewCmdProfileAdd(f *cmdutil.Factory) *cobra.Command {
 	cmd.Flags().StringVar(&appID, "app-id", "", "App ID (required)")
 	cmd.Flags().BoolVar(&appSecretStdin, "app-secret-stdin", false, "read App Secret from stdin")
 	cmd.Flags().StringVar(&brand, "brand", "feishu", "feishu or lark")
-	cmd.Flags().StringVar(&lang, "lang", "zh", "language for interactive prompts (zh or en)")
+	cmd.Flags().StringVar(&lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmd.Flags().BoolVar(&use, "use", false, "switch to this profile after adding")
 
 	_ = cmd.MarkFlagRequired("name")
@@ -54,6 +55,12 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	if err := core.ValidateProfileName(name); err != nil {
 		return output.ErrValidation("%v", err)
 	}
+
+	langPref, err := cmdutil.ParseLangFlag(lang)
+	if err != nil {
+		return err
+	}
+	lang = string(langPref)
 
 	// Read secret from stdin
 	if !appSecretStdin {
@@ -115,7 +122,7 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 		AppId:     appID,
 		AppSecret: secret,
 		Brand:     parsedBrand,
-		Lang:      lang,
+		Lang:      i18n.Lang(lang),
 		Users:     []core.AppUser{},
 	})
 

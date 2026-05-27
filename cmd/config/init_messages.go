@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 type initMsg struct {
@@ -68,30 +69,24 @@ var initMsgEn = &initMsg{
 	LangPreferenceSet:    "Language preference set to: %s",
 }
 
-// getInitMsg returns the initMsg for the TUI display language. Same
-// contract as getBindMsg: input is opts.UILang ("zh" or "en"); anything
-// else collapses to zh.
-func getInitMsg(lang string) *initMsg {
-	if lang == "en" {
+// getInitMsg picks the zh/en TUI bundle; non-English falls back to zh.
+func getInitMsg(lang i18n.Lang) *initMsg {
+	if lang.IsEnglish() {
 		return initMsgEn
 	}
 	return initMsgZh
 }
 
-// promptLangSelection shows an interactive 2-option language picker
-// (中文 / English) and returns the chosen lang code ("zh" or "en"). The
-// picker is the sole writer of opts.UILang. Callers also propagate the
-// result into opts.Lang so the persisted preference matches what the
-// user just picked.
-func promptLangSelection() (string, error) {
-	lang := "zh"
+// promptLangSelection shows the 中文/English picker and returns the chosen locale.
+func promptLangSelection() (i18n.Lang, error) {
+	lang := i18n.LangZhCN
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewSelect[string]().
+			huh.NewSelect[i18n.Lang]().
 				Title("Language / 语言").
 				Options(
-					huh.NewOption("中文", "zh"),
-					huh.NewOption("English", "en"),
+					huh.NewOption("中文", i18n.LangZhCN),
+					huh.NewOption("English", i18n.LangEnUS),
 				).
 				Value(&lang),
 		),

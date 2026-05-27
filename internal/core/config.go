@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -41,7 +42,7 @@ type AppConfig struct {
 	AppId      string      `json:"appId"`
 	AppSecret  SecretInput `json:"appSecret"`
 	Brand      LarkBrand   `json:"brand"`
-	Lang       string      `json:"lang,omitempty"`
+	Lang       i18n.Lang   `json:"lang,omitempty"`
 	DefaultAs  Identity    `json:"defaultAs,omitempty"` // AsUser | AsBot | AsAuto
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	Users      []AppUser   `json:"users"`
@@ -159,8 +160,8 @@ type CliConfig struct {
 	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
 	UserOpenId          string
 	UserName            string
-	Lang                string // persistent language preference (zh, en, ja, ko, etc.); not the TUI render language — see BindOptions.UILang
-	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	Lang                i18n.Lang
+	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.

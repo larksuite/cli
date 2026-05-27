@@ -15,6 +15,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -105,18 +106,18 @@ func TestConfigBindCmd_LangDefault(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotOpts.Lang != "zh" {
-		t.Errorf("Lang = %q, want default %q", gotOpts.Lang, "zh")
+	if gotOpts.Lang != "" {
+		t.Errorf("Lang = %q, want default %q (unset)", gotOpts.Lang, "")
 	}
 	if gotOpts.langExplicit {
 		t.Error("expected langExplicit=false when --lang not passed")
 	}
 }
 
-// TestConfigBindRun_InvalidLang verifies --lang is strictly validated:
-// empty string, wrong case, typos, and removed codes (post 20→14 cull)
-// all exit with ExitValidation (code 2) and a message identifying the
-// offending value and listing valid codes.
+// TestConfigBindRun_InvalidLang verifies a non-empty --lang is strictly
+// validated: wrong case, typos, and removed codes all exit with
+// ExitValidation (code 2) and a message identifying the offending value.
+// (Empty is not invalid — see TestConfigBindRun_EmptyLangIsNoOp.)
 func TestConfigBindRun_InvalidLang(t *testing.T) {
 	saveWorkspace(t)
 	configDir := t.TempDir()
@@ -135,7 +136,7 @@ func TestConfigBindRun_InvalidLang(t *testing.T) {
 		{"typo frr", "frr"},
 		{"removed code ar", "ar"},
 		{"unknown xx", "xx"},
-		{"empty string explicit", ""},
+		{"hyphen form zh-CN", "zh-CN"},
 	}
 
 	for _, tc := range cases {
@@ -159,6 +160,57 @@ func TestConfigBindRun_InvalidLang(t *testing.T) {
 			}
 			if !strings.Contains(exitErr.Error(), "invalid --lang") {
 				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			}
+		})
+	}
+}
+
+// TestConfigBindRun_EmptyLangIsNoOp verifies that an empty --lang (omitted or
+// explicit "") is unset: it neither errors nor persists a language, while a
+// non-empty short code or Feishu locale both canonicalize to the same locale.
+func TestConfigBindRun_EmptyLangIsNoOp(t *testing.T) {
+	cases := []struct {
+		name     string
+		lang     string
+		explicit bool
+		wantLang i18n.Lang
+	}{
+		{"omitted", "", false, ""},
+		{"explicit empty", "", true, ""},
+		{"short code", "ja", true, i18n.LangJaJP},
+		{"feishu locale", "ja_jp", true, i18n.LangJaJP},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			saveWorkspace(t)
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			hermesHome := t.TempDir()
+			t.Setenv("HERMES_HOME", hermesHome)
+			if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+				t.Fatalf("write .env: %v", err)
+			}
+
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			if err := configBindRun(&BindOptions{
+				Factory:      f,
+				Source:       "hermes",
+				Lang:         tc.lang,
+				langExplicit: tc.explicit,
+			}); err != nil {
+				t.Fatalf("configBindRun(--lang %q) = %v, want nil", tc.lang, err)
+			}
+
+			multi, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatalf("LoadMultiAppConfig: %v", err)
+			}
+			app := multi.CurrentAppConfig("")
+			if app == nil {
+				t.Fatal("no app persisted")
+			}
+			if app.Lang != tc.wantLang {
+				t.Errorf("persisted Lang = %q, want %q", app.Lang, tc.wantLang)
 			}
 		})
 	}
@@ -1509,10 +1561,9 @@ func TestGetBindMsg_En(t *testing.T) {
 }
 
 func TestGetBindMsg_NonEnLang_FallsBackToZh(t *testing.T) {
-	// Post-refactor: only zh and en TUI struct exist; any other code (including
-	// valid preference codes like "fr", or invalid ones like "unknown") falls
-	// back to zh — this is the bilingual collapse defined in §3.4 of the spec.
-	for _, lang := range []string{"fr", "ja", "ko", "unknown", ""} {
+	// Only zh and en TUI bundles exist; any non-English language (canonical
+	// locale, short code, or unrecognized value) falls back to zh.
+	for _, lang := range []i18n.Lang{"fr_fr", "ja_jp", "ko", "unknown", ""} {
 		msg := getBindMsg(lang)
 		if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
 			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (zh fallback)", lang, msg.SelectSource, want)
@@ -1705,7 +1756,9 @@ func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
-	want := fmt.Sprintf(getBindMsg("zh").LangPreferenceSet, "en")
+	// The short --lang en is canonicalized to en_us before the confirmation
+	// echoes it back; the TUI language stays zh (flag mode, no picker).
+	want := fmt.Sprintf(getBindMsg(i18n.LangZhCN).LangPreferenceSet, "en_us")
 	if got := stderr.String(); !strings.Contains(got, want) {
 		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
 	}

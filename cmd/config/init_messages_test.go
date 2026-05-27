@@ -31,7 +31,7 @@ func TestGetInitMsg_En(t *testing.T) {
 }
 
 func TestGetInitMsg_DefaultsToZh(t *testing.T) {
-	for _, lang := range []string{"", "unknown", "xyz", "invalid"} {
+	for _, lang := range []i18n.Lang{"", "unknown", "xyz", "invalid"} {
 		msg := getInitMsg(lang)
 		if msg != initMsgZh {
 			t.Errorf("getInitMsg(%q) should default to zh", lang)
@@ -74,7 +74,7 @@ func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
 }
 
 func TestInitMsg_FormatStrings(t *testing.T) {
-	for _, lang := range []string{"zh", "en"} {
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
 		msg := getInitMsg(lang)
 		// AppCreated and ConfigSaved should contain %s for App ID
 		got := fmt.Sprintf(msg.AppCreated, "cli_test123")
@@ -89,24 +89,24 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 }
 
 func TestGetInitMsg_BilingualCollapse(t *testing.T) {
-	// Post-refactor: TUI is bilingual (zh + en). Only "en" returns the
-	// English struct; everything else (zh, ja, ko, fr, invalid, "") returns
-	// the Chinese struct. This is the bilingual collapse defined in spec §3.4.
+	// The TUI is bilingual (zh + en). Only English-bucket languages return the
+	// English struct — by canonical locale ("en_us") or legacy short ("en").
+	// Everything else (zh, the other codes, invalid, "") returns Chinese.
 	tests := []struct {
-		lang       string
+		lang       i18n.Lang
 		shouldBeEn bool
 	}{
-		{"zh", false},
-		{"en", true},
-		{"ja", false},
-		{"ko", false},
-		{"fr", false},
+		{i18n.LangZhCN, false},
+		{i18n.LangEnUS, true},
+		{"en", true}, // legacy short value
+		{i18n.LangJaJP, false},
+		{"fr_fr", false},
 		{"invalid", false},
 		{"", false},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.lang, func(t *testing.T) {
+		t.Run(string(tt.lang), func(t *testing.T) {
 			msg := getInitMsg(tt.lang)
 			if msg == nil {
 				t.Fatal("getInitMsg returned nil")
@@ -119,14 +119,5 @@ func TestGetInitMsg_BilingualCollapse(t *testing.T) {
 				t.Errorf("getInitMsg(%q) returned wrong struct", tt.lang)
 			}
 		})
-	}
-}
-
-func TestPromptLangSelection_Validation(t *testing.T) {
-	// Test that all valid languages are accepted
-	for _, lang := range i18n.ValidLanguages {
-		if !i18n.IsValidLang(lang) {
-			t.Errorf("Language %s should be valid", lang)
-		}
 	}
 }

@@ -33,17 +33,10 @@ type ConfigInitOptions struct {
 	Brand          string
 	New            bool
 
-	// Lang is the persistent language preference written to appConfig.Lang.
-	// Set by --lang flag or by the picker. Always one of i18n.ValidLanguages
-	// (14 codes); empty string and out-of-enum values are rejected upfront
-	// in RunE. Default "zh".
-	Lang         string
-	langExplicit bool // true when --lang was explicitly passed
+	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
+	langExplicit bool   // true when --lang was explicitly passed
 
-	// UILang is the TUI display language for this invocation only. Either
-	// "zh" or "en". Default "zh". The only writer is the picker. --lang
-	// does NOT influence this field.
-	UILang string
+	UILang i18n.Lang // TUI display language (picker-only); intentionally separate from --lang
 
 	ProfileName string // when set, create/update a named profile instead of replacing Apps[0]
 
@@ -57,7 +50,7 @@ type ConfigInitOptions struct {
 
 // NewCmdConfigInit creates the config init subcommand.
 func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *cobra.Command {
-	opts := &ConfigInitOptions{Factory: f, UILang: "zh"}
+	opts := &ConfigInitOptions{Factory: f, UILang: i18n.LangZhCN}
 
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -92,7 +85,7 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language preference for downstream API responses and output; does not change this command's TUI language (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app")
 	cmdutil.SetRisk(cmd, "write")
@@ -100,31 +93,22 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	return cmd
 }
 
-// printLangPreferenceConfirmation writes the "language preference set"
-// confirmation to stderr, but only when --lang was explicitly passed.
-// Uses the TUI display language (opts.UILang) for the prompt itself;
-// embeds the preference value (opts.Lang) verbatim.
+// printLangPreferenceConfirmation echoes the set preference to stderr, only
+// when --lang explicitly set a non-empty value.
 func printLangPreferenceConfirmation(opts *ConfigInitOptions) {
-	if !opts.langExplicit {
+	if !opts.langExplicit || opts.Lang == "" {
 		return
 	}
 	msg := getInitMsg(opts.UILang)
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut, fmt.Sprintf(msg.LangPreferenceSet, opts.Lang))
 }
 
-// validateInitLang strictly validates the --lang flag value. Empty string
-// explicitly passed and any value not in i18n.ValidLanguages exit with
-// ExitValidation. When --lang was not passed at all and opts.Lang is
-// empty (test paths bypassing cobra), normalize to "zh".
 func validateInitLang(opts *ConfigInitOptions) error {
-	if opts.Lang == "" && !opts.langExplicit {
-		opts.Lang = "zh"
+	lang, err := cmdutil.ParseLangFlag(opts.Lang)
+	if err != nil {
+		return err
 	}
-	if !i18n.IsValidLang(opts.Lang) {
-		return output.ErrValidation(
-			"invalid --lang %q; valid values: %s",
-			opts.Lang, strings.Join(i18n.ValidLanguages, ", "))
-	}
+	opts.Lang = string(lang)
 	return nil
 }
 
@@ -175,7 +159,7 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 func saveAsOnlyApp(appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
 	config := &core.MultiAppConfig{
 		Apps: []core.AppConfig{{
-			AppId: appId, AppSecret: secret, Brand: brand, Lang: lang, Users: []core.AppUser{},
+			AppId: appId, AppSecret: secret, Brand: brand, Lang: i18n.Lang(lang), Users: []core.AppUser{},
 		}},
 	}
 	return core.SaveMultiAppConfig(config)
@@ -210,11 +194,12 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 			}
 			multi.Apps[idx].Users = []core.AppUser{}
 		}
-		// Update existing profile
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret
 		multi.Apps[idx].Brand = brand
-		multi.Apps[idx].Lang = lang
+		if lang != "" { // guard: unset --lang must not clobber an existing preference
+			multi.Apps[idx].Lang = i18n.Lang(lang)
+		}
 	} else {
 		if findAppIndexByAppID(multi, profileName) >= 0 {
 			return fmt.Errorf("profile name %q conflicts with existing appId", profileName)
@@ -225,7 +210,7 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 			AppId:     appId,
 			AppSecret: secret,
 			Brand:     brand,
-			Lang:      lang,
+			Lang:      i18n.Lang(lang),
 			Users:     []core.AppUser{},
 		})
 	}
@@ -281,7 +266,9 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 
 	app.AppId = appID
 	app.Brand = brand
-	app.Lang = lang
+	if lang != "" { // guard: unset --lang must not clobber an existing preference
+		app.Lang = i18n.Lang(lang)
+	}
 	return core.SaveMultiAppConfig(existing)
 }
 
@@ -342,7 +329,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			}
 			return output.Errorf(output.ExitInternal, "internal", "language selection failed: %v", err)
 		}
-		opts.Lang = lang
+		opts.Lang = string(lang)
 		opts.UILang = lang
 	}
 

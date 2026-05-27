@@ -3,6 +3,8 @@
 
 package auth
 
+import "github.com/larksuite/cli/internal/i18n"
+
 type loginMsg struct {
 	// Interactive UI (login_interactive.go)
 	SelectDomains   string
@@ -115,8 +117,8 @@ var loginMsgEn = &loginMsg{
 }
 
 // getLoginMsg returns the login message bundle for the given language.
-func getLoginMsg(lang string) *loginMsg {
-	if lang == "en" {
+func getLoginMsg(lang i18n.Lang) *loginMsg {
+	if lang.IsEnglish() {
 		return loginMsgEn
 	}
 	return loginMsgZh

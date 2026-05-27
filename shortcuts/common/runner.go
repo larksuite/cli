@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -71,6 +72,13 @@ func (ctx *RuntimeContext) IsBot() bool {
 
 // UserOpenId returns the current user's open_id from config.
 func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
+
+// Lang returns the user's preference as a canonical locale, or "" if unset or
+// unrecognized; callers choose their own fallback.
+func (ctx *RuntimeContext) Lang() i18n.Lang {
+	lang, _ := i18n.Parse(string(ctx.Config.Lang))
+	return lang
+}
 
 // BotInfo holds bot identity metadata fetched lazily from /bot/v3/info.
 type BotInfo struct {

@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 func TestGetLoginMsg_Zh(t *testing.T) {
@@ -31,7 +33,7 @@ func TestGetLoginMsg_En(t *testing.T) {
 }
 
 func TestGetLoginMsg_DefaultsToZh(t *testing.T) {
-	for _, lang := range []string{"", "fr", "ja", "unknown"} {
+	for _, lang := range []i18n.Lang{"", "fr_fr", "ja_jp", "unknown"} {
 		msg := getLoginMsg(lang)
 		if msg != loginMsgZh {
 			t.Errorf("getLoginMsg(%q) should default to zh", lang)
@@ -61,7 +63,7 @@ func assertLoginMsgAllFieldsNonEmpty(t *testing.T, msg *loginMsg, label string) 
 }
 
 func TestLoginMsg_FormatStrings(t *testing.T) {
-	for _, lang := range []string{"zh", "en"} {
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
 		msg := getLoginMsg(lang)
 
 		// LoginSuccess should contain two %s placeholders (userName, openId)
@@ -102,10 +104,10 @@ func TestLoginMsg_FormatStrings(t *testing.T) {
 // --device-code split-flow, and (c) non-streaming harnesses must end the turn
 // after presenting the URL instead of blocking in the same turn.
 func TestAgentTimeoutHint_CarriesKeyInfo(t *testing.T) {
-	for _, lang := range []string{"zh", "en"} {
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
 		hint := getLoginMsg(lang).AgentTimeoutHint
 		for _, want := range []string{"--no-wait", "--device-code", "turn"} {
-			if lang == "zh" && want == "turn" {
+			if lang == i18n.LangZhCN && want == "turn" {
 				want = "本轮"
 			}
 			if !strings.Contains(hint, want) {
