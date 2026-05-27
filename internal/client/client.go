@@ -205,12 +205,30 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		msg := strings.TrimSpace(string(errBody))
 		if msg != "" {
-			return nil, output.ErrNetwork("HTTP %d: %s", resp.StatusCode, msg)
+			err := output.ErrNetwork("HTTP %d: %s", resp.StatusCode, msg)
+			attachStreamLogID(err, resp.Header)
+			return nil, err
 		}
-		return nil, output.ErrNetwork("HTTP %d", resp.StatusCode)
+		err := output.ErrNetwork("HTTP %d", resp.StatusCode)
+		attachStreamLogID(err, resp.Header)
+		return nil, err
 	}
 
 	return resp, nil
+}
+
+func attachStreamLogID(err *output.ExitError, header http.Header) {
+	if err == nil || err.Detail == nil {
+		return
+	}
+	logID := strings.TrimSpace(header.Get(larkcore.HttpHeaderKeyLogId))
+	if logID == "" {
+		logID = strings.TrimSpace(header.Get(larkcore.HttpHeaderKeyRequestId))
+	}
+	if logID == "" {
+		return
+	}
+	err.Detail.Detail = map[string]any{"log_id": logID}
 }
 
 type cancelOnCloseBody struct {

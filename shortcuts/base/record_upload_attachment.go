@@ -787,7 +787,7 @@ func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext,
 		QueryParams: query,
 	})
 	if err != nil {
-		return nil, output.ErrNetwork("download failed: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -835,6 +835,13 @@ func attachmentDownloadProgressError(err error, downloaded []map[string]interfac
 	msg := fmt.Sprintf("download failed after %d attachment(s) succeeded and %d failed: %v", len(downloaded), len(failed), err)
 	var exitErr *output.ExitError
 	if errors.As(err, &exitErr) && exitErr.Detail != nil {
+		detail := map[string]interface{}{
+			"downloaded": downloaded,
+			"failed":     failed,
+		}
+		if logID := baseAttachmentDownloadLogID(err); logID != "" {
+			detail["log_id"] = logID
+		}
 		return &output.ExitError{
 			Code: exitErr.Code,
 			Detail: &output.ErrDetail{
@@ -842,10 +849,7 @@ func attachmentDownloadProgressError(err error, downloaded []map[string]interfac
 				Code:    exitErr.Detail.Code,
 				Message: msg,
 				Hint:    "Some files may already have been saved. Inspect error.detail.downloaded before retrying, or rerun with --overwrite if the failed target now exists.",
-				Detail: map[string]interface{}{
-					"downloaded": downloaded,
-					"failed":     failed,
-				},
+				Detail:  detail,
 			},
 			Err: err,
 		}
@@ -863,6 +867,19 @@ func attachmentDownloadProgressError(err error, downloaded []map[string]interfac
 		},
 		Err: err,
 	}
+}
+
+func baseAttachmentDownloadLogID(err error) string {
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		return ""
+	}
+	detail, ok := exitErr.Detail.Detail.(map[string]interface{})
+	if !ok {
+		return ""
+	}
+	logID, _ := detail["log_id"].(string)
+	return strings.TrimSpace(logID)
 }
 
 func outputPathLooksDirectory(runtime *common.RuntimeContext, outputPath string) bool {

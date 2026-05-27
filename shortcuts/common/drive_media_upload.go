@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
@@ -170,11 +171,32 @@ func ParseDriveMediaUploadResponse(apiResp *larkcore.ApiResp, action string) (ma
 
 	if larkCode := int(GetFloat(result, "code")); larkCode != 0 {
 		msg, _ := result["msg"].(string)
-		return nil, output.ErrAPI(larkCode, fmt.Sprintf("%s: [%d] %s", action, larkCode, msg), result["error"])
+		return nil, output.ErrAPI(larkCode, fmt.Sprintf("%s: [%d] %s", action, larkCode, msg), driveMediaUploadErrorDetail(apiResp, result["error"]))
 	}
 
 	data, _ := result["data"].(map[string]interface{})
 	return data, nil
+}
+
+func driveMediaUploadErrorDetail(apiResp *larkcore.ApiResp, detail interface{}) interface{} {
+	logID := ""
+	if apiResp != nil {
+		logID = strings.TrimSpace(apiResp.LogId())
+	}
+	if logID == "" {
+		return detail
+	}
+	detailMap, ok := detail.(map[string]interface{})
+	if !ok {
+		if detail == nil {
+			return map[string]interface{}{"log_id": logID}
+		}
+		return map[string]interface{}{"error": detail, "log_id": logID}
+	}
+	if _, exists := detailMap["log_id"]; !exists {
+		detailMap["log_id"] = logID
+	}
+	return detailMap
 }
 
 func ExtractDriveMediaUploadFileToken(data map[string]interface{}, action string) (string, error) {

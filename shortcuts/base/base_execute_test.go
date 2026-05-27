@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -2200,7 +2201,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("download reports progress when later attachment fails", func(t *testing.T) {
+	t.Run("download reports progress and log_id when later attachment fails", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "POST",
@@ -2228,8 +2229,9 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		reg.Register(&httpmock.Stub{
 			Method:  "GET",
 			URL:     "/open-apis/drive/v1/medias/box_b/download",
-			Status:  500,
+			Status:  403,
 			RawBody: []byte("server error"),
+			Headers: http.Header{"X-Tt-Logid": []string{"202605270001"}},
 		})
 
 		tmpDir := t.TempDir()
@@ -2257,6 +2259,9 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		failed, _ := detail["failed"].([]map[string]interface{})
 		if len(downloaded) != 1 || downloaded[0]["file_token"] != "box_a" || len(failed) != 1 || failed[0]["file_token"] != "box_b" {
 			t.Fatalf("detail=%#v", exitErr.Detail.Detail)
+		}
+		if detail["log_id"] != "202605270001" {
+			t.Fatalf("detail=%#v, want log_id", exitErr.Detail.Detail)
 		}
 		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err != nil {
 			t.Fatalf("expected first file to remain: %v", err)
