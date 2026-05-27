@@ -9,7 +9,7 @@ const os = require("os");
 
 const crypto = require("crypto");
 
-const { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls } = require("./install.js");
+const { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, isCurlVersionSupported } = require("./install.js");
 
 describe("getExpectedChecksum", () => {
   function makeTmpChecksums(content) {
@@ -276,5 +276,57 @@ describe("resolveMirrorUrls", () => {
       ),
       [DEFAULT]
     );
+  });
+});
+
+describe("isCurlVersionSupported", () => {
+  // --ssl-revoke-best-effort was introduced in curl 7.70.0; below that the
+  // flag is unknown and `curl` exits non-zero (see issue #1099).
+  it("returns false for curl 7.55.1 (older Windows 10, flag unknown)", () => {
+    assert.equal(
+      isCurlVersionSupported("curl 7.55.1 (x86_64-pc-win32) libcurl/7.55.1"),
+      false
+    );
+  });
+
+  it("returns false for curl 7.69.0 (just below the 7.70.0 threshold)", () => {
+    assert.equal(
+      isCurlVersionSupported("curl 7.69.0 (x86_64-pc-win32) libcurl/7.69.0"),
+      false
+    );
+  });
+
+  it("returns true for curl 7.70.0 (flag introduced here)", () => {
+    assert.equal(
+      isCurlVersionSupported("curl 7.70.0 (x86_64-pc-win32) libcurl/7.70.0"),
+      true
+    );
+  });
+
+  it("returns true for a future major (curl 8.x)", () => {
+    assert.equal(
+      isCurlVersionSupported("curl 8.5.0 (x86_64-apple-darwin) libcurl/8.5.0"),
+      true
+    );
+  });
+
+  it("returns false when no version can be parsed", () => {
+    assert.equal(isCurlVersionSupported("not a curl version string"), false);
+    assert.equal(isCurlVersionSupported(""), false);
+  });
+
+  it("reads the leading 'curl X.Y.Z', not the trailing libcurl/X.Y.Z", () => {
+    // Guards the regex against latching onto "libcurl/7.55.1" when the
+    // curl binary itself is new enough.
+    assert.equal(
+      isCurlVersionSupported("curl 8.0.0 (x86_64) libcurl/7.55.1"),
+      true
+    );
+  });
+
+  it("does not match a 'libcurl X.Y.Z' token (anchored to leading curl)", () => {
+    // "libcurl 8.0.0" contains the substring "curl 8.0.0"; the leading
+    // anchor keeps it from being mistaken for a real curl version line.
+    assert.equal(isCurlVersionSupported("libcurl 8.0.0"), false);
   });
 });

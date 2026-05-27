@@ -111,28 +111,49 @@ function getMirrorUrls(env) {
 }
 
 /**
- * Detect whether the system curl supports --ssl-revoke-best-effort.
- * This flag was introduced in curl 7.70.0 (2020-04-29). Older versions
- * (notably the curl 7.55.1 shipped with older Windows 10 builds) will
- * exit with "unknown option" if it is passed.
+ * Decide from a `curl --version` output whether curl is >= 7.70.0 — the
+ * release (2020-04-29) that introduced --ssl-revoke-best-effort. Kept pure
+ * (no I/O) so the version-comparison logic can be unit tested without
+ * spawning a process. Reads the leading "curl X.Y.Z" token, ignoring the
+ * trailing "libcurl/X.Y.Z" that may report a different version.
+ *
+ * @param {string} versionOutput raw stdout of `curl --version`
+ * @returns {boolean} true when the parsed version is >= 7.70.0
+ */
+function isCurlVersionSupported(versionOutput) {
+  const match = String(versionOutput).match(/^\s*curl\s+(\d+)\.(\d+)\.(\d+)/i);
+  if (!match) return false;
+  const major = parseInt(match[1], 10);
+  const minor = parseInt(match[2], 10);
+  return major > 7 || (major === 7 && minor >= 70);
+}
+
+// Memoized probe result. curl's version is invariant for the lifetime of the
+// install, while download() runs once per mirror URL — so probe at most once.
+let _curlSupportsSslRevokeBestEffort;
+
+/**
+ * Detect whether the system curl supports --ssl-revoke-best-effort. Older
+ * versions (notably the curl 7.55.1 shipped with older Windows 10 builds)
+ * exit with "unknown option" if the flag is passed.
  *
  * @returns {boolean} true when curl >= 7.70.0 is available
  */
 function curlSupportsSslRevokeBestEffort() {
+  if (_curlSupportsSslRevokeBestEffort !== undefined) {
+    return _curlSupportsSslRevokeBestEffort;
+  }
   try {
     const output = execFileSync("curl", ["--version"], {
       stdio: ["ignore", "pipe", "ignore"],
       encoding: "utf8",
       timeout: 5000,
     });
-    const match = output.match(/curl\s+(\d+)\.(\d+)\.(\d+)/i);
-    if (!match) return false;
-    const major = parseInt(match[1], 10);
-    const minor = parseInt(match[2], 10);
-    return major > 7 || (major === 7 && minor >= 70);
+    _curlSupportsSslRevokeBestEffort = isCurlVersionSupported(output);
   } catch (_) {
-    return false;
+    _curlSupportsSslRevokeBestEffort = false;
   }
+  return _curlSupportsSslRevokeBestEffort;
 }
 
 function download(url, destPath) {
@@ -322,4 +343,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, curlSupportsSslRevokeBestEffort };
+module.exports = { getExpectedChecksum, verifyChecksum, assertAllowedHost, resolveMirrorUrls, curlSupportsSslRevokeBestEffort, isCurlVersionSupported };
