@@ -353,7 +353,6 @@ func TestDriveInspectDryRun_DoubaoDriveShareFolderURL(t *testing.T) {
 // --- Execute tests ---
 
 func TestDriveInspectExecute_DocxURL(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -395,7 +394,6 @@ func TestDriveInspectExecute_DocxURL(t *testing.T) {
 }
 
 func TestDriveInspectExecute_WikiURL(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -458,7 +456,6 @@ func TestDriveInspectExecute_WikiURL(t *testing.T) {
 }
 
 func TestDriveInspectExecute_WikiGetNodeIncompleteData(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -487,7 +484,6 @@ func TestDriveInspectExecute_WikiGetNodeIncompleteData(t *testing.T) {
 }
 
 func TestDriveInspectExecute_BareTokenWithType(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -524,7 +520,6 @@ func TestDriveInspectExecute_BareTokenWithType(t *testing.T) {
 }
 
 func TestDriveInspectExecute_BatchQueryError(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
@@ -548,7 +543,6 @@ func TestDriveInspectExecute_BatchQueryError(t *testing.T) {
 }
 
 func TestDriveInspectExecute_PrettyFormat(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	cfg := driveTestConfig()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
