@@ -183,6 +183,32 @@ func TestConfigInitCmd_LangDefault(t *testing.T) {
 	}
 }
 
+// TestSaveInitConfig_OmitLangPreservesPrior guards the single-app replace path:
+// re-running init without --lang must inherit the prior preference, not clear it.
+func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{
+		{AppId: "cli_x", AppSecret: core.PlainSecret("s"), Brand: core.BrandFeishu, Lang: i18n.LangJaJP},
+	}}
+	if err := core.SaveMultiAppConfig(existing); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, ""); err != nil {
+		t.Fatalf("saveInitConfig (no --lang): %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := got.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
+		t.Errorf("Lang after re-init = %v, want %q (preserved)", app, i18n.LangJaJP)
+	}
+}
+
 // TestConfigInitCmd_InvalidLang verifies a non-empty --lang on config init is
 // strictly validated the same way bind validates: wrong-case / typo / removed
 // codes / hyphen form all exit with ExitValidation. (Empty is a no-op.)

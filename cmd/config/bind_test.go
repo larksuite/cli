@@ -231,6 +231,36 @@ func TestConfigBindRun_EmptyLangIsNoOp(t *testing.T) {
 	}
 }
 
+// TestConfigBindRun_OmitLangPreservesPrior guards against a re-bind without
+// --lang silently dropping a previously stored preference (appConfig is rebuilt
+// fresh, so commitBinding must inherit the prior Lang).
+func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f1, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f1, Source: "hermes", Lang: "ja", langExplicit: true}); err != nil {
+		t.Fatalf("first bind (--lang ja): %v", err)
+	}
+	f2, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Lang: "", langExplicit: false}); err != nil {
+		t.Fatalf("re-bind (no --lang): %v", err)
+	}
+
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := multi.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
+		t.Errorf("Lang after re-bind = %v, want %q (preserved)", app, i18n.LangJaJP)
+	}
+}
+
 // ── Run function tests (aligned with TestConfigShowRun pattern) ──
 
 func TestConfigBindRun_InvalidSource(t *testing.T) {

@@ -150,7 +150,7 @@ func configBindRun(opts *BindOptions) error {
 	if err := warnIdentityEscalation(opts, existing.ConfigBytes); err != nil {
 		return err
 	}
-	applyPreferences(appConfig, opts)
+	applyPreferences(appConfig, opts, priorLang(existing.ConfigBytes))
 	noticeUserDefaultRisk(opts)
 
 	return commitBinding(opts, appConfig, existing.ConfigBytes, source, targetConfigPath)
@@ -359,7 +359,16 @@ func noticeUserDefaultRisk(opts *BindOptions) {
 // applyPreferences expands the chosen identity preset into the underlying
 // StrictMode + DefaultAs on the AppConfig. Always writes both fields so the
 // profile's intent survives later changes to global strict-mode settings.
-func applyPreferences(appConfig *core.AppConfig, opts *BindOptions) {
+// preferredLang resolves the language to persist: the requested value when set,
+// otherwise the prior one — so an unset --lang never clears a stored preference.
+func preferredLang(requested, prior i18n.Lang) i18n.Lang {
+	if requested != "" {
+		return requested
+	}
+	return prior
+}
+
+func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.Lang) {
 	switch opts.Identity {
 	case "bot-only":
 		sm := core.StrictModeBot
@@ -370,9 +379,22 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions) {
 		appConfig.StrictMode = &sm
 		appConfig.DefaultAs = core.AsUser
 	}
-	if opts.Lang != "" { // guard: unset --lang must not clobber an existing preference
-		appConfig.Lang = i18n.Lang(opts.Lang)
+	appConfig.Lang = preferredLang(i18n.Lang(opts.Lang), prior)
+}
+
+// priorLang returns the language preference recorded in a previous config, or
+// "" if there is none / the bytes don't parse.
+func priorLang(previousConfigBytes []byte) i18n.Lang {
+	var multi core.MultiAppConfig
+	if json.Unmarshal(previousConfigBytes, &multi) != nil {
+		return ""
 	}
+	for _, app := range multi.Apps {
+		if app.Lang != "" {
+			return app.Lang
+		}
+	}
+	return ""
 }
 
 // commitBinding finalizes the bind: atomic write of the new workspace config,

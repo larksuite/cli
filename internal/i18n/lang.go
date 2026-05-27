@@ -23,43 +23,47 @@ const (
 	LangMsMY Lang = "ms_my"
 )
 
+type langEntry struct {
+	Code  Lang   // canonical Feishu locale
+	Short string // ISO 639-1 code, also accepted as input shorthand
+}
+
 // catalog is the single source of truth; order drives --help and error listing.
-var catalog = []struct {
-	Code  Lang
-	Short string
-}{
+var catalog = []langEntry{
 	{LangZhCN, "zh"}, {LangEnUS, "en"}, {LangJaJP, "ja"}, {LangKoKR, "ko"},
 	{LangFrFR, "fr"}, {LangDeDE, "de"}, {LangEsES, "es"}, {LangItIT, "it"},
 	{LangRuRU, "ru"}, {LangPtBR, "pt"}, {LangThTH, "th"}, {LangViVN, "vi"},
 	{LangIdID, "id"}, {LangMsMY, "ms"},
 }
 
-// Parse resolves a short code or Feishu locale to its canonical Lang.
-// Case-sensitive; "" and unrecognized values return ("", false).
-func Parse(s string) (Lang, bool) {
+// find matches a short code or Feishu locale against the catalog (case-sensitive).
+func find(s string) (langEntry, bool) {
 	for _, e := range catalog {
 		if string(e.Code) == s || e.Short == s {
-			return e.Code, true
+			return e, true
 		}
 	}
-	return "", false
+	return langEntry{}, false
 }
 
-// IsEnglish reports whether l uses the English TUI bundle. Parsing first keeps
-// it correct for both "en_us" and legacy "en" stored on disk.
+// Parse resolves a short code or Feishu locale to its canonical Lang.
+// "" and unrecognized values return ("", false).
+func Parse(s string) (Lang, bool) {
+	e, ok := find(s)
+	return e.Code, ok
+}
+
+// IsEnglish reports whether l uses the English TUI bundle (robust to "en_us"
+// and legacy "en").
 func (l Lang) IsEnglish() bool {
-	c, _ := Parse(string(l))
-	return c == LangEnUS
+	e, _ := find(string(l))
+	return e.Code == LangEnUS
 }
 
 // Base returns the ISO 639-1 short code ("en_us" → "en"), or "" if unknown.
 func (l Lang) Base() string {
-	for _, e := range catalog {
-		if e.Code == l || e.Short == string(l) {
-			return e.Short
-		}
-	}
-	return ""
+	e, _ := find(string(l))
+	return e.Short
 }
 
 // Codes lists the canonical locales, for --help and error messages.

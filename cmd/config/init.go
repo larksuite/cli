@@ -173,7 +173,13 @@ func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmduti
 		return saveAsProfile(existing, f.Keychain, profileName, appId, secret, brand, lang)
 	}
 	cleanupOldConfig(existing, f, appId)
-	return saveAsOnlyApp(appId, secret, brand, lang)
+	var prior i18n.Lang
+	if existing != nil {
+		if app := existing.CurrentAppConfig(""); app != nil {
+			prior = app.Lang
+		}
+	}
+	return saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)))
 }
 
 // saveAsProfile appends or updates a named profile in the config.
@@ -197,9 +203,7 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret
 		multi.Apps[idx].Brand = brand
-		if lang != "" { // guard: unset --lang must not clobber an existing preference
-			multi.Apps[idx].Lang = i18n.Lang(lang)
-		}
+		multi.Apps[idx].Lang = preferredLang(i18n.Lang(lang), multi.Apps[idx].Lang)
 	} else {
 		if findAppIndexByAppID(multi, profileName) >= 0 {
 			return fmt.Errorf("profile name %q conflicts with existing appId", profileName)
@@ -266,9 +270,7 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 
 	app.AppId = appID
 	app.Brand = brand
-	if lang != "" { // guard: unset --lang must not clobber an existing preference
-		app.Lang = i18n.Lang(lang)
-	}
+	app.Lang = preferredLang(i18n.Lang(lang), app.Lang)
 	return core.SaveMultiAppConfig(existing)
 }
 
