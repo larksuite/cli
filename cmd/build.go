@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
+	cmdskill "github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	_ "github.com/larksuite/cli/events"
 	"github.com/larksuite/cli/internal/build"
@@ -133,6 +134,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
+	rootCmd.AddCommand(cmdskill.NewCmdSkill(f))
 	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
