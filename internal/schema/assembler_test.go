@@ -575,7 +575,7 @@ func TestParseAffordance_FullPopulated(t *testing.T) {
 		"do_not_use_when": []interface{}{"已知具体某一个非主日历的 calendar_id"},
 		"prerequisites":   []interface{}{"user 身份登录"},
 		"examples": []interface{}{
-			map[string]interface{}{"title": "获取主日历", "input": map[string]interface{}{}},
+			map[string]interface{}{"description": "获取主日历", "command": "lark-cli calendar calendars primary"},
 		},
 		"related": []interface{}{"calendars.list"},
 	}
@@ -586,7 +586,8 @@ func TestParseAffordance_FullPopulated(t *testing.T) {
 	if len(a.UseWhen) != 1 || a.UseWhen[0] != "需要拿到当前用户的主日历 ID" {
 		t.Errorf("UseWhen = %v", a.UseWhen)
 	}
-	if len(a.Examples) != 1 || a.Examples[0].Title != "获取主日历" {
+	if len(a.Examples) != 1 || a.Examples[0].Description != "获取主日历" ||
+		a.Examples[0].Command != "lark-cli calendar calendars primary" {
 		t.Errorf("Examples = %+v", a.Examples)
 	}
 	if len(a.Related) != 1 || a.Related[0] != "calendars.list" {

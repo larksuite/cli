@@ -76,10 +76,11 @@ type Affordance struct {
 	Related       []string         `json:"related,omitempty"`
 }
 
-// AffordanceCase is one example entry.
+// AffordanceCase is one example entry: a one-line description plus a
+// ready-to-run lark-cli command string.
 type AffordanceCase struct {
-	Title string                 `json:"title"`
-	Input map[string]interface{} `json:"input"`
+	Description string `json:"description"`
+	Command     string `json:"command"`
 }
 
 // OrderedProps is map[string]Property with preserved key order on MarshalJSON.
