@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.42] - 2026-05-27
+
+### Features
+
+- **mail**: Add `+draft-send` shortcut for batch draft sending (#1017)
+- **im**: Enrich messages with reactions and output `update_time` (#1095)
+- **schema**: Output JSON spec envelope for all API commands (#1048)
+- **event**: Support `vc` / `note` / `minute` events (#1113)
+- **drive**: Add secure label shortcuts (#985)
+- **affordance**: Use description and command in affordance example schema (#1126)
+
+### Bug Fixes
+
+- **docs**: Remove unsupported `fetch` text format (#1109)
+
+### Refactor
+
+- **auth**: Drop duplicate top-level user fields in `status` (#1128)
+
+### Documentation
+
+- **doc**: Document block anchor URLs in `lark-doc` skill (#1120)
+- **whiteboard**: Improve SVG/Mermaid instructions (#1097)
+
 ## [v1.0.41] - 2026-05-26
 
 ### Features
@@ -886,6 +910,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.42]: https://github.com/larksuite/cli/releases/tag/v1.0.42
 [v1.0.41]: https://github.com/larksuite/cli/releases/tag/v1.0.41
 [v1.0.40]: https://github.com/larksuite/cli/releases/tag/v1.0.40
 [v1.0.39]: https://github.com/larksuite/cli/releases/tag/v1.0.39
