@@ -61,7 +61,6 @@ func authStatusRun(opts *StatusOptions) error {
 	diagnostics := identitydiag.Diagnose(context.Background(), f, config, opts.Verify)
 	result["identities"] = diagnostics
 	result["identity"] = effectiveIdentity(diagnostics)
-	addLegacyUserFields(result, diagnostics.User)
 	addEffectiveVerification(result, diagnostics)
 	addStatusNote(result, diagnostics)
 
@@ -83,29 +82,6 @@ func effectiveIdentity(d identitydiag.Result) string {
 		return identityBot
 	default:
 		return identityNone
-	}
-}
-
-func addLegacyUserFields(result map[string]interface{}, user identitydiag.Identity) {
-	if user.OpenID == "" {
-		return
-	}
-	result["userName"] = user.UserName
-	result["userOpenId"] = user.OpenID
-	if user.TokenStatus != "" {
-		result["tokenStatus"] = user.TokenStatus
-	}
-	if user.Scope != "" {
-		result["scope"] = user.Scope
-	}
-	if user.ExpiresAt != "" {
-		result["expiresAt"] = user.ExpiresAt
-	}
-	if user.RefreshExpiresAt != "" {
-		result["refreshExpiresAt"] = user.RefreshExpiresAt
-	}
-	if user.GrantedAt != "" {
-		result["grantedAt"] = user.GrantedAt
 	}
 }
 
