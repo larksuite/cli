@@ -84,7 +84,7 @@ lark-cli slides +replace-slide --as user \
 | `<line>` | 直线 | 需 `startX/startY/endX/endY` |
 | `<polyline>` | 折线 | `points` 读回时被服务端规整丢弃（几何已入库） |
 | `<img>` | 图片 | `src` 必须是 [`+media-upload`](lark-slides-media-upload.md) 返回的 `file_token`，不能是 URL |
-| `<icon>` | 图标 | `iconType` 取自 iconpark 资源 |
+| `<icon>` | 图标 | `iconType` 取自 iconpark 资源；语义图标先用 `scripts/iconpark_tool.py search` 检索 |
 | `<table>` | 表格 | 整表替换会**重建内部 td id**，旧 td block_id 立即失效 |
 | `<td>` | 单元格局部替换 | 只能 `block_replace`，不能 `block_insert`；`block_id` 必须是最新 `slide.get` 拿到的 td id |
 | `<chart>` | 图表（line/bar/column/pie/area/radar/combo） | 必须嵌 `<chartPlotArea>` + `<chartData>` + `<dim1>/<dim2>/<chartField>` |
