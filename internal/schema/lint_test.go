@@ -319,10 +319,6 @@ func isKnownDataInconsistency(msg string) bool {
 		// `danger=true` but `risk` is missing (defaults to "read"). Needs a
 		// meta_data fix to set the proper risk level on these methods.
 		return true
-	case strings.Contains(msg, "L1: array property") && strings.Contains(msg, "missing items"):
-		// Embedded meta_data has arrays without element schema (e.g. arrays of
-		// option_guid strings). Needs a meta_data fix to add items info.
-		return true
 	case strings.Contains(msg, "L2: field") && strings.Contains(msg, "minimum") && strings.Contains(msg, "maximum"):
 		// meta_data sets min == max on some fields (e.g.
 		// mail.user_mailbox.event.subscribe.event_type), which the lint reads
@@ -364,7 +360,7 @@ func TestAllEnvelopesPass(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("L1-L3 known data-level inconsistencies: %d warnings across %d envelopes (overlay risk-strip + embedded typeless arrays)", knownWarnings, len(knownEnvelopes))
+	t.Logf("L1-L3 known data-level inconsistencies: %d warnings across %d envelopes (danger/risk mismatch + min==max)", knownWarnings, len(knownEnvelopes))
 	if failCount > 0 {
 		t.Fatalf("%d envelopes failed L1-L3 lint with non-data-level errors", failCount)
 	}

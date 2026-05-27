@@ -467,9 +467,12 @@ func convertProperty(field map[string]interface{}, nestedPath string) Property {
 		}
 	}
 
-	// list→array fallback: emit `items: {}` (any schema) when meta_data does
-	// not describe element shape, so the result is still JSON Schema valid.
-	if rawType == "list" && p.Type == "array" && p.Items == nil {
+	// array items fallback: emit `items: {}` (any schema) for every array that
+	// meta_data does not describe an element shape for — whether it arrived as
+	// "list" or natively as "array". Without this, typeless arrays (e.g. arrays
+	// of bare ID strings) violate the L1 lint rule and are not JSON Schema valid
+	// for consumers that require `items`.
+	if p.Type == "array" && p.Items == nil {
 		p.Items = &Property{}
 	}
 
