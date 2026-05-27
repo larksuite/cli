@@ -45,6 +45,7 @@ var MailDraftEdit = common.Shortcut{
 		{Name: "remove-event", Type: "bool", Desc: "Remove the calendar event from the draft."},
 		{Name: "inspect", Type: "bool", Desc: "Inspect the draft without modifying it. Returns the draft projection including subject, recipients, body summary, has_quoted_content (whether the draft contains a reply/forward quote block), attachments_summary (with part_id and cid for each attachment), and inline_summary. Run this BEFORE editing body to check has_quoted_content: if true, use set_reply_body in --patch-file to preserve the quote; if false, use set_body."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the draft's sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed. Adds the Disposition-Notification-To header; existing value is overwritten."},
+		showLintDetailsFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		if runtime.Bool("print-patch-template") {
@@ -174,6 +175,33 @@ var MailDraftEdit = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// Writing-path lint for body ops only (S2 contract «Pre-call vs in-call
+		// validation split» — +draft-edit row): set_body / set_reply_body
+		// rewrite the body field; other ops (set_subject / set_recipients /
+		// add_attachment / etc.) operate on non-HTML fields and MUST NOT be
+		// linted. Lint runs after loadPatchFile parses JSON and BEFORE
+		// draftpkg.Apply writes into the snapshot. Each op's `value` is
+		// replaced with the cleaned HTML in place; findings accumulate across
+		// ops into a single per-patch report (spec §4.3).
+		lintApplied, lintBlocked := emptyLintEnvelopeFields()
+		for i := range patch.Ops {
+			op := &patch.Ops[i]
+			if op.Op != "set_body" && op.Op != "set_reply_body" {
+				continue
+			}
+			if op.Value == "" {
+				continue
+			}
+			if !bodyIsHTML(op.Value) {
+				// Plain-text body op — no lint pass needed (the HTML rule set
+				// is irrelevant), but the envelope still surfaces empty arrays.
+				continue
+			}
+			cleaned, rep := runWritePathLint(op.Value)
+			op.Value = cleaned
+			lintApplied = append(lintApplied, rep.Applied...)
+			lintBlocked = append(lintBlocked, rep.Blocked...)
+		}
 		dctx := &draftpkg.DraftCtx{FIO: runtime.FileIO()}
 		if len(patch.Ops) > 0 {
 			if err := draftpkg.Apply(dctx, snapshot, patch); err != nil {
@@ -197,6 +225,10 @@ var MailDraftEdit = common.Shortcut{
 		if updateResult.Reference != "" {
 			out["reference"] = updateResult.Reference
 		}
+		// Writing-path lint envelope: counts always present; full Finding
+		// arrays only when the caller asked for them via --show-lint-details.
+		applyLintToEnvelope(out, lintApplied, lintBlocked, runtime.Bool("show-lint-details"))
+		addComposeHint(out)
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintln(w, "Draft updated.")
 			fmt.Fprintf(w, "draft_id: %s\n", updateResult.DraftID)

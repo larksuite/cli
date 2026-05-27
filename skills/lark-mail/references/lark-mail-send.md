@@ -12,6 +12,8 @@
 
 ## CRITICAL — 发送工作流（必须遵循）
 
+编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+
 此命令默认**只保存草稿**，不会发送邮件。需要发送时，有两种合规方式：
 
 **方式 A（推荐）** — 先创建草稿，再确认发送：

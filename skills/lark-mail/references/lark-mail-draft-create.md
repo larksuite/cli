@@ -8,6 +8,8 @@
 
 如需修改已有草稿，不要使用此命令，请使用 `lark-cli mail +draft-edit`。
 
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+
 ## 安全约束
 
 此命令创建草稿——**不会**发送邮件。用户可以在飞书邮件 UI 中打开草稿查看详情，确认后再进入后续操作。因此：

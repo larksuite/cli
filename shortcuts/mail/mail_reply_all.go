@@ -43,7 +43,8 @@ var MailReplyAll = common.Shortcut{
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are appended to the reply-derived values (no de-duplication; see warning in Execute output)."},
 		signatureFlag,
 		priorityFlag,
-		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
+		showLintDetailsFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		messageId := runtime.Str("message-id")
 		confirmSend := runtime.Bool("confirm-send")
@@ -253,6 +254,8 @@ var MailReplyAll = common.Shortcut{
 		var composedHTMLBody string
 		var composedTextBody string
 		var srcInlineBytes int64
+		// Lint findings flowing into the writing-path stdout envelope (spec §4.3).
+		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
 				return fmt.Errorf("HTML reply-all blocked: %w", err)
@@ -270,6 +273,15 @@ var MailReplyAll = common.Shortcut{
 			if sigResult != nil {
 				bodyWithSig += draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sigResult.ID, sigResult.RenderedContent)
 			}
+			// Writing-path lint: same isomorphic pattern as +reply (spec §4.3,
+			// S2 contract «N-way isomorphism»). Operate on bodyWithSig only;
+			// the `quoted` block from the original message must NOT be re-
+			// linted (it already passed RemoteSanitizer upstream and may
+			// contain Feishu-native quote-block classes that the lint allow-
+			// list intentionally permits in pass-through).
+			cleaned, rep := runWritePathLint(bodyWithSig)
+			bodyWithSig = cleaned
+			lintApplied, lintBlocked = rep.Applied, rep.Blocked
 			composedHTMLBody = bodyWithSig + quoted
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
@@ -325,8 +337,12 @@ var MailReplyAll = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to create draft: %w", err)
 		}
+		showLintDetails := runtime.Bool("show-lint-details")
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			out := buildDraftSavedOutput(draftResult, mailboxID)
+			applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+			addComposeHint(out)
+			runtime.Out(out, nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
@@ -334,7 +350,10 @@ var MailReplyAll = common.Shortcut{
 		if err != nil {
 			return fmt.Errorf("failed to send reply-all (draft %s created but not sent): %w", draftResult.DraftID, err)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		out := buildDraftSendOutput(resData, mailboxID)
+		applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+		addComposeHint(out)
+		runtime.Out(out, nil)
 		hintMarkAsRead(runtime, mailboxID, messageId)
 		return nil
 	},

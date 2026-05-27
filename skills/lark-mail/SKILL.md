@@ -12,6 +12,8 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+
 ## 核心概念
 
 - **邮件（Message）**：一封具体的邮件，包含发件人、收件人、主题、正文（纯文本/HTML）、附件。每封邮件有唯一 `message_id`。
@@ -99,9 +101,10 @@ metadata:
 4. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
 5. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
 6. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
-7. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
-8. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-9. **已读回执** —
+7. **HTML body 预检（可选）** — 复杂 HTML body 提交前可先跑 `+lint-html --strict` 看 lint 会改 / 删什么；写信路径（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op）已内置 autofix，普通正文不必先跑。详见后文「写入路径内置 HTML lint」节
+8. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
+9. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
+10. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
 
@@ -336,6 +339,12 @@ lark-cli mail +send --to alice@example.com --subject '周报' \
 lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 ```
 
+## 邮件书写规范
+
+- 写信时**必须**遵守 [邮件 HTML 写法规范](references/lark-mail-html.md) — **CRITICAL** 飞书邮箱已验证的最纯净美观写法集合
+- [`+lint-html` 用法](references/lark-mail-lint-html.md) — 创建草稿前自检 / 修复 HTML 输出
+- **官方模板库** [`assets/templates/`](assets/templates/) — 提供部分场景模板，可供参考
+
 ### 读取邮件：按需控制返回内容
 
 `+message`、`+messages`、`+thread` 默认返回 HTML 正文（`--html=true`）。仅需确认操作结果（如验证标记已读、移动文件夹是否成功）时，用 `--html=false` 跳过 HTML 正文，只返回纯文本，显著减少 token 消耗。
@@ -353,6 +362,8 @@ lark-cli mail +message --message-id <id>
 ### 邮件模板（`+template-create` / `+template-update` / `--template-id`）
 
 模板的创建 / 更新由专用 shortcut 处理（自动做 Drive 上传 + `<img src>` 改写成 `cid:`）；发信类 shortcut 通过 `--template-id <id>` 套用模板。
+
+> **跟仓库 `assets/templates/` 的区别**：本节讲的是**飞书 OAPI 的个人邮件模板系统**（用户邮箱里的"我的模板"），可在飞书客户端管理；上面"仓库内置 HTML 模板库"是 lark-cli 仓库里预制的飞书原生 HTML 文件，可供写信参考。
 
 **管理模板**：
 
@@ -472,6 +483,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
+| [`+lint-html`](references/lark-mail-lint-html.md) | Lint mail HTML body for compatibility / safety / Feishu-native rules. Returns warnings/errors and (default) auto-fixed HTML. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change, or as a CI gate for static HTML templates. |
 
 ## API Resources
 

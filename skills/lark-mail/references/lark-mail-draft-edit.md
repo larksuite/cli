@@ -12,6 +12,8 @@
 
 **正文编辑和其他高级操作必须通过 `--patch-file`**。没有 `--set-body` flag。
 
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+
 ### 正文编辑：两个 op 的选择
 
 正文编辑通过 `--patch-file` 传入，有两个 op 可选：
