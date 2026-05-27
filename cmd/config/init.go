@@ -92,7 +92,7 @@ if the user explicitly wants a separate app inside the Agent workspace.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language preference for downstream API responses and output; does not change this command's TUI language (zh|en|ja|ko|fr|de|es|it|ru|pt|th|vi|id|ms)")
 	cmd.Flags().StringVar(&opts.ProfileName, "name", "", "create or update a named profile (append instead of replace)")
 	cmd.Flags().BoolVar(&opts.ForceInit, "force-init", false, "allow init inside an Agent workspace (OPENCLAW_HOME / HERMES_HOME); use config bind instead unless you really want a separate app")
 	cmdutil.SetRisk(cmd, "write")
