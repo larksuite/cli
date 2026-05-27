@@ -155,6 +155,20 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	}
 
 	// Preserve API-provided fields (even if this formatter doesn't otherwise use them).
+	// update_time is only meaningful when the message was actually edited;
+	// the server echoes update_time == create_time for unedited messages, which
+	// would otherwise make every output look "updated" to downstream consumers.
+	if updated {
+		if v, ok := m["update_time"]; ok && v != nil {
+			if s, isStr := v.(string); isStr {
+				if strings.TrimSpace(s) != "" {
+					msg["update_time"] = common.FormatTime(s)
+				}
+			} else {
+				msg["update_time"] = common.FormatTime(v)
+			}
+		}
+	}
 	if v, ok := m["chat_id"]; ok {
 		msg["chat_id"] = v
 	}

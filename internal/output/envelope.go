@@ -14,6 +14,14 @@ type Envelope struct {
 }
 
 // ErrorEnvelope is the standard error response wrapper.
+//
+// Deprecated: ErrorEnvelope belongs to the legacy *output.ExitError surface
+// that predates the typed error contract introduced by errs/. New code MUST
+// NOT use it — the typed envelope shape is owned by
+// internal/output.WriteTypedErrorEnvelope which marshals typed errs.* errors
+// directly via JSON reflection (no wrapper struct needed). This struct is
+// retained only while existing *ExitError call sites are migrated; it will
+// be removed once they have moved to the typed surface.
 type ErrorEnvelope struct {
 	OK       bool                   `json:"ok"`
 	Identity string                 `json:"identity,omitempty"`
@@ -23,6 +31,13 @@ type ErrorEnvelope struct {
 }
 
 // ErrDetail describes a structured error.
+//
+// Deprecated: ErrDetail belongs to the legacy *output.ExitError surface that
+// predates the typed error contract introduced by errs/. New code MUST NOT
+// use it — typed errs.* structs embed errs.Problem and own their wire shape
+// via JSON tags (Category, Subtype, Hint, etc. promote to the top level).
+// This struct is retained only while existing *ExitError call sites are
+// migrated; it will be removed once they have moved to the typed surface.
 type ErrDetail struct {
 	Type       string      `json:"type"`
 	Code       int         `json:"code,omitempty"`
@@ -37,6 +52,14 @@ type ErrDetail struct {
 // confirmation_required errors. Level is one of "read" | "write" |
 // "high-risk-write". Action identifies the command for the agent (e.g.
 // "mail +send", "drive.files.delete").
+//
+// Deprecated: RiskDetail is reachable only via *output.ExitError.Detail.Risk,
+// part of the legacy envelope surface that predates the typed error contract
+// introduced by errs/. New code MUST NOT use it — confirmation-required
+// signals belong on *errs.ConfirmationRequiredError (its own typed extension
+// fields can carry agent-protocol metadata directly). This struct is
+// retained only while existing *ExitError call sites are migrated; it will
+// be removed once they have moved to the typed surface.
 type RiskDetail struct {
 	Level  string `json:"level"`
 	Action string `json:"action"`

@@ -13,17 +13,23 @@ If the user query only specifies a task name (e.g., "Complete task Lobster No. 1
 List tasks assigned to the current user, with support for filtering by completion status, creation time, and due date.
 By default, the command will automatically paginate up to 20 times. Use `--page-all` to fetch more (up to 40 pages).
 
+> **Pending vs all tasks:** When `--complete` is not provided, the result contains **both completed and incomplete tasks**.
+> For standup / daily-summary / pending-todo scenarios, you **must** pass `--complete=false`; otherwise completed tasks will be surfaced as if they were still pending.
+
 ## Recommended Commands
 
 ```bash
 # Search for a specific task by name
 lark-cli task +get-my-tasks --query "Lobster No. 1"
 
-# Get all my tasks (fetches up to 20 pages by default)
+# Get all my tasks, both completed and incomplete (fetches up to 20 pages by default)
 lark-cli task +get-my-tasks
 
-# Get my incomplete tasks (fetches up to 20 pages by default)
+# Pending-only: my incomplete tasks (use this for standup/daily-summary)
 lark-cli task +get-my-tasks --complete=false
+
+# Pending-only with a due-date upper bound (e.g. end of today / this week)
+lark-cli task +get-my-tasks --complete=false --due-end "2026-03-27T23:59:59+08:00"
 
 # Fetch all my tasks (up to 40 pages)
 lark-cli task +get-my-tasks --page-all

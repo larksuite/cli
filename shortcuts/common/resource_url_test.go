@@ -28,6 +28,9 @@ func TestParseResourceURL(t *testing.T) {
 		{"wiki", "https://xxx.feishu.cn/wiki/wikcnABC", "wiki", "wikcnABC", true},
 		{"file", "https://xxx.feishu.cn/file/boxcnABC", "file", "boxcnABC", true},
 		{"folder", "https://xxx.feishu.cn/drive/folder/fldcnABC", "folder", "fldcnABC", true},
+		{"file via /drive/file/", "https://feishu.doubao.com/drive/file/boxcnABC", "file", "boxcnABC", true},
+		{"folder via /chat/drive/", "https://feishu.doubao.com/chat/drive/fldcnABC", "folder", "fldcnABC", true},
+		{"folder via /drive/shr/", "https://feishu.doubao.com/drive/shr/fldcnABC", "folder", "fldcnABC", true},
 		{"mindnote", "https://xxx.feishu.cn/mindnote/mncnABC", "mindnote", "mncnABC", true},
 		{"slides", "https://xxx.feishu.cn/slides/slkcnABC", "slides", "slkcnABC", true},
 

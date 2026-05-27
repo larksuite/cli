@@ -247,7 +247,6 @@ func TestAppsHTMLPublish_RequiresPath(t *testing.T) {
 func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	// 这个用例走真实 shortcut → 真实 LocalFileIO（cwd-bounded）。
 	// 必须 chdir 进 tmp 用相对路径，否则 SafeInputPath 会拒绝绝对 --path。
-	// --path "." 被 Validate 拒绝，因此改为在 tmp 下建 dist 子目录并传 ./dist。
 	dir := t.TempDir()
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -276,6 +275,243 @@ func TestAppsHTMLPublish_DryRunPrintsManifest(t *testing.T) {
 	}
 	if !strings.Contains(got, "index.html") {
 		t.Fatalf("dry-run missing file list: %s", got)
+	}
+}
+
+// TestAppsHTMLPublish_CleanCwdIsAllowed pins the post-PR behavior change:
+// --path "." is no longer hard-rejected by Validate. A clean cwd (no
+// credential files) is a valid publish target.
+func TestAppsHTMLPublish_CleanCwdIsAllowed(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsHTMLPublish,
+		[]string{"+html-publish", "--app-id", "app_x", "--path", ".", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run with --path . should pass when cwd is clean, got err=%v", err)
+	}
+}
+
+// TestAppsHTMLPublish_SensitiveBlocksValidate pins the new behavior: a credential
+// file under --path causes Validate to reject before either DryRun or Execute
+// runs, so dry-run also returns non-zero (unlike the previous advisory-warning
+// model).
+func TestAppsHTMLPublish_SensitiveBlocksValidate(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.MkdirAll(filepath.Join(dir, "dist"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dist", ".env"), []byte("API_KEY=secret"), 0o644); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	// Dry-run path: must also fail (this is the whole point of moving the
+	// check into Validate — dry-run can no longer say "OK" when Execute would
+	// reject).
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err = runAppsShortcut(t, AppsHTMLPublish,
+		[]string{"+html-publish", "--app-id", "app_x", "--path", "./dist", "--dry-run", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("dry-run with sensitive file should fail")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+	}
+	if !strings.Contains(exitErr.Detail.Message, ".env") {
+		t.Fatalf("error message should list the offending file, got %q", exitErr.Detail.Message)
+	}
+	if !strings.Contains(exitErr.Detail.Hint, "--allow-sensitive") {
+		t.Fatalf("error hint should mention --allow-sensitive escape hatch, got %q", exitErr.Detail.Hint)
+	}
+}
+
+// TestAppsHTMLPublish_AllowSensitiveOverride pins that --allow-sensitive
+// bypasses the credential-file check (legitimate cases like a docs site
+// shipping an example .env on purpose).
+func TestAppsHTMLPublish_AllowSensitiveOverride(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.MkdirAll(filepath.Join(dir, "dist"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dist", ".env.example"), []byte("API_KEY=replace-me"), 0o644); err != nil {
+		t.Fatalf("write .env.example: %v", err)
+	}
+
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsHTMLPublish,
+		[]string{"+html-publish", "--app-id", "app_x", "--path", "./dist", "--dry-run", "--allow-sensitive", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("--allow-sensitive should bypass the credential scan, got err=%v", err)
+	}
+	got := stdout.String()
+	// Dry-run output surfaces the waived list so the caller still sees what
+	// was let through.
+	if !strings.Contains(got, "sensitive_waived") {
+		t.Fatalf("dry-run output should record the waived credential file under --allow-sensitive, got: %s", got)
+	}
+	if !strings.Contains(got, ".env.example") {
+		t.Fatalf("waived list should name the file, got: %s", got)
+	}
+}
+
+// TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialParentDir pins that
+// the credential-file scan still rejects when --path itself is the
+// conventional parent dir (e.g. ./.aws, ./.docker, ./.kube). Without joining
+// the candidate back to its absolute path, walker would strip the parent
+// segment via filepath.Rel and the cloud-SDK matchers — which anchor on
+// parent/file pairs — would silently pass.
+func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialParentDir(t *testing.T) {
+	cases := []struct {
+		name       string
+		parent     string
+		fileName   string
+		wantSubstr string
+	}{
+		{"aws_credentials", ".aws", "credentials", "credentials"},
+		{"docker_config_json", ".docker", "config.json", "config.json"},
+		{"kube_config", ".kube", "config", "config"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(dir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(cwd) })
+			root := filepath.Join(dir, tc.parent)
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(root, tc.fileName), []byte("fake credential"), 0o600); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+				t.Fatalf("write index: %v", err)
+			}
+
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err = runAppsShortcut(t, AppsHTMLPublish,
+				[]string{"+html-publish", "--app-id", "app_x", "--path", "./" + tc.parent, "--dry-run", "--as", "user"},
+				factory, stdout)
+			if err == nil {
+				t.Fatalf("expected rejection when --path is %s/ (would leak %s), got success", tc.parent, tc.fileName)
+			}
+			var exitErr *output.ExitError
+			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+				t.Fatalf("expected ExitError with detail, got %v", err)
+			}
+			if exitErr.Detail.Type != "validation" {
+				t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+			}
+			if !strings.Contains(exitErr.Detail.Message, tc.wantSubstr) {
+				t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+			}
+		})
+	}
+}
+
+// TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself pins the
+// single-file form: --path pointing directly at a credential file (e.g.
+// ./.aws/credentials) must also reject. Walker's single-file branch sets
+// RelPath = filepath.Base(rootPath), so the .aws segment is lost the same way.
+func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself(t *testing.T) {
+	dir := t.TempDir()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.MkdirAll(filepath.Join(dir, ".aws"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".aws", "credentials"), []byte("fake credential"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err = runAppsShortcut(t, AppsHTMLPublish,
+		[]string{"+html-publish", "--app-id", "app_x", "--path", "./.aws/credentials", "--dry-run", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("expected rejection when --path points directly at .aws/credentials, got success")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	if exitErr.Detail.Type != "validation" {
+		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "credentials") {
+		t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+	}
+}
+
+// TestSensitiveCandidatesError_Truncation pins the inline-list truncation so a
+// payload with many credential files (e.g. an accidentally-copied tree of
+// per-stage .env.* files) produces a readable, length-bounded error.
+func TestSensitiveCandidatesError_Truncation(t *testing.T) {
+	hits := []string{"a.env", "b.env", "c.env", "d.env", "e.env", "f.env", "g.env"}
+	err := sensitiveCandidatesError(hits)
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("expected ExitError with detail, got %v", err)
+	}
+	msg := exitErr.Detail.Message
+	if !strings.Contains(msg, "7 credential file(s)") {
+		t.Fatalf("message should report the full count, got %q", msg)
+	}
+	if !strings.Contains(msg, "and 2 more") {
+		t.Fatalf("message should truncate beyond %d entries, got %q", maxSensitiveListInError, msg)
+	}
+	// Pin: the truncated tail is NOT spelled out.
+	if strings.Contains(msg, "g.env") {
+		t.Fatalf("message should not list entries past the truncation, got %q", msg)
 	}
 }
 
@@ -310,29 +546,5 @@ func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
 	}
 	if len(fake.calls) != 0 {
 		t.Fatalf("client must not be called when raw cap hit")
-	}
-}
-
-func TestRunHTMLPublish_RejectsCurrentDirectoryPath(t *testing.T) {
-	// Publishing the entire current working directory is the canonical
-	// secrets-exfiltration footgun (.git/.env/node_modules all end up in the
-	// tarball). Reject --path "." (and Clean equivalents) at runHTMLPublish
-	// entry so any direct caller cannot accidentally trigger it. (Validate
-	// also rejects at flag layer; this is defense in depth.)
-	fake := &fakeAppsHTMLPublishClient{}
-	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake,
-		appsHTMLPublishSpec{AppID: "app_x", Path: "."})
-	if err == nil {
-		t.Fatalf("expected --path '.' to be rejected")
-	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
-		t.Fatalf("expected ExitError type=validation, got %v", err)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "当前工作目录") {
-		t.Fatalf("error message should explain cwd is forbidden, got %q", exitErr.Detail.Message)
-	}
-	if len(fake.calls) != 0 {
-		t.Fatalf("client must not be called when --path is cwd")
 	}
 }

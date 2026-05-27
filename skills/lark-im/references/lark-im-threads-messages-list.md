@@ -4,6 +4,8 @@
 
 Fetch the reply message list inside a thread. When `im +chat-messages-list` returns messages that include a `thread_id` field, use this command to inspect all replies in that thread.
 
+By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+
 This skill maps to the shortcut: `lark-cli im +threads-messages-list` (internally calls `GET /open-apis/im/v1/messages` with `container_id_type=thread` to fetch thread messages).
 
 ## Commands

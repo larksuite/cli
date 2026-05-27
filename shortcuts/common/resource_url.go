@@ -73,6 +73,9 @@ var urlPathToType = []struct {
 	Type   string
 }{
 	{"/drive/folder/", "folder"},
+	{"/drive/file/", "file"},
+	{"/drive/shr/", "folder"},
+	{"/chat/drive/", "folder"},
 	{"/docx/", "docx"},
 	{"/doc/", "doc"},
 	{"/sheets/", "sheet"},

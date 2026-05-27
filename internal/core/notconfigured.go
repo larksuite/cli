@@ -31,7 +31,7 @@ func LoadOrNotConfigured() (*MultiAppConfig, error) {
 		// keeps it on the standard structured-envelope path at the root
 		// command's error sink.
 		return nil, &ConfigError{
-			Code:    2,
+			Code:    3,
 			Type:    "config",
 			Message: fmt.Sprintf("failed to load config: %v", err),
 		}
@@ -71,14 +71,14 @@ func NotConfiguredError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
 		return &ConfigError{
-			Code:    2,
+			Code:    3,
 			Type:    "config",
 			Message: "not configured",
 			Hint:    localInitHint,
 		}
 	}
 	return &ConfigError{
-		Code:    2,
+		Code:    3,
 		Type:    ws.Display(),
 		Message: fmt.Sprintf("%s context detected but lark-cli is not bound to it", ws.Display()),
 		Hint:    agentBindHint,
@@ -105,14 +105,14 @@ func NoActiveProfileError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
 		return &ConfigError{
-			Code:    2,
+			Code:    3,
 			Type:    "config",
 			Message: "no active profile",
 			Hint:    localInitHint,
 		}
 	}
 	return &ConfigError{
-		Code:    2,
+		Code:    3,
 		Type:    ws.Display(),
 		Message: fmt.Sprintf("no active profile in %s workspace", ws.Display()),
 		Hint:    agentBindHint,

@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
@@ -22,12 +21,13 @@ var AppsHTMLPublish = common.Shortcut{
 	Command:     "+html-publish",
 	Description: "Publish HTML to a Miaoda app (single multipart POST returns the access URL)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:publish"},
+	Scopes:      []string{"spark:app:write"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "path", Desc: "path to HTML file or directory", Required: true},
+		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / .aws/credentials / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -37,14 +37,27 @@ var AppsHTMLPublish = common.Shortcut{
 		if path == "" {
 			return output.ErrValidation("--path is required")
 		}
-		// Reject --path equal to the current working directory. Publishing
-		// cwd recursively packs .git/ / .env / node_modules / .aws/credentials
-		// alongside the intended HTML, and combined with --scope public puts
-		// those on an internet-reachable URL.
-		if filepath.Clean(path) == "." {
-			return output.ErrWithHint(output.ExitValidation, "validation",
-				"--path 不能指向当前工作目录（避免误把整个工程一并发布出去）",
-				"改成具体的子目录或文件，如 './dist' / './public' / './index.html'")
+		// Block well-known credential files in the publish payload unless the
+		// caller explicitly opts in. Lives in Validate (not DryRun) so that
+		// `--dry-run` returns non-zero on hit — the framework runs Validate
+		// before branching to DryRun/Execute, so both paths share this gate.
+		if rctx.Bool("allow-sensitive") {
+			return nil
+		}
+		candidates, err := walkHTMLPublishCandidates(rctx.FileIO(), path)
+		if err != nil {
+			// Don't fail Validate on walk errors (bad --path, etc.) — let
+			// DryRun/Execute surface them in their own (richer) envelopes.
+			return nil
+		}
+		var hits []string
+		for _, c := range candidates {
+			if isSensitiveCandidate(path, c) {
+				hits = append(hits, c.RelPath)
+			}
+		}
+		if len(hits) > 0 {
+			return sensitiveCandidatesError(hits)
 		}
 		return nil
 	},
@@ -76,19 +89,20 @@ var AppsHTMLPublish = common.Shortcut{
 		}
 		dry.Set("total_size_bytes", totalSize)
 		dry.Set("files", names)
-		// Advisory scan: surface paths matching well-known secret / credential
-		// patterns so the caller can review before going public. Dry-run still
-		// exits 0; this is non-blocking by design (legit doc sites may ship
-		// example .env files).
-		var warnings []string
-		for _, c := range candidates {
-			if isSensitiveRelPath(c.RelPath) {
-				warnings = append(warnings, c.RelPath)
+		// Sensitive-file rejection lives in Validate (so dry-run exits non-zero
+		// on hit). When --allow-sensitive is set, still surface the list here
+		// as an info field so the caller sees what was waived.
+		if rctx.Bool("allow-sensitive") {
+			var waived []string
+			for _, c := range candidates {
+				if isSensitiveCandidate(path, c) {
+					waived = append(waived, c.RelPath)
+				}
 			}
-		}
-		if len(warnings) > 0 {
-			dry.Set("warnings", warnings)
-			dry.Set("warning_summary", fmt.Sprintf("manifest contains %d sensitive path(s); review before publishing", len(warnings)))
+			if len(waived) > 0 {
+				dry.Set("sensitive_waived", waived)
+				dry.Set("sensitive_waived_summary", fmt.Sprintf("%d credential file(s) included because --allow-sensitive is set", len(waived)))
+			}
 		}
 		return dry
 	},
@@ -114,6 +128,27 @@ var AppsHTMLPublish = common.Shortcut{
 type appsHTMLPublishSpec struct {
 	AppID string
 	Path  string
+}
+
+// maxSensitiveListInError caps how many credential-file matches we list inline
+// in the validation error, so the message stays readable when a misconfigured
+// payload has many hits (e.g. a directory tree accidentally containing
+// per-environment .env.* files for every stage).
+const maxSensitiveListInError = 5
+
+// sensitiveCandidatesError builds the Validate-time rejection when --path
+// contains credential files and --allow-sensitive was not set.
+func sensitiveCandidatesError(hits []string) error {
+	var sample string
+	if len(hits) <= maxSensitiveListInError {
+		sample = strings.Join(hits, ", ")
+	} else {
+		sample = strings.Join(hits[:maxSensitiveListInError], ", ") +
+			fmt.Sprintf(" (and %d more)", len(hits)-maxSensitiveListInError)
+	}
+	return output.ErrWithHint(output.ExitValidation, "validation",
+		fmt.Sprintf("--path contains %d credential file(s) that should not be published: %s", len(hits), sample),
+		"remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
 // maxHTMLPublishTarballBytes 是 client 端 tar.gz 包体上限，对齐 OAPI 设计 20MB 约束。
@@ -145,13 +180,6 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 }
 
 func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
-	// Defense in depth: callers reaching runHTMLPublish bypass the shortcut's
-	// Validate closure. Re-check that --path is not cwd before walking.
-	if filepath.Clean(spec.Path) == "." {
-		return nil, output.ErrWithHint(output.ExitValidation, "validation",
-			"--path 不能指向当前工作目录（避免误把整个工程一并发布出去）",
-			"改成具体的子目录或文件，如 './dist' / './public' / './index.html'")
-	}
 	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
 	if err != nil {
 		return nil, output.Errorf(output.ExitAPI, "io", "scan --path %s: %v", spec.Path, err)

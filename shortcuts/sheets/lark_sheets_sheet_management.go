@@ -355,7 +355,6 @@ func wrapCopySheetMoveError(err error, token, sheetID string, index int) error {
 				Detail:     mergeSheetErrorDetail(exitErr.Detail.Detail, detail),
 			},
 			Err: err,
-			Raw: exitErr.Raw,
 		}
 	}
 

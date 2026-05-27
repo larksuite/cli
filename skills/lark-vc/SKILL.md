@@ -96,7 +96,8 @@ Meeting (视频会议)
     ├── Transcript (文字记录)
     ├── Summary (总结)
     ├── Todos (待办)
-    └── Chapters (章节)
+    ├── Chapters (章节)
+    └── Keywords (推荐关键词)
 ```
 
 > **注意**：`+search` 只能查询已结束的历史会议。查询未来的日程安排请使用 [lark-calendar](../lark-calendar/SKILL.md)。

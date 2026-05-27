@@ -30,7 +30,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "cross tenant unit",
 			code:         LarkErrDriveCrossTenantUnit,
 			wantExitCode: ExitAPI,
-			wantType:     "cross_tenant_unit",
+			wantType:     "cross_tenant",
 			wantHint:     "same tenant and region/unit",
 		},
 		{
@@ -44,7 +44,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "sheets float image invalid dims",
 			code:         LarkErrSheetsFloatImageInvalidDims,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "--width / --height / --offset-x / --offset-y",
 		},
 		{
@@ -58,7 +58,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "drive permission apply not applicable",
 			code:         LarkErrDrivePermApplyNotApplicable,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "does not accept a permission-apply request",
 		},
 		{
@@ -86,6 +86,32 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			}
 			if !strings.Contains(gotHint, tt.wantHint) {
 				t.Fatalf("hint=%q, want substring %q", gotHint, tt.wantHint)
+			}
+		})
+	}
+}
+
+func TestMailSendErrorConstantsUseServiceScopedCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{name: "mailbox not found", got: LarkErrMailboxNotFound, want: 1234013},
+		{name: "user daily send quota", got: LarkErrMailSendQuotaUser, want: 1236007},
+		{name: "user external recipient quota", got: LarkErrMailSendQuotaUserExt, want: 1236008},
+		{name: "tenant external recipient quota", got: LarkErrMailSendQuotaTenantExt, want: 1236009},
+		{name: "mail quota", got: LarkErrMailQuota, want: 1236010},
+		{name: "tenant storage limit", got: LarkErrTenantStorageLimit, want: 1236013},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.got != tt.want {
+				t.Fatalf("code=%d, want %d", tt.got, tt.want)
 			}
 		})
 	}

@@ -176,6 +176,13 @@ func duplicateRemoteFilePaths(entries []driveRemoteEntry) []driveDuplicateRemote
 	return duplicates
 }
 
+// Deprecated: duplicateRemotePathError produces a legacy *output.ExitError
+// that predates the typed error contract introduced by errs/. New code MUST
+// NOT use it — duplicate-path signals should move to a typed
+// *errs.ValidationError (with duplicates metadata as a typed extension
+// field) when the drive shortcut migrates to typed errors. This helper is
+// retained only while existing call sites are migrated; it will be removed
+// once they have moved to the typed surface.
 func duplicateRemotePathError(duplicates []driveDuplicateRemotePath) *output.ExitError {
 	return &output.ExitError{
 		Code: output.ExitAPI,

@@ -22,16 +22,22 @@ var ImMessagesMGet = common.Shortcut{
 	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "contact:user.basic_profile:readonly"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
+	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read", "contact:user.base:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
+		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
-		return common.NewDryRunAPI().GET(buildMGetURL(ids))
+		d := common.NewDryRunAPI().GET(buildMGetURL(ids))
+		if !runtime.Bool("no-reactions") {
+			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
+				Desc("Reaction enrichment: queries returned messages in batches of up to 20 to attach the reactions block (operator, action_time, counts). Pass --no-reactions to skip.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
@@ -69,6 +75,9 @@ var ImMessagesMGet = common.Shortcut{
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)
 		convertlib.AttachSenderNames(messages, nameCache)
 		convertlib.ExpandThreadReplies(runtime, messages, nameCache, convertlib.ThreadRepliesPerThread, convertlib.ThreadRepliesTotalLimit)
+		if !runtime.Bool("no-reactions") {
+			convertlib.EnrichReactions(runtime, messages)
+		}
 
 		outData := map[string]interface{}{
 			"messages": messages,

@@ -18,6 +18,13 @@ const (
 // It assumes Detail is a map containing a "details" array of objects with "value" string fields.
 // For example: {"details": [{"value": "error message 1"}, {"value": "error message 2"}]}
 // Returns an empty string if the structure doesn't match or the array is empty.
+//
+// Deprecated: getErrorDetailValue reads from the legacy *output.ErrDetail
+// that predates the typed error contract introduced by errs/. New code MUST
+// NOT use it — typed errs.* errors expose Message, Hint, and extension
+// fields directly on the typed struct via errors.As / errs.ProblemOf. This
+// helper is retained only while existing call sites are migrated; it will
+// be removed once they have moved to the typed surface.
 func getErrorDetailValue(e *output.ErrDetail) string {
 	if e == nil || e.Detail == nil {
 		return ""

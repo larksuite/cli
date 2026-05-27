@@ -1,5 +1,5 @@
 # Build output
-/lark-cli
+/lark-cli*
 .cache/
 dist/
 bin/

@@ -43,6 +43,12 @@ var keyringGet = keyring.Get
 // keyringSet is overridden in tests to simulate system keychain writes.
 var keyringSet = keyring.Set
 
+// errKeychainBlocked is returned when the OS Keychain is reachable but
+// denies access — sandbox restriction, user-denied prompt, or a 5-second
+// timeout (typically caused by an ignored permission dialog). Distinct
+// from errNotInitialized (master key entry genuinely absent).
+var errKeychainBlocked = errors.New("keychain access blocked")
+
 // StorageDir returns the storage directory for a given service name on macOS.
 func StorageDir(service string) string {
 	home, err := vfs.UserHomeDir()
@@ -85,7 +91,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 			return
 		} else if !errors.Is(err, keyring.ErrNotFound) {
 			// Not ErrNotFound, which means access was denied or blocked by the system
-			resCh <- result{key: nil, err: errors.New("keychain access blocked")}
+			resCh <- result{key: nil, err: errKeychainBlocked}
 			return
 		}
 
@@ -117,7 +123,7 @@ func getMasterKey(service string, allowCreate bool) ([]byte, error) {
 		return res.key, res.err
 	case <-ctx.Done():
 		// Timeout is usually caused by ignored/blocked permission prompts
-		return nil, errors.New("keychain access blocked")
+		return nil, errKeychainBlocked
 	}
 }
 
@@ -265,11 +271,7 @@ func platformGet(service, account string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	plaintext, err := decryptData(data, key)
-	if err != nil {
-		return "", err
-	}
-	return plaintext, nil
+	return decryptData(data, key)
 }
 
 // platformSet stores a value in the macOS keychain.
@@ -315,4 +317,117 @@ func platformRemove(service, account string) error {
 		return err
 	}
 	return nil
+}
+
+// DowngradeResult reports what DowngradeMasterKeyToFile did. The command
+// never writes to or removes from the OS Keychain — it only reads from it
+// and only writes to the local file fallback.
+type DowngradeResult int
+
+const (
+	// DowngradeAlreadyDone means master.key.file was already present and valid.
+	DowngradeAlreadyDone DowngradeResult = iota
+	// DowngradeUsedKeychainKey means the existing OS Keychain master key was
+	// copied verbatim into the local file fallback. Existing .enc credentials
+	// remain readable via the file path.
+	DowngradeUsedKeychainKey
+	// DowngradeCreatedNewKey means the OS Keychain held no master key, so a
+	// fresh random key was generated and written to the file fallback only.
+	// The OS Keychain was not touched.
+	DowngradeCreatedNewKey
+)
+
+// MasterKeyFilePath returns the absolute path of the file fallback master key
+// for the given service.
+func MasterKeyFilePath(service string) string {
+	return filepath.Join(StorageDir(service), fileMasterKeyName)
+}
+
+// DowngradeMasterKeyToFile materializes the OS Keychain master key into the
+// local file fallback so that subsequent platformGet calls take the file-first
+// path and bypass the OS Keychain entirely. The Keychain entry itself is kept
+// as a cold backup; nothing is removed there.
+//
+// Idempotent: if master.key.file is already present and valid, returns
+// DowngradeAlreadyDone without touching anything.
+func DowngradeMasterKeyToFile(service string) (DowngradeResult, error) {
+	dir := StorageDir(service)
+	keyPath := filepath.Join(dir, fileMasterKeyName)
+
+	existing, statErr := vfs.ReadFile(keyPath)
+	if statErr == nil {
+		if len(existing) == masterKeyBytes {
+			return DowngradeAlreadyDone, nil
+		}
+		return 0, errors.New("keychain is corrupted")
+	}
+	if !errors.Is(statErr, os.ErrNotExist) {
+		return 0, statErr
+	}
+
+	result := DowngradeUsedKeychainKey
+	key, err := getMasterKey(service, false)
+	if err != nil {
+		if !errors.Is(err, errNotInitialized) {
+			return 0, err
+		}
+		// Keychain has no master key. Generate a fresh one *locally* — do
+		// NOT call getMasterKey(service, true), which would write the new
+		// key into the OS Keychain as a side effect. keychain-downgrade
+		// must never modify the OS Keychain; it only ever reads from it.
+		key = make([]byte, masterKeyBytes)
+		if _, err := rand.Read(key); err != nil {
+			return 0, err
+		}
+		result = DowngradeCreatedNewKey
+	}
+
+	if err := vfs.MkdirAll(dir, 0700); err != nil {
+		return 0, err
+	}
+	file, err := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			concurrent, readErr := vfs.ReadFile(keyPath)
+			if readErr == nil && len(concurrent) == masterKeyBytes {
+				return DowngradeAlreadyDone, nil
+			}
+			if readErr != nil {
+				return 0, readErr
+			}
+			return 0, errors.New("keychain is corrupted")
+		}
+		return 0, err
+	}
+	writeFailed := true
+	defer func() {
+		if writeFailed {
+			_ = vfs.Remove(keyPath)
+		}
+	}()
+	if _, err := file.Write(key); err != nil {
+		_ = file.Close()
+		return 0, err
+	}
+	if err := file.Close(); err != nil {
+		return 0, err
+	}
+	writeFailed = false
+	return result, nil
+}
+
+// extraHint appends a darwin-specific suggestion to wrapError's hint message
+// when the failure is one keychain-downgrade can recover from: either the
+// master key is missing (errNotInitialized) or the OS Keychain is reachable
+// but blocking access (errKeychainBlocked — sandbox, denied prompt, timeout).
+// In both cases the user can run keychain-downgrade from an interactive
+// Terminal session, after which the file fallback is readable from any
+// context (sandbox, automation, CI, etc.). Corruption errors are
+// deliberately excluded — downgrade would re-read the same bad bytes and
+// fail; the right fix there is to delete the corrupt Keychain entry first.
+func extraHint(err error) string {
+	if errors.Is(err, errNotInitialized) || errors.Is(err, errKeychainBlocked) {
+		return " On macOS, you can also open an interactive Terminal session (where the system Keychain is reachable) and run `lark-cli config keychain-downgrade` to materialize the master key into a local file; subsequent runs in this sandbox/automation context will then read from the file and succeed. Trade-off: after downgrade, any process running as your macOS user can read that file (file permissions replace the Keychain's per-app ACL)."
+	}
+	return ""
 }

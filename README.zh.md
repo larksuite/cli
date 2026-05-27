@@ -280,6 +280,8 @@ lark-cli schema im.messages.delete
 
 对于较大的改动，建议先通过 Issue 与我们讨论。
 
+提交 PR 前，请先阅读 [AGENTS.md](./AGENTS.md)，其中列出了贡献者和 AI Agent 使用的本地构建、测试和 PR 检查清单。
+
 ## 许可证
 
 本项目基于 **MIT 许可证** 开源。

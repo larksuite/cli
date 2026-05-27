@@ -5,6 +5,7 @@ package schema
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -33,17 +34,165 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 	}
 }
 
-func TestSchemaCmd_NoArgs(t *testing.T) {
+func TestSchemaCmd_NoArgs_Pretty(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{})
-	err := cmd.Execute()
-	if err != nil {
+	cmd.SetArgs([]string{"--format", "pretty"})
+	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "Available services") {
-		t.Error("expected service list output")
+		t.Error("expected service list in pretty mode")
+	}
+}
+
+func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{}) // default --format json
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := strings.TrimSpace(stdout.String())
+	if !strings.HasPrefix(out, "[") {
+		head := out
+		if len(head) > 80 {
+			head = head[:80]
+		}
+		t.Errorf("expected JSON array root, first 80 chars:\n%s", head)
+	}
+	var envs []map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &envs); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if len(envs) < 193 {
+		t.Errorf("envelopes count = %d, want >= 193", len(envs))
+	}
+}
+
+func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"im.images.create", "--format", "json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if env["name"] != "im images create" {
+		t.Errorf("name = %v, want \"im images create\"", env["name"])
+	}
+	for _, key := range []string{"description", "inputSchema", "outputSchema", "_meta"} {
+		if _, ok := env[key]; !ok {
+			t.Errorf("missing top-level key: %s", key)
+		}
+	}
+	meta, _ := env["_meta"].(map[string]interface{})
+	if meta["envelope_version"] != "1.0" {
+		t.Errorf("envelope_version = %v, want \"1.0\"", meta["envelope_version"])
+	}
+}
+
+func TestSchemaCmd_SpaceSeparatedPath_EqualsDotted(t *testing.T) {
+	f1, out1, _, _ := cmdutil.TestFactory(t, nil)
+	cmd1 := NewCmdSchema(f1, nil)
+	cmd1.SetArgs([]string{"im", "images", "create"})
+	if err := cmd1.Execute(); err != nil {
+		t.Fatalf("space form failed: %v", err)
+	}
+
+	f2, out2, _, _ := cmdutil.TestFactory(t, nil)
+	cmd2 := NewCmdSchema(f2, nil)
+	cmd2.SetArgs([]string{"im.images.create"})
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("dotted form failed: %v", err)
+	}
+
+	if out1.String() != out2.String() {
+		t.Errorf("space and dotted forms produced different output")
+	}
+}
+
+func TestSchemaCmd_ServiceListIsArray(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"im"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var envs []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envs); err != nil {
+		t.Fatalf("unmarshal failed: %v\n%s", err, stdout.String())
+	}
+	if len(envs) == 0 {
+		t.Fatal("expected non-empty array for service im")
+	}
+	for _, e := range envs {
+		name, _ := e["name"].(string)
+		if !strings.HasPrefix(name, "im ") {
+			t.Errorf("envelope name %q does not start with \"im \"", name)
+		}
+	}
+}
+
+func TestSchemaCmd_HighRiskYesInjection(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"im.messages.delete"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	is, _ := env["inputSchema"].(map[string]interface{})
+	props, _ := is["properties"].(map[string]interface{})
+	if _, ok := props["yes"]; !ok {
+		t.Errorf("inputSchema.properties.yes missing for high-risk-write command")
+	}
+}
+
+func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"im.reactions.list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	is, _ := env["inputSchema"].(map[string]interface{})
+	props, _ := is["properties"].(map[string]interface{})
+	if _, ok := props["yes"]; ok {
+		t.Errorf("yes property should not appear for risk=read command")
+	}
+}
+
+func TestSchemaCmd_PrettyUnchanged_KeyTextPresent(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"im.images.create", "--format", "pretty"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	// Existing pretty rendering surfaces these markers — they must still appear
+	for _, want := range []string{"Parameters:", "Response:", "Identity:", "Scopes:", "CLI:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("pretty output missing marker %q", want)
+		}
 	}
 }
 

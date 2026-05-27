@@ -21,7 +21,7 @@ var AppsAccessScopeGet = common.Shortcut{
 	Command:     "+access-scope-get",
 	Description: "Get Miaoda app access scope configuration",
 	Risk:        "read",
-	Scopes:      []string{"spark:app.access_scope:read"},
+	Scopes:      []string{"spark:app:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{

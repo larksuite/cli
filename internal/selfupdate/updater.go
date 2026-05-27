@@ -78,12 +78,12 @@ func (r *NpmResult) CombinedOutput() string {
 // Platform-specific methods (PrepareSelfReplace, CleanupStaleFiles)
 // are in updater_unix.go and updater_windows.go.
 //
-// Override DetectOverride / NpmInstallOverride / SkillsUpdateOverride / VerifyOverride
+// Override DetectOverride / NpmInstallOverride / SkillsCommandOverride / VerifyOverride
 // / RestoreAvailableOverride for testing.
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
-	SkillsUpdateOverride     func() *NpmResult
+	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
 	RestoreAvailableOverride func() bool
 
@@ -153,12 +153,27 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	return r
 }
 
-// RunSkillsUpdate installs skills, trying the .well-known source first and
-// falling back to the GitHub repo on failure or timeout.
-func (u *Updater) RunSkillsUpdate() *NpmResult {
-	if u.SkillsUpdateOverride != nil {
-		return u.SkillsUpdateOverride()
+func (u *Updater) ListOfficialSkills() *NpmResult {
+	r := u.runSkillsListOfficial("https://open.feishu.cn")
+	if r.Err != nil {
+		r = u.runSkillsListOfficial("larksuite/cli")
 	}
+	return r
+}
+
+func (u *Updater) ListGlobalSkills() *NpmResult {
+	return u.runSkillsListGlobal()
+}
+
+func (u *Updater) InstallSkill(nameList []string) *NpmResult {
+	r := u.runSkillsInstall("https://open.feishu.cn", nameList)
+	if r.Err != nil {
+		r = u.runSkillsInstall("larksuite/cli", nameList)
+	}
+	return r
+}
+
+func (u *Updater) InstallAllSkills() *NpmResult {
 	r := u.runSkillsAdd("https://open.feishu.cn")
 	if r.Err != nil {
 		r = u.runSkillsAdd("larksuite/cli")
@@ -167,6 +182,28 @@ func (u *Updater) RunSkillsUpdate() *NpmResult {
 }
 
 func (u *Updater) runSkillsAdd(source string) *NpmResult {
+	return u.runSkillsCommand("-y", "skills", "add", source, "-g", "-y")
+}
+
+func (u *Updater) runSkillsListOfficial(source string) *NpmResult {
+	return u.runSkillsCommand("-y", "skills", "add", source, "--list")
+}
+
+func (u *Updater) runSkillsListGlobal() *NpmResult {
+	return u.runSkillsCommand("-y", "skills", "ls", "-g")
+}
+
+func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult {
+	args := []string{"-y", "skills", "add", source, "-s"}
+	args = append(args, nameList...)
+	args = append(args, "-g", "-y")
+	return u.runSkillsCommand(args...)
+}
+
+func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
+	if u.SkillsCommandOverride != nil {
+		return u.SkillsCommandOverride(args...)
+	}
 	r := &NpmResult{}
 	npxPath, err := exec.LookPath("npx")
 	if err != nil {
@@ -175,7 +212,7 @@ func (u *Updater) runSkillsAdd(source string) *NpmResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, "-y", "skills", "add", source, "-g", "-y")
+	cmd := exec.CommandContext(ctx, npxPath, args...)
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()

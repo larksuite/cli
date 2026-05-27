@@ -1,12 +1,13 @@
 # Mail CLI E2E Coverage
 
 ## Metrics
-- Denominator: 62 leaf commands
-- Covered: 13
-- Coverage: 21.0%
+- Denominator: 63 leaf commands
+- Covered: 14
+- Coverage: 22.2%
 
 ## Summary
 - TestMail_DraftLifecycleWorkflowAsUser: proves a self-contained user draft workflow across `mail user_mailboxes profile`, `mail +draft-create`, `mail user_mailbox.drafts list`, `mail user_mailbox.drafts get`, `mail +draft-edit`, and `mail user_mailbox.drafts delete`; key `t.Run(...)` proof points are `get mailbox profile as user`, `create draft with shortcut as user`, `list draft as user`, `get created draft as user`, `inspect created draft as user`, `update draft subject with shortcut as user`, `inspect updated draft as user`, `delete draft as user`, and `verify draft removed from list as user`.
+- TestMail_DraftSendWorkflowAsUser: proves a self-contained user draft-send workflow across `mail user_mailboxes profile`, `mail +draft-create`, `mail +draft-send`, and `mail +triage`; key `t.Run(...)` proof points are `get mailbox profile as user`, `create self-addressed draft as user`, `send draft with shortcut as user`, and `find self-received message for cleanup`.
 - TestMail_SendWorkflowAsUser: proves a self-contained self-mail workflow across `mail +send`, `mail +triage`, `mail +message`, `mail +messages`, `mail +thread`, `mail +reply`, and `mail +forward`; key `t.Run(...)` proof points are `send mail to self with shortcut as user`, `find self sent mail in triage as user`, `get sent message as user`, `get received message as user`, `get both self sent messages as user`, `get self send thread as user`, `reply to received message with shortcut as user`, `inspect reply draft as user`, `forward received message with shortcut as user`, and `inspect forward draft as user`.
 - Blocked area: `mail +reply-all` is still uncovered because the self-send workflow produces only self-recipient traffic and reply-all’s recipient expansion becomes degenerate after self-address exclusion; `+signature`, `+watch`, event commands, and many raw message/thread mutation APIs still need dedicated tenant-aware workflows.
 
@@ -16,6 +17,7 @@
 | --- | --- | --- | --- | --- | --- |
 | ✓ | mail +draft-create | shortcut | mail_draft_lifecycle_workflow_test.go::TestMail_DraftLifecycleWorkflowAsUser/create draft with shortcut as user | `--subject`; `--body`; `--plain-text` | creates a new self-owned draft without relying on external recipients |
 | ✓ | mail +draft-edit | shortcut | mail_draft_lifecycle_workflow_test.go::TestMail_DraftLifecycleWorkflowAsUser/inspect created draft as user; mail_draft_lifecycle_workflow_test.go::TestMail_DraftLifecycleWorkflowAsUser/update draft subject with shortcut as user; mail_draft_lifecycle_workflow_test.go::TestMail_DraftLifecycleWorkflowAsUser/inspect updated draft as user | `--draft-id`; `--mailbox me`; `--inspect`; `--set-subject` | shortcut proves readback projection and subject update |
+| ✓ | mail +draft-send | shortcut | mail_draft_send_workflow_test.go::TestMail_DraftSendWorkflowAsUser/send draft with shortcut as user; mail_draft_send_dryrun_test.go::TestMail_DraftSendDryRun | `--draft-id`; `--mailbox me`; `--yes`; dry-run repeated/comma-separated `--draft-id` | sends a self-addressed draft through the batch shortcut and locks dry-run request shape |
 | ✓ | mail +forward | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/forward received message with shortcut as user; mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/inspect forward draft as user | `--message-id`; `--to`; `--body`; `--plain-text` | uses self-generated inbox message as source and inspects forwarded draft projection |
 | ✓ | mail +message | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get sent message as user; mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get received message as user | `--mailbox me`; `--message-id` | verifies both SENT and INBOX copies after self-send |
 | ✓ | mail +messages | shortcut | mail_send_workflow_test.go::TestMail_SendWorkflowAsUser/get both self sent messages as user | `--mailbox me`; `--message-ids` | batch reads both sent and received message copies |

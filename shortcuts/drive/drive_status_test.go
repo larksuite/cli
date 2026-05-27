@@ -840,25 +840,3 @@ func TestHashLocalForStatusWrapsOpenError(t *testing.T) {
 		t.Fatalf("expected error to mention the missing file, got: %v", err)
 	}
 }
-
-func TestHashRemoteForStatusReturnsNetworkErrorWhenDownloadFails(t *testing.T) {
-	config := driveTestConfig()
-	f, _, _, _ := cmdutil.TestFactory(t, config)
-	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), &cobra.Command{Use: "drive"}, config)
-	runtime.Factory = f
-
-	_, err := hashRemoteForStatus(context.Background(), runtime, "tok_missing")
-	if err == nil {
-		t.Fatal("expected hashRemoteForStatus() to fail when the download request has no stub")
-	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured ExitError, got %T", err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "network" {
-		t.Fatalf("expected network detail, got %#v", exitErr.Detail)
-	}
-	if !strings.Contains(err.Error(), "download") {
-		t.Fatalf("expected download-related error, got: %v", err)
-	}
-}

@@ -279,6 +279,8 @@ Community contributions are welcome! If you find a bug or have feature suggestio
 
 For major changes, we recommend discussing with us first via an Issue.
 
+Before opening a PR, see [AGENTS.md](./AGENTS.md) for the local build, test, and PR checklist used by contributors and AI agents.
+
 ## License
 
 This project is licensed under the **MIT License**.

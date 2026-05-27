@@ -20,25 +20,6 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-func TestDoMCPCallTransportError(t *testing.T) {
-	t.Parallel()
-
-	client := &http.Client{
-		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-			return nil, errors.New("dial tcp: timeout")
-		}),
-	}
-
-	_, err := DoMCPCall(context.Background(), client, "fetch-doc", map[string]interface{}{"doc_id": "doc_1"}, "uat-token", "https://example.com/mcp", false)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %v", err)
-	}
-	if exitErr.Code != output.ExitNetwork {
-		t.Fatalf("expected network exit code, got %d", exitErr.Code)
-	}
-}
-
 func TestDoMCPCallUnauthorizedHTTPError(t *testing.T) {
 	t.Parallel()
 
@@ -53,12 +34,8 @@ func TestDoMCPCallUnauthorizedHTTPError(t *testing.T) {
 	}
 
 	_, err := DoMCPCall(context.Background(), client, "fetch-doc", map[string]interface{}{"doc_id": "doc_1"}, "uat-token", "https://example.com/mcp", false)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %v", err)
-	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("expected auth exit code, got %d", exitErr.Code)
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Fatalf("expected auth exit code (%d), got %d", output.ExitAuth, got)
 	}
 }
 

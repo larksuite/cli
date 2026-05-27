@@ -204,7 +204,10 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "path" not set`)
 	})
 
-	t.Run("WarningsForSensitivePaths", func(t *testing.T) {
+	t.Run("RejectsSensitivePathsByDefault", func(t *testing.T) {
+		// Validate scans candidates for well-known credential files and rejects
+		// when any are found. Dry-run also fails (Validate runs before the
+		// dry-run branch) — that's the point: dry-run preview matches Execute.
 		dir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
@@ -224,23 +227,45 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			WorkDir:   dir,
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		warnings := gjson.Get(result.Stdout, "warnings").Array()
-		require.NotEmpty(t, warnings, "expected non-empty warnings for .env: %s", result.Stdout)
-		var found bool
-		for _, w := range warnings {
-			if w.String() == ".env" {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "warnings should list .env, got %v", warnings)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), ".env",
+			"validation error should name the offending file: %s", result.Stderr)
 	})
 
-	t.Run("RejectsPathEqualsCWD", func(t *testing.T) {
-		// Even with valid index.html in cwd, --path "." must be rejected at
-		// Validate (so dry-run also rejects) to prevent accidental
-		// whole-project secrets exfiltration.
+	t.Run("AllowSensitiveOverride", func(t *testing.T) {
+		// --allow-sensitive bypasses the credential-file gate (legitimate
+		// cases: docs site shipping example .env files). Dry-run output
+		// surfaces a sensitive_waived field so the caller still sees what
+		// was let through.
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", ".env.example"), []byte("API_KEY=replace-me\n"), 0o644))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{
+				"apps", "+html-publish",
+				"--app-id", "app_x",
+				"--path", "./dist",
+				"--allow-sensitive",
+				"--dry-run",
+			},
+			DefaultAs: "user",
+			WorkDir:   dir,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		waived := gjson.Get(result.Stdout, "sensitive_waived").Array()
+		require.Len(t, waived, 1, "expected sensitive_waived to list the file, got: %s", result.Stdout)
+		assert.Equal(t, ".env.example", waived[0].String())
+	})
+
+	t.Run("CleanCwdAllowed", func(t *testing.T) {
+		// --path "." is no longer hard-rejected. A cwd that doesn't contain
+		// well-known credential files is a valid publish target.
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html/>"), 0o644))
 
@@ -258,8 +283,8 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 			WorkDir:   dir,
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 2)
-		assert.Contains(t, validateErrorMessage(result), "当前工作目录")
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, int64(1), gjson.Get(result.Stdout, "file_count").Int())
 	})
 
 	t.Run("TrimsAppIDAndPath", func(t *testing.T) {

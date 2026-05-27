@@ -126,6 +126,7 @@ func artifactsStub(token string) *httpmock.Stub {
 				"summary":         "Test summary content",
 				"minute_todos":    []interface{}{map[string]interface{}{"content": "Buy milk"}},
 				"minute_chapters": []interface{}{map[string]interface{}{"title": "Intro", "summary_content": "Opening"}},
+				"keywords":        []interface{}{"budget", "roadmap"},
 			},
 		},
 	}

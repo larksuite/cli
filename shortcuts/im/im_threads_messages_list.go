@@ -24,8 +24,8 @@ var ImThreadsMessagesList = common.Shortcut{
 	Description: "List messages in a thread; user/bot; accepts om_/omt_ input, resolves message IDs to thread_id, supports sort/pagination",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "contact:user.basic_profile:readonly"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
+	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read", "contact:user.base:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -33,6 +33,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "sort", Default: "asc", Desc: "sort order", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Default: "50", Desc: "page size (1-500)"},
 		{Name: "page-token", Desc: "page token"},
+		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
@@ -65,10 +66,15 @@ var ImThreadsMessagesList = common.Shortcut{
 			params["page_token"] = pageToken
 		}
 
-		return d.
+		d = d.
 			GET("/open-apis/im/v1/messages").
 			Params(params).
 			Set("thread", threadFlag).Set("sort", sortFlag).Set("page_size", pageSizeStr)
+		if !runtime.Bool("no-reactions") {
+			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
+				Desc("Reaction enrichment: queries returned thread messages in batches of up to 20. Pass --no-reactions to skip.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		threadId := runtime.Str("thread")
@@ -124,6 +130,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)
 		convertlib.AttachSenderNames(messages, nameCache)
+		if !runtime.Bool("no-reactions") {
+			convertlib.EnrichReactions(runtime, messages)
+		}
 
 		outData := map[string]interface{}{
 			"thread_id":  threadId,

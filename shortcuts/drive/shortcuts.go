@@ -28,6 +28,8 @@ func Shortcuts() []common.Shortcut {
 		DriveSync,
 		DriveTaskResult,
 		DriveApplyPermission,
+		DriveSecureLabelList,
+		DriveSecureLabelUpdate,
 		DriveSearch,
 		DriveInspect,
 	}

@@ -1909,7 +1909,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("download attachment includes extra query parameter", func(t *testing.T) {
+	t.Run("download attachment uses extra info", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 
 		extra := `{"bitablePerm":{"tableId":"tbl_x","attachments":{"fld_att":{"rec_x":["box_a"]}}}}`
