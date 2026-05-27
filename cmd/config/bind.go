@@ -222,7 +222,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 			if err == huh.ErrUserAborted {
 				return "", output.ErrBare(1)
 			}
-			return "", err
+			return "", output.Errorf(output.ExitInternal, "internal", "language selection failed: %v", err)
 		}
 		opts.Lang = lang
 		opts.UILang = lang

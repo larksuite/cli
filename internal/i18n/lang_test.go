@@ -25,6 +25,12 @@ func TestIsValidLang(t *testing.T) {
 			}
 		})
 	}
+	// Guard against drift between ValidLanguages and IsValidLang.
+	for _, lang := range ValidLanguages {
+		if !IsValidLang(lang) {
+			t.Errorf("IsValidLang(%q) = false, want true", lang)
+		}
+	}
 }
 
 func TestValidLanguages(t *testing.T) {

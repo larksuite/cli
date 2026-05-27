@@ -64,6 +64,7 @@ func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
 		"DetectedLarkTenant":   msg.DetectedLarkTenant,
 		"AppCreated":           msg.AppCreated,
 		"ConfigSaved":          msg.ConfigSaved,
+		"LangPreferenceSet":    msg.LangPreferenceSet,
 	}
 	for name, val := range fields {
 		if val == "" {

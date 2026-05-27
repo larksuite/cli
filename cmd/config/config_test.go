@@ -185,6 +185,7 @@ func TestConfigInitCmd_LangDefault(t *testing.T) {
 // codes all exit with ExitValidation.
 func TestConfigInitCmd_InvalidLang(t *testing.T) {
 	clearAgentEnv(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	cases := []struct {
 		name string

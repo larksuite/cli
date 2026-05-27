@@ -159,7 +159,7 @@ type CliConfig struct {
 	DefaultAs           Identity // AsUser | AsBot | AsAuto | "" (from config file)
 	UserOpenId          string
 	UserName            string
-	Lang                string // UI language (zh, en, ja, ko, etc.)
+	Lang                string // persistent language preference (zh, en, ja, ko, etc.); not the TUI render language — see BindOptions.UILang
 	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
 }
 
