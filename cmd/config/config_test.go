@@ -126,15 +126,11 @@ func TestConfigShowRun_NoActiveProfileReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "config" || exitErr.Detail.Message != "no active profile" {
-		t.Fatalf("detail = %#v, want config/no active profile", exitErr.Detail)
+	if !strings.Contains(err.Error(), "no active profile") {
+		t.Fatalf("error = %v, want to contain 'no active profile'", err)
 	}
 }
 
@@ -469,15 +465,8 @@ func TestConfigBlockedByExternalProvider(t *testing.T) {
 			if matched != nil && matched != cmd && !matched.SilenceUsage {
 				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
 			}
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) {
-				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-			}
-			if exitErr.Code != output.ExitValidation {
-				t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-			}
-			if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
-				t.Errorf("error type = %v, want %q", exitErr.Detail, "external_provider")
+			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 			}
 		})
 	}

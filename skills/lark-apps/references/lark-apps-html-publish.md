@@ -44,8 +44,8 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 {
   "ok": false,
   "error": {
-    "type": "api_error",
-    "code": "api_error",
+    "type": "api",
+    "code": 90001,
     "message": "html-publish failed (code=90001): build failed: dependency conflict",
     "hint": "构建失败：用 `lark-cli apps +html-publish --path <path> --dry-run` 检查打包文件清单"
   }
@@ -57,7 +57,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 ```json
 {
   "ok": false,
-  "error": { "type": "infra_error", "message": "...", "hint": "" }
+  "error": { "type": "network", "message": "...", "hint": "" }
 }
 ```
 
@@ -75,8 +75,8 @@ lark-cli apps +html-publish --app-id app_xxx --path ./dist --dry-run
 | 字段 / 组合 | 含义 |
 |---|---|
 | `data.url` 存在且无 `error` | 发布成功，URL 可访问 |
-| `error.type=api_error` | 业务失败（构建失败、应用不存在等），按 `hint` 引导用户修复 |
-| `error.type=infra_error` | 网络 / 服务端 5xx，告诉用户稍后重试 |
+| `error.type=api` | 业务失败（构建失败、应用不存在等），按 `hint` 引导用户修复 |
+| `error.type=network` | 网络 / 服务端 5xx，告诉用户稍后重试 |
 | `error.type=validation` | 本地参数错，提示用户修 flag |
 | `error.hint` 非空 | **优先转述给用户**，比 `error.message` 更可操作 |
 
@@ -115,7 +115,7 @@ lark-cli apps +html-publish --app-id "$APP" --path ./dist
 
 转述给用户。
 
-### 场景 5：网络 / 服务端失败（infra_error）
+### 场景 5：网络 / 服务端失败（type=network）
 
 > 服务暂时不可用，建议稍后重试。
 

@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/binding"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -49,7 +49,7 @@ func newBinder(source string, opts *BindOptions) (SourceBinder, error) {
 	case "lark-channel":
 		return &larkChannelBinder{opts: opts, path: resolveLarkChannelConfigPath()}, nil
 	default:
-		return nil, output.ErrValidation("unsupported source: %s", source)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported source: %s", source).WithParam("--source")
 	}
 }
 
@@ -85,11 +85,10 @@ func selectCandidate(
 		// from ListCandidates itself and never reach here.
 		switch src {
 		case "openclaw":
-			return nil, output.ErrWithHint(output.ExitValidation, src,
-				"no Feishu app configured in openclaw.json",
-				"configure channels.feishu.appId in openclaw.json")
+			return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "no Feishu app configured in openclaw.json").
+				WithHint("configure channels.feishu.appId in openclaw.json")
 		default:
-			return nil, output.ErrValidation("%s: no app configured", src)
+			return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "%s: no app configured", src)
 		}
 	}
 
@@ -99,9 +98,9 @@ func selectCandidate(
 				return &candidates[i], nil
 			}
 		}
-		return nil, output.ErrWithHint(output.ExitValidation, src,
-			fmt.Sprintf("--app-id %q not found in %s", appIDFlag, cfgBase),
-			fmt.Sprintf("available app IDs:\n  %s", formatCandidates(candidates)))
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id %q not found in %s", appIDFlag, cfgBase).
+			WithHint("available app IDs:\n  %s", formatCandidates(candidates)).
+			WithParam("--app-id")
 	}
 
 	if len(candidates) == 1 {
@@ -112,9 +111,9 @@ func selectCandidate(
 		return tuiPrompt(candidates)
 	}
 
-	return nil, output.ErrWithHint(output.ExitValidation, src,
-		fmt.Sprintf("multiple accounts in %s; pass --app-id <id>", cfgBase),
-		fmt.Sprintf("available app IDs:\n  %s", formatCandidates(candidates)))
+	return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "multiple accounts in %s; pass --app-id <id>", cfgBase).
+		WithHint("available app IDs:\n  %s", formatCandidates(candidates)).
+		WithParam("--app-id")
 }
 
 // formatCandidates renders candidates as "AppID (Label)" lines for error hints.
@@ -149,14 +148,13 @@ func (b *openclawBinder) ConfigPath() string { return b.path }
 func (b *openclawBinder) ListCandidates() ([]Candidate, error) {
 	cfg, err := binding.ReadOpenClawConfig(b.path)
 	if err != nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "openclaw",
-			fmt.Sprintf("cannot read %s: %v", b.path, err),
-			"verify OpenClaw is installed and configured")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "cannot read %s: %v", b.path, err).
+			WithHint("verify OpenClaw is installed and configured").
+			WithCause(err)
 	}
 	if cfg.Channels.Feishu == nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "openclaw",
-			"openclaw.json missing channels.feishu section",
-			"configure Feishu in OpenClaw first")
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "openclaw.json missing channels.feishu section").
+			WithHint("configure Feishu in OpenClaw first")
 	}
 
 	raw := binding.ListCandidateApps(cfg.Channels.Feishu)
@@ -172,8 +170,7 @@ func (b *openclawBinder) ListCandidates() ([]Candidate, error) {
 
 func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 	if b.cfg == nil {
-		return nil, output.Errorf(output.ExitInternal, "openclaw",
-			"internal: Build called before ListCandidates")
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
 
 	var selected *binding.CandidateApp
@@ -184,26 +181,25 @@ func (b *openclawBinder) Build(appID string) (*core.AppConfig, error) {
 		}
 	}
 	if selected == nil {
-		return nil, output.Errorf(output.ExitInternal, "openclaw",
-			"internal: appID %q not in candidates", appID)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q not in candidates", appID)
 	}
 
 	if selected.AppSecret.IsZero() {
-		return nil, output.ErrWithHint(output.ExitValidation, "openclaw",
-			fmt.Sprintf("appSecret is empty for app %s in %s", selected.AppID, b.path),
-			"configure channels.feishu.appSecret in openclaw.json")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "appSecret is empty for app %s in %s", selected.AppID, b.path).
+			WithHint("configure channels.feishu.appSecret in openclaw.json")
 	}
 	secret, err := binding.ResolveSecretInput(selected.AppSecret, b.cfg.Secrets, os.Getenv)
 	if err != nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "openclaw",
-			fmt.Sprintf("failed to resolve appSecret for %s: %v", selected.AppID, err),
-			fmt.Sprintf("check appSecret configuration in %s", b.path))
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to resolve appSecret for %s: %v", selected.AppID, err).
+			WithHint("check appSecret configuration in %s", b.path).
+			WithCause(err)
 	}
 
 	stored, err := core.ForStorage(selected.AppID, core.PlainSecret(secret), b.opts.Factory.Keychain)
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "openclaw",
-			"keychain unavailable: %v\nhint: use file: reference in config to bypass keychain", err)
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "keychain unavailable: %v", err).
+			WithHint("use file: reference in config to bypass keychain").
+			WithCause(err)
 	}
 
 	return &core.AppConfig{
@@ -229,15 +225,14 @@ func (b *hermesBinder) ConfigPath() string { return b.path }
 func (b *hermesBinder) ListCandidates() ([]Candidate, error) {
 	envMap, err := readDotenv(b.path)
 	if err != nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "hermes",
-			fmt.Sprintf("failed to read Hermes config: %v", err),
-			fmt.Sprintf("verify Hermes is installed and configured at %s", b.path))
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to read Hermes config: %v", err).
+			WithHint("verify Hermes is installed and configured at %s", b.path).
+			WithCause(err)
 	}
 	appID := envMap["FEISHU_APP_ID"]
 	if appID == "" {
-		return nil, output.ErrWithHint(output.ExitValidation, "hermes",
-			fmt.Sprintf("FEISHU_APP_ID not found in %s", b.path),
-			"run 'hermes setup' to configure Feishu credentials")
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "FEISHU_APP_ID not found in %s", b.path).
+			WithHint("run 'hermes setup' to configure Feishu credentials")
 	}
 	b.envMap = envMap
 	return []Candidate{{AppID: appID, Label: "default"}}, nil
@@ -245,24 +240,22 @@ func (b *hermesBinder) ListCandidates() ([]Candidate, error) {
 
 func (b *hermesBinder) Build(appID string) (*core.AppConfig, error) {
 	if b.envMap == nil {
-		return nil, output.Errorf(output.ExitInternal, "hermes",
-			"internal: Build called before ListCandidates")
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
 	if b.envMap["FEISHU_APP_ID"] != appID {
-		return nil, output.Errorf(output.ExitInternal, "hermes",
-			"internal: appID %q does not match env", appID)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q does not match env", appID)
 	}
 	appSecret := b.envMap["FEISHU_APP_SECRET"]
 	if appSecret == "" {
-		return nil, output.ErrWithHint(output.ExitValidation, "hermes",
-			fmt.Sprintf("FEISHU_APP_SECRET not found in %s", b.path),
-			"run 'hermes setup' to configure Feishu credentials")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "FEISHU_APP_SECRET not found in %s", b.path).
+			WithHint("run 'hermes setup' to configure Feishu credentials")
 	}
 
 	stored, err := core.ForStorage(appID, core.PlainSecret(appSecret), b.opts.Factory.Keychain)
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "hermes",
-			"keychain unavailable: %v\nhint: use file: reference in config to bypass keychain", err)
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "keychain unavailable: %v", err).
+			WithHint("use file: reference in config to bypass keychain").
+			WithCause(err)
 	}
 
 	return &core.AppConfig{
@@ -290,14 +283,13 @@ func (b *larkChannelBinder) ConfigPath() string { return b.path }
 func (b *larkChannelBinder) ListCandidates() ([]Candidate, error) {
 	cfg, err := binding.ReadLarkChannelConfig(b.path)
 	if err != nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
-			fmt.Sprintf("cannot read %s: %v", b.path, err),
-			"verify lark-channel-bridge is installed and configured")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "cannot read %s: %v", b.path, err).
+			WithHint("verify lark-channel-bridge is installed and configured").
+			WithCause(err)
 	}
 	if cfg.Accounts.App.ID == "" {
-		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
-			fmt.Sprintf("accounts.app.id missing in %s", b.path),
-			"run lark-channel-bridge's setup to populate the app credential")
+		return nil, errs.NewConfigError(errs.SubtypeNotConfigured, "accounts.app.id missing in %s", b.path).
+			WithHint("run lark-channel-bridge's setup to populate the app credential")
 	}
 	b.cfg = cfg
 	return []Candidate{{AppID: cfg.Accounts.App.ID, Label: "default"}}, nil
@@ -305,32 +297,30 @@ func (b *larkChannelBinder) ListCandidates() ([]Candidate, error) {
 
 func (b *larkChannelBinder) Build(appID string) (*core.AppConfig, error) {
 	if b.cfg == nil {
-		return nil, output.Errorf(output.ExitInternal, "lark-channel",
-			"internal: Build called before ListCandidates")
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: Build called before ListCandidates")
 	}
 	if b.cfg.Accounts.App.ID != appID {
-		return nil, output.Errorf(output.ExitInternal, "lark-channel",
-			"internal: appID %q does not match config", appID)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "internal: appID %q does not match config", appID)
 	}
 	if b.cfg.Accounts.App.Secret.IsZero() {
-		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
-			fmt.Sprintf("accounts.app.secret is empty in %s", b.path),
-			"run lark-channel-bridge's setup to populate the app credential")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "accounts.app.secret is empty in %s", b.path).
+			WithHint("run lark-channel-bridge's setup to populate the app credential")
 	}
 
 	// Resolve through the same SecretInput pipeline openclaw uses, so
 	// bridge configs can use ${VAR} / env / file / exec just like openclaw.
 	secret, err := binding.ResolveSecretInput(b.cfg.Accounts.App.Secret, b.cfg.Secrets, os.Getenv)
 	if err != nil {
-		return nil, output.ErrWithHint(output.ExitValidation, "lark-channel",
-			fmt.Sprintf("failed to resolve appSecret for %s: %v", appID, err),
-			fmt.Sprintf("check appSecret configuration in %s", b.path))
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to resolve appSecret for %s: %v", appID, err).
+			WithHint("check appSecret configuration in %s", b.path).
+			WithCause(err)
 	}
 
 	stored, err := core.ForStorage(appID, core.PlainSecret(secret), b.opts.Factory.Keychain)
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "lark-channel",
-			"keychain unavailable: %v", err)
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "keychain unavailable: %v", err).
+			WithHint("use file: reference in config to bypass keychain").
+			WithCause(err)
 	}
 
 	return &core.AppConfig{

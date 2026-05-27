@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
@@ -20,6 +21,7 @@ import (
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -137,81 +139,96 @@ func TestIsCompletionCommand(t *testing.T) {
 // TestPromoteConfigError_* lives with the implementation in
 // internal/errcompat/promote_test.go.
 
-// TestHandleRootError_SecurityPolicyKeepsLegacyEnvelope pins the carve-out
-// for *errs.SecurityPolicyError: it does NOT go through the typed envelope
-// writer. Downstream OAuth/policy consumers parse a wire format that
-// predates the typed taxonomy and depend on:
-//   - error.type == "auth_error" (not the Category literal "policy")
-//   - error.code is a string ("challenge_required" / "access_denied"), not a number
-//   - error.retryable is present at the top of the error object
-//   - exit code 1 (not ExitContentSafety 6)
-//
-// Migration of this category to the typed envelope is deferred to a later PR.
-func TestHandleRootError_SecurityPolicyKeepsLegacyEnvelope(t *testing.T) {
+// TestHandleRootError_SecurityPolicyCanonicalEnvelope verifies that
+// *errs.SecurityPolicyError flows through the canonical typed envelope
+// (output.WriteTypedErrorEnvelope) — type=policy, numeric code, subtype,
+// top-level identity, exit code 6 — after the dispatcher carve-out is removed.
+func TestHandleRootError_SecurityPolicyCanonicalEnvelope(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	cases := []struct {
-		name     string
-		subtype  errs.Subtype
-		code     int
-		wantCode string
-	}{
-		{"challenge_required", errs.SubtypeChallengeRequired, 21000, "challenge_required"},
-		{"access_denied", errs.SubtypeAccessDenied, 21001, "access_denied"},
-	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f, _, _, _ := cmdutil.TestFactory(t, nil)
-			errOut := &bytes.Buffer{}
-			f.IOStreams.ErrOut = errOut
+	t.Run("21000 challenge_required", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		errOut := &bytes.Buffer{}
+		f.IOStreams.ErrOut = errOut
 
-			spErr := &errs.SecurityPolicyError{
-				Problem: errs.Problem{
-					Category: errs.CategoryPolicy,
-					Subtype:  tc.subtype,
-					Code:     tc.code,
-					Message:  "blocked by access policy",
-					Hint:     "complete challenge in your browser",
-				},
-				ChallengeURL: "https://example.com/challenge",
-			}
+		spErr := &errs.SecurityPolicyError{
+			Problem: errs.Problem{
+				Category: errs.CategoryPolicy,
+				Subtype:  errs.SubtypeChallengeRequired,
+				Code:     21000,
+				Message:  "blocked by access policy",
+				Hint:     "complete challenge in your browser",
+			},
+			ChallengeURL: "https://example.com/challenge",
+		}
 
-			gotExit := handleRootError(f, spErr)
-			if gotExit != 1 {
-				t.Errorf("exit code = %d, want 1 (legacy carve-out)", gotExit)
-			}
+		gotExit := handleRootError(f, spErr)
+		if gotExit != int(output.ExitContentSafety) {
+			t.Errorf("exit code = %d, want %d (ExitContentSafety)", gotExit, output.ExitContentSafety)
+		}
 
-			var env map[string]any
-			if err := json.Unmarshal(errOut.Bytes(), &env); err != nil {
-				t.Fatalf("envelope is not valid JSON: %v\n%s", err, errOut.String())
-			}
-			errObj, ok := env["error"].(map[string]any)
-			if !ok {
-				t.Fatalf("envelope missing top-level error object: %s", errOut.String())
-			}
-			if got := errObj["type"]; got != "auth_error" {
-				t.Errorf("error.type = %v, want %q", got, "auth_error")
-			}
-			if got := errObj["code"]; got != tc.wantCode {
-				t.Errorf("error.code = %v (%T), want %q (string)", got, got, tc.wantCode)
-			}
-			if got, ok := errObj["retryable"].(bool); !ok || got {
-				t.Errorf("error.retryable = %v (%T), want false (bool)", errObj["retryable"], errObj["retryable"])
-			}
-			if got := errObj["challenge_url"]; got != "https://example.com/challenge" {
-				t.Errorf("error.challenge_url = %v, want challenge url", got)
-			}
-			if got := errObj["hint"]; got != "complete challenge in your browser" {
-				t.Errorf("error.hint = %v, want hint message", got)
-			}
-			// And the typed-only fields must NOT appear on this envelope.
-			for _, leaked := range []string{"subtype", "missing_scopes", "console_url"} {
-				if _, exists := errObj[leaked]; exists {
-					t.Errorf("error.%s leaked into legacy security envelope: %v", leaked, errObj[leaked])
-				}
-			}
-		})
-	}
+		var env map[string]any
+		if err := json.Unmarshal(errOut.Bytes(), &env); err != nil {
+			t.Fatalf("envelope is not valid JSON: %v\n%s", err, errOut.String())
+		}
+		errObj, ok := env["error"].(map[string]any)
+		if !ok {
+			t.Fatalf("envelope missing top-level error object: %s", errOut.String())
+		}
+		if got := errObj["type"]; got != "policy" {
+			t.Errorf("error.type = %v, want %q", got, "policy")
+		}
+		if got := errObj["subtype"]; got != "challenge_required" {
+			t.Errorf("error.subtype = %v, want %q", got, "challenge_required")
+		}
+		if got, ok := errObj["code"].(float64); !ok || int(got) != 21000 {
+			t.Errorf("error.code = %v (%T), want 21000 (number)", errObj["code"], errObj["code"])
+		}
+		if got := errObj["challenge_url"]; got != "https://example.com/challenge" {
+			t.Errorf("error.challenge_url = %v, want challenge url", got)
+		}
+		if got := errObj["hint"]; got != "complete challenge in your browser" {
+			t.Errorf("error.hint = %v, want hint message", got)
+		}
+		if _, exists := errObj["retryable"]; exists {
+			t.Errorf("error.retryable leaked into canonical envelope: %v", errObj["retryable"])
+		}
+	})
+
+	t.Run("21001 access_denied", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		errOut := &bytes.Buffer{}
+		f.IOStreams.ErrOut = errOut
+
+		spErr := &errs.SecurityPolicyError{
+			Problem: errs.Problem{
+				Category: errs.CategoryPolicy,
+				Subtype:  errs.SubtypeAccessDenied,
+				Code:     21001,
+				Message:  "access denied",
+			},
+		}
+
+		gotExit := handleRootError(f, spErr)
+		if gotExit != int(output.ExitContentSafety) {
+			t.Errorf("exit code = %d, want %d", gotExit, output.ExitContentSafety)
+		}
+
+		var env map[string]any
+		if err := json.Unmarshal(errOut.Bytes(), &env); err != nil {
+			t.Fatalf("envelope is not valid JSON: %v\n%s", err, errOut.String())
+		}
+		errObj := env["error"].(map[string]any)
+		if got := errObj["type"]; got != "policy" {
+			t.Errorf("error.type = %v, want %q", got, "policy")
+		}
+		if got := errObj["subtype"]; got != "access_denied" {
+			t.Errorf("error.subtype = %v, want %q", got, "access_denied")
+		}
+		if got, ok := errObj["code"].(float64); !ok || int(got) != 21001 {
+			t.Errorf("error.code = %v, want 21001 (number)", errObj["code"])
+		}
+	})
 }
 
 // newAuthErrorWithNeedAuthMarker builds a typed *errs.AuthenticationError whose Message
@@ -227,6 +244,77 @@ func newAuthErrorWithNeedAuthMarker() *errs.AuthenticationError {
 			Message:  fmt.Sprintf("API call failed: %s", cause),
 		},
 		Cause: cause,
+	}
+}
+
+// failingWriter writes up to limit bytes then returns io.ErrShortWrite on
+// the write that would push past the limit. Used to simulate a stderr that
+// dies mid-envelope.
+type failingWriter struct {
+	limit int
+	n     int
+}
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	if f.n+len(p) > f.limit {
+		canWrite := f.limit - f.n
+		if canWrite < 0 {
+			canWrite = 0
+		}
+		f.n += canWrite
+		return canWrite, io.ErrShortWrite
+	}
+	f.n += len(p)
+	return len(p), nil
+}
+
+// TestHandleRootError_PartialWritePreservesExitCode pins that when the
+// stderr write fails mid-envelope, handleRootError still returns the typed
+// exit code (ExitAuth=3 for AuthenticationError), not fall through to the
+// plain "Error:" path with exit 1. ExitCodeOf is computed from the typed
+// err BEFORE the envelope write so the exit code is preserved even when
+// the consumer's stderr pipe dies.
+func TestHandleRootError_PartialWritePreservesExitCode(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	w := &failingWriter{limit: 20}
+	f.IOStreams.ErrOut = w
+
+	err := errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired")
+	exit := handleRootError(f, err)
+	if exit != int(output.ExitAuth) {
+		t.Errorf("exit = %d, want %d (typed exit code preserved despite write failure)", exit, int(output.ExitAuth))
+	}
+}
+
+// TestHandleRootError_TypedOuterShortCircuitsPromote pins that when a typed
+// *errs.AuthenticationError carries a legacy *NeedAuthorizationError in its
+// Cause chain, the dispatcher does NOT run PromoteAuthError — doing so
+// would replace the producer's TokenExpired subtype + custom hint with the
+// promoted shape's TokenMissing.
+func TestHandleRootError_TypedOuterShortCircuitsPromote(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	errOut := &bytes.Buffer{}
+	f.IOStreams.ErrOut = errOut
+
+	innerLegacy := &internalauth.NeedAuthorizationError{UserOpenId: "u_123"}
+	outer := errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired").
+		WithHint("custom producer hint").
+		WithCause(innerLegacy)
+
+	exit := handleRootError(f, outer)
+	if exit != int(output.ExitAuth) {
+		t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
+	}
+	got := errOut.String()
+	if !strings.Contains(got, `"subtype": "token_expired"`) {
+		t.Errorf("envelope lost producer Subtype TokenExpired; got %s", got)
+	}
+	if !strings.Contains(got, "custom producer hint") {
+		t.Errorf("envelope lost producer Hint; got %s", got)
 	}
 }
 
@@ -355,5 +443,138 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
 	if authErr.Hint != want {
 		t.Errorf("expected appended hint %q, got %q", want, authErr.Hint)
+	}
+}
+
+// TestEnrichPermissionError_CanonicalConvergence pins that the legacy
+// *output.ExitError dispatch path produces the same canonical Message + Hint
+// + ConsoleURL as the typed *errs.PermissionError dispatch path. Both paths
+// share errclass.CanonicalPermissionMessage / errclass.PermissionHint /
+// errclass.ConsoleURL — so a wire consumer cannot tell which path produced
+// the envelope.
+func TestEnrichPermissionError_CanonicalConvergence(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	cases := []struct {
+		name            string
+		larkCode        int
+		legacyErrType   string
+		wantMsgSubstrs  []string
+		wantHintSubstrs []string
+		wantConsoleURL  bool
+		wantNoAuthLogin bool // hint must not suggest `auth login`
+	}{
+		{
+			name:            "99991672 app_scope_not_applied",
+			larkCode:        99991672,
+			legacyErrType:   "permission",
+			wantMsgSubstrs:  []string{"access denied", "app cli_test", "drive:drive:read"},
+			wantHintSubstrs: []string{"developer console", "open.feishu.cn"},
+			wantConsoleURL:  true,
+			wantNoAuthLogin: true,
+		},
+		{
+			name:            "99991679 missing_scope",
+			larkCode:        99991679,
+			legacyErrType:   "permission",
+			wantMsgSubstrs:  []string{"unauthorized", "user authorization"},
+			wantHintSubstrs: []string{"lark-cli auth login"},
+		},
+		{
+			name:            "99991673 app_unavailable",
+			larkCode:        99991673,
+			legacyErrType:   "app_status",
+			wantMsgSubstrs:  []string{"unauthorized app", "app cli_test", "not properly installed"},
+			wantHintSubstrs: []string{"tenant admin", "install status"},
+		},
+		{
+			name:            "99991662 app_disabled",
+			larkCode:        99991662,
+			legacyErrType:   "app_status",
+			wantMsgSubstrs:  []string{"app cli_test", "not in use", "currently disabled"},
+			wantHintSubstrs: []string{"tenant admin", "re-enable"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+				AppID: "cli_test", AppSecret: "s", Brand: core.BrandFeishu,
+			})
+			f.ResolvedIdentity = core.AsUser
+
+			// Mimic the wire shape ErrAPI produces: legacy *ExitError with
+			// Detail.Type populated by ClassifyLarkError, Detail.Detail
+			// carrying the permission_violations block so ExtractRequiredScopes
+			// can recover the missing scope.
+			scopeForDetail := "drive:drive:read"
+			exitErr := &output.ExitError{
+				Code: output.ExitAPI,
+				Detail: &output.ErrDetail{
+					Type:    tc.legacyErrType,
+					Code:    tc.larkCode,
+					Message: "upstream raw message — must be replaced",
+					Detail: map[string]interface{}{
+						"permission_violations": []interface{}{
+							map[string]interface{}{"subject": scopeForDetail},
+						},
+					},
+				},
+			}
+			enrichPermissionError(f, exitErr)
+
+			for _, sub := range tc.wantMsgSubstrs {
+				if !strings.Contains(exitErr.Detail.Message, sub) {
+					t.Errorf("Message %q missing substring %q", exitErr.Detail.Message, sub)
+				}
+			}
+			if exitErr.Detail.Message == "upstream raw message — must be replaced" {
+				t.Errorf("Message must be rewritten to canonical text; got upstream verbatim")
+			}
+			for _, sub := range tc.wantHintSubstrs {
+				if !strings.Contains(exitErr.Detail.Hint, sub) {
+					t.Errorf("Hint %q missing substring %q", exitErr.Detail.Hint, sub)
+				}
+			}
+			if tc.wantNoAuthLogin && strings.Contains(exitErr.Detail.Hint, "auth login") {
+				t.Errorf("Hint must not suggest `auth login` for this subtype; got %q", exitErr.Detail.Hint)
+			}
+			if tc.wantConsoleURL && exitErr.Detail.ConsoleURL == "" {
+				t.Error("ConsoleURL should be populated when missing scopes are present")
+			}
+		})
+	}
+}
+
+// TestEnrichPermissionError_SkipsUnrelatedTypes pins that an ExitError whose
+// Detail.Type is neither "permission" nor "app_status" is left untouched —
+// no Message rewrite, no Hint rewrite, no ConsoleURL injection.
+func TestEnrichPermissionError_SkipsUnrelatedTypes(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_test", AppSecret: "s", Brand: core.BrandFeishu,
+	})
+	f.ResolvedIdentity = core.AsUser
+
+	for _, ty := range []string{"api_error", "validation", "rate_limit", "auth"} {
+		exitErr := &output.ExitError{
+			Code: output.ExitAPI,
+			Detail: &output.ErrDetail{
+				Type:    ty,
+				Code:    99991400,
+				Message: "untouched",
+				Hint:    "original hint",
+			},
+		}
+		enrichPermissionError(f, exitErr)
+		if exitErr.Detail.Message != "untouched" {
+			t.Errorf("type=%q: Message was rewritten unexpectedly: %q", ty, exitErr.Detail.Message)
+		}
+		if exitErr.Detail.Hint != "original hint" {
+			t.Errorf("type=%q: Hint was rewritten unexpectedly: %q", ty, exitErr.Detail.Hint)
+		}
+		if exitErr.Detail.ConsoleURL != "" {
+			t.Errorf("type=%q: ConsoleURL should not be injected; got %q", ty, exitErr.Detail.ConsoleURL)
+		}
 	}
 }

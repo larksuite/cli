@@ -47,7 +47,7 @@ lark-cli apps +update --app-id app_xxx --name "v2" --description "新描述"
 ```json
 {
   "ok": false,
-  "error": { "type": "api_error", "message": "...", "hint": "..." }
+  "error": { "type": "api", "message": "...", "hint": "..." }
 }
 ```
 

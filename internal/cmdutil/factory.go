@@ -5,7 +5,6 @@ package cmdutil
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -13,13 +12,13 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // Factory holds shared dependencies injected into every command.
@@ -129,11 +128,18 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 	}
 	list := strings.Join(supported, ", ")
 	if f.IdentityAutoDetected {
-		return output.ErrValidation(
-			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s\nhint: use --as %s",
-			as, list, supported[0])
+		base := errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"resolved identity %q (via auto-detect or default-as) is not supported, this command only supports: %s",
+			as, list).
+			WithParam("--as")
+		if len(supported) > 0 {
+			return base.WithHint("use --as %s", supported[0])
+		}
+		return base
 	}
-	return fmt.Errorf("--as %s is not supported, this command only supports: %s", as, list)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"--as %s is not supported, this command only supports: %s", as, list).
+		WithParam("--as")
 }
 
 // ResolveStrictMode returns the effective strict mode by reading
@@ -161,9 +167,9 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
 	mode := f.ResolveStrictMode(ctx)
 	if mode.IsActive() && !mode.AllowsIdentity(as) {
-		return output.ErrWithHint(output.ExitValidation, "command_denied",
-			fmt.Sprintf("strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()),
-			"if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"strict mode is %q, only %s-identity commands are available", mode, mode.ForcedIdentity()).
+			WithHint("if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
 	}
 	return nil
 }
@@ -202,9 +208,9 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 	}, nil
 }
 
-// RequireBuiltinCredentialProvider returns a structured error (exit 2, code
-// "external_provider") when an extension provider is actively managing credentials.
-// Intended for use as PersistentPreRunE on the auth and config parent commands.
+// RequireBuiltinCredentialProvider returns a typed validation error when an
+// extension provider is actively managing credentials. Intended for use as
+// PersistentPreRunE on the auth and config parent commands.
 //
 // Returns nil when:
 //   - f.Credential is nil (test environments without credential setup)
@@ -220,10 +226,7 @@ func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command 
 	if provName == "" {
 		return nil
 	}
-	return output.ErrWithHint(
-		output.ExitValidation,
-		"external_provider",
-		fmt.Sprintf("%q is not supported: credentials are provided externally and do not support interactive management", command),
-		"If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.",
-	)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"%q is not supported: credentials are provided externally and do not support interactive management", command).
+		WithHint("If another tool or method for authorization is available in this environment, try that. Otherwise, ask the user to set up credentials through the appropriate channel.")
 }

@@ -13,6 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
+
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -54,9 +56,9 @@ run --device-code in a later step after the user confirms authorization. Use 'la
 to generate QR codes (supports ASCII and PNG formats).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if mode := f.ResolveStrictMode(cmd.Context()); mode == core.StrictModeBot {
-				return output.ErrWithHint(output.ExitValidation, "command_denied",
-					fmt.Sprintf("strict mode is %q, user login is disabled in this profile", mode),
-					"if the user explicitly wants to switch to user identity, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"strict mode is %q, user login is disabled in this profile", mode).
+					WithHint("if the user explicitly wants to switch to user identity, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)")
 			}
 			opts.Ctx = cmd.Context()
 			if runF != nil {
@@ -158,14 +160,14 @@ func authLoginRun(opts *LoginOptions) error {
 		for _, d := range selectedDomains {
 			if !knownDomains[d] {
 				if suggestion := suggestDomain(d, knownDomains); suggestion != "" {
-					return output.ErrValidation("unknown domain %q, did you mean %q?", d, suggestion)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, did you mean %q?", d, suggestion).WithParam("--domain")
 				}
 				available := make([]string, 0, len(knownDomains))
 				for k := range knownDomains {
 					available = append(available, k)
 				}
 				sort.Strings(available)
-				return output.ErrValidation("unknown domain %q, available domains: %s", d, strings.Join(available, ", "))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "unknown domain %q, available domains: %s", d, strings.Join(available, ", ")).WithParam("--domain")
 			}
 		}
 	}
@@ -173,7 +175,7 @@ func authLoginRun(opts *LoginOptions) error {
 	hasAnyOption := opts.Scope != "" || opts.Recommend || len(selectedDomains) > 0
 
 	if len(opts.Exclude) > 0 && !hasAnyOption {
-		return output.ErrValidation("--exclude requires --scope, --domain, or --recommend to be specified")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--exclude requires --scope, --domain, or --recommend to be specified").WithParam("--exclude")
 	}
 
 	if !hasAnyOption {
@@ -183,7 +185,7 @@ func authLoginRun(opts *LoginOptions) error {
 				return err
 			}
 			if result == nil {
-				return output.ErrValidation("no login options selected")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "no login options selected")
 			}
 			selectedDomains = result.Domains
 			scopeLevel = result.ScopeLevel
@@ -199,7 +201,7 @@ func authLoginRun(opts *LoginOptions) error {
 			log(msg.HintFooter)
 			log("")
 			log("Note: this command blocks until authorization is complete. For non-streaming agent harnesses, use --no-wait --json, send the verification URL as the final message of the turn, then run --device-code in a later step after the user confirms authorization.")
-			return output.ErrValidation("please specify the scopes to authorize")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "please specify the scopes to authorize").WithParam("--scope")
 		}
 	}
 
@@ -228,7 +230,7 @@ func authLoginRun(opts *LoginOptions) error {
 		}
 
 		if len(candidateScopes) == 0 && opts.Scope == "" {
-			return output.ErrValidation("no matching scopes found, check domain/scope options")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "no matching scopes found, check domain/scope options")
 		}
 
 		// Merge --scope additively with the resolved domain scopes.
@@ -248,13 +250,13 @@ func authLoginRun(opts *LoginOptions) error {
 	if len(opts.Exclude) > 0 {
 		excluded, unknown := applyExcludeScopes(finalScope, opts.Exclude)
 		if len(unknown) > 0 {
-			return output.ErrValidation(
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"these --exclude scopes are not present in the requested set: %s",
-				strings.Join(unknown, ", "))
+				strings.Join(unknown, ", ")).WithParam("--exclude")
 		}
 		finalScope = excluded
 		if strings.TrimSpace(finalScope) == "" {
-			return output.ErrValidation("no scopes left after applying --exclude; nothing to authorize")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "no scopes left after applying --exclude; nothing to authorize").WithParam("--exclude")
 		}
 	}
 
@@ -265,7 +267,7 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
-		return output.ErrAuth("device authorization failed: %v", err)
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "device authorization failed: %v", err).WithCause(err)
 	}
 
 	// --no-wait: return immediately with device code and URL
@@ -282,7 +284,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
+			return errs.NewInternalError(errs.SubtypeSDKError, "failed to write JSON output: %v", err).WithCause(err)
 		}
 		return nil
 	}
@@ -304,7 +306,7 @@ func authLoginRun(opts *LoginOptions) error {
 		encoder := json.NewEncoder(f.IOStreams.Out)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(data); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
+			return errs.NewInternalError(errs.SubtypeSDKError, "failed to write JSON output: %v", err).WithCause(err)
 		}
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
@@ -325,25 +327,25 @@ func authLoginRun(opts *LoginOptions) error {
 				"event": "authorization_failed",
 				"error": result.Message,
 			}); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to write JSON output: %v", err)
+				return errs.NewInternalError(errs.SubtypeSDKError, "failed to write JSON output: %v", err).WithCause(err)
 			}
 			return output.ErrBare(output.ExitAuth)
 		}
-		return output.ErrAuth("authorization failed: %s", result.Message)
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %s", result.Message)
 	}
 	if result.Token == nil {
-		return output.ErrAuth("authorization succeeded but no token returned")
+		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
 
 	// Step 6: Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return output.ErrAuth("failed to get SDK: %v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
-		return output.ErrAuth("failed to get user info: %v", err)
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, finalScope, result.Token.Scope)
@@ -361,13 +363,13 @@ func authLoginRun(opts *LoginOptions) error {
 		GrantedAt:        now,
 	}
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save token: %v", err).WithCause(err)
 	}
 
 	// Step 8: Update config — overwrite Users to single user, clean old tokens
 	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
+		return err
 	}
 
 	if issue := ensureRequestedScopesGranted(finalScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -410,22 +412,22 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		if shouldRemoveLoginRequestedScope(result) {
 			cleanupRequestedScope()
 		}
-		return output.ErrAuth("authorization failed: %s", result.Message)
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "authorization failed: %s", result.Message)
 	}
 	defer cleanupRequestedScope()
 	if result.Token == nil {
-		return output.ErrAuth("authorization succeeded but no token returned")
+		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "authorization succeeded but no token returned")
 	}
 
 	// Get user info
 	log(msg.AuthSuccess)
 	sdk, err := f.LarkClient()
 	if err != nil {
-		return output.ErrAuth("failed to get SDK: %v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to get SDK: %v", err).WithCause(err)
 	}
 	openId, userName, err := getUserInfo(opts.Ctx, sdk, result.Token.AccessToken)
 	if err != nil {
-		return output.ErrAuth("failed to get user info: %v", err)
+		return errs.NewAuthenticationError(errs.SubtypeUnknown, "failed to get user info: %v", err).WithCause(err)
 	}
 
 	scopeSummary := loadLoginScopeSummary(config.AppID, openId, requestedScope, result.Token.Scope)
@@ -443,13 +445,13 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		GrantedAt:        now,
 	}
 	if err := larkauth.SetStoredToken(storedToken); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save token: %v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to save token: %v", err).WithCause(err)
 	}
 
 	// Update config — overwrite Users to single user, clean old tokens
 	if err := syncLoginUserToProfile(config.ProfileName, config.AppID, openId, userName); err != nil {
 		_ = larkauth.RemoveStoredToken(config.AppID, openId)
-		return output.Errorf(output.ExitInternal, "internal", "failed to update login profile: %v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to update login profile: %v", err).WithCause(err)
 	}
 
 	if issue := ensureRequestedScopesGranted(requestedScope, result.Token.Scope, msg, scopeSummary); issue != nil {
@@ -464,18 +466,18 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 func syncLoginUserToProfile(profileName, appID, openID, userName string) error {
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "load config: %v", err).WithCause(err)
 	}
 
 	app := findProfileByName(multi, profileName)
 	if app == nil {
-		return fmt.Errorf("profile %q not found in config", profileName)
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "profile %q not found in config", profileName)
 	}
 
 	oldUsers := append([]core.AppUser(nil), app.Users...)
 	app.Users = []core.AppUser{{UserOpenId: openID, UserName: userName}}
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return fmt.Errorf("save config: %w", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "save config: %v", err).WithCause(err)
 	}
 
 	for _, oldUser := range oldUsers {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -47,14 +48,14 @@ func configShowRun(opts *ConfigShowOptions) error {
 		if errors.Is(err, os.ErrNotExist) {
 			return core.NotConfiguredError()
 		}
-		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+		return errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to load config: %v", err).WithCause(err)
 	}
 	if config == nil || len(config.Apps) == 0 {
 		return core.NotConfiguredError()
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
-		return output.ErrWithHint(output.ExitValidation, "config", "no active profile", "run: lark-cli profile list")
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").WithHint("run: lark-cli profile list")
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -162,7 +163,7 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, bra
 	}
 
 	if len(selectedDomains) == 0 {
-		return nil, output.ErrValidation("no domains selected")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "no domains selected").WithParam("--domain")
 	}
 
 	// Compute scope summary

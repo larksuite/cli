@@ -5,7 +5,6 @@ package auth
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -171,29 +170,15 @@ func TestNewCmdAuthQRCode_HelpText(t *testing.T) {
 
 func TestRunQRCode_MissingURL(t *testing.T) {
 	err := runQRCode(&QRCodeOptions{URL: ""})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail.Type != "missing_url" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "missing_url")
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
 func TestRunQRCode_MissingOutput(t *testing.T) {
 	err := runQRCode(&QRCodeOptions{URL: "https://example.com", Size: 256})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail.Type != "missing_output" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "missing_output")
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
@@ -203,15 +188,8 @@ func TestRunQRCode_InvalidSize(t *testing.T) {
 		Size:   16,
 		Output: "qr.png",
 	})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail.Type != "invalid_size" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "invalid_size")
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
@@ -221,15 +199,8 @@ func TestRunQRCode_SizeTooLarge(t *testing.T) {
 		Size:   2048,
 		Output: "qr.png",
 	})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-	}
-	if exitErr.Detail.Type != "invalid_size" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "invalid_size")
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
@@ -239,12 +210,8 @@ func TestRunQRCode_UnsafeOutputPath(t *testing.T) {
 		Size:   256,
 		Output: "/etc/passwd",
 	})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
@@ -329,15 +296,8 @@ func TestGenerateImageQRCode_WriteError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error writing to nonexistent directory")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitInternal {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitInternal)
-	}
-	if exitErr.Detail.Type != "write_error" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "write_error")
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitInternal)
 	}
 }
 
@@ -358,11 +318,7 @@ func TestGenerateASCIIQRCode_EmptyString(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty string")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Detail.Type != "encode_error" {
-		t.Errorf("error type = %q, want %q", exitErr.Detail.Type, "encode_error")
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }

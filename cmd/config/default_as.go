@@ -6,9 +6,9 @@ package config
 import (
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -41,12 +41,12 @@ func NewCmdConfigDefaultAs(f *cmdutil.Factory) *cobra.Command {
 
 			value := args[0]
 			if value != "user" && value != "bot" && value != "auto" {
-				return output.ErrValidation("invalid identity type %q, valid values: user | bot | auto", value)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid identity type %q, valid values: user | bot | auto", value)
 			}
 
 			app.DefaultAs = core.Identity(value)
 			if err := core.SaveMultiAppConfig(multi); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 			}
 			fmt.Fprintf(f.IOStreams.ErrOut, "Default identity set to: %s\n", value)
 			return nil

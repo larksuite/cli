@@ -23,12 +23,8 @@ import (
 // applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
 // "current command requires scope(s): X, Y" hint when the underlying error is
 // a need_user_authorization signal AND the current command declares scopes
-// locally (via shortcut registration or service-method metadata).
-//
-// Stage-1: this typed path is dormant — no production code returns a typed
-// *errs.AuthenticationError. Kept so per-domain stage-2 migrations can plug
-// in without re-architecting. The active stage-1 path is
-// enrichMissingScopeError below, which operates on legacy *output.ExitError.
+// locally (via shortcut registration or service-method metadata). Existing
+// Hint text is preserved; scopes are appended on a new line.
 func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
 	if err == nil || f == nil {
 		return
@@ -55,12 +51,10 @@ func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
 // enrichMissingScopeError appends a "current command requires scope(s): X"
 // hint to a legacy *output.ExitError when the underlying error carries the
 // need_user_authorization marker AND the current command declares scopes
-// locally. Matches pre-PR behaviour byte-for-byte; lives on the legacy
-// envelope path until per-domain stage-2 typed migration.
+// locally.
 //
-// Deprecated: stage-1 enrichment for the legacy *output.ExitError surface.
-// Stage-2 typed migration will lift this into AuthenticationError.Hint on
-// the typed envelope via applyNeedAuthorizationHint and remove this helper.
+// Deprecated: enrichment for the legacy envelope; the typed path is
+// applyNeedAuthorizationHint above.
 func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr == nil || exitErr.Detail == nil {
 		return
@@ -155,47 +149,7 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 	if methodMap == nil {
 		return nil
 	}
-	return declaredScopesForMethod(methodMap, identity)
-}
-
-// declaredScopesForMethod returns all requiredScopes when present; otherwise it
-// resolves the single recommended scope from the method's scopes list.
-func declaredScopesForMethod(method map[string]interface{}, identity string) []string {
-	if requiredRaw, ok := method["requiredScopes"].([]interface{}); ok && len(requiredRaw) > 0 {
-		return interfaceStrings(requiredRaw)
-	}
-
-	rawScopes, _ := method["scopes"].([]interface{})
-	if len(rawScopes) == 0 {
-		return nil
-	}
-	recommended := registry.SelectRecommendedScope(rawScopes, identity)
-	if recommended == "" {
-		for _, raw := range rawScopes {
-			if scope, ok := raw.(string); ok && scope != "" {
-				recommended = scope
-				break
-			}
-		}
-	}
-	if recommended == "" {
-		return nil
-	}
-	return []string{recommended}
-}
-
-// interfaceStrings converts a []interface{} containing strings into a compact
-// []string, skipping empty or non-string values.
-func interfaceStrings(values []interface{}) []string {
-	scopes := make([]string, 0, len(values))
-	for _, value := range values {
-		scope, ok := value.(string)
-		if !ok || scope == "" {
-			continue
-		}
-		scopes = append(scopes, scope)
-	}
-	return scopes
+	return registry.DeclaredScopesForMethod(methodMap, identity)
 }
 
 // shortcutSupportsIdentity reports whether a shortcut supports the requested

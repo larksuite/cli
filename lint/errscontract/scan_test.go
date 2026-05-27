@@ -76,10 +76,10 @@ const (
 	SubtypeMissingScope Subtype = "missing_scope"
 )
 `,
-		"errs/subtypes_service_task.go": `package errs
+		"errs/subtypes_extra.go": `package errs
 
 const (
-	SubtypeTaskInvalidParams Subtype = "task_invalid_params"
+	SubtypeExtraExample Subtype = "extra_example"
 )
 `,
 	})
@@ -87,12 +87,12 @@ const (
 	if err != nil {
 		t.Fatalf("LoadSubtypeAllowlists: %v", err)
 	}
-	for _, v := range []string{"missing_scope", "task_invalid_params"} {
+	for _, v := range []string{"missing_scope", "extra_example"} {
 		if _, ok := values[v]; !ok {
 			t.Errorf("values missing %q (across-file load broken)", v)
 		}
 	}
-	for _, n := range []string{"SubtypeMissingScope", "SubtypeTaskInvalidParams"} {
+	for _, n := range []string{"SubtypeMissingScope", "SubtypeExtraExample"} {
 		if _, ok := names[n]; !ok {
 			t.Errorf("names missing %q (across-file load broken)", n)
 		}

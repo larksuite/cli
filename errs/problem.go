@@ -14,16 +14,21 @@ package errs
 //     never appears on the wire.
 //   - No DocURL field. PermissionError carries the same intent via its typed
 //     ConsoleURL extension; other typed errors do not link out.
+//   - Troubleshooter is the upstream Lark API's diagnostic URL (resp.error.
+//     troubleshooter). Carried universally so any classified error can surface
+//     it; populated by errclass.BuildAPIError when the upstream response
+//     includes it, otherwise absent.
 //   - Retryable uses omitempty so only `true` is emitted; consumers treat
 //     absence as false.
 type Problem struct {
-	Category  Category `json:"type"`
-	Subtype   Subtype  `json:"subtype,omitempty"`
-	Code      int      `json:"code,omitempty"`
-	Message   string   `json:"message"`
-	Hint      string   `json:"hint,omitempty"`
-	LogID     string   `json:"log_id,omitempty"`
-	Retryable bool     `json:"retryable,omitempty"`
+	Category       Category `json:"type"`
+	Subtype        Subtype  `json:"subtype,omitempty"`
+	Code           int      `json:"code,omitempty"`
+	Message        string   `json:"message"`
+	Hint           string   `json:"hint,omitempty"`
+	LogID          string   `json:"log_id,omitempty"`
+	Troubleshooter string   `json:"troubleshooter,omitempty"`
+	Retryable      bool     `json:"retryable,omitempty"`
 }
 
 // Error satisfies the standard `error` interface. A nil receiver is treated
