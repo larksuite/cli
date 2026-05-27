@@ -28,7 +28,7 @@ func TestIsValidLang(t *testing.T) {
 }
 
 func TestValidLanguages(t *testing.T) {
-	if len(ValidLanguages) != 20 {
-		t.Errorf("Expected 20 languages, got %d", len(ValidLanguages))
+	if len(ValidLanguages) != 14 {
+		t.Errorf("Expected 14 languages, got %d", len(ValidLanguages))
 	}
 }
