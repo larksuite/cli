@@ -758,8 +758,7 @@ func TestBaseBlockListHelpGuidesAgents(t *testing.T) {
 	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
 	wantTips := []string{
 		"returned id is the table-id, dashboard-id, or workflow-id",
-		"Docx is the exception",
-		"use the returned docx_token with docx commands",
+		"For docx blocks, use the returned docx_token with docx commands.",
 	}
 	for _, want := range wantTips {
 		if !strings.Contains(tips, want) {
