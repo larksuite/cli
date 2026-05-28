@@ -58,10 +58,11 @@ func (a *AppConfig) ProfileName() string {
 
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
-	StrictMode  StrictMode  `json:"strictMode,omitempty"`
-	CurrentApp  string      `json:"currentApp,omitempty"`
-	PreviousApp string      `json:"previousApp,omitempty"`
-	Apps        []AppConfig `json:"apps"`
+	StrictMode  StrictMode             `json:"strictMode,omitempty"`
+	CurrentApp  string                 `json:"currentApp,omitempty"`
+	PreviousApp string                 `json:"previousApp,omitempty"`
+	ExtraBrands map[string]*Endpoints  `json:"extraBrands,omitempty"`
+	Apps        []AppConfig            `json:"apps"`
 }
 
 // CurrentAppConfig returns the currently active app config.
@@ -198,6 +199,9 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 	}
 	if len(multi.Apps) == 0 {
 		return nil, fmt.Errorf("invalid config format: no apps")
+	}
+	for name, ep := range multi.ExtraBrands {
+		RegisterBrand(name, *ep)
 	}
 	return &multi, nil
 }
