@@ -6,6 +6,7 @@ package core
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/larksuite/cli/internal/keychain"
@@ -60,6 +61,7 @@ func TestAppConfig_LangOmitEmpty(t *testing.T) {
 
 func TestMultiAppConfig_RoundTrip(t *testing.T) {
 	config := &MultiAppConfig{
+		AuthProxy: &AuthProxyConfig{TrustedHosts: []string{"gate.example.com"}},
 		Apps: []AppConfig{{
 			AppId: "cli_test", AppSecret: PlainSecret("s"),
 			Brand: BrandLark, Lang: "zh", Users: []AppUser{},
@@ -82,6 +84,94 @@ func TestMultiAppConfig_RoundTrip(t *testing.T) {
 	}
 	if got.Apps[0].Brand != BrandLark {
 		t.Errorf("Brand = %q, want %q", got.Apps[0].Brand, BrandLark)
+	}
+	if got.AuthProxy == nil || len(got.AuthProxy.TrustedHosts) != 1 || got.AuthProxy.TrustedHosts[0] != "gate.example.com" {
+		t.Errorf("AuthProxy = %#v, want gate.example.com", got.AuthProxy)
+	}
+}
+
+func TestLoadAuthProxyConfig_ToleratesMissingOrNoAppConfig(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	cfg, err := LoadAuthProxyConfig()
+	if err != nil {
+		t.Fatalf("LoadAuthProxyConfig() missing file error = %v", err)
+	}
+	if len(cfg.TrustedHosts) != 0 {
+		t.Fatalf("TrustedHosts = %#v, want empty", cfg.TrustedHosts)
+	}
+
+	if err := SaveMultiAppConfig(&MultiAppConfig{
+		AuthProxy: &AuthProxyConfig{TrustedHosts: []string{"gate.example.com"}},
+		Apps:      []AppConfig{},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	cfg, err = LoadAuthProxyConfig()
+	if err != nil {
+		t.Fatalf("LoadAuthProxyConfig() no-app config error = %v", err)
+	}
+	if len(cfg.TrustedHosts) != 1 || cfg.TrustedHosts[0] != "gate.example.com" {
+		t.Fatalf("TrustedHosts = %#v, want gate.example.com", cfg.TrustedHosts)
+	}
+
+	if _, err := LoadMultiAppConfig(); err == nil {
+		t.Fatal("LoadMultiAppConfig() should still reject no-app config")
+	}
+}
+
+func TestUpdateAuthProxyConfig_PreservesExistingApps(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := SaveMultiAppConfig(&MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []AppConfig{{
+			Name:      "default",
+			AppId:     "cli_test",
+			AppSecret: PlainSecret("secret"),
+			Brand:     BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+
+	if err := UpdateAuthProxyConfig(func(cfg *AuthProxyConfig) {
+		cfg.TrustedHosts = append(cfg.TrustedHosts, "gate.example.com")
+	}); err != nil {
+		t.Fatalf("UpdateAuthProxyConfig() error = %v", err)
+	}
+
+	got, err := LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig() error = %v", err)
+	}
+	if got.CurrentApp != "default" || len(got.Apps) != 1 || got.Apps[0].AppId != "cli_test" {
+		t.Fatalf("app config was not preserved: %#v", got)
+	}
+	if got.AuthProxy == nil || len(got.AuthProxy.TrustedHosts) != 1 || got.AuthProxy.TrustedHosts[0] != "gate.example.com" {
+		t.Fatalf("AuthProxy = %#v, want gate.example.com", got.AuthProxy)
+	}
+}
+
+func TestUpdateAuthProxyConfig_CreatesConfigWhenMissing(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	if err := UpdateAuthProxyConfig(func(cfg *AuthProxyConfig) {
+		cfg.TrustedHosts = []string{"gate.example.com"}
+	}); err != nil {
+		t.Fatalf("UpdateAuthProxyConfig() error = %v", err)
+	}
+
+	cfg, err := LoadAuthProxyConfig()
+	if err != nil {
+		t.Fatalf("LoadAuthProxyConfig() error = %v", err)
+	}
+	if len(cfg.TrustedHosts) != 1 || cfg.TrustedHosts[0] != "gate.example.com" {
+		t.Fatalf("TrustedHosts = %#v, want gate.example.com", cfg.TrustedHosts)
+	}
+
+	if _, err := os.Stat(GetConfigPath()); err != nil {
+		t.Fatalf("config file was not created: %v", err)
 	}
 }
 

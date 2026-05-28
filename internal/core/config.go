@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -59,10 +60,18 @@ func (a *AppConfig) ProfileName() string {
 
 // MultiAppConfig is the multi-app config file format.
 type MultiAppConfig struct {
-	StrictMode  StrictMode  `json:"strictMode,omitempty"`
-	CurrentApp  string      `json:"currentApp,omitempty"`
-	PreviousApp string      `json:"previousApp,omitempty"`
-	Apps        []AppConfig `json:"apps"`
+	StrictMode  StrictMode       `json:"strictMode,omitempty"`
+	CurrentApp  string           `json:"currentApp,omitempty"`
+	PreviousApp string           `json:"previousApp,omitempty"`
+	AuthProxy   *AuthProxyConfig `json:"authProxy,omitempty"`
+	Apps        []AppConfig      `json:"apps"`
+}
+
+// AuthProxyConfig stores local trust decisions for auth proxy mode. Runtime
+// session material stays in env; this config only answers which remote HTTPS
+// proxy origins the local user has trusted.
+type AuthProxyConfig struct {
+	TrustedHosts []string `json:"trustedHosts,omitempty"`
 }
 
 // CurrentAppConfig returns the currently active app config.
@@ -189,6 +198,17 @@ func GetConfigPath() string {
 
 // LoadMultiAppConfig loads multi-app config from disk.
 func LoadMultiAppConfig() (*MultiAppConfig, error) {
+	multi, err := loadMultiAppConfigUnchecked()
+	if err != nil {
+		return nil, err
+	}
+	if len(multi.Apps) == 0 {
+		return nil, fmt.Errorf("invalid config format: no apps")
+	}
+	return multi, nil
+}
+
+func loadMultiAppConfigUnchecked() (*MultiAppConfig, error) {
 	data, err := vfs.ReadFile(GetConfigPath())
 	if err != nil {
 		return nil, err
@@ -198,10 +218,43 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 	if err := json.Unmarshal(data, &multi); err != nil {
 		return nil, fmt.Errorf("invalid config format: %w", err)
 	}
-	if len(multi.Apps) == 0 {
-		return nil, fmt.Errorf("invalid config format: no apps")
-	}
 	return &multi, nil
+}
+
+// LoadAuthProxyConfig loads auth proxy trust config without requiring an app
+// profile. This lets bootstrap tools register trust before normal app config
+// exists, while LoadMultiAppConfig keeps its historical "apps required" rule.
+func LoadAuthProxyConfig() (AuthProxyConfig, error) {
+	multi, err := loadMultiAppConfigUnchecked()
+	if errors.Is(err, os.ErrNotExist) {
+		return AuthProxyConfig{}, nil
+	}
+	if err != nil {
+		return AuthProxyConfig{}, err
+	}
+	if multi.AuthProxy == nil {
+		return AuthProxyConfig{}, nil
+	}
+	return *multi.AuthProxy, nil
+}
+
+// UpdateAuthProxyConfig edits auth proxy trust config while preserving any app
+// profiles already present in config.json.
+func UpdateAuthProxyConfig(update func(*AuthProxyConfig)) error {
+	multi, err := loadMultiAppConfigUnchecked()
+	if errors.Is(err, os.ErrNotExist) {
+		multi = &MultiAppConfig{Apps: []AppConfig{}}
+	} else if err != nil {
+		return err
+	}
+	if multi.AuthProxy == nil {
+		multi.AuthProxy = &AuthProxyConfig{}
+	}
+	update(multi.AuthProxy)
+	if len(multi.AuthProxy.TrustedHosts) == 0 {
+		multi.AuthProxy = nil
+	}
+	return SaveMultiAppConfig(multi)
 }
 
 // SaveMultiAppConfig saves config to disk.

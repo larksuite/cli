@@ -44,7 +44,8 @@ func isProxyHeader(key string) bool {
 		http.CanonicalHeaderKey(sidecar.HeaderProxySignature),
 		http.CanonicalHeaderKey(sidecar.HeaderProxyTimestamp),
 		http.CanonicalHeaderKey(sidecar.HeaderBodySHA256),
-		http.CanonicalHeaderKey(sidecar.HeaderProxyAuthHeader):
+		http.CanonicalHeaderKey(sidecar.HeaderProxyAuthHeader),
+		http.CanonicalHeaderKey(sidecar.HeaderProxySession):
 		return true
 	}
 	return false

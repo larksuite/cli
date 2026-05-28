@@ -7,11 +7,9 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
@@ -98,7 +96,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pathAndQuery := r.URL.RequestURI()
-	targetHost, err := parseTarget(target)
+	targetHost, err := sidecar.ParseProxyTarget(target)
 	if err != nil {
 		http.Error(w, "invalid "+sidecar.HeaderProxyTarget+": "+err.Error(), http.StatusForbidden)
 		h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), sanitizeError(err))
@@ -179,7 +177,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 7. Build forwarding request. Scheme is pinned to https here (not taken
-	// from the client-supplied target) so any future change to parseTarget
+	// from the client-supplied target) so any future change to ParseProxyTarget
 	// cannot regress the cleartext-leak protection.
 	forwardURL := "https://" + targetHost + pathAndQuery
 	forwardReq, err := http.NewRequestWithContext(r.Context(), r.Method, forwardURL, bytes.NewReader(body))
@@ -236,36 +234,4 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 11. Audit log
 	h.logger.Printf("FORWARD method=%s path=%s identity=%s status=%d duration=%s",
 		r.Method, sanitizePath(pathAndQuery), identity, resp.StatusCode, time.Since(start).Round(time.Millisecond))
-}
-
-// parseTarget validates X-Lark-Proxy-Target and returns the host portion for
-// HMAC input and allowlist lookup. The target must be "https://<host>" with no
-// path, query, fragment, userinfo, or non-https scheme. Rejecting these shapes
-// closes a token-leak channel: a compromised sandbox holding PROXY_KEY could
-// otherwise request cleartext HTTP forwarding (or inject a path to a different
-// endpoint than the allowlist entry implies).
-func parseTarget(target string) (host string, err error) {
-	u, perr := url.Parse(target)
-	if perr != nil {
-		return "", fmt.Errorf("parse: %w", perr)
-	}
-	if u.Scheme != "https" {
-		return "", fmt.Errorf("scheme must be https, got %q", u.Scheme)
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("missing host")
-	}
-	if u.User != nil {
-		return "", fmt.Errorf("userinfo not allowed")
-	}
-	if u.Path != "" && u.Path != "/" {
-		return "", fmt.Errorf("path not allowed (got %q)", u.Path)
-	}
-	if u.RawQuery != "" {
-		return "", fmt.Errorf("query not allowed")
-	}
-	if u.Fragment != "" {
-		return "", fmt.Errorf("fragment not allowed")
-	}
-	return u.Host, nil
 }

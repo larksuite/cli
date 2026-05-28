@@ -100,12 +100,14 @@ identification without revealing the full key.
 
 ### Sandbox env vars (complete list)
 
-The startup banner only prints the *required* variables. Two more are
-optional:
+The startup banner only prints the variables required for this local demo.
+The complete CLI auth-proxy environment also includes the remote proxy session
+variable and optional identity controls:
 
 ```bash
 export LARKSUITE_CLI_AUTH_PROXY="http://..."       # required (see constraints below)
-export LARKSUITE_CLI_PROXY_KEY="..."               # required
+export LARKSUITE_CLI_PROXY_KEY="..."               # required HMAC signing key
+export LARKSUITE_CLI_PROXY_SESSION="..."           # required for remote HTTPS managed proxy
 export LARKSUITE_CLI_APP_ID="cli_xxx"              # required
 export LARKSUITE_CLI_BRAND="feishu"                # required (feishu | lark)
 export LARKSUITE_CLI_DEFAULT_AS="user"             # optional: force default identity
@@ -114,16 +116,19 @@ export LARKSUITE_CLI_STRICT_MODE="user"            # optional: lock sandbox to o
 
 **`LARKSUITE_CLI_AUTH_PROXY` constraints** — validated by the CLI on startup:
 
-- Scheme must be `http://` (or bare `host:port`). `https://` is rejected
-  today because the interceptor does not yet perform TLS; a future PR that
-  wires up real TLS will relax this.
-- Host must be loopback (`127.0.0.1`, `::1`) or one of the recognized
-  same-host aliases: `localhost`, `host.docker.internal`,
+- `http://host:port` and bare `host:port` select local sidecar mode. The host
+  must be loopback (`127.0.0.1`, `::1`) or one of the recognized same-host
+  aliases: `localhost`, `host.docker.internal`,
   `host.containers.internal`, `host.lima.internal`, `gateway.docker.internal`.
-  The sidecar pattern is inherently same-machine; cross-machine deployment
-  is a different product (auth broker / STS) with different security
-  requirements (mTLS, cert rotation, per-client keys) and is not supported
-  by this feature.
+  Local sidecar mode requires `LARKSUITE_CLI_PROXY_KEY`.
+- `https://host[:port]` selects remote managed auth proxy mode. The host must
+  first be trusted in local config with `lark-cli config auth-proxy trust
+  https://host[:port]`. This mode requires both `LARKSUITE_CLI_PROXY_SESSION`
+  and `LARKSUITE_CLI_PROXY_KEY`: the session is sent to the remote proxy, while
+  the key signs requests and is not transmitted. The remote proxy is
+  responsible for validating the session, enforcing app/tenant/user policy,
+  injecting real Lark/Feishu tokens, and forwarding only to approved OpenAPI
+  hosts. This demo server implements the local sidecar mode only.
 - No path, query, fragment, or `user:pass@` in the URL.
 
 **How auto identity detection works in sidecar mode**: on every invocation the

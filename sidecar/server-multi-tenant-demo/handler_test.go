@@ -60,6 +60,12 @@ func newTestHandler(key []byte) *proxyHandler {
 	}
 }
 
+func TestIsProxyHeader_RecognizesProxySession(t *testing.T) {
+	if !isProxyHeader(sidecar.HeaderProxySession) {
+		t.Fatalf("%s should be treated as a proxy-only header", sidecar.HeaderProxySession)
+	}
+}
+
 // signedReq creates a properly signed request for testing handler logic past
 // HMAC verification. Identity defaults to bot and auth-header to
 // "Authorization"; callers can override by mutating the returned request
@@ -256,7 +262,7 @@ func TestParseTarget(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			host, err := parseTarget(tc.target)
+			host, err := sidecar.ParseProxyTarget(tc.target)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got host=%q", host)

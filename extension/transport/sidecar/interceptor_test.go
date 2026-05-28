@@ -7,11 +7,14 @@ package sidecar
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
 
@@ -30,6 +33,21 @@ func (b *failingBody) Read(p []byte) (int, error) {
 func (b *failingBody) Close() error {
 	b.closed = true
 	return nil
+}
+
+func trustRemoteProxy(t *testing.T, hosts ...string) {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		AuthProxy: &core.AuthProxyConfig{TrustedHosts: hosts},
+		Apps: []core.AppConfig{{
+			AppId:     "cli_existing",
+			AppSecret: core.PlainSecret("secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
 }
 
 func TestInterceptor_PreRoundTrip(t *testing.T) {
@@ -94,6 +112,86 @@ func TestInterceptor_PreRoundTrip(t *testing.T) {
 	readBody, _ := io.ReadAll(req.Body)
 	if !bytes.Equal(readBody, body) {
 		t.Errorf("body should be preserved after PreRoundTrip")
+	}
+}
+
+func TestProviderResolveInterceptor_RemoteHTTPSProxy(t *testing.T) {
+	trustRemoteProxy(t, "auth-proxy.example.com:8443")
+	t.Setenv(envvars.CliAuthProxy, "https://auth-proxy.example.com:8443")
+	t.Setenv(envvars.CliProxySession, "proxy-session")
+	t.Setenv(envvars.CliProxyKey, "proxy-signing-key")
+
+	interceptor := (&Provider{}).ResolveInterceptor(context.Background())
+	if interceptor == nil {
+		t.Fatal("expected remote HTTPS proxy interceptor")
+	}
+
+	body := []byte(`{"msg":"hello"}`)
+	req, _ := http.NewRequest("POST", "https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id", io.NopCloser(bytes.NewReader(body)))
+	req.Header.Set("Authorization", "Bearer "+sidecar.SentinelTAT)
+	req.Header.Set("X-Cli-Source", "lark-cli")
+
+	interceptor.PreRoundTrip(req)
+
+	if req.URL.Scheme != "https" {
+		t.Errorf("scheme = %q, want %q", req.URL.Scheme, "https")
+	}
+	if req.URL.Host != "auth-proxy.example.com:8443" {
+		t.Errorf("host = %q, want %q", req.URL.Host, "auth-proxy.example.com:8443")
+	}
+	if target := req.Header.Get(sidecar.HeaderProxyTarget); target != "https://open.feishu.cn" {
+		t.Errorf("target = %q, want %q", target, "https://open.feishu.cn")
+	}
+	if session := req.Header.Get(sidecar.HeaderProxySession); session != "proxy-session" {
+		t.Errorf("%s = %q, want proxy-session", sidecar.HeaderProxySession, session)
+	}
+	if auth := req.Header.Get("Authorization"); auth != "" {
+		t.Errorf("Authorization header should be stripped, got %q", auth)
+	}
+	if identity := req.Header.Get(sidecar.HeaderProxyIdentity); identity != sidecar.IdentityBot {
+		t.Errorf("identity = %q, want %q", identity, sidecar.IdentityBot)
+	}
+	if src := req.Header.Get("X-Cli-Source"); src != "lark-cli" {
+		t.Errorf("X-Cli-Source should be preserved, got %q", src)
+	}
+
+	canonical := sidecar.CanonicalRequest{
+		Version:      sidecar.ProtocolV1,
+		Method:       "POST",
+		Host:         "open.feishu.cn",
+		PathAndQuery: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+		BodySHA256:   sidecar.BodySHA256(body),
+		Timestamp:    req.Header.Get(sidecar.HeaderProxyTimestamp),
+		Identity:     sidecar.IdentityBot,
+		AuthHeader:   "Authorization",
+	}
+	if err := sidecar.Verify([]byte("proxy-signing-key"), canonical, req.Header.Get(sidecar.HeaderProxySignature)); err != nil {
+		t.Fatalf("remote proxy signature should verify with proxy signing key: %v", err)
+	}
+	if err := sidecar.Verify([]byte("proxy-session"), canonical, req.Header.Get(sidecar.HeaderProxySignature)); err == nil {
+		t.Fatal("remote proxy signature must not verify with transmitted session credential")
+	}
+}
+
+func TestProviderResolveInterceptor_RemoteHTTPSUntrustedProxy(t *testing.T) {
+	trustRemoteProxy(t, "trusted-proxy.example.com")
+	t.Setenv(envvars.CliAuthProxy, "https://evil.example.com")
+	t.Setenv(envvars.CliProxySession, "proxy-session")
+	t.Setenv(envvars.CliProxyKey, "proxy-signing-key")
+
+	if interceptor := (&Provider{}).ResolveInterceptor(context.Background()); interceptor != nil {
+		t.Fatal("expected nil interceptor when remote proxy host is not trusted")
+	}
+}
+
+func TestProviderResolveInterceptor_RemoteHTTPSMissingProxyKey(t *testing.T) {
+	trustRemoteProxy(t, "auth-proxy.example.com")
+	t.Setenv(envvars.CliAuthProxy, "https://auth-proxy.example.com")
+	t.Setenv(envvars.CliProxySession, "proxy-session")
+	t.Setenv(envvars.CliProxyKey, "")
+
+	if interceptor := (&Provider{}).ResolveInterceptor(context.Background()); interceptor != nil {
+		t.Fatal("expected nil interceptor when remote proxy signing key is missing")
 	}
 }
 

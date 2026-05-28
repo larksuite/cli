@@ -3,11 +3,11 @@
 
 //go:build authsidecar
 
-// Package sidecar provides a noop credential provider for the auth sidecar
-// proxy mode. When LARKSUITE_CLI_AUTH_PROXY is set, this provider supplies
-// placeholder credentials so the CLI's auth pipeline can proceed normally.
-// Real tokens are never present in the sandbox; the sidecar transport
-// interceptor routes requests to the trusted sidecar process instead.
+// Package sidecar provides a noop credential provider for auth proxy mode.
+// When LARKSUITE_CLI_AUTH_PROXY is set, this provider supplies placeholder
+// credentials so the CLI's auth pipeline can proceed normally. Real tokens
+// are never present in the sandbox; the transport interceptor routes requests
+// to the trusted local sidecar or remote managed auth proxy instead.
 package sidecar
 
 import (
@@ -16,6 +16,7 @@ import (
 	"os"
 
 	"github.com/larksuite/cli/extension/credential"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -36,7 +37,8 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		return nil, nil // not in sidecar mode, skip
 	}
 
-	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
+	endpoint, err := sidecar.ParseProxyEndpoint(proxyAddr)
+	if err != nil {
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
 			Reason:   fmt.Sprintf("invalid %s %q: %v", envvars.CliAuthProxy, proxyAddr, err),
@@ -51,10 +53,37 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 		}
 	}
 
-	if os.Getenv(envvars.CliProxyKey) == "" {
+	switch endpoint.Mode {
+	case sidecar.ProxyModeLocal:
+		if os.Getenv(envvars.CliProxyKey) == "" {
+			return nil, &credential.BlockError{
+				Provider: "sidecar",
+				Reason:   envvars.CliAuthProxy + " is set for local sidecar mode but " + envvars.CliProxyKey + " is missing",
+			}
+		}
+	case sidecar.ProxyModeRemote:
+		if err := requireTrustedRemoteProxy(endpoint); err != nil {
+			return nil, &credential.BlockError{
+				Provider: "sidecar",
+				Reason:   err.Error(),
+			}
+		}
+		if os.Getenv(envvars.CliProxyKey) == "" {
+			return nil, &credential.BlockError{
+				Provider: "sidecar",
+				Reason:   envvars.CliAuthProxy + " is set for remote auth proxy mode but " + envvars.CliProxyKey + " is missing",
+			}
+		}
+		if os.Getenv(envvars.CliProxySession) == "" {
+			return nil, &credential.BlockError{
+				Provider: "sidecar",
+				Reason:   envvars.CliAuthProxy + " is set for remote auth proxy mode but " + envvars.CliProxySession + " is missing",
+			}
+		}
+	default:
 		return nil, &credential.BlockError{
 			Provider: "sidecar",
-			Reason:   envvars.CliAuthProxy + " is set but " + envvars.CliProxyKey + " is missing",
+			Reason:   fmt.Sprintf("invalid proxy mode %q", endpoint.Mode),
 		}
 	}
 
@@ -98,6 +127,20 @@ func (p *Provider) ResolveAccount(ctx context.Context) (*credential.Account, err
 	}
 
 	return acct, nil
+}
+
+func requireTrustedRemoteProxy(endpoint sidecar.ProxyEndpoint) error {
+	if endpoint.Mode != sidecar.ProxyModeRemote {
+		return nil
+	}
+	cfg, err := core.LoadAuthProxyConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load auth proxy trust config: %w", err)
+	}
+	if sidecar.IsTrustedRemoteProxyHost(endpoint.Host, cfg.TrustedHosts) {
+		return nil
+	}
+	return fmt.Errorf("remote auth proxy host %q is not trusted; run `lark-cli config auth-proxy trust https://%s` outside the agent environment", endpoint.Host, endpoint.Host)
 }
 
 // ResolveToken returns a sentinel token whose value encodes the token type.

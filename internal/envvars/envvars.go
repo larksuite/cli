@@ -13,8 +13,9 @@ const (
 	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
 
 	// Sidecar proxy (auth proxy mode)
-	CliAuthProxy = "LARKSUITE_CLI_AUTH_PROXY" // sidecar HTTP address, e.g. "http://127.0.0.1:16384"
-	CliProxyKey  = "LARKSUITE_CLI_PROXY_KEY"  // HMAC signing key shared with sidecar
+	CliAuthProxy    = "LARKSUITE_CLI_AUTH_PROXY"    // local sidecar or remote HTTPS auth proxy address
+	CliProxyKey     = "LARKSUITE_CLI_PROXY_KEY"     // HMAC signing key shared with auth proxy
+	CliProxySession = "LARKSUITE_CLI_PROXY_SESSION" // session credential for remote HTTPS auth proxy
 
 	// Content safety scanning mode
 	CliContentSafetyMode = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
