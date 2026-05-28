@@ -750,6 +750,24 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 	}
 }
 
+func TestBaseBlockListHelpGuidesAgents(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseBaseBlockList.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	wantTips := []string{
+		"returned id is the table-id, dashboard-id, or workflow-id",
+		"Docx is the exception",
+		"use the returned docx_token with docx commands",
+	}
+	for _, want := range wantTips {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+}
+
 func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	parent := &cobra.Command{Use: "base"}
 	BaseFieldUpdate.Mount(parent, &cmdutil.Factory{})
