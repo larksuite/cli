@@ -453,9 +453,12 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 		"replaced":    replaced,
 		"identity":    opts.Identity,
 	}
-	// JSON "message" follows the preference (opts.Lang); stderr above follows UILang.
-	prefMsg := getBindMsg(i18n.Lang(opts.Lang))
-	brand := brandDisplay(string(appConfig.Brand), i18n.Lang(opts.Lang))
+	// JSON "message" follows the effective preference on disk (appConfig.Lang),
+	// not the raw --lang value: when --lang is omitted on re-bind, preferredLang
+	// has already inherited the prior preference into appConfig.Lang, and the
+	// message should respect that inherited choice. stderr above follows UILang.
+	prefMsg := getBindMsg(appConfig.Lang)
+	brand := brandDisplay(string(appConfig.Brand), appConfig.Lang)
 	switch opts.Identity {
 	case "bot-only":
 		envelope["message"] = fmt.Sprintf(prefMsg.MessageBotOnly, appConfig.AppId, display, brand)

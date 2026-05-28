@@ -261,6 +261,42 @@ func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
+// TestConfigBindRun_EnvelopeMessageFollowsInheritedLang guards the JSON envelope
+// "message" field against regressing to opts.Lang: when --lang is omitted on
+// re-bind, the inherited preference (appConfig.Lang) must drive the message
+// language and the embedded brand display — otherwise an AI agent that set
+// English on first bind sees Chinese in every subsequent re-bind envelope.
+func TestConfigBindRun_EnvelopeMessageFollowsInheritedLang(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f1, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f1, Source: "hermes", Lang: "en", langExplicit: true}); err != nil {
+		t.Fatalf("first bind (--lang en): %v", err)
+	}
+
+	f2, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Lang: "", langExplicit: false}); err != nil {
+		t.Fatalf("re-bind (no --lang): %v", err)
+	}
+
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	msg, _ := envelope["message"].(string)
+	enMsg := getBindMsg(i18n.LangEnUS)
+	wantMsg := fmt.Sprintf(enMsg.MessageBotOnly, "cli_abc", "Hermes", brandDisplay("feishu", i18n.LangEnUS))
+	if msg != wantMsg {
+		t.Errorf("envelope.message = %q,\nwant %q (must follow inherited appConfig.Lang=en_us, not raw opts.Lang)", msg, wantMsg)
+	}
+}
+
 // ── Run function tests (aligned with TestConfigShowRun pattern) ──
 
 func TestConfigBindRun_InvalidSource(t *testing.T) {
