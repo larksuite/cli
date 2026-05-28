@@ -18,4 +18,7 @@ const (
 
 	// Content safety scanning mode
 	CliContentSafetyMode = "LARKSUITE_CLI_CONTENT_SAFETY_MODE"
+
+	// Agent trace header propagation
+	CliAgentTrace = "AGENT_TRACE"
 )

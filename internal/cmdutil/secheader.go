@@ -6,6 +6,7 @@ package cmdutil
 import (
 	"context"
 	"net/http"
+	"os"
 	"reflect"
 	"runtime/debug"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	exttransport "github.com/larksuite/cli/extension/transport"
 	"github.com/larksuite/cli/internal/build"
+	"github.com/larksuite/cli/internal/envvars"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -24,6 +26,7 @@ const (
 	HeaderBuild       = "X-Cli-Build"
 	HeaderShortcut    = "X-Cli-Shortcut"
 	HeaderExecutionId = "X-Cli-Execution-Id"
+	HeaderAgentTrace  = "X-Agent-Trace"
 
 	SourceValue = "lark-cli"
 
@@ -43,6 +46,12 @@ func UserAgentValue() string {
 	return SourceValue + "/" + build.Version
 }
 
+// AgentTraceValue returns the value of the AGENT_TRACE environment
+// variable. Returns an empty string if the variable is unset or empty.
+func AgentTraceValue() string {
+	return os.Getenv(envvars.CliAgentTrace)
+}
+
 // BaseSecurityHeaders returns headers that every request must carry.
 func BaseSecurityHeaders() http.Header {
 	h := make(http.Header)
@@ -50,6 +59,9 @@ func BaseSecurityHeaders() http.Header {
 	h.Set(HeaderVersion, build.Version)
 	h.Set(HeaderBuild, DetectBuildKind())
 	h.Set(HeaderUserAgent, UserAgentValue())
+	if v := AgentTraceValue(); v != "" {
+		h.Set(HeaderAgentTrace, v)
+	}
 	return h
 }
 

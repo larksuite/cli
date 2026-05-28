@@ -10,6 +10,7 @@ import (
 
 	"github.com/larksuite/cli/extension/credential"
 	envcred "github.com/larksuite/cli/extension/credential/env"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
@@ -258,5 +259,39 @@ func TestBaseSecurityHeaders_AllRequiredHeaders(t *testing.T) {
 		if h.Get(key) == "" {
 			t.Errorf("BaseSecurityHeaders missing %s", key)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AgentTraceValue / HeaderAgentTrace
+// ---------------------------------------------------------------------------
+
+func TestAgentTraceValue_EmptyWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty when env unset", got)
+	}
+}
+
+func TestAgentTraceValue_ReturnsEnvValue(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "trace-abc-123")
+	if got := AgentTraceValue(); got != "trace-abc-123" {
+		t.Fatalf("AgentTraceValue() = %q, want %q", got, "trace-abc-123")
+	}
+}
+
+func TestBaseSecurityHeaders_NoAgentTraceHeaderWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent when env unset", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_IncludesAgentTraceHeaderWhenEnvSet(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "trace-xyz-789")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "trace-xyz-789" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q", HeaderAgentTrace, v, "trace-xyz-789")
 	}
 }
