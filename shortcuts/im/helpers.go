@@ -543,7 +543,17 @@ func findMP4Box(data []byte, start, end int, boxType string) (int, int) {
 			if offset+16 > end {
 				return -1, -1
 			}
-			boxEnd = int(binary.BigEndian.Uint64(data[offset+8:]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring the
+			// offset+size used for 32-bit boxes below). Reject sizes that do not
+			// fit the search window; this also rejects values that would
+			// overflow int and drive boxEnd negative (CWE-190), which would
+			// otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8:])
+			if largesize < 16 || largesize > uint64(end-offset) {
+				return -1, -1
+			}
+			boxEnd = offset + int(largesize)
 			dataStart = offset + 16
 		default:
 			if size < 8 {
@@ -688,7 +698,16 @@ func readMp4DurationBytes(data []byte) int64 {
 			if offset+16 > fileSize {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(data[offset+8 : offset+16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190), which would otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8 : offset+16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
@@ -749,7 +768,16 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 			if _, err := f.ReadAt(hdr[8:16], offset+8); err != nil {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(hdr[8:16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190).
+			largesize := binary.BigEndian.Uint64(hdr[8:16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
