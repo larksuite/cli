@@ -14,7 +14,6 @@ import (
 // TestShortcutMount_FormatFlagAlwaysRegistered verifies that --format is
 // injected for every shortcut regardless of the HasFormat field value.
 func TestShortcutMount_FormatFlagAlwaysRegistered(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}
 	shortcut := Shortcut{
