@@ -10,6 +10,7 @@ import (
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 // Account is the credential-layer view of the active runtime account.
@@ -23,6 +24,7 @@ type Account struct {
 	DefaultAs           core.Identity
 	UserOpenId          string
 	UserName            string
+	Lang                i18n.Lang
 	SupportedIdentities uint8
 }
 
@@ -65,6 +67,7 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		DefaultAs:           cfg.DefaultAs,
 		UserOpenId:          cfg.UserOpenId,
 		UserName:            cfg.UserName,
+		Lang:                cfg.Lang,
 		SupportedIdentities: cfg.SupportedIdentities,
 	}
 }
@@ -82,6 +85,7 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		DefaultAs:           a.DefaultAs,
 		UserOpenId:          a.UserOpenId,
 		UserName:            a.UserName,
+		Lang:                a.Lang,
 		SupportedIdentities: a.SupportedIdentities,
 	}
 }

@@ -383,16 +383,17 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.L
 }
 
 // priorLang returns the language preference recorded in a previous config, or
-// "" if there is none / the bytes don't parse.
+// "" if there is none / the bytes don't parse. Reads from CurrentApp (or Apps[0]
+// fallback) — scanning all apps for the first non-empty Lang would leak the
+// wrong profile's preference into a re-bind when the workspace holds multiple
+// named profiles and the active one disagrees with Apps[0].
 func priorLang(previousConfigBytes []byte) i18n.Lang {
 	var multi core.MultiAppConfig
 	if json.Unmarshal(previousConfigBytes, &multi) != nil {
 		return ""
 	}
-	for _, app := range multi.Apps {
-		if app.Lang != "" {
-			return app.Lang
-		}
+	if app := multi.CurrentAppConfig(""); app != nil {
+		return app.Lang
 	}
 	return ""
 }

@@ -261,6 +261,53 @@ func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
+// TestPriorLang_RespectsCurrentApp guards against priorLang scanning all apps
+// and silently returning a non-current profile's Lang. In a multi-profile
+// workspace (set up via `profile add` before a re-bind), the active profile's
+// Lang must win over a sibling profile that happens to sit earlier in the slice.
+func TestPriorLang_RespectsCurrentApp(t *testing.T) {
+	multi := core.MultiAppConfig{
+		CurrentApp: "active",
+		Apps: []core.AppConfig{
+			{Name: "stale", AppId: "cli_stale", Lang: i18n.LangJaJP},
+			{Name: "active", AppId: "cli_active", Lang: i18n.LangEnUS},
+		},
+	}
+	bytes, err := json.Marshal(multi)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := priorLang(bytes); got != i18n.LangEnUS {
+		t.Errorf("priorLang = %q, want %q (must follow CurrentApp, not Apps[0])", got, i18n.LangEnUS)
+	}
+}
+
+// TestPriorLang_FallsBackToFirstAppWhenCurrentUnset covers the legacy
+// single-app shape (no CurrentApp): CurrentAppConfig falls back to Apps[0],
+// so a bind-written config (which always has exactly one app and no
+// CurrentApp field) still inherits its Lang.
+func TestPriorLang_FallsBackToFirstAppWhenCurrentUnset(t *testing.T) {
+	multi := core.MultiAppConfig{
+		Apps: []core.AppConfig{
+			{AppId: "cli_only", Lang: i18n.LangJaJP},
+		},
+	}
+	bytes, err := json.Marshal(multi)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := priorLang(bytes); got != i18n.LangJaJP {
+		t.Errorf("priorLang = %q, want %q", got, i18n.LangJaJP)
+	}
+}
+
+// TestPriorLang_MalformedReturnsEmpty exercises the unparseable-bytes branch.
+func TestPriorLang_MalformedReturnsEmpty(t *testing.T) {
+	if got := priorLang([]byte("not json")); got != "" {
+		t.Errorf("priorLang(malformed) = %q, want \"\"", got)
+	}
+}
+
 // TestConfigBindRun_EnvelopeMessageFollowsInheritedLang guards the JSON envelope
 // "message" field against regressing to opts.Lang: when --lang is omitted on
 // re-bind, the inherited preference (appConfig.Lang) must drive the message

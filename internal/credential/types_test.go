@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 func TestTokenTypeString(t *testing.T) {
@@ -53,6 +54,7 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 		DefaultAs:           "user",
 		UserOpenId:          "ou_123",
 		UserName:            "alice",
+		Lang:                i18n.LangJaJP,
 		SupportedIdentities: 3,
 	}
 
@@ -63,6 +65,9 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 	if acct.AppID != cfg.AppID || acct.ProfileName != cfg.ProfileName || acct.UserName != cfg.UserName {
 		t.Fatalf("AccountFromCliConfig() = %#v, want copied fields from %#v", acct, cfg)
 	}
+	if acct.Lang != cfg.Lang {
+		t.Fatalf("AccountFromCliConfig().Lang = %q, want %q", acct.Lang, cfg.Lang)
+	}
 
 	roundtrip := acct.ToCliConfig()
 	if roundtrip == nil {
@@ -70,6 +75,9 @@ func TestAccountFromCliConfigAndBack_ReturnCopies(t *testing.T) {
 	}
 	if roundtrip.AppID != cfg.AppID || roundtrip.ProfileName != cfg.ProfileName || roundtrip.UserName != cfg.UserName {
 		t.Fatalf("ToCliConfig() = %#v, want copied fields from %#v", roundtrip, cfg)
+	}
+	if roundtrip.Lang != cfg.Lang {
+		t.Fatalf("ToCliConfig().Lang = %q, want %q (production Factory path reads Lang via this conversion)", roundtrip.Lang, cfg.Lang)
 	}
 
 	roundtrip.AppID = "mutated-cli"
