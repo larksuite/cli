@@ -1042,8 +1042,11 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		"final message of the turn",
 		"return control to the user",
 		"do not block on --device-code in the same turn",
-		"After the user confirms authorization in a later step",
-		"lark-cli auth login --device-code device-code",
+		"come back and notify",
+		"YOU must execute",
+		"lark-cli auth login --device-code <device_code>",
+		"Do NOT cache",
+		"lark-cli auth login --no-wait --json",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("hint missing %q, got:\n%s", want, hint)
