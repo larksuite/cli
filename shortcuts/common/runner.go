@@ -842,9 +842,7 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	}
 	rctx.larkSDK = sdk
 
-	if s.HasFormat {
-		rctx.Format = rctx.Str("format")
-	}
+	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
 }
@@ -1008,17 +1006,15 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	}
 
 	cmd.Flags().Bool("dry-run", false, "print request without executing")
-	if s.HasFormat {
+	if cmd.Flags().Lookup("format") == nil {
 		cmd.Flags().String("format", "json", "output format: json (default) | pretty | table | ndjson | csv")
+		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
+		})
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
-	if s.HasFormat {
-		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
-		})
-	}
 }
