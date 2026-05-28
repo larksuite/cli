@@ -30,24 +30,63 @@ type Endpoints struct {
 	AppLink  string // e.g. "https://applink.feishu.cn"
 }
 
+// brandRegistry maps brand names to their endpoint defaults.
+// Built-in brands (feishu, lark) are pre-registered via init.
+// Custom brands can be added via RegisterBrand.
+var brandRegistry = map[string]Endpoints{}
+
+func init() {
+	brandRegistry[string(BrandFeishu)] = Endpoints{
+		Open:     "https://open.feishu.cn",
+		Accounts: "https://accounts.feishu.cn",
+		MCP:      "https://mcp.feishu.cn",
+		AppLink:  "https://applink.feishu.cn",
+	}
+	brandRegistry[string(BrandLark)] = Endpoints{
+		Open:     "https://open.larksuite.com",
+		Accounts: "https://accounts.larksuite.com",
+		MCP:      "https://mcp.larksuite.com",
+		AppLink:  "https://applink.larksuite.com",
+	}
+}
+
+// RegisterBrand adds or updates a brand's endpoint defaults.
+// Partial overrides are merged on top of the "feishu" defaults.
+func RegisterBrand(name string, ep Endpoints) {
+	base := brandRegistry[string(BrandFeishu)]
+	if name == string(BrandLark) {
+		base = brandRegistry[string(BrandLark)]
+	}
+	brandRegistry[name] = MergeEndpointOverrides(base, &ep)
+}
+
+// MergeEndpointOverrides returns a copy of base with non-empty overrides applied.
+func MergeEndpointOverrides(base Endpoints, overrides *Endpoints) Endpoints {
+	if overrides == nil {
+		return base
+	}
+	result := base
+	if overrides.Open != "" {
+		result.Open = overrides.Open
+	}
+	if overrides.Accounts != "" {
+		result.Accounts = overrides.Accounts
+	}
+	if overrides.MCP != "" {
+		result.MCP = overrides.MCP
+	}
+	if overrides.AppLink != "" {
+		result.AppLink = overrides.AppLink
+	}
+	return result
+}
+
 // ResolveEndpoints resolves endpoint URLs based on brand.
 func ResolveEndpoints(brand LarkBrand) Endpoints {
-	switch brand {
-	case BrandLark:
-		return Endpoints{
-			Open:     "https://open.larksuite.com",
-			Accounts: "https://accounts.larksuite.com",
-			MCP:      "https://mcp.larksuite.com",
-			AppLink:  "https://applink.larksuite.com",
-		}
-	default:
-		return Endpoints{
-			Open:     "https://open.feishu.cn",
-			Accounts: "https://accounts.feishu.cn",
-			MCP:      "https://mcp.feishu.cn",
-			AppLink:  "https://applink.feishu.cn",
-		}
+	if ep, ok := brandRegistry[string(brand)]; ok {
+		return ep
 	}
+	return brandRegistry[string(BrandFeishu)]
 }
 
 // ResolveOpenBaseURL returns the Open API base URL for the given brand.

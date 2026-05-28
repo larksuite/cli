@@ -52,3 +52,65 @@ func TestResolveOpenBaseURL(t *testing.T) {
 		t.Errorf("ResolveOpenBaseURL(lark) = %q", got)
 	}
 }
+
+func TestMergeEndpointOverrides(t *testing.T) {
+	base := Endpoints{
+		Open:     "https://open.feishu.cn",
+		Accounts: "https://accounts.feishu.cn",
+		MCP:      "https://mcp.feishu.cn",
+		AppLink:  "https://applink.feishu.cn",
+	}
+
+	t.Run("nil overrides returns base", func(t *testing.T) {
+		got := MergeEndpointOverrides(base, nil)
+		if got != base {
+			t.Errorf("got %v, want %v", got, base)
+		}
+	})
+
+	t.Run("partial override", func(t *testing.T) {
+		got := MergeEndpointOverrides(base, &Endpoints{Open: "https://proxy.example.com"})
+		if got.Open != "https://proxy.example.com" {
+			t.Errorf("Open = %q", got.Open)
+		}
+		if got.Accounts != "https://accounts.feishu.cn" {
+			t.Errorf("Accounts = %q, want unchanged", got.Accounts)
+		}
+	})
+
+	t.Run("full override", func(t *testing.T) {
+		overrides := Endpoints{
+			Open: "https://a.example.com", Accounts: "https://b.example.com",
+			MCP: "https://c.example.com", AppLink: "https://d.example.com",
+		}
+		got := MergeEndpointOverrides(base, &overrides)
+		if got != overrides {
+			t.Errorf("got %v, want %v", got, overrides)
+		}
+	})
+}
+
+func TestRegisterBrand(t *testing.T) {
+	RegisterBrand("staging", Endpoints{Open: "https://open-staging.feishu.cn"})
+	ep := ResolveEndpoints("staging")
+	if ep.Open != "https://open-staging.feishu.cn" {
+		t.Errorf("Open = %q, want staging URL", ep.Open)
+	}
+	if ep.Accounts != "https://accounts.feishu.cn" {
+		t.Errorf("Accounts = %q, want feishu default", ep.Accounts)
+	}
+}
+
+func TestRegisterBrand_Full(t *testing.T) {
+	RegisterBrand("proxy", Endpoints{
+		Open: "https://api-proxy.example.com", Accounts: "https://acct-proxy.example.com",
+		MCP: "https://mcp-proxy.example.com", AppLink: "https://applink-proxy.example.com",
+	})
+	ep := ResolveEndpoints("proxy")
+	if ep.Open != "https://api-proxy.example.com" {
+		t.Errorf("Open = %q", ep.Open)
+	}
+	if ep.Accounts != "https://acct-proxy.example.com" {
+		t.Errorf("Accounts = %q", ep.Accounts)
+	}
+}
