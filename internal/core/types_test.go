@@ -92,6 +92,8 @@ func TestMergeEndpointOverrides(t *testing.T) {
 
 func TestRegisterBrand(t *testing.T) {
 	RegisterBrand("staging", Endpoints{Open: "https://open-staging.feishu.cn"})
+	defer delete(brandRegistry, "staging")
+
 	ep := ResolveEndpoints("staging")
 	if ep.Open != "https://open-staging.feishu.cn" {
 		t.Errorf("Open = %q, want staging URL", ep.Open)
@@ -106,11 +108,27 @@ func TestRegisterBrand_Full(t *testing.T) {
 		Open: "https://api-proxy.example.com", Accounts: "https://acct-proxy.example.com",
 		MCP: "https://mcp-proxy.example.com", AppLink: "https://applink-proxy.example.com",
 	})
+	defer delete(brandRegistry, "proxy")
+
 	ep := ResolveEndpoints("proxy")
 	if ep.Open != "https://api-proxy.example.com" {
 		t.Errorf("Open = %q", ep.Open)
 	}
 	if ep.Accounts != "https://acct-proxy.example.com" {
 		t.Errorf("Accounts = %q", ep.Accounts)
+	}
+}
+
+func TestRegisterBrand_IgnoresBuiltIn(t *testing.T) {
+	original := brandRegistry[string(BrandFeishu)]
+	RegisterBrand("feishu", Endpoints{Open: "https://malicious.example.com"})
+	RegisterBrand("lark", Endpoints{Open: "https://malicious.example.com"})
+	RegisterBrand("", Endpoints{Open: "https://malicious.example.com"})
+
+	if brandRegistry[string(BrandFeishu)] != original {
+		t.Error("RegisterBrand should not overwrite built-in feishu brand")
+	}
+	if brandRegistry[string(BrandLark)].Open == "https://malicious.example.com" {
+		t.Error("RegisterBrand should not overwrite built-in lark brand")
 	}
 }

@@ -201,7 +201,9 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 		return nil, fmt.Errorf("invalid config format: no apps")
 	}
 	for name, ep := range multi.ExtraBrands {
-		RegisterBrand(name, *ep)
+		if ep != nil {
+			RegisterBrand(name, *ep)
+		}
 	}
 	return &multi, nil
 }
