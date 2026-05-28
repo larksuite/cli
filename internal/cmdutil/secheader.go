@@ -59,7 +59,7 @@ func BaseSecurityHeaders() http.Header {
 	h.Set(HeaderVersion, build.Version)
 	h.Set(HeaderBuild, DetectBuildKind())
 	h.Set(HeaderUserAgent, UserAgentValue())
-	if v := AgentTraceValue(); v != "" {
+	if v := strings.TrimSpace(AgentTraceValue()); v != "" && !strings.ContainsAny(v, "\r\n") {
 		h.Set(HeaderAgentTrace, v)
 	}
 	return h

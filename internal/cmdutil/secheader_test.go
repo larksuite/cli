@@ -295,3 +295,35 @@ func TestBaseSecurityHeaders_IncludesAgentTraceHeaderWhenEnvSet(t *testing.T) {
 		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q", HeaderAgentTrace, v, "trace-xyz-789")
 	}
 }
+
+func TestBaseSecurityHeaders_AgentTraceTrimmedWhitespace(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "  trace-trim  ")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "trace-trim" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q (whitespace trimmed)", HeaderAgentTrace, v, "trace-trim")
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceOnlyWhitespace_Skipped(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "   ")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for whitespace-only value", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceRejectsCRLFInjection(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\r\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for CR/LF value", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceRejectsLFInjection(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for LF value", HeaderAgentTrace, v)
+	}
+}
