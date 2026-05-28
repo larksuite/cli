@@ -214,7 +214,15 @@ func configureFlagCompletions(args []string) {
 //     per-domain typed migration in stage 2+.
 //  4. Cobra errors (required flags, unknown commands, etc.): plain text.
 func handleRootError(f *cmdutil.Factory, err error) int {
-	errOut := f.IOStreams.ErrOut
+	// Defensive: f or its IOStreams may be nil in exceptional situations
+	// (e.g. early bootstrap failure, plugin corruption). Guarantee stderr
+	// is always a valid writer so diagnostics are never swallowed.
+	var errOut io.Writer
+	if f != nil && f.IOStreams != nil && f.IOStreams.ErrOut != nil {
+		errOut = f.IOStreams.ErrOut
+	} else {
+		errOut = os.Stderr
+	}
 
 	// SecurityPolicyError keeps the legacy custom envelope (string codes,
 	// challenge_url, retryable) and exit code 1 — its wire shape predates the

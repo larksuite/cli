@@ -72,6 +72,13 @@ func MarkRaw(err error) error {
 // to the typed surface.
 func WriteErrorEnvelope(w io.Writer, err *ExitError, identity string) {
 	if err.Detail == nil {
+		// Even without structured detail, emit a minimal envelope so callers
+		// never see a completely empty stderr (https://github.com/larksuite/cli/issues/1139).
+		msg := err.Error()
+		if msg == "" {
+			msg = fmt.Sprintf("exit %d", err.Code)
+		}
+		fmt.Fprintf(w, `{"ok":false,"identity":%q,"error":{"type":"internal","message":%q}}`+"\n", identity, msg)
 		return
 	}
 	env := &ErrorEnvelope{

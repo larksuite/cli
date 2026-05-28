@@ -136,12 +136,15 @@ func IsJSONContentType(ct string) bool {
 
 // ParseJSONResponse decodes a raw SDK response body as JSON.
 // CallAPI and HandleResponse both delegate to this function.
+// It automatically detects and converts non-UTF-8 encodings (e.g. GBK) that
+// some APIs return despite claiming UTF-8 in the Content-Type header.
 func ParseJSONResponse(resp *larkcore.ApiResp) (interface{}, error) {
+	body := autoDecodeBody(resp.RawBody)
 	var result interface{}
-	dec := json.NewDecoder(bytes.NewReader(resp.RawBody))
+	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(resp.RawBody), 500))
+		return nil, fmt.Errorf("response parse error: %w (body: %s)", err, util.TruncateStr(string(body), 500))
 	}
 	return result, nil
 }
