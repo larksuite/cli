@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.43] - 2026-05-28
+
+### Features
+
+- **event**: Support `note` generated event (#1159)
+- **config**: Decouple `--lang` preference from TUI display language (#1132)
+- **mail**: Add HTML lint library with Larksuite-native autofix for `lark-mail` (#1019)
+
+### Bug Fixes
+
+- **config**: Propagate `Lang` across credential boundary; respect `CurrentApp` in priorLang (#1157)
+- **config**: Allow lark-channel bind source override (#1154)
+- **im**: Clarify `messages-send` dry-run chat membership (#1150)
+- **base**: Include `log_id` in attachment media errors (#1133)
+
+### Performance
+
+- **im**: Parallelize reactions, thread_replies, and merge_forward fetches (#1146)
+
+### Documentation
+
+- **im**: Update IM skill urgent APIs (#1153)
+
 ## [v1.0.42] - 2026-05-27
 
 ### Features
@@ -910,6 +933,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.43]: https://github.com/larksuite/cli/releases/tag/v1.0.43
 [v1.0.42]: https://github.com/larksuite/cli/releases/tag/v1.0.42
 [v1.0.41]: https://github.com/larksuite/cli/releases/tag/v1.0.41
 [v1.0.40]: https://github.com/larksuite/cli/releases/tag/v1.0.40
