@@ -4,6 +4,7 @@
 package config
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -172,4 +173,28 @@ func TestSelectCandidate_AppIDFlag_WinsOverTUI(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertCandidate(t, got, Candidate{AppID: "cli_b"})
+}
+
+func TestResolveLarkChannelConfigPath_Default(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("LARK_CHANNEL_CONFIG", "")
+
+	got := resolveLarkChannelConfigPath()
+	want := filepath.Join(home, ".lark-channel", "config.json")
+	if got != want {
+		t.Fatalf("resolveLarkChannelConfigPath() = %q, want %q", got, want)
+	}
+}
+
+func TestResolveLarkChannelConfigPath_EnvOverride(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("LARK_CHANNEL_CONFIG", "~/bridge/projection.json")
+
+	got := resolveLarkChannelConfigPath()
+	want := filepath.Join(home, "bridge", "projection.json")
+	if got != want {
+		t.Fatalf("resolveLarkChannelConfigPath() = %q, want %q", got, want)
+	}
 }

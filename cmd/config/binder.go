@@ -389,10 +389,12 @@ func resolveHermesEnvPath() string {
 }
 
 // resolveLarkChannelConfigPath returns the path to lark-channel-bridge's
-// config.json. Mirrors the bridge's src/config/paths.ts which hardcodes
-// ~/.lark-channel/config.json with no env override — multi-instance is not
-// a supported scenario today.
+// source config. LARK_CHANNEL_CONFIG lets a host point bind at a projected
+// single-account config without changing lark-cli's target config directory.
 func resolveLarkChannelConfigPath() string {
+	if p := os.Getenv("LARK_CHANNEL_CONFIG"); strings.TrimSpace(p) != "" {
+		return expandHome(p)
+	}
 	home, err := vfs.UserHomeDir()
 	if err != nil || home == "" {
 		fmt.Fprintf(os.Stderr, "warning: unable to determine home directory: %v\n", err)
