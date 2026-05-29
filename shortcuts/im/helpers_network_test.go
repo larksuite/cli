@@ -573,6 +573,113 @@ func TestDownloadIMResourceToPathInvalidContentRange(t *testing.T) {
 	}
 }
 
+func TestDownloadIMResourceToPathInitialRangeMustMatchRequest(t *testing.T) {
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "tenant_access_token"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code":                0,
+				"tenant_access_token": "tenant-token",
+				"expire":              7200,
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_initial/resources/file_initial"):
+			if got := req.Header.Get("Range"); got != "bytes=0-131071" {
+				return nil, fmt.Errorf("Range = %q, want bytes=0-131071", got)
+			}
+			return shortcutRawResponse(http.StatusPartialContent, []byte("bad"), http.Header{
+				"Content-Type":  []string{"application/octet-stream"},
+				"Content-Range": []string{"bytes 0-2/131082"},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_initial", "file_initial", "file", "out.bin", true)
+	if err == nil || !strings.Contains(err.Error(), "unexpected initial Content-Range") {
+		t.Fatalf("downloadIMResourceToPath() error = %v, want unexpected initial Content-Range", err)
+	}
+}
+
+func TestDownloadIMResourceRangeChunksValidateContentRange(t *testing.T) {
+	tests := []struct {
+		name       string
+		secondCR   string
+		wantErrSub string
+	}{
+		{name: "matching range succeeds", secondCR: "bytes 131072-131081/131082"},
+		{name: "wrong start fails", secondCR: "bytes 0-9/131082", wantErrSub: "unexpected Content-Range"},
+		{name: "wrong end fails", secondCR: "bytes 131072-131080/131082", wantErrSub: "unexpected Content-Range"},
+		{name: "wrong total fails", secondCR: "bytes 131072-131081/999999", wantErrSub: "unexpected Content-Range"},
+		{name: "malformed range fails", secondCR: "bytes 131072-131081/*", wantErrSub: "invalid Content-Range header on range response"},
+		{name: "missing range fails", secondCR: "", wantErrSub: "invalid Content-Range header on range response"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requestCount int
+			runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				switch {
+				case strings.Contains(req.URL.Path, "tenant_access_token"):
+					return shortcutJSONResponse(200, map[string]interface{}{
+						"code":                0,
+						"tenant_access_token": "tenant-token",
+						"expire":              7200,
+					}), nil
+				case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_123/resources/file_123"):
+					requestCount++
+					switch requestCount {
+					case 1:
+						if got := req.Header.Get("Range"); got != "bytes=0-131071" {
+							return nil, fmt.Errorf("first Range = %q, want bytes=0-131071", got)
+						}
+						return imResourceRangeResponse(http.StatusPartialContent, "bytes 0-131071/131082", strings.Repeat("a", int(probeChunkSize))), nil
+					case 2:
+						if got := req.Header.Get("Range"); got != "bytes=131072-131081" {
+							return nil, fmt.Errorf("second Range = %q, want bytes=131072-131081", got)
+						}
+						return imResourceRangeResponse(http.StatusPartialContent, tt.secondCR, "bbbbbbbbbb"), nil
+					default:
+						return nil, fmt.Errorf("unexpected resource request %d", requestCount)
+					}
+				default:
+					return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+				}
+			}))
+
+			cmdutil.TestChdir(t, t.TempDir())
+			_, size, err := downloadIMResourceToPath(context.Background(), runtime, "om_123", "file_123", "file", "out.bin", true)
+			if tt.wantErrSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrSub) {
+					t.Fatalf("downloadIMResourceToPath() error = %v, want substring %q", err, tt.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("downloadIMResourceToPath() unexpected error = %v", err)
+			}
+			if size != 131082 {
+				t.Fatalf("downloadIMResourceToPath() size = %d, want 131082", size)
+			}
+		})
+	}
+}
+
+func imResourceRangeResponse(status int, contentRange, body string) *http.Response {
+	resp := &http.Response{
+		StatusCode:    status,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
+	}
+	if contentRange != "" {
+		resp.Header.Set("Content-Range", contentRange)
+	}
+	resp.Header.Set("Content-Type", "application/octet-stream")
+	return resp
+}
+
 func TestDownloadIMResourceToPathRangeChunkFailureCleansOutput(t *testing.T) {
 	payload := bytes.Repeat([]byte("range-download-"), int((probeChunkSize+1024)/15)+1)
 	payload = payload[:probeChunkSize+1024]

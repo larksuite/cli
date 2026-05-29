@@ -95,12 +95,13 @@ func normalizeDownloadOutputPath(fileKey, outputPath string) (string, error) {
 	if outputPath == "" {
 		return fileKey, nil
 	}
-	outputPath = filepath.Clean(strings.TrimSpace(outputPath))
+	outputPath = strings.TrimSpace(outputPath)
+	if filepath.IsAbs(outputPath) || strings.HasPrefix(outputPath, "/") || strings.HasPrefix(outputPath, "\\") {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+	outputPath = filepath.Clean(outputPath)
 	if outputPath == "." {
 		return "", fmt.Errorf("path cannot be empty")
-	}
-	if filepath.IsAbs(outputPath) {
-		return "", fmt.Errorf("absolute paths are not allowed")
 	}
 	if outputPath == ".." || strings.HasPrefix(outputPath, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("path cannot escape the current working directory")
@@ -240,6 +241,14 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 			resp.Body.Close()
 			return 0, output.ErrNetwork("unexpected status code: %d", resp.StatusCode)
 		}
+		if err := validateContentRange(resp.Header.Get("Content-Range"), contentRange{
+			start: r.nextOffset,
+			end:   end,
+			total: r.totalSize,
+		}); err != nil {
+			resp.Body.Close()
+			return 0, output.ErrNetwork("invalid Content-Range header on range response: %s", err)
+		}
 
 		r.current = resp.Body
 		r.nextOffset = end + 1
@@ -286,13 +295,26 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 	)
 	switch downloadResp.StatusCode {
 	case http.StatusPartialContent:
-		totalSize, err := parseTotalSize(downloadResp.Header.Get("Content-Range"))
+		firstRange, err := parseContentRange(downloadResp.Header.Get("Content-Range"))
 		if err != nil {
 			downloadResp.Body.Close()
 			return "", 0, output.ErrNetwork("invalid Content-Range header on range response: %s", err)
 		}
-		body = newRangeChunkReader(ctx, runtime, messageID, fileKey, fileType, downloadResp.Body, totalSize)
-		sizeBytes = totalSize
+		if firstRange.start != 0 {
+			downloadResp.Body.Close()
+			return "", 0, output.ErrNetwork("unexpected initial Content-Range: got %s, want start 0", firstRange)
+		}
+		wantFirstRange := contentRange{
+			start: 0,
+			end:   min(probeChunkSize-1, firstRange.total-1),
+			total: firstRange.total,
+		}
+		if firstRange != wantFirstRange {
+			downloadResp.Body.Close()
+			return "", 0, output.ErrNetwork("unexpected initial Content-Range: got %s, want %s", firstRange, wantFirstRange)
+		}
+		body = newRangeChunkReader(ctx, runtime, messageID, fileKey, fileType, downloadResp.Body, firstRange.total)
+		sizeBytes = firstRange.total
 
 	case http.StatusOK:
 		body = downloadResp.Body
@@ -436,32 +458,72 @@ func downloadResponseError(resp *http.Response) error {
 	return output.ErrNetwork("download failed: HTTP %d", resp.StatusCode)
 }
 
-func parseTotalSize(contentRange string) (int64, error) {
-	contentRange = strings.TrimSpace(contentRange)
-	if contentRange == "" {
-		return 0, fmt.Errorf("content-range is empty")
+type contentRange struct {
+	start int64
+	end   int64
+	total int64
+}
+
+func (cr contentRange) String() string {
+	return fmt.Sprintf("bytes %d-%d/%d", cr.start, cr.end, cr.total)
+}
+
+func validateContentRange(header string, want contentRange) error {
+	got, err := parseContentRange(header)
+	if err != nil {
+		return err
 	}
-	if !strings.HasPrefix(contentRange, "bytes ") {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+	if got != want {
+		return fmt.Errorf("unexpected Content-Range: got %s, want %s", got, want)
+	}
+	return nil
+}
+
+func parseContentRange(header string) (contentRange, error) {
+	header = strings.TrimSpace(header)
+	if header == "" {
+		return contentRange{}, fmt.Errorf("content-range is empty")
+	}
+	if !strings.HasPrefix(header, "bytes ") {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header)
 	}
 
-	parts := strings.SplitN(strings.TrimPrefix(contentRange, "bytes "), "/", 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+	parts := strings.SplitN(strings.TrimPrefix(header, "bytes "), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header)
 	}
 	if parts[0] == "*" {
-		return 0, fmt.Errorf("unsupported content-range: %q", contentRange)
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header)
 	}
 	if parts[1] == "*" {
-		return 0, fmt.Errorf("unknown total size in content-range: %q", contentRange)
+		return contentRange{}, fmt.Errorf("unknown total size in content-range: %q", header)
 	}
 
-	totalSize, err := strconv.ParseInt(parts[1], 10, 64)
+	bounds := strings.SplitN(parts[0], "-", 2)
+	if len(bounds) != 2 || bounds[0] == "" || bounds[1] == "" {
+		return contentRange{}, fmt.Errorf("unsupported content-range: %q", header)
+	}
+
+	start, err := strconv.ParseInt(bounds[0], 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("parse total size: %w", err)
+		return contentRange{}, fmt.Errorf("parse range start: %w", err)
 	}
-	if totalSize <= 0 {
-		return 0, fmt.Errorf("invalid total size: %d", totalSize)
+	end, err := strconv.ParseInt(bounds[1], 10, 64)
+	if err != nil {
+		return contentRange{}, fmt.Errorf("parse range end: %w", err)
 	}
-	return totalSize, nil
+	total, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return contentRange{}, fmt.Errorf("parse total size: %w", err)
+	}
+	if total <= 0 {
+		return contentRange{}, fmt.Errorf("invalid total size: %d", total)
+	}
+	if start > end {
+		return contentRange{}, fmt.Errorf("invalid content range: start %d is after end %d", start, end)
+	}
+	if end >= total {
+		return contentRange{}, fmt.Errorf("invalid content range: end %d is outside total %d", end, total)
+	}
+	return contentRange{start: start, end: end, total: total}, nil
 }
