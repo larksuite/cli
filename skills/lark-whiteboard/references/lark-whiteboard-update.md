@@ -54,10 +54,10 @@ cat diagram.puml | lark-cli whiteboard +update \
 # 编写 Mermaid 代码
 cat > diagram.mmd << 'EOF'
 graph TD
-    A[开始] --&gt; B{判断}
-    B --&gt;|是| C[处理]
-    B --&gt;|否| D[结束]
-    C --&gt; D
+    A[开始] --> B{判断}
+    B -->|是| C[处理]
+    B -->|否| D[结束]
+    C --> D
 EOF
 
 # 从文件读取并更新
