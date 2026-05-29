@@ -82,7 +82,7 @@ lark-cli vc +recording --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 lark-cli vc +recording --meeting-ids xxx
 
 # 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark-cli minutes +download --minute-token <minute_token>
+lark-cli minutes +download --minute-tokens <minute_token>
 ```
 
 ### 场景 2：知道 meeting_id，想查询妙记基础信息
@@ -115,7 +115,7 @@ lark-cli vc +search --query "周会" --start 2026-03-10
 lark-cli vc +recording --meeting-ids <ids>
 
 # 第 3 步：使用其中一个 minute_token 下载妙记文件
-lark-cli minutes +download --minute-token <token>
+lark-cli minutes +download --minute-tokens <token>
 ```
 
 ### 场景 5：从日历事件获取录制
@@ -125,7 +125,7 @@ lark-cli minutes +download --minute-token <token>
 lark-cli vc +recording --calendar-event-ids <event_id>
 
 # 第 2 步：使用上一步返回的 minute_token 下载妙记文件
-lark-cli minutes +download --minute-token <minute_token>
+lark-cli minutes +download --minute-tokens <minute_token>
 ```
 
 ## 常见错误与排查
