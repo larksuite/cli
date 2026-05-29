@@ -11,6 +11,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/extension/fileio"
@@ -39,6 +40,8 @@ const (
 	BuildKindUnknown  = "unknown"
 
 	officialModulePath = "github.com/larksuite/cli"
+
+	agentTraceMaxLen = 256
 )
 
 // UserAgentValue returns the User-Agent value: "lark-cli/{version}".
@@ -46,10 +49,23 @@ func UserAgentValue() string {
 	return SourceValue + "/" + build.Version
 }
 
-// AgentTraceValue returns the value of the AGENT_TRACE environment
-// variable. Returns an empty string if the variable is unset or empty.
+// AgentTraceValue returns a header-safe value from the
+// LARKSUITE_CLI_AGENT_TRACE environment variable. It trims
+// surrounding whitespace, rejects values containing any Unicode
+// control character or exceeding agentTraceMaxLen, and returns ""
+// for any invalid or empty value. Callers can use the result
+// directly in HTTP headers without further sanitisation.
 func AgentTraceValue() string {
-	return os.Getenv(envvars.CliAgentTrace)
+	v := strings.TrimSpace(os.Getenv(envvars.CliAgentTrace))
+	if v == "" || len(v) > agentTraceMaxLen {
+		return ""
+	}
+	for _, r := range v {
+		if unicode.IsControl(r) {
+			return ""
+		}
+	}
+	return v
 }
 
 // BaseSecurityHeaders returns headers that every request must carry.
@@ -59,7 +75,7 @@ func BaseSecurityHeaders() http.Header {
 	h.Set(HeaderVersion, build.Version)
 	h.Set(HeaderBuild, DetectBuildKind())
 	h.Set(HeaderUserAgent, UserAgentValue())
-	if v := strings.TrimSpace(AgentTraceValue()); v != "" && !strings.ContainsAny(v, "\r\n") {
+	if v := AgentTraceValue(); v != "" {
 		h.Set(HeaderAgentTrace, v)
 	}
 	return h
