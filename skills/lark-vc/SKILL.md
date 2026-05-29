@@ -12,11 +12,17 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`references/vc-domain-boundaries.md`](references/vc-domain-boundaries.md)**，不读将导致命令使用、会议产物决策、领域边界职责判断错误：
+> 1. 了解日历 & VC、会议产物 & 文档的关联关系和职责划分
+> 2. 了解会议产物（妙记和纪要）之间的关联关系，例如：**妙记和纪要产生条件相互独立**
+> 3. 了解不同会议产物的组成部分，以便根据需求决策使用哪种产物的数据
+> 4. 了解会议总结、分析和信息提取的标准流程
+
 ## 核心概念
 
-- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting\_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `+search`）。
-- **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（包含总结、待办、章节）和逐字稿文档。
-- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写和会议纪要，通过 minute\_token 标识。
+- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `+search`）。
+- **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（包含总结、待办）和逐字稿文档。
+- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写，包含总结、待办、章节和文字记录，通过 minute_token 标识。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
 - **用户会议纪要（MeetingNotes）**：用户主动绑定到会议的纪要文档，对应 `meeting_notes`。仅通过 `--calendar-event-ids` 路径返回。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
@@ -29,8 +35,23 @@ metadata:
 3. 搜索结果存在多条数据时，务必注意分页数据获取，不要遗漏任何会议记录。
 
 ### 2. 整理会议纪要
-1. 整理纪要文档时默认给出纪要文档和逐字稿链接即可，无需读取纪要文档或逐字稿内容。
-2. 用户明确需要获取纪要文档中的总结、待办、章节产物时，再读取文档获取具体内容。
+
+> ⚠️ 在选择读取哪个产物前，请先确认你理解 AI 总结链路 vs 录制链路的区别。如不确定，先读 [`references/vc-domain-boundaries.md`](references/vc-domain-boundaries.md) 的「两条链路的独立性」章节。
+
+**⚠️ 产物选择决策 — 根据用户意图严格区分：**
+
+| 用户意图 | 必须读取的产物 | 禁止 |
+|---------|-------------|------|
+| **提炼/总结/重新总结/整理会议内容/回顾会议** | 逐字稿（`verbatim_doc_token`）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出|
+| **查看待办/章节** | AI 纪要（`note_doc_token`）或妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
+| **查看纪要链接/文档地址** | 仅返回文档链接，无需读取内容 | — |
+| **直接看 AI 总结结果** | AI 纪要（`note_doc_token`） | — |
+| **谁说了什么/完整发言记录** | 逐字稿（`verbatim_doc_token`） | — |
+
+> **为什么"提炼/总结"必须从逐字稿出发？** AI 纪要是模型对会议的二次压缩，可能遗漏讨论细节、争论过程和隐含决策。用户要求"提炼"或"重新总结"时，期望的是基于原始对话的独立分析，而非对 AI 产物的重新排版。AI 纪要可作为补充参考，但不能作为唯一信息源。
+
+1. 整理纪要文档时默认给出纪要文档、逐字稿、妙记链接即可，无需读取纪要文档或逐字稿内容。
+2. 用户明确需要获取总结、待办、章节产物时，再读取文档获取具体内容。
 3. 读取智能纪要（`note_doc_token`）内容时，纪要文档的**第一个 `<whiteboard>`** 标签是封面图（AI 生成的总结可视化），应同时下载展示给用户：
 ```bash
 # 1. 读取纪要内容
@@ -43,7 +64,7 @@ lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --out
 > **产物目录规范**：同一会议的所有下载产物（录像、逐字稿、封面图等）统一放到 `./minutes/{minute_token}/` 目录下。这与 `minutes +download` 和 `vc +notes --minute-tokens` 的默认落点保持一致，便于 Agent 聚合。显式路径（如封面图）需手动对齐到同一目录。
 
 > **纪要相关文档 — 根据用户意图选择：**
-> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办 + 章节）
+> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办）
 > - `meeting_notes` → **用户绑定的会议纪要**（用户主动关联到会议的文档，仅 `--calendar-event-ids` 路径返回）
 > - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
 > - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
@@ -119,7 +140,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 | Shortcut | 说明 |
 |----------|------|
 | [`+search`](references/lark-vc-search.md) | Search meeting records (requires at least one filter) |
-| [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
+| [`+notes`](references/lark-vc-notes.md) | Query meeting notes and minutes (via meeting-ids, minute-tokens, or calendar-event-ids) |
 | [`+recording`](references/lark-vc-recording.md) | Query minute_token from meeting-ids or calendar-event-ids |
 
 - 使用 `+search` 命令时，必须阅读 [references/lark-vc-search.md](references/lark-vc-search.md)，了解搜索参数和返回值结构。
@@ -158,9 +179,9 @@ lark-cli vc meeting get --params '{"meeting_id": "<meeting_id>", "with_participa
 
 | 方法 | 所需 scope |
 |------|-----------|
-| `+notes --meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read` |
+| `+notes --meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read`、 `vc:record:readonly` |
 | `+notes --minute-tokens` | `vc:note:read`、`minutes:minutes:readonly`、`minutes:minutes.artifacts:read`、`minutes:minutes.transcript:export` |
-| `+notes --calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read` |
+| `+notes --calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read`、 `vc:record:readonly` |
 | `+recording --meeting-ids` | `vc:record:readonly` |
 | `+recording --calendar-event-ids` | `vc:record:readonly`、`calendar:calendar:read`、`calendar:calendar.event:read` |
 | `+search` | `vc:meeting.search:read` |

@@ -38,6 +38,8 @@ import (
 var (
 	scopesMeetingIDs = []string{
 		"vc:meeting.meetingevent:read",
+		"vc:note:read",
+		"vc:record:readonly",
 	}
 	scopesMinuteTokens = []string{
 		"minutes:minutes:readonly",
@@ -48,6 +50,7 @@ var (
 		"calendar:calendar:read",
 		"calendar:calendar.event:read",
 		"vc:meeting.meetingevent:read",
+		"vc:record:readonly",
 	}
 )
 
@@ -58,6 +61,37 @@ const (
 )
 
 const logPrefix = "[vc +notes]"
+
+const (
+	minutesNoReadPermissionCode = 2091005
+
+	// recording API specific error codes (used to surface meeting minute_token state).
+	recordingNotFoundCode     = 121004 // 该会议没有妙记文件
+	recordingNoPermissionCode = 121005 // 非会议参与者无权查看
+	recordingGeneratingCode   = 124002 // 录制/妙记文件仍在生成中
+
+	// note detail API specific error code.
+	noteNoPermissionCode = 121005 // 调用者没有该纪要的阅读权限
+)
+
+func minutesReadError(err error, minuteToken string) error {
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Code != minutesNoReadPermissionCode {
+		return err
+	}
+
+	return &output.ExitError{
+		Code: output.ExitAPI,
+		Detail: &output.ErrDetail{
+			Type:    "no_read_permission",
+			Code:    minutesNoReadPermissionCode,
+			Message: fmt.Sprintf("No read permission for minute %s: cannot query the minute.", minuteToken),
+			Hint:    "Ask the minute owner for minute file read permission",
+			Detail:  exitErr.Detail.Detail,
+		},
+		Err: err,
+	}
+}
 
 // validMinuteToken matches the server's minute-token format and blocks any
 // user-supplied token from reaching filesystem paths unsanitized.
@@ -196,7 +230,10 @@ func fetchNoteByCalendarEventID(ctx context.Context, runtime *common.RuntimeCont
 	for _, meetingID := range relInfo.MeetingIDs {
 		fmt.Fprintf(errOut, "%s event %s → meeting_id=%s\n", logPrefix, sanitizeLogValue(instanceID), sanitizeLogValue(meetingID))
 		noteResult := fetchNoteByMeetingID(ctx, runtime, meetingID)
-		if noteResult["error"] == nil {
+		// success means note detail was retrieved, regardless of whether the
+		// recording API (minute_token) call succeeded — minute_token failures
+		// surface as part of the merged `error` string for downstream visibility.
+		if _, ok := noteResult["note_doc_token"].(string); ok {
 			for k, v := range noteResult {
 				result[k] = v
 			}
@@ -246,7 +283,51 @@ func asStringSlice(v any) []string {
 	return ss
 }
 
-// fetchNoteByMeetingID queries notes via meeting_id.
+// fetchMeetingMinuteToken queries the recording API of a meeting and returns
+// the associated minute_token (parsed from the recording URL) and an
+// optional human-friendly error message. On success token is non-empty and
+// errMsg is empty; on failure token is empty and errMsg describes the cause:
+//   - 121004: meeting has no minute file
+//   - 121005: caller has no permission for the meeting recording
+//   - 124002: recording / minute file is still being generated
+//
+// Other failures fall back to the raw API error description so Agents can
+// still parse the underlying cause.
+func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (token, errMsg string) {
+	data, err := runtime.DoAPIJSON(http.MethodGet,
+		fmt.Sprintf("/open-apis/vc/v1/meetings/%s/recording", validate.EncodePathSegment(meetingID)),
+		nil, nil)
+	if err != nil {
+		var exitErr *output.ExitError
+		if errors.As(err, &exitErr) && exitErr.Detail != nil {
+			switch exitErr.Detail.Code {
+			case recordingNotFoundCode:
+				return "", "no minute file for this meeting"
+			case recordingNoPermissionCode:
+				return "", "no permission to access this meeting's minute; ask the meeting owner to share the minute"
+			case recordingGeneratingCode:
+				return "", "minute file is still being generated; please retry later"
+			}
+		}
+		return "", fmt.Sprintf("failed to query recording: %v", err)
+	}
+
+	recording, _ := data["recording"].(map[string]any)
+	if recording == nil {
+		return "", "no recording available for this meeting"
+	}
+	recordingURL, _ := recording["url"].(string)
+	if t := extractMinuteToken(recordingURL); t != "" {
+		return t, ""
+	}
+	return "", "no minute_token found in recording URL"
+}
+
+// fetchNoteByMeetingID queries notes via meeting_id and additionally fetches
+// the meeting's minute_token via the recording API. The two paths are queried
+// independently; their failures are merged into a single `error` field
+// (semicolon-separated) so Agents always see all causes at once. The
+// `minute_token` field is only populated on success.
 func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, meetingID string) map[string]any {
 	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
 		larkcore.QueryParams{"with_participants": []string{"false"}, "query_mode": []string{"0"}}, nil)
@@ -259,14 +340,58 @@ func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, m
 		return map[string]any{"meeting_id": meetingID, "error": "meeting not found"}
 	}
 
-	noteID, _ := meeting["note_id"].(string)
-	if noteID == "" {
-		return map[string]any{"meeting_id": meetingID, "error": "no notes available for this meeting"}
+	// Always attempt to query the meeting's minute_token via the recording API,
+	// regardless of whether the meeting has a note_id, so callers always see
+	// minute state for follow-up calls (e.g. `vc +notes --minute-tokens=...`).
+	minuteToken, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
+
+	var result map[string]any
+	var noteErr string
+	if noteID, _ := meeting["note_id"].(string); noteID != "" {
+		result = fetchNoteDetail(ctx, runtime, noteID)
+		if msg, _ := result["error"].(string); msg != "" {
+			noteErr = msg
+			delete(result, "error")
+		}
+	} else {
+		result = map[string]any{}
+		noteErr = "no notes available for this meeting"
 	}
 
-	result := fetchNoteDetail(ctx, runtime, noteID)
 	result["meeting_id"] = meetingID
+	if minuteToken != "" {
+		result["minute_token"] = minuteToken
+	}
+	if combined := joinErrors(noteErr, minuteErr); combined != "" {
+		result["error"] = combined
+	}
 	return result
+}
+
+// joinErrors merges multiple non-empty error messages with "; " so Agents can
+// see all causes at once when both note and minute paths fail.
+func joinErrors(msgs ...string) string {
+	parts := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		if m != "" {
+			parts = append(parts, m)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// hasNotesPayload reports whether a result map carries any usable note or
+// minute payload, irrespective of partial failures surfaced via `error`.
+func hasNotesPayload(m map[string]any) bool {
+	if m == nil {
+		return false
+	}
+	for _, k := range []string{"note_doc_token", "verbatim_doc_token", "minute_token", "meeting_notes", "shared_doc_tokens", "artifacts"} {
+		if v, ok := m[k]; ok && v != nil && v != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchNoteByMinuteToken queries notes via minute_token.
@@ -277,7 +402,13 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 
 	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
 	if err != nil {
-		return map[string]any{"minute_token": minuteToken, "error": fmt.Sprintf("failed to query minutes: %v", err)}
+		err = minutesReadError(err, minuteToken)
+		result := map[string]any{"minute_token": minuteToken, "error": err.Error()}
+		var exitErr *output.ExitError
+		if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Hint != "" {
+			result["hint"] = exitErr.Detail.Hint
+		}
+		return result
 	}
 
 	minute, _ := data["minute"].(map[string]any)
@@ -472,6 +603,10 @@ func extractDocTokens(refs []any) []string {
 func fetchNoteDetail(_ context.Context, runtime *common.RuntimeContext, noteID string) map[string]any {
 	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/notes/%s", validate.EncodePathSegment(noteID)), nil, nil)
 	if err != nil {
+		var exitErr *output.ExitError
+		if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code == noteNoPermissionCode {
+			return map[string]any{"error": fmt.Sprintf("[%v]: no read permission for this meeting note", exitErr.Detail.Code)}
+		}
 		return map[string]any{"error": fmt.Sprintf("failed to query note detail: %v", err)}
 	}
 
@@ -568,8 +703,9 @@ var VCNotes = common.Shortcut{
 			return common.NewDryRunAPI().
 				GET("/open-apis/vc/v1/meetings/{meeting_id}").
 				GET("/open-apis/vc/v1/notes/{note_id}").
+				GET("/open-apis/vc/v1/meetings/{meeting_id}/recording").
 				Set("meeting_ids", common.SplitCSV(ids)).
-				Set("steps", "meeting.get → note_id → note detail API")
+				Set("steps", "meeting.get → note_id → note detail API + recording API → minute_token")
 		}
 		if tokens := runtime.Str("minute-tokens"); tokens != "" {
 			return common.NewDryRunAPI().
@@ -586,8 +722,9 @@ var VCNotes = common.Shortcut{
 			POST("/open-apis/calendar/v4/calendars/{calendar_id}/events/mget_instance_relation_info").
 			GET("/open-apis/vc/v1/meetings/{meeting_id}").
 			GET("/open-apis/vc/v1/notes/{note_id}").
+			GET("/open-apis/vc/v1/meetings/{meeting_id}/recording").
 			Set("calendar_event_ids", common.SplitCSV(ids)).
-			Set("steps", "primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note detail API")
+			Set("steps", "primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note detail API + recording API → minute_token")
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		errOut := runtime.IO().ErrOut
@@ -641,11 +778,13 @@ var VCNotes = common.Shortcut{
 			}
 		}
 
-		// count results
+		// count results: a result counts as "successful" when it carries any
+		// note/minute payload, even if the merged `error` field surfaces a
+		// partial failure (e.g. note ok but minute_token lookup failed).
 		successCount := 0
 		for _, r := range results {
 			m, _ := r.(map[string]any)
-			if m["error"] == nil {
+			if hasNotesPayload(m) {
 				successCount++
 			}
 		}
