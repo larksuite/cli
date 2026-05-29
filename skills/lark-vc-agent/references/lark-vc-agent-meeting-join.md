@@ -16,6 +16,9 @@ lark-cli vc +meeting-join --meeting-number 123456789
 # 指定会议号 + 密码
 lark-cli vc +meeting-join --meeting-number 123456789 --password 8888
 
+# 从邀请事件透传 call_id（参见「如何获取输入参数」）
+lark-cli vc +meeting-join --meeting-number 123456789 --call-id a08e06bf-9a41-44e4-a89c-a7871899e783
+
 # 输出格式
 lark-cli vc +meeting-join --meeting-number 123456789 --format json
 
@@ -29,6 +32,7 @@ lark-cli vc +meeting-join --meeting-number 123456789 --dry-run
 |------|------|------|
 | `--meeting-number <no>` | 是 | 会议号，必须为 **9 位纯数字** |
 | `--password <pw>` | 否 | 会议密码，仅在该会议设置了入会密码时传入 |
+| `--call-id <id>` | 否 | 从 `vc.bot.meeting_invited_v1` 邀请事件透传的 `call_id`，原样回传即可。Agent 主动入会或无邀请事件来源时不传 |
 | `--format <fmt>` | 否 | 输出格式：json (默认) / pretty / table / ndjson / csv |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
@@ -76,6 +80,7 @@ lark-cli vc +meeting-join --meeting-number 123456789 --dry-run
 |---------|---------|
 | `meeting-number` | 会议号由主持人分享；也可从会议链接尾部解析 9 位数字 |
 | `password` | 若会议设置了入会密码，由主持人提供 |
+| `call-id` | 由 `vc.bot.meeting_invited_v1` 邀请事件的 `call_id` 字段携带，Agent 收到事件时透传过来；无邀请事件场景（如 Agent 主动入会）不传 |
 
 ## Agent 组合场景
 

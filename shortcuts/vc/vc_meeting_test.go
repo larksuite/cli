@@ -104,6 +104,53 @@ func TestBuildMeetingJoinBody_TrimsWhitespace(t *testing.T) {
 	}
 }
 
+func TestBuildMeetingJoinBody_WithoutCallID(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if _, exists := body["call_id"]; exists {
+		t.Errorf("call_id should be omitted when empty, got %v", body["call_id"])
+	}
+}
+
+func TestBuildMeetingJoinBody_WithCallID(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+	_ = cmd.Flags().Set("call-id", "a08e06bf-9a41-44e4-a89c-a7871899e783")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if body["call_id"] != "a08e06bf-9a41-44e4-a89c-a7871899e783" {
+		t.Errorf("call_id = %v, want a08e06bf-9a41-44e4-a89c-a7871899e783", body["call_id"])
+	}
+}
+
+func TestBuildMeetingJoinBody_TrimsCallIDWhitespace(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+	_ = cmd.Flags().Set("call-id", "  call-xyz  ")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if body["call_id"] != "call-xyz" {
+		t.Errorf("call_id should be trimmed, got %q", body["call_id"])
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Validate tests: VCMeetingJoin
 // ---------------------------------------------------------------------------
