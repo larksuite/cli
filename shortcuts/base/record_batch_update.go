@@ -19,13 +19,14 @@ var BaseRecordBatchUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: "batch update JSON object", Required: true},
+		{Name: "json", Desc: `batch update JSON object, e.g. {"record_id_list":["rec_xxx"],"patch":{"Status":"Done"}}; same patch applies to all records`, Required: true},
 	},
-	Tips: []string{
-		`Example: --json '{"record_id_list":["recXXX"],"patch":{"Status":"Done"}}'`,
-		"Agent hint: use the lark-base skill's record-batch-update guide for usage and limits.",
-		"Agent hint: use lark-base-cell-value.md as the source of truth for each patch CellValue.",
-	},
+	Tips: append([]string{
+		"Happy path fields: record_id_list is the target record IDs; patch is a field map applied unchanged to every target record.",
+		"Do not use +record-batch-update for per-row different values; call +record-upsert per record or use another supported flow.",
+		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
+		"Batch update supports max 200 records per call; use the record-batch-update guide for command limits and edge cases.",
+	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)
 	},

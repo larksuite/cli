@@ -17,7 +17,11 @@ var BaseTableGet = common.Shortcut{
 	Scopes:      []string{"base:table:read", "base:field:read", "base:view:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true)},
-	DryRun:      dryRunTableGet,
+	Tips: []string{
+		`Example: lark-cli base +table-get --base-token <base_token> --table-id "Tasks"`,
+		"table-id accepts a table ID (tbl...) or the table name in the current Base.",
+	},
+	DryRun: dryRunTableGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeTableGet(runtime)
 	},

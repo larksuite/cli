@@ -1,8 +1,8 @@
-# base shortcut field JSON 规范（lark-base-shortcut-field-properties）
+# Base field JSON SSOT
 
 > 适用命令：`lark-cli base +field-create`、`lark-cli base +field-update`
 
-本文件定义 **shortcut 写字段** 时 `--json` 的推荐格式，是字段类型与字段 JSON 结构的 source of truth。目标不是复刻完整 schema，而是让 agent 稳定产出正确 payload。
+本文档定义 `+field-create` / `+field-update` 写字段时 `--json` 的推荐格式，是字段类型与字段 JSON 结构的 source of truth。目标不是复刻完整 schema，而是让 agent 稳定产出正确 payload。
 
 ## 1. 顶层规则（必须遵守）
 

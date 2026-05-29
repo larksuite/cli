@@ -20,7 +20,7 @@ var BaseFieldList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size"},
+		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 	},
 	DryRun: dryRunFieldList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

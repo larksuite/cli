@@ -13,7 +13,7 @@
 
 > [!IMPORTANT]
 > - 本命令返回的是**图表结果协议**，不是 block 元数据；
-> - 如果你需要 `name`、`type`、`layout`、`data_config` 等配置，请先用 [`+dashboard-block-get`](lark-base-dashboard-block-get.md)；
+> - 如果你需要 `name`、`type`、`layout`、`data_config` 等配置，请先用 `+dashboard-block-get`；
 > - 文本组件（`text`）不涉及计算，不适用本命令；
 
 ## 一句话理解
@@ -668,7 +668,7 @@ lark-cli base +dashboard-block-get-data \
 - `data_config`
 - 所属 dashboard 信息
 
-这些都应该通过 [`+dashboard-block-get`](lark-base-dashboard-block-get.md) 获取。
+这些都应该通过 `+dashboard-block-get` 获取。
 
 ### 误区 2：以为它返回的是原始记录
 
@@ -713,5 +713,5 @@ GET /open-apis/base/v3/bases/bascn_example_token/dashboards/blocks/chtxxxxxxxx/d
 ## 参考
 
 - [lark-base-dashboard.md](lark-base-dashboard.md) — dashboard 模块总指引
-- [lark-base-dashboard-block-get.md](lark-base-dashboard-block-get.md) — 获取 block 元数据
+- `+dashboard-block-get` — 获取 block 元数据
 - [dashboard-block-data-config.md](dashboard-block-data-config.md) — data_config 结构和组件类型说明

@@ -17,7 +17,10 @@ var BaseBaseGet = common.Shortcut{
 	Scopes:      []string{"base:app:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true)},
-	DryRun:      dryRunBaseGet,
+	Tips: []string{
+		"Use a real Base token; workspace tokens and wiki tokens are not accepted by this command.",
+	},
+	DryRun: dryRunBaseGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeBaseGet(runtime)
 	},

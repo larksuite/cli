@@ -20,7 +20,13 @@ var BaseWorkflowGet = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
-		{Name: "user-id-type", Desc: "user ID type for creator/updater fields", Enum: []string{"open_id", "union_id", "user_id"}},
+		{Name: "user-id-type", Desc: "user ID type for creator/updater fields, default open_id", Enum: []string{"open_id", "union_id", "user_id"}},
+	},
+	Tips: []string{
+		"workflow-id must start with wkf; use +workflow-list if the ID is unknown.",
+		"steps may be an empty array; that is valid for an unconfigured workflow.",
+		"Use +workflow-get before +workflow-update, then edit the returned definition and keep fields you do not intend to change.",
+		"Read lark-base-workflow-schema.md when interpreting or reusing returned steps.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

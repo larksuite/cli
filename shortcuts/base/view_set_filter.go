@@ -20,10 +20,9 @@ var BaseViewSetFilter = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "filter JSON object", Required: true},
+		{Name: "json", Desc: `filter JSON object, e.g. {"logic":"and","conditions":[["Status","==","Todo"]]}`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"logic":"and","conditions":[["fldStatus","==","Todo"]]}'`,
 		"Agent hint: use the lark-base skill's view-set-filter guide for usage and limits.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

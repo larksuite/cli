@@ -2,11 +2,11 @@
 
 Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、排序、Top/Bottom N、聚合统计、分组聚合、多表关联、临时分析和查询后写入前的目标定位。
 
-具体命令参数不要在本文猜；需要时跳到对应 reference：
+本文只管查询选路和正确性边界；具体操作前先读真实结构和现状，复杂 JSON 再跳到 reference：
 
-- `+data-query`: [lark-base-data-query.md](lark-base-data-query.md)
-- 视图筛选/排序/投影: [lark-base-view-set-filter.md](lark-base-view-set-filter.md), [lark-base-view-set-sort.md](lark-base-view-set-sort.md), [lark-base-view-set-visible-fields.md](lark-base-view-set-visible-fields.md)
-- 记录读取: [lark-base-record.md](lark-base-record.md)
+- `+data-query`: entry guide [lark-base-data-query-guide.md](lark-base-data-query-guide.md), full DSL SSOT [lark-base-data-query.md](lark-base-data-query.md)
+- 视图筛选: [lark-base-view-set-filter.md](lark-base-view-set-filter.md)
+- 视图排序/投影、记录读取: 先 get/list 现状，确认字段 ID、字段名、分页和投影范围
 
 ## 0. Hard Rules
 
@@ -43,7 +43,7 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 3. 设置 filter/sort/visible fields。
 4. `+record-list --view-id <view_id> --limit <N>` 读取结果。
 
-不要从未筛选、未排序的全表输出中手动挑选。一次性查询可用临时视图；如果这个筛选/排序结果对用户后续查看有价值，应保留为持久视图，不要删除，并告知用户视图名称和用途。视图参数细节见 view-set references。
+不要从未筛选、未排序的全表输出中手动挑选。一次性查询可用临时视图；如果这个筛选/排序结果对用户后续查看有价值，应保留为持久视图，不要删除，并告知用户视图名称和用途。筛选 JSON 见 view-set-filter reference；排序和可见字段配置先读取现状，再按目标字段、顺序和排序方向改写。
 
 ### 2.2 聚合分析与 TopN
 
@@ -52,7 +52,7 @@ Base 数据查询与分析任务的执行契约。覆盖记录读取、筛选、
 - 让 Base 云端查询服务完成 filters、dimensions、measures、sort、pagination.limit。
 - `pagination.limit` 是 Base 云端查询服务中的聚合结果限制，不是本地分页扫描。
 - 需要输出明细或用户可读字段时，先拿业务 key，再用 record 路径精确回查。
-- 字段类型、日期 value、DSL shape 以 [lark-base-data-query.md](lark-base-data-query.md) 为准。
+- 常用聚合 fewshot 先读 [lark-base-data-query-guide.md](lark-base-data-query-guide.md)；字段类型、日期 value、DSL shape 以 [lark-base-data-query.md](lark-base-data-query.md) 为准。
 
 ### 2.3 关系查询与回查
 

@@ -21,6 +21,9 @@ var BaseDashboardGet = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 	},
+	Tips: []string{
+		"Use +dashboard-block-list or +dashboard-block-get when you need block-level details.",
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id").

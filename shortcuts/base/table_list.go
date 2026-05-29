@@ -19,7 +19,7 @@ var BaseTableList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "50", Desc: "pagination limit"},
+		{Name: "limit", Type: "int", Default: "50", Desc: "pagination size, range 1-100"},
 	},
 	DryRun: dryRunTableList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

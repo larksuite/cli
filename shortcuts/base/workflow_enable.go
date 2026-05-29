@@ -21,6 +21,11 @@ var BaseWorkflowEnable = common.Shortcut{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
 	},
+	Tips: []string{
+		"workflow-id must start with wkf; do not pass a tbl table ID from the same URL.",
+		"Enable only changes workflow state; it does not modify steps.",
+		"New workflows are created disabled; enable after creation only when the user wants it active.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
 			return common.FlagErrorf("--base-token must not be blank")

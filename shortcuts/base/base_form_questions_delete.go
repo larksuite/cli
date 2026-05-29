@@ -25,6 +25,9 @@ var BaseFormQuestionsDelete = common.Shortcut{
 		{Name: "form-id", Desc: "form ID", Required: true},
 		{Name: "question-ids", Desc: `JSON array of question IDs to delete, max 10 items, e.g. '["q_001","q_002"]'`, Required: true},
 	},
+	Tips: []string{
+		baseHighRiskYesTip,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").

@@ -20,11 +20,12 @@ var BaseViewSetTimebar = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "timebar JSON object", Required: true},
+		{Name: "json", Desc: `timebar JSON object with start_time, end_time, title, e.g. {"start_time":"Start Date","end_time":"End Date","title":"Name"}`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"start_time":"fldStart","end_time":"fldEnd","title":"fldTitle"}'`,
-		"Agent hint: use the lark-base skill's view-set-timebar guide for usage and limits.",
+		"Supported view types: calendar, gantt.",
+		"start_time, end_time, and title are required; use date/time fields for start_time and end_time.",
+		"Use +view-get-timebar first when modifying an existing timebar configuration.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

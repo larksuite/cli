@@ -22,6 +22,10 @@ var BaseFormDelete = common.Shortcut{
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
 	},
+	Tips: []string{
+		"Use +form-list or +form-get first when the form target is ambiguous.",
+		baseHighRiskYesTip,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id").

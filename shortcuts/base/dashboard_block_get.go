@@ -24,6 +24,11 @@ var BaseDashboardBlockGet = common.Shortcut{
 		blockIDFlag(true),
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 	},
+	Tips: []string{
+		"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
+		"Use this command for block metadata such as name, type, layout, and data_config.",
+		"Use +dashboard-block-get-data when you need the computed chart result instead of metadata.",
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{}
 		if uid := strings.TrimSpace(runtime.Str("user-id-type")); uid != "" {

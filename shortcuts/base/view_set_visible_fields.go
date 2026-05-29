@@ -20,11 +20,12 @@ var BaseViewSetVisibleFields = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: `visible fields JSON object with "visible_fields"`, Required: true},
+		{Name: "json", Desc: `visible fields JSON object, e.g. {"visible_fields":["Name","Status"]}`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"visible_fields":["fldXXX"]}'`,
-		"Agent hint: use the lark-base skill's view-set-visible-fields guide for usage and limits.",
+		"Supported view types: grid, kanban, gallery, calendar, gantt.",
+		"Use a JSON object, not a bare array; primary field may be forced to the first position by the API.",
+		"visible_fields controls both visibility and order; include every field that should remain visible.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

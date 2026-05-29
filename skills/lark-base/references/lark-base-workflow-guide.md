@@ -1,11 +1,10 @@
-# Workflow 构造指南
+# Workflow guide
 
-本文档提供 Workflow 的完整构造示例、常见模式和错误避免指南。
+本文档是 Workflow 的入口指南，帮助选择步骤组合、理解创建/更新边界，并引导到 steps JSON SSOT。
 
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
-> - 创建命令：[lark-base-workflow-create.md](lark-base-workflow-create.md)
-> - 更新命令：[lark-base-workflow-update.md](lark-base-workflow-update.md)
+> - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
 
 ---
 
@@ -828,5 +827,4 @@
 ## 参考
 
 - [lark-base-workflow-schema.md](lark-base-workflow-schema.md) — 字段定义参考
-- [lark-base-workflow-create.md](lark-base-workflow-create.md) — 创建命令
-- [lark-base-workflow-update.md](lark-base-workflow-update.md) — 更新命令
+- 创建/更新前先确认真实表名、字段名和目标 workflow ID；`steps` 结构按 schema 构造，不凭自然语言猜 `type`

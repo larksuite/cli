@@ -20,7 +20,16 @@ var BaseWorkflowUpdate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
-		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"New Title","steps":[...]}`, Required: true},
+		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before replacing steps", Required: true},
+	},
+	Tips: []string{
+		"lark-cli base +workflow-update --base-token <base_token> --workflow-id <workflow_id> --json @workflow.json",
+		"PUT uses full replacement semantics; omitting steps clears the existing workflow steps.",
+		"Use +workflow-get first, then edit the returned definition and keep title/status/steps fields you do not intend to change.",
+		"workflow-id must start with wkf; do not pass a tbl table ID.",
+		"Step ids must be unique, and every next/children link must reference an existing step id.",
+		"Updating does not enable or disable a workflow; call +workflow-enable or +workflow-disable separately.",
+		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

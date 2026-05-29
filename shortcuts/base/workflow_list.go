@@ -20,7 +20,11 @@ var BaseWorkflowList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "status", Desc: "filter by status", Enum: []string{"enabled", "disabled"}},
-		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request (max 100)"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, max 100"},
+	},
+	Tips: []string{
+		"Returns workflow_id values with wkf prefix; pass those IDs to +workflow-get/enable/disable/update.",
+		"This shortcut auto-paginates and returns all matched workflows.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

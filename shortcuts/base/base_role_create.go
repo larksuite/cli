@@ -25,7 +25,12 @@ var BaseRoleCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
-		{Name: "json", Desc: `body JSON (AdvPermBaseRoleConfig), e.g. {"role_name":"Reviewer","role_type":"custom_role","table_rule_map":{...}}`, Required: true},
+		{Name: "json", Desc: "role config JSON; read lark-base-role-guide.md and role-config.md before constructing permissions", Required: true},
+	},
+	Tips: []string{
+		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
+		"Use lark-base-role-guide.md as the entry guide and role-config.md as the role permission JSON SSOT.",
+		"Create supports custom_role only.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

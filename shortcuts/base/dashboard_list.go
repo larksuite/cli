@@ -20,8 +20,11 @@ var BaseDashboardList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "page-size", Desc: "page size (max 100)"},
+		{Name: "page-size", Desc: "page size, max 100"},
 		{Name: "page-token", Desc: "pagination token"},
+	},
+	Tips: []string{
+		"Use returned dashboard_id values for +dashboard-get, +dashboard-block-list, and +dashboard-block-create.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{}

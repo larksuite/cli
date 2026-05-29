@@ -515,7 +515,7 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 			if !strings.Contains(err.Error(), "--json must be a JSON object") {
 				t.Fatalf("err=%v", err)
 			}
-			if !strings.Contains(err.Error(), "lark-base skill") {
+			if !strings.Contains(err.Error(), "match the documented shape") {
 				t.Fatalf("err=%v", err)
 			}
 			if strings.Contains(err.Error(), "array") {
