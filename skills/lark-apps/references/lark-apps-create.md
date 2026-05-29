@@ -19,6 +19,10 @@ lark-cli apps +create \
 
 # Dry-run（仅打印请求，不执行）
 lark-cli apps +create --name "Demo" --app-type HTML --dry-run
+
+# 创建 fullstack（全栈）应用：必带 --message，原样透传用户需求
+lark-cli apps +create --name "团队任务看板" --app-type fullstack \
+  --message "做一个团队任务看板，支持登录、任务增删改查、按人筛选"
 ```
 
 ## 参数
@@ -26,9 +30,10 @@ lark-cli apps +create --name "Demo" --app-type HTML --dry-run
 | 参数 | 必填 | 说明 |
 |---|---|---|
 | `--name <str>` | ✅ | 应用显示名 |
-| `--app-type <enum>` | ✅ | 应用类型，当前可选值：`HTML`（区分大小写；未来会扩展） |
+| `--app-type <enum>` | ✅ | 应用类型，可选值：`HTML` 或 `fullstack`（均区分大小写） |
 | `--description <str>` | ❌ | 应用描述 |
 | `--icon-url <url>` | ❌ | 应用图标 URL；不传服务端给默认图标 |
+| `--message <str>` | fullstack 时 ✅，HTML 时忽略 | 用户描述应用需求的原话原文；`--app-type fullstack` 时必填，原样透传给服务端；`--app-type HTML` 时即使传了也被静默忽略（不进请求体、不报错） |
 
 ## 返回值
 
@@ -65,16 +70,29 @@ lark-cli apps +create --name "Demo" --app-type HTML --dry-run
 
 ## 字段语义
 
-- `app_type` 是应用类型枚举，**区分大小写**，当前只允许 `HTML`，未来会扩展（如 `SPA`、`NATIVE` 等）；不在白名单的取值 CLI 端会直接拒绝
+- `app_type` 是应用类型枚举，**区分大小写**，当前支持 `HTML` 和 `fullstack`（两者均大小写敏感精确匹配，不在白名单的取值 CLI 端直接拒绝）
+- `message` 仅 `app_type=fullstack` 时生效，原样透传用户描述需求的原话，不改写、不总结；`HTML` 类型时不进请求体
 - `created_at` 是 ISO 8601 UTC 时间字符串
 - `error.hint` 是 CLI 给出的可执行修复建议，**优先**转述给用户；hint 为空时退回 `error.message`
 - 不要原样把 envelope JSON 复述给用户
+
+## 意图识别：HTML vs fullstack
+
+在调用 `+create` 前，先根据用户描述判断应用类型：
+
+| 用户信号 | 判定 | `--app-type` |
+|---------|------|-------------|
+| 纯静态展示：HTML、PPT、幻灯片、单页、静态站点、Web demo（无后端逻辑） | 静态页面 | `HTML` |
+| 需要后端能力：数据库、登录鉴权、API、表单提交存储、用户系统、增删改查、持久化、服务端逻辑、"全栈"、"带后台 / 后台管理" | 全栈应用 | `fullstack` |
+| 模糊不清、无法判断 | 默认 `HTML`（更轻、且为现有成熟流程），必要时追问一句澄清 | `HTML` |
+
+fullstack 判定后：`--message` 取用户描述需求的**原话原文**，不改写、不总结。
 
 ## 典型场景
 
 ### 场景 1：用户说"创建一个妙搭应用，名字叫 X"
 
-目前只支持 HTML 类型，统一传 `--app-type HTML`（用户没说类型时不要追问，直接用大写 HTML，区分大小写）：
+先按意图识别判断类型。若用户未表达后端需求（纯展示/静态）或意图模糊，默认用 `--app-type HTML`（更轻、且为现有成熟流程）：
 
 ```bash
 lark-cli apps +create --name "X" --app-type HTML
@@ -96,7 +114,22 @@ lark-cli apps +create --name "Q4 调研" --app-type HTML --description "..."
 
 返回后同场景 1。
 
-### 场景 3：失败处理
+### 场景 3：创建 fullstack 应用
+
+识别到用户需要全栈/带后端能力的应用后（如需要登录、数据库、增删改查、用户系统等），使用 `--app-type fullstack`，并将用户原话原文作为 `--message` 传入：
+
+```bash
+lark-cli apps +create --name "团队任务看板" --app-type fullstack \
+  --message "做一个团队任务看板，支持登录、任务增删改查、按人筛选"
+```
+
+向用户报告：
+
+> 全栈应用「{name}」已创建（ID: `{app_id}`）。
+
+> ⚠️ **注意**：fullstack 应用创建后续的本地开发链路（git 凭据初始化 + git clone）**待 `+git-credential-init` 命令就绪后补充**，当前版本到 `+create` 为止。
+
+### 场景 4：失败处理
 
 转述 `error.hint`（优先）或 `error.message`，**不要**原样输出 envelope JSON。
 
