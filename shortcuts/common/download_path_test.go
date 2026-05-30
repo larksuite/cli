@@ -77,6 +77,14 @@ func TestAutoAppendDownloadExtension(t *testing.T) {
 			want: "artifact.csv",
 		},
 		{
+			name: "appends json extension from content type",
+			path: "artifact",
+			header: http.Header{
+				"Content-Type": []string{"application/json; charset=utf-8"},
+			},
+			want: "artifact.json",
+		},
+		{
 			name: "appends extension from content disposition when content type is generic",
 			path: "artifact",
 			header: http.Header{
