@@ -17,6 +17,7 @@ func resetProxyPluginState() {
 	loadCfg = nil
 	loadErr = nil
 	proxyPluginTransport = sync.OnceValue(buildProxyPluginTransport)
+	cachedBlockedTransport = sync.OnceValue(buildBlockedTransport)
 }
 
 func TestSharedTransport_NotConfigured(t *testing.T) {
@@ -77,6 +78,46 @@ func TestSharedTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *test
 	}
 	if rt == http.DefaultTransport {
 		t.Fatalf("SharedTransport() returned http.DefaultTransport, want fail-closed transport")
+	}
+	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
+	if err == nil {
+		t.Fatalf("RoundTrip() error = nil, response = %#v; want fail-closed error", resp)
+	}
+	if resp != nil {
+		t.Fatalf("RoundTrip() response = %#v, want nil", resp)
+	}
+}
+
+func TestSharedTransport_InvalidConfigReturnsCachedInstance(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+
+	writeFile(t, Path(), []byte(`{`), 0600)
+
+	a, ok := SharedTransport()
+	if !ok {
+		t.Fatal("SharedTransport() ok = false, want true")
+	}
+	b, ok := SharedTransport()
+	if !ok {
+		t.Fatal("SharedTransport() ok = false, want true")
+	}
+	if a != b {
+		t.Fatalf("SharedTransport() returned different instances on repeated calls; blocked transport must be cached")
+	}
+}
+
+func TestBuildProxyPluginTransport_InvalidConfigFailsClosed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+
+	writeFile(t, Path(), []byte(`{`), 0600)
+
+	rt := buildProxyPluginTransport()
+	if rt == http.DefaultTransport {
+		t.Fatalf("buildProxyPluginTransport() returned http.DefaultTransport, want fail-closed transport")
 	}
 	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
 	if err == nil {

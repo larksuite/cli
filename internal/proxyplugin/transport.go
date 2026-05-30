@@ -14,6 +14,19 @@ import (
 // custom root CA), lazily built on first use when proxy plugin mode is enabled.
 var proxyPluginTransport = sync.OnceValue(buildProxyPluginTransport)
 
+// cachedBlockedTransport is a fail-closed transport cached on first use when
+// the proxy plugin config exists but is invalid. This avoids cloning
+// http.DefaultTransport on every SharedTransport call.
+var cachedBlockedTransport = sync.OnceValue(buildBlockedTransport)
+
+func buildBlockedTransport() http.RoundTripper {
+	def, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return blockedRoundTripper{err: fmt.Errorf("proxy plugin config is invalid and http.DefaultTransport is %T, want *http.Transport: %w", http.DefaultTransport, loadErr)}
+	}
+	return blockedTransport(def, fmt.Errorf("proxy plugin config is invalid: %w", loadErr))
+}
+
 func buildProxyPluginTransport() http.RoundTripper {
 	def, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -21,7 +34,12 @@ func buildProxyPluginTransport() http.RoundTripper {
 	}
 
 	cfg, err := Load()
-	if err != nil || cfg == nil || !cfg.Enabled() {
+	if err != nil {
+		// Fail closed: config file exists but is malformed/unreadable — do not
+		// silently fall back to direct egress.
+		return blockedTransport(def, fmt.Errorf("proxy plugin config is invalid: %w", err))
+	}
+	if cfg == nil || !cfg.Enabled() {
 		return def
 	}
 	t, err := cfg.ApplyToTransport(def)
@@ -38,13 +56,7 @@ func buildProxyPluginTransport() http.RoundTripper {
 func SharedTransport() (http.RoundTripper, bool) {
 	cfg, err := Load()
 	if err != nil {
-		// Fail closed: if the config file exists but is malformed/unreadable,
-		// do not silently fall back to direct egress.
-		def, ok := http.DefaultTransport.(*http.Transport)
-		if !ok {
-			return blockedRoundTripper{err: fmt.Errorf("proxy plugin config is invalid and http.DefaultTransport is %T, want *http.Transport: %w", http.DefaultTransport, err)}, true
-		}
-		return blockedTransport(def, fmt.Errorf("proxy plugin config is invalid: %w", err)), true
+		return cachedBlockedTransport(), true
 	}
 	if cfg == nil || !cfg.Enabled() {
 		return nil, false
