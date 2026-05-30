@@ -201,10 +201,10 @@ func installOne(name string, p platform.Plugin, result *InstallResult) error {
 	for _, e := range staging.stagedLifecycles {
 		result.Registry.AddLifecycle(e)
 	}
-	if staging.rule != nil {
+	for _, rule := range staging.rules {
 		result.PluginRules = append(result.PluginRules, cmdpolicy.PluginRule{
 			PluginName: name,
-			Rule:       staging.rule,
+			Rule:       rule,
 		})
 	}
 

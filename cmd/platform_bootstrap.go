@@ -44,7 +44,7 @@ func applyUserPolicyPruning(rootCmd *cobra.Command, pluginRules []cmdpolicy.Plug
 		yamlPath = ""
 	}
 
-	yamlRule, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
+	yamlRules, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
 	if err != nil {
 		// Yaml-only failures are fail-OPEN at the caller (warn and
 		// continue), but the active-policy snapshot is process-global
@@ -56,27 +56,37 @@ func applyUserPolicyPruning(rootCmd *cobra.Command, pluginRules []cmdpolicy.Plug
 		return err
 	}
 
-	rule, source, err := cmdpolicy.Resolve(cmdpolicy.Sources{
+	rules, source, err := cmdpolicy.Resolve(cmdpolicy.Sources{
 		PluginRules: pluginRules,
-		YAMLRule:    yamlRule,
+		YAMLRules:   yamlRules,
 		YAMLPath:    yamlPath,
 	})
 	if err != nil {
 		cmdpolicy.SetActive(nil)
 		return err
 	}
-	if rule == nil {
+	if len(rules) == 0 {
 		cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{Source: source})
 		return nil
 	}
 
-	engine := cmdpolicy.New(rule)
+	// RuleName attributes a denial to a specific rule in the envelope.
+	// With a single rule that is unambiguous and preserves the legacy
+	// envelope verbatim; with several rules a denial means "no rule
+	// granted it", which has no single owner, so the field is left empty
+	// and reason_code=no_matching_rule carries the meaning instead.
+	ruleName := ""
+	if len(rules) == 1 {
+		ruleName = rules[0].Name
+	}
+
+	engine := cmdpolicy.NewSet(rules)
 	decisions := engine.EvaluateAll(rootCmd)
-	denied := cmdpolicy.BuildDeniedByPath(rootCmd, decisions, source, rule.Name)
+	denied := cmdpolicy.BuildDeniedByPath(rootCmd, decisions, source, ruleName)
 	cmdpolicy.Apply(rootCmd, denied)
 
 	cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{
-		Rule:        rule,
+		Rules:       rules,
 		Source:      source,
 		DeniedPaths: len(denied),
 	})

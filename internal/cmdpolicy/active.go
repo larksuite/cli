@@ -15,8 +15,12 @@ import (
 // it hide?".
 //
 // Set once at bootstrap time; consumed read-only thereafter.
+//
+// Rules is the full set the winning source contributed (one rule for the
+// common single-rule case, several when a plugin or yaml declares scoped
+// grants). nil/empty means "no rule applied".
 type ActivePolicy struct {
-	Rule        *platform.Rule
+	Rules       []*platform.Rule
 	Source      ResolveSource
 	DeniedPaths int // number of commands the engine marked as denied (post-aggregation)
 }
@@ -56,20 +60,26 @@ func GetActive() *ActivePolicy {
 	return cloneActivePolicy(activePolicy)
 }
 
-// cloneActivePolicy deep-copies the top-level struct plus the embedded
-// Rule's slice fields. Other fields (Source, DeniedPaths) are value
-// types so the struct copy already disjoints them.
+// cloneActivePolicy deep-copies the top-level struct, the Rules slice, and
+// each Rule's own slice fields. Other fields (Source, DeniedPaths) are
+// value types so the struct copy already disjoints them.
 func cloneActivePolicy(in *ActivePolicy) *ActivePolicy {
 	if in == nil {
 		return nil
 	}
 	cp := *in
-	if in.Rule != nil {
-		rule := *in.Rule
-		rule.Allow = append([]string(nil), in.Rule.Allow...)
-		rule.Deny = append([]string(nil), in.Rule.Deny...)
-		rule.Identities = append([]platform.Identity(nil), in.Rule.Identities...)
-		cp.Rule = &rule
+	if in.Rules != nil {
+		cp.Rules = make([]*platform.Rule, len(in.Rules))
+		for i, r := range in.Rules {
+			if r == nil {
+				continue
+			}
+			rule := *r
+			rule.Allow = append([]string(nil), r.Allow...)
+			rule.Deny = append([]string(nil), r.Deny...)
+			rule.Identities = append([]platform.Identity(nil), r.Identities...)
+			cp.Rules[i] = &rule
+		}
 	}
 	return &cp
 }

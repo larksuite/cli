@@ -30,14 +30,15 @@ type stagingRegistrar struct {
 	stagedWrappers   []hook.WrapperEntry
 	stagedLifecycles []hook.LifecycleEntry
 
-	// rule is the staged Restrict contribution, captured for the host
-	// to merge with the yaml side later. nil means the plugin did not
-	// call r.Restrict.
-	rule *platform.Rule
+	// rules holds the staged Restrict contributions, captured for the
+	// host to feed into the resolver later. Empty means the plugin did
+	// not call r.Restrict. A plugin may call Restrict more than once;
+	// each call adds one scoped Rule (OR-combined by the engine).
+	rules []*platform.Rule
 
-	// actuallyRestricted records whether r.Restrict was called at all.
-	// Even a Restrict(nil) flips this to true so the
-	// Restricts-vs-actual consistency check can detect the call.
+	// actuallyRestricted records whether r.Restrict was called at all
+	// (even Restrict(nil)), so the Restricts-vs-actual consistency check
+	// can detect the call.
 	actuallyRestricted bool
 
 	// seenHookNames detects duplicate hookName within this plugin's
@@ -126,10 +127,6 @@ func (r *stagingRegistrar) On(event platform.LifecycleEvent, name string, fn pla
 }
 
 func (r *stagingRegistrar) Restrict(rule *platform.Rule) {
-	if r.actuallyRestricted {
-		r.bufferErr(ReasonDoubleRestrict, "Restrict called more than once")
-		return
-	}
 	r.actuallyRestricted = true
 	if rule == nil {
 		r.bufferErr(ReasonInvalidRule, "Restrict(nil)")
@@ -144,7 +141,7 @@ func (r *stagingRegistrar) Restrict(rule *platform.Rule) {
 	cp.Allow = append([]string(nil), rule.Allow...)
 	cp.Deny = append([]string(nil), rule.Deny...)
 	cp.Identities = append([]platform.Identity(nil), rule.Identities...)
-	r.rule = &cp
+	r.rules = append(r.rules, &cp)
 }
 
 // --- helpers ---

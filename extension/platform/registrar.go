@@ -13,9 +13,10 @@ package platform
 // identifier is "{plugin}.{hook}". A plugin cannot register two hooks
 // with the same name in the same Install call.
 //
-// Restrict may be called at most once per plugin; multiple plugins
-// contributing Restrict() is a configuration error (the resolver
-// aborts startup).
+// Restrict may be called multiple times per plugin; each call adds one
+// scoped Rule (OR-combined by the engine). Two or more DISTINCT plugins
+// contributing Restrict() is a configuration error (the resolver aborts
+// startup).
 type Registrar interface {
 	// Observe registers a side-effect-only command hook at the given
 	// When stage. The selector decides which commands it fires on.
@@ -29,8 +30,9 @@ type Registrar interface {
 	// On registers a lifecycle handler for the given event.
 	On(event LifecycleEvent, hookName string, fn LifecycleHandler)
 
-	// Restrict contributes a pruning Rule. The framework merges it
-	// with the yaml-sourced Rule using single-rule semantics: plugin
-	// rule wins, but two plugins both calling Restrict abort startup.
+	// Restrict contributes a pruning Rule. May be called more than once
+	// to declare several scoped grants (OR-combined by the engine).
+	// Plugin rules take precedence over the yaml source; two distinct
+	// plugins both calling Restrict abort startup.
 	Restrict(r *Rule)
 }
