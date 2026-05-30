@@ -154,10 +154,10 @@ func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, ru
 			entry.Rules = append(entry.Rules, &RuleView{
 				Name:             r.RuleName,
 				Description:      r.Desc,
-				Allow:            r.Allow,
-				Deny:             r.Deny,
+				Allow:            append([]string(nil), r.Allow...),
+				Deny:             append([]string(nil), r.Deny...),
 				MaxRisk:          r.MaxRisk,
-				Identities:       r.Identities,
+				Identities:       append([]string(nil), r.Identities...),
 				AllowUnannotated: r.AllowUnannotated,
 			})
 		}

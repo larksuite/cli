@@ -134,7 +134,14 @@ func (b *Builder) Restrict(rule *Rule) *Builder {
 	}
 	b.caps.Restricts = true
 	b.caps.FailurePolicy = FailClosed
-	b.rules = append(b.rules, rule)
+	// Defensive clone: capture an independent snapshot so a caller that
+	// reuses and mutates the same *Rule across multiple Restrict calls
+	// gets distinct entries (mirrors the staging registrar's clone).
+	cp := *rule
+	cp.Allow = append([]string(nil), rule.Allow...)
+	cp.Deny = append([]string(nil), rule.Deny...)
+	cp.Identities = append([]Identity(nil), rule.Identities...)
+	b.rules = append(b.rules, &cp)
 	return b
 }
 

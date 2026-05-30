@@ -17,7 +17,8 @@ type recorder struct {
 	observers  int
 	wrappers   int
 	lifecycles int
-	rule       *platform.Rule
+	rule       *platform.Rule   // last rule (existing single-rule assertions)
+	rules      []*platform.Rule // every rule, in Restrict order
 }
 
 func (r *recorder) Observe(platform.When, string, platform.Selector, platform.Observer) {
@@ -25,7 +26,39 @@ func (r *recorder) Observe(platform.When, string, platform.Selector, platform.Ob
 }
 func (r *recorder) Wrap(string, platform.Selector, platform.Wrapper)              { r.wrappers++ }
 func (r *recorder) On(platform.LifecycleEvent, string, platform.LifecycleHandler) { r.lifecycles++ }
-func (r *recorder) Restrict(rule *platform.Rule)                                  { r.rule = rule }
+func (r *recorder) Restrict(rule *platform.Rule) {
+	r.rule = rule
+	r.rules = append(r.rules, rule)
+}
+
+// Restrict must snapshot each rule: a caller that reuses and mutates the
+// same *Rule object across two Restrict calls must still get two distinct
+// rules at Install time, not two pointers to the last mutation.
+func TestBuilder_restrictClonesEachRule(t *testing.T) {
+	shared := &platform.Rule{Name: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: platform.RiskRead}
+	b := platform.NewPlugin("p", "0").Restrict(shared)
+	// Reuse and mutate the same object, then register it again.
+	shared.Name = "im-rw"
+	shared.Allow[0] = "im/**"
+	shared.MaxRisk = platform.RiskWrite
+	p, err := b.Restrict(shared).Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	r := &recorder{}
+	if err := p.Install(r); err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if len(r.rules) != 2 {
+		t.Fatalf("got %d rules, want 2", len(r.rules))
+	}
+	if r.rules[0].Name != "docs-ro" || r.rules[0].Allow[0] != "docs/**" || r.rules[0].MaxRisk != platform.RiskRead {
+		t.Errorf("rule[0] leaked later mutation: %+v", r.rules[0])
+	}
+	if r.rules[1].Name != "im-rw" || r.rules[1].Allow[0] != "im/**" {
+		t.Errorf("rule[1] = %+v, want im-rw / im/**", r.rules[1])
+	}
+}
 
 func TestBuilder_basicAssembly(t *testing.T) {
 	p, err := platform.NewPlugin("audit", "0.1.0").
