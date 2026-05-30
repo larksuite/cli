@@ -44,9 +44,15 @@ type ruleSchema struct {
 //
 // Mixing the two (flat fields AND a rules: list in the same file) is a
 // configuration error -- Parse rejects it rather than guessing intent.
+//
+// Rules is a pointer so Parse can tell "rules: key absent" (nil) apart
+// from "rules: present but empty" (non-nil, len 0). The latter is a
+// foot-gun -- a config generator that renders an empty list would
+// otherwise yield a single all-zero Rule that lets every annotated
+// command through -- so Parse rejects it outright.
 type fileSchema struct {
 	ruleSchema `yaml:",inline"`
-	Rules      []ruleSchema `yaml:"rules,omitempty"`
+	Rules      *[]ruleSchema `yaml:"rules,omitempty"`
 }
 
 // isZero reports whether every field is its zero value. Used to detect
@@ -110,12 +116,15 @@ func Parse(data []byte) ([]*platform.Rule, error) {
 		return nil, fmt.Errorf("parse policy yaml: %w", err)
 	}
 
-	if len(s.Rules) > 0 {
+	if s.Rules != nil {
+		if len(*s.Rules) == 0 {
+			return nil, fmt.Errorf("parse policy yaml: 'rules:' is present but empty; remove the key, or list at least one rule")
+		}
 		if !s.ruleSchema.isZero() {
 			return nil, fmt.Errorf("parse policy yaml: top-level rule fields cannot be combined with a 'rules:' list; move every rule under 'rules:'")
 		}
-		out := make([]*platform.Rule, 0, len(s.Rules))
-		for _, rs := range s.Rules {
+		out := make([]*platform.Rule, 0, len(*s.Rules))
+		for _, rs := range *s.Rules {
 			out = append(out, rs.toRule())
 		}
 		return out, nil

@@ -36,24 +36,38 @@ const userPolicyFileName = "policy.yml"
 // pluginRules carries Plugin.Restrict() contributions collected from
 // the InstallAll phase; nil/empty is fine.
 func applyUserPolicyPruning(rootCmd *cobra.Command, pluginRules []cmdpolicy.PluginRule) error {
-	yamlPath, err := userPolicyPath()
-	if err != nil {
-		// No user home dir means we cannot locate the policy. Treat
-		// the same as "file missing": no pruning, no error. This keeps
-		// non-interactive CI environments (no HOME set) running.
-		yamlPath = ""
-	}
-
-	yamlRules, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
-	if err != nil {
-		// Yaml-only failures are fail-OPEN at the caller (warn and
-		// continue), but the active-policy snapshot is process-global
-		// and may still carry data from a previous build in long-lived
-		// embedders / tests. Clear it explicitly so `config policy
-		// show` reports "no policy" instead of a stale rule that
-		// doesn't reflect the current command tree.
-		cmdpolicy.SetActive(nil)
-		return err
+	// Plugin rules shadow the yaml source entirely (Resolve: plugin >
+	// yaml). When a plugin contributed rules we therefore do NOT even
+	// read ~/.lark-cli/policy.yml: build.go fail-CLOSES on any policy
+	// error once a plugin is present, so reading a malformed yaml here
+	// would let an unrelated broken file on the user's machine abort a
+	// plugin-governed binary -- exactly the file the plugin is supposed
+	// to shadow. Skipping the read keeps the shadow contract honest.
+	var (
+		yamlRules []*platform.Rule
+		yamlPath  string
+	)
+	if len(pluginRules) == 0 {
+		p, perr := userPolicyPath()
+		if perr != nil {
+			// No user home dir means we cannot locate the policy. Treat
+			// the same as "file missing": no pruning, no error. This keeps
+			// non-interactive CI environments (no HOME set) running.
+			p = ""
+		}
+		yamlPath = p
+		loaded, lerr := cmdpolicy.LoadYAMLPolicy(yamlPath)
+		if lerr != nil {
+			// Yaml-only failures are fail-OPEN at the caller (warn and
+			// continue), but the active-policy snapshot is process-global
+			// and may still carry data from a previous build in long-lived
+			// embedders / tests. Clear it explicitly so `config policy
+			// show` reports "no policy" instead of a stale rule that
+			// doesn't reflect the current command tree.
+			cmdpolicy.SetActive(nil)
+			return lerr
+		}
+		yamlRules = loaded
 	}
 
 	rules, source, err := cmdpolicy.Resolve(cmdpolicy.Sources{

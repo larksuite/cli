@@ -69,6 +69,16 @@ rules:
 	}
 }
 
+// A "rules:" key that is present but empty is a foot-gun: an empty list
+// would otherwise fall through to a single all-zero Rule that allows
+// every annotated command ("looks like a policy, enforces almost
+// nothing"). Parse must reject it outright instead.
+func TestParse_rejectsEmptyRulesList(t *testing.T) {
+	if _, err := pyaml.Parse([]byte("rules: []\n")); err == nil {
+		t.Fatalf("Parse should reject a present-but-empty 'rules:' list")
+	}
+}
+
 // Mixing top-level flat rule fields with a rules: list is ambiguous and
 // must be rejected rather than silently picking one.
 func TestParse_rejectsFlatPlusRulesMix(t *testing.T) {
