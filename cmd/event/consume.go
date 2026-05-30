@@ -373,5 +373,5 @@ func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 }
 
 func shouldWatchStdinEOF(isTerminal bool, maxEvents int, timeout time.Duration) bool {
-	return !isTerminal && maxEvents == 0 && timeout == 0
+	return !isTerminal && maxEvents <= 0 && timeout <= 0
 }
