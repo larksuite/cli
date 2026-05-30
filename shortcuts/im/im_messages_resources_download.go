@@ -157,6 +157,8 @@ type rangeChunkReader struct {
 	totalSize  int64
 	delivered  int64
 	current    io.ReadCloser
+	chunkWant  int64
+	chunkRead  int64
 	nextOffset int64
 }
 
@@ -175,6 +177,7 @@ func newRangeChunkReader(
 		fileType:   fileType,
 		totalSize:  totalSize,
 		current:    probeBody,
+		chunkWant:  min(probeChunkSize, totalSize),
 		nextOffset: probeChunkSize,
 	}
 }
@@ -184,6 +187,7 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 		if r.current != nil {
 			n, err := r.current.Read(p)
 			r.delivered += int64(n)
+			r.chunkRead += int64(n)
 
 			if r.delivered > r.totalSize {
 				if err == io.EOF {
@@ -195,11 +199,24 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 				}
 				return 0, output.ErrNetwork("chunk overflow: delivered %d, expected %d", r.delivered, r.totalSize)
 			}
+			if r.chunkRead > r.chunkWant {
+				_ = r.current.Close()
+				r.current = nil
+				return 0, output.ErrNetwork("chunk size mismatch: expected %d bytes for current range, got more than %d", r.chunkWant, r.chunkWant)
+			}
 
 			switch err {
 			case nil:
 				return n, nil
 			case io.EOF:
+				if r.chunkRead != r.chunkWant {
+					closeErr := r.current.Close()
+					r.current = nil
+					if closeErr != nil {
+						return n, closeErr
+					}
+					return 0, output.ErrNetwork("chunk size mismatch: expected %d bytes for current range, got %d", r.chunkWant, r.chunkRead)
+				}
 				closeErr := r.current.Close()
 				r.current = nil
 				if closeErr != nil {
@@ -212,8 +229,12 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 					return 0, io.EOF
 				}
 				if n > 0 {
+					r.chunkRead = 0
+					r.chunkWant = 0
 					return n, nil
 				}
+				r.chunkRead = 0
+				r.chunkWant = 0
 			default:
 				return n, err
 			}
@@ -251,6 +272,8 @@ func (r *rangeChunkReader) Read(p []byte) (int, error) {
 		}
 
 		r.current = resp.Body
+		r.chunkWant = end - r.nextOffset + 1
+		r.chunkRead = 0
 		r.nextOffset = end + 1
 	}
 }

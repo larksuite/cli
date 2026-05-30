@@ -712,6 +712,38 @@ func TestDownloadIMResourceToPathRangeChunkFailureCleansOutput(t *testing.T) {
 	}
 }
 
+func TestDownloadIMResourceToPathRangeChunkLengthMismatch(t *testing.T) {
+	totalSize := probeChunkSize + 20
+	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_len/resources/file_len"):
+			switch req.Header.Get("Range") {
+			case fmt.Sprintf("bytes=0-%d", probeChunkSize-1):
+				return shortcutRawResponse(http.StatusPartialContent, []byte(strings.Repeat("a", int(probeChunkSize)+1)), http.Header{
+					"Content-Type":  []string{"application/octet-stream"},
+					"Content-Range": []string{fmt.Sprintf("bytes 0-%d/%d", probeChunkSize-1, totalSize)},
+				}), nil
+			case fmt.Sprintf("bytes=%d-%d", probeChunkSize, totalSize-1):
+				return shortcutRawResponse(http.StatusPartialContent, []byte(strings.Repeat("b", 19)), http.Header{
+					"Content-Type":  []string{"application/octet-stream"},
+					"Content-Range": []string{fmt.Sprintf("bytes %d-%d/%d", probeChunkSize, totalSize-1, totalSize)},
+				}), nil
+			default:
+				return nil, fmt.Errorf("unexpected range: %s", req.Header.Get("Range"))
+			}
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_len", "file_len", "file", "out.bin", true)
+	if err == nil || !strings.Contains(err.Error(), "chunk size mismatch") {
+		t.Fatalf("downloadIMResourceToPath() error = %v, want chunk size mismatch", err)
+	}
+}
+
 func TestDownloadIMResourceToPathRangeOverflowCleansOutput(t *testing.T) {
 	payload := []byte("overflow-payload")
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -766,7 +798,7 @@ func TestDownloadIMResourceToPathRangeShortChunkSizeMismatch(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 
 	_, _, err := downloadIMResourceToPath(context.Background(), runtime, "om_short", "file_short", "file", "out.bin", true)
-	if err == nil || !strings.Contains(err.Error(), "file size mismatch") {
+	if err == nil || !strings.Contains(err.Error(), "chunk size mismatch") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
 }

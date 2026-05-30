@@ -564,6 +564,7 @@ func TestNormalizeDownloadOutputPath(t *testing.T) {
 		{name: "empty key", fileKey: " ", wantErr: "file-key cannot be empty"},
 		{name: "separator in key", fileKey: "dir/file", wantErr: "file-key cannot contain path separators"},
 		{name: "absolute path", fileKey: "file_123", outputPath: "/tmp/out.bin", wantErr: "absolute paths are not allowed"},
+		{name: "windows rooted path", fileKey: "file_123", outputPath: `\tmp\out.bin`, wantErr: "absolute paths are not allowed"},
 		{name: "parent escape", fileKey: "file_123", outputPath: "../out.bin", wantErr: "path cannot escape the current working directory"},
 		{name: "empty path after clean", fileKey: "file_123", outputPath: " . ", wantErr: "path cannot be empty"},
 	}
