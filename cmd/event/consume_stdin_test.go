@@ -80,6 +80,16 @@ func TestShouldWatchStdinEOF(t *testing.T) {
 			want: true,
 		},
 		{
+			name:      "non terminal negative max events is unbounded",
+			maxEvents: -1,
+			want:      true,
+		},
+		{
+			name:    "non terminal negative timeout is unbounded",
+			timeout: -1 * time.Second,
+			want:    true,
+		},
+		{
 			name:      "non terminal max events bounded",
 			maxEvents: 1,
 			want:      false,
