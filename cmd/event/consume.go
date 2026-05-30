@@ -184,8 +184,9 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		errOut = io.Discard
 	}
 
-	// Non-TTY only: stdin EOF is shutdown for subprocess callers; in TTY Ctrl-D must not exit.
-	if !f.IOStreams.IsTerminal {
+	// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess callers.
+	// Bounded runs already have --max-events/--timeout as their lifecycle control.
+	if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
 		watchStdinEOF(os.Stdin, cancel, errOut)
 	}
 
@@ -369,4 +370,8 @@ func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 			"or stop via SIGTERM instead of closing stdin.")
 		cancel()
 	}()
+}
+
+func shouldWatchStdinEOF(isTerminal bool, maxEvents int, timeout time.Duration) bool {
+	return !isTerminal && maxEvents == 0 && timeout == 0
 }
