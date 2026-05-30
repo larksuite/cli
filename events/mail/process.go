@@ -111,16 +111,16 @@ type eventEnvelopeFields struct {
 	MessageID   string
 	MailAddress string
 	MailboxType int
-	Subscriber  string
+	Subscriber  Subscriber
 }
 
 func extractEventFields(rawPayload json.RawMessage) (eventEnvelopeFields, error) {
 	var env struct {
 		Event struct {
-			MessageID   string `json:"message_id"`
-			MailAddress string `json:"mail_address"`
-			MailboxType int    `json:"mailbox_type"`
-			Subscriber  string `json:"subscriber"`
+			MessageID   string     `json:"message_id"`
+			MailAddress string     `json:"mail_address"`
+			MailboxType int        `json:"mailbox_type"`
+			Subscriber  Subscriber `json:"subscriber"`
 		} `json:"event"`
 	}
 	if err := json.Unmarshal(rawPayload, &env); err != nil {

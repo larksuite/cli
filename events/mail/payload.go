@@ -15,10 +15,10 @@ package mail
 //   - msg-format=full            : metadata + BodyText + BodyHTML + Attachments
 type MailReceivedPayload struct {
 	// Always present (msg-format=event and above)
-	MessageID   string `json:"message_id"   desc:"Unique message identifier"`
-	MailAddress string `json:"mail_address" desc:"Recipient mailbox address (matches the subscribed mailbox)"`
-	MailboxType int    `json:"mailbox_type" desc:"Mailbox type enum: 1=primary, 2=shared"`
-	Subscriber  string `json:"subscriber"   desc:"open_id of the user who owns the subscription"`
+	MessageID   string     `json:"message_id"   desc:"Unique message identifier"`
+	MailAddress string     `json:"mail_address" desc:"Recipient mailbox address (matches the subscribed mailbox)"`
+	MailboxType int        `json:"mailbox_type" desc:"Mailbox type enum: 1=primary, 2=shared"`
+	Subscriber  Subscriber `json:"subscriber"   desc:"Subscribers of the event — the users whose mailbox received this message"`
 
 	// Populated when msg-format >= metadata
 	From     string   `json:"from,omitempty"      desc:"Sender email address (msg-format >= metadata)"`
@@ -40,4 +40,18 @@ type MailAttachment struct {
 	Filename     string `json:"filename"      desc:"Original filename"`
 	SizeBytes    int64  `json:"size_bytes"    desc:"Size in bytes"`
 	ContentType  string `json:"content_type"  desc:"MIME type"`
+}
+
+// Subscriber is the raw event-envelope `subscriber` block: the set of users
+// whose mailbox received the message. Each element carries the three Feishu
+// user identifier forms (user_id, open_id, union_id); fields are omitempty
+// because in practice only the IDs the app is scoped to are populated.
+type Subscriber struct {
+	UserIDs []SubscriberUserID `json:"user_ids,omitempty" desc:"Recipients of the mail event (mailbox owners)"`
+}
+
+type SubscriberUserID struct {
+	UserID  string `json:"user_id,omitempty"  desc:"Tenant-scoped user_id"`
+	OpenID  string `json:"open_id,omitempty"  desc:"App-scoped open_id"`
+	UnionID string `json:"union_id,omitempty" desc:"Cross-tenant union_id"`
 }

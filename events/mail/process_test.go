@@ -38,7 +38,7 @@ func (f *fetchErrorRT) CallAPI(ctx context.Context, method, path string, body in
 func makeMailEvent(mailAddr, messageID string) *event.RawEvent {
 	return &event.RawEvent{
 		EventType: "mail.user_mailbox.event.message_received_v1",
-		Payload: json.RawMessage(`{"schema":"2.0","header":{},"event":{"mail_address":"` + mailAddr + `","message_id":"` + messageID + `","mailbox_type":1,"subscriber":"ou_xxx"}}`),
+		Payload: json.RawMessage(`{"schema":"2.0","header":{},"event":{"mail_address":"` + mailAddr + `","message_id":"` + messageID + `","mailbox_type":1,"subscriber":{"user_ids":[{"open_id":"ou_xxx"}]}}}`),
 	}
 }
 

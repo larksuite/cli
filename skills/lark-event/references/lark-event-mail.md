@@ -30,7 +30,7 @@ The output struct is a union — fields populate progressively as `msg-format` i
 | `message_id` | ✅ | ✅ | ✅ | ✅ |
 | `mail_address` | ✅ | ✅ | ✅ | ✅ |
 | `mailbox_type` | ✅ | ✅ | ✅ | ✅ |
-| `subscriber` | ✅ | ✅ | ✅ | ✅ |
+| `subscriber.user_ids[].{user_id,open_id,union_id}` | ✅ | ✅ | ✅ | ✅ |
 | `from` | — | ✅ | ✅ | ✅ |
 | `subject` | — | ✅ | ✅ | ✅ |
 | `snippet` | — | ✅ | ✅ | ✅ |
