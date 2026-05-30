@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/internal/binding"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -25,7 +26,15 @@ func applyExtraRootCA(t *http.Transport, caPath string) error {
 	if !filepath.IsAbs(caPath) {
 		return fmt.Errorf("invalid %s %q: must be an absolute path to a PEM file", envvars.CliCAPath, caPath)
 	}
-	pemBytes, err := vfs.ReadFile(caPath)
+	safeCAPath, err := binding.AssertSecurePath(binding.AuditParams{
+		TargetPath:            caPath,
+		Label:                 envvars.CliCAPath,
+		AllowReadableByOthers: true,
+	})
+	if err != nil {
+		return fmt.Errorf("unsafe %s %q: %w", envvars.CliCAPath, caPath, err)
+	}
+	pemBytes, err := vfs.ReadFile(safeCAPath)
 	if err != nil {
 		return fmt.Errorf("failed to read %s %q: %w", envvars.CliCAPath, caPath, err)
 	}

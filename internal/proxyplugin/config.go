@@ -193,7 +193,7 @@ func (c *Config) proxyURL() (*url.URL, error) {
 	if u.Port() == "" {
 		return nil, fmt.Errorf("invalid %s %q: explicit port is required", envvars.CliProxyAddress, redacted)
 	}
-	if u.Path != "" && u.Path != "/" {
+	if u.Path != "" {
 		return nil, fmt.Errorf("invalid %s %q: path is not allowed", envvars.CliProxyAddress, redacted)
 	}
 	if u.RawQuery != "" {

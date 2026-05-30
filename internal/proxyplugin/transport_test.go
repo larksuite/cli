@@ -4,8 +4,10 @@
 package proxyplugin
 
 import (
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -57,5 +59,64 @@ func TestSharedTransport_EnabledReturnsFixedProxy(t *testing.T) {
 	}
 	if u == nil || u.String() != "http://127.0.0.1:3128" {
 		t.Fatalf("Proxy() = %v, want http://127.0.0.1:3128", u)
+	}
+}
+
+func TestSharedTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+	restoreDefaultTransport := replaceDefaultTransport(okRoundTripper{})
+	defer restoreDefaultTransport()
+
+	writeFile(t, Path(), []byte(`{`), 0600)
+
+	rt, ok := SharedTransport()
+	if !ok {
+		t.Fatal("SharedTransport() ok = false, want true")
+	}
+	if rt == http.DefaultTransport {
+		t.Fatalf("SharedTransport() returned http.DefaultTransport, want fail-closed transport")
+	}
+	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
+	if err == nil {
+		t.Fatalf("RoundTrip() error = nil, response = %#v; want fail-closed error", resp)
+	}
+	if resp != nil {
+		t.Fatalf("RoundTrip() response = %#v, want nil", resp)
+	}
+}
+
+func TestBuildProxyPluginTransport_NonTransportDefaultFailsClosed(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+	restoreDefaultTransport := replaceDefaultTransport(okRoundTripper{})
+	defer restoreDefaultTransport()
+
+	rt := buildProxyPluginTransport()
+	if rt == http.DefaultTransport {
+		t.Fatalf("buildProxyPluginTransport() returned http.DefaultTransport, want fail-closed transport")
+	}
+	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
+	if err == nil {
+		t.Fatalf("RoundTrip() error = nil, response = %#v; want fail-closed error", resp)
+	}
+	if resp != nil {
+		t.Fatalf("RoundTrip() response = %#v, want nil", resp)
+	}
+}
+
+type okRoundTripper struct{}
+
+func (okRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(""))}, nil
+}
+
+func replaceDefaultTransport(rt http.RoundTripper) func() {
+	original := http.DefaultTransport
+	http.DefaultTransport = rt
+	return func() {
+		http.DefaultTransport = original
 	}
 }

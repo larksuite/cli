@@ -12,6 +12,7 @@ import (
 	"encoding/pem"
 	"math/big"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -77,13 +78,13 @@ func TestApplyExtraRootCA_RejectsRelativePath(t *testing.T) {
 	}
 }
 
-// TestApplyExtraRootCA_RejectsMissingFile verifies read errors for missing PEM bundles.
+// TestApplyExtraRootCA_RejectsMissingFile verifies missing PEM bundles fail before file reads.
 func TestApplyExtraRootCA_RejectsMissingFile(t *testing.T) {
 	tr := &http.Transport{}
 
 	err := applyExtraRootCA(tr, filepath.Join(t.TempDir(), "missing.pem"))
-	if err == nil || !strings.Contains(err.Error(), "failed to read") {
-		t.Fatalf("applyExtraRootCA() error = %v, want read error", err)
+	if err == nil || !strings.Contains(err.Error(), "unsafe") {
+		t.Fatalf("applyExtraRootCA() error = %v, want unsafe path error", err)
 	}
 }
 
@@ -96,6 +97,25 @@ func TestApplyExtraRootCA_RejectsInvalidPEM(t *testing.T) {
 	err := applyExtraRootCA(tr, caPath)
 	if err == nil || !strings.Contains(err.Error(), "no certificates parsed from PEM") {
 		t.Fatalf("applyExtraRootCA() error = %v, want invalid PEM error", err)
+	}
+}
+
+// TestApplyExtraRootCA_RejectsInsecureCAPath verifies CA paths are safety-checked
+// before reading the configured file.
+func TestApplyExtraRootCA_RejectsInsecureCAPath(t *testing.T) {
+	caPath := filepath.Join(t.TempDir(), "ca.pem")
+	writeFile(t, caPath, mustCreateTestCertPEM(t), 0600)
+	if err := os.Chmod(caPath, 0666); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+
+	tr := &http.Transport{}
+	err := applyExtraRootCA(tr, caPath)
+	if err == nil || !strings.Contains(err.Error(), "unsafe") {
+		t.Fatalf("applyExtraRootCA() error = %v, want unsafe path error", err)
+	}
+	if tr.TLSClientConfig != nil {
+		t.Fatalf("TLSClientConfig = %#v, want nil", tr.TLSClientConfig)
 	}
 }
 

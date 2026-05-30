@@ -14,10 +14,10 @@ import (
 // custom root CA), lazily built on first use when proxy plugin mode is enabled.
 var proxyPluginTransport = sync.OnceValue(buildProxyPluginTransport)
 
-func buildProxyPluginTransport() *http.Transport {
+func buildProxyPluginTransport() http.RoundTripper {
 	def, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
-		return &http.Transport{}
+		return blockedRoundTripper{err: fmt.Errorf("proxy plugin transport unavailable: http.DefaultTransport is %T, want *http.Transport", http.DefaultTransport)}
 	}
 
 	cfg, err := Load()
@@ -42,7 +42,7 @@ func SharedTransport() (http.RoundTripper, bool) {
 		// do not silently fall back to direct egress.
 		def, ok := http.DefaultTransport.(*http.Transport)
 		if !ok {
-			return http.DefaultTransport, true
+			return blockedRoundTripper{err: fmt.Errorf("proxy plugin config is invalid and http.DefaultTransport is %T, want *http.Transport: %w", http.DefaultTransport, err)}, true
 		}
 		return blockedTransport(def, fmt.Errorf("proxy plugin config is invalid: %w", err)), true
 	}
@@ -50,6 +50,14 @@ func SharedTransport() (http.RoundTripper, bool) {
 		return nil, false
 	}
 	return proxyPluginTransport(), true
+}
+
+type blockedRoundTripper struct {
+	err error
+}
+
+func (b blockedRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, b.err
 }
 
 func blockedTransport(base *http.Transport, err error) *http.Transport {

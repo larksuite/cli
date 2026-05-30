@@ -137,7 +137,7 @@ func TestLoad_RejectsNonLoopbackProxy(t *testing.T) {
 }
 
 // TestConfig_ProxyURLRejectsUnsupportedParts verifies the configured proxy validator
-// rejects URLs with missing ports, queries, and fragments.
+// rejects URLs with missing ports, paths, queries, and fragments.
 func TestConfig_ProxyURLRejectsUnsupportedParts(t *testing.T) {
 	cases := []struct {
 		name string
@@ -148,6 +148,11 @@ func TestConfig_ProxyURLRejectsUnsupportedParts(t *testing.T) {
 			name: "missing explicit port",
 			raw:  "http://127.0.0.1",
 			want: "explicit port is required",
+		},
+		{
+			name: "trailing slash path",
+			raw:  "http://127.0.0.1:3128/",
+			want: "path is not allowed",
 		},
 		{
 			name: "query string",
