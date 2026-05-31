@@ -72,4 +72,7 @@ const (
 	// Generic untyped error lifted to InternalError uses SubtypeUnknown.
 )
 
-// CategoryConfirmation subtypes intentionally have no declarations yet.
+// CategoryConfirmation subtypes
+const (
+	SubtypeConfirmationRequired Subtype = "confirmation_required" // high-risk action requires explicit confirmation
+)

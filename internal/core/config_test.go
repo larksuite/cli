@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/larksuite/cli/internal/keychain"
@@ -154,6 +155,8 @@ func TestUpdateAuthProxyConfig_PreservesExistingApps(t *testing.T) {
 }
 
 func TestUpdateAuthProxyConfig_CreatesConfigWhenMissing(t *testing.T) {
+	orig := CurrentWorkspace()
+	t.Cleanup(func() { SetCurrentWorkspace(orig) })
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	if err := UpdateAuthProxyConfig(func(cfg *AuthProxyConfig) {
@@ -172,6 +175,32 @@ func TestUpdateAuthProxyConfig_CreatesConfigWhenMissing(t *testing.T) {
 
 	if _, err := os.Stat(GetConfigPath()); err != nil {
 		t.Fatalf("config file was not created: %v", err)
+	}
+}
+
+func TestAuthProxyConfig_UsesBaseConfigAcrossAgentWorkspaces(t *testing.T) {
+	orig := CurrentWorkspace()
+	t.Cleanup(func() { SetCurrentWorkspace(orig) })
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	SetCurrentWorkspace(WorkspaceLocal)
+	if err := UpdateAuthProxyConfig(func(cfg *AuthProxyConfig) {
+		cfg.TrustedHosts = []string{"gate.example.com"}
+	}); err != nil {
+		t.Fatalf("UpdateAuthProxyConfig() error = %v", err)
+	}
+
+	SetCurrentWorkspace(WorkspaceHermes)
+	cfg, err := LoadAuthProxyConfig()
+	if err != nil {
+		t.Fatalf("LoadAuthProxyConfig() error = %v", err)
+	}
+	if len(cfg.TrustedHosts) != 1 || cfg.TrustedHosts[0] != "gate.example.com" {
+		t.Fatalf("TrustedHosts = %#v, want base-config trust from agent workspace", cfg.TrustedHosts)
+	}
+
+	if _, err := os.Stat(filepath.Join(GetBaseConfigDir(), "hermes", "config.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("agent workspace config should not be created by auth proxy trust, stat err = %v", err)
 	}
 }
 

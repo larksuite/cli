@@ -198,7 +198,7 @@ func GetConfigPath() string {
 
 // LoadMultiAppConfig loads multi-app config from disk.
 func LoadMultiAppConfig() (*MultiAppConfig, error) {
-	multi, err := loadMultiAppConfigUnchecked()
+	multi, err := loadMultiAppConfigUnchecked(GetConfigPath())
 	if err != nil {
 		return nil, err
 	}
@@ -208,8 +208,8 @@ func LoadMultiAppConfig() (*MultiAppConfig, error) {
 	return multi, nil
 }
 
-func loadMultiAppConfigUnchecked() (*MultiAppConfig, error) {
-	data, err := vfs.ReadFile(GetConfigPath())
+func loadMultiAppConfigUnchecked(path string) (*MultiAppConfig, error) {
+	data, err := vfs.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -222,10 +222,11 @@ func loadMultiAppConfigUnchecked() (*MultiAppConfig, error) {
 }
 
 // LoadAuthProxyConfig loads auth proxy trust config without requiring an app
-// profile. This lets bootstrap tools register trust before normal app config
-// exists, while LoadMultiAppConfig keeps its historical "apps required" rule.
+// profile. Trust decisions are user-level security policy, so they are stored
+// in the base config rather than workspace config; an agent workspace may use
+// trust created by the user, but cannot create it via the trust command.
 func LoadAuthProxyConfig() (AuthProxyConfig, error) {
-	multi, err := loadMultiAppConfigUnchecked()
+	multi, err := loadMultiAppConfigUnchecked(filepath.Join(GetBaseConfigDir(), "config.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		return AuthProxyConfig{}, nil
 	}
@@ -239,9 +240,11 @@ func LoadAuthProxyConfig() (AuthProxyConfig, error) {
 }
 
 // UpdateAuthProxyConfig edits auth proxy trust config while preserving any app
-// profiles already present in config.json.
+// profiles already present in the base config.json.
 func UpdateAuthProxyConfig(update func(*AuthProxyConfig)) error {
-	multi, err := loadMultiAppConfigUnchecked()
+	baseDir := GetBaseConfigDir()
+	basePath := filepath.Join(baseDir, "config.json")
+	multi, err := loadMultiAppConfigUnchecked(basePath)
 	if errors.Is(err, os.ErrNotExist) {
 		multi = &MultiAppConfig{Apps: []AppConfig{}}
 	} else if err != nil {
@@ -254,12 +257,15 @@ func UpdateAuthProxyConfig(update func(*AuthProxyConfig)) error {
 	if len(multi.AuthProxy.TrustedHosts) == 0 {
 		multi.AuthProxy = nil
 	}
-	return SaveMultiAppConfig(multi)
+	return saveMultiAppConfigAt(multi, baseDir, basePath)
 }
 
 // SaveMultiAppConfig saves config to disk.
 func SaveMultiAppConfig(config *MultiAppConfig) error {
-	dir := GetConfigDir()
+	return saveMultiAppConfigAt(config, GetConfigDir(), GetConfigPath())
+}
+
+func saveMultiAppConfigAt(config *MultiAppConfig, dir, path string) error {
 	if err := vfs.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -267,7 +273,7 @@ func SaveMultiAppConfig(config *MultiAppConfig) error {
 	if err != nil {
 		return err
 	}
-	return validate.AtomicWrite(GetConfigPath(), append(data, '\n'), 0600)
+	return validate.AtomicWrite(path, append(data, '\n'), 0600)
 }
 
 // RequireConfig loads the single-app config using the default profile resolution.

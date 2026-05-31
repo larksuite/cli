@@ -5,9 +5,11 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -26,15 +28,17 @@ func NewCmdConfigAuthProxy(f *cmdutil.Factory) *cobra.Command {
 }
 
 func newCmdConfigAuthProxyTrust(f *cmdutil.Factory) *cobra.Command {
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "trust https://host[:port]",
 		Short: "Trust a remote HTTPS auth proxy host",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runConfigAuthProxyTrust(f, args[0])
+			return runConfigAuthProxyTrust(f, args[0], yes)
 		},
 	}
-	cmdutil.SetRisk(cmd, "write")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm trusting this remote auth proxy host")
+	cmdutil.SetRisk(cmd, cmdutil.RiskHighRiskWrite)
 	return cmd
 }
 
@@ -70,10 +74,16 @@ func newCmdConfigAuthProxyList(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-func runConfigAuthProxyTrust(f *cmdutil.Factory, rawHost string) error {
+func runConfigAuthProxyTrust(f *cmdutil.Factory, rawHost string, confirmed bool) error {
+	if err := rejectAgentAuthProxyTrust(); err != nil {
+		return err
+	}
 	host, err := sidecar.NormalizeRemoteProxyTrustHost(rawHost)
 	if err != nil {
 		return output.ErrValidation("invalid auth proxy host: %v", err)
+	}
+	if !confirmed {
+		return authProxyTrustConfirmationRequired(host)
 	}
 
 	changed := false
@@ -100,6 +110,32 @@ func runConfigAuthProxyTrust(f *cmdutil.Factory, rawHost string) error {
 		"changed":     changed,
 	})
 	return nil
+}
+
+func rejectAgentAuthProxyTrust() error {
+	ws := core.DetectWorkspaceFromEnv(os.Getenv)
+	if ws.IsLocal() {
+		return nil
+	}
+	return &errs.ValidationError{Problem: errs.Problem{
+		Category: errs.CategoryValidation,
+		Subtype:  errs.SubtypeInvalidArgument,
+		Message:  fmt.Sprintf("refusing to trust a remote auth proxy from %s agent workspace; run this command outside the agent environment", ws.Display()),
+		Hint:     "run `lark-cli config auth-proxy trust https://host[:port] --yes` from a normal user shell outside the agent environment after verifying the host.",
+	}}
+}
+
+func authProxyTrustConfirmationRequired(host string) error {
+	return &errs.ConfirmationRequiredError{
+		Problem: errs.Problem{
+			Category: errs.CategoryConfirmation,
+			Subtype:  errs.SubtypeConfirmationRequired,
+			Message:  fmt.Sprintf("trusting remote auth proxy host %q requires confirmation", host),
+			Hint:     "Trusting a remote auth proxy allows future lark-cli requests, proxy session material, and business request bodies to flow through that host. Rerun from a normal user shell with --yes only after verifying the host.",
+		},
+		Risk:   cmdutil.RiskHighRiskWrite,
+		Action: "config auth-proxy trust",
+	}
 }
 
 func runConfigAuthProxyUntrust(f *cmdutil.Factory, rawHost string) error {
