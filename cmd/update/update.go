@@ -85,10 +85,12 @@ func symArrow() string {
 
 // UpdateOptions holds inputs for the update command.
 type UpdateOptions struct {
-	Factory *cmdutil.Factory
-	JSON    bool
-	Force   bool
-	Check   bool
+	Factory    *cmdutil.Factory
+	JSON       bool
+	Force      bool
+	Check      bool
+	CLIOnly    bool
+	WithSkills bool
 }
 
 // NewCmdUpdate creates the update command.
@@ -105,7 +107,9 @@ Detects the installation method automatically:
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
-Use --check to only check for updates without installing.`,
+Use --check to only check for updates without installing.
+Use --cli-only to update only the CLI package and skip skills sync.
+Use --with-skills to explicitly update both the CLI package and official skills.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return updateRun(opts)
 		},
@@ -114,6 +118,8 @@ Use --check to only check for updates without installing.`,
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "force reinstall even if already up to date")
 	cmd.Flags().BoolVar(&opts.Check, "check", false, "only check for updates, do not install")
+	cmd.Flags().BoolVar(&opts.CLIOnly, "cli-only", false, "update only lark-cli; do not install or sync skills")
+	cmd.Flags().BoolVar(&opts.WithSkills, "with-skills", false, "update lark-cli and sync official skills (default)")
 	cmdutil.SetRisk(cmd, "high-risk-write")
 
 	return cmd
@@ -121,6 +127,10 @@ Use --check to only check for updates without installing.`,
 
 func updateRun(opts *UpdateOptions) error {
 	io := opts.Factory.IOStreams
+	if opts.CLIOnly && opts.WithSkills {
+		return reportError(opts, io, output.ExitValidation, "validation", "--cli-only and --with-skills are mutually exclusive")
+	}
+
 	cur := currentVersion()
 	updater := newUpdater()
 
@@ -144,7 +154,7 @@ func updateRun(opts *UpdateOptions) error {
 	if !opts.Force && !update.IsNewer(latest, cur) {
 		var skillsResult *skillscheck.SyncResult
 		if !opts.Check {
-			skillsResult = runSkillsAndState(updater, io, cur, opts.Force)
+			skillsResult = runSkillsAndStateIfEnabled(opts, updater, io, cur)
 		}
 		return reportAlreadyUpToDate(opts, io, cur, latest, skillsResult, opts.Check)
 	}
@@ -202,7 +212,7 @@ func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest s
 }
 
 func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
-	skillsResult := runSkillsAndState(updater, io, cur, opts.Force)
+	skillsResult := runSkillsAndStateIfEnabled(opts, updater, io, cur)
 
 	reason := detect.ManualReason()
 	if opts.JSON {
@@ -280,7 +290,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 		return output.ErrBare(output.ExitAPI)
 	}
 
-	skillsResult := runSkillsAndState(updater, io, latest, opts.Force)
+	skillsResult := runSkillsAndStateIfEnabled(opts, updater, io, latest)
 
 	if opts.JSON {
 		result := map[string]interface{}{
@@ -296,7 +306,7 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 
 	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	if skillsResult != nil {
+	if skillsResult != nil && skillsResult.Action != "skipped" {
 		fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
 	}
 	emitSkillsTextHints(io, skillsResult)
@@ -315,6 +325,16 @@ func verificationFailureHint(updater *selfupdate.Updater, latest string) string 
 		return "the previous version has been restored"
 	}
 	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): npm install -g %s@%s && npx skills add larksuite/cli -y -g, or download %s", selfupdate.NpmPackage, latest, releaseURL(latest))
+}
+
+func runSkillsAndStateIfEnabled(opts *UpdateOptions, updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string) *skillscheck.SyncResult {
+	if opts.CLIOnly {
+		return &skillscheck.SyncResult{
+			Action: "skipped",
+			Detail: "skills sync skipped by --cli-only",
+		}
+	}
+	return runSkillsAndState(updater, io, stateVersion, opts.Force)
 }
 
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool) *skillscheck.SyncResult {
@@ -387,6 +407,8 @@ func applySkillsResult(env map[string]interface{}, r *skillscheck.SyncResult) {
 	switch {
 	case r == nil:
 		env["skills_action"] = "in_sync"
+	case r.Action == "skipped":
+		env["skills_action"] = "skipped"
 	case r.Err != nil:
 		env["skills_action"] = "failed"
 		env["skills_warning"] = fmt.Sprintf("skills update failed: %s", r.Err)
@@ -413,6 +435,8 @@ func skillsSummary(r *skillscheck.SyncResult) map[string]interface{} {
 func emitSkillsTextHints(io *cmdutil.IOStreams, r *skillscheck.SyncResult) {
 	switch {
 	case r == nil:
+	case r.Action == "skipped":
+		fmt.Fprintf(io.ErrOut, "Skills sync skipped (--cli-only)\n")
 	case r.Err != nil:
 		fmt.Fprintf(io.ErrOut, "%s Skills update failed: %v\n", symWarn(), r.Err)
 		if len(r.Failed) > 0 {

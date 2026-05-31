@@ -227,6 +227,126 @@ func TestUpdateNpm_JSON(t *testing.T) {
 	}
 }
 
+func TestUpdateNpm_CLIOnlySkipsSkillsSync_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--cli-only"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	t.Cleanup(func() { fetchLatest = origFetch })
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	t.Cleanup(func() { currentVersion = origVersion })
+
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+
+	origSync := syncSkills
+	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
+		t.Fatal("skills sync called under --cli-only")
+		return nil
+	}
+	t.Cleanup(func() { syncSkills = origSync })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	if env["action"] != "updated" {
+		t.Errorf("action = %v, want updated", env["action"])
+	}
+	if env["skills_action"] != "skipped" {
+		t.Errorf("skills_action = %v, want skipped; stdout: %s", env["skills_action"], stdout.String())
+	}
+	if _, readable, err := skillscheck.ReadState(); err != nil || readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want unreadable/nil after --cli-only", readable, err)
+	}
+}
+
+func TestUpdateNpm_WithSkillsRunsSkillsSync_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--with-skills"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	t.Cleanup(func() { fetchLatest = origFetch })
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	t.Cleanup(func() { currentVersion = origVersion })
+
+	mockDetectAndNpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallNpm, ResolvedPath: "/node_modules/@larksuite/cli/bin/lark-cli", NpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+
+	called := false
+	origSync := syncSkills
+	syncSkills = func(opts skillscheck.SyncOptions) *skillscheck.SyncResult {
+		called = true
+		return &skillscheck.SyncResult{
+			Action:   "synced",
+			Official: []string{"lark-calendar"},
+			Updated:  []string{"lark-calendar"},
+		}
+	}
+	t.Cleanup(func() { syncSkills = origSync })
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("skills sync not called under --with-skills")
+	}
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal stdout: %v\nstdout: %s", err, stdout.String())
+	}
+	if env["skills_action"] != "synced" {
+		t.Errorf("skills_action = %v, want synced; stdout: %s", env["skills_action"], stdout.String())
+	}
+}
+
+func TestUpdateSkillSyncFlagsMutuallyExclusive(t *testing.T) {
+	f, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--cli-only", "--with-skills"})
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) {
+		t.Fatal("fetchLatest called before validating mutually exclusive flags")
+		return "", nil
+	}
+	t.Cleanup(func() { fetchLatest = origFetch })
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if !strings.Contains(exitErr.Error(), "--cli-only and --with-skills are mutually exclusive") {
+		t.Fatalf("error message = %q", exitErr.Error())
+	}
+}
+
 func TestUpdateNpm_Human(t *testing.T) {
 	// Same isolation as TestUpdateNpm_JSON — see comment there.
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
