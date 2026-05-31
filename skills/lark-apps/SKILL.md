@@ -42,7 +42,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 lark-cli auth login --domain apps
 ```
 
-命令失败且 `error.type == "missing_scope"` 时，统一引导用户跑：
+命令失败且 `error.subtype == "missing_scope"` 时，统一引导用户跑：
 
 ```bash
 lark-cli auth login --domain apps
@@ -90,7 +90,7 @@ lark-cli auth login --domain apps
 - `--path` 既可传单个 HTML 文件也可传目录；目录会**递归打包成 tar.gz 不做过滤**，要提醒用户传干净的产物目录（如 `./dist`），避免把 `.git` / `node_modules` 一起打进去
 - `apps +update` 只更新传入字段，未传字段保持不变；`--name` / `--description` 至少传一个，否则 Validate 阶段直接拦截
 - `apps +access-scope-set` 三种 scope **互斥**：specific 必传 `--targets`、不允许 `--require-login`；public 必传 `--require-login`、不允许 `--targets` / `--apply-enabled` / `--approver`；tenant 不允许任何其他 flag
-- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户。`error.type == "missing_scope"` 例外：按上面「身份与一次性授权」走
+- 失败时**优先转述 `error.hint`**（CLI 给的可执行修复建议），hint 为空时退回 `error.message`；不要原样把 envelope JSON 复述给用户。`error.subtype == "missing_scope"` 例外：按上面「身份与一次性授权」走
 
 ## Shortcuts（推荐优先使用）
 

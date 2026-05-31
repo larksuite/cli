@@ -238,10 +238,10 @@ func apiRun(opts *APIOptions) error {
 
 	resp, err := ac.DoAPI(opts.Ctx, request)
 	if err != nil {
-		// MarkRaw tells the dispatcher to skip enrichPermissionError so the
-		// raw API error detail (log_id, troubleshooter, permission_violations)
-		// stays on the wire — `lark-cli api` callers explicitly want the raw
-		// envelope.
+		// MarkRaw tells the dispatcher to skip the legacy enrichPermissionError
+		// pass on *output.ExitError values. Typed *errs.* errors that flow
+		// through here keep their canonical message / hint from BuildAPIError;
+		// MarkRaw is a no-op on those (it only flips a flag on *ExitError).
 		return output.MarkRaw(err)
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
@@ -253,14 +253,14 @@ func apiRun(opts *APIOptions) error {
 		FileIO:      f.ResolveFileIO(opts.Ctx),
 		CommandPath: opts.Cmd.CommandPath(),
 		Identity:    opts.As,
-		// Stage 1: CheckResponse emits the legacy *output.ExitError envelope.
-		// Per-domain migration in stage 2+ will route through
-		// errclass.BuildAPIError to populate identity-aware fields
-		// (PermissionError.ConsoleURL needs Brand+AppID from the client).
+		// CheckResponse routes through errclass.BuildAPIError for known Lark
+		// codes (typed PermissionError / AuthenticationError / ...). For
+		// unknown codes it falls back to *errs.APIError. The Brand+AppID on
+		// the client populate identity-aware fields (ConsoleURL etc.).
 		CheckError: ac.CheckResponse,
 	})
-	// MarkRaw: see comment above on the DoAPI path. Applies equally to
-	// HandleResponse failures so the raw API error survives to the wire.
+	// MarkRaw: see comment above on the DoAPI path. Skips legacy
+	// *ExitError enrichment; typed errors flow through unchanged.
 	if err != nil {
 		return output.MarkRaw(err)
 	}

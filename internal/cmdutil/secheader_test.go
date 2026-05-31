@@ -6,10 +6,12 @@ package cmdutil
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/extension/credential"
 	envcred "github.com/larksuite/cli/extension/credential/env"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
 
@@ -258,5 +260,136 @@ func TestBaseSecurityHeaders_AllRequiredHeaders(t *testing.T) {
 		if h.Get(key) == "" {
 			t.Errorf("BaseSecurityHeaders missing %s", key)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AgentTraceValue / HeaderAgentTrace
+// ---------------------------------------------------------------------------
+
+func TestAgentTraceValue_EmptyWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty when env unset", got)
+	}
+}
+
+func TestAgentTraceValue_ReturnsCleanValue(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "trace-abc-123")
+	if got := AgentTraceValue(); got != "trace-abc-123" {
+		t.Fatalf("AgentTraceValue() = %q, want %q", got, "trace-abc-123")
+	}
+}
+
+func TestAgentTraceValue_TrimsWhitespace(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "  trace-trim  ")
+	if got := AgentTraceValue(); got != "trace-trim" {
+		t.Fatalf("AgentTraceValue() = %q, want %q (whitespace trimmed)", got, "trace-trim")
+	}
+}
+
+func TestAgentTraceValue_OnlyWhitespace_ReturnsEmpty(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "   ")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for whitespace-only value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsCRLF(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\r\nX-Evil: attack")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for CR/LF value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsLF(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\nX-Evil: attack")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for LF value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsTab(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\tinjected")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for tab value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsControlChar(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\x01injected")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for control char value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsDEL(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\x7finjected")
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() = %q, want empty for DEL value", got)
+	}
+}
+
+func TestAgentTraceValue_RejectsOverlongValue(t *testing.T) {
+	longVal := strings.Repeat("a", agentTraceMaxLen+1)
+	t.Setenv(envvars.CliAgentTrace, longVal)
+	if got := AgentTraceValue(); got != "" {
+		t.Fatalf("AgentTraceValue() returned non-empty for %d-byte value (max %d)", len(longVal), agentTraceMaxLen)
+	}
+}
+
+func TestAgentTraceValue_AcceptsMaxLengthValue(t *testing.T) {
+	val := strings.Repeat("a", agentTraceMaxLen)
+	t.Setenv(envvars.CliAgentTrace, val)
+	if got := AgentTraceValue(); got != val {
+		t.Fatalf("AgentTraceValue() = %q, want %d-byte value accepted", got, agentTraceMaxLen)
+	}
+}
+
+func TestBaseSecurityHeaders_NoAgentTraceHeaderWhenEnvUnset(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders() included %s = %q, want absent when env unset", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_IncludesAgentTraceHeaderWhenEnvSet(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "trace-xyz-789")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "trace-xyz-789" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q", HeaderAgentTrace, v, "trace-xyz-789")
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceTrimmedWhitespace(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "  trace-trim  ")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "trace-trim" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want %q (whitespace trimmed)", HeaderAgentTrace, v, "trace-trim")
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceOnlyWhitespace_Skipped(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "   ")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for whitespace-only value", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceRejectsCRLFInjection(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\r\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for CR/LF value", HeaderAgentTrace, v)
+	}
+}
+
+func TestBaseSecurityHeaders_AgentTraceRejectsLFInjection(t *testing.T) {
+	t.Setenv(envvars.CliAgentTrace, "val\nX-Evil: attack")
+	h := BaseSecurityHeaders()
+	if v := h.Get(HeaderAgentTrace); v != "" {
+		t.Fatalf("BaseSecurityHeaders()[%s] = %q, want absent for LF value", HeaderAgentTrace, v)
 	}
 }

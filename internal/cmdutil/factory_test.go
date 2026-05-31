@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -179,14 +180,15 @@ func TestCheckIdentity_Unsupported_AutoDetected(t *testing.T) {
 	f.IdentityAutoDetected = true
 
 	err := f.CheckIdentity(core.AsUser, []string{"bot"})
-	if err == nil {
-		t.Fatal("expected error")
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if !strings.Contains(err.Error(), "resolved identity") {
-		t.Errorf("expected 'resolved identity' in error, got: %v", err)
+	if !strings.Contains(ve.Message, "resolved identity") {
+		t.Errorf("expected 'resolved identity' in message, got: %v", ve.Message)
 	}
-	if !strings.Contains(err.Error(), "hint: use --as bot") {
-		t.Errorf("expected hint in error, got: %v", err)
+	if !strings.Contains(ve.Hint, "use --as bot") {
+		t.Errorf("expected hint to suggest --as bot, got: %v", ve.Hint)
 	}
 }
 
@@ -422,20 +424,17 @@ func TestRequireBuiltinCredentialProvider_BlocksExternalProvider(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
-		t.Errorf("error type field = %v, want %q", exitErr.Detail, "external_provider")
-	}
-	if exitErr.Detail.Message == "" {
+	if ve.Message == "" {
 		t.Error("expected non-empty message")
 	}
-	if exitErr.Detail.Hint == "" {
+	if ve.Hint == "" {
 		t.Error("expected non-empty hint")
 	}
 }

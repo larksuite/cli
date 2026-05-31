@@ -7,8 +7,46 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
+
+// failingWriter writes up to limit bytes then returns io.ErrShortWrite on
+// the write that would push past the limit. Used to simulate a stderr that
+// dies mid-envelope.
+type failingWriter struct {
+	limit int
+	n     int
+}
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	if f.n+len(p) > f.limit {
+		canWrite := f.limit - f.n
+		if canWrite < 0 {
+			canWrite = 0
+		}
+		f.n += canWrite
+		return canWrite, io.ErrShortWrite
+	}
+	f.n += len(p)
+	return len(p), nil
+}
+
+// TestWriteTypedErrorEnvelope_PartialWritePreservesSuccessStatus pins that
+// when serialization succeeds but the underlying write fails mid-envelope,
+// WriteTypedErrorEnvelope returns true so the dispatcher does NOT fall
+// through to the legacy "Error:" path and clobber the typed exit code with
+// 1. Exit code is preserved separately by handleRootError computing
+// ExitCodeOf(err) before the write.
+func TestWriteTypedErrorEnvelope_PartialWritePreservesSuccessStatus(t *testing.T) {
+	err := errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired")
+	w := &failingWriter{limit: 20} // dies mid-envelope
+	if ok := WriteTypedErrorEnvelope(w, err, "user"); !ok {
+		t.Error("partial write must return true; exit code is preserved separately")
+	}
+}
 
 func TestWriteErrorEnvelope_WithNotice(t *testing.T) {
 	// Set up PendingNotice
@@ -119,11 +157,11 @@ func TestGetNotice(t *testing.T) {
 	PendingNotice = origNotice
 }
 
-// TestErrValidation_LegacyExitErrorShape pins the stage-1 wire contract for
-// output.ErrValidation: the helper MUST return *output.ExitError (so callers
-// using errors.As(&exitErr) continue to work), with wire fields restricted
-// to type+message — no `subtype` emission. The typed envelope shape (which
-// adds subtype, param, etc.) is reserved for stage-2 per-domain migration.
+// TestErrValidation_LegacyExitErrorShape pins the wire contract for
+// output.ErrValidation: the helper MUST return *output.ExitError (so
+// callers using errors.As(&exitErr) continue to work), with wire fields
+// restricted to type+message — no `subtype` emission. Typed
+// *errs.ValidationError carries the extension fields when needed.
 func TestErrValidation_LegacyExitErrorShape(t *testing.T) {
 	err := ErrValidation("bad arg: %s", "x")
 
@@ -163,7 +201,7 @@ func TestErrValidation_LegacyExitErrorShape(t *testing.T) {
 	}
 }
 
-// TestErrNetwork_LegacyExitErrorShape pins the stage-1 wire contract for
+// TestErrNetwork_LegacyExitErrorShape pins the wire contract for
 // output.ErrNetwork: same legacy *output.ExitError shape as ErrValidation —
 // no subtype field, errors.As(&exitErr) must succeed, exit code ExitNetwork.
 func TestErrNetwork_LegacyExitErrorShape(t *testing.T) {

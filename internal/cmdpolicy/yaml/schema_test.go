@@ -24,7 +24,7 @@ max_risk: read
 identities:
   - user
 `)
-	rule, err := pyaml.Parse(data)
+	rules, err := pyaml.Parse(data)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
@@ -36,8 +36,59 @@ identities:
 		MaxRisk:     "read",
 		Identities:  []platform.Identity{"user"},
 	}
-	if !reflect.DeepEqual(rule, want) {
-		t.Fatalf("rule = %+v, want %+v", rule, want)
+	// A flat top-level rule yields exactly one element (backward compat).
+	if !reflect.DeepEqual(rules, []*platform.Rule{want}) {
+		t.Fatalf("rules = %+v, want single %+v", rules, want)
+	}
+}
+
+// A "rules:" list yields one platform.Rule per entry, in order. This is
+// the multi-rule layout: each rule is a scoped grant the engine
+// OR-combines.
+func TestParse_rulesList(t *testing.T) {
+	data := []byte(`
+rules:
+  - name: docs-ro
+    allow: [docs/**]
+    max_risk: read
+  - name: im-rw
+    allow: [im/**]
+    max_risk: write
+    identities: [user, bot]
+`)
+	rules, err := pyaml.Parse(data)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	want := []*platform.Rule{
+		{Name: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: "read"},
+		{Name: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write", Identities: []platform.Identity{"user", "bot"}},
+	}
+	if !reflect.DeepEqual(rules, want) {
+		t.Fatalf("rules = %+v, want %+v", rules, want)
+	}
+}
+
+// A "rules:" key that is present but empty is a foot-gun: an empty list
+// would otherwise fall through to a single all-zero Rule that allows
+// every annotated command ("looks like a policy, enforces almost
+// nothing"). Parse must reject it outright instead.
+func TestParse_rejectsEmptyRulesList(t *testing.T) {
+	if _, err := pyaml.Parse([]byte("rules: []\n")); err == nil {
+		t.Fatalf("Parse should reject a present-but-empty 'rules:' list")
+	}
+}
+
+// Mixing top-level flat rule fields with a rules: list is ambiguous and
+// must be rejected rather than silently picking one.
+func TestParse_rejectsFlatPlusRulesMix(t *testing.T) {
+	data := []byte(`
+name: top-level
+rules:
+  - name: nested
+`)
+	if _, err := pyaml.Parse(data); err == nil {
+		t.Fatalf("Parse should reject mixing top-level fields with a rules: list")
 	}
 }
 
@@ -52,15 +103,15 @@ name: agent-readonly
 max_risk: read
 allow_unannotated: true
 `)
-	rule, err := pyaml.Parse(data)
+	rules, err := pyaml.Parse(data)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	if !rule.AllowUnannotated {
+	if !rules[0].AllowUnannotated {
 		t.Fatalf("AllowUnannotated = false, want true (yaml field must propagate)")
 	}
-	if rule.MaxRisk != "read" || rule.Name != "agent-readonly" {
-		t.Errorf("other fields lost: %+v", rule)
+	if rules[0].MaxRisk != "read" || rules[0].Name != "agent-readonly" {
+		t.Errorf("other fields lost: %+v", rules[0])
 	}
 }
 
@@ -71,11 +122,11 @@ func TestParse_allowUnannotatedDefaultsFalse(t *testing.T) {
 name: x
 max_risk: read
 `)
-	rule, err := pyaml.Parse(data)
+	rules, err := pyaml.Parse(data)
 	if err != nil {
 		t.Fatalf("Parse failed: %v", err)
 	}
-	if rule.AllowUnannotated {
+	if rules[0].AllowUnannotated {
 		t.Fatalf("AllowUnannotated must default to false when key is absent")
 	}
 }
@@ -96,12 +147,12 @@ mystery_field: oh no
 // structural yaml; an invalid max_risk passes through (validation happens
 // downstream).
 func TestParse_doesNotValidateSemantics(t *testing.T) {
-	rule, err := pyaml.Parse([]byte("max_risk: nuclear\n"))
+	rules, err := pyaml.Parse([]byte("max_risk: nuclear\n"))
 	if err != nil {
 		t.Fatalf("structural parse should succeed, got %v", err)
 	}
-	if rule.MaxRisk != "nuclear" {
-		t.Fatalf("MaxRisk = %q, want passed through as-is", rule.MaxRisk)
+	if rules[0].MaxRisk != "nuclear" {
+		t.Fatalf("MaxRisk = %q, want passed through as-is", rules[0].MaxRisk)
 	}
 }
 

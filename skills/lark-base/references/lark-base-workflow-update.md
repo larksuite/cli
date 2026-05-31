@@ -151,7 +151,7 @@ PUT /open-apis/base/v3/bases/:base_token/workflows/:workflow_id
 
 ## 坑点
 
-- ⚠️ **PUT 是全量覆盖**：传什么就写什么；如果只传 `title` 不传 `steps`，原有 steps 会被清空；如需只改标题，使用 PATCH 接口（目前无对应 shortcut，可参考 API 文档直接调用）
+- ⚠️ **PUT 是全量覆盖**：传什么就写什么；如果只传 `title` 不传 `steps`，原有 steps 会被清空
 - ⚠️ **workflow_id 前缀**：以 `wkf` 开头，从 URL 的 `?table=wkf...` 提取；和 table_id（`tbl` 开头）混淆会导致 `[2200] Internal Error`
 - ⚠️ **steps 中 id 字段必须唯一**：每个步骤的 `id` 在同一工作流内必须唯一；`next` 和 `children.links[].to` 引用的 ID 必须在 steps 数组中存在
 - ⚠️ **更新不影响 enabled 状态**：`+workflow-update` 不会改变工作流的 `enabled/disabled` 状态；需要另外调用 `+workflow-enable` / `+workflow-disable`

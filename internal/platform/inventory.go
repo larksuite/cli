@@ -24,8 +24,10 @@ type PluginEntry struct {
 	Version      string
 	Capabilities CapabilitiesView
 
-	// Rule is non-nil only when the plugin called r.Restrict.
-	Rule *RuleView
+	// Rules holds the plugin's Restrict contributions, one per r.Restrict
+	// call (a plugin may declare several scoped rules). Empty when the
+	// plugin did not call r.Restrict.
+	Rules []*RuleView
 
 	Observers  []HookEntry
 	Wrappers   []HookEntry
@@ -149,15 +151,15 @@ func BuildInventory(plugins []PluginInventorySource, registry *hook.Registry, ru
 
 	for _, r := range rules {
 		if entry := byPlugin[r.PluginName]; entry != nil {
-			entry.Rule = &RuleView{
+			entry.Rules = append(entry.Rules, &RuleView{
 				Name:             r.RuleName,
 				Description:      r.Desc,
-				Allow:            r.Allow,
-				Deny:             r.Deny,
+				Allow:            append([]string(nil), r.Allow...),
+				Deny:             append([]string(nil), r.Deny...),
 				MaxRisk:          r.MaxRisk,
-				Identities:       r.Identities,
+				Identities:       append([]string(nil), r.Identities...),
 				AllowUnannotated: r.AllowUnannotated,
-			}
+			})
 		}
 	}
 	return out
@@ -248,12 +250,18 @@ func cloneInventory(in *Inventory) *Inventory {
 			Version:      p.Version,
 			Capabilities: p.Capabilities,
 		}
-		if p.Rule != nil {
-			rv := *p.Rule
-			rv.Allow = append([]string(nil), p.Rule.Allow...)
-			rv.Deny = append([]string(nil), p.Rule.Deny...)
-			rv.Identities = append([]string(nil), p.Rule.Identities...)
-			entry.Rule = &rv
+		if p.Rules != nil {
+			entry.Rules = make([]*RuleView, len(p.Rules))
+			for j, r := range p.Rules {
+				if r == nil {
+					continue
+				}
+				rv := *r
+				rv.Allow = append([]string(nil), r.Allow...)
+				rv.Deny = append([]string(nil), r.Deny...)
+				rv.Identities = append([]string(nil), r.Identities...)
+				entry.Rules[j] = &rv
+			}
 		}
 		entry.Observers = append([]HookEntry(nil), p.Observers...)
 		entry.Wrappers = append([]HookEntry(nil), p.Wrappers...)

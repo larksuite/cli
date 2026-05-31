@@ -59,7 +59,7 @@ You should see `audit` in the plugin list.
 | `Observer`                 | Before / After each command        | No (fire-and-forget audit)       |
 | `Wrap`                     | Around each command's RunE         | Yes (return `*AbortError`)       |
 | `On(Startup/Shutdown)`     | Process lifecycle                  | N/A                              |
-| `Restrict(Rule)`           | Bootstrap-time, single per binary  | Denies whole subtrees            |
+| `Restrict(Rule)`           | Bootstrap-time, ≥1 per plugin      | Denies whole subtrees            |
 
 ### Plugin lifecycle
 
@@ -102,10 +102,17 @@ the rejected dispatch.
 - A plugin calling `Restrict()` MUST declare `FailClosed`. The Builder
   flips it automatically; the lower-level `Plugin` interface rejects
   the mismatch with `restricts_mismatch`.
-- Only ONE plugin per binary can call `Restrict()`. Multi-plugin
-  Restrict is a deliberate `plugin_conflict` error (single-rule
-  ecosystem assumption). YAML policy at `~/.lark-cli/policy.yml` is
-  shadowed by any plugin Restrict.
+- A plugin may call `Restrict()` more than once; each call adds one
+  scoped Rule and the engine combines them with **OR** — a command is
+  allowed when it satisfies every axis (allow / deny / max_risk /
+  identities) of at least one rule. Note a rule's `deny` is scoped to
+  that rule only and cannot veto another rule's allow. Only ONE plugin
+  per binary may contribute rules, though: two DISTINCT plugins each
+  calling `Restrict()` is a deliberate `multiple_restrict_plugins` error
+  (single-owner assumption — an independent plugin must not be able to
+  widen another's policy). YAML policy at `~/.lark-cli/policy.yml` (which
+  may itself list several rules under `rules:`) is shadowed by any plugin
+  Restrict.
 - The `Wrap` factory runs **once per command dispatch**, not at
   install time. Long-lived state (clients, caches, metrics counters)
   must live on the Plugin struct or in package-level variables.
@@ -115,7 +122,8 @@ the rejected dispatch.
 - Commands missing a `risk_level` annotation are denied by default
   when a Rule is active. Set `Rule.AllowUnannotated = true` (or
   `allow_unannotated: true` in yaml) to opt out during gradual
-  adoption.
+  adoption. With several rules this is per-rule: an unannotated command
+  is allowed as long as one rule that opts in also grants it.
 - Risk annotation typos (e.g. `"wrtie"`) are always denied with
   `risk_invalid` plus a "did you mean" suggestion. `AllowUnannotated`
   does NOT bypass this — typo is a code bug, not a missing
@@ -144,8 +152,7 @@ messages are localised and may change between releases.
 | `duplicate_hook_name`       | Same hook name registered twice within a plugin                                | Yes                    |
 | `invalid_hook_registration` | Hook factory returns nil / Wrap chain re-entry / etc.                          | Yes                    |
 | `invalid_rule`              | Rule fails ValidateRule (malformed glob, bad MaxRisk, unknown Identity)        | Yes                    |
-| `double_restrict`           | Plugin called `r.Restrict()` more than once in one Install                     | Yes                    |
-| `multiple_restrict_plugins` | Two or more plugins each contributed Restrict                                  | Yes                    |
+| `multiple_restrict_plugins` | Two or more DISTINCT plugins each contributed Restrict (one plugin may contribute several rules) | Yes  |
 | `install_failed`            | `Plugin.Install` returned a non-nil error                                      | Yes                    |
 | `install_panic`             | `Plugin.Install` panicked                                                      | Yes                    |
 
@@ -165,6 +172,7 @@ might also be lying about being `FailOpen`).
 | `write_not_allowed`     | Command risk is `write` / `high-risk-write` and exceeds Rule `max_risk`                                          |
 | `risk_too_high`         | Command risk exceeds Rule `max_risk` but is not a write (reserved for future risk levels)                        |
 | `identity_mismatch`     | Command's `supportedIdentities` does not intersect Rule `identities`                                             |
+| `no_matching_rule`      | Several rules are active and the command satisfied none of them (the message summarises each rule's own rejection). Single-rule policies keep their specific reason_code instead | 
 | `aggregate_all_denied`  | Aggregate stub installed on a parent group because every live child was denied                                   |
 
 The `detail.layer` field distinguishes who rejected the call:

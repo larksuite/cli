@@ -56,8 +56,8 @@ func TestBuildInventory_groupsByPluginName(t *testing.T) {
 	if got := len(a.Lifecycles); got != 1 {
 		t.Errorf("a.Lifecycles = %d, want 1", got)
 	}
-	if a.Rule == nil || a.Rule.Name != "a-rule" {
-		t.Errorf("a.Rule = %+v, want name a-rule", a.Rule)
+	if len(a.Rules) != 1 || a.Rules[0].Name != "a-rule" {
+		t.Errorf("a.Rules = %+v, want single rule name a-rule", a.Rules)
 	}
 	if a.Capabilities.FailurePolicy != "FailClosed" {
 		t.Errorf("a.Capabilities.FailurePolicy = %q, want FailClosed", a.Capabilities.FailurePolicy)
@@ -66,11 +66,39 @@ func TestBuildInventory_groupsByPluginName(t *testing.T) {
 	if got := len(b.Observers); got != 1 {
 		t.Errorf("b.Observers = %d, want 1 (only b.audit)", got)
 	}
-	if b.Rule != nil {
-		t.Errorf("b.Rule = %+v, want nil (b did not call Restrict)", b.Rule)
+	if len(b.Rules) != 0 {
+		t.Errorf("b.Rules = %+v, want empty (b did not call Restrict)", b.Rules)
 	}
 	if b.Capabilities.FailurePolicy != "FailOpen" {
 		t.Errorf("b.Capabilities.FailurePolicy = %q, want FailOpen (zero value)", b.Capabilities.FailurePolicy)
+	}
+}
+
+// A plugin contributing several rules (same PluginName, multiple
+// RuleInventorySource entries) must surface ALL of them under Rules, in
+// order -- not silently overwrite down to the last one. Pins the
+// multi-rule inventory fix.
+func TestBuildInventory_multipleRulesPerPlugin(t *testing.T) {
+	plugins := []internalplatform.PluginInventorySource{
+		{Name: "a", Version: "1.0", Capabilities: platform.Capabilities{
+			Restricts: true, FailurePolicy: platform.FailClosed,
+		}},
+	}
+	rules := []internalplatform.RuleInventorySource{
+		{PluginName: "a", RuleName: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: "read"},
+		{PluginName: "a", RuleName: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write"},
+	}
+
+	inv := internalplatform.BuildInventory(plugins, nil, rules)
+	a := findPlugin(inv, "a")
+	if a == nil {
+		t.Fatalf("missing entry a")
+	}
+	if len(a.Rules) != 2 {
+		t.Fatalf("a.Rules = %d, want 2 (both rules preserved, no overwrite)", len(a.Rules))
+	}
+	if a.Rules[0].Name != "docs-ro" || a.Rules[1].Name != "im-rw" {
+		t.Errorf("rules out of order: %q, %q", a.Rules[0].Name, a.Rules[1].Name)
 	}
 }
 

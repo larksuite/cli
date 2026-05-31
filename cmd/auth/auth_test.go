@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -318,6 +319,54 @@ func TestAuthScopesRun_UsesTenantAccessTokenFromCredentialProvider(t *testing.T)
 	}
 }
 
+// TestAuthScopesRun_LarkPermissionError_TypedAsPermissionError pins that when
+// the Lark API returns a permission code (99991679 with permission_violations),
+// getAppInfo classifies it as *errs.PermissionError carrying the server-
+// supplied MissingScopes — not a bare error wrapped as InternalError.
+func TestAuthScopesRun_LarkPermissionError_TypedAsPermissionError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	tokenResolver := &authScopesTokenResolver{}
+	f.Credential = credential.NewCredentialProvider(nil, nil, tokenResolver, nil)
+
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodGet,
+		URL:    "/open-apis/application/v6/applications/test-app",
+		Body: map[string]interface{}{
+			"code": 99991679,
+			"msg":  "scope missing",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "application:application:self_manage"},
+				},
+			},
+		},
+	})
+
+	err := authScopesRun(&ScopesOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Format:  "json",
+	})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != "application:application:self_manage" {
+		t.Errorf("MissingScopes = %v, want server-supplied [application:application:self_manage]", pe.MissingScopes)
+	}
+
+	var intErr *errs.InternalError
+	if errors.As(err, &intErr) {
+		t.Error("Lark business error must not be wrapped as InternalError; permission semantics lost")
+	}
+}
+
 type authScopesTokenResolver struct {
 	requests []credential.TokenSpec
 }
@@ -389,15 +438,8 @@ func TestAuthBlockedByExternalProvider(t *testing.T) {
 			if matched != nil && matched != cmd && !matched.SilenceUsage {
 				t.Error("expected PersistentPreRunE to set SilenceUsage on matched subcommand")
 			}
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) {
-				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-			}
-			if exitErr.Code != output.ExitValidation {
-				t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
-			}
-			if exitErr.Detail == nil || exitErr.Detail.Type != "external_provider" {
-				t.Errorf("error type = %v, want %q", exitErr.Detail, "external_provider")
+			if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 			}
 		})
 	}

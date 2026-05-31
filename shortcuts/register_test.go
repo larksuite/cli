@@ -97,6 +97,14 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	if workspaceCmd == nil || workspaceCmd.Name() != "+base-get" {
 		t.Fatalf("base workspace shortcut not mounted: %#v", workspaceCmd)
 	}
+
+	blockDataCmd, _, err := program.Find([]string{"base", "+dashboard-block-get-data"})
+	if err != nil {
+		t.Fatalf("find dashboard block get-data shortcut: %v", err)
+	}
+	if blockDataCmd == nil || blockDataCmd.Name() != "+dashboard-block-get-data" {
+		t.Fatalf("base dashboard block get-data shortcut not mounted: %#v", blockDataCmd)
+	}
 }
 
 // Service-level cobra commands created by RegisterShortcuts must carry

@@ -38,6 +38,45 @@ func GetStrSliceFromMap(m map[string]interface{}, key string) []string {
 	return result
 }
 
+// DeclaredScopesForMethod returns the scopes declared by a method's
+// from_meta entry for the given identity. Prefers the explicit
+// `requiredScopes` field when present; otherwise returns the single
+// recommended scope from `scopes` (or the first scope as a final fallback).
+// Returns nil when the method has no scope information.
+func DeclaredScopesForMethod(method map[string]interface{}, identity string) []string {
+	if method == nil {
+		return nil
+	}
+	if requiredRaw, ok := method["requiredScopes"].([]interface{}); ok && len(requiredRaw) > 0 {
+		out := make([]string, 0, len(requiredRaw))
+		for _, v := range requiredRaw {
+			if s, ok := v.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		if len(out) > 0 {
+			return out
+		}
+	}
+	rawScopes, _ := method["scopes"].([]interface{})
+	if len(rawScopes) == 0 {
+		return nil
+	}
+	recommended := SelectRecommendedScope(rawScopes, identity)
+	if recommended == "" {
+		for _, raw := range rawScopes {
+			if s, ok := raw.(string); ok && s != "" {
+				recommended = s
+				break
+			}
+		}
+	}
+	if recommended == "" {
+		return nil
+	}
+	return []string{recommended}
+}
+
 // SelectRecommendedScope selects the known scope with the highest priority score
 // (higher = more recommended / least privilege).
 // Scopes not in the priority table are skipped to avoid recommending invalid/unknown scopes.

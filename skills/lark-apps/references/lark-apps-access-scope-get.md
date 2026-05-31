@@ -51,7 +51,7 @@ lark-cli apps +access-scope-get --app-id app_xxx
 **失败：**
 
 ```json
-{ "ok": false, "error": { "type": "api_error", "message": "...", "hint": "..." } }
+{ "ok": false, "error": { "type": "api", "message": "...", "hint": "..." } }
 ```
 
 ## 字段语义

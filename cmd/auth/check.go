@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -47,7 +48,7 @@ func authCheckRun(opts *CheckOptions) error {
 
 	required := strings.Fields(opts.Scope)
 	if len(required) == 0 {
-		return output.ErrValidation("--scope cannot be empty")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope cannot be empty").WithParam("--scope")
 	}
 
 	config, err := f.Config()

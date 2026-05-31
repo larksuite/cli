@@ -82,6 +82,8 @@ jobs:
         run: python3 scripts/fetch_meta.py
       - name: Run golangci-lint
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev=origin/main
+      - name: Run errs/ lint guards (lintcheck)
+        run: go run -C lint . ..
 
   coverage:
     needs: fast-gate

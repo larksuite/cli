@@ -214,7 +214,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		}
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
-			return nil, fmt.Errorf("token refresh parse error: %v", err)
+			return nil, fmt.Errorf("token refresh parse error: %w", err)
 		}
 		return data, nil
 	}

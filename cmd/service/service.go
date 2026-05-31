@@ -9,11 +9,13 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/util"
@@ -222,7 +224,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	}
 
 	if opts.PageAll && opts.Output != "" {
-		return output.ErrValidation("--output and --page-all are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output and --page-all are mutually exclusive").WithParam("--output")
 	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
@@ -271,12 +273,10 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 		fmt.Fprintf(f.IOStreams.ErrOut, "warning: unknown format %q, falling back to json\n", opts.Format)
 	}
 
-	// Stage 1: enrich the 99991679 (LarkErrUserScopeInsufficient) response
-	// with a per-method recommended `--scope` hint, matching the pre-PR
-	// behaviour. Per-domain typed migration in stage 2+ will lift this
-	// into PermissionError.MissingScopes / ConsoleURL on the typed
-	// envelope; until then the legacy ExitError envelope is preserved.
-	checkErr := scopeAwareChecker(scopes, opts.As.IsBot())
+	// Scope-insufficient (99991679) and all other Lark API codes route through
+	// errclass.BuildAPIError via ac.CheckResponse, producing *errs.PermissionError
+	// with MissingScopes / Identity / ConsoleURL populated from the response.
+	checkErr := ac.CheckResponse
 
 	if opts.PageAll {
 		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
@@ -300,51 +300,6 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	})
 }
 
-// scopeAwareChecker returns an error checker that enriches the
-// LarkErrUserScopeInsufficient (99991679) business error with a
-// per-method recommended `--scope` hint. All other non-zero codes fall
-// through to legacy output.ErrAPI (matching pre-PR behaviour). The
-// identity parameter is accepted to match the client.ResponseOptions
-// CheckError signature; isBotMode is captured from the enclosing call so
-// the recommended scope reflects the caller's identity at request time.
-//
-// Deprecated: stage-1 enrichment for the legacy *output.ExitError envelope.
-// Stage-2 typed migration will lift this into PermissionError.MissingScopes
-// + ConsoleURL on the typed envelope and remove this helper.
-func scopeAwareChecker(scopes []interface{}, isBotMode bool) func(interface{}, core.Identity) error {
-	return func(result interface{}, _ core.Identity) error {
-		resultMap, ok := result.(map[string]interface{})
-		if !ok || resultMap == nil {
-			return nil
-		}
-		code, _ := util.ToFloat64(resultMap["code"])
-		if code == 0 {
-			return nil
-		}
-		larkCode := int(code)
-		msg := registry.GetStrFromMap(resultMap, "msg")
-
-		if larkCode == output.LarkErrUserScopeInsufficient && len(scopes) > 0 {
-			identity := "user"
-			if isBotMode {
-				identity = "tenant"
-			}
-			recommended := registry.SelectRecommendedScope(scopes, identity)
-			// Stage-1 carve-out: this restores the pre-PR scope-insufficient
-			// enrichment (recommended scope + auth-login hint) on the legacy
-			// envelope. The typed migration in stage 2+ will lift this into
-			// PermissionError.MissingScopes / ConsoleURL on the typed wire.
-			return output.ErrWithHint(output.ExitAPI, "permission",
-				fmt.Sprintf("insufficient permissions: [%d] %s", larkCode, msg),
-				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended))
-		}
-
-		// Stage-1 carve-out: matches pre-PR behaviour (legacy ExitError +
-		// ClassifyLarkError). Typed migration is stage-2+.
-		return output.ErrAPI(larkCode, fmt.Sprintf("API error: [%d] %s", larkCode, msg), resultMap["error"])
-	}
-}
-
 // checkServiceScopes pre-checks user scopes before making the API call.
 func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider, identity core.Identity, config *core.CliConfig, method map[string]interface{}, scopes []interface{}) error {
 	if ctx.Err() != nil {
@@ -366,9 +321,7 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 			}
 		}
 		if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-			return output.ErrWithHint(output.ExitAuth, "missing_scope",
-				fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+			return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), missing)
 		}
 		return nil
 	}
@@ -388,9 +341,24 @@ func checkServiceScopes(ctx context.Context, cred *credential.CredentialProvider
 		}
 	}
 	recommended := registry.SelectRecommendedScope(scopes, "user")
-	return output.ErrWithHint(output.ExitAPI, "permission",
-		fmt.Sprintf("insufficient permissions (required scope: %s)", recommended),
-		fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended))
+	return newPreflightMissingScopeError(string(config.Brand), config.AppID, string(identity), []string{recommended})
+}
+
+// newPreflightMissingScopeError constructs a PermissionError for the local
+// pre-flight scope check that converges byte-for-byte with the dispatcher's
+// BuildAPIError path. Uses the canonical helpers in internal/errclass so
+// Hint and Message stay in lock-step with the server-response classifier.
+// ConsoleURL is deliberately omitted: the dispatcher only sets it for
+// SubtypeAppScopeNotApplied (bot-perspective dev-action recovery), and this
+// pre-flight path is user-perspective SubtypeMissingScope whose recovery is
+// `lark-cli auth login --scope ...`, not a console deep-link.
+func newPreflightMissingScopeError(brand, appID, identity string, missing []string) *errs.PermissionError {
+	consoleURL := errclass.ConsoleURL(brand, appID, missing)
+	return errs.NewPermissionError(errs.SubtypeMissingScope,
+		"%s", errclass.CanonicalPermissionMessage(errs.SubtypeMissingScope, appID, missing, "")).
+		WithHint("%s", errclass.PermissionHint(missing, identity, errs.SubtypeMissingScope, consoleURL)).
+		WithMissingScopes(missing...).
+		WithIdentity(identity)
 }
 
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
@@ -412,7 +380,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		return client.RawApiRequest{}, nil, err
 	}
 	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--params and --data cannot both read from stdin (-)").WithParam("--params")
 	}
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
@@ -429,13 +397,14 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 		val, ok := params[name]
 		if !ok || util.IsEmptyValue(val) {
-			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
-				fmt.Sprintf("missing required path parameter: %s", name),
-				fmt.Sprintf("lark-cli schema %s", schemaPath))
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"missing required path parameter: %s", name).
+				WithHint("lark-cli schema %s", schemaPath).
+				WithParam(name)
 		}
 		valStr := fmt.Sprintf("%v", val)
 		if err := validate.ResourceName(valStr, name); err != nil {
-			return client.RawApiRequest{}, nil, output.ErrValidation("%s", err)
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam(name).WithCause(err)
 		}
 		url = strings.Replace(url, "{"+name+"}", validate.EncodePathSegment(valStr), 1)
 		delete(params, name)
@@ -451,9 +420,10 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		required, _ := p["required"].(bool)
 		isPaginationParam := opts.PageAll && (name == "page_token" || name == "page_size")
 		if required && !isPaginationParam && (!exists || util.IsEmptyValue(value)) {
-			return client.RawApiRequest{}, nil, output.ErrWithHint(output.ExitValidation, "validation",
-				fmt.Sprintf("missing required query parameter: %s", name),
-				fmt.Sprintf("lark-cli schema %s", schemaPath))
+			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"missing required query parameter: %s", name).
+				WithHint("lark-cli schema %s", schemaPath).
+				WithParam(name)
 		}
 		if exists && !util.IsEmptyValue(value) {
 			queryParams[name] = value
@@ -488,7 +458,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 				return client.RawApiRequest{}, nil, err
 			}
 			if _, ok := dataFields.(map[string]any); !ok {
-				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+				return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a JSON object when used with --file").WithParam("--data")
 			}
 		}
 

@@ -13,6 +13,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/extension/platform"
+	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -181,6 +183,39 @@ func TestApplyUserPolicyPruning_malformedYamlReturnsError(t *testing.T) {
 	err := applyUserPolicyPruning(root, nil)
 	if err == nil {
 		t.Fatalf("malformed yaml should produce an error")
+	}
+}
+
+// When a plugin contributed rules, a malformed user policy.yml must NOT
+// abort: plugin rules shadow yaml entirely, so the broken file is never
+// read. Regression -- previously LoadYAMLPolicy ran first and an
+// unrelated broken yaml on the user's machine could fatal a
+// plugin-governed binary (build.go fail-CLOSES on policy errors when a
+// plugin is present).
+func TestApplyUserPolicyPruning_pluginRulesSkipBrokenYaml(t *testing.T) {
+	cfgDir := tmpHome(t)
+	t.Cleanup(cmdpolicy.ResetActiveForTesting)
+	writePolicy(t, cfgDir, "::: not yaml :::") // broken on purpose
+
+	pluginRules := []cmdpolicy.PluginRule{
+		{PluginName: "secaudit", Rule: &platform.Rule{
+			Name:    "docs-only",
+			Allow:   []string{"docs/**"},
+			MaxRisk: "write",
+		}},
+	}
+	root := fakeTree(t)
+	if err := applyUserPolicyPruning(root, pluginRules); err != nil {
+		t.Fatalf("plugin rules must shadow (and skip reading) yaml; broken yaml should not error, got %v", err)
+	}
+
+	// Plugin rule actually applied: im/+send is outside docs/** -> hidden.
+	if send := findLeaf(t, root, "im", "+send"); !send.Hidden {
+		t.Errorf("im/+send should be hidden by plugin rule (not in docs/** allow)")
+	}
+	// docs/+update is within allow and at/below max_risk -> stays visible.
+	if update := findLeaf(t, root, "docs", "+update"); update.Hidden {
+		t.Errorf("docs/+update should remain visible under plugin rule")
 	}
 }
 
