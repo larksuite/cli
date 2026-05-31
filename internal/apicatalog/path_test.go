@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package schema
+package apicatalog_test
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/larksuite/cli/internal/apicatalog"
 )
 
 func TestParsePath(t *testing.T) {
@@ -25,7 +27,7 @@ func TestParsePath(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ParsePath(tt.args)
+			got := apicatalog.ParsePath(tt.args)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParsePath(%v) = %v, want %v", tt.args, got, tt.want)
 			}

@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/spf13/cobra"
 )
 
@@ -20,14 +21,14 @@ var testConfig = &core.CliConfig{
 	AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 }
 
-func driveSpec() map[string]interface{} {
-	return map[string]interface{}{
+func driveSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
 		"name":        "drive",
 		"servicePath": "/open-apis/drive/v1",
-	}
+	})
 }
 
-func driveMethod(httpMethod string, params map[string]interface{}) map[string]interface{} {
+func driveMethod(httpMethod string, params map[string]interface{}) meta.Method {
 	m := map[string]interface{}{
 		"path":       "files/{file_token}/copy",
 		"httpMethod": httpMethod,
@@ -41,7 +42,7 @@ func driveMethod(httpMethod string, params map[string]interface{}) map[string]in
 			},
 		}
 	}
-	return m
+	return meta.FromMap(m)
 }
 
 // ── registerService ──
@@ -49,23 +50,23 @@ func driveMethod(httpMethod string, params map[string]interface{}) map[string]in
 func TestRegisterService(t *testing.T) {
 	parent := &cobra.Command{Use: "root"}
 	f := &cmdutil.Factory{}
-	spec := map[string]interface{}{
+	base := meta.ServiceFromMap(map[string]interface{}{
 		"name":        "base",
 		"description": "Base API",
 		"servicePath": "/open-apis/base/v3",
-	}
-	resources := map[string]interface{}{
-		"tables": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"list": map[string]interface{}{
-					"description": "List tables",
-					"httpMethod":  "GET",
+		"resources": map[string]interface{}{
+			"tables": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{
+						"description": "List tables",
+						"httpMethod":  "GET",
+					},
 				},
 			},
 		},
-	}
+	})
 
-	registerService(parent, spec, resources, f)
+	registerService(parent, base, f)
 
 	// service command exists
 	svc, _, err := parent.Find([]string{"base"})
@@ -90,18 +91,18 @@ func TestRegisterService_MergesExistingCommand(t *testing.T) {
 	parent.AddCommand(existing)
 
 	f := &cmdutil.Factory{}
-	spec := map[string]interface{}{
+	svc := meta.ServiceFromMap(map[string]interface{}{
 		"name": "base", "description": "Base API", "servicePath": "/open-apis/base/v3",
-	}
-	resources := map[string]interface{}{
-		"tables": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"list": map[string]interface{}{"description": "List", "httpMethod": "GET"},
+		"resources": map[string]interface{}{
+			"tables": map[string]interface{}{
+				"methods": map[string]interface{}{
+					"list": map[string]interface{}{"description": "List", "httpMethod": "GET"},
+				},
 			},
 		},
-	}
+	})
 
-	registerService(parent, spec, resources, f)
+	registerService(parent, svc, f)
 
 	// Should reuse existing, not duplicate
 	count := 0
@@ -143,7 +144,7 @@ func TestNewCmdServiceMethod_StrictModeHidesAsFlag(t *testing.T) {
 func TestNewCmdServiceMethod_GETHasNoDataFlag(t *testing.T) {
 	f := &cmdutil.Factory{}
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files", nil)
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files", nil)
 
 	if cmd.Flags().Lookup("data") != nil {
 		t.Error("GET method should not have --data flag")
@@ -159,7 +160,7 @@ func TestNewCmdServiceMethod_GETHasNoDataFlag(t *testing.T) {
 func TestNewCmdServiceMethod_POSTHasDataFlag(t *testing.T) {
 	f := &cmdutil.Factory{}
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "POST"}, "create", "files", nil)
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "POST"}), "create", "files", nil)
 
 	if cmd.Flags().Lookup("data") == nil {
 		t.Error("POST method should have --data flag")
@@ -171,7 +172,7 @@ func TestNewCmdServiceMethod_RunFCallback(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -268,15 +269,15 @@ func TestServiceMethod_MissingPathParam(t *testing.T) {
 }
 
 func TestServiceMethod_MissingRequiredQueryParam(t *testing.T) {
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{
+	})
+	method := meta.FromMap(map[string]interface{}{
 		"path": "items", "httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"q": map[string]interface{}{"location": "query", "required": true},
 		},
-	}
+	})
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", `{}`, "--dry-run"})
@@ -291,15 +292,15 @@ func TestServiceMethod_MissingRequiredQueryParam(t *testing.T) {
 }
 
 func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{
+	})
+	method := meta.FromMap(map[string]interface{}{
 		"path": "items", "httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"page_size": map[string]interface{}{"location": "query", "required": true},
 		},
-	}
+	})
 	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", `{}`, "--page-all", "--dry-run"})
@@ -315,10 +316,10 @@ func TestServiceMethod_PaginationParamSkippedWithPageAll(t *testing.T) {
 
 func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--params", "{bad", "--dry-run"})
 
@@ -333,10 +334,10 @@ func TestServiceMethod_InvalidParamsJSON(t *testing.T) {
 
 func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
 	cmd.SetArgs([]string{"--data", "{bad", "--dry-run"})
 
@@ -351,10 +352,10 @@ func TestServiceMethod_InvalidDataJSON(t *testing.T) {
 
 func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "POST", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "create", "items", nil)
 	cmd.SetArgs([]string{"--params", "-", "--data", "-", "--dry-run"})
 
@@ -369,10 +370,10 @@ func TestServiceMethod_ParamsAndDataBothStdinConflict(t *testing.T) {
 
 func TestServiceMethod_OutputAndPageAllConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--page-all", "--output", "file.bin", "--as", "bot"})
 
@@ -398,8 +399,8 @@ func TestServiceMethod_BotMode_Success(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot"})
 
@@ -427,8 +428,8 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--page-all"})
 
@@ -450,8 +451,8 @@ func TestServiceMethod_UnknownFormat_Warning(t *testing.T) {
 		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--format", "unknown"})
 
@@ -470,7 +471,7 @@ func TestNewCmdServiceMethod_JqFlag(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -492,7 +493,7 @@ func TestNewCmdServiceMethod_JqShortForm(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil
@@ -508,10 +509,10 @@ func TestNewCmdServiceMethod_JqShortForm(t *testing.T) {
 
 func TestServiceMethod_JqAndOutputConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", ".data", "--output", "file.bin", "--as", "bot"})
 
@@ -542,8 +543,8 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--jq", ".data.items[].name"})
 
@@ -561,10 +562,10 @@ func TestServiceMethod_JqFilter_AppliesExpression(t *testing.T) {
 
 func TestServiceMethod_JqAndFormatConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", ".data", "--format", "ndjson", "--as", "bot"})
 
@@ -579,10 +580,10 @@ func TestServiceMethod_JqAndFormatConflict(t *testing.T) {
 
 func TestServiceMethod_JqInvalidExpression(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	spec := map[string]interface{}{
+	spec := meta.ServiceFromMap(map[string]interface{}{
 		"name": "svc", "servicePath": "/open-apis/svc/v1",
-	}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET"}
+	})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET"})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--jq", "invalid[", "--as", "bot"})
 
@@ -611,8 +612,8 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 		},
 	})
 
-	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
-	method := map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}}
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
 	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
 	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--jq", ".data.items[].id"})
 
@@ -630,8 +631,8 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 
 // ── file upload ──
 
-func imImageMethod() map[string]interface{} {
-	return map[string]interface{}{
+func imImageMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
 		"path":       "images",
 		"httpMethod": "POST",
 		"requestBody": map[string]interface{}{
@@ -645,14 +646,14 @@ func imImageMethod() map[string]interface{} {
 			},
 		},
 		"accessTokens": []interface{}{"user", "tenant"},
-	}
+	})
 }
 
-func imSpec() map[string]interface{} {
-	return map[string]interface{}{
+func imSpec() meta.Service {
+	return meta.ServiceFromMap(map[string]interface{}{
 		"name":        "im",
 		"servicePath": "/open-apis/im/v1",
-	}
+	})
 }
 
 func TestServiceMethod_FileFlagRegistered(t *testing.T) {
@@ -684,7 +685,7 @@ func TestServiceMethod_FileFlagNotRegisteredForGET(t *testing.T) {
 		},
 	}
 	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
-	cmd := NewCmdServiceMethod(f, imSpec(), getMethod, "get", "images", nil)
+	cmd := NewCmdServiceMethod(f, imSpec(), meta.FromMap(getMethod), "get", "images", nil)
 	flag := cmd.Flags().Lookup("file")
 	if flag != nil {
 		t.Fatal("expected --file flag NOT to be registered for GET method")
@@ -752,7 +753,7 @@ func TestDetectFileFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectFileFields(tt.method)
+			got := detectFileFields(meta.FromMap(tt.method))
 			if len(got) != len(tt.want) {
 				t.Errorf("detectFileFields() = %v, want %v", got, tt.want)
 				return
@@ -771,7 +772,7 @@ func TestServiceMethod_JsonFlag_Accepted(t *testing.T) {
 
 	var captured *ServiceMethodOptions
 	cmd := NewCmdServiceMethod(f, driveSpec(),
-		map[string]interface{}{"description": "desc", "httpMethod": "GET"}, "list", "files",
+		meta.FromMap(map[string]interface{}{"description": "desc", "httpMethod": "GET"}), "list", "files",
 		func(opts *ServiceMethodOptions) error {
 			captured = opts
 			return nil

@@ -92,16 +92,11 @@ func buildDomainMeta(name, lang string) domainMeta {
 			Description: desc,
 		}
 	}
-	// Fallback: read from from_meta spec (legacy)
-	meta := registry.LoadFromMeta(name)
+	// Fallback: read from the typed service spec (legacy)
 	dm := domainMeta{Name: name}
-	if meta != nil {
-		if t, ok := meta["title"].(string); ok {
-			dm.Title = t
-		}
-		if d, ok := meta["description"].(string); ok {
-			dm.Description = d
-		}
+	if svc, ok := registry.ServiceTyped(name); ok {
+		dm.Title = svc.Title
+		dm.Description = svc.Description
 	}
 	return dm
 }

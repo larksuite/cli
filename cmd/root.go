@@ -36,7 +36,7 @@ const rootLong = `lark-cli — Lark/Feishu CLI tool.
 USAGE:
     lark-cli <command> [subcommand] [method] [options]
     lark-cli api <method> <path> [--params <json>] [--data <json>]
-    lark-cli schema <service.resource.method> [--format pretty]
+    lark-cli schema <service.resource.method>
 
 EXAMPLES:
     # View upcoming events

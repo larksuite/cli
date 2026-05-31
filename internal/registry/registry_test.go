@@ -65,8 +65,7 @@ func TestSelectRecommendedScope_PicksHighestScore(t *testing.T) {
 	}
 	t.Logf("%s=%d, %s=%d", scopeA, scoreA, scopeB, scoreB)
 
-	scopes := []interface{}{scopeB, scopeA}
-	result := SelectRecommendedScope(scopes, "user")
+	result := bestScope([]string{scopeB, scopeA}, priorities)
 
 	// Should pick the higher-scored one (higher = more recommended)
 	if scoreA > scoreB {
@@ -81,11 +80,11 @@ func TestSelectRecommendedScope_PicksHighestScore(t *testing.T) {
 }
 
 func TestSelectRecommendedScope_FallbackToFirst(t *testing.T) {
-	scopes := []interface{}{
+	scopes := []string{
 		"zzz_unknown:scope:a",
 		"zzz_unknown:scope:b",
 	}
-	result := SelectRecommendedScope(scopes, "user")
+	result := bestScope(scopes, LoadScopePriorities())
 	// All unknown scopes get DefaultScopeScore; first one with that score wins
 	if result != "zzz_unknown:scope:a" {
 		t.Errorf("expected zzz_unknown:scope:a, got %s", result)
@@ -93,13 +92,10 @@ func TestSelectRecommendedScope_FallbackToFirst(t *testing.T) {
 }
 
 func TestSelectRecommendedScope_Empty(t *testing.T) {
-	result := SelectRecommendedScope(nil, "user")
-	if result != "" {
+	if result := bestScope(nil, LoadScopePriorities()); result != "" {
 		t.Errorf("expected empty string, got %s", result)
 	}
-
-	result = SelectRecommendedScope([]interface{}{}, "user")
-	if result != "" {
+	if result := bestScope([]string{}, LoadScopePriorities()); result != "" {
 		t.Errorf("expected empty string, got %s", result)
 	}
 }
@@ -317,27 +313,6 @@ func TestFilterAutoApproveScopes_Empty(t *testing.T) {
 }
 
 // --- Helper functions ---
-
-func TestGetStrFromMap(t *testing.T) {
-	m := map[string]interface{}{
-		"key1": "value1",
-		"key2": 42,
-		"key3": nil,
-	}
-
-	if v := GetStrFromMap(m, "key1"); v != "value1" {
-		t.Errorf("expected value1, got %s", v)
-	}
-	if v := GetStrFromMap(m, "key2"); v != "" {
-		t.Errorf("expected empty for non-string value, got %s", v)
-	}
-	if v := GetStrFromMap(m, "missing"); v != "" {
-		t.Errorf("expected empty for missing key, got %s", v)
-	}
-	if v := GetStrFromMap(nil, "key"); v != "" {
-		t.Errorf("expected empty for nil map, got %s", v)
-	}
-}
 
 func TestGetRegistryDir(t *testing.T) {
 	dir := GetRegistryDir()
