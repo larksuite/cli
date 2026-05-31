@@ -53,6 +53,30 @@ yuanbao ~/.hermes/skills/yuanbao
 	}
 }
 
+func TestParseGlobalSkillsListWithGroupedIndentedSkills(t *testing.T) {
+	input := `Global Skills
+
+General
+  lark-apps ~/.agents/skills/lark-apps
+  lark-base ~/.agents/skills/lark-base
+  lark-contact ~/.agents/skills/lark-contact
+
+Document
+  lark-doc ~/.agents/skills/lark-doc
+  lark-openapi-explorer ~/.agents/skills/lark-openapi-explorer
+
+Knowledge Base
+  lark-wiki /Users/me/.agents/skills/lark-wiki
+
+Tip: Use the -y flag to run in non-interactive mode (for CI and AI agents).
+`
+	got := ParseSkillsList(input)
+	want := []string{"lark-apps", "lark-base", "lark-contact", "lark-doc", "lark-openapi-explorer", "lark-wiki"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ParseSkillsList() (grouped Global Skills) = %#v, want %#v", got, want)
+	}
+}
+
 func TestParseGlobalSkillsListWithANSI(t *testing.T) {
 	input := "\x1b[1mGlobal Skills\x1b[0m\n\n" +
 		"\x1b[36mlark-calendar\x1b[0m \x1b[38;5;102m~/.agents/skills/lark-calendar\x1b[0m\n" +

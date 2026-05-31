@@ -77,14 +77,12 @@ func parseGlobalSkillsList(lines []string) []string {
 			continue
 		}
 
-		// Skip indented lines (Agents: ...)
-		if strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "\t") {
-			continue
-		}
-
 		// Extract skill name, format is typically "skill-name /path/to/skill"
 		parts := strings.Fields(trimmed)
-		if len(parts) == 0 {
+		if len(parts) < 2 {
+			continue
+		}
+		if !looksLikeSkillPath(parts[1]) {
 			continue
 		}
 
@@ -104,6 +102,15 @@ func parseGlobalSkillsList(lines []string) []string {
 	}
 
 	return sortedKeys(seen)
+}
+
+func looksLikeSkillPath(s string) bool {
+	return strings.HasPrefix(s, "~/") ||
+		strings.HasPrefix(s, "/") ||
+		strings.HasPrefix(s, "./") ||
+		strings.HasPrefix(s, "../") ||
+		strings.Contains(s, `:\`) ||
+		strings.Contains(s, `/`)
 }
 
 // parseOfficialSkillsList parses the output of "npx -y skills add ... --list"
