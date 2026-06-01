@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -245,9 +246,29 @@ func findAppIndexByAppID(multi *core.MultiAppConfig, appID string) int {
 	return -1
 }
 
+// wrapUpdateExistingProfileErr classifies the error returned by
+// updateExistingProfileWithoutSecret. Typed errors (e.g. *errs.ValidationError
+// for blank-input) pass through unchanged so their exit code semantics
+// survive; legacy *output.ExitError also passes through; everything else
+// (filesystem, keychain, etc.) is wrapped as InternalError.
+func wrapUpdateExistingProfileErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errs.IsTyped(err) {
+		return err
+	}
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "failed to save config: %v", err).WithCause(err)
+}
+
 func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileName, appID string, brand core.LarkBrand, lang string) error {
 	if existing == nil {
-		return output.ErrValidation("App Secret cannot be empty for new configuration")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty for new configuration").
+			WithParam("--app-secret")
 	}
 
 	var app *core.AppConfig
@@ -255,17 +276,20 @@ func updateExistingProfileWithoutSecret(existing *core.MultiAppConfig, profileNa
 		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
 			app = &existing.Apps[idx]
 		} else {
-			return output.ErrValidation("App Secret cannot be empty for new profile")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty for new profile").
+				WithParam("--app-secret")
 		}
 	} else {
 		app = existing.CurrentAppConfig("")
 		if app == nil {
-			return output.ErrValidation("App Secret cannot be empty for new configuration")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty for new configuration").
+				WithParam("--app-secret")
 		}
 	}
 
 	if app.AppId != appID {
-		return output.ErrValidation("App Secret cannot be empty when changing App ID")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty when changing App ID").
+			WithParam("--app-secret")
 	}
 
 	app.AppId = appID
@@ -282,13 +306,13 @@ func configInitRun(opts *ConfigInitOptions) error {
 		scanner := bufio.NewScanner(f.IOStreams.In)
 		if !scanner.Scan() {
 			if err := scanner.Err(); err != nil {
-				return output.ErrValidation("failed to read secret from stdin: %v", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "failed to read secret from stdin: %v", err).WithCause(err)
 			}
-			return output.ErrValidation("stdin is empty, expected app secret")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "stdin is empty, expected app secret")
 		}
 		opts.appSecret = strings.TrimSpace(scanner.Text())
 		if opts.appSecret == "" {
-			return output.ErrValidation("app secret read from stdin is empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "app secret read from stdin is empty")
 		}
 	}
 
@@ -300,7 +324,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	// Validate --profile name if set
 	if opts.ProfileName != "" {
 		if err := core.ValidateProfileName(opts.ProfileName); err != nil {
-			return output.ErrValidation("%v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithCause(err)
 		}
 	}
 
@@ -309,10 +333,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 		brand := parseBrand(opts.Brand)
 		secret, err := core.ForStorage(opts.AppID, core.PlainSecret(opts.appSecret), f.Keychain)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%v", err)
+			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
 		if err := saveInitConfig(opts.ProfileName, existing, f, opts.AppID, secret, brand, opts.Lang); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+			return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 		printLangPreferenceConfirmation(opts)
@@ -344,15 +368,15 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return err
 		}
 		if result == nil {
-			return output.ErrValidation("app creation returned no result")
+			return errs.NewInternalError(errs.SubtypeSDKError, "app creation returned no result")
 		}
 		existing, _ := core.LoadMultiAppConfig()
 		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%v", err)
+			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
 		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+			return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 		}
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
@@ -366,7 +390,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 			return err
 		}
 		if result == nil {
-			return output.ErrValidation("App ID and App Secret cannot be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").
+				WithParam("--app-id")
 		}
 
 		existing, _ := core.LoadMultiAppConfig()
@@ -375,23 +400,19 @@ func configInitRun(opts *ConfigInitOptions) error {
 			// New secret provided (either from "create" or "existing" with input)
 			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 			if err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "%v", err)
+				return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 			}
 			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 			}
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
-			if err := updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang); err != nil {
-				// Deprecated: legacy *output.ExitError passthrough; removed after typed migration.
-				var exitErr *output.ExitError
-				if errors.As(err, &exitErr) {
-					return err
-				}
-				return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+			if err := wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang)); err != nil {
+				return err
 			}
 		} else {
-			return output.ErrValidation("App ID and App Secret cannot be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").
+				WithParam("--app-id")
 		}
 
 		if result.Mode == "existing" {
@@ -403,7 +424,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Non-terminal: cannot run interactive mode, guide user to --new
 	if !f.IOStreams.IsTerminal {
-		return output.ErrValidation("config init requires a terminal for interactive mode. Run with --new to create a new app:\n  lark-cli config init --new\nThis command blocks until setup is complete and outputs a verification URL. Run it in the background, then retrieve the URL from its output.")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "config init requires a terminal for interactive mode. Run with --new to create a new app:\n  lark-cli config init --new\nThis command blocks until setup is complete and outputs a verification URL. Run it in the background, then retrieve the URL from its output.")
 	}
 
 	// Mode 5: Legacy interactive (readline fallback)
@@ -431,7 +452,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 	appIdInput, err := readLine(prompt)
 	if err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithCause(err)
 	}
 
 	prompt = "App Secret"
@@ -440,7 +461,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 	appSecretInput, err := readLine(prompt)
 	if err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithCause(err)
 	}
 
 	prompt = "Brand (lark/feishu)"
@@ -451,7 +472,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 	brandInput, err := readLine(prompt)
 	if err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithCause(err)
 	}
 
 	resolvedAppId := appIdInput
@@ -473,15 +494,16 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 
 	if resolvedAppId == "" || resolvedSecret.IsZero() {
-		return output.ErrValidation("App ID and App Secret cannot be empty")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").
+			WithParam("--app-id")
 	}
 
 	storedSecret, err := core.ForStorage(resolvedAppId, resolvedSecret, f.Keychain)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "%v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 	}
 	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 	printLangPreferenceConfirmation(opts)

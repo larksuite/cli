@@ -33,44 +33,69 @@ type PluginRule struct {
 
 type Sources struct {
 	PluginRules []PluginRule
-	YAMLRule    *platform.Rule
+	YAMLRules   []*platform.Rule
 	YAMLPath    string
 }
 
-var ErrMultipleRestricts = errors.New("multiple plugins called Restrict; only one is permitted")
+var ErrMultipleRestricts = errors.New("multiple plugins called Restrict; only one plugin may own the policy")
 
-// Resolve picks by precedence: plugin > yaml > none. Pure function; load
-// yaml via LoadYAMLPolicy first. Winner is validated.
-func Resolve(s Sources) (*platform.Rule, ResolveSource, error) {
-	if len(s.PluginRules) > 1 {
-		names := make([]string, len(s.PluginRules))
-		for i, pr := range s.PluginRules {
-			names[i] = pr.PluginName
-		}
-		return nil, ResolveSource{}, fmt.Errorf("%w: %v", ErrMultipleRestricts, names)
+// Resolve picks by precedence: plugin > yaml > none, returning the full
+// rule set the winning source contributes. Pure function; load yaml via
+// LoadYAMLPolicy first. Every returned rule is validated.
+//
+// Multi-rule semantics (single owner): one plugin may contribute several
+// rules (each a scoped grant, OR-combined by the engine), but two or more
+// DISTINCT plugins contributing rules is still a configuration error --
+// the resolver aborts so independent plugins cannot silently widen each
+// other's policy. yaml may likewise carry several rules under "rules:".
+func Resolve(s Sources) ([]*platform.Rule, ResolveSource, error) {
+	owners := distinctOwners(s.PluginRules)
+	if len(owners) > 1 {
+		return nil, ResolveSource{}, fmt.Errorf("%w: %v", ErrMultipleRestricts, owners)
 	}
 
-	if len(s.PluginRules) == 1 {
-		pr := s.PluginRules[0]
-		if err := ValidateRule(pr.Rule); err != nil {
-			return nil, ResolveSource{}, fmt.Errorf("plugin %q rule invalid: %w", pr.PluginName, err)
+	if len(s.PluginRules) > 0 {
+		rules := make([]*platform.Rule, 0, len(s.PluginRules))
+		for _, pr := range s.PluginRules {
+			if err := ValidateRule(pr.Rule); err != nil {
+				return nil, ResolveSource{}, fmt.Errorf("plugin %q rule invalid: %w", pr.PluginName, err)
+			}
+			rules = append(rules, pr.Rule)
 		}
-		return pr.Rule, ResolveSource{Kind: SourcePlugin, Name: pr.PluginName}, nil
+		return rules, ResolveSource{Kind: SourcePlugin, Name: owners[0]}, nil
 	}
 
-	if s.YAMLRule != nil {
-		if err := ValidateRule(s.YAMLRule); err != nil {
-			return nil, ResolveSource{}, fmt.Errorf("policy yaml %q: %w", s.YAMLPath, err)
+	if len(s.YAMLRules) > 0 {
+		for _, r := range s.YAMLRules {
+			if err := ValidateRule(r); err != nil {
+				return nil, ResolveSource{}, fmt.Errorf("policy yaml %q: %w", s.YAMLPath, err)
+			}
 		}
-		return s.YAMLRule, ResolveSource{Kind: SourceYAML, Name: s.YAMLPath}, nil
+		return s.YAMLRules, ResolveSource{Kind: SourceYAML, Name: s.YAMLPath}, nil
 	}
 
 	return nil, ResolveSource{Kind: SourceNone}, nil
 }
 
+// distinctOwners returns the unique plugin names contributing a rule, in
+// first-seen order. A single plugin contributing N rules collapses to one
+// owner; that is the case the single-owner check below permits.
+func distinctOwners(prs []PluginRule) []string {
+	seen := map[string]bool{}
+	owners := make([]string, 0, len(prs))
+	for _, pr := range prs {
+		if !seen[pr.PluginName] {
+			seen[pr.PluginName] = true
+			owners = append(owners, pr.PluginName)
+		}
+	}
+	return owners
+}
+
 // LoadYAMLPolicy returns (nil, nil) when path is empty or file is absent,
-// so callers can pass the result straight into Sources.YAMLRule.
-func LoadYAMLPolicy(path string) (*platform.Rule, error) {
+// so callers can pass the result straight into Sources.YAMLRules. A
+// present file yields one or more rules (see yaml.Parse).
+func LoadYAMLPolicy(path string) ([]*platform.Rule, error) {
 	if path == "" {
 		return nil, nil
 	}
@@ -84,9 +109,9 @@ func LoadYAMLPolicy(path string) (*platform.Rule, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read policy yaml %q: %w", path, err)
 	}
-	rule, err := pyaml.Parse(data)
+	rules, err := pyaml.Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("policy yaml %q: %w", path, err)
 	}
-	return rule, nil
+	return rules, nil
 }

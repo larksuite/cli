@@ -55,8 +55,8 @@ lark-cli apps +create --name "Demo" --app-type HTML --dry-run
 {
   "ok": false,
   "error": {
-    "type": "api_error",
-    "code": "api_error",
+    "type": "api",
+    "code": 99991400,
     "message": "...",
     "hint": "可执行的修复建议（可能为空）"
   }

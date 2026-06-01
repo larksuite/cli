@@ -5,20 +5,21 @@ package errclass
 
 import "github.com/larksuite/cli/errs"
 
-// taskCodeMeta holds the task-service-specific Lark code classifications.
-// 1470403 permission_denied is CategoryAuthorization (exit 3); the other task
-// codes route to CategoryAPI / CategoryValidation. BuildAPIError consumes this
-// map via mergeCodeMeta + LookupCodeMeta.
+// taskCodeMeta holds task-service Lark code → CodeMeta mappings.
+// All Subtypes are framework-shared (errs.SubtypeXxx) — task does not declare
+// service-specific Subtypes because none of these codes carry semantics beyond
+// the cross-service taxonomy (NotFound / QuotaExceeded / etc.).
+// BuildAPIError consumes this map via mergeCodeMeta + LookupCodeMeta.
 var taskCodeMeta = map[int]CodeMeta{
-	1470400: {errs.CategoryValidation, errs.SubtypeTaskInvalidParams, false},
-	1470403: {errs.CategoryAuthorization, errs.SubtypeTaskPermissionDenied, false}, // permission_denied
-	1470404: {errs.CategoryAPI, errs.SubtypeTaskNotFound, false},
-	1470422: {errs.CategoryAPI, errs.SubtypeTaskConflict, true},
-	1470500: {errs.CategoryAPI, errs.SubtypeTaskServerError, true},
-	1470610: {errs.CategoryAPI, errs.SubtypeTaskAssigneeLimit, false},
-	1470611: {errs.CategoryAPI, errs.SubtypeTaskFollowerLimit, false},
-	1470612: {errs.CategoryAPI, errs.SubtypeTaskTasklistMemberLimit, false},
-	1470613: {errs.CategoryAPI, errs.SubtypeTaskReminderExists, false},
+	1470400: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // invalid_params
+	1470403: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // permission_denied (resource-level)
+	1470404: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // not_found
+	1470422: {Category: errs.CategoryAPI, Subtype: errs.SubtypeConflict, Retryable: true},    // conflict (retryable)
+	1470500: {Category: errs.CategoryAPI, Subtype: errs.SubtypeServerError, Retryable: true}, // server_error (retryable)
+	1470610: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // assignee_limit
+	1470611: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // follower_limit
+	1470612: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // tasklist_member_limit
+	1470613: {Category: errs.CategoryAPI, Subtype: errs.SubtypeAlreadyExists},                // reminder_exists
 }
 
 func init() { mergeCodeMeta(taskCodeMeta, "task") }

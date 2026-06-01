@@ -124,7 +124,10 @@ func TestBind_MissingSource_NonTTY(t *testing.T) {
 		Stdin: []byte{}, // force non-TTY via explicit empty stdin
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "bind",
+	// finalizeSource emits a CategoryValidation typed error
+	// (subtype=invalid_argument, param=--source); this path never goes
+	// through *core.ConfigError so PromoteConfigError does not apply.
+	assertStderrError(t, result, 2, "validation",
 		"cannot determine Agent source: no --source flag and no Agent environment detected",
 		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
 }
@@ -181,7 +184,9 @@ func TestBind_Hermes_MissingEnvFile(t *testing.T) {
 		Args: []string{"config", "bind", "--source", "hermes"},
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "hermes",
+	// PromoteConfigError flattens *core.ConfigError{Type:"hermes"} to
+	// wire error.type="config"; CategoryConfig → exit 3.
+	assertStderrError(t, result, 3, "config",
 		"failed to read Hermes config: open "+envPath+": no such file or directory",
 		"verify Hermes is installed and configured at "+envPath)
 }
@@ -205,7 +210,9 @@ func TestBind_Hermes_MissingAppID(t *testing.T) {
 		Args: []string{"config", "bind", "--source", "hermes"},
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "hermes",
+	// PromoteConfigError flattens *core.ConfigError{Type:"hermes"} to
+	// wire error.type="config"; CategoryConfig → exit 3.
+	assertStderrError(t, result, 3, "config",
 		"FEISHU_APP_ID not found in "+envPath,
 		"run 'hermes setup' to configure Feishu credentials")
 }
@@ -283,13 +290,9 @@ func TestBind_ConfigShow_UnboundWorkspace(t *testing.T) {
 		Args: []string{"config", "show"},
 	})
 	require.NoError(t, err)
-	// Stage-1 wire shape: legacy *output.ExitError envelope (free-string Type
-	// from ws.Display()). Exit code 3 — config errors share the auth slot per
-	// ExitCodeForCategory (pre-PR was 2, corrected as part of this PR's
-	// taxonomy semantics; the per-domain typed migration in stage 2+ will
-	// land the wire-type rename ("openclaw" → "config") alongside the typed
-	// envelope shape (subtype, etc.).
-	assertStderrError(t, result, 3, "openclaw",
+	// PromoteConfigError flattens *core.ConfigError{Type:"openclaw"} to
+	// wire error.type="config"; CategoryConfig → exit 3.
+	assertStderrError(t, result, 3, "config",
 		"openclaw context detected but lark-cli is not bound to it",
 		"read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`")
 }
@@ -309,7 +312,9 @@ func TestBind_OpenClaw_MissingFile(t *testing.T) {
 		Args: []string{"config", "bind", "--source", "openclaw"},
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "openclaw",
+	// PromoteConfigError flattens *core.ConfigError{Type:"openclaw"} to
+	// wire error.type="config"; CategoryConfig → exit 3.
+	assertStderrError(t, result, 3, "config",
 		"cannot read "+configPath+": open "+configPath+": no such file or directory",
 		"verify OpenClaw is installed and configured")
 }
@@ -409,7 +414,9 @@ func TestBind_LarkChannel_MissingFile(t *testing.T) {
 		Args: []string{"config", "bind", "--source", "lark-channel"},
 	})
 	require.NoError(t, err)
-	assertStderrError(t, result, 2, "lark-channel",
+	// PromoteConfigError flattens *core.ConfigError{Type:"lark-channel"} to
+	// wire error.type="config"; CategoryConfig → exit 3.
+	assertStderrError(t, result, 3, "config",
 		"cannot read "+configPath+": open "+configPath+": no such file or directory",
 		"verify lark-channel-bridge is installed and configured")
 }

@@ -21,8 +21,30 @@ func TestResolve_singlePluginWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
-	if got != rule || src.Kind != cmdpolicy.SourcePlugin || src.Name != "secaudit" {
+	if len(got) != 1 || got[0] != rule || src.Kind != cmdpolicy.SourcePlugin || src.Name != "secaudit" {
 		t.Fatalf("Resolve = (%v, %+v)", got, src)
+	}
+}
+
+// A single plugin may contribute several rules (each a scoped grant). They
+// are all returned, in registration order, under one plugin source.
+func TestResolve_singlePluginMultipleRules(t *testing.T) {
+	r1 := &platform.Rule{Name: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: "read"}
+	r2 := &platform.Rule{Name: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write"}
+	got, src, err := cmdpolicy.Resolve(cmdpolicy.Sources{
+		PluginRules: []cmdpolicy.PluginRule{
+			{PluginName: "secaudit", Rule: r1},
+			{PluginName: "secaudit", Rule: r2},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Resolve err: %v", err)
+	}
+	if len(got) != 2 || got[0] != r1 || got[1] != r2 {
+		t.Fatalf("expected both rules in order, got %v", got)
+	}
+	if src.Kind != cmdpolicy.SourcePlugin || src.Name != "secaudit" {
+		t.Fatalf("source = %+v, want plugin:secaudit", src)
 	}
 }
 
@@ -31,13 +53,13 @@ func TestResolve_pluginShadowsYaml(t *testing.T) {
 	yamlRule := &platform.Rule{Name: "from-yaml"}
 	got, src, err := cmdpolicy.Resolve(cmdpolicy.Sources{
 		PluginRules: []cmdpolicy.PluginRule{{PluginName: "secaudit", Rule: pluginRule}},
-		YAMLRule:    yamlRule,
+		YAMLRules:   []*platform.Rule{yamlRule},
 		YAMLPath:    "/some/policy.yml",
 	})
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
-	if got.Name != "from-plugin" || src.Kind != cmdpolicy.SourcePlugin {
+	if len(got) != 1 || got[0].Name != "from-plugin" || src.Kind != cmdpolicy.SourcePlugin {
 		t.Fatalf("plugin should shadow yaml, got %+v / %+v", got, src)
 	}
 }
@@ -45,17 +67,33 @@ func TestResolve_pluginShadowsYaml(t *testing.T) {
 func TestResolve_yamlWhenNoPlugin(t *testing.T) {
 	yamlRule := &platform.Rule{Name: "from-yaml", MaxRisk: "read"}
 	got, src, err := cmdpolicy.Resolve(cmdpolicy.Sources{
-		YAMLRule: yamlRule,
-		YAMLPath: "/some/policy.yml",
+		YAMLRules: []*platform.Rule{yamlRule},
+		YAMLPath:  "/some/policy.yml",
 	})
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
-	if got.Name != "from-yaml" || src.Kind != cmdpolicy.SourceYAML {
+	if len(got) != 1 || got[0].Name != "from-yaml" || src.Kind != cmdpolicy.SourceYAML {
 		t.Fatalf("yaml should win when no plugin, got %+v / %+v", got, src)
 	}
 	if src.Name != "/some/policy.yml" {
 		t.Errorf("yaml source Name should carry path, got %q", src.Name)
+	}
+}
+
+// yaml may also carry several rules under "rules:"; all are returned.
+func TestResolve_yamlMultipleRules(t *testing.T) {
+	r1 := &platform.Rule{Name: "a", MaxRisk: "read"}
+	r2 := &platform.Rule{Name: "b", MaxRisk: "write"}
+	got, src, err := cmdpolicy.Resolve(cmdpolicy.Sources{
+		YAMLRules: []*platform.Rule{r1, r2},
+		YAMLPath:  "/some/policy.yml",
+	})
+	if err != nil {
+		t.Fatalf("Resolve err: %v", err)
+	}
+	if len(got) != 2 || src.Kind != cmdpolicy.SourceYAML {
+		t.Fatalf("expected both yaml rules, got %v / %+v", got, src)
 	}
 }
 
@@ -64,14 +102,15 @@ func TestResolve_emptyEverythingIsNone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
-	if got != nil || src.Kind != cmdpolicy.SourceNone {
-		t.Fatalf("expected (nil, SourceNone), got (%v, %+v)", got, src)
+	if len(got) != 0 || src.Kind != cmdpolicy.SourceNone {
+		t.Fatalf("expected (empty, SourceNone), got (%v, %+v)", got, src)
 	}
 }
 
-// Two plugins both contributing a Rule must produce the typed error so
-// the bootstrap pipeline aborts (hard-constraint #7).
-func TestResolve_multipleRestrictIsError(t *testing.T) {
+// Two DISTINCT plugins both contributing a Rule must produce the typed
+// error so the bootstrap pipeline aborts (single-owner invariant): one
+// plugin cannot silently widen another plugin's policy.
+func TestResolve_multipleRestrictPluginsIsError(t *testing.T) {
 	_, _, err := cmdpolicy.Resolve(cmdpolicy.Sources{
 		PluginRules: []cmdpolicy.PluginRule{
 			{PluginName: "a", Rule: &platform.Rule{Name: "a"}},
@@ -84,26 +123,26 @@ func TestResolve_multipleRestrictIsError(t *testing.T) {
 }
 
 // LoadYAMLPolicy: missing file returns (nil, nil) silently so callers
-// can pass the result straight into Sources.YAMLRule without special-
+// can pass the result straight into Sources.YAMLRules without special-
 // casing not-exist.
 func TestLoadYAMLPolicy_missingIsSilent(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "absent-policy.yml")
-	rule, err := cmdpolicy.LoadYAMLPolicy(missing)
+	rules, err := cmdpolicy.LoadYAMLPolicy(missing)
 	if err != nil {
 		t.Fatalf("missing yaml should not error, got %v", err)
 	}
-	if rule != nil {
-		t.Fatalf("missing yaml should return nil rule, got %+v", rule)
+	if rules != nil {
+		t.Fatalf("missing yaml should return nil rules, got %+v", rules)
 	}
 }
 
 func TestLoadYAMLPolicy_emptyPathIsNoop(t *testing.T) {
-	rule, err := cmdpolicy.LoadYAMLPolicy("")
+	rules, err := cmdpolicy.LoadYAMLPolicy("")
 	if err != nil {
 		t.Fatalf("empty path should not error, got %v", err)
 	}
-	if rule != nil {
-		t.Fatalf("empty path should return nil rule, got %+v", rule)
+	if rules != nil {
+		t.Fatalf("empty path should return nil rules, got %+v", rules)
 	}
 }
 
@@ -113,11 +152,11 @@ func TestLoadYAMLPolicy_parsesValid(t *testing.T) {
 	if err := os.WriteFile(yamlPath, []byte("name: from-yaml\nmax_risk: read\n"), 0o644); err != nil {
 		t.Fatalf("write yaml: %v", err)
 	}
-	rule, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
+	rules, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
 	if err != nil {
 		t.Fatalf("LoadYAMLPolicy err: %v", err)
 	}
-	if rule == nil || rule.Name != "from-yaml" {
-		t.Fatalf("expected rule with name=from-yaml, got %+v", rule)
+	if len(rules) != 1 || rules[0].Name != "from-yaml" {
+		t.Fatalf("expected one rule with name=from-yaml, got %+v", rules)
 	}
 }

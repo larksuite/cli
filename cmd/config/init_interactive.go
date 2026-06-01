@@ -12,6 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/build"
 	qrcode "github.com/skip2/go-qrcode"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -125,8 +126,16 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		}, nil
 	}
 
-	if appID == "" || appSecret == "" {
-		return nil, output.ErrValidation("App ID and App Secret cannot be empty")
+	switch {
+	case appID == "" && appSecret == "":
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID and App Secret cannot be empty").
+			WithParam("--app-id")
+	case appID == "":
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID cannot be empty").
+			WithParam("--app-id")
+	case appSecret == "":
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "App Secret cannot be empty").
+			WithParam("--app-secret")
 	}
 
 	return &configInitResult{
@@ -171,7 +180,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	httpClient := &http.Client{}
 	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {
-		return nil, output.ErrAuth("app registration failed: %v", err)
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration failed: %v", err).WithCause(err)
 	}
 
 	// Step 2: Build and display verification URL + QR code
@@ -199,7 +208,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 	result, err := larkauth.PollAppRegistration(ctx, httpClient, core.BrandFeishu, authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 	if err != nil {
-		return nil, output.ErrAuth("%v", err)
+		return nil, errs.NewAuthenticationError(errs.SubtypeUnknown, "%v", err).WithCause(err)
 	}
 
 	// Step 4: Handle Lark brand special case
@@ -208,12 +217,12 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		// fmt.Fprintf(f.IOStreams.ErrOut, "%s\n", msg.DetectedLarkTenant)
 		result, err = larkauth.PollAppRegistration(ctx, httpClient, core.BrandLark, authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 		if err != nil {
-			return nil, output.ErrAuth("lark endpoint retry failed: %v", err)
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "lark endpoint retry failed: %v", err).WithCause(err)
 		}
 	}
 
 	if result.ClientID == "" || result.ClientSecret == "" {
-		return nil, output.ErrAuth("app registration succeeded but missing client_id or client_secret")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_id or client_secret")
 	}
 
 	// Determine final brand from response

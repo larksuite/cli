@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -50,11 +51,23 @@ func authScopesRun(opts *ScopesOptions) error {
 		return err
 	}
 	fmt.Fprintf(f.IOStreams.ErrOut, "Querying app scopes...\n\n")
-	appInfo, err := getAppInfo(opts.Ctx, f, config.AppID)
+	appInfo, err := getAppInfoFn(opts.Ctx, f, config.AppID)
 	if err != nil {
-		return output.ErrWithHint(output.ExitAPI, "permission",
-			fmt.Sprintf("failed to get app scope info: %v", err),
-			"ensure the app has enabled the application:application:self_manage scope.")
+		// Discriminate by error type so transport / parse failures are not
+		// reclassified as PermissionError(MissingScope) — re-auth does not
+		// fix network / 5xx / JSON parse errors and misclassifying them
+		// here would mislead agents into re-auth loops.
+		//   - typed errors pass through unchanged
+		//   - bare errors become InternalError(SubtypeSDKError) with Cause
+		//     preserved so callers (errors.Is) can still see the underlying
+		//     transport/parse failure.
+		// Genuine permission failures are surfaced from appInfo *content*,
+		// not from this transport-level error path.
+		if errs.IsTyped(err) {
+			return err
+		}
+		return errs.NewInternalError(errs.SubtypeSDKError,
+			"failed to get app scope info: %v", err).WithCause(err)
 	}
 	if opts.Format == "pretty" {
 		fmt.Fprintf(f.IOStreams.ErrOut, "App ID: %s\n", config.AppID)

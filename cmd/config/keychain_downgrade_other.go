@@ -6,8 +6,8 @@
 package config
 
 import (
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +21,7 @@ func NewCmdConfigKeychainDowngrade(f *cmdutil.Factory) *cobra.Command {
 		Short: "Downgrade keychain storage to a local file (macOS only)",
 		Long:  `Downgrade keychain storage to a local file. This subcommand is only supported on macOS; on this platform the keychain layer already uses local files.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return output.ErrValidation("keychain-downgrade is only supported on macOS")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "keychain-downgrade is only supported on macOS")
 		},
 	}
 	return cmd

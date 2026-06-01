@@ -50,7 +50,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 **API 失败：**
 
 ```json
-{ "ok": false, "error": { "type": "api_error", "message": "...", "hint": "..." } }
+{ "ok": false, "error": { "type": "api", "message": "...", "hint": "..." } }
 ```
 
 **Validate 失败（互斥违反，CLI 本地校验）：**

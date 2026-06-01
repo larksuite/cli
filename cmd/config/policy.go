@@ -59,16 +59,20 @@ func runConfigPolicyShow(f *cmdutil.Factory) error {
 		"source_name":  sourceName,
 		"denied_paths": active.DeniedPaths,
 	}
-	if active.Rule != nil {
-		out["rule"] = map[string]any{
-			"name":              active.Rule.Name,
-			"description":       active.Rule.Description,
-			"allow":             active.Rule.Allow,
-			"deny":              active.Rule.Deny,
-			"max_risk":          active.Rule.MaxRisk,
-			"identities":        active.Rule.Identities,
-			"allow_unannotated": active.Rule.AllowUnannotated,
+	if len(active.Rules) > 0 {
+		rules := make([]map[string]any, 0, len(active.Rules))
+		for _, r := range active.Rules {
+			rules = append(rules, map[string]any{
+				"name":              r.Name,
+				"description":       r.Description,
+				"allow":             r.Allow,
+				"deny":              r.Deny,
+				"max_risk":          r.MaxRisk,
+				"identities":        r.Identities,
+				"allow_unannotated": r.AllowUnannotated,
+			})
 		}
+		out["rules"] = rules
 	}
 	output.PrintJson(f.IOStreams.Out, out)
 	return nil

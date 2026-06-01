@@ -400,12 +400,11 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
@@ -443,12 +442,11 @@ func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 			Granted:   []string{"base:app:copy"},
 		},
 	}, "ou_user", "tester")
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 
 	var data map[string]interface{}
@@ -653,12 +651,11 @@ func TestAuthLoginRun_MissingRequestedScopeAlignsWithLoginSuccess(t *testing.T) 
 		Ctx:     context.Background(),
 		Scope:   "im:message:send",
 	})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %v", err)
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAuth)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
 	}
 	got := stderr.String()
 	for _, want := range []string{
@@ -870,6 +867,90 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 	}
 }
 
+// TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty pins the
+// contract that when --json is set and pollDeviceToken returns OK=false,
+// stdout carries the structured authorization_failed event and stderr is
+// NOT polluted with a typed envelope. The returned error is a bare
+// ExitError with ExitAuth so the dispatcher only propagates the exit code
+// without emitting a second envelope on top of the JSON event.
+func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
+	keyring.MockInit()
+	setupLoginConfigDir(t)
+
+	original := pollDeviceToken
+	t.Cleanup(func() { pollDeviceToken = original })
+	pollDeviceToken = func(ctx context.Context, httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, deviceCode string, interval, expiresIn int, errOut io.Writer) *larkauth.DeviceFlowResult {
+		return &larkauth.DeviceFlowResult{OK: false, Message: "user denied"}
+	}
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "default",
+		AppID:       "cli_test",
+		AppSecret:   "secret",
+		Brand:       core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    larkauth.PathDeviceAuthorization,
+		Body: map[string]interface{}{
+			"device_code":               "device-code",
+			"user_code":                 "user-code",
+			"verification_uri":          "https://example.com/verify",
+			"verification_uri_complete": "https://example.com/verify?code=123",
+			"expires_in":                240,
+			"interval":                  0,
+		},
+	})
+
+	err := authLoginRun(&LoginOptions{
+		Factory: f,
+		Ctx:     context.Background(),
+		Scope:   "im:message:send",
+		JSON:    true,
+	})
+	if err == nil {
+		t.Fatal("expected error for aborted authorization")
+	}
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", gotCode, output.ExitAuth)
+	}
+
+	// stdout: device_authorization event + authorization_failed event,
+	// the latter carrying the abort message as a structured field.
+	stdoutStr := stdout.String()
+	if !strings.Contains(stdoutStr, `"event":"authorization_failed"`) {
+		t.Errorf("stdout missing authorization_failed event, got: %s", stdoutStr)
+	}
+	if !strings.Contains(stdoutStr, "user denied") {
+		t.Errorf("stdout missing abort message, got: %s", stdoutStr)
+	}
+
+	// stderr must NOT carry a typed envelope: ErrBare propagates the exit
+	// code only, so the dispatcher emits nothing on stderr. The waiting-auth
+	// log line goes through the JSON-mode no-op `log` helper so it is also
+	// suppressed in JSON mode.
+	stderrStr := stderr.String()
+	if strings.Contains(stderrStr, `"type":"authentication"`) {
+		t.Errorf("stderr should not contain typed envelope, got: %s", stderrStr)
+	}
+	if strings.Contains(stderrStr, `"error"`) {
+		t.Errorf("stderr should not contain JSON envelope fields, got: %s", stderrStr)
+	}
+
+	// Returned error must be the bare *output.ExitError signal (no envelope).
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitAuth {
+		t.Fatalf("ExitError.Code = %d, want %d", exitErr.Code, output.ExitAuth)
+	}
+	if exitErr.Detail != nil {
+		t.Errorf("ExitError.Detail should be nil for bare signal, got: %+v", exitErr.Detail)
+	}
+}
+
 func TestAuthLoginRun_JSONWriteFailure_NoWaitReturnsWriterError(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "default",
@@ -961,8 +1042,11 @@ func TestAuthLoginRun_NoWaitJSONHintIncludesRawURLGuidance(t *testing.T) {
 		"final message of the turn",
 		"return control to the user",
 		"do not block on --device-code in the same turn",
-		"After the user confirms authorization in a later step",
-		"lark-cli auth login --device-code device-code",
+		"come back and notify",
+		"YOU must execute",
+		"lark-cli auth login --device-code <device_code>",
+		"Do NOT cache",
+		"lark-cli auth login --no-wait --json",
 	} {
 		if !strings.Contains(hint, want) {
 			t.Fatalf("hint missing %q, got:\n%s", want, hint)

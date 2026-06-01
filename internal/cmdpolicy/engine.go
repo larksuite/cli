@@ -17,6 +17,7 @@ package cmdpolicy
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
@@ -36,16 +37,45 @@ type Decision struct {
 	Reason     string // human-readable
 }
 
-// Engine evaluates a Rule against the command tree. It is stateless except
-// for the Rule snapshot it was constructed with.
+// Engine evaluates a set of Rules against the command tree with OR
+// semantics: a command is allowed when it satisfies every axis of AT
+// LEAST ONE rule. It is stateless except for the Rule snapshot it was
+// constructed with.
 type Engine struct {
-	rule *platform.Rule
+	rules []*platform.Rule
 }
 
-// New returns an Engine bound to a Rule. A nil Rule means "no user-layer
-// restriction" -- EvaluateOne always returns Allowed=true.
+// New returns an Engine bound to a single Rule. A nil Rule means "no
+// user-layer restriction" -- EvaluateOne always returns Allowed=true.
+// It is the ergonomic single-rule constructor, kept so existing callers
+// (and the single-rule decision path) stay byte-for-byte unchanged.
 func New(rule *platform.Rule) *Engine {
-	return &Engine{rule: rule}
+	if rule == nil {
+		return &Engine{}
+	}
+	return &Engine{rules: []*platform.Rule{rule}}
+}
+
+// NewSet returns an Engine bound to a set of Rules evaluated with OR
+// semantics. An empty/nil slice means "no user-layer restriction". nil
+// entries are dropped so callers may pass a slice with gaps without a
+// separate filter step.
+//
+// With exactly one rule the behaviour is identical to New(rule): the
+// rejection Decision is returned verbatim. With multiple rules a command
+// rejected by all of them gets the aggregate reason_code
+// "no_matching_rule" (see mergeDenials).
+func NewSet(rules []*platform.Rule) *Engine {
+	cleaned := make([]*platform.Rule, 0, len(rules))
+	for _, r := range rules {
+		if r != nil {
+			cleaned = append(cleaned, r)
+		}
+	}
+	if len(cleaned) == 0 {
+		return &Engine{}
+	}
+	return &Engine{rules: cleaned}
 }
 
 // EvaluateAll walks the command tree and evaluates every **runnable**
@@ -81,27 +111,29 @@ func (e *Engine) EvaluateAll(root *cobra.Command) map[string]Decision {
 }
 
 // EvaluateOne returns the user-layer decision for a single command. Always
-// Allowed=true when the engine has no Rule.
+// Allowed=true when the engine has no Rule. With multiple rules the
+// decision is the OR over per-rule evaluations: the command is allowed as
+// soon as one rule grants it; if every rule rejects it, the rejections are
+// merged (see mergeDenials).
 func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
-	if e.rule == nil {
+	if len(e.rules) == 0 {
 		return Decision{Allowed: true}
 	}
-	r := e.rule
 	path := CanonicalPath(cmd)
 
 	if IsDiagnosticPath(path) {
 		return Decision{Allowed: true}
 	}
 
-	// A registered Rule expresses intent over the closed risk taxonomy
-	// (read / write / high-risk-write). Two ways a command can fall
-	// outside that taxonomy:
+	// risk_invalid is a property of the COMMAND's own annotation (the
+	// annotation exists but is a typo / not in the closed taxonomy
+	// read / write / high-risk-write). It is independent of any Rule and
+	// is always fail-closed regardless of AllowUnannotated -- a typo is a
+	// code bug, not a migration phase. So it is checked once up front,
+	// before the per-rule OR loop, and short-circuits to deny.
 	//
-	//   - "absent"  (no risk_level annotation) — fail-closed by default,
-	//     but Rule.AllowUnannotated=true opts out for gradual adoption.
-	//   - "invalid" (annotation exists but is a typo / not in the
-	//     closed enum) — always fail-closed regardless of
-	//     AllowUnannotated. Typo is a code bug, not a migration phase.
+	// The "absent" case (no risk_level annotation at all) is per-rule:
+	// each rule's AllowUnannotated decides, so it lives inside evalRule.
 	cmdRiskStr, hasRisk := cmdmeta.Risk(cmd)
 	cmdRisk := platform.Risk(cmdRiskStr)
 	var (
@@ -117,7 +149,31 @@ func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
 				Reason:     fmt.Sprintf("invalid risk %q; did you mean %q?", cmdRiskStr, suggestRisk(cmdRiskStr)),
 			}
 		}
-	} else if !r.AllowUnannotated {
+	}
+
+	// OR across rules: the first rule that fully grants the command wins.
+	denials := make([]Decision, 0, len(e.rules))
+	for _, r := range e.rules {
+		d := evalRule(r, path, cmd, hasRisk, cmdRisk, cmdRank, cmdRankOk)
+		if d.Allowed {
+			return Decision{Allowed: true}
+		}
+		denials = append(denials, d)
+	}
+	return mergeDenials(e.rules, denials)
+}
+
+// evalRule applies one Rule's four-axis AND filter to a command whose
+// risk annotation has already been parsed by EvaluateOne (risk_invalid is
+// handled there). cmdRankOk is false only when the command is unannotated
+// (hasRisk=false); a present-but-invalid risk never reaches here. Returns
+// Allowed=true only when the command clears every axis of this rule.
+func evalRule(r *platform.Rule, path string, cmd *cobra.Command, hasRisk bool, cmdRisk platform.Risk, cmdRank int, cmdRankOk bool) Decision {
+	// Unannotated gate: fail-closed unless THIS rule opts out. A command
+	// with no risk_level annotation can still be granted by a rule that
+	// sets AllowUnannotated=true (gradual-adoption opt-in); other rules in
+	// the set reject it here and the OR moves on.
+	if !hasRisk && !r.AllowUnannotated {
 		return Decision{
 			Allowed:    false,
 			ReasonCode: "risk_not_annotated",
@@ -125,7 +181,9 @@ func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
 		}
 	}
 
-	// Axis 1: Deny has priority.
+	// Axis 1: Deny has priority. Note OR semantics scope a rule's Deny to
+	// that rule only -- it cannot veto another rule's Allow. A command to
+	// block everywhere must be denied (or simply not allowed) by every rule.
 	if matched, ok := firstMatch(r.Deny, path); ok {
 		return Decision{
 			Allowed:    false,
@@ -169,6 +227,34 @@ func (e *Engine) EvaluateOne(cmd *cobra.Command) Decision {
 	}
 
 	return Decision{Allowed: true}
+}
+
+// mergeDenials collapses the per-rule rejections into a single Decision
+// for a command that no rule granted. denials is parallel to rules (same
+// order, one entry per rule, all Allowed=false).
+//
+// With exactly one rule the original rejection is returned verbatim, so
+// single-rule envelopes are byte-for-byte identical to the pre-multi-rule
+// behaviour (reason_code / reason unchanged). With multiple rules the
+// rejection is the aggregate reason_code "no_matching_rule"; its Reason
+// enumerates each rule's own rejection for debugging.
+func mergeDenials(rules []*platform.Rule, denials []Decision) Decision {
+	if len(denials) == 1 {
+		return denials[0]
+	}
+	parts := make([]string, len(denials))
+	for i, d := range denials {
+		name := rules[i].Name
+		if name == "" {
+			name = fmt.Sprintf("#%d", i)
+		}
+		parts[i] = fmt.Sprintf("%s: %s", name, d.ReasonCode)
+	}
+	return Decision{
+		Allowed:    false,
+		ReasonCode: "no_matching_rule",
+		Reason:     fmt.Sprintf("no rule grants this command (%s)", strings.Join(parts, "; ")),
+	}
 }
 
 // BuildDeniedByPath converts engine Decisions to a deniedByPath map keyed

@@ -11,10 +11,10 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 func TestDoStream_HTTPErrorIncludesLogID(t *testing.T) {
@@ -41,12 +41,11 @@ func TestDoStream_HTTPErrorIncludesLogID(t *testing.T) {
 		HttpMethod: http.MethodGet,
 		ApiPath:    "/open-apis/drive/v1/medias/file_token/download",
 	}, core.AsBot)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured error, got %T %v", err, err)
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Fatalf("expected *errs.NetworkError, got %T %v", err, err)
 	}
-	detail, _ := exitErr.Detail.Detail.(map[string]any)
-	if detail["log_id"] != "202605270003" {
-		t.Fatalf("detail=%#v, want log_id", exitErr.Detail.Detail)
+	if netErr.LogID != "202605270003" {
+		t.Fatalf("LogID = %q, want %q", netErr.LogID, "202605270003")
 	}
 }

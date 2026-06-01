@@ -12,12 +12,43 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 )
+
+// classifyTATResponseCode wraps a non-zero TAT endpoint response code into the
+// canonical typed error. The TAT mint endpoint reports invalid credentials
+// with two distinct codes:
+//
+//   - 10003: bad app_id format or non-existent app_id ("invalid param")
+//   - 10014: invalid app_secret ("app secret invalid")
+//
+// Both surface as CategoryConfig/InvalidClient from the user's perspective —
+// the configured credentials cannot mint a tenant access token. 10014 is
+// globally mapped in codemeta (TAT-mint-specific variant of OAuth 99991543).
+// 10003 is NOT globally mapped because in other Lark endpoints it carries
+// unrelated semantics (e.g. task API uses 10003 for permission denied), so
+// the override stays local to this TAT call site instead of leaking into the
+// shared codemeta table.
+func classifyTATResponseCode(code int, msg, brand, appID string) error {
+	if code == 10003 {
+		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
+			WithCode(code).
+			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
+	}
+	return errclass.BuildAPIError(map[string]any{
+		"code": code,
+		"msg":  msg,
+	}, errclass.ClassifyContext{
+		Brand: brand,
+		AppID: appID,
+	})
+}
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
@@ -170,7 +201,7 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 		return nil, fmt.Errorf("failed to parse TAT response: %w", err)
 	}
 	if result.Code != 0 {
-		return nil, fmt.Errorf("TAT API error: [%d] %s", result.Code, result.Msg)
+		return nil, classifyTATResponseCode(result.Code, result.Msg, string(acct.Brand), acct.AppID)
 	}
 	return &TokenResult{Token: result.TenantAccessToken}, nil
 }

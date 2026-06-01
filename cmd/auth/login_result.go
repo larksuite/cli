@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -171,25 +172,12 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 			fmt.Fprintln(f.IOStreams.Out, string(b))
 			return output.ErrBare(output.ExitAuth)
 		}
-		detail := map[string]interface{}{
-			"requested": issue.Summary.Requested,
-			"granted":   issue.Summary.Granted,
-			"missing":   issue.Summary.Missing,
-		}
-		// Legacy *output.ExitError producer: this literal predates the typed
-		// error contract introduced by errs/. New code MUST NOT construct
-		// *output.ExitError directly — missing-scope signals should move to
-		// *errs.PermissionError (with MissingScopes/ConsoleURL as typed
-		// extension fields) when the login flow migrates to typed errors.
-		return &output.ExitError{
-			Code: output.ExitAuth,
-			Detail: &output.ErrDetail{
-				Type:    "missing_scope",
-				Message: issue.Message,
-				Hint:    issue.Hint,
-				Detail:  detail,
-			},
-		}
+		return errs.NewPermissionError(errs.SubtypeMissingScope, "%s", issue.Message).
+			WithHint("%s", issue.Hint).
+			WithIdentity("user").
+			WithRequestedScopes(issue.Summary.Requested...).
+			WithGrantedScopes(issue.Summary.Granted...).
+			WithMissingScopes(issue.Summary.Missing...)
 	}
 
 	fmt.Fprintln(f.IOStreams.ErrOut)

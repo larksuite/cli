@@ -14,8 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/util"
 )
 
@@ -34,7 +35,7 @@ func CallMCPTool(runtime *RuntimeContext, toolName string, args map[string]inter
 
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		return nil, output.ErrNetwork("failed to get HTTP client: %v", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to get HTTP client: %v", err).WithCause(err)
 	}
 
 	raw, err := DoMCPCall(runtime.Ctx(), httpClient, toolName, args, accessToken, MCPEndpoint(runtime.Config.Brand), runtime.IsBot())
@@ -49,7 +50,7 @@ func normalizeMCPToolResult(raw interface{}) (map[string]interface{}, error) {
 	result := ExtractMCPResult(raw)
 	if m, ok := result.(map[string]interface{}); ok {
 		if errMsg, ok := m["error"].(string); ok && strings.TrimSpace(errMsg) != "" {
-			return nil, output.Errorf(output.ExitAPI, "mcp_error", "MCP: %s", errMsg)
+			return nil, errs.NewAPIError(errs.SubtypeUnknown, "MCP: %s", errMsg)
 		}
 		return m, nil
 	}
@@ -72,12 +73,12 @@ func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, ar
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "internal_error", "failed to marshal MCP request body: %v", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to marshal MCP request body: %v", err).WithCause(err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mcpEndpoint, bytes.NewReader(jsonBody))
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "internal_error", "failed to create MCP request: %v", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to create MCP request: %v", err).WithCause(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if isBot {
@@ -89,13 +90,13 @@ func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, ar
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, output.ErrNetwork("MCP transport failed: %v", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "MCP transport failed: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, output.ErrNetwork("failed to read MCP response: %v", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to read MCP response: %v", err).WithCause(err)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, classifyMCPHTTPError(resp.StatusCode, resp.Status, respBody)
@@ -103,7 +104,9 @@ func DoMCPCall(ctx context.Context, httpClient *http.Client, toolName string, ar
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(respBody, &data); err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "MCP returned non-JSON: %s", TruncateStr(string(respBody), mcpErrorBodyLimit))
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"MCP returned non-JSON: %s", TruncateStr(string(respBody), mcpErrorBodyLimit)).
+			WithCause(err)
 	}
 
 	if errObj, ok := data["error"]; ok {
@@ -119,16 +122,19 @@ func classifyMCPHTTPError(statusCode int, status string, body []byte) error {
 		if errObj, ok := payload["error"]; ok {
 			return classifyMCPPayloadError(errObj)
 		}
-		if code, msg, detail, ok := extractMCPBusinessError(payload); ok {
-			return output.ErrAPI(code, fmt.Sprintf("MCP HTTP %d %s: [%d] %s", statusCode, status, code, msg), detail)
+		if code, msg, ok := extractMCPBusinessError(payload); ok {
+			return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: [%d] %s", statusCode, status, code, msg).WithCode(code)
 		}
 	}
 
 	bodyText := TruncateStr(strings.TrimSpace(string(body)), mcpErrorBodyLimit)
 	if statusCode == http.StatusUnauthorized {
-		return output.ErrAuth("MCP HTTP %d %s: %s", statusCode, status, bodyText)
+		return errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
 	}
-	return output.Errorf(output.ExitAPI, "api_error", "MCP HTTP %d %s: %s", statusCode, status, bodyText)
+	if statusCode >= 500 {
+		return errs.NewNetworkError(errs.SubtypeNetworkServer, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
+	}
+	return errs.NewAPIError(errs.SubtypeUnknown, "MCP HTTP %d %s: %s", statusCode, status, bodyText).WithCode(statusCode)
 }
 
 func classifyMCPPayloadError(errObj interface{}) error {
@@ -138,54 +144,45 @@ func classifyMCPPayloadError(errObj interface{}) error {
 			msg = GetString(errMap, "msg")
 		}
 		if code, ok := util.ToFloat64(errMap["code"]); ok {
-			return output.ErrAPI(int(code), fmt.Sprintf("MCP: [%.0f] %s", code, msg), errMap)
+			// Route known Lark error codes through errclass so 99991668-style
+			// codes become typed (Authentication / Permission / ...) rather
+			// than generic APIError. Falls back to APIError for unknown codes.
+			payload := map[string]any{"code": int(code), "msg": msg, "error": errMap}
+			if classified := errclass.BuildAPIError(payload, errclass.ClassifyContext{}); classified != nil {
+				return classified
+			}
+			return errs.NewAPIError(errs.SubtypeUnknown, "MCP: [%.0f] %s", code, msg).WithCode(int(code))
 		}
 		if msg != "" {
-			return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg), errMap)
+			return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg))
 		}
 	}
 
 	if msg, ok := errObj.(string); ok && strings.TrimSpace(msg) != "" {
-		return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg), errObj)
+		return classifyMCPMessageError(fmt.Sprintf("MCP: %s", msg))
 	}
 
-	return output.Errorf(output.ExitAPI, "api_error", "MCP returned an error response")
+	return errs.NewAPIError(errs.SubtypeUnknown, "MCP returned an error response")
 }
 
-func classifyMCPMessageError(msg string, detail interface{}) error {
+func classifyMCPMessageError(msg string) error {
 	lower := strings.ToLower(msg)
 	switch {
 	case strings.Contains(lower, "unauthorized"),
 		strings.Contains(lower, "access token"),
 		strings.Contains(lower, "token invalid"),
 		strings.Contains(lower, "token expired"):
-		return &output.ExitError{
-			Code: output.ExitAuth,
-			Detail: &output.ErrDetail{
-				Type:    "auth",
-				Message: msg,
-				Hint:    "run `lark-cli auth login` in the background to re-authorize. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-				Detail:  detail,
-			},
-		}
+		return errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "%s", msg).
+			WithHint("run `lark-cli auth login` in the background to re-authorize. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.")
 	default:
-		code, errType, hint := output.ClassifyLarkError(0, msg)
-		return &output.ExitError{
-			Code: code,
-			Detail: &output.ErrDetail{
-				Type:    errType,
-				Message: msg,
-				Hint:    hint,
-				Detail:  detail,
-			},
-		}
+		return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg)
 	}
 }
 
-func extractMCPBusinessError(payload map[string]interface{}) (int, string, interface{}, bool) {
+func extractMCPBusinessError(payload map[string]interface{}) (int, string, bool) {
 	code, ok := util.ToFloat64(payload["code"])
 	if !ok || code == 0 {
-		return 0, "", nil, false
+		return 0, "", false
 	}
 
 	msg := GetString(payload, "msg")
@@ -195,7 +192,7 @@ func extractMCPBusinessError(payload map[string]interface{}) (int, string, inter
 	if msg == "" {
 		msg = "unknown MCP error"
 	}
-	return int(code), msg, payload["error"], true
+	return int(code), msg, true
 }
 
 func UnwrapMCPResult(v interface{}) interface{} {

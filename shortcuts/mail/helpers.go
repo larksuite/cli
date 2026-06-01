@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
@@ -2364,9 +2365,11 @@ func validateConfirmSendScope(runtime *common.RuntimeContext) error {
 	}
 	required := []string{"mail:user_mailbox.message:send"}
 	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-		return output.ErrWithHint(output.ExitAuth, "missing_scope",
-			fmt.Sprintf("--confirm-send requires scope: %s", strings.Join(missing, ", ")),
-			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant the send permission", strings.Join(missing, " ")))
+		return errs.NewPermissionError(errs.SubtypeMissingScope,
+			"--confirm-send requires scope: %s", strings.Join(missing, ", ")).
+			WithHint("run `lark-cli auth login --scope %q` to grant the send permission", strings.Join(missing, " ")).
+			WithMissingScopes(missing...).
+			WithIdentity("user")
 	}
 	return nil
 }
@@ -2387,9 +2390,11 @@ func validateFolderReadScope(runtime *common.RuntimeContext) error {
 	}
 	required := []string{"mail:user_mailbox.folder:read"}
 	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-		return output.ErrWithHint(output.ExitAuth, "missing_scope",
-			fmt.Sprintf("folder resolution requires scope: %s", strings.Join(missing, ", ")),
-			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant folder read permission", strings.Join(missing, " ")))
+		return errs.NewPermissionError(errs.SubtypeMissingScope,
+			"folder resolution requires scope: %s", strings.Join(missing, ", ")).
+			WithHint("run `lark-cli auth login --scope %q` to grant folder read permission", strings.Join(missing, " ")).
+			WithMissingScopes(missing...).
+			WithIdentity("user")
 	}
 	return nil
 }
@@ -2410,9 +2415,11 @@ func validateLabelReadScope(runtime *common.RuntimeContext) error {
 	}
 	required := []string{"mail:user_mailbox.message:modify"}
 	if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-		return output.ErrWithHint(output.ExitAuth, "missing_scope",
-			fmt.Sprintf("label resolution requires scope: %s", strings.Join(missing, ", ")),
-			fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to grant label access permission", strings.Join(missing, " ")))
+		return errs.NewPermissionError(errs.SubtypeMissingScope,
+			"label resolution requires scope: %s", strings.Join(missing, ", ")).
+			WithHint("run `lark-cli auth login --scope %q` to grant label access permission", strings.Join(missing, " ")).
+			WithMissingScopes(missing...).
+			WithIdentity("user")
 	}
 	return nil
 }
