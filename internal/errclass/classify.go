@@ -129,6 +129,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			Action:  action,
 		}
 	case errs.CategoryAPI:
+		base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
 		return &errs.APIError{Problem: base}
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
@@ -227,6 +228,22 @@ func ConfigHint(subtype errs.Subtype) string {
 		return "run `lark-cli config init` to set up app_id and app_secret"
 	case errs.SubtypeInvalidConfig:
 		return "check the config file for syntax errors; rerun `lark-cli config init` to reset"
+	}
+	return ""
+}
+
+// APIHint returns the canonical per-subtype recovery hint for a typed APIError
+// emitted via BuildAPIError, for API subtypes whose recovery is context-free.
+// Context-specific guidance (e.g. a command's flags, an API's own quota) is
+// layered on by the caller after BuildAPIError returns and overrides this.
+func APIHint(subtype errs.Subtype) string {
+	switch subtype {
+	case errs.SubtypeConflict:
+		return "retry later and avoid concurrent duplicate requests on the same resource"
+	case errs.SubtypeCrossTenant:
+		return "operate on source and target within the same tenant and region/unit"
+	case errs.SubtypeCrossBrand:
+		return "operate on source and target within the same brand environment"
 	}
 	return ""
 }

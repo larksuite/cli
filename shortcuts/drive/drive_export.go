@@ -5,13 +5,12 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -107,7 +106,7 @@ var DriveExport = common.Shortcut{
 		if spec.FileExtension == "markdown" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Exporting docx as markdown: %s\n", common.MaskToken(spec.Token))
 			apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(spec.Token))
-			data, err := runtime.DoAPIJSONWithLogID(
+			data, err := runtime.CallAPITyped(
 				"POST",
 				apiPath,
 				nil,
@@ -122,11 +121,11 @@ var DriveExport = common.Shortcut{
 			// Extract content from the V2 response: data.document.content
 			doc, ok := data["document"].(map[string]interface{})
 			if !ok {
-				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document object")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid markdown fetch response: missing document object")
 			}
 			content, ok := doc["content"].(string)
 			if !ok {
-				return output.Errorf(output.ExitAPI, "api_error", "invalid markdown fetch response: missing document.content")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid markdown fetch response: missing document.content")
 			}
 
 			fileName := preferredFileName
@@ -207,11 +206,7 @@ var DriveExport = common.Shortcut{
 						status.FileToken,
 						recoveryCommand,
 					)
-					var exitErr *output.ExitError
-					if errors.As(err, &exitErr) && exitErr.Detail != nil {
-						return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, hint)
-					}
-					return output.ErrWithHint(output.ExitAPI, "api_error", err.Error(), hint)
+					return appendDriveExportRecoveryHint(err, hint)
 				}
 				out["ticket"] = ticket
 				out["doc_type"] = spec.DocType
@@ -225,7 +220,7 @@ var DriveExport = common.Shortcut{
 				if msg == "" {
 					msg = status.StatusLabel()
 				}
-				return output.Errorf(output.ExitAPI, "api_error", "export task failed: %s (ticket=%s)", msg, ticket)
+				return errs.NewAPIError(errs.SubtypeServerError, "export task failed: %s (ticket=%s)", msg, ticket)
 			}
 
 			fmt.Fprintf(runtime.IO().ErrOut, "Export status %d/%d: %s\n", attempt, driveExportPollAttempts, status.StatusLabel())
@@ -238,14 +233,7 @@ var DriveExport = common.Shortcut{
 				ticket,
 				nextCommand,
 			)
-			var exitErr *output.ExitError
-			if errors.As(lastPollErr, &exitErr) && exitErr.Detail != nil {
-				if strings.TrimSpace(exitErr.Detail.Hint) != "" {
-					hint = exitErr.Detail.Hint + "\n" + hint
-				}
-				return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, hint)
-			}
-			return output.ErrWithHint(output.ExitAPI, "api_error", lastPollErr.Error(), hint)
+			return appendDriveExportRecoveryHint(lastPollErr, hint)
 		}
 
 		failed := false

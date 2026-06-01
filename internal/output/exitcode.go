@@ -61,6 +61,10 @@ func ExitCodeOf(err error) int {
 	if _, ok := errs.ProblemOf(err); ok {
 		return ExitCodeForCategory(errs.CategoryOf(err))
 	}
+	var pfErr *PartialFailureError
+	if errors.As(err, &pfErr) {
+		return pfErr.Code
+	}
 	var exitErr *ExitError
 	if errors.As(err, &exitErr) {
 		return exitErr.Code

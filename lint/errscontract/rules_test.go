@@ -593,3 +593,287 @@ func FooRegisterServiceMapBar(name string, _ interface{}) {}
 		t.Errorf("message must name the offending call: %s", v[0].Message)
 	}
 }
+
+// (F) direct legacy output.ExitError / output.ErrDetail literals on migrated
+//     paths → REJECT; output.ErrBare(...) calls and non-migrated paths pass.
+
+func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnDrivePath(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if v[0].Action != ActionReject {
+		t.Errorf("action = %q, want REJECT", v[0].Action)
+	}
+	if !strings.Contains(v[0].Message, "ExitError") {
+		t.Errorf("message should name the legacy type: %s", v[0].Message)
+	}
+}
+
+func TestCheckNoLegacyEnvelopeLiteral_RejectsErrDetailLiteralOnDrivePath(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() *output.ErrDetail {
+	return &output.ErrDetail{Code: 7}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export_common.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if !strings.Contains(v[0].Message, "ErrDetail") {
+		t.Errorf("message should name the legacy type: %s", v[0].Message)
+	}
+}
+
+func TestCheckNoLegacyEnvelopeLiteral_AllowsErrBareCallOnDrivePath(t *testing.T) {
+	// output.ErrBare(...) is a CallExpr, not a CompositeLit — must NOT fire.
+	src := `package drive
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return output.ErrBare(output.ExitAPI)
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 0 {
+		t.Errorf("ErrBare call should pass, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyEnvelopeLiteral_IgnoresNonMigratedPath(t *testing.T) {
+	// Same offending literal, but outside the migrated path set → not flagged.
+	src := `package other
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/calendar/foo.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-migrated path should pass, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyEnvelopeLiteral_SkipsTestFiles(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export_test.go", src)
+	if len(v) != 0 {
+		t.Errorf("_test.go file should be skipped, got: %+v", v)
+	}
+}
+
+// TestCheckNoLegacyEnvelopeLiteral_RejectsAliasedImport pins that an aliased
+// import of internal/output cannot bypass the rule: the qualifier is resolved
+// from the import declaration, not matched against the literal string "output".
+func TestCheckNoLegacyEnvelopeLiteral_RejectsAliasedImport(t *testing.T) {
+	src := `package drive
+
+import legacy "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &legacy.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for aliased import, got %d: %+v", len(v), v)
+	}
+	if v[0].Action != ActionReject {
+		t.Errorf("action = %q, want REJECT", v[0].Action)
+	}
+	if !strings.Contains(v[0].Message, "ExitError") {
+		t.Errorf("message should name the legacy type: %s", v[0].Message)
+	}
+}
+
+// TestCheckNoLegacyEnvelopeLiteral_NormalImportStillRejected guards against a
+// regression where resolving by import path accidentally drops the default
+// (non-aliased) `output` case.
+func TestCheckNoLegacyEnvelopeLiteral_NormalImportStillRejected(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for default import, got %d: %+v", len(v), v)
+	}
+}
+
+// TestCheckNoLegacyEnvelopeLiteral_ErrBareAliasedStillAllowed: output.ErrBare is
+// a CallExpr, not a composite literal — even under an alias it must not fire.
+func TestCheckNoLegacyEnvelopeLiteral_ErrBareAliasedStillAllowed(t *testing.T) {
+	src := `package drive
+
+import legacy "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return legacy.ErrBare(legacy.ExitAPI)
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 0 {
+		t.Errorf("ErrBare call should pass, got: %+v", v)
+	}
+}
+
+// TestCheckNoLegacyEnvelopeLiteral_RejectsDotImport: a dot-import surfaces
+// ExitError / ErrDetail as bare unqualified idents; the rule must still catch
+// the composite literal.
+func TestCheckNoLegacyEnvelopeLiteral_RejectsDotImport(t *testing.T) {
+	src := `package drive
+
+import . "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for dot-import, got %d: %+v", len(v), v)
+	}
+	if !strings.Contains(v[0].Message, "ExitError") {
+		t.Errorf("message should name the legacy type: %s", v[0].Message)
+	}
+}
+
+// TestCheckNoLegacyEnvelopeLiteral_UnrelatedSelectorPasses: a same-named
+// selector on an unrelated package (not the legacy output import path) must not
+// trigger a false positive.
+func TestCheckNoLegacyEnvelopeLiteral_UnrelatedSelectorPasses(t *testing.T) {
+	src := `package drive
+
+import "example.com/other/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/drive/drive_export.go", src)
+	if len(v) != 0 {
+		t.Errorf("unrelated package selector must not fire, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnDrivePath(t *testing.T) {
+	src := `package drive
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.CallAPI("POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/drive/drive_create_folder.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if v[0].Action != ActionReject {
+		t.Errorf("action = %q, want REJECT", v[0].Action)
+	}
+	if !strings.Contains(v[0].Message, "CallAPI") {
+		t.Errorf("message should name the legacy method: %s", v[0].Message)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
+	src := `package drive
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.DoAPIJSONWithLogID("POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/drive/drive_export.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if !strings.Contains(v[0].Message, "DoAPIJSONWithLogID") {
+		t.Errorf("message should name the legacy method: %s", v[0].Message)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_AllowsTypedWrapperCall(t *testing.T) {
+	// driveCallAPI is an unqualified call (*ast.Ident), not a selector — must NOT fire.
+	src := `package drive
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := driveCallAPI(runtime, "POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/drive/drive_create_folder.go", src)
+	if len(v) != 0 {
+		t.Errorf("typed wrapper call must not fire, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_AllowsRawAPIAndDoAPI(t *testing.T) {
+	// RawAPI / DoAPI return the raw response for the caller to classify and do
+	// not emit a legacy envelope — they are not banned.
+	src := `package drive
+
+func boom(runtime *common.RuntimeContext) error {
+	_, _ = runtime.RawAPI("POST", "/x", nil, nil)
+	_, err := runtime.DoAPI(nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/drive/drive_api.go", src)
+	if len(v) != 0 {
+		t.Errorf("RawAPI / DoAPI must not fire, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_IgnoresNonMigratedPath(t *testing.T) {
+	src := `package im
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.CallAPI("POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/im/im_send.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-migrated path must not fire, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_SkipsTestFiles(t *testing.T) {
+	src := `package drive
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.CallAPI("POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/drive/drive_create_folder_test.go", src)
+	if len(v) != 0 {
+		t.Errorf("test files must be skipped, got: %+v", v)
+	}
+}

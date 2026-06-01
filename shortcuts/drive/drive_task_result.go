@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -43,34 +43,34 @@ var DriveTaskResult = common.Shortcut{
 			"wiki_delete_node":  true,
 		}
 		if !validScenarios[scenario] {
-			return output.ErrValidation("unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space, wiki_delete_node", scenario)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported scenario: %s. Supported scenarios: import, export, task_check, wiki_move, wiki_delete_space, wiki_delete_node", scenario).WithParam("--scenario")
 		}
 
 		// Validate required params based on scenario
 		switch scenario {
 		case "import", "export":
 			if runtime.Str("ticket") == "" {
-				return output.ErrValidation("--ticket is required for %s scenario", scenario)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--ticket is required for %s scenario", scenario).WithParam("--ticket")
 			}
 			if err := validate.ResourceName(runtime.Str("ticket"), "--ticket"); err != nil {
-				return output.ErrValidation("%s", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--ticket")
 			}
 		case "task_check", "wiki_move", "wiki_delete_space", "wiki_delete_node":
 			if runtime.Str("task-id") == "" {
-				return output.ErrValidation("--task-id is required for %s scenario", scenario)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--task-id is required for %s scenario", scenario).WithParam("--task-id")
 			}
 			if err := validate.ResourceName(runtime.Str("task-id"), "--task-id"); err != nil {
-				return output.ErrValidation("%s", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id")
 			}
 		}
 
 		// For export scenario, file-token is required
 		if scenario == "export" && runtime.Str("file-token") == "" {
-			return output.ErrValidation("--file-token is required for export scenario")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-token is required for export scenario").WithParam("--file-token")
 		}
 		if scenario == "export" {
 			if err := validate.ResourceName(runtime.Str("file-token"), "--file-token"); err != nil {
-				return output.ErrValidation("%s", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 			}
 		}
 
@@ -261,9 +261,10 @@ func requireDriveScopes(storedScopes string, required []string) error {
 		return nil
 	}
 
-	return output.ErrWithHint(output.ExitAuth, "missing_scope",
-		fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-		fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+	return errs.NewPermissionError(errs.SubtypeMissingScope,
+		"missing required scope(s): %s", strings.Join(missing, ", ")).
+		WithMissingScopes(missing...).
+		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
 }
 
 func missingDriveScopes(storedScopes string, required []string) []string {
@@ -408,10 +409,10 @@ func queryWikiMoveTask(runtime *common.RuntimeContext, taskID string) (map[strin
 
 func getWikiMoveTaskStatus(runtime *common.RuntimeContext, taskID string) (wikiMoveTaskQueryStatus, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
-		return wikiMoveTaskQueryStatus{}, output.ErrValidation("%s", err)
+		return wikiMoveTaskQueryStatus{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id")
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": "move"},
@@ -426,7 +427,7 @@ func getWikiMoveTaskStatus(runtime *common.RuntimeContext, taskID string) (wikiM
 
 func parseWikiMoveTaskQueryStatus(taskID string, task map[string]interface{}) (wikiMoveTaskQueryStatus, error) {
 	if task == nil {
-		return wikiMoveTaskQueryStatus{}, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+		return wikiMoveTaskQueryStatus{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
 	}
 
 	status := wikiMoveTaskQueryStatus{
@@ -490,10 +491,10 @@ func appendWikiMoveNodeFields(out, node map[string]interface{}) {
 // rather than the per-node array used by wiki move.
 func queryWikiDeleteSpaceTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
-		return nil, output.ErrValidation("%s", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id")
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": "delete_space"},
@@ -505,7 +506,7 @@ func queryWikiDeleteSpaceTask(runtime *common.RuntimeContext, taskID string) (ma
 
 	task := common.GetMap(data, "task")
 	if task == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
 	}
 
 	resolvedTaskID := common.GetString(task, "task_id")
@@ -558,10 +559,10 @@ func queryWikiDeleteSpaceTask(runtime *common.RuntimeContext, taskID string) (ma
 // keep drive from depending on shortcuts/wiki.
 func queryWikiDeleteNodeTask(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
-		return nil, output.ErrValidation("%s", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id")
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": "delete_node"},
@@ -573,7 +574,7 @@ func queryWikiDeleteNodeTask(runtime *common.RuntimeContext, taskID string) (map
 
 	task := common.GetMap(data, "task")
 	if task == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
 	}
 
 	resolvedTaskID := common.GetString(task, "task_id")

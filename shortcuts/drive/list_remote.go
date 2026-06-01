@@ -11,9 +11,10 @@ import (
 	"path"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -85,7 +86,7 @@ func listRemoteFolderEntries(ctx context.Context, runtime *common.RuntimeContext
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		result, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files", params, nil)
+		result, err := runtime.CallAPITyped("GET", "/open-apis/drive/v1/files", params, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -176,24 +177,27 @@ func duplicateRemoteFilePaths(entries []driveRemoteEntry) []driveDuplicateRemote
 	return duplicates
 }
 
-// Deprecated: duplicateRemotePathError produces a legacy *output.ExitError
-// that predates the typed error contract introduced by errs/. New code MUST
-// NOT use it — duplicate-path signals should move to a typed
-// *errs.ValidationError (with duplicates metadata as a typed extension
-// field) when the drive shortcut migrates to typed errors. This helper is
-// retained only while existing call sites are migrated; it will be removed
-// once they have moved to the typed surface.
-func duplicateRemotePathError(duplicates []driveDuplicateRemotePath) *output.ExitError {
-	return &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "duplicate_remote_path",
-			Message: "multiple Drive entries map to the same rel_path",
-			Detail: map[string]interface{}{
-				"duplicates_remote": duplicates,
-			},
-		},
+// duplicateRemotePathError reports that multiple Drive entries resolve to the
+// same rel_path. Each colliding rel_path becomes one InvalidParam whose Name is
+// the rel_path and whose Reason enumerates the colliding entries (type +
+// file_token), so an AI agent reading the typed envelope can identify exactly
+// which Drive objects collide without re-listing the folder.
+func duplicateRemotePathError(duplicates []driveDuplicateRemotePath) error {
+	params := make([]errs.InvalidParam, 0, len(duplicates))
+	for _, d := range duplicates {
+		descriptions := make([]string, 0, len(d.Entries))
+		for _, entry := range d.Entries {
+			descriptions = append(descriptions, fmt.Sprintf("%s %s", entry.Type, entry.FileToken))
+		}
+		params = append(params, errs.InvalidParam{
+			Name:   d.RelPath,
+			Reason: fmt.Sprintf("%d Drive entries collide here: %s", len(d.Entries), strings.Join(descriptions, ", ")),
+		})
 	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"%d rel_path(s) map to multiple Drive entries", len(duplicates)).
+		WithHint("resolve the duplicate remote files first: re-run +pull with --on-duplicate-remote=rename (downloads each with a hashed suffix), or use --on-duplicate-remote=newest|oldest (supported by +pull/+sync/+push) to pick one, or delete the extra remote files; a plain retry will not help").
+		WithParams(params...)
 }
 
 const (
@@ -300,7 +304,7 @@ func compareDriveRemoteModifiedToLocal(remoteModified string, local time.Time) (
 
 func chooseRemoteFile(files []driveRemoteEntry, strategy string) (driveRemoteEntry, error) {
 	if len(files) == 0 {
-		return driveRemoteEntry{}, fmt.Errorf("no Drive entries available for strategy %q", strategy)
+		return driveRemoteEntry{}, errs.NewInternalError(errs.SubtypeUnknown, "no Drive entries available for strategy %q", strategy)
 	}
 	candidates := append([]driveRemoteEntry(nil), files...)
 	sortRemoteFiles(candidates, strategy)
@@ -385,7 +389,7 @@ func relPathWithUniqueFileTokenSuffix(relPath, fileToken string, occupied map[st
 			return candidate, nil
 		}
 	}
-	return "", fmt.Errorf("could not generate a unique rel_path for %q after %d attempts", relPath, driveUniqueSuffixMaxSeq)
+	return "", errs.NewInternalError(errs.SubtypeUnknown, "could not generate a unique rel_path for %q after %d attempts", relPath, driveUniqueSuffixMaxSeq)
 }
 
 // joinRelDrive joins a rel_path base with an entry name using "/".

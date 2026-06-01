@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -84,7 +84,7 @@ var DriveCreateShortcut = common.Shortcut{
 			common.MaskToken(spec.FolderToken),
 		)
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"POST",
 			"/open-apis/drive/v1/files/create_shortcut",
 			nil,
@@ -118,19 +118,19 @@ var DriveCreateShortcut = common.Shortcut{
 // validateDriveCreateShortcutSpec validates shortcut creation inputs before API execution.
 func validateDriveCreateShortcutSpec(spec driveCreateShortcutSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 	}
 	if spec.FileType == "wiki" {
-		return output.ErrValidation("unsupported file type: wiki. This shortcut only supports Drive file tokens; wiki documents must be resolved to their underlying file token first")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: wiki. This shortcut only supports Drive file tokens; wiki documents must be resolved to their underlying file token first").WithParam("--type")
 	}
 	if spec.FileType == "folder" {
-		return output.ErrValidation("unsupported file type: folder. The create_shortcut API only supports Drive files, not folders")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: folder. The create_shortcut API only supports Drive files, not folders").WithParam("--type")
 	}
 	if !driveCreateShortcutAllowedTypes[spec.FileType] {
-		return output.ErrValidation("unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, slides", spec.FileType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, slides", spec.FileType).WithParam("--type")
 	}
 	return nil
 }

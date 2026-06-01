@@ -6,7 +6,6 @@ package drive
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -219,13 +219,13 @@ func readDriveSearchSpec(runtime *common.RuntimeContext) driveSearchSpec {
 // that depends on the combination of flag values.
 func buildDriveSearchRequest(spec driveSearchSpec, userOpenID string, now time.Time) (map[string]interface{}, []string, error) {
 	if spec.Mine && len(spec.CreatorIDs) > 0 {
-		return nil, nil, output.ErrValidation("cannot combine --mine and --creator-ids")
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --mine and --creator-ids")
 	}
 	if len(spec.FolderTokens) > 0 && len(spec.SpaceIDs) > 0 {
-		return nil, nil, output.ErrValidation("cannot combine --folder-tokens and --space-ids; doc and wiki scoped search cannot be combined")
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --folder-tokens and --space-ids; doc and wiki scoped search cannot be combined")
 	}
 	if spec.Mine && userOpenID == "" {
-		return nil, nil, output.ErrValidation("--mine requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config")
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--mine requires a logged-in user open_id, but none is configured; run `lark-cli auth login` or set user open_id in config").WithParam("--mine")
 	}
 
 	if err := validateDocTypes(spec.DocTypes); err != nil {
@@ -337,7 +337,7 @@ func parseDriveSearchPageSize(raw string) (int, error) {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil {
-		return 0, output.ErrValidation("--page-size must be a number, got %q", raw)
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be a number, got %q", raw).WithParam("--page-size")
 	}
 	if n <= 0 {
 		return 15, nil
@@ -355,23 +355,23 @@ func parseDriveSearchPageSize(raw string) (int, error) {
 func validateDriveSearchIDs(spec driveSearchSpec) error {
 	for _, id := range spec.CreatorIDs {
 		if _, err := common.ValidateUserID(id); err != nil {
-			return output.ErrValidation("--creator-ids %q: %s", id, err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--creator-ids %q: %s", id, err).WithParam("--creator-ids")
 		}
 	}
 	if n := len(spec.ChatIDs); n > driveSearchMaxChatIDs {
-		return output.ErrValidation("--chat-ids: max %d values per request, got %d", driveSearchMaxChatIDs, n)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-ids: max %d values per request, got %d", driveSearchMaxChatIDs, n).WithParam("--chat-ids")
 	}
 	for _, id := range spec.ChatIDs {
 		if _, err := common.ValidateChatID(id); err != nil {
-			return output.ErrValidation("--chat-ids %q: %s", id, err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-ids %q: %s", id, err).WithParam("--chat-ids")
 		}
 	}
 	if n := len(spec.SharerIDs); n > driveSearchMaxSharerIDs {
-		return output.ErrValidation("--sharer-ids: max %d values per request, got %d", driveSearchMaxSharerIDs, n)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sharer-ids: max %d values per request, got %d", driveSearchMaxSharerIDs, n).WithParam("--sharer-ids")
 	}
 	for _, id := range spec.SharerIDs {
 		if _, err := common.ValidateUserID(id); err != nil {
-			return output.ErrValidation("--sharer-ids %q: %s", id, err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sharer-ids %q: %s", id, err).WithParam("--sharer-ids")
 		}
 	}
 	return nil
@@ -382,7 +382,7 @@ func validateDocTypes(values []string) error {
 		// values are already upper-cased by readDriveSearchSpec; compare as-is
 		// so the filter we emit to the server matches what we validated.
 		if _, ok := driveSearchDocTypeSet[v]; !ok {
-			return output.ErrValidation("--doc-types contains unknown value %q (allowed: doc,sheet,bitable,mindnote,file,wiki,docx,folder,catalog,slides,shortcut)", v)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc-types contains unknown value %q (allowed: doc,sheet,bitable,mindnote,file,wiki,docx,folder,catalog,slides,shortcut)", v).WithParam("--doc-types")
 		}
 	}
 	return nil
@@ -417,13 +417,13 @@ func clampOpenedTimeWindow(spec *driveSearchSpec, now time.Time) (string, error)
 	}
 	sinceUnix, err := parseTimeValue(spec.OpenedSince, now)
 	if err != nil {
-		return "", output.ErrValidation("invalid --opened-since %q: %s", spec.OpenedSince, err)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --opened-since %q: %s", spec.OpenedSince, err).WithParam("--opened-since")
 	}
 	var untilUnix int64
 	if spec.OpenedUntil != "" {
 		untilUnix, err = parseTimeValue(spec.OpenedUntil, now)
 		if err != nil {
-			return "", output.ErrValidation("invalid --opened-until %q: %s", spec.OpenedUntil, err)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --opened-until %q: %s", spec.OpenedUntil, err).WithParam("--opened-until")
 		}
 	} else {
 		untilUnix = now.Unix()
@@ -440,7 +440,7 @@ func clampOpenedTimeWindow(spec *driveSearchSpec, now time.Time) (string, error)
 	}
 	maxSecs := int64(driveSearchMaxOpenedSpanDays) * 24 * 3600
 	if spanSecs > maxSecs {
-		return "", output.ErrValidation(
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--opened-* window spans %d days, exceeds the %d-day (1-year) maximum; narrow the range or run multiple queries",
 			spanSecs/86400, driveSearchMaxOpenedSpanDays,
 		)
@@ -505,7 +505,7 @@ func buildTimeRangeFilter(key, since, until string, now time.Time) (map[string]i
 	if since != "" {
 		unix, err := parseTimeValue(since, now)
 		if err != nil {
-			return nil, nil, output.ErrValidation("invalid --%s-since %q: %s", timeDimCLIName(key), since, err)
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --%s-since %q: %s", timeDimCLIName(key), since, err).WithParam(fmt.Sprintf("--%s-since", timeDimCLIName(key)))
 		}
 		if hourAggregated && unix%3600 != 0 {
 			snapped := floorHour(unix)
@@ -517,7 +517,7 @@ func buildTimeRangeFilter(key, since, until string, now time.Time) (map[string]i
 	if until != "" {
 		unix, err := parseTimeValue(until, now)
 		if err != nil {
-			return nil, nil, output.ErrValidation("invalid --%s-until %q: %s", timeDimCLIName(key), until, err)
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --%s-until %q: %s", timeDimCLIName(key), until, err).WithParam(fmt.Sprintf("--%s-until", timeDimCLIName(key)))
 		}
 		if hourAggregated && unix%3600 != 0 {
 			snapped := ceilHour(unix)
@@ -571,7 +571,7 @@ var driveSearchRelativeRe = regexp.MustCompile(`^(\d+)([dmy])$`)
 func parseTimeValue(input string, now time.Time) (int64, error) {
 	s := strings.TrimSpace(input)
 	if s == "" {
-		return 0, fmt.Errorf("empty value")
+		return 0, fmt.Errorf("empty value") //nolint:forbidigo // intermediate parse helper; caller wraps into typed ValidationError
 	}
 
 	if m := driveSearchRelativeRe.FindStringSubmatch(s); m != nil {
@@ -616,34 +616,27 @@ func parseTimeValue(input string, now time.Time) (int64, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("expected relative (7d/1m/1y), date (YYYY-MM-DD[ HH:MM:SS]), RFC3339, or unix seconds")
+	return 0, fmt.Errorf("expected relative (7d/1m/1y), date (YYYY-MM-DD[ HH:MM:SS]), RFC3339, or unix seconds") //nolint:forbidigo // intermediate parse helper; caller wraps into typed ValidationError
 }
 
 func callDriveSearchAPI(runtime *common.RuntimeContext, reqBody map[string]interface{}) (map[string]interface{}, error) {
-	data, err := runtime.CallAPI("POST", "/open-apis/search/v2/doc_wiki/search", nil, reqBody)
+	data, err := runtime.CallAPITyped("POST", "/open-apis/search/v2/doc_wiki/search", nil, reqBody)
 	if err != nil {
 		return nil, enrichDriveSearchError(err)
 	}
 	return data, nil
 }
 
-// enrichDriveSearchError adds a +search-specific hint for known opaque Lark
-// codes; other errors pass through unchanged.
+// enrichDriveSearchError adds a +search-specific hint for a known opaque Lark
+// code; other errors pass through unchanged. The hint is appended in place on
+// the typed Problem, preserving its category / subtype / code / log_id.
 func enrichDriveSearchError(err error) error {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != driveSearchErrUserNotVisible {
 		return err
 	}
-	if exitErr.Detail.Code != driveSearchErrUserNotVisible {
-		return err
-	}
-	detail := *exitErr.Detail
-	detail.Hint = "one or more open_ids in --creator-ids / --sharer-ids are outside this app's user-visibility scope (this is the app's contact visibility, not the search:docs:read API scope); ask an admin to grant the app visibility to those users in the developer console, or drop the unreachable open_ids"
-	return &output.ExitError{
-		Code:   exitErr.Code,
-		Detail: &detail,
-		Err:    exitErr.Err,
-	}
+	p.Hint = "one or more open_ids in --creator-ids / --sharer-ids are outside this app's user-visibility scope (this is the app's contact visibility, not the search:docs:read API scope); ask an admin to grant the app visibility to those users in the developer console, or drop the unreachable open_ids"
+	return err
 }
 
 func cloneDriveSearchFilter(src map[string]interface{}) map[string]interface{} {

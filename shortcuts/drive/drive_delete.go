@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -81,7 +81,7 @@ var DriveDelete = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Deleting %s %s...\n", spec.FileType, common.MaskToken(spec.FileToken))
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"DELETE",
 			fmt.Sprintf("/open-apis/drive/v1/files/%s", validate.EncodePathSegment(spec.FileToken)),
 			map[string]interface{}{"type": spec.FileType},
@@ -94,7 +94,7 @@ var DriveDelete = common.Shortcut{
 		if spec.FileType == "folder" {
 			taskID := common.GetString(data, "task_id")
 			if taskID == "" {
-				return output.Errorf(output.ExitAPI, "api_error", "delete folder returned no task_id")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "delete folder returned no task_id")
 			}
 
 			fmt.Fprintf(runtime.IO().ErrOut, "Folder delete is async, polling task %s...\n", taskID)
@@ -136,13 +136,13 @@ var DriveDelete = common.Shortcut{
 
 func validateDriveDeleteSpec(spec driveDeleteSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	if spec.FileType == "wiki" {
-		return output.ErrValidation("unsupported file type: wiki. This shortcut only supports Drive files and folders; wiki documents are not supported")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: wiki. This shortcut only supports Drive files and folders; wiki documents are not supported").WithParam("--type")
 	}
 	if !driveDeleteAllowedTypes[spec.FileType] {
-		return output.ErrValidation("unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, shortcut, slides", spec.FileType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, shortcut, slides", spec.FileType).WithParam("--type")
 	}
 	return nil
 }

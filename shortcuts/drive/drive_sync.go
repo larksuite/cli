@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -72,23 +72,23 @@ var DriveSync = common.Shortcut{
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 		if localDir == "" {
-			return common.FlagErrorf("--local-dir is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is required").WithParam("--local-dir")
 		}
 		if folderToken == "" {
-			return common.FlagErrorf("--folder-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--folder-token is required").WithParam("--folder-token")
 		}
 		if err := validate.ResourceName(folderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 		if _, err := validate.SafeLocalFlagPath("--local-dir", localDir); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--local-dir")
 		}
 		info, err := runtime.FileIO().Stat(localDir)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return driveInputStatError(err)
 		}
 		if !info.IsDir() {
-			return output.ErrValidation("--local-dir is not a directory: %s", localDir)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is not a directory: %s", localDir).WithParam("--local-dir")
 		}
 		return nil
 	},
@@ -118,15 +118,15 @@ var DriveSync = common.Shortcut{
 
 		safeRoot, err := validate.SafeInputPath(localDir)
 		if err != nil {
-			return output.ErrValidation("--local-dir: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir: %s", err).WithParam("--local-dir")
 		}
 		cwdCanonical, err := validate.SafeInputPath(".")
 		if err != nil {
-			return output.ErrValidation("could not resolve cwd: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 		rootRelToCwd, err := filepath.Rel(cwdCanonical, safeRoot)
 		if err != nil {
-			return output.ErrValidation("--local-dir resolves outside cwd: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir resolves outside cwd: %s", err).WithParam("--local-dir")
 		}
 
 		// --- Phase 1: Compute diff (same logic as +status) ---
@@ -176,18 +176,18 @@ var DriveSync = common.Shortcut{
 			}
 		}
 		if len(typeConflicts) > 0 {
-			return output.ErrValidation("+sync cannot proceed: path type conflict — %s; remove the local entry or the remote entry and retry", strings.Join(typeConflicts, "; "))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "+sync cannot proceed: path type conflict — %s; remove the local entry or the remote entry and retry", strings.Join(typeConflicts, "; "))
 		}
 
 		// Build the exact remote-file views that later execution will use so the
 		// diff phase classifies files against the same duplicate-resolution choice.
 		pullRemoteFiles, _, err := drivePullRemoteViews(entries, duplicateRemote)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%s", err)
+			return errs.WrapInternal(err)
 		}
 		remoteEntriesForPush, remoteFolders, _, err := drivePushRemoteViews(entries, duplicateRemote)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "%s", err)
+			return errs.WrapInternal(err)
 		}
 
 		remoteFiles := driveSyncStatusRemoteFiles(pullRemoteFiles)
@@ -240,43 +240,19 @@ var DriveSync = common.Shortcut{
 
 		conflictResolutions := make(map[string]string, len(modified))
 		if onConflict == driveSyncOnConflictAsk && len(modified) > 0 && runtime.IO().In == nil {
-			return output.ErrValidation("--on-conflict=ask requires interactive stdin when modified files exist")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--on-conflict=ask requires interactive stdin when modified files exist").WithParam("--on-conflict")
 		}
 		for _, entry := range modified {
 			resolved := onConflict
 			if resolved == driveSyncOnConflictAsk {
 				resolved, err = driveSyncAskConflict(entry.RelPath, runtime)
 				if err != nil {
-					payload := map[string]interface{}{
-						"detection": detection,
-						"diff": map[string]interface{}{
-							"new_local":  emptyIfNil(newLocal),
-							"new_remote": emptyIfNil(newRemote),
-							"modified":   emptyIfNil(modified),
-							"unchanged":  emptyIfNil(unchanged),
-						},
-						"summary": map[string]interface{}{
-							"pulled":  0,
-							"pushed":  0,
-							"skipped": 0,
-							"failed":  1,
-						},
-						"items": []driveSyncItem{{
-							RelPath:   entry.RelPath,
-							FileToken: entry.FileToken,
-							Action:    "failed",
-							Direction: "conflict",
-							Error:     err.Error(),
-						}},
-					}
-					return &output.ExitError{
-						Code: output.ExitAPI,
-						Detail: &output.ErrDetail{
-							Type:    "partial_failure",
-							Message: fmt.Sprintf("cannot collect conflict decisions for +sync: %v", err),
-							Detail:  payload,
-						},
-					}
+					// Phase-1 setup abort: no sync operation ran yet, so this
+					// is not a batch partial-failure. driveSyncAskConflict
+					// already returns a typed *errs.ValidationError; propagate
+					// it unchanged rather than re-wrapping it as a synthetic
+					// partial_failure payload.
+					return err
 				}
 			}
 			conflictResolutions[entry.RelPath] = resolved
@@ -521,17 +497,12 @@ var DriveSync = common.Shortcut{
 		}
 
 		if failed > 0 {
-			msg := fmt.Sprintf("%d item(s) failed during +sync", failed)
-			return &output.ExitError{
-				Code: output.ExitAPI,
-				Detail: &output.ErrDetail{
-					Type:    "partial_failure",
-					Message: msg,
-					Detail:  payload,
-				},
-			}
+			payload["note"] = fmt.Sprintf("%d item(s) failed during +sync", failed)
 		}
 
+		if failed > 0 {
+			return runtime.OutPartialFailure(payload, nil)
+		}
 		runtime.Out(payload, nil)
 		return nil
 	},
@@ -555,7 +526,7 @@ func driveSyncStatusRemoteFiles(pullRemoteFiles map[string]drivePullTarget) map[
 func driveSyncAskConflict(relPath string, runtime *common.RuntimeContext) (string, error) {
 	fmt.Fprintf(runtime.IO().ErrOut, "CONFLICT: both sides modified %q. Choose: [R]emote-wins / [L]ocal-wins / [K]eep-both / [S]kip (default: R): ", relPath)
 	if runtime.IO().In == nil {
-		return "", output.ErrValidation("cannot resolve conflict for %q with --on-conflict=ask: stdin is not available", relPath)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot resolve conflict for %q with --on-conflict=ask: stdin is not available", relPath).WithParam("--on-conflict")
 	}
 	reader, ok := runtime.IO().In.(*bufio.Reader)
 	if !ok {
@@ -564,12 +535,12 @@ func driveSyncAskConflict(relPath string, runtime *common.RuntimeContext) (strin
 	}
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", output.ErrValidation("cannot read conflict choice for %q: %s", relPath, err)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot read conflict choice for %q: %s", relPath, err).WithParam("--on-conflict")
 	}
 	answer := strings.TrimSpace(strings.ToLower(line))
 	if answer == "" {
 		if errors.Is(err, io.EOF) {
-			return "", output.ErrValidation("cannot resolve conflict for %q with --on-conflict=ask: stdin reached EOF before any choice was provided", relPath)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot resolve conflict for %q with --on-conflict=ask: stdin reached EOF before any choice was provided", relPath).WithParam("--on-conflict")
 		}
 		return driveSyncOnConflictRemoteWins, nil
 	}
@@ -583,7 +554,7 @@ func driveSyncAskConflict(relPath string, runtime *common.RuntimeContext) (strin
 	case "r", "remote", "remote-wins":
 		return driveSyncOnConflictRemoteWins, nil
 	default:
-		return "", output.ErrValidation("invalid conflict choice for %q: %q (expected one of remote/local/keep/skip)", relPath, strings.TrimSpace(line))
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid conflict choice for %q: %q (expected one of remote/local/keep/skip)", relPath, strings.TrimSpace(line)).WithParam("--on-conflict")
 	}
 }
 
@@ -635,16 +606,16 @@ func driveSyncNeedsCreateScope(uploadPaths []string, localDirs []string, folderC
 func driveSyncRollbackRenamedLocal(oldAbsPath, newAbsPath string) error {
 	if info, err := os.Stat(oldAbsPath); err == nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); safeRoot is validated.
 		if info.IsDir() {
-			return output.Errorf(output.ExitInternal, "rollback", "original path became a directory during rollback: %s", oldAbsPath)
+			return errs.NewInternalError(errs.SubtypeFileIO, "original path became a directory during rollback: %s", oldAbsPath)
 		}
 		if err := os.Remove(oldAbsPath); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); safeRoot is validated.
-			return output.Errorf(output.ExitInternal, "rollback", "remove partial restored path %q: %s", oldAbsPath, err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "remove partial restored path %q: %s", oldAbsPath, err).WithCause(err)
 		}
 	} else if !os.IsNotExist(err) {
-		return output.Errorf(output.ExitInternal, "rollback", "stat original path %q during rollback: %s", oldAbsPath, err)
+		return errs.NewInternalError(errs.SubtypeFileIO, "stat original path %q during rollback: %s", oldAbsPath, err).WithCause(err)
 	}
 	if err := os.Rename(newAbsPath, oldAbsPath); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); safeRoot is validated.
-		return output.Errorf(output.ExitInternal, "rollback", "restore renamed local file %q: %s", oldAbsPath, err)
+		return errs.NewInternalError(errs.SubtypeFileIO, "restore renamed local file %q: %s", oldAbsPath, err).WithCause(err)
 	}
 	return nil
 }

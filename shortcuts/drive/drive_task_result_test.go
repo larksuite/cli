@@ -13,10 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -85,6 +87,16 @@ func TestDriveTaskResultValidateErrorsByScenario(t *testing.T) {
 			err := DriveTaskResult.Validate(context.Background(), runtime)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+			var vErr *errs.ValidationError
+			if !errors.As(err, &vErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if vErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
 			}
 		})
 	}
@@ -428,6 +440,16 @@ func TestValidateDriveTaskResultScopesWikiScenariosRequireWikiScope(t *testing.T
 			if err == nil || !strings.Contains(err.Error(), "missing required scope(s): wiki:space:read") {
 				t.Fatalf("expected missing wiki scope error, got %v", err)
 			}
+			var permErr *errs.PermissionError
+			if !errors.As(err, &permErr) {
+				t.Fatalf("expected *errs.PermissionError, got %T", err)
+			}
+			if permErr.Subtype != errs.SubtypeMissingScope {
+				t.Fatalf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
+			}
+			if len(permErr.MissingScopes) != 1 || permErr.MissingScopes[0] != "wiki:space:read" {
+				t.Fatalf("MissingScopes = %v, want [wiki:space:read]", permErr.MissingScopes)
+			}
 		})
 		t.Run(scenario+"/accepts wiki scope", func(t *testing.T) {
 			t.Parallel()
@@ -662,6 +684,19 @@ func TestParseWikiMoveTaskQueryStatusRejectsMissingTask(t *testing.T) {
 	_, err := parseWikiMoveTaskQueryStatus("task_123", nil)
 	if err == nil || !strings.Contains(err.Error(), "missing task") {
 		t.Fatalf("expected missing task error, got %v", err)
+	}
+	// A successful API call (code==0) that omits the `task` field is a
+	// malformed RESPONSE, not a user error: classify as internal /
+	// invalid_response (exit 5), not an API business error (exit 1).
+	var iErr *errs.InternalError
+	if !errors.As(err, &iErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
+	}
+	if iErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", iErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want ExitInternal (%d)", got, output.ExitInternal)
 	}
 }
 

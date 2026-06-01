@@ -10,8 +10,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -44,7 +44,7 @@ var DriveDownload = common.Shortcut{
 		overwrite := runtime.Bool("overwrite")
 
 		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 		}
 
 		if outputPath == "" {
@@ -53,10 +53,10 @@ var DriveDownload = common.Shortcut{
 
 		// Early path validation + overwrite check
 		if _, resolveErr := runtime.ResolveSavePath(outputPath); resolveErr != nil {
-			return output.ErrValidation("unsafe output path: %s", resolveErr)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", resolveErr).WithParam("--output")
 		}
 		if _, statErr := runtime.FileIO().Stat(outputPath); statErr == nil && !overwrite {
-			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "output file already exists: %s (use --overwrite to replace)", outputPath).WithParam("--output")
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Downloading: %s\n", common.MaskToken(fileToken))
@@ -66,7 +66,7 @@ var DriveDownload = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return output.ErrNetwork("download failed: %s", err)
+			return wrapDriveNetworkErr(err, "download failed: %s", err)
 		}
 		defer resp.Body.Close()
 
@@ -75,7 +75,7 @@ var DriveDownload = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "io")
+			return driveSaveError(err)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)

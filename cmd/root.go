@@ -255,6 +255,13 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 		return typedExit
 	}
 
+	// Partial-failure (batch / multi-status): the ok:false result envelope is
+	// already on stdout; set the exit code and write nothing to stderr.
+	var pfErr *output.PartialFailureError
+	if errors.As(err, &pfErr) {
+		return pfErr.Code
+	}
+
 	if exitErr := asExitError(err); exitErr != nil {
 		if !exitErr.Raw {
 			// Raw errors (e.g. from `api` command via output.MarkRaw)

@@ -155,7 +155,30 @@ caller scripts.
 
 New code should not reach for `ErrBare` unless the command is
 genuinely a predicate. Anything carrying recoverable error content
-belongs in a typed `*errs.XxxError`.
+belongs in a typed `*errs.XxxError` — or, for a batch result, in the
+partial-failure outcome below.
+
+### Partial failure (batch / multi-status)
+
+A batch command (e.g. `drive +push` / `+pull` / `+sync`) that processes
+many items can finish in a third state, neither full success nor a single
+error: some items succeeded and some failed. Its primary output is the
+per-item result, so it does **not** belong in a `stderr` error envelope.
+
+Such a command returns `runtime.OutPartialFailure(data, meta)`, which:
+
+1. writes the full result to **stdout** as an `ok:false` envelope — the
+   summary and every per-item outcome (succeeded *and* failed) stay
+   machine-readable, exactly as a successful `Out(...)` would carry them,
+   but with `ok` honestly reporting failure; and
+2. returns `*output.PartialFailureError`, a typed exit signal the
+   dispatcher maps to a non-zero exit code while writing nothing further
+   to `stderr`.
+
+This is distinct from `ErrBare` (a predicate's one-bit answer) and from a
+typed `*errs.XxxError` (a `stderr` error envelope): a partial failure is a
+*result*, reported on stdout, that also failed. Consumers branch on
+`ok == false` and then read `data.summary` / `data.items[]`.
 
 ## Consumers
 
