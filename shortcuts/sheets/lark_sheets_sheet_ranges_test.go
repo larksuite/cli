@@ -6,9 +6,11 @@ package sheets
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -123,6 +125,61 @@ func TestSheetAppendDryRunNormalizesEscapedSeparator(t *testing.T) {
 	got := mustMarshalSheetsDryRun(t, SheetAppend.DryRun(context.Background(), runtime))
 	if !strings.Contains(got, `"range":"sheet_123!A1:B2"`) {
 		t.Fatalf("SheetAppend.DryRun() = %s, want normalized escaped separator", got)
+	}
+}
+
+func TestSheetWriteDryRunAcceptsValuesFileInput(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile("values.json", []byte(`[
+		["2025-01", "产品A"],
+		["2025-02", "产品B"]
+	]`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+	err := mountAndRunSheets(t, SheetWrite, []string{
+		"+write",
+		"--spreadsheet-token", "shtTOKEN",
+		"--range", "sheet1!A1",
+		"--values", "@values.json",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run should accept --values @file, got: %v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"range": "sheet1!A1:A1"`) {
+		t.Fatalf("dry-run should include normalized write range: %s", got)
+	}
+	if !strings.Contains(got, `"产品B"`) {
+		t.Fatalf("dry-run should include values loaded from file: %s", got)
+	}
+}
+
+func TestSheetAppendDryRunAcceptsValuesStdinInput(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+	f.IOStreams.In = strings.NewReader(`[["2025-01","产品A"]]`)
+
+	err := mountAndRunSheets(t, SheetAppend, []string{
+		"+append",
+		"--spreadsheet-token", "shtTOKEN",
+		"--range", "sheet1!A1",
+		"--values", "-",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run should accept --values - stdin, got: %v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"range": "sheet1!A1:A1"`) {
+		t.Fatalf("dry-run should preserve append point range: %s", got)
+	}
+	if !strings.Contains(got, `"产品A"`) {
+		t.Fatalf("dry-run should include values loaded from stdin: %s", got)
 	}
 }
 

@@ -106,7 +106,7 @@ var SheetWrite = common.Shortcut{
 		{Name: "spreadsheet-token", Desc: "spreadsheet token"},
 		{Name: "range", Desc: "write range (<sheetId>!A1:D10, A1:D10 with --sheet-id, or a single cell like C2)"},
 		{Name: "sheet-id", Desc: "sheet ID"},
-		{Name: "values", Desc: "2D array JSON", Required: true},
+		{Name: "values", Desc: "2D array JSON (supports @file and - for stdin)", Required: true, Input: []string{common.File, common.Stdin}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := validateSheetManageToken(runtime); err != nil {
@@ -182,7 +182,7 @@ var SheetAppend = common.Shortcut{
 		{Name: "spreadsheet-token", Desc: "spreadsheet token"},
 		{Name: "range", Desc: "append range (<sheetId>!A1:D10, A1:D10 with --sheet-id, or a single cell like C2)"},
 		{Name: "sheet-id", Desc: "sheet ID"},
-		{Name: "values", Desc: "2D array JSON", Required: true},
+		{Name: "values", Desc: "2D array JSON (supports @file and - for stdin)", Required: true, Input: []string{common.File, common.Stdin}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := validateSheetManageToken(runtime); err != nil {
