@@ -12,7 +12,7 @@ metadata:
 ```bash
 # 常用示例
 lark-cli apps +create           --name "客户调研问卷" --app-type HTML
-lark-cli apps +create           --name "团队任务看板" --app-type fullstack --message "带登录和数据库的任务看板"
+lark-cli apps +create           --name "团队任务看板" --app-type fullstack --description "带登录和数据库的任务看板"
 lark-cli apps +html-publish     --app-id app_xxx --path ./dist
 lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 ```
@@ -83,7 +83,7 @@ lark-cli auth login --domain apps
 ### HTML vs fullstack 意图分流
 
 - 用户要**纯静态页面 / HTML / PPT / 幻灯片 / 单页 / 演示 / Web demo**（无后端逻辑）→ `--app-type HTML`，走现有端到端流程（+create → +html-publish）
-- 用户要**带后端能力的全栈应用**（数据库 / 登录鉴权 / API / 表单提交存储 / 用户系统 / 增删改查 / 持久化 / 服务端逻辑 / "全栈" / "带后台" / "后台管理"）→ `--app-type fullstack --message "<用户原话>"`，到 `+create` 为止（fullstack 后续本地开发链路待 `+git-credential-init` 就绪后补充）
+- 用户要**带后端能力的全栈应用**（数据库 / 登录鉴权 / API / 表单提交存储 / 用户系统 / 增删改查 / 持久化 / 服务端逻辑 / "全栈" / "带后台" / "后台管理"）→ `--app-type fullstack`（从用户描述生成 `--name` 和 `--description`），到 `+create` 为止（fullstack 后续本地开发链路待 `+git-credential-init` 就绪后补充）
 - 意图模糊、无法判断 → 默认 `HTML`（更轻、且为现有成熟流程），必要时追问一句澄清
 - 详细判定规则见 [`references/lark-apps-create.md`](references/lark-apps-create.md) 的「意图识别」小节
 
@@ -108,7 +108,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli apps +<verb> [flags]`）�
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+create`](references/lark-apps-create.md) | 创建妙搭应用（HTML / fullstack；fullstack 需 --message） |
+| [`+create`](references/lark-apps-create.md) | 创建妙搭应用（HTML / fullstack；从用户输入生成 name/description） |
 | [`+update`](references/lark-apps-update.md) | 部分更新应用名 / 描述（只发传入字段） |
 | [`+access-scope-set`](references/lark-apps-access-scope-set.md) | 设置应用可用范围（specific / public / tenant，三态互斥校验） |
 | [`+access-scope-get`](references/lark-apps-access-scope-get.md) | 查看应用当前可用范围（响应 scope 枚举 `All` / `Tenant` / `Range`；可作"备份 / 复制 scope 配置"前置读） |

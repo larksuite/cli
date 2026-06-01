@@ -27,7 +27,6 @@ var AppsCreate = common.Shortcut{
 		{Name: "app-type", Desc: "app type (HTML or fullstack)", Required: true},
 		{Name: "description", Desc: "app description"},
 		{Name: "icon-url", Desc: "app icon URL (server uses default if omitted)"},
-		{Name: "message", Desc: "user message describing the app to build (required when --app-type is fullstack)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("name")) == "" {
@@ -39,9 +38,6 @@ var AppsCreate = common.Shortcut{
 		}
 		if !validAppTypes[appType] {
 			return output.ErrValidation(fmt.Sprintf("--app-type %q is not supported (allowed: HTML, fullstack)", appType))
-		}
-		if appType == "fullstack" && strings.TrimSpace(rctx.Str("message")) == "" {
-			return output.ErrValidation("--message is required when --app-type is fullstack")
 		}
 		return nil
 	},
@@ -80,9 +76,6 @@ func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 	if icon := strings.TrimSpace(rctx.Str("icon-url")); icon != "" {
 		body["icon_url"] = icon
-	}
-	if msg := strings.TrimSpace(rctx.Str("message")); appType == "fullstack" && msg != "" {
-		body["message"] = msg
 	}
 	return body
 }
