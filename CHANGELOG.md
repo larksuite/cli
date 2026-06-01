@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.45] - 2026-06-01
+
+### Features
+
+- **errors**: Add typed envelope contract for auth-domain errors (#1135)
+- **platform**: Support multiple policy rules per plugin (#1182)
+
+### Bug Fixes
+
+- **vc**: Add domain boundaries and enrich `+notes` (#1172)
+- **whiteboard**: Fix whiteboard skill (#1180)
+
+### Refactor
+
+- **auth**: Update login hint and split-flow docs (#1201)
+
 ## [v1.0.44] - 2026-05-29
 
 ### Features
@@ -948,6 +964,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.45]: https://github.com/larksuite/cli/releases/tag/v1.0.45
 [v1.0.44]: https://github.com/larksuite/cli/releases/tag/v1.0.44
 [v1.0.43]: https://github.com/larksuite/cli/releases/tag/v1.0.43
 [v1.0.42]: https://github.com/larksuite/cli/releases/tag/v1.0.42
