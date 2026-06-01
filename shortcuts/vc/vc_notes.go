@@ -5,7 +5,7 @@
 //
 // Three mutually exclusive input modes (only one allowed per invocation):
 //   meeting-ids:        meeting.get → note_id → note detail API
-//   minute-tokens:      minutes API → note detail + AI artifacts + transcript
+//   minute-tokens:      minutes API → note detail + AI artifacts (transcript inlined)
 //   calendar-event-ids: primary calendar → mget_instance_relation_info → meeting_id → meeting.get → note_id
 
 package vc
@@ -44,7 +44,6 @@ var (
 	scopesMinuteTokens = []string{
 		"minutes:minutes:readonly",
 		"minutes:minutes.artifacts:read",
-		"minutes:minutes.transcript:export",
 	}
 	scopesCalendarEventIDs = []string{
 		"calendar:calendar:read",
@@ -436,13 +435,9 @@ func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext,
 		}
 	}
 
-	// path 2 & 3: AI artifacts are collected under the artifacts field.
+	// AI artifacts + transcript come from the same /artifacts endpoint.
 	artifacts := map[string]any{}
-	fetchInlineArtifacts(runtime, minuteToken, artifacts)
-	transcriptPath := downloadTranscriptFile(runtime, minuteToken, title)
-	if transcriptPath != "" {
-		artifacts["transcript_file"] = transcriptPath
-	}
+	fetchInlineArtifacts(runtime, minuteToken, title, artifacts)
 	if len(artifacts) > 0 {
 		result["artifacts"] = artifacts
 	}
@@ -469,67 +464,9 @@ func sanitizeDirName(title, minuteToken string) string {
 	return fmt.Sprintf("artifact-%s-%s", safe, minuteToken)
 }
 
-// downloadTranscriptFile downloads transcript to a local file and returns the file path (empty on failure).
-func downloadTranscriptFile(runtime *common.RuntimeContext, minuteToken string, title string) string {
-	errOut := runtime.IO().ErrOut
-
-	// With no --output-dir the default layout shares the directory with
-	// `minutes +download`. Legacy layout is preserved when the flag is set.
-	var dirName string
-	if outDir := runtime.Str("output-dir"); outDir != "" {
-		dirName = filepath.Join(outDir, sanitizeDirName(title, minuteToken))
-	} else {
-		dirName = common.DefaultMinuteArtifactDir(minuteToken)
-	}
-	transcriptPath := filepath.Join(dirName, common.DefaultTranscriptFileName)
-
-	// Overwrite check via FileIO.Stat
-	if !runtime.Bool("overwrite") {
-		if _, statErr := runtime.FileIO().Stat(transcriptPath); statErr == nil {
-			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
-			return transcriptPath
-		}
-	}
-
-	fmt.Fprintf(errOut, "%s downloading transcript: %s\n", logPrefix, transcriptPath)
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodGet,
-		ApiPath:    fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript", validate.EncodePathSegment(minuteToken)),
-		QueryParams: larkcore.QueryParams{
-			"need_speaker":   []string{"true"},
-			"need_timestamp": []string{"true"},
-			"file_format":    []string{"txt"},
-		},
-	}, larkcore.WithFileDownload())
-	if err != nil {
-		fmt.Fprintf(errOut, "%s failed to download transcript: %v\n", logPrefix, err)
-		return ""
-	}
-	if apiResp.StatusCode >= 400 {
-		fmt.Fprintf(errOut, "%s failed to download transcript: HTTP %d\n", logPrefix, apiResp.StatusCode)
-		return ""
-	}
-	if len(apiResp.RawBody) == 0 {
-		fmt.Fprintf(errOut, "%s transcript is empty (not available for this minute)\n", logPrefix)
-		return ""
-	}
-	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(apiResp.RawBody)); err != nil {
-		var me *fileio.MkdirError
-		switch {
-		case errors.Is(err, fileio.ErrPathValidation):
-			fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
-		case errors.As(err, &me):
-			fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
-		default:
-			fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
-		}
-		return ""
-	}
-	return transcriptPath
-}
-
-// fetchInlineArtifacts fetches summary/todos/chapters from artifacts API and writes them inline into result map.
-func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, result map[string]any) {
+// fetchInlineArtifacts fetches summary/todos/chapters/keywords and transcript from the
+// /artifacts API, persists transcript to disk, and exposes the path as transcript_file.
+func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, title string, result map[string]any) {
 	errOut := runtime.IO().ErrOut
 	fmt.Fprintf(errOut, "%s fetching AI artifacts...\n", logPrefix)
 	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
@@ -549,6 +486,50 @@ func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, re
 	if keywords, ok := data["keywords"].([]any); ok && len(keywords) > 0 {
 		result["keywords"] = keywords
 	}
+	if transcript, ok := data["transcript"].(string); ok && transcript != "" {
+		if path := saveTranscriptToFile(runtime, minuteToken, title, []byte(transcript)); path != "" {
+			result["transcript_file"] = path
+		}
+	}
+}
+
+// saveTranscriptToFile persists transcript bytes to the canonical artifact path
+// for the given minute_token. Returns the file path on success (or when the
+// file already exists and --overwrite is not set), empty string on any failure.
+func saveTranscriptToFile(runtime *common.RuntimeContext, minuteToken, title string, content []byte) string {
+	errOut := runtime.IO().ErrOut
+
+	// With no --output-dir the default layout shares the directory with
+	// `minutes +download`. Legacy layout is preserved when the flag is set.
+	var dirName string
+	if outDir := runtime.Str("output-dir"); outDir != "" {
+		dirName = filepath.Join(outDir, sanitizeDirName(title, minuteToken))
+	} else {
+		dirName = common.DefaultMinuteArtifactDir(minuteToken)
+	}
+	transcriptPath := filepath.Join(dirName, common.DefaultTranscriptFileName)
+
+	if !runtime.Bool("overwrite") {
+		if _, statErr := runtime.FileIO().Stat(transcriptPath); statErr == nil {
+			fmt.Fprintf(errOut, "%s transcript already exists: %s (use --overwrite to replace)\n", logPrefix, transcriptPath)
+			return transcriptPath
+		}
+	}
+
+	fmt.Fprintf(errOut, "%s writing transcript: %s\n", logPrefix, transcriptPath)
+	if _, err := runtime.FileIO().Save(transcriptPath, fileio.SaveOptions{}, bytes.NewReader(content)); err != nil {
+		var me *fileio.MkdirError
+		switch {
+		case errors.Is(err, fileio.ErrPathValidation):
+			fmt.Fprintf(errOut, "%s invalid transcript path: %v\n", logPrefix, err)
+		case errors.As(err, &me):
+			fmt.Fprintf(errOut, "%s failed to create directory: %v\n", logPrefix, err)
+		default:
+			fmt.Fprintf(errOut, "%s failed to write transcript: %v\n", logPrefix, err)
+		}
+		return ""
+	}
+	return transcriptPath
 }
 
 // parseArtifactType extracts artifact_type as int from varying JSON number representations.
@@ -712,9 +693,8 @@ var VCNotes = common.Shortcut{
 				GET("/open-apis/minutes/v1/minutes/{minute_token}").
 				GET("/open-apis/vc/v1/notes/{note_id}").
 				GET("/open-apis/minutes/v1/minutes/{minute_token}/artifacts").
-				GET("/open-apis/minutes/v1/minutes/{minute_token}/transcript").
 				Set("minute_tokens", common.SplitCSV(tokens)).
-				Set("steps", "minutes API → note detail + AI artifacts + transcript")
+				Set("steps", "minutes API → note detail + AI artifacts (incl. transcript)")
 		}
 		ids := runtime.Str("calendar-event-ids")
 		return common.NewDryRunAPI().

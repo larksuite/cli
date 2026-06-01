@@ -116,45 +116,23 @@ func noteDetailStub(noteID string) *httpmock.Stub {
 	}
 }
 
-func artifactsStub(token string) *httpmock.Stub {
+func artifactsStub(token, transcript string) *httpmock.Stub {
+	data := map[string]interface{}{
+		"summary":         "Test summary content",
+		"minute_todos":    []interface{}{map[string]interface{}{"content": "Buy milk"}},
+		"minute_chapters": []interface{}{map[string]interface{}{"title": "Intro", "summary_content": "Opening"}},
+		"keywords":        []interface{}{"budget", "roadmap"},
+	}
+	if transcript != "" {
+		data["transcript"] = transcript
+	}
 	return &httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/minutes/v1/minutes/" + token + "/artifacts",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"summary":         "Test summary content",
-				"minute_todos":    []interface{}{map[string]interface{}{"content": "Buy milk"}},
-				"minute_chapters": []interface{}{map[string]interface{}{"title": "Intro", "summary_content": "Opening"}},
-				"keywords":        []interface{}{"budget", "roadmap"},
-			},
+			"data": data,
 		},
-	}
-}
-
-func emptyArtifactsStub(token string) *httpmock.Stub {
-	return &httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/minutes/v1/minutes/" + token + "/artifacts",
-		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
-	}
-}
-
-func transcriptStub(token string) *httpmock.Stub {
-	return &httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/minutes/v1/minutes/" + token + "/transcript",
-		Body:   map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{}},
-	}
-}
-
-// transcriptRawStub returns an actual transcript body so downloadTranscriptFile
-// writes a file to disk. Used by path-layout tests.
-func transcriptRawStub(token string, body []byte) *httpmock.Stub {
-	return &httpmock.Stub{
-		Method:  "GET",
-		URL:     "/open-apis/minutes/v1/minutes/" + token + "/transcript",
-		RawBody: body,
 	}
 }
 
@@ -677,8 +655,7 @@ func TestNotes_TranscriptDefaultLayout(t *testing.T) {
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(minuteGetStub("tok001", "", "Meeting Title"))
-	reg.Register(emptyArtifactsStub("tok001"))
-	reg.Register(transcriptRawStub("tok001", []byte("speaker1: hello world\n")))
+	reg.Register(artifactsStub("tok001", "speaker1: hello world\n"))
 
 	err := mountAndRun(t, VCNotes, []string{
 		"+notes", "--minute-tokens", "tok001", "--as", "user",
@@ -706,8 +683,7 @@ func TestNotes_TranscriptExplicitOutputDir_PreservesLegacyLayout(t *testing.T) {
 
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(minuteGetStub("tok001", "", "Meeting Title"))
-	reg.Register(emptyArtifactsStub("tok001"))
-	reg.Register(transcriptRawStub("tok001", []byte("content")))
+	reg.Register(artifactsStub("tok001", "content"))
 
 	if err := os.MkdirAll("out", 0755); err != nil {
 		t.Fatalf("setup: %v", err)
