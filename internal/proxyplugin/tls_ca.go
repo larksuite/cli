@@ -39,8 +39,14 @@ func applyExtraRootCA(t *http.Transport, caPath string) error {
 		return fmt.Errorf("failed to read %s %q: %w", envvars.CliCAPath, caPath, err)
 	}
 
-	// Start from system pool when possible; if unavailable, create a new pool.
-	pool, _ := x509.SystemCertPool()
+	// Augment the system trust store. Do NOT silently discard a SystemCertPool
+	// error: falling back to an empty pool would make this transport trust ONLY
+	// the extra CA (dropping all system roots), which narrows trust unexpectedly
+	// and could break TLS to legitimate endpoints. Fail closed instead.
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		return fmt.Errorf("failed to load system cert pool for %s: %w", envvars.CliCAPath, err)
+	}
 	if pool == nil {
 		pool = x509.NewCertPool()
 	}

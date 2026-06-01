@@ -148,6 +148,38 @@ func TestBuildProxyPluginTransport_NonTransportDefaultFailsClosed(t *testing.T) 
 	}
 }
 
+// TestSharedTransport_InvalidConfigBlockerIsConcreteTransport guards the
+// fail-closed invariant that util.FallbackTransport relies on: even when
+// http.DefaultTransport is not an *http.Transport, an invalid proxy config must
+// produce a blocked transport that is itself a concrete *http.Transport. If it
+// were a bare RoundTripper, util.FallbackTransport would downcast-fail and
+// silently degrade it into a direct-egress transport.
+func TestSharedTransport_InvalidConfigBlockerIsConcreteTransport(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+	restoreDefaultTransport := replaceDefaultTransport(okRoundTripper{})
+	defer restoreDefaultTransport()
+
+	writeFile(t, Path(), []byte(`{`), 0600)
+
+	rt, ok := SharedTransport()
+	if !ok {
+		t.Fatal("SharedTransport() ok = false, want true")
+	}
+	if _, isTransport := rt.(*http.Transport); !isTransport {
+		t.Fatalf("SharedTransport() blocked transport = %T, want *http.Transport so FallbackTransport cannot degrade it to direct egress", rt)
+	}
+	// Must remain fail-closed.
+	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
+	if err == nil {
+		t.Fatalf("RoundTrip() error = nil, response = %#v; want fail-closed error", resp)
+	}
+	if resp != nil {
+		t.Fatalf("RoundTrip() response = %#v, want nil", resp)
+	}
+}
+
 type okRoundTripper struct{}
 
 func (okRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {

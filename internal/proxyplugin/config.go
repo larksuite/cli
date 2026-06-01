@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/larksuite/cli/internal/binding"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/vfs"
@@ -88,7 +89,20 @@ func Load() (*Config, error) {
 			loadErr = fmt.Errorf("failed to stat proxy plugin config %q: %w", p, err)
 			return
 		}
-		b, err := vfs.ReadFile(p)
+		// Security hardening: this config dictates where ALL outbound CLI traffic
+		// egresses and which extra CA is trusted, so a file another local user or
+		// process can tamper with (symlink, foreign owner, group/world-writable)
+		// could redirect credential traffic. Audit it the same way the CA file is.
+		safePath, err := binding.AssertSecurePath(binding.AuditParams{
+			TargetPath:            p,
+			Label:                 ConfigFileName,
+			AllowReadableByOthers: true, // config is not a secret; only writability/owner/symlink matter
+		})
+		if err != nil {
+			loadErr = fmt.Errorf("unsafe proxy plugin config %q: %w", p, err)
+			return
+		}
+		b, err := vfs.ReadFile(safePath)
 		if err != nil {
 			loadErr = fmt.Errorf("failed to read proxy plugin config %q: %w", p, err)
 			return
@@ -177,7 +191,10 @@ func (c *Config) proxyURL() (*url.URL, error) {
 	redacted := redactProxyURL(raw)
 	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("invalid %s %q: %w", envvars.CliProxyAddress, redacted, err)
+		// Do not wrap the raw url.Parse error: its string embeds the original
+		// URL, which can contain userinfo (user:password). Return a redacted,
+		// generic message instead.
+		return nil, fmt.Errorf("invalid %s %q: malformed URL", envvars.CliProxyAddress, redacted)
 	}
 	if u.Scheme != "http" {
 		return nil, fmt.Errorf("invalid %s %q: scheme must be http", envvars.CliProxyAddress, redacted)

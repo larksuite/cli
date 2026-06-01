@@ -20,17 +20,17 @@ var proxyPluginTransport = sync.OnceValue(buildProxyPluginTransport)
 var cachedBlockedTransport = sync.OnceValue(buildBlockedTransport)
 
 func buildBlockedTransport() http.RoundTripper {
-	def, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return blockedRoundTripper{err: fmt.Errorf("proxy plugin config is invalid and http.DefaultTransport is %T, want *http.Transport: %w", http.DefaultTransport, loadErr)}
-	}
-	return blockedTransport(def, fmt.Errorf("proxy plugin config is invalid: %w", loadErr))
+	return failClosedTransport(fmt.Errorf("proxy plugin config is invalid: %w", loadErr))
 }
 
 func buildProxyPluginTransport() http.RoundTripper {
 	def, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
-		return blockedRoundTripper{err: fmt.Errorf("proxy plugin transport unavailable: http.DefaultTransport is %T, want *http.Transport", http.DefaultTransport)}
+		// Cannot clone the stdlib transport. Fail closed with a concrete
+		// *http.Transport (not a bare RoundTripper) so downcasting callers such
+		// as util.FallbackTransport cannot silently degrade this into a
+		// direct-egress transport.
+		return failClosedTransport(fmt.Errorf("proxy plugin transport unavailable: http.DefaultTransport is %T, want *http.Transport", http.DefaultTransport))
 	}
 
 	cfg, err := Load()
@@ -64,12 +64,21 @@ func SharedTransport() (http.RoundTripper, bool) {
 	return proxyPluginTransport(), true
 }
 
-type blockedRoundTripper struct {
-	err error
-}
-
-func (b blockedRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, b.err
+// failClosedTransport returns a *http.Transport that always fails RoundTrip with
+// err. It clones http.DefaultTransport when possible (preserving dial/timeout
+// tuning); otherwise it builds a minimal transport. Returning a concrete
+// *http.Transport (rather than a bare RoundTripper) is required so downcasting
+// callers such as util.FallbackTransport cannot silently degrade a fail-closed
+// signal into a direct-egress transport.
+func failClosedTransport(err error) *http.Transport {
+	if def, ok := http.DefaultTransport.(*http.Transport); ok {
+		return blockedTransport(def, err)
+	}
+	return &http.Transport{
+		Proxy: func(*http.Request) (*url.URL, error) {
+			return nil, err
+		},
+	}
 }
 
 func blockedTransport(base *http.Transport, err error) *http.Transport {

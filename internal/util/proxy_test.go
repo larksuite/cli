@@ -7,8 +7,10 @@ import (
 	"bytes"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/envvars"
 )
@@ -215,6 +217,115 @@ func TestWarnIfProxied_OnlyOnce(t *testing.T) {
 	}
 	if second != first {
 		t.Error("expected no additional output on second call")
+	}
+}
+
+// TestWarnIfProxied_ProxyPluginEnabled verifies that when proxy plugin mode is
+// enabled, the warning describes the plugin proxy and the correct disable method
+// (LARKSUITE_CLI_PROXY_ENABLE=false) instead of the misleading LARK_CLI_NO_PROXY
+// instruction — even when env proxy and LARK_CLI_NO_PROXY are also set.
+func TestWarnIfProxied_ProxyPluginEnabled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	proxyWarningOnce = sync.Once{}
+
+	old := proxyPluginStatus
+	proxyPluginStatus = func() (string, string, bool) { return "http://127.0.0.1:3128", "", true }
+	t.Cleanup(func() { proxyPluginStatus = old })
+
+	// Plugin mode overrides these; the warning must still be the plugin one.
+	t.Setenv("HTTPS_PROXY", "http://corp-proxy:8080")
+	t.Setenv(EnvNoProxy, "1")
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+	out := buf.String()
+
+	if !strings.Contains(out, "127.0.0.1:3128") {
+		t.Errorf("warning should mention the plugin proxy address, got: %s", out)
+	}
+	if !strings.Contains(out, envvars.CliProxyEnable) {
+		t.Errorf("warning should mention %s as the disable method, got: %s", envvars.CliProxyEnable, out)
+	}
+	if strings.Contains(out, "Set "+EnvNoProxy+"=1") {
+		t.Errorf("warning must NOT give the misleading %s disable instruction when plugin is enabled, got: %s", EnvNoProxy, out)
+	}
+	// No custom CA configured -> no interception warning.
+	if strings.Contains(out, "custom CA") {
+		t.Errorf("warning should not mention a custom CA when none is configured, got: %s", out)
+	}
+}
+
+// TestWarnIfProxied_ProxyPluginCustomCAWarns verifies that when a custom CA is
+// trusted, the warning surfaces the TLS-interception capability (V3).
+func TestWarnIfProxied_ProxyPluginCustomCAWarns(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	proxyWarningOnce = sync.Once{}
+
+	old := proxyPluginStatus
+	proxyPluginStatus = func() (string, string, bool) {
+		return "http://127.0.0.1:3128", "/etc/lark/extra_ca.pem", true
+	}
+	t.Cleanup(func() { proxyPluginStatus = old })
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+	out := buf.String()
+
+	if !strings.Contains(out, "custom CA") {
+		t.Errorf("warning should mention the custom CA, got: %s", out)
+	}
+	if !strings.Contains(out, "/etc/lark/extra_ca.pem") {
+		t.Errorf("warning should include the CA path, got: %s", out)
+	}
+	if !strings.Contains(out, "intercept") {
+		t.Errorf("warning should mention TLS interception, got: %s", out)
+	}
+}
+
+// TestNewHTTPClient verifies the factory wires the shared proxy-plugin-aware
+// transport (instead of a bare client that bypasses proxy plugin mode).
+func TestNewHTTPClient(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	t.Setenv(EnvNoProxy, "")
+
+	c := NewHTTPClient(7 * time.Second)
+	if c.Transport == nil {
+		t.Fatal("NewHTTPClient transport is nil; want shared transport")
+	}
+	if c.Transport != SharedTransport() {
+		t.Errorf("NewHTTPClient transport = %v, want SharedTransport()", c.Transport)
+	}
+	if c.Timeout != 7*time.Second {
+		t.Errorf("NewHTTPClient timeout = %v, want 7s", c.Timeout)
+	}
+}
+
+// TestWarnIfProxied_ProxyPluginEnabledRedactsCredentials verifies the plugin
+// warning never leaks credentials embedded in the configured proxy address.
+func TestWarnIfProxied_ProxyPluginEnabledRedactsCredentials(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	proxyWarningOnce = sync.Once{}
+
+	old := proxyPluginStatus
+	proxyPluginStatus = func() (string, string, bool) { return "http://user:s3cret@127.0.0.1:3128", "", true }
+	t.Cleanup(func() { proxyPluginStatus = old })
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+	out := buf.String()
+
+	if strings.Contains(out, "s3cret") {
+		t.Errorf("plugin warning leaked password, got: %s", out)
+	}
+	if strings.Contains(out, "user:") {
+		t.Errorf("plugin warning leaked username, got: %s", out)
+	}
+	if !strings.Contains(out, "***@127.0.0.1:3128") {
+		t.Errorf("plugin warning should contain redacted proxy URL, got: %s", out)
 	}
 }
 

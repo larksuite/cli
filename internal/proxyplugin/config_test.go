@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -238,5 +239,134 @@ func TestLoad_EnvOverridesFile(t *testing.T) {
 	}
 	if cfg.Enabled() {
 		t.Fatalf("cfg.Enabled() = true, want false (env override)")
+	}
+}
+
+// TestConfig_ProxyURLMalformedDoesNotLeakUserinfo verifies that a malformed proxy
+// URL containing credentials does not leak those credentials in the error string.
+// url.Parse error strings embed the original URL, so wrapping them with %w would
+// expose user:password.
+func TestConfig_ProxyURLMalformedDoesNotLeakUserinfo(t *testing.T) {
+	// Invalid percent-encoding in host makes url.Parse fail while userinfo is present.
+	raw := "http://user:s3cret@%zz"
+	_, err := (&Config{Proxy: raw}).proxyURL()
+	if err == nil {
+		t.Fatal("proxyURL() error = nil, want malformed URL error")
+	}
+	if strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("proxyURL() error leaks password: %q", err)
+	}
+	if strings.Contains(err.Error(), "user:") {
+		t.Fatalf("proxyURL() error leaks username: %q", err)
+	}
+	if !strings.Contains(err.Error(), "malformed URL") {
+		t.Fatalf("proxyURL() error = %q, want it to mention malformed URL", err)
+	}
+	// The redacted form should still be present for diagnostics.
+	if !strings.Contains(err.Error(), "***") {
+		t.Fatalf("proxyURL() error = %q, want redacted userinfo marker", err)
+	}
+}
+
+// resetLoadState resets the package-level Load() cache for deterministic tests.
+func resetLoadState() {
+	loadOnce = sync.Once{}
+	loadCfg = nil
+	loadErr = nil
+}
+
+// TestLoad_RejectsWorldWritableConfig verifies that a world-writable proxy config
+// is rejected rather than silently trusted (it could be tampered with by other
+// local processes to redirect credential traffic).
+func TestLoad_RejectsWorldWritableConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics")
+	}
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	resetLoadState()
+	unsetProxyPluginEnv(t)
+
+	p := Path()
+	writeFile(t, p, []byte(`{"LARKSUITE_CLI_PROXY_ENABLE":true,"LARKSUITE_CLI_PROXY_ADDRESS":"http://127.0.0.1:3128"}`), 0600)
+	// Chmod (not WriteFile perm) so umask cannot strip the world-writable bit.
+	if err := os.Chmod(p, 0o666); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want unsafe-config error for world-writable file")
+	}
+	if !strings.Contains(err.Error(), "world-writable") {
+		t.Fatalf("Load() error = %q, want world-writable rejection", err)
+	}
+}
+
+// TestLoad_RejectsGroupWritableConfig verifies group-writable configs are rejected.
+func TestLoad_RejectsGroupWritableConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission semantics")
+	}
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	resetLoadState()
+	unsetProxyPluginEnv(t)
+
+	p := Path()
+	writeFile(t, p, []byte(`{"LARKSUITE_CLI_PROXY_ENABLE":true,"LARKSUITE_CLI_PROXY_ADDRESS":"http://127.0.0.1:3128"}`), 0600)
+	if err := os.Chmod(p, 0o660); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want unsafe-config error for group-writable file")
+	}
+	if !strings.Contains(err.Error(), "group-writable") {
+		t.Fatalf("Load() error = %q, want group-writable rejection", err)
+	}
+}
+
+// TestLoad_RejectsSymlinkConfig verifies that a symlinked proxy config is rejected,
+// preventing redirection of the trusted config path to an attacker-controlled file.
+func TestLoad_RejectsSymlinkConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is privileged on Windows")
+	}
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	resetLoadState()
+	unsetProxyPluginEnv(t)
+
+	// Real file lives elsewhere; the config path is a symlink to it.
+	real := filepath.Join(dir, "real_proxy_config.json")
+	writeFile(t, real, []byte(`{"LARKSUITE_CLI_PROXY_ENABLE":true,"LARKSUITE_CLI_PROXY_ADDRESS":"http://127.0.0.1:3128"}`), 0600)
+	if err := os.Symlink(real, Path()); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() error = nil, want unsafe-config error for symlinked file")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("Load() error = %q, want symlink rejection", err)
+	}
+}
+
+// TestLoad_AcceptsSecureConfig verifies the audit does not break the normal case:
+// an owner-only 0600 config still loads.
+func TestLoad_AcceptsSecureConfig(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	resetLoadState()
+	unsetProxyPluginEnv(t)
+
+	writeFile(t, Path(), []byte(`{"LARKSUITE_CLI_PROXY_ENABLE":true,"LARKSUITE_CLI_PROXY_ADDRESS":"http://127.0.0.1:3128"}`), 0600)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil for secure 0600 config", err)
+	}
+	if cfg == nil || !cfg.Enabled() {
+		t.Fatalf("cfg.Enabled() = %v, want true", cfg)
 	}
 }

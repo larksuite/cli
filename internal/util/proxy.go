@@ -11,7 +11,9 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/proxyplugin"
 )
 
@@ -42,6 +44,18 @@ func DetectProxyEnv() (key, value string) {
 // proxyWarningOnce ensures proxy environment warnings are emitted at most once.
 var proxyWarningOnce sync.Once
 
+// proxyPluginStatus reports the configured proxy plugin address, the extra
+// trusted CA path (if any), and whether proxy plugin mode is enabled. It is
+// indirected through a package variable so tests can simulate plugin-enabled
+// mode without the process-global proxyplugin.Load() sync.Once cache.
+var proxyPluginStatus = func() (addr, caPath string, enabled bool) {
+	cfg, err := proxyplugin.Load()
+	if err != nil || !cfg.Enabled() {
+		return "", "", false
+	}
+	return cfg.Proxy, cfg.CAPath, true
+}
+
 // redactProxyURL masks userinfo (username:password) in a proxy URL.
 // Handles both scheme-prefixed ("http://user:pass@host") and bare ("user:pass@host") formats.
 func redactProxyURL(raw string) string {
@@ -64,6 +78,23 @@ func redactProxyURL(raw string) string {
 // are redacted. Safe to call multiple times; only the first call prints.
 func WarnIfProxied(w io.Writer) {
 	proxyWarningOnce.Do(func() {
+		// Proxy plugin mode overrides env proxies and LARK_CLI_NO_PROXY (see
+		// SharedTransport), so its warning and disable instructions take
+		// precedence. Emitting the env-proxy warning here would be misleading:
+		// it tells the user to set LARK_CLI_NO_PROXY=1, which does NOT disable
+		// the plugin proxy.
+		if addr, caPath, enabled := proxyPluginStatus(); enabled {
+			fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin enabled: all requests (including credentials) are forced through %s. To disable, set %s=false or remove %s.\n",
+				redactProxyURL(addr), envvars.CliProxyEnable, proxyplugin.Path())
+			if strings.TrimSpace(caPath) != "" {
+				// A custom CA means upstream TLS can be intercepted/inspected by
+				// the proxy (MITM). Surface it so the operator is aware traffic
+				// (including Bearer tokens) is decryptable on this host.
+				fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin trusts a custom CA (%s); TLS to upstreams can be intercepted/inspected by this proxy.\n",
+					caPath)
+			}
+			return
+		}
 		if os.Getenv(EnvNoProxy) != "" {
 			return
 		}
@@ -119,9 +150,31 @@ func SharedTransport() http.RoundTripper {
 // on the leak-free singleton path (internal/auth, internal/cmdutil
 // transport decorators) do not have to migrate. New code should prefer
 // SharedTransport and treat the base as an http.RoundTripper.
+//
+// Fail-closed invariant: proxyplugin always expresses its blocked/fail-closed
+// transport as a concrete *http.Transport (see proxyplugin.failClosedTransport),
+// so the assertion below preserves the block. The noProxyTransport() fallback is
+// therefore only reached when no proxy plugin is configured and some external
+// code replaced http.DefaultTransport with a non-*http.Transport — a case with
+// no fail-closed intent, where a proxy-disabled transport is acceptable.
 func FallbackTransport() *http.Transport {
 	if t, ok := SharedTransport().(*http.Transport); ok {
 		return t
 	}
 	return noProxyTransport()
+}
+
+// NewHTTPClient returns an *http.Client whose Transport is the shared,
+// proxy-plugin-aware base (see SharedTransport). Prefer this over a bare
+// &http.Client{} for outbound requests: a bare client falls back to
+// http.DefaultTransport and therefore silently bypasses proxy plugin mode
+// (fixed proxy + trusted CA, or fail-closed), creating an audit blind spot.
+//
+// A zero timeout means no client-level timeout (callers relying on
+// context deadlines pass 0).
+func NewHTTPClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Transport: SharedTransport(),
+		Timeout:   timeout,
+	}
 }
