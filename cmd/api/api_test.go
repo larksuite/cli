@@ -66,6 +66,24 @@ func TestApiCmd_DryRun(t *testing.T) {
 	}
 }
 
+// Regression: --params null parses to a nil map; writing page_size onto it must
+// not panic. Symmetric to the typed-flag overlay path in cmd/service — both
+// write into the map ParseJSONMap returns.
+func TestApiCmd_NullParamsWithPageSize(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--params", "null", "--page-size", "50", "--as", "bot", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--params null with --page-size should not error, got: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, "page_size") {
+		t.Errorf("expected page_size applied over null --params, got:\n%s", out)
+	}
+}
+
 func TestApiCmd_BotMode(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,

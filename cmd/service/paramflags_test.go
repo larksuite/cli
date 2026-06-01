@@ -168,6 +168,22 @@ func TestServiceMethod_TypedFlag_OnlyParamsStillWorks(t *testing.T) {
 	}
 }
 
+// Regression: --params null is valid JSON that unmarshals to a nil map. A typed
+// flag overlaying onto it must not panic (assignment to a nil map) — null is
+// treated as "no base params", with the flag value applied on top.
+func TestServiceMethod_TypedFlag_OverridesNullParams(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imChatMembersCreate(), "create", "chat.members", nil)
+	cmd.SetArgs([]string{"--chat-id", "oc_abc123", "--params", "null", "--data", `{}`, "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("--params null with a typed flag should not error, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "chats/oc_abc123/members") {
+		t.Errorf("expected chat_id from --chat-id over null --params, got:\n%s", stdout.String())
+	}
+}
+
 // Startup smoke test: registering every embedded method must not panic on a
 // generated-flag name collision (pflag panics on duplicate registration, which
 // would crash the whole CLI at startup), and a known path param must surface as
