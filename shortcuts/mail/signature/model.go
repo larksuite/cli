@@ -80,3 +80,13 @@ type GetSignaturesResponse struct {
 	Signatures []Signature      `json:"signatures"`
 	Usages     []SignatureUsage `json:"usages"`
 }
+
+// WriteSignatureRequest wraps a signature object for create/update APIs.
+type WriteSignatureRequest struct {
+	Signature Signature `json:"signature"`
+}
+
+// WriteSignatureResponse is returned by create/update APIs.
+type WriteSignatureResponse struct {
+	Signature Signature `json:"signature"`
+}
