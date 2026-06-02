@@ -41,7 +41,9 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
-| 管理表 | `+table-list/get/create/update/delete` | `+table-create --fields` 复杂时读 `lark-base-field-json.md` |
+| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
+| 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
+| 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 `lark-base-field-json.md`；公式读 `formula-field-guide.md`；lookup 读 `lookup-field-guide.md`；命令细节读 `lark-base-field-create.md` / `lark-base-field-update.md` |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 `lark-base-data-analysis-sop.md` |
@@ -55,7 +57,6 @@ metadata:
 | 表单提交 | `+form-submit` | 先读 `lark-base-form-detail.md` 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 `lark-base-form-submit.md` |
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读对应 form-questions reference |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 `lark-base-form-detail.md`；删除前确认目标表单 |
-| Base 容器 block | `+base-block-list/create/move/rename/delete` | 管理 Base 侧边栏里的 folder/table/docx/dashboard/workflow 入口；参数和 fewshot 看各命令 `--help`；整体关系读 `lark-base-base-block.md` |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 `lark-base-dashboard.md`；组件 `data_config` 读 `dashboard-block-data-config.md`；读取图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 `lark-base-workflow-guide.md` 和 steps JSON SSOT `lark-base-workflow-schema.md`；list/get/enable/disable 只处理 workflow ID 与启停状态 |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 `lark-base-role-guide.md`；角色 create/update 或解读完整配置再读权限 JSON SSOT `role-config.md`；系统角色不可删除；关闭高级权限会影响自定义角色 |
@@ -63,7 +64,8 @@ metadata:
 ## Base 心智模型
 
 - Base 曾用名 Bitable；返回字段、错误或旧文档里的 `bitable` 多为历史兼容，不代表应改走裸 API 或另一套命令。
-- `base-block` 是 Base 侧边栏里的容器入口；table/dashboard/workflow 的 block `id` 可作为对应资源 ID 使用，docx 内容操作使用返回的 `docx_token`。
+- `+base-block-list` 是查看一个 Base 内资源目录的新入口：它列出这个 Base 直接管理的 `folder/table/docx/dashboard/workflow`，适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令。
+- `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
 - 一次性统计、筛选、TopN 优先用 `+data-query` 或临时视图；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
@@ -157,7 +159,6 @@ metadata:
 - `lark-base-record-upsert.md` / `lark-base-record-batch-create.md` / `lark-base-record-batch-update.md` / `lark-base-record-history-list.md`：记录写入 JSON 与历史返回解释
 - `lark-base-view-set-filter.md`：视图筛选 JSON
 - `lark-base-form-detail.md` / `lark-base-form-submit.md` / `lark-base-form-questions-create.md` / `lark-base-form-questions-update.md`：表单详情、提交和复杂 JSON
-- `lark-base-base-block.md`：Base 容器 block 心智模型，以及和 table/dashboard/workflow/docx 命令的关系
 - `lark-base-dashboard.md` / `dashboard-block-data-config.md` / `lark-base-dashboard-block-get-data.md`：仪表盘、组件配置与图表结果协议
 - `lark-base-workflow-guide.md` / `lark-base-workflow-schema.md`：workflow 入口与 steps JSON SSOT
 - `lark-base-role-guide.md` / `role-config.md`：角色入口与权限 JSON SSOT

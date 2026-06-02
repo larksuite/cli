@@ -21,10 +21,12 @@ var BaseBaseBlockDelete = common.Shortcut{
 		baseBlockIDFlag(true),
 	},
 	Tips: []string{
+		"Example: lark-cli base +base-block-delete --base-token <base_token> --block-id <block_id> --yes",
 		"Deletes the block identified by --block-id.",
 		"Recursive folder deletion is not supported. If a folder is not empty, move or delete its children first.",
 		"Different block types may have independent backing resources; deletion follows backend semantics.",
 		"Use +base-block-list first when you need to confirm the target block id.",
+		"If the user already explicitly confirmed this exact delete target, pass --yes without asking again.",
 	},
 	DryRun: dryRunBaseBlockDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

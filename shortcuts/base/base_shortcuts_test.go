@@ -750,20 +750,76 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 	}
 }
 
-func TestBaseBlockListHelpGuidesAgents(t *testing.T) {
-	parent := &cobra.Command{Use: "base"}
-	BaseBaseBlockList.Mount(parent, &cmdutil.Factory{})
-	cmd := parent.Commands()[0]
-
-	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
-	wantTips := []string{
-		"returned id is the table-id, dashboard-id, or workflow-id",
-		"For docx blocks, use the returned docx_token with docx commands.",
+func TestBaseBlockHelpGuidesAgents(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		wantTips []string
+	}{
+		{
+			name:     "list",
+			shortcut: BaseBaseBlockList,
+			wantTips: []string{
+				"lark-cli base +base-block-list --base-token <base_token>",
+				"lark-cli base +base-block-list --base-token <base_token> --type table",
+				"lark-cli base +base-block-list --base-token <base_token> --parent-id <folder_block_id>",
+				`jq '.blocks[] | {type, name, block_id: .id, parent_id}'`,
+				`--type docx | jq '.blocks[] | {name, docx_token}'`,
+				"returned id is the table-id, dashboard-id, or workflow-id",
+				"For docx blocks, use the returned docx_token with docx commands.",
+			},
+		},
+		{
+			name:     "create",
+			shortcut: BaseBaseBlockCreate,
+			wantTips: []string{
+				`lark-cli base +base-block-create --base-token <base_token> --type folder --name "Project Docs"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type table --name "Tasks"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type docx --name "Spec" --parent-id <folder_block_id>`,
+				`lark-cli base +base-block-create --base-token <base_token> --type dashboard --name "Metrics"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type workflow --name "Approval Flow"`,
+			},
+		},
+		{
+			name:     "move",
+			shortcut: BaseBaseBlockMove,
+			wantTips: []string{
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --parent-id <folder_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --after-id <sibling_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --before-id <sibling_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id>",
+			},
+		},
+		{
+			name:     "rename",
+			shortcut: BaseBaseBlockRename,
+			wantTips: []string{
+				`lark-cli base +base-block-rename --base-token <base_token> --block-id <block_id> --name "New name"`,
+			},
+		},
+		{
+			name:     "delete",
+			shortcut: BaseBaseBlockDelete,
+			wantTips: []string{
+				"lark-cli base +base-block-delete --base-token <base_token> --block-id <block_id> --yes",
+				"Recursive folder deletion is not supported.",
+			},
+		},
 	}
-	for _, want := range wantTips {
-		if !strings.Contains(tips, want) {
-			t.Fatalf("tips missing %q:\n%s", want, tips)
-		}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+			for _, want := range tt.wantTips {
+				if !strings.Contains(tips, want) {
+					t.Fatalf("tips missing %q:\n%s", want, tips)
+				}
+			}
+		})
 	}
 }
 

@@ -23,6 +23,11 @@ var BaseBaseBlockCreate = common.Shortcut{
 		{Name: "parent-id", Desc: "folder block id; when omitted, create at root"},
 	},
 	Tips: []string{
+		"Example: lark-cli base +base-block-create --base-token <base_token> --type folder --name \"Project Docs\"",
+		"Example: lark-cli base +base-block-create --base-token <base_token> --type table --name \"Tasks\"",
+		"Example: lark-cli base +base-block-create --base-token <base_token> --type docx --name \"Spec\" --parent-id <folder_block_id>",
+		"Example: lark-cli base +base-block-create --base-token <base_token> --type dashboard --name \"Metrics\"",
+		"Example: lark-cli base +base-block-create --base-token <base_token> --type workflow --name \"Approval Flow\"",
 		"Creates a folder, table, docx, dashboard, or workflow entry.",
 		"Do not pass null for --parent-id. Omit it to create at the root level.",
 		"Created resources still use their own commands for content operations, such as table/field/record/docx/dashboard/workflow commands.",
