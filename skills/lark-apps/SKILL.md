@@ -1,6 +1,6 @@
 ---
 name: lark-apps
-description: "把本地 HTML 文件或目录部署到飞书妙搭（Miaoda），生成一个公网可访问的应用及其链接（URL）。当用户要创建 HTML 或要把 HTML、静态网站或 Web demo 发布成公网可访问的链接 / 可分享链接、创建全栈（fullstack）应用 / 带后端（数据库、登录、API）的妙搭应用、设置应用共享范围，或提到妙搭 / Miaoda 时使用。凡产出可独立访问的 HTML 产物都属本 skill 的潜在归宿，是否真要部署由 skill 内部协议判断。不用于：上传普通文件到云空间/云盘/云存储（用 lark-drive）、编辑飞书云文档内容（用 lark-doc）、创建飞书原生幻灯片 / 演示文稿（用 lark-slides）。"
+description: "飞书妙搭（Miaoda）应用技能，用于创建妙搭应用、发布本地 HTML / 静态网站为可分享访问链接、设置应用可用范围，以及为妙搭应用仓库初始化、查看、修复或清理本机 Git 凭证。当用户提到妙搭 / Miaoda、发布 Web demo、创建 HTML 或 fullstack 应用、配置应用共享范围，或处理妙搭仓库 URL、clone / pull / push 认证失败时使用。不负责普通云盘文件上传（用 lark-drive）、飞书云文档编辑（用 lark-doc）、原生幻灯片创建（用 lark-slides），也不处理非妙搭仓库的通用 Git 凭证。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -30,6 +30,7 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 4. **发布 HTML / PPT / 静态网站（`apps +html-publish`）** → 必读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（`--path` 文件 vs 目录、tar.gz 打包不做过滤）
 5. **设置可用范围（`apps +access-scope-set`）** → 必读 [`lark-apps-access-scope-set.md`](references/lark-apps-access-scope-set.md)（specific / public / tenant 三态互斥校验、targets JSON 结构）
 6. **查看当前可用范围（`apps +access-scope-get`）** → 必读 [`lark-apps-access-scope-get.md`](references/lark-apps-access-scope-get.md)（响应 scope 枚举 `All` / `Tenant` / `Range` 与 CLI 的 `public` / `tenant` / `specific` 映射；含 jq 复制 scope 配置示例）
+7. **初始化 / 查看 / 删除妙搭 Git 凭证（`apps +git-credential-init` / `apps +git-credential-list` / `apps +git-credential-remove`）** → 必读 [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md)（只处理 Git credential，不与 setup / env pull 混用；输出 Repository URL 后继续用原生 Git；list 会自动扫描本地所有 app 配置，不需要 `--app-id`）
 
 **未读完以上文件就执行相应操作会导致参数选择错误、互斥违反或文件被错误打包。**
 
@@ -113,3 +114,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli apps +<verb> [flags]`）�
 | [`+access-scope-set`](references/lark-apps-access-scope-set.md) | 设置应用可用范围（specific / public / tenant，三态互斥校验） |
 | [`+access-scope-get`](references/lark-apps-access-scope-get.md) | 查看应用当前可用范围（响应 scope 枚举 `All` / `Tenant` / `Range`；可作"备份 / 复制 scope 配置"前置读） |
 | [`+html-publish`](references/lark-apps-html-publish.md) | **把本地 HTML 文件 / 目录 / PPT / 静态网站部署为可分享的妙搭应用，返回访问 URL**（用户明示部署 / 分享时直接调；仅说"可演示"时先问用户是否要部署再调） |
+| [`+git-credential-init`](references/lark-apps-git-credential.md) | 初始化妙搭应用仓库的本机 Git HTTP 凭证，输出 Repository URL；后续 clone / fetch / pull / push 使用原生 Git |
+| [`+git-credential-list`](references/lark-apps-git-credential.md) | 自动扫描本地所有 app Git credential 配置，展示 app_id、仓库 URL 和状态；不展示 PAT 或过期时间 |
+| [`+git-credential-remove`](references/lark-apps-git-credential.md) | 删除本地 app-scoped metadata、keychain PAT 和对应 URL scoped Git config |

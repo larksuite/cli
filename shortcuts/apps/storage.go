@@ -12,7 +12,7 @@ import (
 
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
+	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // existing apps storage persists CLI config-dir state; it is not user file I/O.
 )
 
 // storageRoot is the per-domain local-storage directory name under the config dir.

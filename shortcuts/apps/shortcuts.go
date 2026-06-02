@@ -14,5 +14,8 @@ func Shortcuts() []common.Shortcut {
 		AppsAccessScopeSet,
 		AppsAccessScopeGet,
 		AppsHTMLPublish,
+		AppsGitCredentialInit,
+		AppsGitCredentialList,
+		AppsGitCredentialRemove,
 	}
 }
