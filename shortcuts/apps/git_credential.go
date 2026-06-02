@@ -436,7 +436,7 @@ func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any
 			Code:     resp.StatusCode,
 			Message:  msg,
 			LogID:    logIDString(resp),
-		}, Detail: detail}
+		}}
 	}
 	if _, hasCode := result["code"]; hasCode {
 		code := firstInt64(result, "code")
@@ -447,12 +447,12 @@ func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any
 				Code:     int(code),
 				Message:  firstString(result, "msg", "message"),
 				LogID:    logIDString(resp),
-			}, Detail: detail}
+			}}
 		}
 		if data, ok := result["data"].(map[string]any); ok {
 			result = data
 		}
-	} else if err := checkGitInfoBaseResp(result, detail, logIDString(resp)); err != nil {
+	} else if err := checkGitInfoBaseResp(result, logIDString(resp)); err != nil {
 		return nil, err
 	}
 	if detail != nil {
@@ -466,7 +466,7 @@ func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any
 	return result, nil
 }
 
-func checkGitInfoBaseResp(result map[string]any, detail map[string]any, logID string) error {
+func checkGitInfoBaseResp(result map[string]any, logID string) error {
 	for _, key := range []string{"BaseResp", "baseResp", "base_resp"} {
 		baseResp, ok := result[key].(map[string]any)
 		if !ok {
@@ -486,7 +486,7 @@ func checkGitInfoBaseResp(result map[string]any, detail map[string]any, logID st
 			Code:     int(code),
 			Message:  "Issue Miaoda Git credential: " + message,
 			LogID:    logID,
-		}, Detail: detail}
+		}}
 	}
 	return nil
 }
