@@ -13,7 +13,7 @@ import (
 // wikiMemberTypes is the set of member_type values the space-member APIs
 // accept. Shared by +member-add and +member-remove so the two stay aligned.
 var wikiMemberTypes = []string{
-	"openid", "userid", "email", "unionid", "openchat", "opendepartmentid",
+	"openid", "userid", "email", "unionid", "openchat", "opendepartmentid", "appid",
 }
 
 // wikiMemberRoles is the set of member_role values the space-member APIs
