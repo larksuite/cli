@@ -1,7 +1,7 @@
 ---
 name: lark-minutes
 version: 1.0.0
-description: "飞书妙记：妙记相关基本功能。1.查询妙记列表（按关键词/所有者/参与者/时间范围）；2.获取妙记基础信息（标题、封面、时长 等）；3.下载妙记音视频文件；4.获取妙记相关 AI 产物（总结、待办、章节）；5.上传音视频生成妙记，也支持将本地音视频文件转成纪要、逐字稿、文字稿、撰写文字等产物；6.更新妙记标题（重命名妙记）；7.替换妙记逐字稿中的说话人。遇到这类请求时，应优先使用本 skill。飞书妙记 URL 格式: http(s)://<host>/minutes/<minute-token>"
+description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下载妙记音视频文件、上传音视频生成妙记、更新妙记标题、替换说话人。当需要获取、操作或者生成妙记时使用。也支持将本地音视频文件转成纪要和逐字稿（优先使用本 skill，不要用 ffmpeg/whisper 本地转写）。不负责：获取会议关联妙记、纪要/逐字稿内容获取走 lark-vc"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -18,10 +18,40 @@ metadata:
 > 3. 了解不同会议产物的组成部分，以便根据需求决策使用哪种产物的数据
 > 4. 了解会议总结、分析和信息提取的标准流程
 
+## 身份
+
+所有 minutes 命令默认使用 `--as user`。
+
+## Shortcuts
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+search`](references/lark-minutes-search.md) | 按关键词、所有者、参与者、时间范围搜索妙记 |
+| [`+download`](references/lark-minutes-download.md) | 下载妙记音视频媒体文件 |
+| [`+upload`](references/lark-minutes-upload.md) | 上传 file_token 生成妙记 |
+| [`+update`](references/lark-minutes-update.md) | 更新妙记标题 |
+| [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | 替换妙记逐字稿中的说话人（仅支持用户 ID，不支持姓名） |
+
+- 使用任何 Shortcut 前，必须先读其对应 reference 文档。
+
+## 意图路由
+
+| 用户意图 | 路由到 |
+|----------|--------|
+| "我的妙记""搜索妙记""妙记列表" | 本 skill（`+search`） |
+| "这个妙记的标题/时长/封面/链接" | 本 skill（`minutes get`） |
+| "下载妙记的视频/音频" | 本 skill（`+download`） |
+| "把音视频转妙记/上传文件生成妙记" | 本 skill（`+upload`） |
+| "重命名妙记/改妙记标题" | 本 skill（`+update`） |
+| "替换说话人/把 A 的发言改成 B" | 本 skill（`+speaker-replace`） |
+| "这个妙记的逐字稿/总结/待办/章节" | [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
+| "把音视频文件转成纪要/逐字稿/文字稿" | 先本 skill（`+upload`），再 [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
+| 用户同时提到"会议/开会"和"妙记" | 先 [lark-vc](../lark-vc/SKILL.md)（`+search` → `+recording`），再本 skill |
+
 ## 核心概念
 
 - **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，通过 `minute_token` 标识。
-- **妙记 Token（minute\_token）**：妙记的唯一标识符，可从妙记 URL 末尾提取（例如 `https://*.feishu.cn/minutes/obcnxxxxxxxxxxxxxxxxxxxx` 中的 `obcnxxxxxxxxxxxxxxxxxxxx`）。如果 URL 中包含额外参数（如 `?xxx`），应截取路径最后一段。
+- **妙记 Token（minute_token）**：妙记的唯一标识符，可从妙记 URL 末尾提取（如 `https://*.feishu.cn/minutes/obcnxxx` 中的 `obcnxxx`）。如果 URL 中包含额外参数（如 `?xxx`），截取路径最后一段。
 
 ## 核心场景
 
@@ -30,7 +60,7 @@ metadata:
 1. 当用户描述的是"我的妙记""包含某个关键词的妙记""某段时间内的妙记"，优先使用 `minutes +search`。
 2. 仅支持使用关键词、时间段、参与者、所有者等筛选条件搜索妙记记录，对于不支持的筛选条件，需要提示用户。
 3. 搜索结果存在多条数据时，务必注意分页数据获取，不要遗漏任何妙记记录。
-4. 如果是会议的妙记，应优先使用 [vc +search](../lark-vc/references/lark-vc-search.md) 先定位会议，再按需通过 [vc +recording](../lark-vc/references/lark-vc-recording.md) 获取 `minute_token`。
+4. 如果是会议的妙记，应优先通过 [lark-vc](../lark-vc/SKILL.md) 定位会议并获取 `minute_token`。
 5. 会议场景的妙记路由，以及"参与的妙记"如何解释，统一以 [minutes +search](references/lark-minutes-search.md) 为准。
 
 
@@ -46,7 +76,7 @@ metadata:
 ### 3. 下载妙记音视频文件
 
 1. 下载妙记音视频文件到本地，或获取有效期 1 天的下载链接。详见 [minutes +download](references/lark-minutes-download.md)。
-2. `minutes +download` 只负责音视频媒体文件。
+2. `+download` 只负责音视频媒体文件。用户需要逐字稿、总结、待办、章节等纪要内容时，请使用 [vc +notes --minute-tokens](../lark-vc/references/lark-vc-notes.md)。
 3. 用户只想拿可分享的下载地址时，使用 `--url-only`；用户要落地到本地文件时，直接下载。
 4. 未显式指定路径时，文件默认落到 `./minutes/{minute_token}/<server-filename>`，与 `vc +notes` 的逐字稿共享同一目录便于聚合。
 
@@ -107,34 +137,11 @@ Minutes (妙记) ← minute_token 标识
 > - 用户说"重命名妙记 / 改妙记标题 / 修改妙记名字" → `minutes +update`
 > - 用户说"替换说话人 / 把 A 的发言改成 B / 重新归属发言人" → `minutes +speaker-replace`
 
-## Shortcuts（推荐优先使用）
-
-Shortcut 是对常用操作的高级封装（`lark-cli minutes +<verb> [flags]`）。有 Shortcut 的操作优先使用。
-
-| Shortcut                                           | 说明                                                              |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| [`+search`](references/lark-minutes-search.md)     | Search minutes by keyword, owners, participants, and time range |
-| [`+download`](references/lark-minutes-download.md) | Download audio/video media file of a minute                     |
-| [`+upload`](references/lark-minutes-upload.md)     | Upload a media file token to generate a minute                  |
-| [`+update`](references/lark-minutes-update.md)     | Update a minute's title                                         |
-| [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | Replace a speaker in a minute's transcript (rebind from one user to another) |
-
-- 使用 `+search` 命令时，必须阅读 [references/lark-minutes-search.md](references/lark-minutes-search.md)，了解搜索参数和返回值结构。
-- 使用 `+download` 命令时，必须阅读 [references/lark-minutes-download.md](references/lark-minutes-download.md)，了解下载参数和返回值结构。
-- 使用 `+upload` 命令时，必须阅读 [references/lark-minutes-upload.md](references/lark-minutes-upload.md)，了解生成参数和返回值结构。
-- 使用 `+update` 命令时，必须阅读 [references/lark-minutes-update.md](references/lark-minutes-update.md)，了解修改参数和返回值结构。
-- 使用 `+speaker-replace` 命令时，必须阅读 [references/lark-minutes-speaker-replace.md](references/lark-minutes-speaker-replace.md)，了解参数和限制（仅支持用户 ID，不支持姓名）。
-
-<!-- AUTO-GENERATED-START — gen-skills.py 管理，勿手动编辑 -->
-
 ## API Resources
 
 ```bash
-lark-cli schema minutes.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli minutes <resource> <method> [flags] # 调用 API
+lark-cli minutes <resource> <method> [flags]
 ```
-
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
 
 ### minutes
 
@@ -142,14 +149,8 @@ lark-cli minutes <resource> <method> [flags] # 调用 API
 
 > **权限错误**：如果返回 `[2091005] permission deny`，表示用户没有对应妙记文件的阅读权限，需提示用户联系妙记 owner 申请权限。
 
-## 权限表
+## 不在本 skill 范围
 
-| 方法            | 所需 scope                       |
-| ------------- | ------------------------------ |
-| `+search`     | `minutes:minutes.search:read`  |
-| `minutes.get` | `minutes:minutes:readonly`     |
-| `+download`   | `minutes:minutes.media:export` |
-| `+update`     | `minutes:minutes:update`       |
-| `+speaker-replace` | `minutes:minutes:update` |
-
-<!-- AUTO-GENERATED-END -->
+- 纪要/逐字稿/总结/待办/章节内容获取 → [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`）
+- 搜索历史会议记录 → [lark-vc](../lark-vc/SKILL.md)
+- 查询未来的会议日程 → [lark-calendar](../lark-calendar/SKILL.md)
