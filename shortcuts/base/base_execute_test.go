@@ -974,7 +974,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"+record-search",
 				"--base-token", "app_x",
 				"--table-id", "tbl_x",
-				"--json", `{"view_id":"vew_x","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"offset":0,"limit":2}`,
+				"--json", `{"view_id":"vew_x","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"filter":{"logic":"and","conditions":[["Status","!=","Done"]]},"sort":{"sort_config":[{"field":"Updated At","desc":true},{"field":"Title","desc":false}]},"offset":0,"limit":2}`,
 				"--format", "json",
 			},
 			factory,
@@ -990,8 +990,117 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			!strings.Contains(body, `"keyword":"Created"`) ||
 			!strings.Contains(body, `"search_fields":["Title","fld_owner"]`) ||
 			!strings.Contains(body, `"select_fields":["Title","fld_owner"]`) ||
+			!strings.Contains(body, `"filter":{"conditions":[["Status","!=","Done"]],"logic":"and"}`) ||
+			!strings.Contains(body, `"sort":[{"desc":true,"field":"Updated At"},{"desc":false,"field":"Title"}]`) ||
 			!strings.Contains(body, `"offset":0`) ||
 			!strings.Contains(body, `"limit":2`) {
+			t.Fatalf("captured body=%s", body)
+		}
+	})
+
+	t.Run("search with flag filter sort and projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title", "Status"},
+					"field_id_list":  []interface{}{"fld_title", "fld_status"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI", "Todo"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--keyword", "Created",
+				"--search-field", "Title",
+				"--field-id", "Title",
+				"--field-id", "Status",
+				"--filter-json", `{"logic":"and","conditions":[["Status","==","Todo"],["Score",">=",80]]}`,
+				"--sort-json", `[{"field":"Updated At","desc":true},{"field":"Title","desc":false}]`,
+				"--limit", "20",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(searchStub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(searchStub.CapturedBody))
+		}
+		if body["keyword"] != "Created" || body["limit"].(float64) != 20 {
+			t.Fatalf("captured body=%#v", body)
+		}
+		filter := body["filter"].(map[string]interface{})
+		if filter["logic"] != "and" {
+			t.Fatalf("filter=%#v", filter)
+		}
+		conditions := filter["conditions"].([]interface{})
+		if len(conditions) != 2 {
+			t.Fatalf("conditions=%#v", conditions)
+		}
+		sortConfig := body["sort"].([]interface{})
+		if len(sortConfig) != 2 {
+			t.Fatalf("sort=%#v", sortConfig)
+		}
+		firstSort := sortConfig[0].(map[string]interface{})
+		if firstSort["field"] != "Updated At" || firstSort["desc"] != true {
+			t.Fatalf("sort=%#v", sortConfig)
+		}
+	})
+
+	t.Run("search with filter json file", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		tmp := t.TempDir()
+		withBaseWorkingDir(t, tmp)
+		if err := os.WriteFile(filepath.Join(tmp, "filter.json"), []byte(`{"logic":"or","conditions":[["Status","==","Todo"]]}`), 0600); err != nil {
+			t.Fatalf("write filter err=%v", err)
+		}
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"A"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--keyword", "A",
+				"--search-field", "Title",
+				"--filter-json", "@filter.json",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := string(searchStub.CapturedBody)
+		if !strings.Contains(body, `"filter":{"conditions":[["Status","==","Todo"]],"logic":"or"}`) {
 			t.Fatalf("captured body=%s", body)
 		}
 	})

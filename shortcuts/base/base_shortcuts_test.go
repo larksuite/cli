@@ -254,35 +254,39 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 			wantHelp: []string{
 				"field ID or name to include; repeat to project only needed fields",
 				"view ID or name; omit for reading all table records, or set to read a user-specified or temporary filtered/sorted view",
+				`filter JSON object or @file`,
+				`sort JSON array or @file`,
 				"pagination size, range 1-200",
 				"output format: markdown (default) | json",
 			},
 			wantTips: []string{
 				"lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 				"lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+				"Text equality filter",
+				"Option intersection filter",
+				"Query priority",
 				"Default output is markdown",
 				"Use --field-id repeatedly to keep output small",
-				"Use --view-id when the user asks for a specific view or after creating a temporary filtered/sorted view",
-				"lark-base record read SOP",
 			},
 		},
 		{
 			name:     "record search",
 			shortcut: BaseRecordSearch,
 			wantHelp: []string{
-				`record search JSON object, e.g. {"keyword":"Alice","search_fields":["Name"],"select_fields":["Name","Status"],"limit":50}`,
-				"for keyword search only",
+				`record search JSON object for the full request body, e.g. {"keyword":"Alice","search_fields":["Name"],"select_fields":["Name","Status"],"filter":{"logic":"and","conditions":[]},"sort":[{"field":"Updated","desc":true}],"limit":50}; escape hatch for advanced cases`,
+				"keyword for record search",
+				"field ID or name to search",
+				`filter JSON object or @file`,
+				`sort JSON array or @file`,
 				"output format: markdown (default) | json",
 			},
 			wantTips: []string{
-				"Happy path fields: keyword (string), search_fields",
-				"search_fields length 1-20",
-				"limit range 1-200 defaults to 10",
-				"view_id scopes search to records in that view",
+				"Example: lark-cli base +record-search",
+				"Example with filter/sort JSON",
+				"Text equality filter",
+				"Query priority",
+				"Use --json only when you need to pass the full search body directly",
 				"Default output is markdown",
-				"only for keyword search",
-				"lark-base record read SOP",
-				"inventing search JSON",
 			},
 		},
 		{
@@ -607,7 +611,7 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 			name:     "record search json",
 			shortcut: BaseRecordSearch,
 			wantHelp: []string{
-				`record search JSON object, e.g. {"keyword":"Alice","search_fields":["Name"],"select_fields":["Name","Status"],"limit":50}`,
+				`record search JSON object for the full request body, e.g. {"keyword":"Alice","search_fields":["Name"],"select_fields":["Name","Status"],"filter":{"logic":"and","conditions":[]},"sort":[{"field":"Updated","desc":true}],"limit":50}; escape hatch for advanced cases`,
 			},
 		},
 		{
@@ -885,11 +889,11 @@ func TestBaseTableValidate(t *testing.T) {
 
 func TestBaseRecordValidate(t *testing.T) {
 	ctx := context.Background()
-	if BaseRecordList.Validate != nil {
-		t.Fatalf("record list validate should be nil for repeatable --field-id")
+	if BaseRecordList.Validate == nil {
+		t.Fatalf("record list validate should reject invalid query flags before dry-run")
 	}
 	if BaseRecordSearch.Validate == nil {
-		t.Fatalf("record search validate should reject invalid JSON before dry-run")
+		t.Fatalf("record search validate should reject invalid JSON/query flags before dry-run")
 	}
 	if BaseRecordGet.Validate == nil {
 		t.Fatalf("record get validate should reject invalid record selection before dry-run")
@@ -899,6 +903,58 @@ func TestBaseRecordValidate(t *testing.T) {
 	}
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"Alice"}`}, nil, nil)); err != nil {
 		t.Fatalf("record upsert map validate err=%v", err)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("record list filter-json validate err=%v", err)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},
+		nil,
+		nil,
+	)); err == nil || !strings.Contains(err.Error(), "--filter-json must be a JSON object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"F1"},{"field":"F2"},{"field":"F3"},{"field":"F4"},{"field":"F5"},{"field":"F6"},{"field":"F7"},{"field":"F8"},{"field":"F9"},{"field":"F10"},{"field":"F11"}]`},
+		nil,
+		nil,
+		nil,
+	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("record search flag validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{
+			"base-token": "b",
+			"table-id":   "tbl_1",
+			"json":       `{"keyword":"Alice","search_fields":["Name"],"sort":{"sort_config":[{"field":"Updated","desc":true}]}}`,
+			"sort-json":  `[{"field":"Title","desc":false}]`,
+		},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("record search json with sort-json validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
+		nil,
+		nil,
+	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
+		t.Fatalf("err=%v", err)
 	}
 }
 
