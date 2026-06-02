@@ -48,10 +48,6 @@ EXAMPLES:
     # Generic API call
     lark-cli api GET /open-apis/calendar/v4/calendars
 
-FLAGS:
-    e.g. --as, --format, -q/--jq, --dry-run ...
-    Run lark-cli <command> --help for the full list.
-
 AI AGENT SKILLS:
     lark-cli pairs with AI agent skills (Claude Code, etc.) that
     teach the agent Lark API patterns, best practices, and workflows.
