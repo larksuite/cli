@@ -14,7 +14,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 // SecurityPolicyTransport is an http.RoundTripper that intercepts all responses
@@ -28,7 +28,7 @@ func (t *SecurityPolicyTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return util.FallbackTransport()
+	return transport.Fallback()
 }
 
 // RoundTrip implements http.RoundTripper.

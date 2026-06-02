@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package proxyplugin
+package transport
 
 import (
 	"io"
@@ -20,21 +20,21 @@ func resetProxyPluginState() {
 	cachedBlockedTransport = sync.OnceValue(buildBlockedTransport)
 }
 
-func TestSharedTransport_NotConfigured(t *testing.T) {
+func TestPluginTransport_NotConfigured(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
 
-	tr, ok := SharedTransport()
+	tr, ok := pluginTransport()
 	if ok {
-		t.Fatalf("SharedTransport() ok = true, want false")
+		t.Fatalf("pluginTransport() ok = true, want false")
 	}
 	if tr != nil {
-		t.Fatalf("SharedTransport() transport = %T, want nil", tr)
+		t.Fatalf("pluginTransport() transport = %T, want nil", tr)
 	}
 }
 
-func TestSharedTransport_EnabledReturnsFixedProxy(t *testing.T) {
+func TestPluginTransport_EnabledReturnsFixedProxy(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
@@ -46,13 +46,13 @@ func TestSharedTransport_EnabledReturnsFixedProxy(t *testing.T) {
   "LARKSUITE_CLI_CA_PATH": ""
 }`), 0600)
 
-	rt, ok := SharedTransport()
+	rt, ok := pluginTransport()
 	if !ok {
-		t.Fatal("SharedTransport() ok = false, want true")
+		t.Fatal("pluginTransport() ok = false, want true")
 	}
 	tr, ok := rt.(*http.Transport)
 	if !ok {
-		t.Fatalf("SharedTransport() = %T, want *http.Transport", rt)
+		t.Fatalf("pluginTransport() = %T, want *http.Transport", rt)
 	}
 	u, err := tr.Proxy(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
 	if err != nil {
@@ -63,7 +63,7 @@ func TestSharedTransport_EnabledReturnsFixedProxy(t *testing.T) {
 	}
 }
 
-func TestSharedTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *testing.T) {
+func TestPluginTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
@@ -72,12 +72,12 @@ func TestSharedTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *test
 
 	writeFile(t, Path(), []byte(`{`), 0600)
 
-	rt, ok := SharedTransport()
+	rt, ok := pluginTransport()
 	if !ok {
-		t.Fatal("SharedTransport() ok = false, want true")
+		t.Fatal("pluginTransport() ok = false, want true")
 	}
 	if rt == http.DefaultTransport {
-		t.Fatalf("SharedTransport() returned http.DefaultTransport, want fail-closed transport")
+		t.Fatalf("pluginTransport() returned http.DefaultTransport, want fail-closed transport")
 	}
 	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})
 	if err == nil {
@@ -88,23 +88,23 @@ func TestSharedTransport_InvalidConfigWithNonTransportDefaultFailsClosed(t *test
 	}
 }
 
-func TestSharedTransport_InvalidConfigReturnsCachedInstance(t *testing.T) {
+func TestPluginTransport_InvalidConfigReturnsCachedInstance(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
 
 	writeFile(t, Path(), []byte(`{`), 0600)
 
-	a, ok := SharedTransport()
+	a, ok := pluginTransport()
 	if !ok {
-		t.Fatal("SharedTransport() ok = false, want true")
+		t.Fatal("pluginTransport() ok = false, want true")
 	}
-	b, ok := SharedTransport()
+	b, ok := pluginTransport()
 	if !ok {
-		t.Fatal("SharedTransport() ok = false, want true")
+		t.Fatal("pluginTransport() ok = false, want true")
 	}
 	if a != b {
-		t.Fatalf("SharedTransport() returned different instances on repeated calls; blocked transport must be cached")
+		t.Fatalf("pluginTransport() returned different instances on repeated calls; blocked transport must be cached")
 	}
 }
 
@@ -148,13 +148,13 @@ func TestBuildProxyPluginTransport_NonTransportDefaultFailsClosed(t *testing.T) 
 	}
 }
 
-// TestSharedTransport_InvalidConfigBlockerIsConcreteTransport guards the
-// fail-closed invariant that util.FallbackTransport relies on: even when
+// TestPluginTransport_InvalidConfigBlockerIsConcreteTransport guards the
+// fail-closed invariant that Fallback relies on: even when
 // http.DefaultTransport is not an *http.Transport, an invalid proxy config must
 // produce a blocked transport that is itself a concrete *http.Transport. If it
-// were a bare RoundTripper, util.FallbackTransport would downcast-fail and
+// were a bare RoundTripper, Fallback would downcast-fail and
 // silently degrade it into a direct-egress transport.
-func TestSharedTransport_InvalidConfigBlockerIsConcreteTransport(t *testing.T) {
+func TestPluginTransport_InvalidConfigBlockerIsConcreteTransport(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
 	resetProxyPluginState()
@@ -163,12 +163,12 @@ func TestSharedTransport_InvalidConfigBlockerIsConcreteTransport(t *testing.T) {
 
 	writeFile(t, Path(), []byte(`{`), 0600)
 
-	rt, ok := SharedTransport()
+	rt, ok := pluginTransport()
 	if !ok {
-		t.Fatal("SharedTransport() ok = false, want true")
+		t.Fatal("pluginTransport() ok = false, want true")
 	}
 	if _, isTransport := rt.(*http.Transport); !isTransport {
-		t.Fatalf("SharedTransport() blocked transport = %T, want *http.Transport so FallbackTransport cannot degrade it to direct egress", rt)
+		t.Fatalf("pluginTransport() blocked transport = %T, want *http.Transport so Fallback cannot degrade it to direct egress", rt)
 	}
 	// Must remain fail-closed.
 	resp, err := rt.RoundTrip(&http.Request{URL: &url.URL{Scheme: "https", Host: "open.feishu.cn"}})

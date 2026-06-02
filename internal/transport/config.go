@@ -1,14 +1,15 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package proxyplugin implements the ~/.lark-cli/proxy_config.json based security proxy plugin mode.
+// Package transport owns how the CLI assembles its outbound HTTP transport: the
+// shared base RoundTripper (Shared/Fallback/NewHTTPClient), the LARK_CLI_NO_PROXY
+// direct-egress clone, and the ~/.lark-cli/proxy_config.json proxy-plugin mode.
 //
-// It supports:
-// - forcing all outbound HTTP(S) requests through a fixed HTTP proxy
-// - trusting an additional root CA PEM bundle for MITM/inspection proxies
-//
-// Environment variables override matching values from proxy_config.json.
-package proxyplugin
+// Proxy-plugin mode forces all outbound HTTP(S) requests through a fixed loopback
+// proxy, optionally trusting an extra root CA PEM bundle for TLS-inspection
+// proxies, and fails closed on misconfiguration. Environment variables override
+// matching values from proxy_config.json.
+package transport
 
 import (
 	"encoding/json"
@@ -220,21 +221,6 @@ func (c *Config) proxyURL() (*url.URL, error) {
 		return nil, fmt.Errorf("invalid %s %q: fragment is not allowed", envvars.CliProxyAddress, redacted)
 	}
 	return u, nil
-}
-
-// redactProxyURL masks userinfo (username:password) in a proxy URL.
-// Handles both scheme-prefixed ("http://user:pass@host") and bare formats.
-func redactProxyURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err == nil && u.User != nil {
-		u.User = url.User("***")
-		return u.String()
-	}
-	// Fallback: handle "user:pass@proxy:8080"
-	if at := strings.LastIndex(raw, "@"); at > 0 {
-		return "***@" + raw[at+1:]
-	}
-	return raw
 }
 
 // ApplyToTransport clones base and applies proxy plugin settings to the clone.

@@ -23,7 +23,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/registry"
 	_ "github.com/larksuite/cli/internal/security/contentsafety" // register content safety provider
-	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/internal/transport"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio" // register default FileIO provider
 )
 
@@ -102,15 +102,15 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 
 func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		util.WarnIfProxied(f.IOStreams.ErrOut)
+		transport.WarnIfProxied(f.IOStreams.ErrOut)
 
-		var transport http.RoundTripper = util.SharedTransport()
-		transport = &RetryTransport{Base: transport}
-		transport = &SecurityHeaderTransport{Base: transport}
-		transport = &auth.SecurityPolicyTransport{Base: transport} // Add our global response interceptor
-		transport = wrapWithExtension(transport)
+		var rt http.RoundTripper = transport.Shared()
+		rt = &RetryTransport{Base: rt}
+		rt = &SecurityHeaderTransport{Base: rt}
+		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
+		rt = wrapWithExtension(rt)
 		client := &http.Client{
-			Transport:     transport,
+			Transport:     rt,
 			Timeout:       30 * time.Second,
 			CheckRedirect: safeRedirectPolicy,
 		}
@@ -129,7 +129,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		util.WarnIfProxied(f.IOStreams.ErrOut)
+		transport.WarnIfProxied(f.IOStreams.ErrOut)
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,
@@ -141,7 +141,7 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 }
 
 func buildSDKTransport() http.RoundTripper {
-	var sdkTransport http.RoundTripper = util.SharedTransport()
+	var sdkTransport http.RoundTripper = transport.Shared()
 	sdkTransport = &RetryTransport{Base: sdkTransport}
 	sdkTransport = &UserAgentTransport{Base: sdkTransport}
 	sdkTransport = &BuildHeaderTransport{Base: sdkTransport}

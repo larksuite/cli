@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package proxyplugin
+package transport
 
 import (
 	"fmt"
@@ -16,7 +16,7 @@ var proxyPluginTransport = sync.OnceValue(buildProxyPluginTransport)
 
 // cachedBlockedTransport is a fail-closed transport cached on first use when
 // the proxy plugin config exists but is invalid. This avoids cloning
-// http.DefaultTransport on every SharedTransport call.
+// http.DefaultTransport on every pluginTransport call.
 var cachedBlockedTransport = sync.OnceValue(buildBlockedTransport)
 
 func buildBlockedTransport() http.RoundTripper {
@@ -28,7 +28,7 @@ func buildProxyPluginTransport() http.RoundTripper {
 	if !ok {
 		// Cannot clone the stdlib transport. Fail closed with a concrete
 		// *http.Transport (not a bare RoundTripper) so downcasting callers such
-		// as util.FallbackTransport cannot silently degrade this into a
+		// as Fallback cannot silently degrade this into a
 		// direct-egress transport.
 		return failClosedTransport(fmt.Errorf("proxy plugin transport unavailable: http.DefaultTransport is %T, want *http.Transport", http.DefaultTransport))
 	}
@@ -51,9 +51,9 @@ func buildProxyPluginTransport() http.RoundTripper {
 	return t
 }
 
-// SharedTransport returns the proxy plugin transport when proxy plugin mode is
+// pluginTransport returns the proxy plugin transport when proxy plugin mode is
 // configured. The bool return is false when the plugin is not configured or not enabled.
-func SharedTransport() (http.RoundTripper, bool) {
+func pluginTransport() (http.RoundTripper, bool) {
 	cfg, err := Load()
 	if err != nil {
 		return cachedBlockedTransport(), true
@@ -68,7 +68,7 @@ func SharedTransport() (http.RoundTripper, bool) {
 // err. It clones http.DefaultTransport when possible (preserving dial/timeout
 // tuning); otherwise it builds a minimal transport. Returning a concrete
 // *http.Transport (rather than a bare RoundTripper) is required so downcasting
-// callers such as util.FallbackTransport cannot silently degrade a fail-closed
+// callers such as Fallback cannot silently degrade a fail-closed
 // signal into a direct-egress transport.
 func failClosedTransport(err error) *http.Transport {
 	if def, ok := http.DefaultTransport.(*http.Transport); ok {
