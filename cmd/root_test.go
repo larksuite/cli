@@ -83,6 +83,17 @@ func TestRootLong_AgentSkillsLinkTargetsReadmeSection(t *testing.T) {
 	}
 }
 
+func TestRootLong_FlagsSectionPointsToCommandHelp(t *testing.T) {
+	// The flags shown in root help live on leaf commands (api, service), not
+	// on the root command — every one errors "unknown flag" at the top level.
+	// So the FLAGS section may only list them as examples and must route to
+	// `<command> --help` for the full set, rather than re-list them as if they
+	// were global root flags (which both lies and drifts as flags change).
+	if !strings.Contains(rootLong, "lark-cli <command> --help") {
+		t.Fatalf("root help FLAGS section must point to `lark-cli <command> --help` for the flag list, got:\n%s", rootLong)
+	}
+}
+
 func TestConfigureFlagCompletions(t *testing.T) {
 	t.Cleanup(func() { cmdutil.SetFlagCompletionsEnabled(false) })
 

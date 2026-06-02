@@ -49,18 +49,8 @@ EXAMPLES:
     lark-cli api GET /open-apis/calendar/v4/calendars
 
 FLAGS:
-    --params <json>       URL/query parameters JSON
-    --data <json>         request body JSON (POST/PATCH/PUT/DELETE)
-    --as <type>           identity type: user | bot
-    --format <fmt>        output format: json (default) | ndjson | table | csv | pretty
-    --page-all            automatically paginate through all pages
-    --page-size <N>       page size (0 = use API default)
-    --page-limit <N>      max pages to fetch with --page-all (default: 10, 0 for unlimited)
-    --page-delay <MS>     delay in ms between pages (default: 200, only with --page-all)
-    -o, --output <path>   output file path for binary responses
-    --jq <expr>           jq expression to filter JSON output
-    -q <expr>             shorthand for --jq
-    --dry-run             print request without executing
+    e.g. --as, --format, -q/--jq, --dry-run ...
+    Run lark-cli <command> --help for the full list.
 
 AI AGENT SKILLS:
     lark-cli pairs with AI agent skills (Claude Code, etc.) that
