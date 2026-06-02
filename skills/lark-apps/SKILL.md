@@ -29,6 +29,10 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
 4. **发布 HTML / PPT / 静态网站（`apps +html-publish`）** → 必读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（`--path` 文件 vs 目录、tar.gz 打包不做过滤）
 5. **设置可用范围（`apps +access-scope-set`）** → 必读 [`lark-apps-access-scope-set.md`](references/lark-apps-access-scope-set.md)（specific / public / tenant 三态互斥校验、targets JSON 结构）
 6. **查看当前可用范围（`apps +access-scope-get`）** → 必读 [`lark-apps-access-scope-get.md`](references/lark-apps-access-scope-get.md)（响应 scope 枚举 `All` / `Tenant` / `Range` 与 CLI 的 `public` / `tenant` / `specific` 映射；含 jq 复制 scope 配置示例）
+7. **列出数据库表（`apps +db-table-list`）** → 必读 [`lark-apps-db-table-list.md`](references/lark-apps-db-table-list.md)（游标分页、含行数 / 占用空间、pretty 表格）
+8. **看表结构（`apps +db-table-schema`）** → 必读 [`lark-apps-db-table-schema.md`](references/lark-apps-db-table-schema.md)（默认结构化字段，`--format pretty` 输出建表 DDL）
+9. **执行 SQL（`apps +db-sql`）** → 必读 [`lark-apps-db-sql.md`](references/lark-apps-db-sql.md)（多语句默认不包裹事务、失败逐条定位、支持 @file / stdin）
+10. **初始化 dev 环境（`apps +db-dev-init`）** → 必读 [`lark-apps-db-dev-init.md`](references/lark-apps-db-dev-init.md)（**不可逆**，需 `--yes` 确认）
 
 **未读完以上文件就执行相应操作会导致参数选择错误、互斥违反或文件被错误打包。**
 
@@ -103,3 +107,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli apps +<verb> [flags]`）�
 | [`+access-scope-set`](references/lark-apps-access-scope-set.md) | 设置应用可用范围（specific / public / tenant，三态互斥校验） |
 | [`+access-scope-get`](references/lark-apps-access-scope-get.md) | 查看应用当前可用范围（响应 scope 枚举 `All` / `Tenant` / `Range`；可作"备份 / 复制 scope 配置"前置读） |
 | [`+html-publish`](references/lark-apps-html-publish.md) | **把本地 HTML 文件 / 目录 / PPT / 静态网站部署为可分享的妙搭应用，返回访问 URL**（用户明示部署 / 分享时直接调；仅说"可演示"时先问用户是否要部署再调） |
+| [`+db-table-list`](references/lark-apps-db-table-list.md) | 列出妙搭应用数据库的表（游标分页，含预估行数 / 占用空间） |
+| [`+db-table-schema`](references/lark-apps-db-table-schema.md) | 看单表结构（默认结构化字段；`--format pretty` 出建表 DDL） |
+| [`+db-sql`](references/lark-apps-db-sql.md) | 在应用库上执行 SQL（SELECT / DML / DDL；多语句默认不包裹事务） |
+| [`+db-dev-init`](references/lark-apps-db-dev-init.md) | 启用 dev 环境（单库→online/dev 双库，**不可逆**，需 `--yes` 确认） |

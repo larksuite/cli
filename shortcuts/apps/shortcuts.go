@@ -14,5 +14,9 @@ func Shortcuts() []common.Shortcut {
 		AppsAccessScopeSet,
 		AppsAccessScopeGet,
 		AppsHTMLPublish,
+		AppsDBTableList,
+		AppsDBTableSchema,
+		AppsDBSQL,
+		AppsDBDevInit,
 	}
 }
