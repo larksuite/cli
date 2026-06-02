@@ -6,11 +6,43 @@ package util
 import (
 	"bytes"
 	"net/http"
+	"os"
 	"sync"
 	"testing"
+
+	"github.com/larksuite/cli/internal/envvars"
 )
 
+// unsetEnv clears key for the duration of the test and restores its original value.
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	old, had := os.LookupEnv(key)
+	_ = os.Unsetenv(key)
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(key, old)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	})
+}
+
+// unsetSecPluginEnv clears SEC-related environment variables for deterministic tests.
+func unsetSecPluginEnv(t *testing.T) {
+	t.Helper()
+	// Ensure developer machine env doesn't accidentally enable SEC plugin mode
+	// and change expectations for SharedTransport().
+	unsetEnv(t, envvars.CliSecEnable)
+	unsetEnv(t, envvars.CliSecProxy)
+	unsetEnv(t, envvars.CliSecCA)
+	unsetEnv(t, envvars.CliSecAuth)
+}
+
+// TestDetectProxyEnv verifies proxy environment detection priority and empty-state behavior.
 func TestDetectProxyEnv(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
+
 	// Clear all proxy env vars first
 	for _, k := range proxyEnvKeys {
 		t.Setenv(k, "")
@@ -28,7 +60,10 @@ func TestDetectProxyEnv(t *testing.T) {
 	}
 }
 
+// TestSharedTransport_DefaultReturnsStdlibSingleton verifies the default shared transport.
 func TestSharedTransport_DefaultReturnsStdlibSingleton(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	t.Setenv(EnvNoProxy, "")
 	tr := SharedTransport()
 	if tr != http.DefaultTransport {
@@ -36,7 +71,10 @@ func TestSharedTransport_DefaultReturnsStdlibSingleton(t *testing.T) {
 	}
 }
 
+// TestSharedTransport_NoProxyReturnsClone verifies that disabling proxying returns a cloned transport.
 func TestSharedTransport_NoProxyReturnsClone(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	t.Setenv(EnvNoProxy, "1")
 	tr := SharedTransport()
 	if tr == http.DefaultTransport {
@@ -51,7 +89,10 @@ func TestSharedTransport_NoProxyReturnsClone(t *testing.T) {
 	}
 }
 
+// TestSharedTransport_NoProxyIsCachedSingleton verifies singleton caching for the no-proxy transport.
 func TestSharedTransport_NoProxyIsCachedSingleton(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	t.Setenv(EnvNoProxy, "1")
 	a := SharedTransport()
 	b := SharedTransport()
@@ -60,7 +101,10 @@ func TestSharedTransport_NoProxyIsCachedSingleton(t *testing.T) {
 	}
 }
 
+// TestSharedTransport_EnvUnsetAfterSetFallsBackToDefault verifies fallback to the stdlib transport after unsetting EnvNoProxy.
 func TestSharedTransport_EnvUnsetAfterSetFallsBackToDefault(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	// Simulate a process that first runs with LARK_CLI_NO_PROXY=1 (populating
 	// the no-proxy singleton), then unsets it. Subsequent calls must return
 	// http.DefaultTransport, NOT the cached no-proxy clone.
@@ -77,7 +121,10 @@ func TestSharedTransport_EnvUnsetAfterSetFallsBackToDefault(t *testing.T) {
 	}
 }
 
+// TestSharedTransport_NoProxyOverridesSystemProxy verifies that EnvNoProxy disables system proxies.
 func TestSharedTransport_NoProxyOverridesSystemProxy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	t.Setenv("HTTPS_PROXY", "http://should-be-ignored:8888")
 	t.Setenv(EnvNoProxy, "1")
 
@@ -90,7 +137,10 @@ func TestSharedTransport_NoProxyOverridesSystemProxy(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_WithProxy verifies that proxy detection emits a warning.
 func TestWarnIfProxied_WithProxy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	// Reset the once guard for this test
 	proxyWarningOnce = sync.Once{}
 
@@ -111,7 +161,10 @@ func TestWarnIfProxied_WithProxy(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_WithoutProxy verifies that no warning is emitted without proxy settings.
 func TestWarnIfProxied_WithoutProxy(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	proxyWarningOnce = sync.Once{}
 
 	for _, k := range proxyEnvKeys {
@@ -126,7 +179,10 @@ func TestWarnIfProxied_WithoutProxy(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_SilentWhenDisabled verifies that EnvNoProxy suppresses warnings.
 func TestWarnIfProxied_SilentWhenDisabled(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	proxyWarningOnce = sync.Once{}
 
 	t.Setenv("HTTPS_PROXY", "http://proxy:8080")
@@ -140,7 +196,10 @@ func TestWarnIfProxied_SilentWhenDisabled(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_OnlyOnce verifies that proxy warnings are emitted only once.
 func TestWarnIfProxied_OnlyOnce(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	proxyWarningOnce = sync.Once{}
 
 	t.Setenv("HTTP_PROXY", "http://proxy:1234")
@@ -160,7 +219,10 @@ func TestWarnIfProxied_OnlyOnce(t *testing.T) {
 	}
 }
 
+// TestRedactProxyURL verifies redaction of proxy credentials across supported formats.
 func TestRedactProxyURL(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	tests := []struct {
 		input string
 		want  string
@@ -183,7 +245,10 @@ func TestRedactProxyURL(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_RedactsCredentials verifies that warning output never leaks credentials.
 func TestWarnIfProxied_RedactsCredentials(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetSecPluginEnv(t)
 	proxyWarningOnce = sync.Once{}
 
 	t.Setenv("HTTPS_PROXY", "http://admin:s3cret@proxy:8080")

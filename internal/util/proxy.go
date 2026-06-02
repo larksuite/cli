@@ -11,8 +11,11 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/larksuite/cli/internal/secplugin"
 )
 
+// Proxy environment constants control shared transport proxy behavior.
 const (
 	// EnvNoProxy disables automatic proxy support when set to any non-empty value.
 	EnvNoProxy = "LARK_CLI_NO_PROXY"
@@ -36,6 +39,7 @@ func DetectProxyEnv() (key, value string) {
 	return "", ""
 }
 
+// proxyWarningOnce ensures proxy environment warnings are emitted at most once.
 var proxyWarningOnce sync.Once
 
 // redactProxyURL masks userinfo (username:password) in a proxy URL.
@@ -84,6 +88,31 @@ var noProxyTransport = sync.OnceValue(func() *http.Transport {
 	return t
 })
 
+// secProxyTransport is a fixed-proxy clone of http.DefaultTransport (with optional
+// custom root CA), lazily built on first use when sec plugin mode is enabled.
+var secProxyTransport = sync.OnceValue(func() *http.Transport {
+	def, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Transport{}
+	}
+
+	cfg, err := secplugin.Load()
+	if err != nil || cfg == nil || !cfg.Enabled() {
+		return def
+	}
+	t, err := cfg.ApplyToTransport(def)
+	if err != nil {
+		// Fail closed: do not silently fall back to direct egress when the
+		// operator explicitly enabled SEC plugin mode.
+		blocked := def.Clone()
+		blocked.Proxy = func(*http.Request) (*url.URL, error) {
+			return nil, fmt.Errorf("sec plugin enabled but config is invalid: %v", err)
+		}
+		return blocked
+	}
+	return t
+})
+
 // SharedTransport returns the base http.RoundTripper for CLI HTTP clients.
 //
 // By default it returns http.DefaultTransport — the stdlib-provided
@@ -99,6 +128,23 @@ var noProxyTransport = sync.OnceValue(func() *http.Transport {
 // goroutines are reused; cloning per call leaks them until IdleConnTimeout
 // (~90s) fires.
 func SharedTransport() http.RoundTripper {
+	// SEC plugin mode overrides all other proxy behavior (env proxies and
+	// LARK_CLI_NO_PROXY), per operator intent.
+	if cfg, err := secplugin.Load(); err != nil {
+		// Fail closed: if the config file exists but is malformed/unreadable,
+		// do not silently fall back to direct egress.
+		def, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return http.DefaultTransport
+		}
+		blocked := def.Clone()
+		blocked.Proxy = func(*http.Request) (*url.URL, error) {
+			return nil, fmt.Errorf("sec plugin config is invalid: %v", err)
+		}
+		return blocked
+	} else if cfg != nil && cfg.Enabled() {
+		return secProxyTransport()
+	}
 	if os.Getenv(EnvNoProxy) != "" {
 		return noProxyTransport()
 	}

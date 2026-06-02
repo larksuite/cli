@@ -1,0 +1,59 @@
+[
+  {
+    "key": 0,
+    "buildPlatform": "linux",
+    "urls": [
+      {
+        "urls": {
+          "amd64": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/linux-amd64/linux-amd64-1.0.1-alpha.23.zip",
+          "arm64": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/linux-arm64/linux-arm64-1.0.1-alpha.23.zip"
+        },
+        "region": "cn"
+      }
+    ],
+    "branch": "dev",
+    "version": "1.0.1-alpha.23",
+    "extra": {
+      "pipeline_id": "367354993",
+      "upload_date": 1778487420795
+    }
+  },
+  {
+    "key": 1,
+    "buildPlatform": "win32",
+    "urls": [
+      {
+        "urls": {
+          "x86": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/windows-386/windows-386-1.0.1-alpha.23.zip",
+          "amd64": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/windows-amd64/windows-amd64-1.0.1-alpha.23.zip"
+        },
+        "region": "cn"
+      }
+    ],
+    "branch": "dev",
+    "version": "1.0.1-alpha.23",
+    "extra": {
+      "pipeline_id": "367354993",
+      "upload_date": 1778487437393
+    }
+  },
+  {
+    "key": 2,
+    "buildPlatform": "darwin",
+    "urls": [
+      {
+        "urls": {
+          "amd64": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/darwin-amd64/darwin-amd64-1.0.1-alpha.23.zip",
+          "arm64": "https://lf3-cdn-tos.bytegoofy.com/obj/tron-demo/lark-sec-cli/releases/1.0.1-alpha.23/367354993/darwin-arm64/darwin-arm64-1.0.1-alpha.23.zip"
+        },
+        "region": "cn"
+      }
+    ],
+    "branch": "dev",
+    "version": "1.0.1-alpha.23",
+    "extra": {
+      "pipeline_id": "367354993",
+      "upload_date": 1778487395152
+    }
+  }
+]

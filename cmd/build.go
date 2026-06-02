@@ -15,6 +15,7 @@ import (
 	cmdevent "github.com/larksuite/cli/cmd/event"
 	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
+	"github.com/larksuite/cli/cmd/sec"
 	"github.com/larksuite/cli/cmd/service"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	_ "github.com/larksuite/cli/events"
@@ -133,6 +134,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
+	rootCmd.AddCommand(sec.NewCmdSec(f))
 	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
