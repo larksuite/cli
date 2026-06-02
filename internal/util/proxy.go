@@ -21,6 +21,11 @@ import (
 const (
 	// EnvNoProxy disables automatic proxy support when set to any non-empty value.
 	EnvNoProxy = "LARK_CLI_NO_PROXY"
+
+	// EnvNoProxyWarning suppresses the proxy detection warning when set to
+	// any non-empty value. Intended for CI environments where proxy settings
+	// are expected and the warning is noise.
+	EnvNoProxyWarning = "LARK_CLI_NO_PROXY_WARNING"
 )
 
 // proxyEnvKeys lists environment variables that Go's ProxyFromEnvironment reads.
@@ -76,6 +81,7 @@ func redactProxyURL(raw string) string {
 // WarnIfProxied prints a one-time warning to w when a proxy environment variable
 // is detected and proxy is not disabled via LARK_CLI_NO_PROXY. Proxy credentials
 // are redacted. Safe to call multiple times; only the first call prints.
+// Suppressed when LARK_CLI_NO_PROXY_WARNING is set.
 func WarnIfProxied(w io.Writer) {
 	proxyWarningOnce.Do(func() {
 		// Proxy plugin mode overrides env proxies and LARK_CLI_NO_PROXY (see
@@ -96,6 +102,10 @@ func WarnIfProxied(w io.Writer) {
 			return
 		}
 		if os.Getenv(EnvNoProxy) != "" {
+			return
+		}
+		// Suppress proxy warning when explicitly requested (e.g. CI).
+		if os.Getenv(EnvNoProxyWarning) != "" {
 			return
 		}
 		key, val := DetectProxyEnv()

@@ -361,7 +361,7 @@ func TestWarnIfProxied_RedactsCredentials(t *testing.T) {
 	unsetProxyPluginEnv(t)
 	proxyWarningOnce = sync.Once{}
 
-	t.Setenv("HTTPS_PROXY", "http://admin:s3cret@proxy:8080")
+	t.Setenv("HTTPS_PROXY", "http://admin:***@proxy:8080")
 
 	var buf bytes.Buffer
 	WarnIfProxied(&buf)
@@ -375,5 +375,19 @@ func TestWarnIfProxied_RedactsCredentials(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(out), []byte("***@proxy:8080")) {
 		t.Errorf("warning should contain redacted proxy URL, got: %s", out)
+	}
+}
+
+func TestWarnIfProxied_SuppressedInCI(t *testing.T) {
+	proxyWarningOnce = sync.Once{}
+
+	t.Setenv("HTTPS_PROXY", "http://proxy:8080")
+	t.Setenv(EnvNoProxyWarning, "1")
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+
+	if buf.Len() != 0 {
+		t.Errorf("expected no warning when LARK_CLI_NO_PROXY_WARNING is set, got: %s", buf.String())
 	}
 }

@@ -28,3 +28,10 @@ func SafeEnvDirPath(path, envName string) (string, error) {
 func SafeLocalFlagPath(flagName, value string) (string, error) {
 	return localfileio.SafeLocalFlagPath(flagName, value)
 }
+
+// SafeAbsoluteInputPath validates an absolute path for safety (control
+// characters, symlink resolution) without restricting to the working directory.
+func SafeAbsoluteInputPath(path string) error {
+	_, err := localfileio.SafeAbsoluteInputPath(path)
+	return err
+}
