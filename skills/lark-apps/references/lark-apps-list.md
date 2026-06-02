@@ -1,10 +1,6 @@
 # apps +list
 
-> **⚠️ Hidden 命令（`Hidden: true`）—— 不对 Agent 暴露**：本命令从 `--help` / tab completion / SKILL.md 的 Shortcuts 表中隐去，**Agent 不应主动调用**。
->
-> 需要拿现有应用的 `app_id` 时让用户提供 **妙搭应用链接**（如 `https://miaoda.feishu.cn/app/app_xxxxxxxxxxxxx`）然后从 URL 中提取，或者让用户直接给 `app_id` 字符串。详见 [`../SKILL.md`](../SKILL.md) "用户没给 app_id" 一节。
->
-> 本文件保留是因为命令仍然功能可用（手动调用），下面内容仅供人类参考。
+> **Agent 可用本命令定位存量应用的 `app_id`**：当用户没直接给 app_id 时，用 `+list --filter <关键词>` 按应用名 / 描述过滤出来。也可优先读本地项目根的 `.spark/meta.json`（若已在项目目录内，那里记录了 app_id）。完整解析顺序见 [`../SKILL.md`](../SKILL.md) 「拿到存量应用的 app_id」。
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
@@ -13,6 +9,9 @@
 ## 命令
 
 ```bash
+# 按关键词过滤定位存量应用（推荐，Agent 找 app_id 的主路径）
+lark-cli apps +list --filter 客户管理
+
 # 拉第一页（默认 page_size=20）
 lark-cli apps +list
 
@@ -33,6 +32,7 @@ lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .a
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
+| `--filter <str>` | ❌ | `""` | 按应用名 / 描述模糊过滤（本期新增；定位存量应用首选） |
 | `--page-size <int>` | ❌ | `20` | 每页条数 |
 | `--page-token <str>` | ❌ | `""` | 翻页 cursor，从上次响应的 `data.page_token` 拿 |
 
@@ -80,7 +80,7 @@ lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .a
 
 ## 用途
 
-本命令保留可供人类操作员手动调用（例如运维 / 调试场景，按 `name` 搜应用 ID）。**Agent 不应主动调用**：默认行为是 `apps +create` 新建；要复用现有应用，**让用户给妙搭应用链接或 app_id**，详见 [`../SKILL.md`](../SKILL.md) "用户没给 app_id" 一节。
+定位存量应用的 `app_id`：用户没给 app_id 时，`+list --filter <关键词>` 按名字 / 描述过滤出目标应用。新建场景仍直接 `apps +create`，不必先 list。完整解析顺序（用户给的 → `.spark/meta.json` → `+list --filter`）见 [`../SKILL.md`](../SKILL.md) 「拿到存量应用的 app_id」。
 
 ## 协同命令
 

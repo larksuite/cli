@@ -3,12 +3,55 @@
 
 package apps
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/spf13/cobra"
+)
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-func TestAppsShortcuts_Returns10(t *testing.T) {
+// 6 基础 + 4 db（table-list/table-schema/sql/dev-init）+ 3 git-credential = 13。
+func TestAppsShortcuts_Returns13(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 10 {
-		t.Fatalf("Shortcuts() returned %d entries, want 10", len(got))
+	if len(got) != 13 {
+		t.Fatalf("Shortcuts() returned %d entries, want 13", len(got))
+	}
+}
+
+func TestAppsGitCredentialHelper_IsNotAShortcut(t *testing.T) {
+	for _, shortcut := range Shortcuts() {
+		if shortcut.Command == "git-credential-helper" {
+			t.Fatalf("git credential helper must be installed as a hidden apps command, not as a shortcut")
+		}
+	}
+}
+
+func TestAppsGitCredentialRemove_IsLocalCleanupWithoutScopes(t *testing.T) {
+	if len(AppsGitCredentialRemove.Scopes) != 0 {
+		t.Fatalf("git credential remove scopes = %#v, want none for local cleanup", AppsGitCredentialRemove.Scopes)
+	}
+}
+
+func TestAppsGitCredentialList_IsLocalReadWithoutScopes(t *testing.T) {
+	if len(AppsGitCredentialList.Scopes) != 0 {
+		t.Fatalf("git credential list scopes = %#v, want none for local read", AppsGitCredentialList.Scopes)
+	}
+}
+
+func TestInstallOnApps_AddsHiddenGitCredentialHelper(t *testing.T) {
+	parent := &cobra.Command{Use: "apps"}
+	InstallOnApps(parent, nil)
+	cmd, _, err := parent.Find([]string{"git-credential-helper"})
+	if err != nil {
+		t.Fatalf("find helper returned error: %v", err)
+	}
+	if cmd == nil || cmd.Name() != "git-credential-helper" {
+		t.Fatalf("helper command not installed: %#v", cmd)
+	}
+	if !cmd.Hidden {
+		t.Fatalf("git credential helper must be hidden")
+	}
+	if cmd.RunE == nil {
+		t.Fatalf("git credential helper must run outside the shortcut pipeline")
 	}
 }
