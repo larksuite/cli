@@ -18,7 +18,7 @@ import (
 // forbidigo's errs-typed-only ban does not see them because they are method
 // calls, not output.Err* identifiers — this AST rule covers that gap.
 //
-// Migrated code must call a typed API wrapper (e.g. drive's driveCallAPI) or use
+// Migrated code must call the domain's typed API wrapper or use
 // runtime.DoAPI + errclass.BuildAPIError directly, so failures classify into
 // typed errs.* errors.
 //
@@ -53,7 +53,7 @@ func CheckNoLegacyRuntimeAPICall(path, src string) []Violation {
 				File:    path,
 				Line:    fset.Position(call.Pos()).Line,
 				Message: "runtime." + name + " emits a legacy output.ExitError api_error envelope and downgrades typed network/auth boundary errors; it is forbidden on migrated paths",
-				Suggestion: "call the domain's typed API wrapper (e.g. driveCallAPI) or runtime.DoAPI + errclass.BuildAPIError " +
+				Suggestion: "call the domain's typed API wrapper (for example driveCallAPI or callTaskAPITyped) or runtime.DoAPI + errclass.BuildAPIError " +
 					"so failures classify into typed errs.* errors",
 			})
 		}

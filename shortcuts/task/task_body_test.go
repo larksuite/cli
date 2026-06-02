@@ -5,8 +5,10 @@ package task
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 
@@ -19,33 +21,25 @@ func TestBuildTaskCreateBody_StructuredErrors(t *testing.T) {
 		data       string
 		summary    string
 		due        string
-		wantCode   int
-		wantType   string
 		wantSubstr string
 	}{
 		{
-			name:       "invalid JSON data returns ErrValidation",
+			name:       "invalid JSON data returns validation error",
 			data:       "not-json",
 			summary:    "test",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "--data must be a valid JSON object",
 		},
 		{
-			name:       "missing summary returns ErrValidation",
+			name:       "missing summary returns validation error",
 			data:       "",
 			summary:    "",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "task summary is required",
 		},
 		{
-			name:       "invalid due time returns ErrValidation",
+			name:       "invalid due time returns validation error",
 			data:       "",
 			summary:    "test task",
 			due:        "not-a-valid-time",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "failed to parse due time",
 		},
 	}
@@ -68,18 +62,22 @@ func TestBuildTaskCreateBody_StructuredErrors(t *testing.T) {
 				t.Fatal("expected error, got nil")
 			}
 
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) {
-				t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
 			}
-			if exitErr.Code != tt.wantCode {
-				t.Errorf("exit code = %d, want %d", exitErr.Code, tt.wantCode)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) returned !ok", err)
 			}
-			if exitErr.Detail == nil {
-				t.Fatal("expected non-nil error detail")
+			if p.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
 			}
-			if exitErr.Detail.Type != tt.wantType {
-				t.Errorf("error type = %q, want %q", exitErr.Detail.Type, tt.wantType)
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+			}
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Errorf("message = %q, want substring %q", err.Error(), tt.wantSubstr)
 			}
 		})
 	}
@@ -91,35 +89,27 @@ func TestBuildTaskUpdateBody_StructuredErrors(t *testing.T) {
 		data       string
 		summary    string
 		due        string
-		wantCode   int
-		wantType   string
 		wantSubstr string
 	}{
 		{
-			name:       "invalid JSON data returns ErrValidation",
+			name:       "invalid JSON data returns validation error",
 			data:       "not-json",
 			summary:    "",
 			due:        "",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "--data must be a valid JSON object",
 		},
 		{
-			name:       "no fields to update returns ErrValidation",
+			name:       "no fields to update returns validation error",
 			data:       "",
 			summary:    "",
 			due:        "",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "no fields to update",
 		},
 		{
-			name:       "invalid due time returns ErrValidation",
+			name:       "invalid due time returns validation error",
 			data:       "",
 			summary:    "",
 			due:        "not-a-valid-time",
-			wantCode:   output.ExitValidation,
-			wantType:   "validation",
 			wantSubstr: "failed to parse due time",
 		},
 	}
@@ -138,18 +128,22 @@ func TestBuildTaskUpdateBody_StructuredErrors(t *testing.T) {
 				t.Fatal("expected error, got nil")
 			}
 
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) {
-				t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
 			}
-			if exitErr.Code != tt.wantCode {
-				t.Errorf("exit code = %d, want %d", exitErr.Code, tt.wantCode)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) returned !ok", err)
 			}
-			if exitErr.Detail == nil {
-				t.Fatal("expected non-nil error detail")
+			if p.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
 			}
-			if exitErr.Detail.Type != tt.wantType {
-				t.Errorf("error type = %q, want %q", exitErr.Detail.Type, tt.wantType)
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+			}
+			if !strings.Contains(err.Error(), tt.wantSubstr) {
+				t.Errorf("message = %q, want substring %q", err.Error(), tt.wantSubstr)
 			}
 		})
 	}

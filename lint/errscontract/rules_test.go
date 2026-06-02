@@ -618,9 +618,10 @@ func boom() error {
 	}
 }
 
-func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnOkrAndWhiteboardPaths(t *testing.T) {
+func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnMigratedShortcutPaths(t *testing.T) {
 	for _, path := range []string{
 		"shortcuts/okr/okr_image_upload.go",
+		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_update.go",
 	} {
 		t.Run(path, func(t *testing.T) {
@@ -638,6 +639,9 @@ func boom() error {
 			}
 			if v[0].Action != ActionReject {
 				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+			if !strings.Contains(v[0].Message, "ExitError") {
+				t.Errorf("message should name the legacy type: %s", v[0].Message)
 			}
 		})
 	}
@@ -826,6 +830,26 @@ func boom(runtime *common.RuntimeContext) error {
 	}
 }
 
+func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnTaskPath(t *testing.T) {
+	src := `package task
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.CallAPI("POST", "/x", nil, nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/task/task_update.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if v[0].Action != ActionReject {
+		t.Errorf("action = %q, want REJECT", v[0].Action)
+	}
+	if !strings.Contains(v[0].Message, "CallAPI") {
+		t.Errorf("message should name the legacy method: %s", v[0].Message)
+	}
+}
+
 func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
 	src := `package drive
 
@@ -923,6 +947,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"shortcuts/drive/drive_search.go",
 		"shortcuts/mail/mail_send.go",
 		"shortcuts/okr/okr_progress_create.go",
+		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_query.go",
 	}
 	for _, path := range paths {

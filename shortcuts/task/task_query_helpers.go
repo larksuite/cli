@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 func splitAndTrimCSV(input string) []string {
@@ -46,7 +46,7 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 		}
 		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
 		if err != nil {
-			return "", "", output.ErrValidation("invalid start timestamp: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 		}
 		hasStart = true
 		startMillis = startSec + "000"
@@ -58,13 +58,13 @@ func parseTimeRangeMillis(input string) (string, string, error) {
 		}
 		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
 		if err != nil {
-			return "", "", output.ErrValidation("invalid end timestamp: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 		}
 		hasEnd = true
 		endMillis = endSec + "000"
 	}
 	if hasStart && hasEnd && startSecInt > endSecInt {
-		return "", "", output.ErrValidation("start time must be earlier than or equal to end time")
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "start time must be earlier than or equal to end time")
 	}
 	return startMillis, endMillis, nil
 }
@@ -91,7 +91,7 @@ func parseTimeRangeRFC3339(input string) (string, string, error) {
 		}
 		startSecInt, err = strconv.ParseInt(startSec, 10, 64)
 		if err != nil {
-			return "", "", output.ErrValidation("invalid start timestamp: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 		}
 		hasStart = true
 		startTime = time.Unix(startSecInt, 0).Local().Format(time.RFC3339)
@@ -103,13 +103,13 @@ func parseTimeRangeRFC3339(input string) (string, string, error) {
 		}
 		endSecInt, err = strconv.ParseInt(endSec, 10, 64)
 		if err != nil {
-			return "", "", output.ErrValidation("invalid end timestamp: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 		}
 		hasEnd = true
 		endTime = time.Unix(endSecInt, 0).Local().Format(time.RFC3339)
 	}
 	if hasStart && hasEnd && startSecInt > endSecInt {
-		return "", "", output.ErrValidation("start time must be earlier than or equal to end time")
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "start time must be earlier than or equal to end time")
 	}
 	return startTime, endTime, nil
 }
@@ -220,7 +220,7 @@ func requireSearchFilter(query string, filter map[string]interface{}, action str
 	if len(filter) > 0 {
 		return nil
 	}
-	return WrapTaskError(ErrCodeTaskInvalidParams, "query is empty and no filter is provided", action)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: query is empty and no filter is provided", action)
 }
 
 func renderRelatedTasksPretty(items []map[string]interface{}, hasMore bool, pageToken string) string {

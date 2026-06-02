@@ -5,15 +5,14 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -59,19 +58,20 @@ var GetMyTasks = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		startTime := time.Now()
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("type", "my_tasks")
-		queryParams.Set("user_id_type", "open_id")
-		queryParams.Set("page_size", "50")
+		params := map[string]interface{}{
+			"type":         "my_tasks",
+			"user_id_type": "open_id",
+			"page_size":    50,
+		}
 		if runtime.Cmd.Flags().Changed("complete") {
 			if runtime.Bool("complete") {
-				queryParams.Set("completed", "true")
+				params["completed"] = "true"
 			} else {
-				queryParams.Set("completed", "false")
+				params["completed"] = "false"
 			}
 		}
 		if pageToken := runtime.Str("page-token"); pageToken != "" {
-			queryParams.Set("page_token", pageToken)
+			params["page_token"] = pageToken
 		}
 
 		// parse time flags to ms timestamp if provided
@@ -79,7 +79,7 @@ var GetMyTasks = common.Shortcut{
 		if createdStr := runtime.Str("created_at"); createdStr != "" {
 			tStr, err := parseTimeFlagSec(createdStr, "start")
 			if err != nil {
-				return WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid created_at: %v", err), "parse created_at")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid created_at: %v", err).WithParam("--created_at")
 			}
 			createdAfterMs, _ = strconv.ParseInt(tStr, 10, 64)
 			createdAfterMs *= 1000 // Convert sec to ms
@@ -88,7 +88,7 @@ var GetMyTasks = common.Shortcut{
 		if dueStartStr := runtime.Str("due-start"); dueStartStr != "" {
 			tStr, err := parseTimeFlagSec(dueStartStr, "start")
 			if err != nil {
-				return WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid due-start: %v", err), "parse due-start")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid due-start: %v", err).WithParam("--due-start")
 			}
 			dueStartMs, _ = strconv.ParseInt(tStr, 10, 64)
 			dueStartMs *= 1000
@@ -97,7 +97,7 @@ var GetMyTasks = common.Shortcut{
 		if dueEndStr := runtime.Str("due-end"); dueEndStr != "" {
 			tStr, err := parseTimeFlagSec(dueEndStr, "end")
 			if err != nil {
-				return WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid due-end: %v", err), "parse due-end")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid due-end: %v", err).WithParam("--due-end")
 			}
 			dueEndMs, _ = strconv.ParseInt(tStr, 10, 64)
 			dueEndMs *= 1000
@@ -114,22 +114,7 @@ var GetMyTasks = common.Shortcut{
 
 		for {
 			pageCount++
-			apiReq := &larkcore.ApiReq{
-				HttpMethod:  "GET",
-				ApiPath:     "/open-apis/task/v2/tasks",
-				QueryParams: queryParams,
-			}
-
-			apiResp, err := runtime.DoAPI(apiReq)
-
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse my tasks")
-				}
-			}
-
-			data, err := HandleTaskApiResult(result, err, "list tasks")
+			data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasks", params, nil)
 			if err != nil {
 				return err
 			}
@@ -150,7 +135,7 @@ var GetMyTasks = common.Shortcut{
 			}
 
 			// Set page_token for next iteration
-			queryParams.Set("page_token", lastPageToken)
+			params["page_token"] = lastPageToken
 		}
 
 		var filteredItems []map[string]interface{}

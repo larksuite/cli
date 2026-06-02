@@ -17,10 +17,11 @@ import (
 // appending their path prefix here.
 var migratedEnvelopePaths = []string{
 	"shortcuts/base/",
+	"shortcuts/calendar/",
 	"shortcuts/drive/",
 	"shortcuts/mail/",
-	"shortcuts/calendar/",
 	"shortcuts/okr/",
+	"shortcuts/task/",
 	"shortcuts/whiteboard/",
 }
 

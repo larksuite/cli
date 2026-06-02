@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -24,7 +25,7 @@ func isRelativeTime(s string) bool {
 func parseRelativeTime(s string) (time.Time, error) {
 	matches := relativeTimeRe.FindStringSubmatch(s)
 	if len(matches) == 0 {
-		return time.Time{}, output.ErrValidation("invalid relative time format: %s", s)
+		return time.Time{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid relative time format: %s", s)
 	}
 
 	sign := matches[1]
@@ -75,75 +76,53 @@ const (
 	ErrCodeTaskReminderExists = 1470613
 )
 
-// TaskErrorCode maps Lark error codes to standardized error info.
-type TaskErrorInfo struct {
-	Type     string
-	Message  string
-	Hint     string
-	ExitCode int
+// taskAPIHints carries the task-specific recovery hint for each known Lark API
+// code, layered onto the typed error after errclass.BuildAPIError classifies
+// it. errclass.APIHint only covers context-free subtypes (e.g. conflict); these
+// hints carry the resource context APIHint intentionally leaves to the caller.
+// Authorization (1470403) is omitted: BuildAPIError already attaches the
+// canonical permission hint.
+var taskAPIHints = map[int]string{
+	ErrCodeTaskInvalidParams:   "Please check required fields, field lengths, or parameter logic (e.g., reminders require a due date).",
+	ErrCodeTaskNotFound:        "Please verify if the task, tasklist, or group ID is correct and has not been deleted.",
+	ErrCodeTaskConflict:        "Avoid making concurrent API calls using the same client_token.",
+	ErrCodeTaskInternalError:   "Please try again. If the error persists, check the content validity or contact support.",
+	ErrCodeTaskAssigneeLimit:   "The current task has reached the maximum number of assignees.",
+	ErrCodeTaskFollowerLimit:   "The current task has reached the maximum number of followers.",
+	ErrCodeTasklistMemberLimit: "The current tasklist has reached the maximum number of members.",
+	ErrCodeTaskReminderExists:  "The task already has a reminder set. Remove the existing reminder before adding a new one.",
 }
 
-var taskErrorMap = map[int]TaskErrorInfo{
-	// Generic Task errors from docs
-	ErrCodeTaskInvalidParams:    {"validation_error", "Invalid request parameters", "Please check required fields, field lengths, or parameter logic (e.g., reminders require a due date).", output.ExitValidation},
-	ErrCodeTaskNotFound:         {"not_found", "Resource not found", "Please verify if the task, tasklist, or group ID is correct and has not been deleted.", output.ExitAPI},
-	ErrCodeTaskPermissionDenied: {"permission_error", "Permission denied", "Please check if the calling identity has the necessary edit or read permissions for the resource (task/tasklist).", output.ExitAPI},
-	ErrCodeTaskInternalError:    {"api_error", "Internal server error", "Please try again. If the error persists, check the content validity or contact support.", output.ExitAPI},
-	ErrCodeTaskConflict:         {"conflict", "Concurrent call conflict", "Avoid making concurrent API calls using the same client_token.", output.ExitAPI},
-	ErrCodeTaskAssigneeLimit:    {"api_error", "Assignee limit exceeded", "The current task has reached the maximum number of assignees.", output.ExitAPI},
-	ErrCodeTaskFollowerLimit:    {"api_error", "Follower limit exceeded", "The current task has reached the maximum number of followers.", output.ExitAPI},
-	ErrCodeTasklistMemberLimit:  {"api_error", "Tasklist member limit exceeded", "The current tasklist has reached the maximum number of members.", output.ExitAPI},
-	ErrCodeTaskReminderExists:   {"api_error", "Reminder already exists", "The task already has a reminder set. Remove the existing reminder before adding a new one.", output.ExitAPI},
+func callTaskAPITyped(runtime *common.RuntimeContext, method, url string, params map[string]interface{}, body interface{}) (map[string]interface{}, error) {
+	data, err := runtime.CallAPITyped(method, url, params, body)
+	return data, applyTaskAPIHint(err)
 }
 
-// WrapTaskError wraps a Lark API error into a standardized ExitError based on task-specific rules.
-func WrapTaskError(larkCode int, rawMsg string, action string) error {
-	info, ok := taskErrorMap[larkCode]
-	if !ok {
-		// Fallback to generic classification if not in task-specific map
-		exitCode, errType, hint := output.ClassifyLarkError(larkCode, rawMsg)
-
-		// Generic message based on type
-		genericMsg := ""
-		switch errType {
-		case "permission":
-			genericMsg = "Permission denied"
-		case "auth":
-			genericMsg = "Authentication failed"
-		case "config":
-			genericMsg = "Configuration error"
-		case "rate_limit":
-			genericMsg = "Rate limit exceeded"
-		default:
-			genericMsg = "API error"
-		}
-
-		displayMsg := fmt.Sprintf("%s: %s [%d] (Details: %s)", action, genericMsg, larkCode, rawMsg)
-
-		return &output.ExitError{
-			Code: exitCode,
-			Detail: &output.ErrDetail{
-				Type:    errType,
-				Code:    larkCode,
-				Message: displayMsg,
-				Hint:    hint,
-			},
+func applyTaskAPIHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		if hint := taskAPIHints[p.Code]; hint != "" {
+			p.Hint = hint
 		}
 	}
-
-	return &output.ExitError{
-		Code: info.ExitCode,
-		Detail: &output.ErrDetail{
-			Type:    info.Type,
-			Code:    larkCode,
-			Message: fmt.Sprintf("%s: %s (Details: %s)", action, info.Message, rawMsg),
-			Hint:    info.Hint,
-		},
-	}
+	return err
 }
 
-// HandleTaskApiResult is a wrapper around common.HandleApiResult that applies task-specific error mapping.
+// HandleTaskApiResult interprets a parsed Lark API response. A non-zero code is
+// classified into a typed errs.* error by errclass.BuildAPIError — Category,
+// Subtype, Code, and log_id are sourced from internal/errclass/codemeta_task.go
+// — with the task-specific recovery hint (taskAPIHints) layered on top.
 func HandleTaskApiResult(result interface{}, err error, action string) (map[string]interface{}, error) {
+	return handleTaskAPIResult(result, err, action, errclass.ClassifyContext{})
+}
+
+func HandleTaskApiResultWithContext(result interface{}, err error, action string, cc errclass.ClassifyContext) (map[string]interface{}, error) {
+	return handleTaskAPIResult(result, err, action, cc)
+}
+
+func handleTaskAPIResult(result interface{}, err error, action string, cc errclass.ClassifyContext) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -151,16 +130,19 @@ func HandleTaskApiResult(result interface{}, err error, action string) (map[stri
 	resultMap, _ := result.(map[string]interface{})
 	codeVal, hasCode := resultMap["code"]
 	if !hasCode {
-		// Try to see if it's already an error from common.HandleApiResult (e.g. network error)
-		data, err := common.HandleApiResult(result, err, action)
-		return data, err
+		// A Lark response always carries a top-level code; its absence (with no
+		// transport error) means a malformed or unexpected body.
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "%s: unexpected response (missing code field)", action)
 	}
 
-	code, _ := util.ToFloat64(codeVal)
+	code, ok := util.ToFloat64(codeVal)
+	if !ok {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "%s: malformed response (non-numeric code %v)", action, codeVal)
+	}
 	larkCode := int(code)
 	if larkCode != 0 {
-		rawMsg, _ := resultMap["msg"].(string)
-		return nil, WrapTaskError(larkCode, rawMsg, action)
+		typedErr := errclass.BuildAPIError(resultMap, cc)
+		return nil, applyTaskAPIHint(typedErr)
 	}
 
 	data, _ := resultMap["data"].(map[string]interface{})
