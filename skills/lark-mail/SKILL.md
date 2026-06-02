@@ -494,8 +494,8 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `create` — 创建收信规则
   - `delete` — 删除收信规则
   - `list` — 列出收信规则
-  - `reorder` — 
-  - `update` — 
+  - `reorder` — 调整收信规则的执行顺序
+  - `update` — 更新收信规则
 
 ### user_mailbox.sent_messages
 
