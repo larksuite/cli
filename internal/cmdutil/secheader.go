@@ -41,7 +41,7 @@ const (
 
 	officialModulePath = "github.com/larksuite/cli"
 
-	agentTraceMaxLen = 256
+	agentTraceMaxLen = 1024
 )
 
 // UserAgentValue returns the User-Agent value: "lark-cli/{version}".
