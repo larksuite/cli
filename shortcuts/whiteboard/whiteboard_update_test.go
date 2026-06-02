@@ -6,9 +6,11 @@ package whiteboard
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -99,6 +101,54 @@ func TestWhiteboardUpdate_Validate(t *testing.T) {
 				t.Errorf("wbUpdateValidate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestWhiteboardUpdate_Validate_TypedErrors locks the typed-envelope contract
+// for +update input validation: failures are *errs.ValidationError with
+// SubtypeInvalidArgument and the offending --flag. parseWBcliNodes likewise
+// reports malformed --source input as a typed validation error.
+func TestWhiteboardUpdate_Validate_TypedErrors(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("idempotent-token too short", func(t *testing.T) {
+		rt := newTestRuntime(map[string]string{
+			"whiteboard-token": "t",
+			"idempotent-token": "short",
+			"source":           "{}",
+		}, nil)
+		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--idempotent-token")
+	})
+
+	t.Run("bad input_format", func(t *testing.T) {
+		rt := newTestRuntime(map[string]string{
+			"whiteboard-token": "t",
+			"input_format":     "svg",
+			"source":           "{}",
+		}, nil)
+		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--input_format")
+	})
+
+	t.Run("malformed source json", func(t *testing.T) {
+		_, err, _ := parseWBcliNodes([]byte("not-json"))
+		assertValidationParam(t, err, "--source")
+	})
+}
+
+func assertValidationParam(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *errs.ValidationError: %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != wantParam {
+		t.Errorf("Param = %q, want %q", ve.Param, wantParam)
 	}
 }
 
@@ -360,6 +410,27 @@ Bob -> Alice : hello
 	}
 }
 
+func TestWhiteboardUpdateExecute_PlantUMLInvalidResponse(t *testing.T) {
+	factory, stdout, reg := newUpdateExecuteFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/board/v1/whiteboards/test-token-plantuml-invalid-response/nodes/plantuml",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	source := `@@startuml
+Bob -> Alice : hello
+@@enduml`
+	args := []string{"+update", "--whiteboard-token", "test-token-plantuml-invalid-response", "--input_format", "plantuml", "--source", source}
+	err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout)
+	assertInvalidResponse(t, err)
+}
+
 func TestWhiteboardUpdateExecute_MermaidFormat(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -381,6 +452,45 @@ A-->B`
 	args := []string{"+update", "--whiteboard-token", "test-token-mermaid", "--input_format", "mermaid", "--source", source}
 	if err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestWhiteboardUpdateExecute_RawInvalidResponse(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+		data  map[string]interface{}
+	}{
+		{
+			name:  "missing ids",
+			token: "test-token-raw-missing-ids",
+			data:  map[string]interface{}{},
+		},
+		{
+			name:  "non-string id",
+			token: "test-token-raw-bad-id",
+			data:  map[string]interface{}{"ids": []interface{}{"node1", 2}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newUpdateExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/board/v1/whiteboards/" + tt.token + "/nodes",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "success",
+					"data": tt.data,
+				},
+			})
+
+			source := `{"code":0,"data":{"to":"openapi","result":{"nodes":[]}}}`
+			args := []string{"+update", "--whiteboard-token", tt.token, "--input_format", "raw", "--source", source}
+			err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout)
+			assertInvalidResponse(t, err)
+		})
 	}
 }
 
@@ -444,12 +554,26 @@ func TestWhiteboardUpdateExecute_RawAPIError(t *testing.T) {
 		},
 	})
 
-	source := `{"code":0,"data":{"to":"openapi","result":{"nodes":[]}}}`
+	// Top-level "nodes" is the raw open-api format (isRaw=true), which triggers
+	// the raw-edit recovery hint on API failure.
+	source := `{"nodes":[{"type":"composite_shape"}]}`
 	args := []string{"+update", "--whiteboard-token", "test-token-raw-api-error", "--input_format", "raw", "--source", source}
 	err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout)
-	// We expect an error here, but don't fail the test because it's testing error path
 	if err == nil {
-		t.Logf("Expected API error, but got none")
+		t.Fatalf("expected API error, but got none")
+	}
+	// The update boundary now yields a typed envelope carrying the Lark code.
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not a typed errs.* envelope: %T (%v)", err, err)
+	}
+	if p.Code != 10001 {
+		t.Errorf("Problem.Code = %d, want 10001", p.Code)
+	}
+	// Raw (open-api JSON) input failures steer the user back to the recommended
+	// DSL workflow via a recovery hint on the typed envelope.
+	if !strings.Contains(p.Hint, "not advised to edit openapi format json directly") {
+		t.Errorf("Problem.Hint missing raw-edit guidance, got %q", p.Hint)
 	}
 }
 
@@ -471,9 +595,15 @@ invalid
 @@enduml`
 	args := []string{"+update", "--whiteboard-token", "test-token-plantuml-error", "--input_format", "plantuml", "--source", source}
 	err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout)
-	// We expect an error here, but don't fail the test because it's testing error path
 	if err == nil {
-		t.Logf("Expected API error, but got none")
+		t.Fatalf("expected API error, but got none")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not a typed errs.* envelope: %T (%v)", err, err)
+	}
+	if p.Code != 10001 {
+		t.Errorf("Problem.Code = %d, want 10001", p.Code)
 	}
 }
 

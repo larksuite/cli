@@ -12,10 +12,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 const (
@@ -42,21 +40,21 @@ var wbUpdateFlags = []common.Flag{
 
 func wbUpdateValidate(ctx context.Context, runtime *common.RuntimeContext) error {
 	// 检查 token 是否包含控制字符（空字符串下自动跳过了）
-	if err := validate.RejectControlChars(runtime.Str("whiteboard-token"), "whiteboard-token"); err != nil {
+	if err := common.RejectDangerousCharsTyped("--whiteboard-token", runtime.Str("whiteboard-token")); err != nil {
 		return err
 	}
 	itoken := runtime.Str("idempotent-token")
-	if err := validate.RejectControlChars(itoken, "idempotent-token"); err != nil {
+	if err := common.RejectDangerousCharsTyped("--idempotent-token", itoken); err != nil {
 		return err
 	}
 	if itoken != "" && len(itoken) < 10 {
-		return common.FlagErrorf("--idempotent-token must be at least 10 characters long.")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--idempotent-token must be at least 10 characters long.").WithParam("--idempotent-token")
 	}
 
 	// 检查 --input_format 标志
 	format := getFormat(runtime)
 	if format != FormatRaw && format != FormatPlantUML && format != FormatMermaid {
-		return common.FlagErrorf("--input_format must be one of: raw | plantuml | mermaid")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--input_format must be one of: raw | plantuml | mermaid").WithParam("--input_format")
 	}
 	return nil
 }
@@ -116,7 +114,7 @@ func wbUpdateExecute(ctx context.Context, runtime *common.RuntimeContext) error 
 
 	input := runtime.Str("source")
 	if input == "" {
-		return output.ErrValidation("read input failed: source is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "read input failed: source is required").WithParam("--source")
 	}
 
 	switch format {
@@ -125,7 +123,7 @@ func wbUpdateExecute(ctx context.Context, runtime *common.RuntimeContext) error 
 	case FormatPlantUML, FormatMermaid:
 		return updateWhiteboardByCode(ctx, runtime, token, []byte(input), format, overwrite, idempotentToken)
 	default:
-		return output.ErrValidation(fmt.Sprintf("unsupported format: %s", format))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported format: %s", format).WithParam("--input_format")
 	}
 }
 
@@ -160,15 +158,6 @@ var WhiteboardUpdateOld = common.Shortcut{
 	Execute:     wbUpdateExecute,
 }
 
-type createResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		NodeIDs         []string `json:"ids"`
-		IdempotentToken string   `json:"client_token"`
-	} `json:"data"`
-}
-
 type plantumlCreateReq struct {
 	PlantUmlCode string `json:"plant_uml_code"`
 	SyntaxType   int    `json:"syntax_type"`
@@ -182,28 +171,20 @@ type rawNodesCreateReq struct {
 	Overwrite bool          `json:"overwrite,omitempty"`
 }
 
-type plantumlCreateResp struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		NodeID string `json:"node_id"`
-	} `json:"data"`
-}
-
 func parseWBcliNodes(rawjson []byte) (wbNodes []interface{}, err error, isRaw bool) {
 	var wbOutput WbCliOutput
 	if err := json.Unmarshal(rawjson, &wbOutput); err != nil {
-		return nil, output.Errorf(output.ExitValidation, "parsing", fmt.Sprintf("unmarshal input json failed: %v", err)), false
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unmarshal input json failed: %v", err).WithParam("--source").WithCause(err), false
 	}
 	if (wbOutput.Code != 0 || wbOutput.Data.To != "openapi") && wbOutput.RawNodes == nil {
-		return nil, output.Errorf(output.ExitValidation, "whiteboard-cli", "whiteboard-cli failed. please check previous log."), false
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "whiteboard-cli failed. please check previous log.").WithParam("--source"), false
 	}
 	if wbOutput.RawNodes != nil {
 		wbNodes = wbOutput.RawNodes
 		isRaw = true
 	} else {
 		if wbOutput.Data.Result.Nodes == nil {
-			return nil, output.Errorf(output.ExitValidation, "whiteboard-cli", "whiteboard-cli failed. please check previous log."), false
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "whiteboard-cli failed. please check previous log.").WithParam("--source"), false
 		}
 		wbNodes = wbOutput.Data.Result.Nodes
 	}
@@ -221,39 +202,23 @@ func updateWhiteboardByCode(ctx context.Context, runtime *common.RuntimeContext,
 		Overwrite:    overwrite,
 	}
 
-	req := &larkcore.ApiReq{
-		HttpMethod:  http.MethodPost,
-		ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes/plantuml", url.PathEscape(wbToken)),
-		Body:        reqBody,
-		QueryParams: map[string][]string{},
-	}
+	params := map[string]interface{}{}
 	if idempotentToken != "" {
-		req.QueryParams["client_token"] = []string{idempotentToken}
+		params["client_token"] = idempotentToken
 	}
 
-	resp, err := runtime.DoAPI(req)
+	data, err := runtime.CallAPITyped(http.MethodPost, fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes/plantuml", url.PathEscape(wbToken)), params, reqBody)
 	if err != nil {
-		return output.ErrNetwork(fmt.Sprintf("update whiteboard by code failed: %v", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+		return err
 	}
 
-	var createResp plantumlCreateResp
-	err = json.Unmarshal(resp.RawBody, &createResp)
-	if err != nil {
-		return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
+	nodeID := common.GetString(data, "node_id")
+	if nodeID == "" {
+		return wbInvalidResponse("update whiteboard by code failed: missing data.node_id")
 	}
-	if createResp.Code != 0 {
-		return output.ErrAPI(createResp.Code, "update whiteboard by code failed", fmt.Sprintf("update whiteboard by code failed: %s", createResp.Msg))
-	}
-
-	outData := make(map[string]string)
-	outData["created_node_id"] = createResp.Data.NodeID
+	outData := map[string]string{"created_node_id": nodeID}
 	runtime.OutFormat(outData, nil, func(w io.Writer) {
-		if outData["created_node_id"] != "" {
-			fmt.Fprintf(w, "New node created.\n")
-		}
+		fmt.Fprintf(w, "New node created.\n")
 		fmt.Fprintf(w, "Update whiteboard success")
 	})
 
@@ -266,56 +231,67 @@ func updateWhiteboardByRawNodes(ctx context.Context, runtime *common.RuntimeCont
 	if err != nil {
 		return err
 	}
-	outData := make(map[string]string)
 	reqBody := rawNodesCreateReq{
 		Nodes:     nodes,
 		Overwrite: overwrite,
 	}
 
-	req := &larkcore.ApiReq{
-		HttpMethod:  http.MethodPost,
-		ApiPath:     fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(wbToken)),
-		Body:        reqBody,
-		QueryParams: map[string][]string{},
-	}
+	params := map[string]interface{}{}
 	if idempotentToken != "" {
-		req.QueryParams["client_token"] = []string{idempotentToken}
+		params["client_token"] = idempotentToken
 	}
 
-	resp, err := runtime.DoAPI(req)
+	data, err := runtime.CallAPITyped(http.MethodPost, fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(wbToken)), params, reqBody)
 	if err != nil {
-		return output.ErrNetwork(fmt.Sprintf("update whiteboard failed: %v", err))
-	}
-	if resp.StatusCode != http.StatusOK {
-		var detail string
+		// Raw open-api JSON is hand-edited far more often than the DSL path, so
+		// steer the user back to the recommended workflow on any API failure.
 		if isRaw {
-			detail = fmt.Sprintf("It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill, " +
-				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
+			if p, ok := errs.ProblemOf(err); ok {
+				rawHint := "It is not advised to edit openapi format json directly. " +
+					"Please follow instruction in lark-whiteboard skill, using whiteboard-cli " +
+					"to transcript Whiteboard DSL pattern instead."
+				if strings.TrimSpace(p.Hint) != "" {
+					p.Hint = p.Hint + "\n" + rawHint
+				} else {
+					p.Hint = rawHint
+				}
+			}
 		}
-		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), detail)
+		return err
 	}
 
-	var createResp createResponse
-	err = json.Unmarshal(resp.RawBody, &createResp)
+	nodeIDs, err := stringSlice(data["ids"])
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard create response failed: %v", err))
+		return err
 	}
-	if createResp.Code != 0 {
-		detail := fmt.Sprintf("update whiteboard failed: %s", createResp.Msg)
-		if isRaw {
-			detail += fmt.Sprintf("\n It is not advised to edit openapi format json directly. Please follow instruction in lark-whiteboard skill, " +
-				"using whiteboard-cli to transcript Whiteboard DSL pattern instead.")
-		}
-		return output.ErrAPI(createResp.Code, "update whiteboard failed", detail)
-	}
-
-	outData["created_node_ids"] = strings.Join(createResp.Data.NodeIDs, ",")
+	outData := map[string]string{"created_node_ids": strings.Join(nodeIDs, ",")}
 	runtime.OutFormat(outData, nil, func(w io.Writer) {
 		if outData["created_node_ids"] != "" {
-			fmt.Fprintf(w, "%d new nodes created.\n", len(createResp.Data.NodeIDs))
+			fmt.Fprintf(w, "%d new nodes created.\n", len(nodeIDs))
 		}
 		fmt.Fprintf(w, "Update whiteboard success")
 	})
 
 	return nil
+}
+
+// stringSlice coerces the JSON ids array into []string. A missing or malformed
+// ids field is a response-shape bug, not a successful update with no output.
+func stringSlice(v interface{}) ([]string, error) {
+	switch raw := v.(type) {
+	case []interface{}:
+		out := make([]string, 0, len(raw))
+		for i, e := range raw {
+			s, ok := e.(string)
+			if !ok {
+				return nil, wbInvalidResponse("update whiteboard failed: data.ids[%d] must be a string", i)
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	case []string:
+		return append([]string(nil), raw...), nil
+	default:
+		return nil, wbInvalidResponse("update whiteboard failed: data.ids must be an array of strings")
+	}
 }

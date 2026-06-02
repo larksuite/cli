@@ -618,6 +618,31 @@ func boom() error {
 	}
 }
 
+func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnOkrAndWhiteboardPaths(t *testing.T) {
+	for _, path := range []string{
+		"shortcuts/okr/okr_image_upload.go",
+		"shortcuts/whiteboard/whiteboard_update.go",
+	} {
+		t.Run(path, func(t *testing.T) {
+			src := `package migrated
+
+import "github.com/larksuite/cli/internal/output"
+
+func boom() error {
+	return &output.ExitError{Code: 1}
+}
+`
+			v := CheckNoLegacyEnvelopeLiteral(path, src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+			}
+			if v[0].Action != ActionReject {
+				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+		})
+	}
+}
+
 func TestCheckNoLegacyEnvelopeLiteral_RejectsErrDetailLiteralOnDrivePath(t *testing.T) {
 	src := `package drive
 
@@ -897,6 +922,8 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 	paths := []string{
 		"shortcuts/drive/drive_search.go",
 		"shortcuts/mail/mail_send.go",
+		"shortcuts/okr/okr_progress_create.go",
+		"shortcuts/whiteboard/whiteboard_query.go",
 	}
 	for _, path := range paths {
 		for _, helper := range helpers {

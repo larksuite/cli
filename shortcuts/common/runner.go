@@ -603,27 +603,6 @@ func (ctx *RuntimeContext) ResolveSavePath(path string) (string, error) {
 	return resolved, nil
 }
 
-// WrapSaveError matches a FileIO.Save error against known categories and wraps
-// it with the caller-provided message prefix, preserving backward-compatible
-// error text per shortcut.
-func WrapSaveError(err error, pathMsg, mkdirMsg, writeMsg string) error {
-	if err == nil {
-		return nil
-	}
-	var me *fileio.MkdirError
-	var we *fileio.WriteError
-	switch {
-	case errors.Is(err, fileio.ErrPathValidation):
-		return fmt.Errorf("%s: %w", pathMsg, err)
-	case errors.As(err, &me):
-		return fmt.Errorf("%s: %w", mkdirMsg, err)
-	case errors.As(err, &we):
-		return fmt.Errorf("%s: %w", writeMsg, err)
-	default:
-		return fmt.Errorf("%s: %w", writeMsg, err)
-	}
-}
-
 // WrapOpenError matches a FileIO.Open/Stat error and wraps it with the
 // caller-provided message prefix.
 func WrapOpenError(err error, pathMsg, readMsg string) error {
