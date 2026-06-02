@@ -1,0 +1,543 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
+)
+
+func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				// DBA 模式 result：结构化数组 JSON 字符串
+				"result": `[{"sql_type":"SELECT","data":"[{\"id\":101,\"total_cents\":2500}]","record_count":1}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "select 1", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	// JSON envelope 应该把 result 字符串 parse 之后放进 data.results
+	var env struct {
+		Data struct {
+			Results []map[string]interface{} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode envelope: %v\n%s", err, stdout.String())
+	}
+	if len(env.Data.Results) != 1 {
+		t.Fatalf("data.results = %d items (want 1)", len(env.Data.Results))
+	}
+	if env.Data.Results[0]["sql_type"] != "SELECT" {
+		t.Fatalf("results[0].sql_type = %v", env.Data.Results[0]["sql_type"])
+	}
+}
+
+func TestAppsDBSQL_DryRunSendsTransactionalFalse(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		API []struct {
+			Method string                 `json:"method"`
+			URL    string                 `json:"url"`
+			Body   map[string]interface{} `json:"body"`
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if env.API[0].Method != "POST" || env.API[0].URL != "/open-apis/spark/v1/apps/app_x/sql_commands" {
+		t.Fatalf("method/url = %s %s", env.API[0].Method, env.API[0].URL)
+	}
+	if env.API[0].Body["sql"] != "select 1" {
+		t.Fatalf("body.sql = %v", env.API[0].Body["sql"])
+	}
+	if env.API[0].Params["env"] != "dev" {
+		t.Fatalf("params.env = %v", env.API[0].Params["env"])
+	}
+	if env.API[0].Params["transactional"] != false {
+		t.Fatalf("params.transactional = %v (want false, CLI is DBA mode)", env.API[0].Params["transactional"])
+	}
+	if _, ok := env.API[0].Body["transactional"]; ok {
+		t.Fatalf("transactional should NOT be in body, got body=%v", env.API[0].Body)
+	}
+}
+
+func TestAppsDBSQL_RejectsEmptyQuery(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "   ", "--as", "user"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "query") {
+		t.Fatalf("expected empty query error, got %v", err)
+	}
+}
+
+// ============================================================================
+// legacy wire 形态测试 —— BOE server 实测返这种 ["rows-json-string", ...]
+// 形态而非 spec 里的 [{sql_type, data, ...}]，CLI 端必须兼容。
+// 输入用 BOE 真实抓包数据（test_scripts/boe_e2e/run.log）。
+// ============================================================================
+
+func TestAppsDBSQL_LegacyWireSingleSelect(t *testing.T) {
+	// BOE 实测：SELECT 1 AS x  →  result: "[\"[{\\\"x\\\":1}]\"]"
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `["[{\"x\":1}]"]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "x") {
+		t.Errorf("missing header 'x':\n%s", got)
+	}
+	if !strings.Contains(got, "1") {
+		t.Errorf("missing value row '1':\n%s", got)
+	}
+	// 不应回退到 RAW
+	if strings.Contains(got, "RAW") || strings.Contains(got, "[\\\"") {
+		t.Errorf("should not fall back to RAW or raw-string passthrough:\n%s", got)
+	}
+}
+
+func TestAppsDBSQL_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
+	// 验证 JSON envelope 也把 legacy result 正确归一化进 data.results
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `["[{\"x\":1}]"]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	var env struct {
+		Data struct {
+			Results []map[string]interface{} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if len(env.Data.Results) != 1 {
+		t.Fatalf("results length = %d, want 1; got: %v", len(env.Data.Results), env.Data.Results)
+	}
+	if env.Data.Results[0]["sql_type"] != "SELECT" {
+		t.Fatalf("results[0].sql_type = %v, want SELECT", env.Data.Results[0]["sql_type"])
+	}
+	if env.Data.Results[0]["record_count"] != float64(1) {
+		t.Fatalf("results[0].record_count = %v, want 1", env.Data.Results[0]["record_count"])
+	}
+}
+
+func TestAppsDBSQL_LegacyWireMultiSelect(t *testing.T) {
+	// BOE 实测：SELECT 1; SELECT 2  →  result: "[\"[{\\\"?column?\\\":1}]\",\"[{\\\"?column?\\\":2}]\"]"
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `["[{\"?column?\":1}]","[{\"?column?\":2}]"]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1; SELECT 2;", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	// 多语句应有 Statement N: header
+	if !strings.Contains(got, "Statement 1: SELECT") || !strings.Contains(got, "Statement 2: SELECT") {
+		t.Errorf("missing Statement headers:\n%s", got)
+	}
+	// 末尾应有 ✓ N statements executed
+	if !strings.Contains(got, "✓ 2 statements executed") {
+		t.Errorf("missing summary line:\n%s", got)
+	}
+}
+
+func TestAppsDBSQL_LegacyWireDDLEmptyResult(t *testing.T) {
+	// BOE 实测：CREATE TABLE  →  result: "" （空字符串，无 rows）
+	// 老 wire 不区分 DDL/DML/无返回，统一标 "ok"
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": ``, // 空字符串
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "CREATE TABLE foo (id INT)", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	// result="" 触发 parseSQLResult 返 nil → renderSQLPretty 输出 "(empty result)"
+	if !strings.Contains(got, "(empty result)") {
+		t.Errorf("expected '(empty result)' for empty result string, got:\n%s", got)
+	}
+}
+
+func TestAppsDBSQL_LegacyWireMultiSelectWithRealTable(t *testing.T) {
+	// BOE 实测真实表抓包（course 表第一行）：复杂 JSON 含 CJK / timestamp / uuid 字段
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `["[{\"id\":\"abc-123\",\"title\":\"高效沟通\",\"capacity\":30}]"]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT id,title,capacity FROM course LIMIT 1", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	// 验证 CJK / uuid / int 都能正确显示在表格里
+	for _, want := range []string{"id", "title", "capacity", "abc-123", "高效沟通", "30"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in pretty output:\n%s", want, got)
+		}
+	}
+}
+
+// pretty 单 SELECT：表格输出，列间两空格，无 Statement header。
+func TestAppsDBSQL_PrettySingleSelectTable(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"SELECT","data":"[{\"id\":101,\"total_cents\":2500},{\"id\":102,\"total_cents\":1800}]","record_count":2}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	if strings.Contains(got, "Statement 1:") {
+		t.Errorf("single statement pretty should NOT have Statement header\noutput:\n%s", got)
+	}
+	// 列按字典序排序：id / total_cents
+	if !strings.Contains(got, "id   total_cents") {
+		t.Errorf("missing header row\noutput:\n%s", got)
+	}
+	if !strings.Contains(got, "101  2500") || !strings.Contains(got, "102  1800") {
+		t.Errorf("missing data rows\noutput:\n%s", got)
+	}
+}
+
+func TestAppsDBSQL_PrettyEmptySelect(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"SELECT","data":"[]","record_count":0}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	if !strings.Contains(stdout.String(), "(0 rows)") {
+		t.Fatalf("empty SELECT should print (0 rows), got:\n%s", stdout.String())
+	}
+}
+
+func TestAppsDBSQL_PrettySingleDMLAndDDL(t *testing.T) {
+	cases := []struct {
+		name    string
+		result  string
+		wantStr string
+	}{
+		{"INSERT_1_row", `[{"sql_type":"INSERT","data":"","affected_rows":1}]`, "✓ 1 row inserted"},
+		{"UPDATE_5_rows", `[{"sql_type":"UPDATE","data":"","affected_rows":5}]`, "✓ 5 rows updated"},
+		{"DELETE_0_rows", `[{"sql_type":"DELETE","data":"","affected_rows":0}]`, "✓ 0 rows deleted"},
+		{"DDL", `[{"sql_type":"DDL","data":"","affected_rows":0}]`, "✓ DDL executed"},
+		// 真机 boe 实测：DDL 的 sql_type 是细粒度动词（CREATE_TABLE / DROP_TABLE / ALTER_TABLE...），
+		// data 是 "[]"、无 affected_rows。必须识别为 DDL，而不是落到 dmlSummary 渲染成 "0 rows affected"。
+		{"CREATE_TABLE", `[{"sql_type":"CREATE_TABLE","data":"[]"}]`, "✓ DDL executed"},
+		{"DROP_TABLE", `[{"sql_type":"DROP_TABLE","data":"[]"}]`, "✓ DDL executed"},
+		{"ALTER_TABLE", `[{"sql_type":"ALTER_TABLE","data":"[]"}]`, "✓ DDL executed"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			factory, stdout, reg := newAppsExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "POST",
+				URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"result": c.result}},
+			})
+			if err := runAppsShortcut(t, AppsDBSQL,
+				[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+				factory, stdout); err != nil {
+				t.Fatalf("execute err=%v", err)
+			}
+			if !strings.Contains(stdout.String(), c.wantStr) {
+				t.Errorf("want %q\ngot:\n%s", c.wantStr, stdout.String())
+			}
+		})
+	}
+}
+
+func TestAppsDBSQL_PrettyMultiStatementsAllSuccess(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[` +
+					`{"sql_type":"INSERT","data":"","affected_rows":1},` +
+					`{"sql_type":"UPDATE","data":"","affected_rows":1},` +
+					`{"sql_type":"SELECT","data":"[{\"id\":999}]","record_count":1}` +
+					`]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	for _, line := range []string{
+		"Statement 1: ✓ 1 row inserted",
+		"Statement 2: ✓ 1 row updated",
+		"Statement 3: SELECT (1 row)",
+		"✓ 3 statements executed",
+	} {
+		if !strings.Contains(got, line) {
+			t.Errorf("missing %q in pretty output\nfull:\n%s", line, got)
+		}
+	}
+}
+
+// TestAppsDBSQL_PrettyMultiStatementsDDL 钉住真机 boe 多语句 DDL 的 wire：
+// CREATE_TABLE / DROP_TABLE（data="[]"、无 affected_rows）须渲染成 "✓ DDL executed"，
+// 不能落到 dmlSummary 变成 "0 rows affected"。
+func TestAppsDBSQL_PrettyMultiStatementsDDL(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"CREATE_TABLE","data":"[]"},{"sql_type":"DROP_TABLE","data":"[]"}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	for _, line := range []string{
+		"Statement 1: ✓ DDL executed",
+		"Statement 2: ✓ DDL executed",
+		"✓ 2 statements executed",
+	} {
+		if !strings.Contains(got, line) {
+			t.Errorf("missing %q in pretty output\nfull:\n%s", line, got)
+		}
+	}
+	if strings.Contains(got, "rows affected") {
+		t.Errorf("DDL must not render as 'rows affected'\nfull:\n%s", got)
+	}
+}
+
+func TestAppsDBSQL_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[` +
+					`{"sql_type":"INSERT","data":"","affected_rows":1},` +
+					`{"sql_type":"ERROR","data":"{\"code\":1300015,\"message\":\"syntax error at or near 'SELEC'\"}"}` +
+					`]`,
+			},
+		},
+	})
+	// pretty 失败路径：逐条 ✓/✗ 摘要照打到 stdout（人看），同时返回 typed error（exit 非 0）。
+	err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("pretty multi-statement failure must still return a typed error; stdout:\n%s", stdout.String())
+	}
+	got := stdout.String()
+	for _, line := range []string{
+		"Statement 1: ✓ 1 row inserted",
+		"Statement 2: ✗ syntax error at or near 'SELEC' [1300015]",
+	} {
+		if !strings.Contains(got, line) {
+			t.Errorf("missing %q in pretty output\nfull:\n%s", line, got)
+		}
+	}
+	// DBA 模式（transactional=false）前序语句已 auto-commit 落地，绝不能误报「rolled back」。
+	if strings.Contains(got, "rolled back") {
+		t.Errorf("DBA mode must NOT claim rollback (prior statements persisted); got:\n%s", got)
+	}
+	if strings.Contains(got, "statements executed") {
+		t.Errorf("failed run should NOT print success summary; got:\n%s", got)
+	}
+}
+
+// TestAppsDBSQL_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → typed api_error」：
+// json 默认不再打 ok:true 假成功，而是返回 *output.ExitError（type=api_error、非零 exit），
+// detail 带 statement_index / completed / rolled_back。rolled_back=false 因 CLI 永远 DBA 模式
+// （真机 boe 实证：失败前的语句已落地）。
+func TestAppsDBSQL_MultiStatementFailureReturnsTypedError(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[` +
+					`{"sql_type":"INSERT","data":"","affected_rows":1},` +
+					`{"sql_type":"ERROR","data":"{\"code\":\"k_dl_1300002\",\"message\":\"duplicate key value violates unique constraint\"}"}` +
+					`]`,
+			},
+		},
+	})
+	err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("multi-statement failure must return a typed error; stdout:\n%s", stdout.String())
+	}
+	// json 失败路径不得打成功 envelope。
+	if strings.Contains(stdout.String(), `"ok": true`) {
+		t.Errorf("must not emit ok:true success envelope on failure; stdout:\n%s", stdout.String())
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("want *output.ExitError with detail, got %T: %v", err, err)
+	}
+	if exitErr.Detail.Type != "api_error" {
+		t.Errorf("error.type = %q, want api_error", exitErr.Detail.Type)
+	}
+	if exitErr.Detail.Code != 1300002 {
+		t.Errorf("error.code = %d, want 1300002", exitErr.Detail.Code)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "(at statement 2 of 2)") {
+		t.Errorf("error.message missing statement locator: %q", exitErr.Detail.Message)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit = %d, want %d (ExitAPI)", output.ExitCodeOf(err), output.ExitAPI)
+	}
+	detail, ok := exitErr.Detail.Detail.(map[string]interface{})
+	if !ok {
+		t.Fatalf("error.detail not a map: %T", exitErr.Detail.Detail)
+	}
+	if detail["statement_index"] != 1 {
+		t.Errorf("statement_index = %v, want 1", detail["statement_index"])
+	}
+	if detail["rolled_back"] != false {
+		t.Errorf("rolled_back = %v, want false (DBA mode persists prior statements)", detail["rolled_back"])
+	}
+	if completed, ok := detail["completed"].([]map[string]interface{}); !ok || len(completed) != 1 {
+		t.Errorf("completed = %v, want 1 persisted statement", detail["completed"])
+	}
+}
+
+// TestAppsDBSQL_SingleErrorReturnsTypedError 单条语句失败（server 也返 code:0 + ERROR 哨兵）
+// 同样升级成 typed error：statement_index=0、completed 空、message 标注 (at statement 1 of 1)。
+func TestAppsDBSQL_SingleErrorReturnsTypedError(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"ERROR","data":"{\"code\":\"k_dl_000002\",\"message\":\"syntax error at or near 'SELEC'\"}"}]`,
+			},
+		},
+	})
+	err := runAppsShortcut(t, AppsDBSQL,
+		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("single ERROR sentinel must return a typed error; stdout:\n%s", stdout.String())
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+		t.Fatalf("want *output.ExitError with detail, got %T: %v", err, err)
+	}
+	if !strings.Contains(exitErr.Detail.Message, "(at statement 1 of 1)") {
+		t.Errorf("error.message missing locator: %q", exitErr.Detail.Message)
+	}
+	detail, _ := exitErr.Detail.Detail.(map[string]interface{})
+	if detail["statement_index"] != 0 {
+		t.Errorf("statement_index = %v, want 0", detail["statement_index"])
+	}
+	if completed, ok := detail["completed"].([]map[string]interface{}); !ok || len(completed) != 0 {
+		t.Errorf("completed = %v, want empty", detail["completed"])
+	}
+}

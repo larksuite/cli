@@ -10,10 +10,11 @@ import (
 )
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-func TestAppsShortcuts_Returns9(t *testing.T) {
+// 6 基础 + 4 db（table-list/table-schema/sql/dev-init）+ 3 git-credential = 13。
+func TestAppsShortcuts_Returns13(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 9 {
-		t.Fatalf("Shortcuts() returned %d entries, want 9", len(got))
+	if len(got) != 13 {
+		t.Fatalf("Shortcuts() returned %d entries, want 13", len(got))
 	}
 }
 
