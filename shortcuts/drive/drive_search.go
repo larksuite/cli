@@ -354,7 +354,7 @@ func parseDriveSearchPageSize(raw string) (int, error) {
 // server-side failure or empty result.
 func validateDriveSearchIDs(spec driveSearchSpec) error {
 	for _, id := range spec.CreatorIDs {
-		if _, err := common.ValidateUserID(id); err != nil {
+		if _, err := common.ValidateUserIDTyped("--creator-ids", id); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--creator-ids %q: %s", id, err).WithParam("--creator-ids")
 		}
 	}
@@ -362,7 +362,7 @@ func validateDriveSearchIDs(spec driveSearchSpec) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-ids: max %d values per request, got %d", driveSearchMaxChatIDs, n).WithParam("--chat-ids")
 	}
 	for _, id := range spec.ChatIDs {
-		if _, err := common.ValidateChatID(id); err != nil {
+		if _, err := common.ValidateChatIDTyped("--chat-ids", id); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-ids %q: %s", id, err).WithParam("--chat-ids")
 		}
 	}
@@ -370,7 +370,7 @@ func validateDriveSearchIDs(spec driveSearchSpec) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sharer-ids: max %d values per request, got %d", driveSearchMaxSharerIDs, n).WithParam("--sharer-ids")
 	}
 	for _, id := range spec.SharerIDs {
-		if _, err := common.ValidateUserID(id); err != nil {
+		if _, err := common.ValidateUserIDTyped("--sharer-ids", id); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sharer-ids %q: %s", id, err).WithParam("--sharer-ids")
 		}
 	}

@@ -164,6 +164,9 @@ func CheckApiError(w io.Writer, result interface{}, action string) bool {
 }
 
 // HandleApiResult checks for network/API errors and returns the "data" field.
+//
+// Deprecated: use RuntimeContext.CallAPITyped (or ClassifyAPIResponse for
+// self-driven requests) for typed error envelopes.
 func HandleApiResult(result interface{}, err error, action string) (map[string]interface{}, error) {
 	if err != nil {
 		return nil, output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)

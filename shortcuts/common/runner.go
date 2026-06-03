@@ -625,6 +625,8 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 //   - Other errors → readMsg prefix (default "cannot read file")
 //
 // Pass an optional readMsg to override the non-path-validation message prefix.
+//
+// Deprecated: use WrapInputStatErrorTyped for typed error envelopes.
 func WrapInputStatError(err error, readMsg ...string) error {
 	if err == nil {
 		return nil
@@ -639,9 +641,28 @@ func WrapInputStatError(err error, readMsg ...string) error {
 	return output.ErrValidation("%s: %s", msg, err)
 }
 
+// WrapInputStatErrorTyped wraps a FileIO.Stat/Open error for input file validation.
+func WrapInputStatErrorTyped(err error, readMsg ...string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe file path: %s", err).
+			WithCause(err)
+	}
+	msg := "cannot read file"
+	if len(readMsg) > 0 && readMsg[0] != "" {
+		msg = readMsg[0]
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %s", msg, err).
+		WithCause(err)
+}
+
 // WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
 // using standardized messages and the given error category (e.g. "api_error", "io").
 // Path validation errors always use ErrValidation (exit code 2).
+//
+// Deprecated: use WrapSaveErrorTyped for typed error envelopes.
 func WrapSaveErrorByCategory(err error, category string) error {
 	if err == nil {
 		return nil
@@ -654,6 +675,28 @@ func WrapSaveErrorByCategory(err error, category string) error {
 		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
 	default:
 		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
+	}
+}
+
+// WrapSaveErrorTyped maps a FileIO.Save error to typed validation/internal errors.
+// Unlike WrapSaveErrorByCategory, non-path failures always emit the canonical
+// "internal" wire type: call sites migrating from a custom category
+// (e.g. "io", "api_error") change their envelope's type field.
+func WrapSaveErrorTyped(err error) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
+			WithCause(err)
+	case errors.As(err, &me):
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
+			WithCause(err)
+	default:
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create file: %s", err).
+			WithCause(err)
 	}
 }
 
@@ -1022,7 +1065,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		}
 		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
 		if err != nil {
-			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+			return ValidationErrorf("--%s: Input is only supported for string flags", fl.Name).
+				WithParam("--" + fl.Name)
 		}
 		if raw == "" {
 			continue
@@ -1031,15 +1075,19 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// stdin: -
 		if raw == "-" {
 			if !slices.Contains(fl.Input, Stdin) {
-				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
+				return ValidationErrorf("--%s does not support stdin (-)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			if stdinUsed {
-				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
+				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			stdinUsed = true
 			data, err := io.ReadAll(rctx.IO().In)
 			if err != nil {
-				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
+				return ValidationErrorf("--%s: failed to read from stdin: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
 			rctx.Cmd.Flags().Set(fl.Name, string(data))
 			continue
@@ -1054,15 +1102,19 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// file: @path
 		if strings.HasPrefix(raw, "@") {
 			if !slices.Contains(fl.Input, File) {
-				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
+				return ValidationErrorf("--%s does not support file input (@path)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			path := strings.TrimSpace(raw[1:])
 			if path == "" {
-				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
+				return ValidationErrorf("--%s: file path cannot be empty after @", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				return FlagErrorf("--%s: %v", fl.Name, err)
+				return ValidationErrorf("--%s: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
 			rctx.Cmd.Flags().Set(fl.Name, string(data))
 			continue
@@ -1088,7 +1140,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 		}
 		if !valid {
-			return FlagErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", "))
+			return ValidationErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", ")).
+				WithParam("--" + fl.Name)
 		}
 	}
 	return nil
@@ -1096,7 +1149,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
 	if s.DryRun == nil {
-		return FlagErrorf("--dry-run is not supported for %s %s", s.Service, s.Command)
+		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
+			WithParam("--dry-run")
 	}
 	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
