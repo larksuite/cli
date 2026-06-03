@@ -13,8 +13,8 @@ import (
 	"github.com/skip2/go-qrcode"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -63,7 +63,7 @@ For ASCII output, the result is printed to stdout with fixed size.`,
 // runQRCode executes the auth qrcode command.
 func runQRCode(opts *QRCodeOptions) error {
 	if opts.URL == "" {
-		return output.Errorf(output.ExitValidation, "missing_url", "url is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "url is required").WithParam("--url")
 	}
 
 	if opts.ASCII {
@@ -75,20 +75,20 @@ func runQRCode(opts *QRCodeOptions) error {
 	}
 
 	if opts.Output == "" {
-		return output.Errorf(output.ExitValidation, "missing_output", "output file path is required for PNG mode. Use --output or -o flag to specify the output file path.")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "output file path is required for PNG mode. Use --output or -o flag to specify the output file path.").WithParam("--output")
 	}
 
 	if opts.Size < 32 {
-		return output.Errorf(output.ExitValidation, "invalid_size", fmt.Sprintf("size must be at least 32, got %d", opts.Size))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "size must be at least 32, got %d", opts.Size).WithParam("--size")
 	}
 
 	if opts.Size > 1024 {
-		return output.Errorf(output.ExitValidation, "invalid_size", fmt.Sprintf("size must be at most 1024, got %d", opts.Size))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "size must be at most 1024, got %d", opts.Size).WithParam("--size")
 	}
 
 	safePath, err := validate.SafeOutputPath(opts.Output)
 	if err != nil {
-		return output.ErrValidation("unsafe output path: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 	}
 
 	if err := generateImageQRCode(opts.URL, opts.Size, safePath); err != nil {
@@ -108,7 +108,7 @@ func runQRCode(opts *QRCodeOptions) error {
 	encoder := json.NewEncoder(out)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to write output: %v", err)
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write output: %v", err).WithCause(err)
 	}
 
 	return nil
@@ -118,12 +118,12 @@ func runQRCode(opts *QRCodeOptions) error {
 func generateImageQRCode(url string, size int, outputPath string) error {
 	png, err := qrcode.Encode(url, qrcode.Medium, size)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "encode_error", fmt.Sprintf("failed to encode QR code: %v", err))
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode QR code: %v", err).WithCause(err)
 	}
 
 	err = vfs.WriteFile(outputPath, png, 0644)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "write_error", fmt.Sprintf("failed to write QR code to %s: %v", outputPath, err))
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to write QR code to %s: %v", outputPath, err).WithCause(err)
 	}
 
 	return nil
@@ -133,7 +133,7 @@ func generateImageQRCode(url string, size int, outputPath string) error {
 func generateASCIIQRCode(url string, w io.Writer) error {
 	q, err := qrcode.New(url, qrcode.Medium)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "encode_error", fmt.Sprintf("failed to create QR code: %v", err))
+		return errs.NewInternalError(errs.SubtypeSDKError, "failed to create QR code: %v", err).WithCause(err)
 	}
 
 	fmt.Fprint(w, q.ToSmallString(false))

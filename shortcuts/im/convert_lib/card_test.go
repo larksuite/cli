@@ -27,14 +27,14 @@ func newTestCardConverter(mode cardMode) *cardConverter {
 
 func TestConvertCard(t *testing.T) {
 	rawCard := `{"json_card":"{\"schema\":1,\"header\":{\"title\":{\"content\":\"Card Title\"}},\"body\":{\"elements\":[{\"tag\":\"text\",\"property\":{\"content\":\"hello\"}},{\"tag\":\"button\",\"property\":{\"text\":{\"content\":\"Open\"},\"actions\":[{\"type\":\"open_url\",\"action\":{\"url\":\"https://example.com\"}}]}}]}}","json_attachment":"{\"persons\":{\"ou_1\":{\"content\":\"Alice\"}}}"}`
-	got := convertCard(rawCard)
+	got := convertCard(rawCard, nil)
 	want := "<card title=\"Card Title\">\nhello\n[Open](https://example.com)\n</card>"
 	if got != want {
 		t.Fatalf("convertCard(json_card) = %q, want %q", got, want)
 	}
 
 	legacy := `{"header":{"title":{"content":"Legacy Card"}},"elements":[{"tag":"div","text":{"content":"legacy body"}}]}`
-	gotLegacy := convertCard(legacy)
+	gotLegacy := convertCard(legacy, nil)
 	wantLegacy := "**Legacy Card**\nlegacy body"
 	if gotLegacy != wantLegacy {
 		t.Fatalf("convertCard(legacy) = %q, want %q", gotLegacy, wantLegacy)
@@ -240,6 +240,75 @@ func TestCardConverterMethods(t *testing.T) {
 	}
 	if got := (interactiveConverter{}).Convert(&ConvertContext{RawContent: `{"json_card":"{\"body\":{\"elements\":[{\"tag\":\"text\",\"property\":{\"content\":\"inside\"}}]}}"}`}); got != "<card>\ninside\n</card>" {
 		t.Fatalf("interactiveConverter.Convert() = %q", got)
+	}
+}
+
+func TestConvertAtWithMentions(t *testing.T) {
+	mentions := []interface{}{
+		map[string]interface{}{
+			"key":  "@_user_1",
+			"id":   "ou_6b64bef911a5a3ea763df8ffd9258f59",
+			"name": "燕忠毅",
+		},
+	}
+	attachment := cardObj{
+		"at_users": cardObj{
+			"cde8a6c8": cardObj{
+				"user_id":     "754700000001",
+				"content":     "燕忠毅",
+				"mention_key": "@_user_1",
+			},
+		},
+	}
+
+	// Concise mode: should show @Name(open_id) when mention resolves.
+	concise := &cardConverter{
+		mode:          cardModeConcise,
+		attachment:    attachment,
+		mentionsByKey: buildMentionsByKey(mentions),
+	}
+	if got := concise.convertAt(cardObj{"userID": "cde8a6c8"}); got != "@燕忠毅(ou_6b64bef911a5a3ea763df8ffd9258f59)" {
+		t.Fatalf("convertAt(concise with mentions) = %q", got)
+	}
+
+	// Detailed mode: label should be open_id when resolved from mentions.
+	detailed := &cardConverter{
+		mode:          cardModeDetailed,
+		attachment:    attachment,
+		mentionsByKey: buildMentionsByKey(mentions),
+	}
+	if got := detailed.convertAt(cardObj{"userID": "cde8a6c8"}); got != "@燕忠毅(open_id:ou_6b64bef911a5a3ea763df8ffd9258f59)" {
+		t.Fatalf("convertAt(detailed with mentions) = %q", got)
+	}
+
+	// No mention_key: falls back to at_users.user_id with user_id label (existing behavior).
+	noMentionKey := &cardConverter{
+		mode: cardModeDetailed,
+		attachment: cardObj{
+			"at_users": cardObj{
+				"ou_at": cardObj{"content": "Bob", "user_id": "u_bob"},
+			},
+		},
+	}
+	if got := noMentionKey.convertAt(cardObj{"userID": "ou_at"}); got != "@Bob(user_id:u_bob)" {
+		t.Fatalf("convertAt(fallback no mention_key) = %q", got)
+	}
+
+	// mention_key present but mentionsByKey nil: still falls back gracefully.
+	nilMentions := &cardConverter{
+		mode: cardModeDetailed,
+		attachment: cardObj{
+			"at_users": cardObj{
+				"cde8a6c8": cardObj{
+					"user_id":     "754700000001",
+					"content":     "燕忠毅",
+					"mention_key": "@_user_1",
+				},
+			},
+		},
+	}
+	if got := nilMentions.convertAt(cardObj{"userID": "cde8a6c8"}); got != "@燕忠毅(user_id:754700000001)" {
+		t.Fatalf("convertAt(fallback nil mentionsByKey) = %q", got)
 	}
 }
 

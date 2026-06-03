@@ -543,7 +543,17 @@ func findMP4Box(data []byte, start, end int, boxType string) (int, int) {
 			if offset+16 > end {
 				return -1, -1
 			}
-			boxEnd = int(binary.BigEndian.Uint64(data[offset+8:]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring the
+			// offset+size used for 32-bit boxes below). Reject sizes that do not
+			// fit the search window; this also rejects values that would
+			// overflow int and drive boxEnd negative (CWE-190), which would
+			// otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8:])
+			if largesize < 16 || largesize > uint64(end-offset) {
+				return -1, -1
+			}
+			boxEnd = offset + int(largesize)
 			dataStart = offset + 16
 		default:
 			if size < 8 {
@@ -688,7 +698,16 @@ func readMp4DurationBytes(data []byte) int64 {
 			if offset+16 > fileSize {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(data[offset+8 : offset+16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190), which would otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8 : offset+16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
@@ -749,7 +768,16 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 			if _, err := f.ReadAt(hdr[8:16], offset+8); err != nil {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(hdr[8:16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190).
+			largesize := binary.BigEndian.Uint64(hdr[8:16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
@@ -789,49 +817,25 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 //  5. Compress excess blank lines
 //  6. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6             = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1                 = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3          = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH            = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap         = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
-	reExcessNL           = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
-	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
+	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
+	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reExcessNL   = regexp.MustCompile(`\n{3,}`)
+	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
 )
-
-const (
-	markdownCodeBlockPlaceholder = "___CB_"
-	postBlankLinePlaceholder     = "\u200B"
-)
-
-type markdownPart struct {
-	text         string
-	newlineCount int
-	isSeparator  bool
-}
-
-func protectMarkdownCodeBlocks(text string) (string, []string) {
-	var codeBlocks []string
-	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
-		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
-	})
-	return protected, codeBlocks
-}
-
-func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
-	restored := text
-	for i, block := range codeBlocks {
-		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, i), block, 1)
-	}
-	return restored
-}
 
 func optimizeMarkdownStyle(text string) string {
-	r, codeBlocks := protectMarkdownCodeBlocks(text)
+	const mark = "___CB_"
+	var codeBlocks []string
+	r := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
+		idx := len(codeBlocks)
+		codeBlocks = append(codeBlocks, m)
+		return fmt.Sprintf("%s%d___", mark, idx)
+	})
 
 	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
 	if reHasH1toH3.MatchString(text) {
@@ -844,7 +848,9 @@ func optimizeMarkdownStyle(text string) string {
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
 	r = reTableAfter.ReplaceAllString(r, "$1\n")
 
-	r = restoreMarkdownCodeBlocks(r, codeBlocks)
+	for i, block := range codeBlocks {
+		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), block, 1)
+	}
 
 	r = reExcessNL.ReplaceAllString(r, "\n\n")
 
@@ -863,109 +869,12 @@ func optimizeMarkdownStyle(text string) string {
 	return r
 }
 
-func shouldUseSegmentedPost(markdown string) bool {
-	protected, _ := protectMarkdownCodeBlocks(markdown)
-	return reBlankLineSeparator.MatchString(protected)
-}
-
-func splitMarkdownByBlankLines(markdown string) []markdownPart {
-	protected, codeBlocks := protectMarkdownCodeBlocks(markdown)
-	locs := reBlankLineSeparator.FindAllStringIndex(protected, -1)
-	if len(locs) == 0 {
-		return []markdownPart{{text: markdown}}
-	}
-
-	parts := make([]markdownPart, 0, len(locs)*2+1)
-	last := 0
-	for _, loc := range locs {
-		if loc[0] > last {
-			content := restoreMarkdownCodeBlocks(protected[last:loc[0]], codeBlocks)
-			if content != "" {
-				parts = append(parts, markdownPart{text: content})
-			}
-		}
-		separator := protected[loc[0]:loc[1]]
-		parts = append(parts, markdownPart{
-			isSeparator:  true,
-			newlineCount: strings.Count(separator, "\n"),
-		})
-		last = loc[1]
-	}
-
-	if last < len(protected) {
-		content := restoreMarkdownCodeBlocks(protected[last:], codeBlocks)
-		if content != "" {
-			parts = append(parts, markdownPart{text: content})
-		}
-	}
-
-	if len(parts) == 0 {
-		return []markdownPart{{text: markdown}}
-	}
-	return parts
-}
-
-func marshalMarkdownPostContent(content [][]map[string]interface{}) string {
-	payload := map[string]interface{}{
-		"zh_cn": map[string]interface{}{
-			"content": content,
-		},
-	}
-	data, _ := json.Marshal(payload)
-	return string(data)
-}
-
-func buildSingleMDPost(markdown string) string {
-	return marshalMarkdownPostContent([][]map[string]interface{}{
-		{{
-			"tag":  "md",
-			"text": optimizeMarkdownStyle(markdown),
-		}},
-	})
-}
-
-func buildSegmentedPost(markdown string) string {
-	parts := splitMarkdownByBlankLines(markdown)
-	content := make([][]map[string]interface{}, 0, len(parts))
-	for _, part := range parts {
-		if part.isSeparator {
-			for i := 1; i < part.newlineCount; i++ {
-				content = append(content, []map[string]interface{}{{
-					"tag":  "text",
-					"text": postBlankLinePlaceholder,
-				}})
-			}
-			continue
-		}
-		if part.text == "" {
-			continue
-		}
-		optimized := strings.Trim(optimizeMarkdownStyle(part.text), "\n")
-		if optimized == "" {
-			continue
-		}
-		content = append(content, []map[string]interface{}{{
-			"tag":  "md",
-			"text": optimized,
-		}})
-	}
-	if len(content) == 0 {
-		return buildSingleMDPost(markdown)
-	}
-	return marshalMarkdownPostContent(content)
-}
-
-func buildMarkdownPostContent(markdown string) string {
-	if shouldUseSegmentedPost(markdown) {
-		return buildSegmentedPost(markdown)
-	}
-	return buildSingleMDPost(markdown)
-}
-
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
-// Used by DryRun. Output may include md/text paragraphs when blank-line separators are present.
+// Used by DryRun. Output: {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
 func wrapMarkdownAsPost(markdown string) string {
-	return buildMarkdownPostContent(markdown)
+	optimized := optimizeMarkdownStyle(markdown)
+	inner, _ := json.Marshal(optimized)
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
 }
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -1000,7 +909,9 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 // and wraps as post format JSON. Used by Execute (makes network calls).
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
-	return buildMarkdownPostContent(resolved)
+	optimized := optimizeMarkdownStyle(resolved)
+	inner, _ := json.Marshal(optimized)
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,

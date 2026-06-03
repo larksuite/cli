@@ -36,47 +36,71 @@ const userPolicyFileName = "policy.yml"
 // pluginRules carries Plugin.Restrict() contributions collected from
 // the InstallAll phase; nil/empty is fine.
 func applyUserPolicyPruning(rootCmd *cobra.Command, pluginRules []cmdpolicy.PluginRule) error {
-	yamlPath, err := userPolicyPath()
-	if err != nil {
-		// No user home dir means we cannot locate the policy. Treat
-		// the same as "file missing": no pruning, no error. This keeps
-		// non-interactive CI environments (no HOME set) running.
-		yamlPath = ""
+	// Plugin rules shadow the yaml source entirely (Resolve: plugin >
+	// yaml). When a plugin contributed rules we therefore do NOT even
+	// read ~/.lark-cli/policy.yml: build.go fail-CLOSES on any policy
+	// error once a plugin is present, so reading a malformed yaml here
+	// would let an unrelated broken file on the user's machine abort a
+	// plugin-governed binary -- exactly the file the plugin is supposed
+	// to shadow. Skipping the read keeps the shadow contract honest.
+	var (
+		yamlRules []*platform.Rule
+		yamlPath  string
+	)
+	if len(pluginRules) == 0 {
+		p, perr := userPolicyPath()
+		if perr != nil {
+			// No user home dir means we cannot locate the policy. Treat
+			// the same as "file missing": no pruning, no error. This keeps
+			// non-interactive CI environments (no HOME set) running.
+			p = ""
+		}
+		yamlPath = p
+		loaded, lerr := cmdpolicy.LoadYAMLPolicy(yamlPath)
+		if lerr != nil {
+			// Yaml-only failures are fail-OPEN at the caller (warn and
+			// continue), but the active-policy snapshot is process-global
+			// and may still carry data from a previous build in long-lived
+			// embedders / tests. Clear it explicitly so `config policy
+			// show` reports "no policy" instead of a stale rule that
+			// doesn't reflect the current command tree.
+			cmdpolicy.SetActive(nil)
+			return lerr
+		}
+		yamlRules = loaded
 	}
 
-	yamlRule, err := cmdpolicy.LoadYAMLPolicy(yamlPath)
-	if err != nil {
-		// Yaml-only failures are fail-OPEN at the caller (warn and
-		// continue), but the active-policy snapshot is process-global
-		// and may still carry data from a previous build in long-lived
-		// embedders / tests. Clear it explicitly so `config policy
-		// show` reports "no policy" instead of a stale rule that
-		// doesn't reflect the current command tree.
-		cmdpolicy.SetActive(nil)
-		return err
-	}
-
-	rule, source, err := cmdpolicy.Resolve(cmdpolicy.Sources{
+	rules, source, err := cmdpolicy.Resolve(cmdpolicy.Sources{
 		PluginRules: pluginRules,
-		YAMLRule:    yamlRule,
+		YAMLRules:   yamlRules,
 		YAMLPath:    yamlPath,
 	})
 	if err != nil {
 		cmdpolicy.SetActive(nil)
 		return err
 	}
-	if rule == nil {
+	if len(rules) == 0 {
 		cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{Source: source})
 		return nil
 	}
 
-	engine := cmdpolicy.New(rule)
+	// RuleName attributes a denial to a specific rule in the envelope.
+	// With a single rule that is unambiguous and preserves the legacy
+	// envelope verbatim; with several rules a denial means "no rule
+	// granted it", which has no single owner, so the field is left empty
+	// and reason_code=no_matching_rule carries the meaning instead.
+	ruleName := ""
+	if len(rules) == 1 {
+		ruleName = rules[0].Name
+	}
+
+	engine := cmdpolicy.NewSet(rules)
 	decisions := engine.EvaluateAll(rootCmd)
-	denied := cmdpolicy.BuildDeniedByPath(rootCmd, decisions, source, rule.Name)
+	denied := cmdpolicy.BuildDeniedByPath(rootCmd, decisions, source, ruleName)
 	cmdpolicy.Apply(rootCmd, denied)
 
 	cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{
-		Rule:        rule,
+		Rules:       rules,
 		Source:      source,
 		DeniedPaths: len(denied),
 	})

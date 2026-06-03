@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -95,7 +95,7 @@ func (s driveImportSpec) CreateTaskBody(fileToken string) map[string]interface{}
 func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName, docType string) (string, error) {
 	importInfo, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", driveInputStatError(err)
 	}
 
 	fileSize := importInfo.Size()
@@ -142,7 +142,7 @@ func buildImportMediaExtra(filePath, docType string) (string, error) {
 		"file_extension": strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), "."),
 	})
 	if err != nil {
-		return "", output.Errorf(output.ExitInternal, "json_error", "build upload extra failed: %v", err)
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "build upload extra failed: %v", err).WithCause(err)
 	}
 	return string(extraBytes), nil
 }
@@ -178,20 +178,20 @@ func validateDriveImportFileSize(filePath, docType string, fileSize int64) error
 	ext := strings.TrimPrefix(strings.ToLower(filepath.Ext(filePath)), ".")
 	if ext == "csv" {
 		// CSV is the only source format whose limit depends on the target type.
-		return output.ErrValidation(
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"file %s exceeds %s import limit for .csv when importing as %s",
 			common.FormatSize(fileSize),
 			common.FormatSize(limit),
 			docType,
-		)
+		).WithParam("--file")
 	}
 
-	return output.ErrValidation(
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
 		"file %s exceeds %s import limit for .%s",
 		common.FormatSize(fileSize),
 		common.FormatSize(limit),
 		ext,
-	)
+	).WithParam("--file")
 }
 
 // validateDriveImportSpec enforces the CLI-level compatibility rules before any
@@ -199,18 +199,18 @@ func validateDriveImportFileSize(filePath, docType string, fileSize int64) error
 func validateDriveImportSpec(spec driveImportSpec) error {
 	ext := spec.FileExtension()
 	if ext == "" {
-		return output.ErrValidation("file must have an extension (e.g. .md, .docx, .xlsx, .pptx)")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must have an extension (e.g. .md, .docx, .xlsx, .pptx)").WithParam("--file")
 	}
 
 	switch spec.DocType {
 	case "docx", "sheet", "bitable", "slides":
 	default:
-		return output.ErrValidation("unsupported target document type: %s. Supported types are: docx, sheet, bitable, slides", spec.DocType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported target document type: %s. Supported types are: docx, sheet, bitable, slides", spec.DocType).WithParam("--type")
 	}
 
 	supportedTypes, ok := driveImportExtToDocTypes[ext]
 	if !ok {
-		return output.ErrValidation("unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv, base, pptx", ext)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file extension: %s. Supported extensions are: docx, doc, txt, md, mark, markdown, html, xlsx, xls, csv, base, pptx", ext).WithParam("--file")
 	}
 
 	typeAllowed := false
@@ -236,21 +236,21 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 		default:
 			hint = fmt.Sprintf(".%s files can only be imported as 'docx', not '%s'", ext, spec.DocType)
 		}
-		return output.ErrValidation("file type mismatch: %s", hint)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "file type mismatch: %s", hint)
 	}
 
 	if strings.TrimSpace(spec.FolderToken) != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 	}
 
 	if strings.TrimSpace(spec.TargetToken) != "" {
 		if spec.DocType != "bitable" {
-			return output.ErrValidation("--target-token is only supported when --type is bitable")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-token is only supported when --type is bitable").WithParam("--target-token")
 		}
 		if err := validate.ResourceName(spec.TargetToken, "--target-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--target-token")
 		}
 	}
 
@@ -308,14 +308,14 @@ func driveImportTaskResultCommand(ticket string) string {
 // createDriveImportTask creates the server-side import task after the media
 // upload has produced a reusable file token.
 func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec, fileToken string) (string, error) {
-	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/import_tasks", nil, spec.CreateTaskBody(fileToken))
+	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/import_tasks", nil, spec.CreateTaskBody(fileToken))
 	if err != nil {
 		return "", err
 	}
 
 	ticket := common.GetString(data, "ticket")
 	if ticket == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "no ticket returned from import_tasks")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "no ticket returned from import_tasks")
 	}
 	return ticket, nil
 }
@@ -323,10 +323,10 @@ func createDriveImportTask(runtime *common.RuntimeContext, spec driveImportSpec,
 // getDriveImportStatus fetches the current state of an import task by ticket.
 func getDriveImportStatus(runtime *common.RuntimeContext, ticket string) (driveImportStatus, error) {
 	if err := validate.ResourceName(ticket, "--ticket"); err != nil {
-		return driveImportStatus{}, output.ErrValidation("%s", err)
+		return driveImportStatus{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--ticket")
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/drive/v1/import_tasks/%s", validate.EncodePathSegment(ticket)),
 		nil,
@@ -391,7 +391,7 @@ func pollDriveImportTask(runtime *common.RuntimeContext, ticket string) (driveIm
 			if msg == "" {
 				msg = status.StatusLabel()
 			}
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "import failed with status %d: %s", status.JobStatus, msg)
+			return status, false, errs.NewAPIError(errs.SubtypeServerError, "import failed with status %d: %s", status.JobStatus, msg)
 		}
 	}
 	if !hadSuccessfulPoll && lastErr != nil {

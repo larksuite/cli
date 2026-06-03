@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -48,5 +48,5 @@ func rejectCalendarAutoBotFallback(runtime *common.RuntimeContext) error {
 
 	msg := "calendar commands require a valid user login by default; when no valid user login state is available, auto identity falls back to bot and may operate on the bot calendar instead of your own. Run `lark-cli auth login --domain calendar` for your calendar, or rerun with `--as bot` if bot identity is intentional."
 	hint := "restore user login: `lark-cli auth login --domain calendar`\nintentional bot usage: rerun with `--as bot`"
-	return output.ErrWithHint(output.ExitAuth, "calendar_user_login_required", msg, hint)
+	return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "%s", msg).WithHint("%s", hint)
 }

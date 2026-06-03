@@ -20,7 +20,12 @@ var BaseDataQuery = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "dsl", Desc: "query JSON DSL (LiteQuery Protocol)", Required: true},
+		{Name: "dsl", Desc: "query JSON DSL; read lark-base-data-query-guide.md first, then lark-base-data-query.md for the full DSL SSOT", Required: true},
+	},
+	Tips: []string{
+		"Use +data-query for server-side aggregation, grouping, filtering, sorting, and Top N queries.",
+		"Read lark-base-data-query-guide.md for common fewshots; use lark-base-data-query.md only when the full DSL reference is needed.",
+		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		var dsl map[string]interface{}

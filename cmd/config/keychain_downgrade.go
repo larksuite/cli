@@ -8,6 +8,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
@@ -53,12 +54,10 @@ func configKeychainDowngradeRun(f *cmdutil.Factory) error {
 
 	result, err := keychain.DowngradeMasterKeyToFile(service)
 	if err != nil {
-		return output.ErrWithHint(
-			output.ExitAPI,
-			"config",
-			fmt.Sprintf("keychain downgrade failed: %v", err),
-			"This command must be run from an interactive macOS session (e.g. Terminal.app or iTerm) where the system Keychain is reachable. Running it from inside a sandbox / automation context that blocks Keychain access cannot succeed by design.",
-		)
+		return errs.NewInternalError(errs.SubtypeSDKError,
+			"keychain downgrade failed: %v", err).
+			WithHint("This command must be run from an interactive macOS session (e.g. Terminal.app or iTerm) where the system Keychain is reachable. Running it from inside a sandbox / automation context that blocks Keychain access cannot succeed by design.").
+			WithCause(err)
 	}
 
 	switch result {

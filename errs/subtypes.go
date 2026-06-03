@@ -12,7 +12,8 @@ const (
 
 // CategoryValidation subtypes
 const (
-	SubtypeInvalidArgument Subtype = "invalid_argument" // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
+	SubtypeInvalidArgument    Subtype = "invalid_argument"    // user-supplied flag / arg failed validation (gRPC INVALID_ARGUMENT alignment)
+	SubtypeFailedPrecondition Subtype = "failed_precondition" // request is valid but the system/resource state is not in the state required to execute; caller must change state (not retry) — e.g. ambiguous remote mapping (gRPC FAILED_PRECONDITION alignment)
 )
 
 // CategoryAuthentication subtypes
@@ -34,7 +35,8 @@ const (
 	SubtypeAppScopeNotApplied     Subtype = "app_scope_not_applied"    // app did not apply for this scope on the open platform
 	SubtypeTokenScopeInsufficient Subtype = "token_scope_insufficient" // token was issued without this scope (RFC 6750 alignment)
 	SubtypeAppUnavailable         Subtype = "app_unavailable"          // app status unavailable
-	SubtypeAppNotInstalled        Subtype = "app_not_installed"        // app not enabled / not installed in this tenant
+	SubtypeAppDisabled            Subtype = "app_disabled"             // app currently disabled in this tenant (was installed/enabled before)
+	SubtypePermissionDenied       Subtype = "permission_denied"        // resource-level permission denial (authenticated but lacks rights for this resource, HTTP 403 / gRPC PERMISSION_DENIED alignment)
 )
 
 // CategoryConfig subtypes
@@ -46,7 +48,11 @@ const (
 
 // CategoryNetwork subtypes
 const (
-	SubtypeNetworkTransport Subtype = "transport" // transport-layer failure (timeout / TLS / DNS / 5xx); see NetworkError.CauseKind
+	SubtypeNetworkTransport Subtype = "transport"    // fallback when no more-specific network subtype matches
+	SubtypeNetworkTimeout   Subtype = "timeout"      // dial / read timeout
+	SubtypeNetworkTLS       Subtype = "tls"          // TLS handshake / cert failure
+	SubtypeNetworkDNS       Subtype = "dns"          // DNS resolution failure
+	SubtypeNetworkServer    Subtype = "server_error" // upstream HTTP 5xx
 )
 
 // CategoryAPI subtypes
@@ -57,6 +63,10 @@ const (
 	SubtypeCrossBrand        Subtype = "cross_brand"        // operation crosses brand boundary (feishu vs lark, not supported)
 	SubtypeInvalidParameters Subtype = "invalid_parameters" // API-side parameter validation rejected the request
 	SubtypeOwnershipMismatch Subtype = "ownership_mismatch" // caller is not the resource owner
+	SubtypeNotFound          Subtype = "not_found"          // referenced resource does not exist (HTTP 404 alignment)
+	SubtypeServerError       Subtype = "server_error"       // upstream server-side transient error (HTTP 5xx alignment, retryable)
+	SubtypeQuotaExceeded     Subtype = "quota_exceeded"     // resource quota / collection size limit reached (assignees, followers, members, etc.)
+	SubtypeAlreadyExists     Subtype = "already_exists"     // idempotency violation: resource already exists in target state
 )
 
 // CategoryPolicy subtypes (security-policy envelope shape)
@@ -69,7 +79,12 @@ const (
 const (
 	SubtypeSDKError        Subtype = "sdk_error"        // lark SDK Do() returned an unexpected error
 	SubtypeInvalidResponse Subtype = "invalid_response" // SDK response body not parsable as JSON
+	SubtypeFileIO          Subtype = "file_io"          // local file I/O failure (mkdir / write / read)
+	SubtypeStorage         Subtype = "storage"          // local persistence failure (e.g. config file save)
 	// Generic untyped error lifted to InternalError uses SubtypeUnknown.
 )
 
-// CategoryConfirmation subtypes intentionally have no declarations yet.
+// CategoryConfirmation subtypes
+const (
+	SubtypeConfirmationRequired Subtype = "confirmation_required" // high-risk operation needs explicit --yes
+)

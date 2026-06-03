@@ -81,6 +81,29 @@ lark-cli auth login --scope "calendar:calendar:readonly" --no-wait --json
 lark-cli auth login --device-code <device_code>
 ```
 
+**Split-Flow 完整步骤**：
+
+**第一步：发起授权（当前轮）**
+
+1. 执行 `lark-cli auth login --scope "xxx" --no-wait --json`（必须加 `--no-wait --json`）
+2. 从 JSON 输出中提取 `verification_url` 和 `device_code`
+3. 生成二维码：`lark-cli auth qrcode <verification_url> --output "xxx"`
+4. 将 URL 和二维码展示给用户（先 URL，后二维码）
+5. **结束本轮对话前，必须明确告知用户**："请完成授权后，回来告诉我已授权完成，我会帮你完成后续步骤"
+
+**第二步：完成授权（后续轮）**
+
+1. 等待用户回复"已完成授权"
+2. **由你（AI agent）亲自执行**：`lark-cli auth login --device-code <device_code>`
+3. 此命令会轮询授权状态并完成登录
+4. 如果返回授权成功，流程结束
+
+**关键规则**：
+
+- **你必须亲自执行 `--device-code` 命令**，不要指示用户自行执行
+- **不要在同一轮中展示 URL 后立刻执行 `--device-code`**，这会导致用户看不到 URL
+- **禁止缓存 `verification_url` 或 `device_code`**：每次需要授权时，必须重新执行 `lark-cli auth login --no-wait --json` 生成新的链接。不要将授权链接和 device code 存入上下文供后续复用
+
 ## 更新检查
 
 lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_notice.update` 字段（含 `message`、`command` 等）。

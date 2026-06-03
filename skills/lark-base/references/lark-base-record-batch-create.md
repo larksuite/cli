@@ -54,5 +54,4 @@ lark-cli base +record-batch-create --base-token <base_token> --table-id <table_i
 
 ## 参考
 
-- [lark-base-record.md](lark-base-record.md) — record 索引页
 - [lark-base-cell-value.md](lark-base-cell-value.md) — CellValue 格式规范

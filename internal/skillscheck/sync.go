@@ -270,6 +270,10 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 		Force:          opts.Force,
 	}
 
+	if len(plan.ToUpdate) == 0 {
+		return fallbackFullInstall(opts, "toUpdate skills empty fallback", official)
+	}
+
 	if len(plan.ToUpdate) > 0 {
 		installResult := opts.Runner.InstallSkill(plan.ToUpdate)
 		if installResult == nil || installResult.Err != nil {

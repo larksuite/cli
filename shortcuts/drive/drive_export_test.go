@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -360,12 +361,18 @@ func TestDriveExportMarkdownRejectsMissingDocumentObject(t *testing.T) {
 		t.Fatal("expected error for missing document object, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "missing document object") {
-		t.Fatalf("error message = %q, want mention of missing document object", exitErr.Detail.Message)
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(intErr.Message, "missing document object") {
+		t.Fatalf("error message = %q, want mention of missing document object", intErr.Message)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitInternal)
 	}
 }
 
@@ -396,12 +403,18 @@ func TestDriveExportMarkdownRejectsMissingDocumentContent(t *testing.T) {
 		t.Fatal("expected error for missing document.content, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "missing document.content") {
-		t.Fatalf("error message = %q, want mention of missing document.content", exitErr.Detail.Message)
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(intErr.Message, "missing document.content") {
+		t.Fatalf("error message = %q, want mention of missing document.content", intErr.Message)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitInternal)
 	}
 }
 
@@ -688,21 +701,25 @@ func TestDriveExportReadyDownloadFailureIncludesRecoveryHint(t *testing.T) {
 		t.Fatal("expected download recovery error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	// The download itself succeeds; the local "file already exists" failure is a
+	// validation error. The recovery-hint wrapper must preserve that typed class
+	// (exit 2) instead of downgrading it to api/server_error (exit 1), per
+	// ERROR_CONTRACT.md "propagate typed errors unchanged".
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError (preserved class), got %T", err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "already exists") {
-		t.Fatalf("message missing overwrite guidance: %q", exitErr.Detail.Message)
+	if !strings.Contains(valErr.Message, "already exists") {
+		t.Fatalf("message missing overwrite guidance: %q", valErr.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "ticket=tk_ready") {
-		t.Fatalf("hint missing ticket: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, "ticket=tk_ready") {
+		t.Fatalf("hint missing ticket: %q", valErr.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "file_token=box_ready") {
-		t.Fatalf("hint missing file token: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, "file_token=box_ready") {
+		t.Fatalf("hint missing file token: %q", valErr.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, `lark-cli drive +export-download --file-token "box_ready" --file-name "report.pdf"`) {
-		t.Fatalf("hint missing recovery command: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, `lark-cli drive +export-download --file-token "box_ready" --file-name "report.pdf"`) {
+		t.Fatalf("hint missing recovery command: %q", valErr.Hint)
 	}
 }
 
@@ -856,18 +873,26 @@ func TestDriveExportPollErrorsReturnLastErrorWithRecoveryHint(t *testing.T) {
 		t.Fatalf("stdout should stay empty on persistent poll error: %s", stdout.String())
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	// The poll error is now a typed *errs.APIError (runtime.CallAPITyped).
+	// The recovery-hint wrapper must preserve that error's class and exit code
+	// (NOT downgrade it) and only append the recovery hint to the Problem in place.
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T (%v)", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "temporary backend failure") {
-		t.Fatalf("message missing last poll error: %q", exitErr.Detail.Message)
+	// Lark code 999 is unknown to the classifier, so it maps to CategoryAPI →
+	// ExitAPI — the wrapper must keep that, not force a different exit code.
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Fatalf("exit code = %d, want preserved %d (ExitAPI)", output.ExitCodeOf(err), output.ExitAPI)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "ticket=tk_poll_fail") {
-		t.Fatalf("hint missing ticket: %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Message, "temporary backend failure") {
+		t.Fatalf("message missing last poll error: %q", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "lark-cli drive +task_result --scenario export --ticket tk_poll_fail --file-token docx123") {
-		t.Fatalf("hint missing recovery command: %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "ticket=tk_poll_fail") {
+		t.Fatalf("hint missing ticket: %q", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "lark-cli drive +task_result --scenario export --ticket tk_poll_fail --file-token docx123") {
+		t.Fatalf("hint missing recovery command: %q", p.Hint)
 	}
 }
 

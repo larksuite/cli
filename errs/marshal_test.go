@@ -55,6 +55,28 @@ func TestPermissionError_MarshalJSON_HasAllWireFields(t *testing.T) {
 	}
 }
 
+func TestPermissionError_RequestedGrantedMarshal(t *testing.T) {
+	err := NewPermissionError(SubtypeMissingScope, "partial grant").
+		WithRequestedScopes("docx:document", "im:message:send").
+		WithGrantedScopes("docx:document").
+		WithMissingScopes("im:message:send")
+
+	b, e := json.Marshal(err)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got := string(b)
+	for _, want := range []string{
+		`"requested_scopes":["docx:document","im:message:send"]`,
+		`"granted_scopes":["docx:document"]`,
+		`"missing_scopes":["im:message:send"]`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("envelope missing %s\nactual: %s", want, got)
+		}
+	}
+}
+
 func TestValidationError_MarshalJSON(t *testing.T) {
 	ve := &ValidationError{
 		Problem: Problem{Category: CategoryValidation, Subtype: SubtypeInvalidArgument, Message: "bad"},
@@ -116,33 +138,26 @@ func TestConfigError_MarshalJSON(t *testing.T) {
 
 func TestNetworkError_MarshalJSON(t *testing.T) {
 	ne := &NetworkError{
-		Problem:   Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTransport, Message: "transport"},
-		CauseKind: "timeout",
+		Problem: Problem{Category: CategoryNetwork, Subtype: SubtypeNetworkTimeout, Message: "dial timeout"},
 	}
 	b, _ := json.Marshal(ne)
 	s := string(b)
 	for _, want := range []string{
 		`"type":"network"`,
-		`"subtype":"transport"`,
-		`"cause":"timeout"`,
+		`"subtype":"timeout"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
 		}
 	}
-
-	// CauseKind omitempty when ""
-	ne2 := &NetworkError{Problem: Problem{Category: CategoryNetwork, Message: "x"}}
-	b2, _ := json.Marshal(ne2)
-	if strings.Contains(string(b2), `"cause"`) {
-		t.Errorf("cause should be omitted when empty; got %s", b2)
+	if strings.Contains(s, `"cause"`) {
+		t.Errorf("cause field should no longer be on the wire; got %s", s)
 	}
 }
 
 func TestAPIError_MarshalJSON(t *testing.T) {
 	ae := &APIError{
 		Problem: Problem{Category: CategoryAPI, Subtype: SubtypeRateLimit, Code: 99991400, Message: "slow", Retryable: true},
-		Detail:  map[string]any{"raw": "value"},
 	}
 	b, _ := json.Marshal(ae)
 	s := string(b)
@@ -151,19 +166,39 @@ func TestAPIError_MarshalJSON(t *testing.T) {
 		`"subtype":"rate_limit"`,
 		`"code":99991400`,
 		`"retryable":true`,
-		`"detail":{`,
-		`"raw":"value"`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
 		}
 	}
+}
 
-	// Detail omitempty when nil
-	ae2 := &APIError{Problem: Problem{Category: CategoryAPI, Message: "x"}}
-	b2, _ := json.Marshal(ae2)
-	if strings.Contains(string(b2), `"detail"`) {
-		t.Errorf("detail should be omitted when nil; got %s", b2)
+// TestProblem_MarshalJSON_Troubleshooter pins the upstream Lark API
+// troubleshooter URL (resp.error.troubleshooter) surfacing on the wire under
+// "troubleshooter". Carried via Problem so any typed error that embeds it
+// inherits the field — populated by errclass.BuildAPIError before the
+// category switch.
+func TestProblem_MarshalJSON_Troubleshooter(t *testing.T) {
+	ae := &APIError{
+		Problem: Problem{
+			Category:       CategoryAPI,
+			Subtype:        SubtypeUnknown,
+			Code:           99991400,
+			Message:        "x",
+			Troubleshooter: "https://open.feishu.cn/document/troubleshoot/abc",
+		},
+	}
+	b, _ := json.Marshal(ae)
+	s := string(b)
+	if !strings.Contains(s, `"troubleshooter":"https://open.feishu.cn/document/troubleshoot/abc"`) {
+		t.Errorf("missing troubleshooter in %s", s)
+	}
+
+	// Absent Troubleshooter must omit the wire key.
+	bare := &APIError{Problem: Problem{Category: CategoryAPI, Message: "x"}}
+	b2, _ := json.Marshal(bare)
+	if strings.Contains(string(b2), `"troubleshooter"`) {
+		t.Errorf("absent Troubleshooter must omit wire key; got %s", string(b2))
 	}
 }
 
@@ -181,6 +216,32 @@ func TestSecurityPolicyError_MarshalJSON(t *testing.T) {
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("missing %q in %s", want, s)
+		}
+	}
+}
+
+// Pin per-Subtype symmetry: SubtypeAccessDenied must serialize the same
+// envelope shape as SubtypeChallengeRequired so callers can switch on
+// subtype without conditional field probing. The constructor + builder
+// path (mirroring how callsites actually construct these) is exercised
+// here rather than the struct literal, since SubtypeAccessDenied is the
+// path threaded through cmd/* sites that surface policy-deny outcomes.
+func TestSecurityPolicyError_MarshalJSON_AccessDenied(t *testing.T) {
+	err := NewSecurityPolicyError(SubtypeAccessDenied, "user denied").
+		WithChallengeURL("https://chal.example/2")
+
+	b, e := json.Marshal(err)
+	if e != nil {
+		t.Fatal(e)
+	}
+	got := string(b)
+	for _, want := range []string{
+		`"type":"policy"`,
+		`"subtype":"access_denied"`,
+		`"challenge_url":"https://chal.example/2"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("envelope missing %s\nactual: %s", want, got)
 		}
 	}
 }

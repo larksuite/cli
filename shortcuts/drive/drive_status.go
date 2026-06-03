@@ -17,7 +17,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -75,27 +75,27 @@ var DriveStatus = common.Shortcut{
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 		if localDir == "" {
-			return common.FlagErrorf("--local-dir is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is required").WithParam("--local-dir")
 		}
 		if folderToken == "" {
-			return common.FlagErrorf("--folder-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--folder-token is required").WithParam("--folder-token")
 		}
 		if err := validate.ResourceName(folderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 		// Path safety (absolute paths, traversal, symlink escape) is enforced
 		// upfront by the framework helper so the error message references the
 		// correct flag name; FileIO().Stat below would do the same check, but
 		// surface --file in its hint.
 		if _, err := validate.SafeLocalFlagPath("--local-dir", localDir); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--local-dir")
 		}
 		info, err := runtime.FileIO().Stat(localDir)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return driveInputStatError(err)
 		}
 		if !info.IsDir() {
-			return output.ErrValidation("--local-dir is not a directory: %s", localDir)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is not a directory: %s", localDir).WithParam("--local-dir")
 		}
 		// Conditional scope pre-check: quick mode only compares local mtime with
 		// Drive modified_time, so it must not be blocked on the download grant.
@@ -144,11 +144,11 @@ var DriveStatus = common.Shortcut{
 		// only possible under a Validate↔Execute race.
 		safeRoot, err := validate.SafeInputPath(localDir)
 		if err != nil {
-			return output.ErrValidation("--local-dir: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir: %s", err).WithParam("--local-dir")
 		}
 		cwdCanonical, err := validate.SafeInputPath(".")
 		if err != nil {
-			return output.ErrValidation("could not resolve cwd: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
@@ -263,7 +263,7 @@ func walkLocalForStatus(root, cwdCanonical string) (map[string]driveStatusLocalF
 		return nil
 	})
 	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "io", "walk %s: %s", root, err)
+		return nil, errs.NewInternalError(errs.SubtypeFileIO, "walk %s: %s", root, err).WithCause(err)
 	}
 	return files, nil
 }
@@ -276,12 +276,12 @@ func driveStatusShouldTreatAsUnchangedQuick(remoteModified string, local time.Ti
 func hashLocalForStatus(runtime *common.RuntimeContext, path string) (string, error) {
 	f, err := runtime.FileIO().Open(path)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", driveInputStatError(err)
 	}
 	defer f.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		return "", output.Errorf(output.ExitInternal, "io", "hash %s: %s", path, err)
+		return "", errs.NewInternalError(errs.SubtypeFileIO, "hash %s: %s", path, err).WithCause(err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -292,12 +292,12 @@ func hashRemoteForStatus(ctx context.Context, runtime *common.RuntimeContext, fi
 		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 	})
 	if err != nil {
-		return "", output.ErrNetwork("download %s: %s", common.MaskToken(fileToken), err)
+		return "", wrapDriveNetworkErr(err, "download %s: %s", common.MaskToken(fileToken), err)
 	}
 	defer resp.Body.Close()
 	h := sha256.New()
 	if _, err := io.Copy(h, resp.Body); err != nil {
-		return "", output.ErrNetwork("hash remote %s: %s", common.MaskToken(fileToken), err)
+		return "", wrapDriveNetworkErr(err, "hash remote %s: %s", common.MaskToken(fileToken), err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

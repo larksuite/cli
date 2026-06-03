@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -161,10 +161,10 @@ func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, 
 	// and format-specific size limits before planning the upload path.
 	info, err := fio.Stat(spec.FilePath)
 	if err != nil {
-		return 0, common.WrapInputStatError(err)
+		return 0, driveInputStatError(err)
 	}
 	if !info.Mode().IsRegular() {
-		return 0, output.ErrValidation("file must be a regular file: %s", spec.FilePath)
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", spec.FilePath).WithParam("--file")
 	}
 	if err = validateDriveImportFileSize(spec.FilePath, spec.DocType, info.Size()); err != nil {
 		return 0, err

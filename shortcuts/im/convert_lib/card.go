@@ -50,11 +50,12 @@ var cardChartTypeNames = map[string]string{
 type interactiveConverter struct{}
 
 func (interactiveConverter) Convert(ctx *ConvertContext) string {
-	return convertCard(ctx.RawContent)
+	return convertCard(ctx.RawContent, ctx.Mentions)
 }
 
 // convertCard converts a raw interactive/card message content JSON to human-readable string.
-func convertCard(raw string) string {
+// mentions is the raw mentions array from the API response; pass nil when not available.
+func convertCard(raw string, mentions []interface{}) string {
 	var parsed cardObj
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return "[interactive card]"
@@ -63,11 +64,19 @@ func convertCard(raw string) string {
 	// raw_card_content format: outer JSON has "json_card" string field
 	if jsonCard, ok := parsed["json_card"].(string); ok {
 		c := &cardConverter{mode: cardModeConcise}
-		if att, ok := parsed["json_attachment"].(string); ok && att != "" {
-			var attObj cardObj
-			if json.Unmarshal([]byte(att), &attObj) == nil {
-				c.attachment = attObj
+		switch att := parsed["json_attachment"].(type) {
+		case string:
+			if att != "" {
+				var attObj cardObj
+				if json.Unmarshal([]byte(att), &attObj) == nil {
+					c.attachment = attObj
+				}
 			}
+		case cardObj:
+			c.attachment = att
+		}
+		if len(mentions) > 0 {
+			c.mentionsByKey = buildMentionsByKey(mentions)
 		}
 		schema := 0
 		if s, ok := parsed["card_schema"].(float64); ok {
@@ -82,6 +91,22 @@ func convertCard(raw string) string {
 
 	// Legacy format
 	return convertLegacyCard(parsed)
+}
+
+// buildMentionsByKey indexes the mentions array by key for O(1) lookup in convertAt.
+func buildMentionsByKey(mentions []interface{}) map[string]map[string]interface{} {
+	m := make(map[string]map[string]interface{}, len(mentions))
+	for _, raw := range mentions {
+		item, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		key, _ := item["key"].(string)
+		if key != "" {
+			m[key] = item
+		}
+	}
+	return m
 }
 
 // ── Legacy converter ──────────────────────────────────────────────────────────
@@ -158,8 +183,9 @@ func legacyExtractTexts(elements []interface{}, out *[]string) {
 // ── CardConverter ─────────────────────────────────────────────────────────────
 
 type cardConverter struct {
-	mode       cardMode
-	attachment cardObj
+	mode          cardMode
+	attachment    cardObj
+	mentionsByKey map[string]map[string]interface{}
 }
 
 func (c *cardConverter) convert(jsonCard string, hintSchema int) string {
@@ -1403,26 +1429,52 @@ func (c *cardConverter) convertAt(prop cardObj) string {
 	}
 	userName := ""
 	actualUserID := ""
+	fromMentions := false
 	if c.attachment != nil {
 		if atUsers, ok := c.attachment["at_users"].(cardObj); ok {
 			if userInfo, ok := atUsers[userID].(cardObj); ok {
 				userName, _ = userInfo["content"].(string)
 				actualUserID, _ = userInfo["user_id"].(string)
+				// When the backend populates mention_key (raw_card_content path), use
+				// mentions[] for the canonical name and the reading-app open_id, which is
+				// more accurate than the origKey-stored user_id in at_users.
+				if mentionKey, _ := userInfo["mention_key"].(string); mentionKey != "" {
+					if mention, ok := c.mentionsByKey[mentionKey]; ok {
+						if name, _ := mention["name"].(string); name != "" {
+							userName = name
+						}
+						if id := extractMentionOpenId(mention["id"]); id != "" {
+							actualUserID = id
+							fromMentions = true
+						}
+					}
+				}
 			}
 		}
 	}
 	if userName != "" {
 		if c.mode == cardModeDetailed {
 			if actualUserID != "" {
-				return fmt.Sprintf("@%s(user_id:%s)", userName, actualUserID)
+				label := "user_id"
+				if fromMentions {
+					label = "open_id"
+				}
+				return fmt.Sprintf("@%s(%s:%s)", userName, label, actualUserID)
 			}
 			return fmt.Sprintf("@%s(open_id:%s)", userName, userID)
 		}
-		return "@" + userName
+		if fromMentions && actualUserID != "" {
+			return fmt.Sprintf("@%s(%s)", userName, actualUserID)
+		}
+		return fmt.Sprintf("@%s(%s)", userName, userID)
 	}
 	if c.mode == cardModeDetailed {
 		if actualUserID != "" {
-			return fmt.Sprintf("@user(user_id:%s)", actualUserID)
+			label := "user_id"
+			if fromMentions {
+				label = "open_id"
+			}
+			return fmt.Sprintf("@user(%s:%s)", label, actualUserID)
 		}
 		return fmt.Sprintf("@user(open_id:%s)", userID)
 	}

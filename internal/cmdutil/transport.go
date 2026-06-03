@@ -9,7 +9,7 @@ import (
 	"time"
 
 	exttransport "github.com/larksuite/cli/extension/transport"
-	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 // RetryTransport is an http.RoundTripper that retries on 5xx responses
@@ -24,7 +24,7 @@ func (t *RetryTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return util.FallbackTransport()
+	return transport.Fallback()
 }
 
 func (t *RetryTransport) delay() time.Duration {
@@ -69,7 +69,7 @@ func (t *UserAgentTransport) RoundTrip(req *http.Request) (*http.Response, error
 	if t.Base != nil {
 		return t.Base.RoundTrip(req)
 	}
-	return util.FallbackTransport().RoundTrip(req)
+	return transport.Fallback().RoundTrip(req)
 }
 
 // BuildHeaderTransport is an http.RoundTripper that force-writes the
@@ -87,7 +87,7 @@ func (t *BuildHeaderTransport) RoundTrip(req *http.Request) (*http.Response, err
 	if t.Base != nil {
 		return t.Base.RoundTrip(req)
 	}
-	return util.FallbackTransport().RoundTrip(req)
+	return transport.Fallback().RoundTrip(req)
 }
 
 // SecurityHeaderTransport is an http.RoundTripper that injects CLI security
@@ -100,7 +100,7 @@ func (t *SecurityHeaderTransport) base() http.RoundTripper {
 	if t.Base != nil {
 		return t.Base
 	}
-	return util.FallbackTransport()
+	return transport.Fallback()
 }
 
 // RoundTrip implements http.RoundTripper.

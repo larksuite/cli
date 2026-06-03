@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -1338,8 +1340,19 @@ func TestDriveUploadValidateRejectsConflictingTargets(t *testing.T) {
 
 	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
 	err := DriveUpload.Validate(context.Background(), runtime)
-	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("Validate() error = %T %v, want *errs.ValidationError", err, err)
+	}
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", verr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(verr.Error(), "mutually exclusive") {
 		t.Fatalf("Validate() error = %v, want mutually exclusive error", err)
+	}
+	// Multi-flag conflict carries no single Param.
+	if verr.Param != "" {
+		t.Fatalf("Param = %q, want empty for multi-flag conflict", verr.Param)
 	}
 }
 
@@ -1361,9 +1374,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyWikiToken(t *testing.T) {
 
 	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
 	err := DriveUpload.Validate(context.Background(), runtime)
-	if err == nil || !strings.Contains(err.Error(), "--wiki-token cannot be empty") {
-		t.Fatalf("Validate() error = %v, want empty wiki-token error", err)
-	}
+	assertDriveValidationParam(t, err, "--wiki-token", "--wiki-token cannot be empty")
 }
 
 func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
@@ -1384,9 +1395,7 @@ func TestDriveUploadValidateRejectsExplicitEmptyFileToken(t *testing.T) {
 
 	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
 	err := DriveUpload.Validate(context.Background(), runtime)
-	if err == nil || !strings.Contains(err.Error(), "--file-token cannot be empty") {
-		t.Fatalf("Validate() error = %v, want empty file-token error", err)
-	}
+	assertDriveValidationParam(t, err, "--file-token", "--file-token cannot be empty")
 }
 
 func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
@@ -1407,8 +1416,25 @@ func TestDriveUploadValidateRejectsExplicitEmptyFolderToken(t *testing.T) {
 
 	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, nil)
 	err := DriveUpload.Validate(context.Background(), runtime)
-	if err == nil || !strings.Contains(err.Error(), "--folder-token cannot be empty") {
-		t.Fatalf("Validate() error = %v, want empty folder-token error", err)
+	assertDriveValidationParam(t, err, "--folder-token", "--folder-token cannot be empty")
+}
+
+// assertDriveValidationParam asserts err is a typed *errs.ValidationError with
+// SubtypeInvalidArgument, the given Param, and a message containing wantMsg.
+func assertDriveValidationParam(t *testing.T, err error, wantParam, wantMsg string) {
+	t.Helper()
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+	}
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", verr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if verr.Param != wantParam {
+		t.Fatalf("Param = %q, want %q", verr.Param, wantParam)
+	}
+	if !strings.Contains(verr.Error(), wantMsg) {
+		t.Fatalf("error = %q, want substring %q", verr.Error(), wantMsg)
 	}
 }
 

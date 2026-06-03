@@ -26,6 +26,10 @@ var BaseRoleList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
+	Tips: []string{
+		"Requires advanced permissions to be enabled and the caller to be a Base admin.",
+		"Returns role summaries; use +role-get for the full permission config.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
 			return common.FlagErrorf("--base-token must not be blank")

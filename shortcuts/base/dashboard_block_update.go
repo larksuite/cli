@@ -24,9 +24,17 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 		dashboardIDFlag(true),
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
-		{Name: "data-config", Desc: "data config JSON. For chart types: table_name, series|count_all, group_by, filter. For text type: text (markdown supported). See dashboard-block-data-config.md for details."},
-		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
+		{Name: "data-config", Desc: "data_config JSON object; read dashboard-block-data-config.md for the SSOT"},
+		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
+	},
+	Tips: []string{
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
+		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
+		"Read dashboard-block-data-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
+		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
+		"Block type cannot be changed; delete and recreate the block to change chart type.",
+		"data_config update merges top-level keys, but each provided key is replaced as a whole.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)

@@ -17,7 +17,12 @@ var BaseFieldGet = common.Shortcut{
 	Scopes:      []string{"base:field:read"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
-	DryRun:      dryRunFieldGet,
+	Tips: []string{
+		`Example: lark-cli base +field-get --base-token <base_token> --table-id <table_id> --field-id "Status"`,
+		"field-id accepts a field ID (fld...) or the field name from the current table.",
+		"Returns full field configuration; use it as the baseline before +field-update.",
+	},
+	DryRun: dryRunFieldGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeFieldGet(runtime)
 	},

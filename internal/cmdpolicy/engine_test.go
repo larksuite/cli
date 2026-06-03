@@ -398,6 +398,93 @@ func TestEvaluate_unknownIdentitiesIsAllow(t *testing.T) {
 	}
 }
 
+// --- Multi-rule (OR) semantics ---
+
+// Two scoped rules (docs read-only, im writable) are OR-combined: a
+// command is allowed when it satisfies ANY rule. This is the headline
+// multi-rule use case -- different command groups need different risk
+// ceilings within one policy.
+func TestEvaluate_multiRuleOR(t *testing.T) {
+	root := buildTree()
+	e := cmdpolicy.NewSet([]*platform.Rule{
+		{Name: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: "read"},
+		{Name: "im-rw", Allow: []string{"im/**"}, MaxRisk: "write"},
+	})
+	got := e.EvaluateAll(root)
+
+	// docs/+fetch (read) clears docs-ro.
+	if !got["docs/+fetch"].Allowed {
+		t.Errorf("docs/+fetch should be allowed by docs-ro")
+	}
+	// im/+send (write) clears im-rw even though docs-ro rejects it.
+	if !got["im/+send"].Allowed {
+		t.Errorf("im/+send (write) should be allowed by im-rw")
+	}
+	// docs/+update (write) exceeds docs-ro's read ceiling AND is outside
+	// im-rw's allow list -> rejected by both -> no_matching_rule.
+	if got["docs/+update"].Allowed {
+		t.Fatalf("docs/+update should be denied: read-only in docs, not allowed in im")
+	}
+	if rc := got["docs/+update"].ReasonCode; rc != "no_matching_rule" {
+		t.Errorf("docs/+update ReasonCode = %q, want no_matching_rule", rc)
+	}
+}
+
+// Identity can differ per rule: docs limited to user, im open to bot.
+// This is the second half of the requirement -- some commands restrict
+// identity, others allow the bot identity.
+func TestEvaluate_multiRulePerRuleIdentity(t *testing.T) {
+	root := buildTree()
+	e := cmdpolicy.NewSet([]*platform.Rule{
+		{Name: "docs-user", Allow: []string{"docs/**"}, MaxRisk: "write", Identities: []platform.Identity{"user"}},
+		{Name: "im-bot", Allow: []string{"im/**"}, MaxRisk: "write", Identities: []platform.Identity{"bot"}},
+	})
+	got := e.EvaluateAll(root)
+
+	// docs/+update identities=[user] -> docs-user grants.
+	if !got["docs/+update"].Allowed {
+		t.Errorf("docs/+update (user) should be allowed by docs-user")
+	}
+	// im/+send identities=[bot] -> im-bot grants.
+	if !got["im/+send"].Allowed {
+		t.Errorf("im/+send (bot) should be allowed by im-bot")
+	}
+	// docs/+delete-doc is high-risk-write -> exceeds both ceilings -> denied.
+	if got["docs/+delete-doc"].Allowed {
+		t.Errorf("docs/+delete-doc (high-risk-write) should be denied by both rules")
+	}
+}
+
+// NewSet with a single rule must behave exactly like New: the per-rule
+// rejection (not the aggregate no_matching_rule) is preserved so the
+// single-rule envelope is unchanged.
+func TestEvaluate_newSetSingleRuleKeepsReason(t *testing.T) {
+	root := buildTree()
+	e := cmdpolicy.NewSet([]*platform.Rule{
+		{Allow: []string{"docs/**"}},
+	})
+	got := e.EvaluateAll(root)
+	if got["im/+send"].Allowed {
+		t.Fatalf("im/+send should be denied by docs-only rule")
+	}
+	if rc := got["im/+send"].ReasonCode; rc != "domain_not_allowed" {
+		t.Errorf("single-rule reason must be preserved verbatim, got %q want domain_not_allowed", rc)
+	}
+}
+
+// NewSet drops nil entries; an all-nil/empty set means "no restriction".
+func TestNewSet_emptyAndNilMeansNoRestriction(t *testing.T) {
+	root := buildTree()
+	for _, rules := range [][]*platform.Rule{nil, {}, {nil}} {
+		got := cmdpolicy.NewSet(rules).EvaluateAll(root)
+		for path, d := range got {
+			if !d.Allowed {
+				t.Fatalf("empty/nil rule set must allow all, got deny for %s", path)
+			}
+		}
+	}
+}
+
 // Apply must install denyStubs only on Layer="policy" entries. A
 // "strict_mode" denial in the same map must be left for
 // applyStrictModeDenials in cmd/.

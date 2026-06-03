@@ -21,7 +21,14 @@ func RunAllWithNames(path, src string, allowlist, nameset map[string]struct{}) [
 		// CheckProblemEmbed fires on errs/ files only (caller may also enforce parity
 		// across directory via CheckErrsContract).
 		out = append(out, CheckProblemEmbed(path, src)...)
+		// The next three rules also scope to errs/ files internally — they
+		// guard the typed wrappers that live exclusively in this package.
+		out = append(out, CheckNilSafeError(path, src)...)
+		out = append(out, CheckUnwrapSymmetry(path, src)...)
+		out = append(out, CheckBuilderImmutable(path, src)...)
 	}
+	// CheckBuildAPIErrorArms self-scopes to internal/errclass/classify.go.
+	out = append(out, CheckBuildAPIErrorArms(path, src)...)
 	out = append(out, CheckNoRegistrar(path, src)...)
 	out = append(out, CheckAdHocSubtype(path, src)...)
 	out = append(out, CheckTypedErrorCompleteness(path, src)...)

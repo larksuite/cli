@@ -21,8 +21,12 @@ var BaseDashboardBlockList = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
-		{Name: "page-size", Desc: "page size (max 100)"},
+		{Name: "page-size", Desc: "page size, default 20, max 100"},
 		{Name: "page-token", Desc: "pagination token"},
+	},
+	Tips: []string{
+		"lark-cli base +dashboard-block-list --base-token <base_token> --dashboard-id <dashboard_id>",
+		"Use returned block_id and type values for +dashboard-block-get/update/delete/get-data.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{}

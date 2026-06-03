@@ -86,3 +86,12 @@ func IsAuthentication(err error) bool { var x *AuthenticationError; return error
 
 // IsConfig reports whether err is a *ConfigError.
 func IsConfig(err error) bool { var x *ConfigError; return errors.As(err, &x) }
+
+// IsTyped reports whether err is or wraps any of the typed *errs.* errors
+// in this package (i.e. implements the TypedError interface). Used by call
+// sites that need to pass already-classified errors through unchanged
+// instead of blanket-rewrapping them as a different category.
+func IsTyped(err error) bool {
+	var t TypedError
+	return errors.As(err, &t)
+}

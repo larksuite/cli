@@ -39,7 +39,6 @@ const (
 	ReasonDuplicateHookName   = "duplicate_hook_name"
 	ReasonInvalidHookRegister = "invalid_hook_registration"
 	ReasonInvalidRule         = "invalid_rule"
-	ReasonDoubleRestrict      = "double_restrict"
 	ReasonRestrictsMismatch   = "restricts_mismatch"
 	ReasonCapabilityUnmet     = "capability_unmet"
 	ReasonCapabilitiesPanic   = "capabilities_panic"

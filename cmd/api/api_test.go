@@ -4,11 +4,13 @@
 package api
 
 import (
+	"errors"
 	"os"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -668,5 +670,71 @@ func TestApiCmd_DryRunWithFile(t *testing.T) {
 	}
 	if !strings.Contains(out, "Dry Run") {
 		t.Errorf("expected dry-run header, got: %s", out)
+	}
+}
+
+// TestApiCmd_PermissionError_DerivesFirstClassFields pins that when a Lark
+// API returns a missing-scope failure, the typed *errs.PermissionError
+// surfaced by `lark-cli api` lifts the diagnostic signals BuildAPIError
+// consumed during classification into first-class wire fields
+// (MissingScopes, LogID, ConsoleURL). The wire shape is the typed envelope
+// — there is no raw-payload passthrough; new Lark diagnostic fields require
+// a CLI release.
+func TestApiCmd_PermissionError_DerivesFirstClassFields(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "cli_test_perm", AppSecret: "secret", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/docx/v1/documents/test",
+		Body: map[string]interface{}{
+			"code":   99991679,
+			"msg":    "scope missing",
+			"log_id": "20260527-test-log",
+			"error": map[string]interface{}{
+				"permission_violations": []interface{}{
+					map[string]interface{}{"subject": "docx:document"},
+				},
+			},
+		},
+	})
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"GET", "/open-apis/docx/v1/documents/test", "--as", "bot"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+
+	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != "docx:document" {
+		t.Errorf("MissingScopes = %v, want [docx:document]", pe.MissingScopes)
+	}
+	if pe.LogID != "20260527-test-log" {
+		t.Errorf("LogID = %q, want %q", pe.LogID, "20260527-test-log")
+	}
+}
+
+func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *APIOptions
+	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"GET", "/open-apis/test", "--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("--json should be accepted without error, got: %v", err)
+	}
+	if gotOpts.Method != "GET" {
+		t.Errorf("expected method GET, got %s", gotOpts.Method)
 	}
 }

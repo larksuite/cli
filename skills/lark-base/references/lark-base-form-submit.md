@@ -6,7 +6,7 @@
 
 ## 填写前必读：先获取表单详情
 
-**在调用 `+form-submit` 之前，必须先使用 [`+form-detail`](lark-base-form-detail.md) 获取表单详情。** 原因如下：
+**在调用 `+form-submit` 之前，必须先使用 `+form-detail` 获取表单详情。** 原因如下：
 
 1. **字段类型匹配**：每个题目的 `type` 决定了值的格式（文本、数字、选项、人员、日期等），需根据类型正确构造 `fields` 中的值
 2. **必填校验**：通过 `questions[].required` 判断哪些题目为必填项，避免遗漏
@@ -27,7 +27,7 @@ lark-cli base +form-submit \
   --json '{"fields":{...}}'
 ```
 
-详见 [`lark-base-form-detail.md`](lark-base-form-detail.md) 中的「questions 结构说明」和「filter 结构说明」。
+`+form-detail` 的返回中要重点读取 `questions[].type`、`questions[].required`、题目 `filter` 和附件场景所需的 `data.base_token`。
 
 ## 命令
 
@@ -168,4 +168,3 @@ lark-cli base +form-submit \
 
 - [lark-base](../SKILL.md) — 多维表格全部命令
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
-- [lark-base-form](references/lark-base-form.md) — 表单管理总览

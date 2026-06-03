@@ -2,7 +2,9 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
 
-List groups the current user (or bot, with `--as bot`) is a member of. Useful for enumerating "my chats" without a search keyword, or for bulk operations against the caller's chats. Supports pagination, sort order, and (user identity only) muted-chat filtering.
+List chats the current user (or bot, with `--as bot`) is a member of. **Not a search API — there is no `--query` parameter; the call always returns the full member list, paginated.** For keyword-based lookup (e.g. find a group by name or by member), use [`+chat-search`](lark-im-chat-search.md) instead.
+
+**Defaults to groups only**; pass `--types=p2p,group` (or `--types p2p --types group`) to also include p2p single chats (user identity only — see ["Bot identity and p2p"](#bot-identity-and-p2p)). Supports pagination, sort order, and (user identity only) muted-chat filtering.
 
 This skill maps to the shortcut: `lark-cli im +chat-list` (internally calls `GET /open-apis/im/v1/chats`).
 
@@ -29,6 +31,15 @@ lark-cli im +chat-list --format json
 
 # Preview the request without executing it
 lark-cli im +chat-list --dry-run
+
+# Include p2p single chats (user identity only) — comma form
+lark-cli im +chat-list --as user --types p2p,group
+
+# Same, using repeat flag instead of CSV
+lark-cli im +chat-list --as user --types p2p --types group
+
+# Only p2p single chats (user identity only)
+lark-cli im +chat-list --as user --types p2p
 ```
 
 ## Parameters
@@ -36,6 +47,7 @@ lark-cli im +chat-list --dry-run
 | Parameter | Required | Limits | Description |
 |------|------|------|------|
 | `--user-id-type <type>` | No | `open_id` (default), `union_id`, `user_id` | ID type used for `owner_id` in the response |
+| `--types <strings>` | No | `group`, `p2p` (comma-separated or repeated) | Chat types to include. Omitted = groups only (backward compatible). `p2p` requires user identity (`--as user`); under `--as bot`, `--types=p2p` alone is rejected and `--types=p2p,group` is silently downgraded to `group` |
 | `--sort-type <type>` | No | `ByCreateTimeAsc` (default), `ByActiveTimeDesc` | Result ordering |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
@@ -55,6 +67,44 @@ lark-cli im +chat-list --dry-run
 | `owner_id` | Owner ID (type controlled by `--user-id-type`) |
 | `external` | Whether the chat is external |
 | `chat_status` | Chat status (`normal` / `dissolved` / `dissolved_save`) |
+| `chat_mode` | Chat mode discriminator: `group` (regular) / `topic` (topic group) / `p2p` (single chat) |
+| `p2p_target_type` | Peer type, e.g., `user` |
+| `p2p_target_id` | Peer ID (type controlled by `--user-id-type`) |
+
+## Including p2p single chats
+
+Default behavior lists groups only — same as before this feature. To include p2p, pass `--types`:
+
+| User intent | Call | Identity |
+|---|---|---|
+| "list my groups" / 我的群 / 我加入了哪些群 | (default, omit `--types`) | user or bot |
+| "list my p2p chats" / 我的单聊 / 我跟谁有 1v1 | `--types p2p` | **user only** |
+| "all my chats" / 全部聊天 / 所有会话 (ambiguous) | `--types p2p,group` | **user only** |
+
+For p2p rows in the response: `name` is the peer's display name, `owner_id` follows group semantics, `chat_mode = "p2p"`, and `p2p_target_type` / `p2p_target_id` identify the peer.
+
+## Bot identity and p2p
+
+`tenant_access_token` cannot list p2p chats — to protect user privacy, bot identity is not permitted to enumerate p2p single chats. Behavior under `--as bot`:
+
+- `--as bot --types=p2p` → rejected at validation time with an actionable error; no request is sent.
+- `--as bot --types=p2p,group` → CLI strips `p2p` and sends `types=group`. Request proceeds; only groups are returned. The strip is a **request-level adjustment**, surfaced two ways so neither humans nor agents miss it:
+    - **stderr**: `warning: bot_strip_p2p: To protect user privacy, bot identity cannot list p2p chats; --types=p2p,group was sent as types=group. Use --as user to include p2p.` (matches the `warning: <code>: <message>` convention in `shortcuts/common/runner.go`)
+    - **stdout JSON**: a top-level `notices` array gains a structured entry:
+      ```json
+      {
+        "chats": [...],
+        "notices": [
+          { "code": "bot_strip_p2p", "message": "To protect user privacy, bot identity cannot list p2p chats; …" }
+        ]
+      }
+      ```
+    - The `filter` slot stays scoped to `--exclude-muted`; `notices` is a separate top-level key, so the two never collide and no priority is needed when both fire.
+    - DryRun emits the same stderr warning so a previewed request truthfully reflects what Execute will send (parity with `shortcuts/drive/drive_search.go`).
+- `--as bot --types=group` → accepted, returns groups normally.
+- `--as bot` (no `--types`) → unchanged, returns groups.
+
+To include p2p single chats, switch to user identity: `--as user --types=p2p,group`.
 
 ## Filtering muted chats
 
@@ -111,3 +161,6 @@ done
 | Permission denied (99991679) with `--as user` | UAT is not authorized for `im:chat:read` | Run `lark-cli auth login --scope "im:chat:read"` |
 | `Bot ability is not activated` (232025) | The app does not have bot capability enabled | Enable bot capability in the Open Platform console |
 | `--exclude-muted` returns all chats unfiltered and `hint` says "no effect under bot identity" | Running under `--as bot` (mute API is UAT-only) | Switch to `--as user` for mute filtering |
+| `--types=p2p (single chats) is only supported with user identity` | `--as bot` + `--types=p2p` (single-value only; mixed `--types=p2p,group` is downgraded to `group` and surfaces a `bot_strip_p2p` notice via stderr + `outData["notices"]` — see "Bot identity and p2p") | Use `--as user`, or include `group` in `--types` (the bot proceeds with `group` only and emits the `bot_strip_p2p` notice) |
+
+> Full error message of the row above: `--types=p2p (single chats) is only supported with user identity (--as user). To protect user privacy, bot identity cannot list p2p chats. Use --as user, or include "group" in --types.`

@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/util"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -64,7 +64,7 @@ func httpClient() *http.Client {
 	}
 	return &http.Client{
 		Timeout:   fetchTimeout,
-		Transport: util.SharedTransport(),
+		Transport: transport.Shared(),
 	}
 }
 

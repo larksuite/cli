@@ -49,7 +49,7 @@ type Shortcut struct {
 	// Declarative fields (new framework).
 	AuthTypes []string // supported identities: "user", "bot" (default: ["user"])
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
-	HasFormat bool     // auto-inject --format flag (json|pretty|table|ndjson|csv)
+	HasFormat bool     // Deprecated: --format is now always injected; this field has no effect.
 	Tips      []string // optional tips shown in --help output
 	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 

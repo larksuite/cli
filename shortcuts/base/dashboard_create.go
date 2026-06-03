@@ -20,7 +20,10 @@ var BaseDashboardCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "dashboard name", Required: true},
-		{Name: "theme-style", Desc: "theme style"},
+		{Name: "theme-style", Desc: "theme style, defaults to platform default when omitted"},
+	},
+	Tips: []string{
+		"Record the returned dashboard_id; dashboard block create/get/update/delete/arrange commands need it.",
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{}

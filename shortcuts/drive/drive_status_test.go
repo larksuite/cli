@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -327,21 +328,28 @@ func TestDriveStatusExactRejectsMissingDownloadScope(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing_scope error for exact mode without drive:file:download")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured exit error, got %T", err)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T", err)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "missing_scope" {
-		t.Fatalf("expected missing_scope detail, got %#v", exitErr.Detail)
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
 	}
 	if !strings.Contains(err.Error(), "missing required scope(s): drive:file:download") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if exitErr.Detail == nil || !strings.Contains(exitErr.Detail.Hint, "auth login --scope") {
-		t.Fatalf("missing scope hint not found in detail: %#v", exitErr.Detail)
+	if !strings.Contains(permErr.Hint, "auth login --scope") {
+		t.Fatalf("missing scope hint not found: %q", permErr.Hint)
 	}
-	if !strings.Contains(err.Error(), "drive:file:download") {
-		t.Fatalf("error should mention drive:file:download: %v", err)
+	foundScope := false
+	for _, s := range permErr.MissingScopes {
+		if s == "drive:file:download" {
+			foundScope = true
+			break
+		}
+	}
+	if !foundScope {
+		t.Fatalf("MissingScopes must include drive:file:download, got %v", permErr.MissingScopes)
 	}
 }
 
@@ -814,12 +822,15 @@ func TestWalkLocalForStatusMissingRootReturnsInternalError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected walkLocalForStatus() to fail for missing root")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured ExitError, got %T", err)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "io" {
-		t.Fatalf("expected io error detail, got %#v", exitErr.Detail)
+	if internalErr.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("Subtype = %q, want %q", internalErr.Subtype, errs.SubtypeFileIO)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d (ExitInternal)", code, output.ExitInternal)
 	}
 	if !strings.Contains(err.Error(), "walk") {
 		t.Fatalf("expected walk-related error, got: %v", err)

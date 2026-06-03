@@ -389,3 +389,45 @@ func TestInstallAll_atomicRollback(t *testing.T) {
 		t.Fatalf("error must be *PluginInstallError, got %T", err)
 	}
 }
+
+// multiRestrictPlugin calls r.Restrict twice -- the multi-rule case. A
+// single plugin may declare several scoped grants; both must be collected
+// into PluginRules under the same plugin name, in registration order.
+type multiRestrictPlugin struct{}
+
+func (multiRestrictPlugin) Name() string    { return "secaudit" }
+func (multiRestrictPlugin) Version() string { return "1.0.0" }
+func (multiRestrictPlugin) Capabilities() platform.Capabilities {
+	return platform.Capabilities{
+		Restricts:     true,
+		FailurePolicy: platform.FailClosed,
+	}
+}
+func (multiRestrictPlugin) Install(r platform.Registrar) error {
+	r.Restrict(&platform.Rule{Name: "docs-ro", Allow: []string{"docs/**"}, MaxRisk: platform.RiskRead})
+	r.Restrict(&platform.Rule{Name: "im-rw", Allow: []string{"im/**"}, MaxRisk: platform.RiskWrite})
+	return nil
+}
+
+// A single plugin calling Restrict more than once is valid (multi-rule
+// support): both rules are collected, in order, under the one plugin name.
+// This pins the behaviour change from the old "Restrict at most once"
+// double_restrict error.
+func TestInstallAll_multipleRestrictPerPlugin(t *testing.T) {
+	result, err := internalplatform.InstallAll([]platform.Plugin{multiRestrictPlugin{}}, nil)
+	if err != nil {
+		t.Fatalf("multiple Restrict per plugin must succeed, got %v", err)
+	}
+	if len(result.PluginRules) != 2 {
+		t.Fatalf("PluginRules = %d, want 2", len(result.PluginRules))
+	}
+	for _, pr := range result.PluginRules {
+		if pr.PluginName != "secaudit" {
+			t.Errorf("PluginName = %q, want secaudit", pr.PluginName)
+		}
+	}
+	if result.PluginRules[0].Rule.Name != "docs-ro" || result.PluginRules[1].Rule.Name != "im-rw" {
+		t.Errorf("rules out of order: %q, %q",
+			result.PluginRules[0].Rule.Name, result.PluginRules[1].Rule.Name)
+	}
+}

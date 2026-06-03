@@ -306,6 +306,39 @@ func TestSyncSkills_ParseEmptyGlobalListWithNonEmptyStdoutDegradesToColdStart(t 
 	}
 }
 
+func TestSyncSkills_EmptyToUpdateFallsBackToFullInstall(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+	if err := WriteState(SkillsState{
+		Version:        "1.0.30",
+		OfficialSkills: []string{"lark-calendar", "lark-mail"},
+		UpdatedAt:      "2026-05-18T00:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runner := &fakeSkillsRunner{
+		officialOut:   officialSkillsOutput("lark-calendar", "lark-mail"),
+		globalOut:     globalSkillsOutput(),
+		installAllErr: nil,
+	}
+
+	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	if result.Action != "fallback_synced" {
+		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
+	}
+	if len(runner.installed) != 0 {
+		t.Fatalf("installed = %#v, want no incremental installs", runner.installed)
+	}
+	if runner.installedAll != 1 {
+		t.Fatalf("installedAll = %d, want 1 (fallback triggered)", runner.installedAll)
+	}
+	assertStrings(t, result.Official, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, result.Updated, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, result.Added, []string{"lark-calendar", "lark-mail"})
+	assertStrings(t, result.SkippedDeleted, []string{})
+}
+
 func TestSyncSkills_InstallFailureFallsBackToFullInstall(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)

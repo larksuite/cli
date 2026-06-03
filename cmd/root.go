@@ -4,23 +4,22 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
+	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/errcompat"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
@@ -48,20 +47,6 @@ EXAMPLES:
 
     # Generic API call
     lark-cli api GET /open-apis/calendar/v4/calendars
-
-FLAGS:
-    --params <json>       URL/query parameters JSON
-    --data <json>         request body JSON (POST/PATCH/PUT/DELETE)
-    --as <type>           identity type: user | bot
-    --format <fmt>        output format: json (default) | ndjson | table | csv | pretty
-    --page-all            automatically paginate through all pages
-    --page-size <N>       page size (0 = use API default)
-    --page-limit <N>      max pages to fetch with --page-all (default: 10, 0 for unlimited)
-    --page-delay <MS>     delay in ms between pages (default: 200, only with --page-all)
-    -o, --output <path>   output file path for binary responses
-    --jq <expr>           jq expression to filter JSON output
-    -q <expr>             shorthand for --jq
-    --dry-run             print request without executing
 
 AI AGENT SKILLS:
     lark-cli pairs with AI agent skills (Claude Code, etc.) that
@@ -201,34 +186,42 @@ func configureFlagCompletions(args []string) {
 // and returns the process exit code.
 //
 // Dispatch order:
-//  1. *errs.SecurityPolicyError: keeps the legacy custom envelope
-//     (type=auth_error, string code, retryable, challenge_url) and exit 1.
-//     Carve-out from the typed taxonomy — wire migration deferred to a later PR.
-//  2. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError):
-//     render via the typed envelope writer, which lifts extension fields
-//     (missing_scopes, console_url, ...) to the top level. Routed by
+//  1. Legacy shapes (*core.ConfigError, *internalauth.NeedAuthorizationError)
+//     are promoted via errcompat to their typed errs/ counterparts, with the
+//     original preserved in the Cause chain.
+//  2. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError,
+//     *errs.SecurityPolicyError, *errs.AuthenticationError): render via the
+//     typed envelope writer, which lifts extension fields (missing_scopes,
+//     console_url, challenge_url, ...) to the top level. Routed by
 //     errs.CategoryOf via ExitCodeOf.
-//  3. *core.ConfigError + Legacy *output.ExitError: asExitError adapts them
-//     to a legacy envelope; written via WriteErrorEnvelope. Stage-1 keeps
-//     this path so existing wire shapes are preserved byte-for-byte until
-//     per-domain typed migration in stage 2+.
+//  3. Legacy *output.ExitError: asExitError adapts it to the legacy
+//     envelope, written via WriteErrorEnvelope.
 //  4. Cobra errors (required flags, unknown commands, etc.): plain text.
 func handleRootError(f *cmdutil.Factory, err error) int {
 	errOut := f.IOStreams.ErrOut
 
-	// SecurityPolicyError keeps the legacy custom envelope (string codes,
-	// challenge_url, retryable) and exit code 1 — its wire shape predates the
-	// typed taxonomy and downstream OAuth/policy consumers depend on it.
-	// The taxonomy migration for this category is deferred to a later PR.
-	var spErr *errs.SecurityPolicyError
-	if errors.As(err, &spErr) {
-		writeSecurityPolicyError(errOut, spErr)
-		return 1
+	// Promote legacy error shapes into typed errs/ before envelope marshal.
+	// NeedAuthorizationError check is first because it is the more specific
+	// shape; *core.ConfigError check follows. errors.As preserves the original
+	// in the Cause chain, so external errors.As(&core.ConfigError{}) consumers
+	// (cmd/auth/list.go, cmd/doctor/doctor.go, ...) still match.
+	//
+	// Outer-typed short-circuit: if err is already a typed *errs.* error,
+	// skip PromoteXxxError so the producer's Subtype / Hint / extension
+	// fields are not overwritten by a coarser promoted shape derived from a
+	// legacy error buried in its Cause chain. Promotion is only for legacy
+	// untyped entry points.
+	if !isOuterTypedError(err) {
+		var needAuthErr *internalauth.NeedAuthorizationError
+		if errors.As(err, &needAuthErr) {
+			err = errcompat.PromoteAuthError(needAuthErr)
+		} else {
+			var cfgErr *core.ConfigError
+			if errors.As(err, &cfgErr) {
+				err = errcompat.PromoteConfigError(cfgErr)
+			}
+		}
 	}
-
-	// *core.ConfigError flows raw to the legacy envelope path in stage 1
-	// (asExitError → output.ErrWithHint). Typed migration via
-	// errcompat.PromoteConfigError happens in stage 2+.
 
 	// When the typed error is a need_user_authorization signal, fold in the
 	// current command's declared scopes as a Hint so the user/AI sees the
@@ -236,8 +229,23 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 	// local shortcut/service metadata — it never depends on server state.
 	applyNeedAuthorizationHint(f, err)
 
+	// Staged dispatch: capture the typed exit code BEFORE attempting the
+	// envelope write. WriteTypedErrorEnvelope is best-effort on the wire
+	// (partial-write still returns true) so the exit code we read here is
+	// preserved even if stderr is torn — torn stderr must not downgrade
+	// typed exits 3/4/6/10 to the legacy "Error:" path with exit 1.
+	// WriteTypedErrorEnvelope still returns false when err carries no
+	// Problem; in that case we fall through to the legacy bridge below.
+	typedExit := output.ExitCodeOf(err)
 	if output.WriteTypedErrorEnvelope(errOut, err, string(f.ResolvedIdentity)) {
-		return output.ExitCodeOf(err)
+		return typedExit
+	}
+
+	// Partial-failure (batch / multi-status): the ok:false result envelope is
+	// already on stdout; set the exit code and write nothing to stderr.
+	var pfErr *output.PartialFailureError
+	if errors.As(err, &pfErr) {
+		return pfErr.Code
 	}
 
 	if exitErr := asExitError(err); exitErr != nil {
@@ -256,52 +264,19 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 	return 1
 }
 
-// writeSecurityPolicyError writes the security-policy-specific JSON envelope.
-// This wire format intentionally differs from the typed envelope writer: it
-// uses string codes ("challenge_required"/"access_denied"), a "auth_error"
-// type literal, and a top-level "retryable" field — the shape OAuth/policy
-// consumers have been parsing since before the typed taxonomy existed.
-func writeSecurityPolicyError(w io.Writer, spErr *errs.SecurityPolicyError) {
-	var codeStr string
-	switch spErr.Subtype {
-	case errs.SubtypeChallengeRequired:
-		codeStr = "challenge_required"
-	case errs.SubtypeAccessDenied:
-		codeStr = "access_denied"
-	default:
-		codeStr = strconv.Itoa(spErr.Code)
-	}
-
-	errData := map[string]interface{}{
-		"type":      "auth_error",
-		"code":      codeStr,
-		"message":   spErr.Message,
-		"retryable": false,
-	}
-	if spErr.ChallengeURL != "" {
-		errData["challenge_url"] = spErr.ChallengeURL
-	}
-	if spErr.Hint != "" {
-		errData["hint"] = spErr.Hint
-	}
-
-	env := map[string]interface{}{"ok": false, "error": errData}
-
-	buffer := &bytes.Buffer{}
-	encoder := json.NewEncoder(buffer)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if encErr := encoder.Encode(env); encErr != nil {
-		fmt.Fprintln(w, `{"ok":false,"error":{"type":"internal_error","code":"marshal_error","message":"failed to marshal error"}}`)
-		return
-	}
-	fmt.Fprint(w, buffer.String())
+// isOuterTypedError returns true if err is a typed *errs.* error AT THE
+// TOP OF THE CHAIN (not buried inside Unwrap). Used by handleRootError
+// to gate PromoteXxxError so a producer's outer typed envelope is never
+// overwritten by a coarser shape derived from its legacy Cause.
+func isOuterTypedError(err error) bool {
+	_, ok := err.(errs.TypedError)
+	return ok
 }
 
 // asExitError converts known structured error types to *output.ExitError.
 // Returns nil for unrecognized errors (e.g. cobra flag errors).
 //
-// Deprecated: legacy *output.ExitError bridge; removed after typed migration.
+// Deprecated: legacy *output.ExitError bridge.
 func asExitError(err error) *output.ExitError {
 	var cfgErr *core.ConfigError
 	if errors.As(err, &cfgErr) {
@@ -417,65 +392,55 @@ func installTipsHelpFunc(root *cobra.Command) {
 	})
 }
 
-// enrichPermissionError adds console_url and improves the hint for legacy
-// *output.ExitError permission errors. Differentiates between:
-//   - LarkErrAppScopeNotEnabled (99991672): app has not enabled the scope
-//   - LarkErrUserScopeInsufficient (99991679) / LarkErrUserNotAuthorized:
-//     user has not authorized the scope → hint to auth login
-//   - default: other permission errors → console + auth-login fallback
+// enrichPermissionError rewrites the legacy *output.ExitError envelope so its
+// Message + Hint match the per-subtype canonical text produced by the typed
+// dispatcher path (errclass.CanonicalPermissionMessage / errclass.PermissionHint).
+// This guarantees a caller observing the wire envelope cannot tell whether
+// the error reached the dispatcher via the legacy *ExitError bridge or via
+// the typed *errs.PermissionError fast path.
 //
-// Deprecated: stage-1 enrichment for the legacy *output.ExitError envelope.
-// Stage-2 typed migration will lift this into PermissionError.MissingScopes
-// + ConsoleURL on the typed envelope and remove this helper.
+// Deprecated: legacy *output.ExitError enrichment; typed PermissionError
+// values produced by errclass.BuildAPIError already carry MissingScopes +
+// ConsoleURL directly.
 func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
-	if exitErr.Detail == nil || exitErr.Detail.Type != "permission" {
+	if exitErr.Detail == nil {
 		return
 	}
-	// Extract required scopes from API error detail (shared helper)
-	scopes := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
-	if len(scopes) == 0 {
+	// Only the legacy permission-class envelope types route here. "app_status"
+	// covers 99991662 (app_disabled) / 99991673 (app_unavailable); "permission"
+	// covers the four scope-class codes (99991672 / 99991676 / 99991679 / 230027).
+	if exitErr.Detail.Type != "permission" && exitErr.Detail.Type != "app_status" {
 		return
 	}
+
+	larkCode := exitErr.Detail.Code
+	meta, ok := errclass.LookupCodeMeta(larkCode)
+	if !ok || meta.Category != errs.CategoryAuthorization {
+		return
+	}
+
+	// Extract required scopes from API error detail (shared helper). May be
+	// empty for app-status codes — canonical message + hint still apply.
+	missing := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
 
 	cfg, err := f.Config()
 	if err != nil {
 		return
 	}
 
-	// Select the recommended (least-privilege) scope
-	recommended := registry.SelectRecommendedScopeFromStrings(scopes, "tenant")
-
-	// Build admin console URL with the recommended scope
-	consoleURL := registry.BuildConsoleScopeURL(cfg.Brand, cfg.AppID, recommended)
+	// Reuse the same console URL builder as the typed path so both wire
+	// envelopes carry identical console_url values for the same input.
+	consoleURL := errclass.ConsoleURL(string(cfg.Brand), cfg.AppID, missing)
 
 	// Clear raw API detail — useful info is now in message/hint/console_url.
 	exitErr.Detail.Detail = nil
 
-	isBot := f.ResolvedIdentity.IsBot()
-	larkCode := exitErr.Detail.Code
-	switch larkCode {
-	case output.LarkErrUserScopeInsufficient, output.LarkErrUserNotAuthorized:
-		exitErr.Detail.Message = fmt.Sprintf("User not authorized: required scope %s [%d]", recommended, larkCode)
-		if isBot {
-			exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
-		} else {
-			exitErr.Detail.Hint = fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
-		}
-		exitErr.Detail.ConsoleURL = consoleURL
-
-	case output.LarkErrAppScopeNotEnabled:
-		exitErr.Detail.Message = fmt.Sprintf("App scope not enabled: required scope %s [%d]", recommended, larkCode)
-		exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
-		exitErr.Detail.ConsoleURL = consoleURL
-
-	default:
-		exitErr.Detail.Message = fmt.Sprintf("Permission denied: required scope %s [%d]", recommended, larkCode)
-		if isBot {
-			exitErr.Detail.Hint = "enable the scope in developer console (see console_url)"
-		} else {
-			exitErr.Detail.Hint = fmt.Sprintf(
-				"enable scope in console (see console_url), or run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", recommended)
-		}
-		exitErr.Detail.ConsoleURL = consoleURL
+	identity := string(f.ResolvedIdentity)
+	if identity == "" {
+		identity = "user"
 	}
+
+	exitErr.Detail.Message = errclass.CanonicalPermissionMessage(meta.Subtype, cfg.AppID, missing, exitErr.Detail.Message)
+	exitErr.Detail.Hint = errclass.PermissionHint(missing, identity, meta.Subtype, consoleURL)
+	exitErr.Detail.ConsoleURL = consoleURL
 }

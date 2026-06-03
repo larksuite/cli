@@ -19,7 +19,15 @@ var BaseWorkflowCreate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
-		{Name: "json", Desc: `workflow body JSON, e.g. {"title":"My Workflow","steps":[...]}`, Required: true},
+		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before constructing steps", Required: true},
+	},
+	Tips: []string{
+		"lark-cli base +workflow-create --base-token <base_token> --json @workflow.json",
+		"client_token is required and should be unique per create request.",
+		"New workflows are created disabled; call +workflow-enable after creation when the user wants it active.",
+		"Before constructing steps, use +table-list and +field-list to confirm real table and field names.",
+		"Step ids must be unique, and every next/children link must reference an existing step id.",
+		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {

@@ -15,6 +15,13 @@ import (
 const maxRecordSelectionCount = 200
 const maxBatchGetSelectFieldCount = 100
 
+var recordCellValueHappyPathTips = []string{
+	`CellValue happy path: text/phone/url -> "text"; number/currency/percent/rating -> 12.5; select -> "Todo"; multi-select -> ["Tag A","Tag B"]; datetime -> "2026-03-24 10:00:00"; checkbox -> true/false.`,
+	`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}], [{"id":"oc_xxx"}], [{"id":"rec_xxx"}]; location uses {"lng":116.397428,"lat":39.90923}; null clears a cell when allowed.`,
+	"Do not guess user/chat/linked-record IDs or location coordinates; resolve them first with the relevant contact/im/record lookup flow.",
+	"Use lark-base-cell-value.md for complex CellValue shapes and special field types; do not invent values for fields not covered by the happy path.",
+}
+
 type recordSelection struct {
 	recordIDs    []string
 	selectFields []string
@@ -210,6 +217,9 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params.Set("view_id", viewID)
 	}
+	if err := applyRecordQueryToURLValues(runtime, params); err != nil {
+		return common.NewDryRunAPI()
+	}
 	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
 	return common.NewDryRunAPI().
 		GET(path).
@@ -230,8 +240,12 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 }
 
 func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	pc := newParseCtx(runtime)
-	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	var body map[string]interface{}
+	if strings.TrimSpace(runtime.Str("json")) != "" {
+		body, _ = recordSearchJSONBody(runtime)
+	} else {
+		body, _ = recordSearchFlagBody(runtime)
+	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
 		Body(body).
@@ -381,6 +395,9 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
+	if err := applyRecordQueryToParams(runtime, params); err != nil {
+		return err
+	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records"), params, nil)
 	if err != nil {
 		return err
@@ -413,8 +430,13 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordSearch(runtime *common.RuntimeContext) error {
-	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	var body map[string]interface{}
+	var err error
+	if strings.TrimSpace(runtime.Str("json")) != "" {
+		body, err = recordSearchJSONBody(runtime)
+	} else {
+		body, err = recordSearchFlagBody(runtime)
+	}
 	if err != nil {
 		return err
 	}

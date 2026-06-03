@@ -31,7 +31,7 @@ func VerifyUserToken(ctx context.Context, sdk *lark.Client, accessToken string) 
 		Msg  string `json:"msg"`
 	}
 	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return fmt.Errorf("failed to parse response: %v", err)
+		return fmt.Errorf("failed to parse response: %w", err)
 	}
 	if resp.Code != 0 {
 		return fmt.Errorf("[%d] %s", resp.Code, resp.Msg)

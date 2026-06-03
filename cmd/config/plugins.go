@@ -82,8 +82,8 @@ func runConfigPluginsShow(f *cmdutil.Factory) error {
 			"version":      p.Version,
 			"capabilities": p.Capabilities,
 		}
-		if p.Rule != nil {
-			entry["rule"] = p.Rule
+		if len(p.Rules) > 0 {
+			entry["rules"] = p.Rules
 		}
 		entry["hooks"] = map[string]any{
 			"observers": p.Observers,

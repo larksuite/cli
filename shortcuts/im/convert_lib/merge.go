@@ -320,6 +320,7 @@ func FormatMergeForwardSubTree(parentID string, childrenMap map[string][]map[str
 			content = ConvertBodyContent(msgType, &ConvertContext{
 				RawContent: rawContent,
 				MentionMap: BuildMentionKeyMap(mentions),
+				Mentions:   mentions,
 			})
 		}
 

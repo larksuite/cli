@@ -37,7 +37,7 @@ type Builder struct {
 	caps    Capabilities
 
 	actions []func(Registrar)
-	rule    *Rule
+	rules   []*Rule
 
 	hookNames map[string]bool
 	errs      []error
@@ -125,7 +125,8 @@ func (b *Builder) On(event LifecycleEvent, hookName string, fn LifecycleHandler)
 // sets Restricts=true and FailurePolicy=FailClosed (the framework
 // requires both to coexist; the builder enforces the pairing so the
 // plugin author cannot accidentally ship a policy plugin under
-// FailOpen).
+// FailOpen). It may be called more than once; each call adds one scoped
+// Rule and the engine OR-combines them.
 func (b *Builder) Restrict(rule *Rule) *Builder {
 	if rule == nil {
 		b.errs = append(b.errs, errors.New("Restrict(nil): rule must not be nil"))
@@ -133,7 +134,14 @@ func (b *Builder) Restrict(rule *Rule) *Builder {
 	}
 	b.caps.Restricts = true
 	b.caps.FailurePolicy = FailClosed
-	b.rule = rule
+	// Defensive clone: capture an independent snapshot so a caller that
+	// reuses and mutates the same *Rule across multiple Restrict calls
+	// gets distinct entries (mirrors the staging registrar's clone).
+	cp := *rule
+	cp.Allow = append([]string(nil), rule.Allow...)
+	cp.Deny = append([]string(nil), rule.Deny...)
+	cp.Identities = append([]Identity(nil), rule.Identities...)
+	b.rules = append(b.rules, &cp)
 	return b
 }
 
@@ -143,7 +151,7 @@ func (b *Builder) Restrict(rule *Rule) *Builder {
 // The Restrict + FailOpen mismatch is checked here, not in the chained
 // setters, because the two methods may be called in either order.
 func (b *Builder) Build() (Plugin, error) {
-	if b.rule != nil && b.caps.FailurePolicy == FailOpen {
+	if len(b.rules) > 0 && b.caps.FailurePolicy == FailOpen {
 		b.errs = append(b.errs, errors.New(
 			"Restrict() requires FailClosed; do not call FailOpen() after Restrict()"))
 	}
@@ -155,7 +163,7 @@ func (b *Builder) Build() (Plugin, error) {
 		version: b.version,
 		caps:    b.caps,
 		actions: b.actions,
-		rule:    b.rule,
+		rules:   b.rules,
 	}, nil
 }
 
@@ -198,15 +206,15 @@ type builtPlugin struct {
 	version string
 	caps    Capabilities
 	actions []func(Registrar)
-	rule    *Rule
+	rules   []*Rule
 }
 
 func (p *builtPlugin) Name() string               { return p.name }
 func (p *builtPlugin) Version() string            { return p.version }
 func (p *builtPlugin) Capabilities() Capabilities { return p.caps }
 func (p *builtPlugin) Install(r Registrar) error {
-	if p.rule != nil {
-		r.Restrict(p.rule)
+	for _, rule := range p.rules {
+		r.Restrict(rule)
 	}
 	for _, action := range p.actions {
 		action(r)

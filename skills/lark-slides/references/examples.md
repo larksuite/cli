@@ -212,7 +212,7 @@ lark-cli slides +replace-slide --as user \
 {
   "ok": false,
   "error": {
-    "type": "api_error",
+    "type": "api",
     "code": 3350001,
     "message": "API error: [3350001] invalid param",
     "hint": "common causes: (1) block_id not found in current slide ..."

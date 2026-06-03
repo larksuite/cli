@@ -34,10 +34,12 @@ in production? See **Troubleshooting**.
 6. Wrapping is idempotent: re-wrapping an already-typed error returns it
    unchanged across the `errors.As` / `errors.Unwrap` chain.
 7. For the typed-envelope path, exit codes derive from `Category` only
-   via `output.ExitCodeForCategory`. Two stage-1 exceptions:
-   `SecurityPolicyError` always exits `1` (fixed by its legacy envelope),
-   and unmigrated `*output.ExitError` producers carry a hand-set `Code`;
-   both are retired in the legacy-removal stage.
+   via `output.ExitCodeForCategory` — including `SecurityPolicyError`,
+   which exits `6` via `CategoryPolicy`. Unmigrated `*output.ExitError`
+   producers still carry a hand-set `Code` until they finish migrating.
+   `output.ErrBare(code)` is the lone exception: a deliberate
+   predicate-command signal that bypasses the envelope (see
+   **Predicate commands** below).
 
 ## Wire format
 
@@ -73,9 +75,11 @@ Typed errors render to **stderr** as one JSON object per process exit:
 | `error.retryable` | wire-stable | `true` when present; omitted when `false` |
 | per-Subtype extension fields | per-Subtype-stable | e.g. `missing_scopes`, `console_url`, `challenge_url` |
 
-Carve-out: `SecurityPolicyError` keeps the legacy
-`{type: "auth_error", code: "challenge_required"|"access_denied", ...}`
-envelope until its consumers migrate. Removal is staged in **Migration**.
+`SecurityPolicyError` renders through the same typed envelope as every
+other category. `error.type` is `"policy"`, `error.subtype` is one of
+`challenge_required` / `access_denied`, and process exit is `6` via
+`CategoryPolicy`. The legacy `auth_error` envelope at exit `1` has been
+retired.
 
 ## Categories
 
@@ -115,10 +119,11 @@ Canonical mapping: `internal/output/exitcode.go` `ExitCodeForCategory`.
      │
      ▼
   cmd/root.go handleRootError dispatches:
-     ├─ *errs.SecurityPolicyError → legacy "auth_error" JSON envelope; exit 1
+     ├─ output.ErrBare(code)      → no envelope (stdout already written); exit = code
      ├─ typed (errs.ProblemOf)    → typed JSON envelope; exit = ExitCodeOf(err)
-     ├─ *core.ConfigError         → asExitError adapts to legacy envelope ↓
-     ├─ *output.ExitError         → legacy JSON envelope;  exit = exitErr.Code
+     │     (includes *errs.SecurityPolicyError → policy envelope, exit 6)
+     ├─ *core.ConfigError         → promoted to typed via errcompat ↑
+     ├─ *output.ExitError         → legacy JSON envelope; exit = exitErr.Code
      └─ untyped / Cobra error     → plain "Error: <msg>" (no envelope); exit 1
 ```
 
@@ -126,6 +131,54 @@ Only the typed and `*output.ExitError` branches emit a JSON envelope on
 stderr. Untyped errors (including Cobra's "required flag missing" / unknown
 subcommand messages) print plain text and exit `1` — consumers must
 tolerate that fallback.
+
+### Predicate commands (`output.ErrBare`)
+
+A small class of commands is **predicates**: they answer a yes/no
+question and signal the answer through the shell exit code so callers
+can write `if cmd; then ... fi`. `lark-cli auth check` is the canonical
+example — its `README` contract is `exit 0 = ok, 1 = missing`.
+
+These commands deliberately:
+
+1. write a structured JSON answer to **stdout** themselves, and
+2. return `output.ErrBare(exitCode)` to communicate the exit code to
+   the dispatcher without producing a `stderr` envelope.
+
+`output.ErrBare` is **not** an error in the typed-envelope sense — it
+carries no category, subtype, or message. It is a one-bit output-
+control signal that lives outside the contract for the same reason
+`grep -q` / `diff` / `systemctl is-active` set non-zero exit codes
+without printing anything to stderr: pollution of stderr by a
+predicate's negative answer would break `2>/dev/null` log hygiene in
+caller scripts.
+
+New code should not reach for `ErrBare` unless the command is
+genuinely a predicate. Anything carrying recoverable error content
+belongs in a typed `*errs.XxxError` — or, for a batch result, in the
+partial-failure outcome below.
+
+### Partial failure (batch / multi-status)
+
+A batch command (e.g. `drive +push` / `+pull` / `+sync`) that processes
+many items can finish in a third state, neither full success nor a single
+error: some items succeeded and some failed. Its primary output is the
+per-item result, so it does **not** belong in a `stderr` error envelope.
+
+Such a command returns `runtime.OutPartialFailure(data, meta)`, which:
+
+1. writes the full result to **stdout** as an `ok:false` envelope — the
+   summary and every per-item outcome (succeeded *and* failed) stay
+   machine-readable, exactly as a successful `Out(...)` would carry them,
+   but with `ok` honestly reporting failure; and
+2. returns `*output.PartialFailureError`, a typed exit signal the
+   dispatcher maps to a non-zero exit code while writing nothing further
+   to `stderr`.
+
+This is distinct from `ErrBare` (a predicate's one-bit answer) and from a
+typed `*errs.XxxError` (a `stderr` error envelope): a partial failure is a
+*result*, reported on stdout, that also failed. Consumers branch on
+`ok == false` and then read `data.summary` / `data.items[]`.
 
 ## Consumers
 
@@ -183,17 +236,25 @@ reworded without notice.
 
 ### Quick reference
 
+The canonical producer surface is the **builder API in `errs/types.go`** (per type: struct + `NewXxxError` + chained `WithX` setters live in one place):
+each `NewXxxError(subtype, format, args...)` locks `Category` at the
+constructor name, requires `Subtype` + `Message` positionally, and exposes
+optional fields via chained `.WithX(...)` setters. Struct literals remain
+legal for framework dynamic paths (e.g. classifier fanout) but the lint
+`CheckTypedErrorCompleteness` still requires `Category` + `Subtype` +
+`Message` on any literal it sees.
+
 | Situation | Use |
 |-----------|-----|
-| Bad user input | `&errs.ValidationError{...}` or `output.ErrValidation(msg)` |
-| Login required | `&errs.AuthenticationError{...}` |
+| Bad user input | `errs.NewValidationError(subtype, msg).WithParam("--flag")` |
+| Login required | `errs.NewAuthenticationError(errs.SubtypeTokenMissing, msg)` |
 | Token lacks scope | `errclass.BuildAPIError(resp, ctx)` |
-| Local config missing | `&errs.ConfigError{...}` |
-| Transport failure | `&errs.NetworkError{...}` |
+| Local config missing | `errs.NewConfigError(errs.SubtypeNotConfigured, msg)` |
+| Transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTimeout, msg).WithCause(err)` (subtype: `timeout` / `tls` / `dns` / `server_error` / `transport`) |
 | Lark API error | `errclass.BuildAPIError(resp, ctx)` |
-| SDK / decode bug | `&errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Subtype: errs.SubtypeSDKError, ...}}` |
-| Policy block | `&errs.SecurityPolicyError{...}` or `&errs.ContentSafetyError{...}` |
-| Needs `--yes` | `&errs.ConfirmationRequiredError{...}` |
+| SDK / decode bug | `errs.NewInternalError(errs.SubtypeSDKError, msg).WithCause(err)` |
+| Policy block | `errs.NewSecurityPolicyError(subtype, msg).WithChallengeURL(url)` or `errs.NewContentSafetyError(subtype, msg).WithRules(...)` |
+| Needs `--yes` | `errs.NewConfirmationRequiredError(risk, action, msg)` |
 
 ### Authoring discipline
 
@@ -242,8 +303,9 @@ Do not pick exit codes by hand in new typed producers — `ExitCodeForCategory`
 maps `Category` to the shell code. A new exit-code requirement means a
 new `Category`, not a one-off override at the call site.
 
-(Legacy `*output.ExitError` and `SecurityPolicyError` retain hand-set
-codes during stage 1.)
+(Legacy `*output.ExitError` retains hand-set codes until removal;
+`SecurityPolicyError` retains a hand-set code on main until the framework
+migration PR retires the carve-out — see **Migration**.)
 
 #### Split `Message`, `Hint`, and `Cause`
 
@@ -265,15 +327,10 @@ do not inline its `.Error()` into `Message`.
 Conforming:
 
 ```go
-return &errs.NetworkError{
-    Problem: errs.Problem{
-        Category: errs.CategoryNetwork,
-        Subtype:  errs.SubtypeNetworkTransport,
-        Message:  "request to /open-apis failed after 3 retries",
-        Hint:     "check connectivity and retry; set --log-level debug if it persists",
-    },
-    Cause: ioErr,
-}
+return errs.NewNetworkError(errs.SubtypeNetworkTransport,
+    "request to /open-apis failed after 3 retries").
+    WithHint("check connectivity and retry; set --log-level debug if it persists").
+    WithCause(ioErr)
 ```
 
 Non-conforming:
@@ -294,43 +351,51 @@ For positional arguments, use the canonical name without dashes
 
 ### Constructing typed errors
 
-The minimal struct literal:
+Prefer the **builder API**. The constructor pins `Category` + `Subtype` +
+`Message`, the chained setters fill optional fields, and the resulting
+value retains its concrete `*XxxError` pointer through the chain so
+type-specific setters remain reachable to the end:
 
 ```go
-return &errs.ValidationError{
-    Problem: errs.Problem{
-        Category: errs.CategoryValidation,
-        Subtype:  errs.SubtypeInvalidArgument,
-        Message:  fmt.Sprintf("--data must be a valid JSON object: %v", parseErr),
-    },
-    Param: "--data",
-}
+return errs.NewValidationError(errs.SubtypeInvalidArgument,
+    "--data must be a valid JSON object: %v", parseErr).
+    WithParam("--data")
 ```
 
+Why builder over struct literal:
+
+- `Category` is locked at the function name — caller cannot mis-specify it
+- `Subtype` and `Message` are positional arguments — `go build` rejects
+  the call site if either is missing
+- The chain reads top-down: required identity first, optional fields after
+- Message is `fmt.Sprintf`-formatted from `(format, args...)`, matching
+  `fmt.Errorf` muscle memory and avoiding a separate `Sprintf` line
+
+Struct literals remain legal — `CheckTypedErrorCompleteness` continues to
+enforce `Category` + `Subtype` + `Message` on any literal it sees — and
+the framework classifier (`internal/errclass/classify.go`) still uses
+them on the dynamic dispatch path where a `Problem` value is composed
+once and wrapped per Category branch. Outside that pattern, new code
+should reach for the builder.
+
 Legacy helpers (`output.ErrValidation`, `output.ErrAuth`, `output.ErrNetwork`)
-remain callable during migration; new code should prefer the struct
-literal so `Hint`, `Param`, `Cause`, and other extension fields stay
-available per [Split `Message`, `Hint`, and `Cause`](#split-message-hint-and-cause).
+remain callable during migration but are `// Deprecated:` — new code goes
+through the builder.
 
 #### Shortcut `Execute` walkthrough
 
 Adapted from `shortcuts/calendar/calendar_suggestion.go:222`, whose legacy
 form is `output.ErrValidation("--duration-minutes must be between 1 and
-1440")`. The typed migration target:
+1440")`. The typed migration target (builder form):
 
 ```go
 Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
     duration := runtime.Int("duration-minutes")
     if duration < 1 || duration > 1440 {
-        return &errs.ValidationError{
-            Problem: errs.Problem{
-                Category: errs.CategoryValidation,
-                Subtype:  errs.SubtypeInvalidArgument,
-                Message:  fmt.Sprintf("--duration-minutes must be between 1 and 1440, got %d", duration),
-                Hint:     "pass a value in [1, 1440]",
-            },
-            Param: "--duration-minutes",
-        }
+        return errs.NewValidationError(errs.SubtypeInvalidArgument,
+            "--duration-minutes must be between 1 and 1440, got %d", duration).
+            WithHint("pass a value in [1, 1440]").
+            WithParam("--duration-minutes")
     }
 
     _, err := runtime.DoAPI(req, opts)
@@ -360,7 +425,7 @@ cover the decision:
 | Source | Decision | Example |
 |--------|----------|---------|
 | Helper returned a typed `*errs.*Error` | Return unchanged | `return err` |
-| Helper returned an untyped error tied to user input (`strconv.Atoi`, `json.Unmarshal`, …) | Construct a typed error; put the untyped error in `Cause` | `return &errs.ValidationError{Problem: ..., Cause: jsonErr}` |
+| Helper returned an untyped error tied to user input (`strconv.Atoi`, `json.Unmarshal`, …) | Construct a typed error; put the untyped error in `Cause` | `return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --data: %v", jsonErr).WithCause(jsonErr)` |
 | SDK call via `runtime.DoAPI` failed | Return unchanged — the framework boundary already wrapped it | `return err` |
 | Invariant broken (must-not-happen state) | Lift with `errs.WrapInternal`, set a `Message` describing the invariant | `return errs.WrapInternal(fmt.Errorf("identity resolver returned nil: %w", err))` |
 
@@ -391,8 +456,11 @@ through `runtime.DoAPI`.
 
 #### Add a Subtype
 
-1. Add a constant in `errs/subtypes.go` (framework) or
-   `errs/subtypes_service_<name>.go` (service).
+1. Add a constant in `errs/subtypes.go` under the right Category block.
+   Subtypes are framework-shared — service-specific Subtypes are an
+   anti-pattern (the wire `code` field already identifies the source
+   service; Subtype encodes cross-service semantics like `not_found`,
+   `quota_exceeded`).
 2. If it maps from a Lark code, register the mapping in
    `internal/errclass/codemeta_<service>.go`.
 3. Add a dispatch test in `internal/errclass/classify_test.go`.
@@ -409,10 +477,9 @@ emits a warning to keep them visible.
 
 Rare; the existing structs cover the 9 Categories with room. If you must:
 
-1. Add the struct in `errs/types.go` embedding `errs.Problem`, with a
-   nil-receiver-safe `Unwrap()` if it carries `Cause`.
+1. In `errs/types.go`, add a new section with: the struct embedding `errs.Problem`, a nil-receiver-safe `Unwrap()` if it carries `Cause`, a `NewXxxError(subtype, format, args...)` constructor, and one chained `WithX` setter per extension field.
 2. Add an `IsXxx` predicate in `errs/predicates.go`.
-3. Add a wire-format pin in `errs/marshal_test.go`.
+3. Add a wire-format pin in `errs/marshal_test.go` and a builder-chain pin in `errs/types_builder_test.go`.
 
 `CheckProblemEmbed` enforces the `Problem` embed at lint time. New
 top-level wire fields are forbidden — per-Subtype data goes into the
@@ -448,51 +515,36 @@ will be removed once business migration completes.
 
 ## Migration
 
-The error-contract refactor lands in stages. This PR is **stage 1**, and
-its scope is **strictly framework-only**: every production wire shape
-matches pre-PR byte-for-byte (additive fields only where the legacy slot
-had no subtype emission). Stage 1 ships infrastructure; behavioural
-migration of any specific path lives in later stages.
+**Strategy shift (2026-05-26).** The original plan (`docs/design/errors-refactor/spec.md` v2.12 §9) was a centrally-driven 4-PR rollout — framework → auth domain → multi-pilot → full-repo + legacy removal. That plan is **superseded** by a hybrid model: framework owner ships framework-level hardening (including a typed `*errs.*Error` migration of `internal/**`) as one focused PR; business-domain typed migration is **self-service** via [`docs/errors-guide.md`](../docs/errors-guide.md) and the builder API, with no central sweep timeline.
 
-Stages:
+Why the shift: 800+ legacy call sites split across 8+ business domains do not all share a single reviewer's bandwidth, and the contract is now expressive enough that each domain owner can migrate their own code from the guide without coordinating with framework owner.
 
-1. **Framework slice — this PR.** Ships the `errs/` typed taxonomy,
-   classifier (`internal/errclass`), promotion stub (`internal/errcompat`,
-   passthrough in stage 1), dispatcher hook (`WriteTypedErrorEnvelope`),
-   and six lint guards (forbidigo + five AST checks). Wire shapes
-   preserved byte-for-byte versus pre-PR, with **one intentional semantic
-   fix**: config-class errors (`*core.ConfigError`) now exit `3` instead
-   of `2`, aligning with `ExitCodeForCategory` (config errors share the
-   auth exit slot per the taxonomy). The classifier and promote helpers
-   are *shipped but unused* in production paths — they exist so stage 2+
-   migrations can plug in without re-architecting.
-2. **`SecurityPolicyError` typed envelope** — replace the legacy
-   `type: "auth_error"` carve-out with the typed shape.
-3. **Business-domain migration**, one PR per domain in declared order:
-   `task → drive → calendar → im → mail → whiteboard → contact`. Each PR
-   moves the domain's `output.ErrAPI(...)` / `output.ErrAuth(...)` /
-   `output.ErrWithHint(...)` call sites to typed constructors or
-   `BuildAPIError`, removes its Deprecated annotations, and announces the
-   wire change explicitly.
-4. **Framework-boundary migration**: `client.WrapDoAPIError` and
-   `client.WrapJSONResponseParseError` flip to typed wrap;
-   `client.CheckResponse` adopts `errclass.BuildAPIError`;
-   `internal/client/client.go resolveAccessToken` adopts the typed
-   `NeedAuthorizationError → *errs.AuthenticationError` recognition;
-   `cmd/auth/scopes.go` and `cmd/service/service.go` adopt typed
-   `*errs.PermissionError`; `errcompat.PromoteConfigError` lifts the
-   `Type="config"` (and later `Type="auth"`) branches to typed.
-5. **Legacy removal** — once `git grep '\*output\.ExitError'` returns no
-   production hits, delete `Errorf`, `ErrAPI`, `ErrAuth`, `ErrWithHint`,
-   `ErrBare`, `ClassifyLarkError`, `ErrDetail`, `ExitError`, and
-   `ErrorEnvelope`.
+### Current state
 
-During migration, helper assertions accept both shapes (see
-`shortcuts/mail/mail_shortcut_validation_test.go` `assertValidationError`)
-so the build stays green domain-by-domain.
+1. **Framework slice — ✅ shipped (PR #984).** The `errs/` typed taxonomy, classifier (`internal/errclass`), promotion stub (`internal/errcompat`, passthrough), dispatcher hook (`WriteTypedErrorEnvelope`), and the `lint/errscontract` AST guards. Wire shapes preserved byte-for-byte versus pre-PR, with **one intentional semantic fix**: config-class errors (`*core.ConfigError`) now exit `3` instead of `2`, aligning with `ExitCodeForCategory` (config errors share the auth exit slot per the taxonomy). The classifier and promote helpers are *shipped but unused* in production paths — they exist so framework migration can plug in without re-architecting.
 
-Before / after at a call site (illustrative — actually performed in
-stage 3):
+2. **Builder API — ✅ shipped (this branch).** `errs/types.go` adds the canonical producer surface (`errs.NewXxxError(subtype, format, args...).WithX(...)`) for all 10 typed types, alongside each struct declaration. Constructor signature pins `Category` (via function name) and `Subtype` + `Message` (positional), so the producer cannot mis-specify any of the three identity fields. Optional fields chain through `.WithX(...)` setters that preserve the concrete pointer type.
+
+### Next: framework migration PR (planned)
+
+A single PR consolidates the work the original §9 spec split across PRs 2–4 — restricted to framework code, no business sweep:
+
+- **Migrate `internal/**` typed construction to the builder API.** ~16 call sites in `internal/errclass/classify.go` (BuildAPIError fanout), `internal/auth/transport.go` (SecurityPolicy), `internal/auth/uat_client.go`, `internal/errcompat/promote*.go`, `internal/client/client.go`, `internal/client/api_errors.go`.
+- **Land the framework-side semantic changes** previously scoped to spec §9 PR 2: `SecurityPolicyError` exit `1→6`, `WrapDoAPIError` typed (`*NetworkError` with subtype timeout/tls/dns/server_error/transport, `*InternalError` for JSON-decode), `WrapJSONResponseParseError` typed, `errcompat.PromoteConfigError` real Type routing, `PromoteAuthError` helper + dispatcher wiring, 10 credential Lark codes registered in codeMeta, 99991543 config classification, `resolveAccessToken` typed `*AuthenticationError`, `BuildAPIError` filling `*PermissionError.MissingScopes` / `Identity` / `ConsoleURL`, deletion of `scopeAwareChecker`.
+- **Add `forbidigo` rule** banning `output.Err*` constructors in `shortcuts/**` and `cmd/**` (mirrors the contract that new business code must use the builder).
+- **CHANGELOG** lists the resulting ~10 shell-exit-code shifts in one release entry (vs the spec §1 spread of 11 — the remaining one site lives in `task` business code).
+
+### Business-domain migration (self-service, no central timeline)
+
+Each business package migrates its own `output.Err*` call sites to the builder when convenient — typically batched within one domain. The guide at [`docs/errors-guide.md`](../docs/errors-guide.md) walks owners through the 8 typical error modes (validation / authorization / authentication / config / network / api / internal / policy) with real `file:line` examples from main. The three-layer extension model (add Subtype / add field / add Category) handles cases the existing taxonomy does not cover.
+
+Helper assertions accept both shapes during migration (see `shortcuts/mail/mail_shortcut_validation_test.go` `assertValidationError`) so domain migrations stay green incrementally.
+
+### Legacy removal
+
+Deferred until business migration completion approaches the asymptote. `Errorf`, `ErrAPI`, `ErrAuth`, `ErrWithHint`, `ErrBare`, `ClassifyLarkError`, `ErrDetail`, `ExitError`, and `ErrorEnvelope` are `// Deprecated:` today and stay callable. No fixed removal date.
+
+### Before / after at a call site
 
 ```go
 // before (legacy)
@@ -500,6 +552,16 @@ return output.ErrAPI(larkCode, "create event failed", resp.RawBody())
 
 // after (typed) — cc carries Brand / AppID / Identity from the caller's context
 return errclass.BuildAPIError(parsedResp, cc)
+```
+
+```go
+// before (legacy validation)
+return output.ErrValidation("--duration-minutes must be between 1 and 1440")
+
+// after (builder)
+return errs.NewValidationError(errs.SubtypeInvalidArgument,
+    "--duration-minutes must be between 1 and 1440, got %d", duration).
+    WithParam("--duration-minutes")
 ```
 
 ## Troubleshooting

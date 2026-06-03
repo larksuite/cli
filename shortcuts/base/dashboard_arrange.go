@@ -22,6 +22,9 @@ var BaseDashboardArrange = common.Shortcut{
 		dashboardIDFlag(true),
 		{Name: "user-id-type", Desc: "user ID type: open_id / union_id / user_id"},
 	},
+	Tips: []string{
+		"Server-side smart layout is not deterministic or position-specific; use only when the user asks to arrange or beautify a dashboard.",
+	},
 	DryRun: dryRunDashboardArrange,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardArrange(runtime)

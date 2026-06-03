@@ -22,7 +22,11 @@ var BaseFieldSearchOptions = common.Shortcut{
 		fieldRefFlag(true),
 		{Name: "keyword", Desc: "keyword for option query"},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size"},
+		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, default 30"},
+	},
+	Tips: []string{
+		`Example: lark-cli base +field-search-options --base-token <base_token> --table-id <table_id> --field-id "Status" --keyword "Do"`,
+		"Use only for fields with options, such as select or multi-select fields.",
 	},
 	DryRun: dryRunFieldSearchOptions,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

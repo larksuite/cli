@@ -20,11 +20,13 @@ var BaseViewSetGroup = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "group JSON object", Required: true},
+		{Name: "json", Desc: `group JSON object with group_config array, e.g. {"group_config":[{"field":"Status","desc":false}]}; use {"group_config":[]} to clear`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"group_config":[{"field":"fldStatus","desc":false}]}'`,
-		"Agent hint: use the lark-base skill's view-set-group guide for usage and limits.",
+		"Supported view types: grid, kanban, gantt.",
+		"Use a JSON object, not a bare array; grouping fields must be supported by the current view.",
+		"group_config supports max 3 group items.",
+		"Use +view-get-group first when modifying an existing grouping configuration.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

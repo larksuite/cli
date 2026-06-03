@@ -16,8 +16,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -34,10 +34,10 @@ type driveVersionHistorySpec struct {
 func validateDriveNumericValue(value, flagName, valueLabel string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return output.ErrValidation("%s cannot be empty", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s cannot be empty", flagName).WithParam(flagName)
 	}
 	if !driveVersionNumberRe.MatchString(value) {
-		return output.ErrValidation("%s must be a numeric %s", flagName, valueLabel)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s must be a numeric %s", flagName, valueLabel).WithParam(flagName)
 	}
 	return nil
 }
@@ -52,10 +52,10 @@ func validateDriveCursorValue(value, flagName string) error {
 
 func validateDriveVersionHistorySpec(spec driveVersionHistorySpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	if spec.Limit < 1 || spec.Limit > 200 {
-		return output.ErrValidation("invalid --limit %d: must be between 1 and 200", spec.Limit)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --limit %d: must be between 1 and 200", spec.Limit).WithParam("--limit")
 	}
 	if spec.Cursor != "" {
 		if err := validateDriveCursorValue(spec.Cursor, "--cursor"); err != nil {
@@ -180,7 +180,7 @@ var DriveVersionHistory = common.Shortcut{
 			Cursor:    strings.TrimSpace(runtime.Str("cursor")),
 		}
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			http.MethodGet,
 			fmt.Sprintf("/open-apis/drive/v1/files/%s/history", validate.EncodePathSegment(spec.FileToken)),
 			driveVersionHistoryParams(spec),
@@ -214,7 +214,7 @@ type driveVersionGetSpec struct {
 
 func validateDriveVersionGetSpec(runtime *common.RuntimeContext, spec driveVersionGetSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	if err := validateDriveVersionValue(spec.Version, "--version"); err != nil {
 		return err
@@ -223,7 +223,7 @@ func validateDriveVersionGetSpec(runtime *common.RuntimeContext, spec driveVersi
 		return nil
 	}
 	if _, err := validate.SafeOutputPath(spec.Output); err != nil {
-		return output.ErrValidation("unsafe output path: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output")
 	}
 	return nil
 }
@@ -299,7 +299,7 @@ var DriveVersionGet = common.Shortcut{
 			},
 		})
 		if err != nil {
-			return output.ErrNetwork("download failed: %s", err)
+			return wrapDriveNetworkErr(err, "download failed: %s", err)
 		}
 		defer resp.Body.Close()
 
@@ -315,10 +315,10 @@ var DriveVersionGet = common.Shortcut{
 			outputPath, _ = common.AutoAppendDownloadExtension(outputPath, resp.Header, "")
 		}
 		if _, resolveErr := runtime.ResolveSavePath(outputPath); resolveErr != nil {
-			return output.ErrValidation("unsafe output path: %s", resolveErr)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", resolveErr).WithParam("--output")
 		}
 		if _, statErr := runtime.FileIO().Stat(outputPath); statErr == nil && !spec.Overwrite {
-			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "output file already exists: %s (use --overwrite to replace)", outputPath).WithParam("--output")
 		}
 
 		result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
@@ -326,7 +326,7 @@ var DriveVersionGet = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "io")
+			return driveSaveError(err)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)
@@ -354,7 +354,7 @@ type driveVersionMutationSpec struct {
 
 func validateDriveVersionMutationSpec(spec driveVersionMutationSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	return validateDriveVersionValue(spec.Version, "--version")
 }
@@ -392,7 +392,7 @@ var DriveVersionRevert = common.Shortcut{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Version:   strings.TrimSpace(runtime.Str("version")),
 		}
-		if _, err := runtime.CallAPI(
+		if _, err := runtime.CallAPITyped(
 			http.MethodPost,
 			fmt.Sprintf("/open-apis/drive/v1/files/%s/revert", validate.EncodePathSegment(spec.FileToken)),
 			nil,
@@ -439,7 +439,7 @@ var DriveVersionDelete = common.Shortcut{
 			FileToken: strings.TrimSpace(runtime.Str("file-token")),
 			Version:   strings.TrimSpace(runtime.Str("version")),
 		}
-		if _, err := runtime.CallAPI(
+		if _, err := runtime.CallAPITyped(
 			http.MethodPost,
 			fmt.Sprintf("/open-apis/drive/v1/files/%s/version_del", validate.EncodePathSegment(spec.FileToken)),
 			nil,

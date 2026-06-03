@@ -20,6 +20,7 @@ type ClassifyContext struct {
 	Brand    string // "feishu" | "lark" — drives console_url host
 	AppID    string // placed in console_url
 	Identity string // "user" / "bot" / "" — caller converts core.Identity at the boundary
+	LarkCmd  string // e.g. "drive +delete" — used as Action fallback on CategoryConfirmation arm
 }
 
 // BuildAPIError consumes a parsed Lark API response and returns a typed error.
@@ -35,7 +36,7 @@ type ClassifyContext struct {
 //	Network → *errs.NetworkError
 //	Internal → *errs.InternalError
 //	Confirmation → *errs.ConfirmationRequiredError
-//	default (CategoryAPI) → *errs.APIError (Detail preserves raw response)
+//	default (CategoryAPI) → *errs.APIError (catch-all for classified Lark business errors)
 //
 // Unknown Lark codes (LookupCodeMeta returns false) fall back to
 // CategoryAPI + SubtypeUnknown.
@@ -80,6 +81,17 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		LogID:     logID,
 		Retryable: meta.Retryable,
 	}
+	// Upstream-provided diagnostic URL (resp.error.troubleshooter). Lifted
+	// universally before the category switch so every classified typed
+	// error surfaces it when present. The remaining contents of resp["error"]
+	// (permission_violations.subject, data.challenge_url, data.hint) are
+	// either lifted into category-specific typed extension fields below or
+	// intentionally dropped as redundant with the typed envelope.
+	if errBlock, ok := resp["error"].(map[string]any); ok {
+		if ts, _ := errBlock["troubleshooter"].(string); ts != "" {
+			base.Troubleshooter = ts
+		}
+	}
 
 	switch meta.Category {
 	case errs.CategoryAuthorization:
@@ -87,7 +99,7 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	case errs.CategoryAuthentication:
 		return &errs.AuthenticationError{Problem: base}
 	case errs.CategoryConfig:
-		return &errs.ConfigError{Problem: base}
+		return buildConfigError(base)
 	case errs.CategoryPolicy:
 		return buildSecurityPolicyError(base, resp)
 	case errs.CategoryValidation:
@@ -97,9 +109,40 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 	case errs.CategoryInternal:
 		return &errs.InternalError{Problem: base}
 	case errs.CategoryConfirmation:
-		return &errs.ConfirmationRequiredError{Problem: base}
+		// Risk + Action are non-omitempty wire fields. Derive from
+		// CodeMeta when available; otherwise emit RiskUnknown +
+		// ctx.LarkCmd placeholder so the envelope is never wire-invalid.
+		risk := meta.Risk
+		if risk == "" {
+			risk = errs.RiskUnknown
+		}
+		action := meta.Action
+		if action == "" {
+			action = cc.LarkCmd
+		}
+		if action == "" {
+			action = "unknown"
+		}
+		return &errs.ConfirmationRequiredError{
+			Problem: base,
+			Risk:    risk,
+			Action:  action,
+		}
+	case errs.CategoryAPI:
+		base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
+		return &errs.APIError{Problem: base}
 	default:
-		return &errs.APIError{Problem: base, Detail: resp}
+		// Fail closed: an unrecognized Category routes to InternalError
+		// instead of emitting an empty Problem on the wire.
+		return &errs.InternalError{
+			Problem: errs.Problem{
+				Category: errs.CategoryInternal,
+				Subtype:  errs.SubtypeSDKError,
+				Code:     base.Code,
+				Message:  fmt.Sprintf("unrecognized Category %q for code %d", base.Category, base.Code),
+				LogID:    base.LogID,
+			},
+		}
 	}
 }
 
@@ -149,7 +192,7 @@ func buildSecurityPolicyError(p errs.Problem, resp map[string]any) *errs.Securit
 
 // isHTTPSURL is the local-to-errclass duplicate of internal/auth/transport.go's
 // isValidChallengeURL. Kept local to avoid coupling errclass to internal/auth;
-// the two will collapse when the auth transport adopts BuildAPIError in stage 4.
+// the two collapse once the auth transport adopts BuildAPIError directly.
 func isHTTPSURL(rawURL string) bool {
 	if rawURL == "" {
 		return false
@@ -167,47 +210,158 @@ func stringFromAny(v any) string {
 	return s
 }
 
+// buildConfigError enriches a typed ConfigError with the canonical
+// per-subtype recovery hint before returning it, so the wire envelope
+// emitted via BuildAPIError always carries a hint for known config subtypes.
+func buildConfigError(p errs.Problem) *errs.ConfigError {
+	p.Hint = ConfigHint(p.Subtype)
+	return &errs.ConfigError{Problem: p}
+}
+
+// ConfigHint returns the canonical per-subtype recovery hint for a typed
+// ConfigError emitted via BuildAPIError.
+func ConfigHint(subtype errs.Subtype) string {
+	switch subtype {
+	case errs.SubtypeInvalidClient:
+		return "run `lark-cli config init` to set valid app_id and app_secret"
+	case errs.SubtypeNotConfigured:
+		return "run `lark-cli config init` to set up app_id and app_secret"
+	case errs.SubtypeInvalidConfig:
+		return "check the config file for syntax errors; rerun `lark-cli config init` to reset"
+	}
+	return ""
+}
+
+// APIHint returns the canonical per-subtype recovery hint for a typed APIError
+// emitted via BuildAPIError, for API subtypes whose recovery is context-free.
+// Context-specific guidance (e.g. a command's flags, an API's own quota) is
+// layered on by the caller after BuildAPIError returns and overrides this.
+func APIHint(subtype errs.Subtype) string {
+	switch subtype {
+	case errs.SubtypeConflict:
+		return "retry later and avoid concurrent duplicate requests on the same resource"
+	case errs.SubtypeCrossTenant:
+		return "operate on source and target within the same tenant and region/unit"
+	case errs.SubtypeCrossBrand:
+		return "operate on source and target within the same brand environment"
+	}
+	return ""
+}
+
 func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContext) *errs.PermissionError {
 	missing := extractMissingScopes(resp)
 	identity := cc.Identity
 	if identity == "" {
 		identity = "user"
 	}
-	p.Hint = PermissionHint(missing, identity, p.Subtype)
-	return &errs.PermissionError{
+	consoleURL := ConsoleURL(cc.Brand, cc.AppID, missing)
+	p.Message = CanonicalPermissionMessage(p.Subtype, cc.AppID, missing, p.Message)
+	p.Hint = PermissionHint(missing, identity, p.Subtype, consoleURL)
+	permErr := &errs.PermissionError{
 		Problem:       p,
 		MissingScopes: missing,
 		Identity:      identity,
-		ConsoleURL:    ConsoleURL(cc.Brand, cc.AppID, missing),
 	}
+	// ConsoleURL is the developer-console deep-link an app developer follows to
+	// apply for a missing scope. That action only resolves SubtypeAppScopeNotApplied,
+	// which is bot-perspective. The other authorization subtypes route to a
+	// different actor: SubtypeMissingScope / SubtypeTokenScopeInsufficient /
+	// SubtypeUserUnauthorized recover via `lark-cli auth login`; SubtypeAppUnavailable
+	// / SubtypeAppDisabled require tenant admin. Carrying ConsoleURL on those
+	// envelopes is dead weight and risks pointing an end user at a console they
+	// cannot modify; the URL is still computed so the hint composer can use it
+	// where appropriate.
+	if p.Subtype == errs.SubtypeAppScopeNotApplied {
+		permErr.ConsoleURL = consoleURL
+	}
+	return permErr
 }
 
-// PermissionHint returns an actionable next-step string for a permission
-// error. User identity with a missing user-scope is recovered by re-running
-// `auth login --scope ...`; bot identity or app-level scope errors are
-// recovered by enabling scopes in the open-platform console. The subtype
-// argument distinguishes app-level failures (e.g. SubtypeAppScopeNotApplied)
-// where re-authentication will not help regardless of the caller identity.
+// CanonicalPermissionMessage returns the CLI-side canonical wording for a
+// typed PermissionError, preserving the Lark official-API phrasing
+// ("access denied" / "unauthorized" / "token has no permission") and
+// enhancing it with CLI context (app ID, missing scope list). Subtypes
+// outside the known set fall through to fallback so the upstream message
+// is preserved.
+func CanonicalPermissionMessage(subtype errs.Subtype, appID string, missing []string, fallback string) string {
+	switch subtype {
+	case errs.SubtypeAppScopeNotApplied:
+		if len(missing) > 0 {
+			scopes := strings.Join(missing, ", ")
+			if appID != "" {
+				return fmt.Sprintf("access denied: app %s has not applied for the required scope(s): %s", appID, scopes)
+			}
+			return fmt.Sprintf("access denied: app has not applied for the required scope(s): %s", scopes)
+		}
+		if appID != "" {
+			return fmt.Sprintf("access denied: app %s has not applied for the required scope(s)", appID)
+		}
+		return "access denied: app has not applied for the required scope(s)"
+	case errs.SubtypeMissingScope:
+		if len(missing) > 0 {
+			return fmt.Sprintf("unauthorized: user authorization does not cover the required scope(s): %s", strings.Join(missing, ", "))
+		}
+		return "unauthorized: user authorization does not cover the required scope"
+	case errs.SubtypeTokenScopeInsufficient:
+		return "token has no permission for this operation; required scope is missing"
+	case errs.SubtypeUserUnauthorized:
+		return "access denied for this operation; possible causes: missing scope, missing user authorization, or restricted by tenant policy"
+	case errs.SubtypeAppUnavailable:
+		if appID != "" {
+			return fmt.Sprintf("unauthorized app: app %s is not properly installed in this tenant", appID)
+		}
+		return "unauthorized app: app is not properly installed in this tenant"
+	case errs.SubtypeAppDisabled:
+		if appID != "" {
+			return fmt.Sprintf("app %s is not in use in this tenant (currently disabled)", appID)
+		}
+		return "app is not in use in this tenant (currently disabled)"
+	case errs.SubtypePermissionDenied:
+		return "user lacks permission for the requested resource"
+	}
+	return fallback
+}
+
+// PermissionHint returns the canonical per-subtype recovery hint for a typed
+// PermissionError. The hint distinguishes authorization subtypes routing
+// to different recovery paths: developer console for app_scope_not_applied,
+// user re-login for missing_scope / token_scope_insufficient / user_unauthorized,
+// and tenant admin for app_unavailable / app_disabled. The subtype
+// argument is the primary discriminator; identity is retained for the
+// generic permission_denied fallback so callers that do not yet route on
+// subtype still get a sensible hint.
 //
 // Exported so direct construction sites (cmd/service/service.go's
 // checkServiceScopes) can produce hints that match the dispatcher path
 // byte-for-byte instead of hand-rolling divergent strings.
-func PermissionHint(missing []string, identity string, subtype errs.Subtype) string {
-	// app_scope_not_enabled means the scope has not been granted at the
-	// app (developer console) level — re-authenticating cannot fix it,
-	// so route every caller identity to the console hint.
-	useConsole := identity == "bot" || subtype == errs.SubtypeAppScopeNotApplied
-	if len(missing) == 0 {
-		if useConsole {
-			return "check the app's scope grant in the Lark open platform console"
+func PermissionHint(missing []string, identity string, subtype errs.Subtype, consoleURL string) string {
+	switch subtype {
+	case errs.SubtypeAppScopeNotApplied:
+		if consoleURL != "" {
+			return fmt.Sprintf("the app developer must apply for the required scope(s) at the developer console: %s", consoleURL)
 		}
-		return "ensure the calling identity has been granted the required scopes"
+		return "the app developer must apply for the required scope(s) at the developer console"
+	case errs.SubtypeMissingScope:
+		if len(missing) > 0 {
+			return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to re-authorize the user with the updated scope set", strings.Join(missing, " "))
+		}
+		return "run `lark-cli auth login` to re-authorize the user with the updated scope set"
+	case errs.SubtypeTokenScopeInsufficient:
+		return "check the token's granted scopes; run `lark-cli auth login` to refresh if the scope was added after the token was issued"
+	case errs.SubtypeUserUnauthorized:
+		return "run `lark-cli auth login` to re-authorize this user; if re-auth does not help, the operation may be blocked by external-chat or admin policy"
+	case errs.SubtypeAppUnavailable:
+		return "ask the tenant admin to check the app's install status in the Lark admin console"
+	case errs.SubtypeAppDisabled:
+		return "ask the tenant admin to re-enable the app in the Lark admin console"
+	case errs.SubtypePermissionDenied:
+		who := "this user"
+		if identity == "bot" {
+			who = "this bot"
+		}
+		return fmt.Sprintf("check the resource owner has granted access to %s", who)
 	}
-	scopes := strings.Join(missing, " ")
-	if useConsole {
-		return fmt.Sprintf("the app is missing required scope(s): %s. Open the app's open platform console and add them.", scopes)
-	}
-	return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to re-authenticate with the missing scope(s)", scopes)
+	return "check the calling identity has the required scope"
 }
 
 // extractMissingScopes walks resp["error"]["permission_violations"][].subject.

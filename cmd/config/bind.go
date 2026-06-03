@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
@@ -181,7 +182,7 @@ type existingBinding struct {
 func finalizeSource(opts *BindOptions) (string, error) {
 	explicit := strings.TrimSpace(strings.ToLower(opts.Source))
 	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" {
-		return "", output.ErrValidation("invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit).WithParam("--source")
 	}
 
 	var detected string
@@ -198,9 +199,10 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	// before any interactive prompts — running inside Hermes with
 	// --source openclaw (or vice versa) is almost always a mistake.
 	if explicit != "" && detected != "" && explicit != detected {
-		return "", output.ErrWithHint(output.ExitValidation, "bind",
-			fmt.Sprintf("--source %q does not match detected Agent environment (%s)", explicit, detected),
-			"remove --source to auto-detect, or run this command in the correct Agent context")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--source %q does not match detected Agent environment (%s)", explicit, detected).
+			WithHint("remove --source to auto-detect, or run this command in the correct Agent context").
+			WithParam("--source")
 	}
 
 	// TUI: prompt for language before any downstream prompts. The source
@@ -228,9 +230,10 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	if opts.IsTUI {
 		return tuiSelectSource(opts)
 	}
-	return "", output.ErrWithHint(output.ExitValidation, "bind",
-		"cannot determine Agent source: no --source flag and no Agent environment detected",
-		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
+	return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"cannot determine Agent source: no --source flag and no Agent environment detected").
+		WithHint("pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context").
+		WithParam("--source")
 }
 
 // reconcileExistingBinding reads any existing config at configPath and decides
@@ -335,8 +338,9 @@ func warnIdentityEscalation(opts *BindOptions, previousConfigBytes []byte) error
 		return nil
 	}
 	msg := getBindMsg(opts.UILang)
-	return output.ErrWithHint(output.ExitValidation, "bind",
-		msg.IdentityEscalationMessage, msg.IdentityEscalationHint)
+	return errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite,
+		"config bind --force", "%s", msg.IdentityEscalationMessage).
+		WithHint("%s", msg.IdentityEscalationHint)
 }
 
 // noticeUserDefaultRisk surfaces the user-identity impersonation risk on every
@@ -407,17 +411,14 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
 
 	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to create workspace directory: %v", err)
+		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
 	}
 	data, err := json.MarshalIndent(multi, "", "  ")
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to marshal config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to marshal config: %v", err).WithCause(err)
 	}
 	if err := validate.AtomicWrite(configPath, append(data, '\n'), 0600); err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to write config %s: %v", configPath, err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to write config %s: %v", configPath, err).WithCause(err)
 	}
 
 	replaced := previousConfigBytes != nil
@@ -628,7 +629,7 @@ func validateBindFlags(opts *BindOptions) error {
 		switch opts.Identity {
 		case "bot-only", "user-default":
 		default:
-			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --identity %q; valid values: bot-only, user-default", opts.Identity).WithParam("--identity")
 		}
 	}
 	lang, err := cmdutil.ParseLangFlag(opts.Lang)

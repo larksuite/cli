@@ -57,7 +57,7 @@ func TestConfigPolicyShow_PluginActive(t *testing.T) {
 		MaxRisk: "read",
 	}
 	cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{
-		Rule: rule,
+		Rules: []*platform.Rule{rule},
 		Source: cmdpolicy.ResolveSource{
 			Kind: cmdpolicy.SourcePlugin,
 			Name: "secaudit",
@@ -83,12 +83,16 @@ func TestConfigPolicyShow_PluginActive(t *testing.T) {
 	if got["denied_paths"] != float64(42) {
 		t.Errorf("denied_paths = %v, want 42", got["denied_paths"])
 	}
-	ruleMap, ok := got["rule"].(map[string]any)
+	rulesAny, ok := got["rules"].([]any)
+	if !ok || len(rulesAny) != 1 {
+		t.Fatalf("rules field missing or wrong shape: %v", got["rules"])
+	}
+	ruleMap, ok := rulesAny[0].(map[string]any)
 	if !ok {
-		t.Fatalf("rule field missing or wrong type")
+		t.Fatalf("rules[0] wrong type")
 	}
 	if ruleMap["name"] != "secaudit" {
-		t.Errorf("rule.name = %v", ruleMap["name"])
+		t.Errorf("rules[0].name = %v", ruleMap["name"])
 	}
 }
 
@@ -101,7 +105,7 @@ func TestConfigPolicyShow_YamlSourceNameIsEmpty(t *testing.T) {
 	t.Cleanup(cmdpolicy.ResetActiveForTesting)
 
 	cmdpolicy.SetActive(&cmdpolicy.ActivePolicy{
-		Rule: &platform.Rule{Name: "my-yaml-rule"},
+		Rules: []*platform.Rule{{Name: "my-yaml-rule"}},
 		Source: cmdpolicy.ResolveSource{
 			Kind: cmdpolicy.SourceYAML,
 			Name: "/Users/alice/.lark-cli/policy.yml",

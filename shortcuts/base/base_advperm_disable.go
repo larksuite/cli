@@ -25,6 +25,10 @@ var BaseAdvpermDisable = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
+	Tips: []string{
+		baseHighRiskYesTip,
+		"Disabling advanced permissions invalidates existing custom roles; confirm the target Base before passing --yes.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
 			return common.FlagErrorf("--base-token must not be blank")

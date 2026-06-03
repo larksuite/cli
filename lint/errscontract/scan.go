@@ -106,6 +106,13 @@ func ScanRepo(root string) ([]Violation, error) {
 		all = append(all, CheckNoRegistrar(rel, string(src))...)
 		all = append(all, CheckAdHocSubtype(rel, string(src))...)
 		all = append(all, CheckTypedErrorCompleteness(rel, string(src))...)
+		all = append(all, CheckNoLegacyEnvelopeLiteral(rel, string(src))...)
+		all = append(all, CheckNoLegacyRuntimeAPICall(rel, string(src))...)
+		// Typed-error invariants — self-scope to errs/ + classify.go.
+		all = append(all, CheckNilSafeError(rel, string(src))...)
+		all = append(all, CheckUnwrapSymmetry(rel, string(src))...)
+		all = append(all, CheckBuilderImmutable(rel, string(src))...)
+		all = append(all, CheckBuildAPIErrorArms(rel, string(src))...)
 		if allowlist != nil && !isErrsScope(rel) {
 			// CheckDeclaredSubtype does not fire inside the errs/ package itself — that
 			// package defines the Subtype type and its constructors take

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -44,7 +44,7 @@ var permApplyURLMarkers = []struct {
 func resolvePermApplyTarget(raw, explicitType string) (token, docType string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", "", output.ErrValidation("--token is required")
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--token is required").WithParam("--token")
 	}
 
 	if strings.Contains(raw, "://") {
@@ -58,10 +58,10 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 			}
 		}
 		if token == "" {
-			return "", "", output.ErrValidation(
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/. Pass a bare token with --type instead if the URL shape is unusual",
 				raw,
-			)
+			).WithParam("--token")
 		}
 	} else {
 		token = raw
@@ -71,10 +71,10 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 		docType = explicitType
 	}
 	if docType == "" {
-		return "", "", output.ErrValidation(
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--type is required when --token is a bare token; accepted values: %s",
 			strings.Join(permApplyTypes, ", "),
-		)
+		).WithParam("--type")
 	}
 	return token, docType, nil
 }
@@ -125,7 +125,7 @@ var DriveApplyPermission = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Requesting %s access on %s %s...\n",
 			runtime.Str("perm"), docType, common.MaskToken(token))
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/drive/v1/permissions/%s/members/apply", validate.EncodePathSegment(token)),
 			map[string]interface{}{"type": docType},
 			body,
