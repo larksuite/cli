@@ -29,8 +29,9 @@ lark-cli apps +create --app-type HTML --name "客户调研问卷"
 lark-cli apps +html-publish --app-id app_xxx --path ./dist
 
 # C. 云端会话
-lark-cli apps +session-create --app-id app_xxx --message "做一个待办清单页面"
-lark-cli apps +session-read --session-id sess_xxx
+lark-cli apps +session-create --app-id app_xxx                                   # 建会话 → session_id
+lark-cli apps +chat --app-id app_xxx --session-id sess_xxx --message "做一个待办清单页面"  # 发需求（异步）
+lark-cli apps +session-read --app-id app_xxx --session-id sess_xxx               # 轮询拿状态
 ```
 
 ## 意图路由（先读这张表）
@@ -139,11 +140,11 @@ lark-cli auth login --domain apps
 ### 云端会话开发
 | 命令 | 用途 | 优先级 / 状态 |
 |------|------|------|
-| `+session-create` | 在应用下创建会话并发首条需求 | P0 新增 |
-| `+session-read` | 读取会话内容 / 进度（轮询用） | P0 新增 |
-| `+session-list` | 列出某应用下的会话 | P1 新增 |
-| `+session-stop` | 终止会话 | P1 新增 |
-| `+chat` | 在会话内继续发消息 | 新增 |
+| `+session-create` | 在应用下新建会话（仅 `--app-id`，不带消息） | 新增 |
+| `+chat` | 向会话发消息发起 / 继续对话（异步，返回 `next_poll_after_ms`） | 新增 |
+| `+session-read` | 读取会话状态 / 最近一轮（`--app-id` + `--session-id`，轮询用） | 新增 |
+| `+session-stop` | 打断会话正在生成的当前轮（需 `--turn-id`） | 新增 |
+| `+session-list` | 列出某应用下的会话（分页） | 新增 |
 
 ### 可用范围
 | 命令 | 用途 | 状态 |

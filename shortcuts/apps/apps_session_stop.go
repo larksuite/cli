@@ -1,0 +1,75 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strings"
+
+	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
+)
+
+// AppsSessionStop interrupts the RUNNING turn of a session. No-op if the turn
+// is queued or already finished. Does not close the session.
+var AppsSessionStop = common.Shortcut{
+	Service:     appsService,
+	Command:     "+session-stop",
+	Description: "Stop (interrupt) the running turn of a session",
+	Risk:        "write",
+	Scopes:      []string{"spark:app:write"},
+	AuthTypes:   []string{"user"},
+	HasFormat:   true,
+	Flags: []common.Flag{
+		{Name: "app-id", Desc: "app ID", Required: true},
+		{Name: "session-id", Desc: "session ID", Required: true},
+		{Name: "turn-id", Desc: "turn ID to stop (from +chat / +session-read latest_turn.turnID)", Required: true},
+	},
+	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		if strings.TrimSpace(rctx.Str("app-id")) == "" {
+			return output.ErrValidation("--app-id is required")
+		}
+		if strings.TrimSpace(rctx.Str("session-id")) == "" {
+			return output.ErrValidation("--session-id is required")
+		}
+		if strings.TrimSpace(rctx.Str("turn-id")) == "" {
+			return output.ErrValidation("--turn-id is required")
+		}
+		return nil
+	},
+	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		return common.NewDryRunAPI().
+			POST(stopPath(rctx.Str("app-id"), rctx.Str("session-id"))).
+			Desc("Stop the running turn of a session").
+			Body(buildStopBody(rctx))
+	},
+	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+		data, err := rctx.CallAPI("POST", stopPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildStopBody(rctx))
+		if err != nil {
+			return err
+		}
+		turnID := strings.TrimSpace(rctx.Str("turn-id"))
+		rctx.OutFormat(data, nil, func(w io.Writer) {
+			stopped, _ := data["stopped"].(bool)
+			if stopped {
+				fmt.Fprintf(w, "stopped turn %s (state was: %v)\n", turnID, data["state"])
+			} else {
+				fmt.Fprintf(w, "no-op: turn %s not running (state: %v)\n", turnID, data["state"])
+			}
+		})
+		return nil
+	},
+}
+
+func stopPath(appID, sessionID string) string {
+	return sessionPath(appID, sessionID) + "/stop"
+}
+
+func buildStopBody(rctx *common.RuntimeContext) map[string]interface{} {
+	return map[string]interface{}{
+		"turn_id": strings.TrimSpace(rctx.Str("turn-id")),
+	}
+}

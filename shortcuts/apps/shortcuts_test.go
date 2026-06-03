@@ -10,11 +10,33 @@ import (
 )
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
-// 6 基础 + 1 init + 4 publish + 1 env-pull + 4 db（table-list/table-schema/sql/dev-init）+ 3 git-credential = 19。
-func TestAppsShortcuts_Returns19(t *testing.T) {
+// 6 基础 + 1 init + 4 publish + 1 env-pull + 4 db（table-list/table-schema/sql/dev-init）
+// + 3 git-credential + 5 session（create/list/read/stop/chat）= 24。
+func TestAppsShortcuts_Returns24(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 19 {
-		t.Fatalf("Shortcuts() returned %d entries, want 19", len(got))
+	if len(got) != 24 {
+		t.Fatalf("Shortcuts() returned %d entries, want 24", len(got))
+	}
+}
+
+// 确认 5 个 session 生命周期命令都已挂载。
+func TestAppsShortcuts_IncludesSessionCommands(t *testing.T) {
+	want := map[string]bool{
+		"+session-create": false,
+		"+session-list":   false,
+		"+session-read":   false,
+		"+session-stop":   false,
+		"+chat":           false,
+	}
+	for _, sc := range Shortcuts() {
+		if _, ok := want[sc.Command]; ok {
+			want[sc.Command] = true
+		}
+	}
+	for cmd, found := range want {
+		if !found {
+			t.Errorf("Shortcuts() missing %s", cmd)
+		}
 	}
 }
 
