@@ -71,13 +71,7 @@ func ParseGlobalSkillsJSON(text string) []string {
 	seen := map[string]bool{}
 	for _, skill := range skills {
 		candidate := strings.TrimSpace(skill.Name)
-		if at := strings.Index(candidate, "@"); at > 0 {
-			candidate = candidate[:at]
-		}
-		if candidate == "" || strings.Contains(candidate, " ") || strings.HasSuffix(candidate, ":") {
-			continue
-		}
-		if !skillNamePattern.MatchString(candidate) {
+		if candidate == "" || !skillNamePattern.MatchString(candidate) {
 			continue
 		}
 		seen[candidate] = true
@@ -109,6 +103,7 @@ func parseGlobalSkillsList(lines []string) []string {
 		if strings.HasPrefix(trimmed, "Agents:") {
 			continue
 		}
+
 		if isGlobalSkillsSectionHeader(trimmed) {
 			continue
 		}
@@ -122,14 +117,8 @@ func parseGlobalSkillsList(lines []string) []string {
 		candidate := parts[0]
 
 		// Validate and add
-		if candidate == "" || strings.Contains(candidate, " ") || strings.HasSuffix(candidate, ":") {
+		if candidate == "" || !skillNamePattern.MatchString(candidate) {
 			continue
-		}
-		if !skillNamePattern.MatchString(candidate) {
-			continue
-		}
-		if at := strings.Index(candidate, "@"); at > 0 {
-			candidate = candidate[:at]
 		}
 		seen[candidate] = true
 	}

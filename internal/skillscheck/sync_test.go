@@ -92,7 +92,7 @@ func TestParseGlobalSkillsJSON(t *testing.T) {
   {"name":"bad skill"}
 ]`
 	got := ParseGlobalSkillsJSON(input)
-	want := []string{"lark-base", "lark-calendar", "lark-mail"}
+	want := []string{"lark-base", "lark-calendar", "lark-mail@1.2.3"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ParseGlobalSkillsJSON() = %#v, want %#v", got, want)
 	}
