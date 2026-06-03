@@ -47,6 +47,7 @@ type RuntimeContext struct {
 	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
 	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
+	typedArgs     any                               // per-run typed Args, set by binder; consumed by DryRun/Execute
 }
 
 // ── Identity ──
@@ -1017,56 +1018,69 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 	stdinUsed := false
 	for _, fl := range flags {
-		if len(fl.Input) == 0 {
-			continue
+		if err := resolveInputForFlag(rctx, fl.Name, fl.Input, &stdinUsed); err != nil {
+			return err
 		}
-		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
+	}
+	return nil
+}
+
+// resolveInputForFlag applies @file / stdin / @@-escape resolution to a single
+// string flag. sources lists the accepted inputs (File / Stdin); empty sources
+// or an empty/plain flag value is a no-op. stdinUsed is shared across all flags
+// of one invocation so stdin (-) is consumed by at most one flag. Both the
+// legacy resolveInputFlags loop and the typed binder (resolveTypedInputs) call
+// through here, so @file / stdin behaves identically on TypedShortcut[T].
+func resolveInputForFlag(rctx *RuntimeContext, name string, sources []string, stdinUsed *bool) error {
+	if len(sources) == 0 {
+		return nil
+	}
+	raw, err := rctx.Cmd.Flags().GetString(name)
+	if err != nil {
+		return FlagErrorf("--%s: Input is only supported for string flags", name)
+	}
+	if raw == "" {
+		return nil
+	}
+
+	// stdin: -
+	if raw == "-" {
+		if !slices.Contains(sources, Stdin) {
+			return FlagErrorf("--%s does not support stdin (-)", name)
+		}
+		if *stdinUsed {
+			return FlagErrorf("--%s: stdin (-) can only be used by one flag", name)
+		}
+		*stdinUsed = true
+		data, err := io.ReadAll(rctx.IO().In)
 		if err != nil {
-			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+			return FlagErrorf("--%s: failed to read from stdin: %v", name, err)
 		}
-		if raw == "" {
-			continue
-		}
+		rctx.Cmd.Flags().Set(name, string(data))
+		return nil
+	}
 
-		// stdin: -
-		if raw == "-" {
-			if !slices.Contains(fl.Input, Stdin) {
-				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
-			}
-			if stdinUsed {
-				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
-			}
-			stdinUsed = true
-			data, err := io.ReadAll(rctx.IO().In)
-			if err != nil {
-				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
-			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
-			continue
-		}
+	// escape: @@ → literal @
+	if strings.HasPrefix(raw, "@@") {
+		rctx.Cmd.Flags().Set(name, raw[1:]) // strip first @
+		return nil
+	}
 
-		// escape: @@ → literal @
-		if strings.HasPrefix(raw, "@@") {
-			rctx.Cmd.Flags().Set(fl.Name, raw[1:]) // strip first @
-			continue
+	// file: @path
+	if strings.HasPrefix(raw, "@") {
+		if !slices.Contains(sources, File) {
+			return FlagErrorf("--%s does not support file input (@path)", name)
 		}
-
-		// file: @path
-		if strings.HasPrefix(raw, "@") {
-			if !slices.Contains(fl.Input, File) {
-				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
-			}
-			path := strings.TrimSpace(raw[1:])
-			if path == "" {
-				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
-			}
-			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
-			if err != nil {
-				return FlagErrorf("--%s: %v", fl.Name, err)
-			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
-			continue
+		path := strings.TrimSpace(raw[1:])
+		if path == "" {
+			return FlagErrorf("--%s: file path cannot be empty after @", name)
 		}
+		data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
+		if err != nil {
+			return FlagErrorf("--%s: %v", name, err)
+		}
+		rctx.Cmd.Flags().Set(name, string(data))
+		return nil
 	}
 	return nil
 }
@@ -1183,3 +1197,12 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
 }
+
+// TypedArgs returns the per-run Args struct populated by the binder. Returns
+// nil for runs that didn't go through TypedShortcut[T]. Callers should
+// type-assert to the concrete *Args type.
+func (ctx *RuntimeContext) TypedArgs() any { return ctx.typedArgs }
+
+// SetTypedArgs stores the per-run Args struct. Called once by the binder
+// after bind + Normalize complete. Must not be called by user hooks.
+func (ctx *RuntimeContext) SetTypedArgs(v any) { ctx.typedArgs = v }

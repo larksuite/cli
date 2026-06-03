@@ -64,12 +64,13 @@ func getDomainMetadata(lang string) []domainMeta {
 		shortcutOnlySet[n] = true
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
-		if !seen[sc.Service] {
-			if shortcutOnlySet[sc.Service] && !registry.HasAuthDomain(sc.Service) {
-				dm := buildDomainMeta(sc.Service, lang)
+		svc := sc.GetService()
+		if !seen[svc] {
+			if shortcutOnlySet[svc] && !registry.HasAuthDomain(svc) {
+				dm := buildDomainMeta(svc, lang)
 				domains = append(domains, dm)
 			}
-			seen[sc.Service] = true
+			seen[svc] = true
 		}
 	}
 

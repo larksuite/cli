@@ -105,7 +105,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 
 	service := cmd.Parent().Name()
 	for _, sc := range shortcuts.AllShortcuts() {
-		if sc.Service != service || sc.Command != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
+		if sc.GetService() != service || sc.GetCommand() != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
 			continue
 		}
 		scopes := sc.DeclaredScopesForIdentity(identity)
@@ -154,8 +154,8 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 
 // shortcutSupportsIdentity reports whether a shortcut supports the requested
 // identity, applying the default user-only behavior when AuthTypes is empty.
-func shortcutSupportsIdentity(sc shortcutcommon.Shortcut, identity string) bool {
-	authTypes := sc.AuthTypes
+func shortcutSupportsIdentity(sc shortcutcommon.ShortcutDescriptor, identity string) bool {
+	authTypes := sc.GetAuthTypes()
 	if len(authTypes) == 0 {
 		authTypes = []string{string(core.AsUser)}
 	}

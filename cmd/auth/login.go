@@ -527,10 +527,10 @@ func collectScopesForDomains(domains []string, identity string, brand core.LarkB
 
 	// 3. Shortcut scopes matching by Service (only include shortcuts supporting the identity)
 	for _, sc := range shortcuts.AllShortcuts() {
-		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+		if !shortcuts.IsShortcutServiceAvailable(sc.GetService(), brand) {
 			continue
 		}
-		if domainSet[sc.Service] && shortcutSupportsIdentity(sc, identity) {
+		if domainSet[sc.GetService()] && shortcutSupportsIdentity(sc, identity) {
 			for _, s := range sc.DeclaredScopesForIdentity(identity) {
 				scopeSet[s] = true
 			}
@@ -557,11 +557,11 @@ func allKnownDomains(brand core.LarkBrand) map[string]bool {
 		}
 	}
 	for _, sc := range shortcuts.AllShortcuts() {
-		if !shortcuts.IsShortcutServiceAvailable(sc.Service, brand) {
+		if !shortcuts.IsShortcutServiceAvailable(sc.GetService(), brand) {
 			continue
 		}
-		if !registry.HasAuthDomain(sc.Service) {
-			domains[sc.Service] = true
+		if !registry.HasAuthDomain(sc.GetService()) {
+			domains[sc.GetService()] = true
 		}
 	}
 	return domains
@@ -580,8 +580,8 @@ func sortedKnownDomains(brand core.LarkBrand) []string {
 
 // shortcutSupportsIdentity checks if a shortcut supports the given identity ("user" or "bot").
 // Empty AuthTypes defaults to ["user"].
-func shortcutSupportsIdentity(sc common.Shortcut, identity string) bool {
-	authTypes := sc.AuthTypes
+func shortcutSupportsIdentity(sc common.ShortcutDescriptor, identity string) bool {
+	authTypes := sc.GetAuthTypes()
 	if len(authTypes) == 0 {
 		authTypes = []string{"user"}
 	}

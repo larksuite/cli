@@ -56,3 +56,17 @@ func TestRejectPositionalArgs_NoArgs(t *testing.T) {
 		t.Fatalf("expected no error for empty args, got: %v", err)
 	}
 }
+
+func TestRuntimeContext_TypedArgs_RoundTrip(t *testing.T) {
+	type sample struct{ X int }
+	rt := &RuntimeContext{}
+	if got := rt.TypedArgs(); got != nil {
+		t.Fatalf("fresh RuntimeContext.TypedArgs() = %v, want nil", got)
+	}
+	in := &sample{X: 42}
+	rt.SetTypedArgs(in)
+	out, ok := rt.TypedArgs().(*sample)
+	if !ok || out != in {
+		t.Errorf("round-trip failed: got %v ok=%v", rt.TypedArgs(), ok)
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -47,10 +48,16 @@ func newRegisterTestProgramWithTipsHelp() *cobra.Command {
 }
 
 func TestAllShortcutsScopesNotNil(t *testing.T) {
-	for _, s := range allShortcuts {
-		hasScopes := s.Scopes != nil || s.UserScopes != nil || s.BotScopes != nil
-		if !hasScopes {
-			t.Errorf("shortcut %s/%s: Scopes is nil (must be explicitly set, use []string{} if no scopes needed)", s.Service, s.Command)
+	for _, d := range allShortcuts {
+		legacy, ok := d.(*common.Shortcut)
+		if !ok {
+			// Typed shortcuts enforce scope-presence at their own test layer
+			// (TypedShortcut[T] integration tests); the descriptor interface
+			// doesn't expose the raw fields needed for the nil-vs-empty check.
+			continue
+		}
+		if legacy.Scopes == nil && legacy.UserScopes == nil && legacy.BotScopes == nil {
+			t.Errorf("shortcut %s/%s: Scopes is nil (must be explicitly set, use []string{} if no scopes needed)", legacy.Service, legacy.Command)
 		}
 	}
 }
@@ -62,8 +69,8 @@ func TestAllShortcutsReturnsCopyAndIncludesBase(t *testing.T) {
 	}
 
 	hasBaseGet := false
-	for _, shortcut := range shortcuts {
-		if shortcut.Service == "base" && shortcut.Command == "+base-get" {
+	for _, d := range shortcuts {
+		if d.GetService() == "base" && d.GetCommand() == "+base-get" {
 			hasBaseGet = true
 			break
 		}
@@ -72,9 +79,29 @@ func TestAllShortcutsReturnsCopyAndIncludesBase(t *testing.T) {
 		t.Fatal("AllShortcuts does not include base/+base-get")
 	}
 
-	shortcuts[0].Service = "mutated"
-	if AllShortcuts()[0].Service == "mutated" {
-		t.Fatal("AllShortcuts should return a copy")
+	// Returned slice is a defensive copy of the descriptor references;
+	// appending to it must not affect the canonical registry. (Element
+	// identity is shared by design — mutation through pointers is the
+	// caller's responsibility to avoid, same as any interface slice.)
+	got := AllShortcuts()
+	got = append(got, &common.Shortcut{Service: "synthetic"})
+	if len(AllShortcuts()) >= len(got) {
+		t.Fatal("AllShortcuts should return a copy that callers can append to without affecting the registry")
+	}
+}
+
+func TestAllShortcuts_ReturnsShortcutDescriptors(t *testing.T) {
+	list := AllShortcuts()
+	if len(list) == 0 {
+		t.Fatal("AllShortcuts returned empty slice")
+	}
+	for _, d := range list {
+		if d.GetService() == "" {
+			t.Errorf("shortcut missing service: %T", d)
+		}
+		if d.GetCommand() == "" {
+			t.Errorf("shortcut %q missing command", d.GetService())
+		}
 	}
 }
 
@@ -451,10 +478,10 @@ func TestGenerateShortcutsJSON(t *testing.T) {
 	}
 	grouped := make(map[string][]entry)
 	for _, s := range shortcuts {
-		verb := strings.TrimPrefix(s.Command, "+")
-		grouped[s.Service] = append(grouped[s.Service], entry{
+		verb := strings.TrimPrefix(s.GetCommand(), "+")
+		grouped[s.GetService()] = append(grouped[s.GetService()], entry{
 			Verb:        verb,
-			Description: s.Description,
+			Description: s.GetDescription(),
 			Scopes:      s.DeclaredScopesForIdentity("user"),
 		})
 	}

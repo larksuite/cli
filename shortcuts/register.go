@@ -53,35 +53,55 @@ func IsShortcutServiceAvailable(service string, brand core.LarkBrand) bool {
 	return slices.Contains(allowed, brand)
 }
 
-// allShortcuts aggregates shortcuts from all domain packages.
-var allShortcuts []common.Shortcut
+// allShortcuts aggregates shortcuts from all domain packages. Each entry is a
+// Mountable: both legacy common.Shortcut (via *Shortcut after the descriptor
+// accessor methods landed) and the new generic common.TypedShortcut[T] satisfy
+// it. The slice element type is ShortcutDescriptor so read-only consumers
+// (auth login, scope hint, shortcuts.json generator) can read metadata without
+// caring about which concrete implementation backs each entry.
+//
+// Only legacy shortcuts are registered today; the typed track stays wired
+// (ShortcutDescriptor / Mountable dispatch + buildTypedHelp) but currently has
+// no domain caller.
+var allShortcuts []common.ShortcutDescriptor
 
-func init() {
-	allShortcuts = append(allShortcuts, apps.Shortcuts()...)
-	allShortcuts = append(allShortcuts, calendar.Shortcuts()...)
-	allShortcuts = append(allShortcuts, doc.Shortcuts()...)
-	allShortcuts = append(allShortcuts, drive.Shortcuts()...)
-	allShortcuts = append(allShortcuts, im.Shortcuts()...)
-	allShortcuts = append(allShortcuts, contact_shortcuts.Shortcuts()...)
-	allShortcuts = append(allShortcuts, sheets.Shortcuts()...)
-	allShortcuts = append(allShortcuts, base.Shortcuts()...)
-	allShortcuts = append(allShortcuts, event.Shortcuts()...)
-	allShortcuts = append(allShortcuts, mail.Shortcuts()...)
-	allShortcuts = append(allShortcuts, markdown.Shortcuts()...)
-	allShortcuts = append(allShortcuts, slides.Shortcuts()...)
-	allShortcuts = append(allShortcuts, minutes.Shortcuts()...)
-	allShortcuts = append(allShortcuts, task.Shortcuts()...)
-	allShortcuts = append(allShortcuts, vc.Shortcuts()...)
-	allShortcuts = append(allShortcuts, whiteboard.Shortcuts()...)
-	allShortcuts = append(allShortcuts, wiki.Shortcuts()...)
-	allShortcuts = append(allShortcuts, okr.Shortcuts()...)
+// addLegacy boxes a legacy []common.Shortcut into the descriptor slice. We use
+// pointer-valued elements because the pointer-receiver scope methods
+// (ScopesForIdentity / ConditionalScopesForIdentity / DeclaredScopesForIdentity)
+// are required by ShortcutDescriptor — value receivers don't satisfy them.
+func addLegacy(list []common.Shortcut) {
+	for i := range list {
+		allShortcuts = append(allShortcuts, &list[i])
+	}
 }
 
-// AllShortcuts returns a copy of all registered shortcuts (for dump-shortcuts).
+func init() {
+	addLegacy(apps.Shortcuts())
+	addLegacy(calendar.Shortcuts())
+	addLegacy(doc.Shortcuts())
+	addLegacy(drive.Shortcuts())
+	addLegacy(im.Shortcuts())
+	addLegacy(contact_shortcuts.Shortcuts())
+	addLegacy(sheets.Shortcuts())
+	addLegacy(base.Shortcuts())
+	addLegacy(event.Shortcuts())
+	addLegacy(mail.Shortcuts())
+	addLegacy(markdown.Shortcuts())
+	addLegacy(slides.Shortcuts())
+	addLegacy(minutes.Shortcuts())
+	addLegacy(task.Shortcuts())
+	addLegacy(vc.Shortcuts())
+	addLegacy(whiteboard.Shortcuts())
+	addLegacy(wiki.Shortcuts())
+	addLegacy(okr.Shortcuts())
+}
+
+// AllShortcuts returns a copy of all registered shortcut descriptors (for
+// dump-shortcuts and auth/scope-hint consumers).
 //
 //go:noinline
-func AllShortcuts() []common.Shortcut {
-	return append([]common.Shortcut(nil), allShortcuts...)
+func AllShortcuts() []common.ShortcutDescriptor {
+	return append([]common.ShortcutDescriptor(nil), allShortcuts...)
 }
 
 // RegisterShortcuts registers all +shortcut commands on the program.
@@ -98,10 +118,15 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 		}
 	}
 
-	// Group by service
-	byService := make(map[string][]common.Shortcut)
-	for _, s := range allShortcuts {
-		byService[s.Service] = append(byService[s.Service], s)
+	// Group by service. Each entry is a Mountable so MountWithContext works
+	// uniformly across legacy *Shortcut and TypedShortcut[T].
+	byService := make(map[string][]common.Mountable)
+	for _, d := range allShortcuts {
+		m, ok := d.(common.Mountable)
+		if !ok {
+			panic(fmt.Sprintf("shortcut %s/%s missing Mountable", d.GetService(), d.GetCommand()))
+		}
+		byService[d.GetService()] = append(byService[d.GetService()], m)
 	}
 
 	for service, shortcuts := range byService {
@@ -140,8 +165,8 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 			doc.ConfigureServiceHelp(svc)
 		}
 
-		for _, shortcut := range shortcuts {
-			shortcut.MountWithContext(ctx, svc, f)
+		for _, m := range shortcuts {
+			m.MountWithContext(ctx, svc, f)
 		}
 		if service == "mail" {
 			mail.InstallOnMail(svc)

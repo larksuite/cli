@@ -47,8 +47,8 @@ func diagAllKnownDomains() []string {
 		seen[p] = true
 	}
 	for _, s := range shortcuts.AllShortcuts() {
-		if s.Service != "" {
-			seen[s.Service] = true
+		if s.GetService() != "" {
+			seen[s.GetService()] = true
 		}
 	}
 	result := make([]string, 0, len(seen))
@@ -94,17 +94,17 @@ func diagBuild(domains []string) diagOutput {
 			}
 
 			for _, sc := range allSC {
-				if sc.Service != domain || !diagShortcutSupportsIdentity(&sc, identity) {
+				if sc.GetService() != domain || !diagShortcutSupportsIdentity(sc, identity) {
 					continue
 				}
 				for _, scope := range sc.DeclaredScopesForIdentity(identity) {
-					k := methodKey{domain, "shortcut", sc.Command, scope}
+					k := methodKey{domain, "shortcut", sc.GetCommand(), scope}
 					if e, ok := merged[k]; ok {
 						e.Identity = appendUniq(e.Identity, identity)
 					} else {
 						merged[k] = &diagMethodEntry{
 							Domain: domain, Type: "shortcut",
-							Method: sc.Command,
+							Method: sc.GetCommand(),
 							Scope:  scope, Identity: []string{identity},
 						}
 					}
@@ -148,11 +148,12 @@ func diagBuild(domains []string) diagOutput {
 	return diagOutput{Methods: methods, Scopes: scopes}
 }
 
-func diagShortcutSupportsIdentity(sc *shortcutTypes.Shortcut, identity string) bool {
-	if len(sc.AuthTypes) == 0 {
+func diagShortcutSupportsIdentity(sc shortcutTypes.ShortcutDescriptor, identity string) bool {
+	authTypes := sc.GetAuthTypes()
+	if len(authTypes) == 0 {
 		return identity == "user"
 	}
-	for _, a := range sc.AuthTypes {
+	for _, a := range authTypes {
 		if a == identity {
 			return true
 		}

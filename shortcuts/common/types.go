@@ -125,3 +125,23 @@ func (s *Shortcut) DeclaredScopesForIdentity(identity string) []string {
 	}
 	return out
 }
+
+// GetService returns the parent cobra command name (e.g. "im"). Trivial
+// accessor so *Shortcut satisfies ShortcutDescriptor alongside the existing
+// pointer-receiver scope methods.
+func (s *Shortcut) GetService() string { return s.Service }
+
+// GetCommand returns the shortcut subcommand name (e.g. "+messages-send").
+func (s *Shortcut) GetCommand() string { return s.Command }
+
+// GetDescription returns the short help text.
+func (s *Shortcut) GetDescription() string { return s.Description }
+
+// GetAuthTypes returns the supported identities. Defaults to ["user"] is
+// applied at mount time, not here, to preserve the existing field semantics.
+func (s *Shortcut) GetAuthTypes() []string { return s.AuthTypes }
+
+// GetRisk returns the static risk level ("read" / "write" / "high-risk-write").
+// Empty string defaults to "read" by convention; callers must handle that
+// case (same convention as the existing cobra annotation logic).
+func (s *Shortcut) GetRisk() string { return s.Risk }

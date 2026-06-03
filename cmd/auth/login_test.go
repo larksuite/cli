@@ -98,7 +98,7 @@ func TestNormalizeScopeInput(t *testing.T) {
 
 func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
 	// Empty AuthTypes defaults to ["user"]
-	sc := common.Shortcut{AuthTypes: nil}
+	sc := &common.Shortcut{AuthTypes: nil}
 	if !shortcutSupportsIdentity(sc, "user") {
 		t.Error("expected default to support 'user'")
 	}
@@ -108,7 +108,7 @@ func TestShortcutSupportsIdentity_DefaultUser(t *testing.T) {
 }
 
 func TestShortcutSupportsIdentity_ExplicitTypes(t *testing.T) {
-	sc := common.Shortcut{AuthTypes: []string{"user", "bot"}}
+	sc := &common.Shortcut{AuthTypes: []string{"user", "bot"}}
 	if !shortcutSupportsIdentity(sc, "user") {
 		t.Error("expected to support 'user'")
 	}
@@ -121,7 +121,7 @@ func TestShortcutSupportsIdentity_ExplicitTypes(t *testing.T) {
 }
 
 func TestShortcutSupportsIdentity_BotOnly(t *testing.T) {
-	sc := common.Shortcut{AuthTypes: []string{"bot"}}
+	sc := &common.Shortcut{AuthTypes: []string{"bot"}}
 	if shortcutSupportsIdentity(sc, "user") {
 		t.Error("expected bot-only to NOT support 'user'")
 	}

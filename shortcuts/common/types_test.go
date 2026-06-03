@@ -105,3 +105,32 @@ func TestDeclaredScopesForIdentity_ConditionalOnly(t *testing.T) {
 		t.Errorf("expected conditional-only declared scopes, got %v", got)
 	}
 }
+
+func TestShortcut_DescriptorAccessors(t *testing.T) {
+	s := &Shortcut{
+		Service:     "im",
+		Command:     "+messages-send",
+		Description: "Send a message",
+		AuthTypes:   []string{"user", "bot"},
+		Risk:        "write",
+	}
+	if s.GetService() != "im" {
+		t.Errorf("GetService = %q", s.GetService())
+	}
+	if s.GetCommand() != "+messages-send" {
+		t.Errorf("GetCommand = %q", s.GetCommand())
+	}
+	if s.GetDescription() != "Send a message" {
+		t.Errorf("GetDescription = %q", s.GetDescription())
+	}
+	if got := s.GetAuthTypes(); len(got) != 2 || got[0] != "user" || got[1] != "bot" {
+		t.Errorf("GetAuthTypes = %v", got)
+	}
+	if s.GetRisk() != "write" {
+		t.Errorf("GetRisk = %q", s.GetRisk())
+	}
+}
+
+func TestShortcut_SatisfiesShortcutDescriptor(t *testing.T) {
+	var _ ShortcutDescriptor = &Shortcut{}
+}
