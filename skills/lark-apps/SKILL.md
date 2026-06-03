@@ -83,6 +83,7 @@ lark-cli apps +session-read --session-id sess_xxx
 7. **初始化 / 查看 / 删除妙搭 Git 凭证（`apps +git-credential-init` / `apps +git-credential-list` / `apps +git-credential-remove`）** → 必读 [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md)（只处理 Git credential，不与 setup / env pull 混用；输出 Repository URL 后继续用原生 Git；list 会自动扫描本地所有 app 配置，不需要 `--app-id`）
 8. **数据库表 / schema / SQL（`apps +db-table-list` / `+db-table-schema` / `+db-sql`）** → 必读 [`lark-apps-db-table-list.md`](references/lark-apps-db-table-list.md) / [`lark-apps-db-table-schema.md`](references/lark-apps-db-table-schema.md) / [`lark-apps-db-sql.md`](references/lark-apps-db-sql.md)（游标分页、`--format pretty` 出建表 DDL、SQL 多语句默认不包裹事务 + 失败逐条定位）
 9. **初始化 dev 环境（`apps +db-dev-init`）** → 必读 [`lark-apps-db-dev-init.md`](references/lark-apps-db-dev-init.md)（单库→online/dev，**不可逆**，需 `--yes` 确认）
+10. **发布管理（`apps +publish` / `+publish-history` / `+publish-status` / `+publish-error-log`）** → 必读对应参考文档：[`lark-apps-publish.md`](references/lark-apps-publish.md)、[`lark-apps-publish-history.md`](references/lark-apps-publish-history.md)、[`lark-apps-publish-status.md`](references/lark-apps-publish-status.md)、[`lark-apps-publish-error-log.md`](references/lark-apps-publish-error-log.md)。
 ## 身份与一次性授权
 
 妙搭应用是用户的个人资产，**统一使用 `--as user`**（默认 `--as auto` 会按 shortcut 声明落到 user）。
@@ -127,9 +128,10 @@ lark-cli auth login --domain apps
 ### 部署
 | 命令 | 用途 | 状态 |
 |------|------|------|
-| `+publish` | 触发服务端发布当前 `develop`（成功后自动 fast-forward `main`；dev 的库结构变更一并发布到 online） | 本期新增 |
-| `+publish-status` | 查最近一次 / 指定发布的状态 | 本期新增 |
-| `+publish-history` | 查发布历史 | 本期新增 |
+| [`+publish`](references/lark-apps-publish.md) | 为应用创建发布（release），返回 `{ release_id, status }`（成功后服务端发布 `develop`；dev 库结构变更一并发布到 online） | 已上线 |
+| [`+publish-status`](references/lark-apps-publish-status.md) | 按 `--release-id` 查单个发布的状态 / 详情 | 已上线 |
+| [`+publish-history`](references/lark-apps-publish-history.md) | 分页查发布历史（`--status publishing\|finished\|failed` / `--limit 1-500` / `--page-token`） | 已上线 |
+| [`+publish-error-log`](references/lark-apps-publish-error-log.md) | 按 `--release-id` 查失败发布的错误日志（失败步骤 + `error_log`） | 已上线 |
 | [`+html-publish`](references/lark-apps-html-publish.md) | 把本地 HTML 文件 / 目录打包发布（`--path`），返回访问 URL | 已有 |
 
 ### 云端会话开发
