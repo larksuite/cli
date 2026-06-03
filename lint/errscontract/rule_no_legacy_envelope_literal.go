@@ -23,6 +23,7 @@ var migratedEnvelopePaths = []string{
 	"shortcuts/okr/",
 	"shortcuts/task/",
 	"shortcuts/whiteboard/",
+	"shortcuts/im/",
 }
 
 // legacyOutputImportPath is the import path of the package that declares the

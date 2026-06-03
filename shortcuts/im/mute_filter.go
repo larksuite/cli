@@ -16,7 +16,7 @@ package im
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -240,14 +240,14 @@ func FetchMuteStatus(runtime *common.RuntimeContext, chatIDs []string) (map[stri
 		return map[string]bool{}, nil, nil
 	}
 	if len(chatIDs) > MaxMuteStatusBatchSize {
-		return nil, nil, output.ErrValidation(
+		return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"batch_get_mute_status accepts at most %d chat_ids per call (got %d)",
 			MaxMuteStatusBatchSize, len(chatIDs))
 	}
 	body := BuildBatchGetMuteStatusBody(chatIDs)
-	resp, err := runtime.CallAPI("POST", BatchGetMuteStatusPath, nil, body)
+	resp, err := runtime.CallAPITyped("POST", BatchGetMuteStatusPath, nil, body)
 	if err != nil {
-		return nil, nil, fmt.Errorf("fetch mute status: %w", err)
+		return nil, nil, wrapIMNetworkErr(err, "fetch mute status")
 	}
 	muted, unknown := ParseBatchGetMuteStatusResponse(chatIDs, resp)
 	return muted, unknown, nil

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -53,10 +54,10 @@ var ImChatSearch = common.Shortcut{
 		query := runtime.Str("query")
 		memberIDs := runtime.Str("member-ids")
 		if query == "" && memberIDs == "" {
-			return output.ErrValidation("--query and --member-ids cannot both be empty; provide at least one (e.g. --query \"team-name\" or --member-ids \"ou_xxx\")")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--query and --member-ids cannot both be empty; provide at least one (e.g. --query \"team-name\" or --member-ids \"ou_xxx\")")
 		}
 		if query != "" && len([]rune(query)) > 64 {
-			return output.ErrValidation("--query exceeds the maximum of 64 characters (got %d)", len([]rune(query)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--query exceeds the maximum of 64 characters (got %d)", len([]rune(query))).WithParam("--query")
 		}
 		if st := runtime.Str("search-types"); st != "" {
 			allowed := map[string]struct{}{
@@ -67,23 +68,23 @@ var ImChatSearch = common.Shortcut{
 			}
 			for _, item := range common.SplitCSV(st) {
 				if _, ok := allowed[item]; !ok {
-					return output.ErrValidation("invalid --search-types value %q: expected one of private, external, public_joined, public_not_joined", item)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --search-types value %q: expected one of private, external, public_joined, public_not_joined", item).WithParam("--search-types")
 				}
 			}
 		}
 		if mi := runtime.Str("member-ids"); mi != "" {
 			ids := common.SplitCSV(mi)
 			if len(ids) > 50 {
-				return output.ErrValidation("--member-ids exceeds the maximum of 50 (got %d)", len(ids))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--member-ids exceeds the maximum of 50 (got %d)", len(ids)).WithParam("--member-ids")
 			}
 			for _, id := range ids {
-				if _, err := common.ValidateUserID(id); err != nil {
+				if _, err := common.ValidateUserIDTyped("--member-ids", id); err != nil {
 					return err
 				}
 			}
 		}
 		if n := runtime.Int("page-size"); n < 1 || n > 100 {
-			return output.ErrValidation("--page-size must be an integer between 1 and 100")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
 		}
 		return nil
 	},
@@ -94,7 +95,7 @@ var ImChatSearch = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildSearchChatBody(runtime)
 		params := buildSearchChatParams(runtime)
-		resData, err := runtime.CallAPI("POST", "/open-apis/im/v2/chats/search", params, body)
+		resData, err := runtime.CallAPITyped("POST", "/open-apis/im/v2/chats/search", params, body)
 		if err != nil {
 			return err
 		}

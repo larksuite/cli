@@ -19,10 +19,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/credential"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -37,11 +37,11 @@ var messageIDRe = regexp.MustCompile(`^om_`)
 func flagMessageID(rt *common.RuntimeContext) (string, error) {
 	id := strings.TrimSpace(rt.Str("message-id"))
 	if id == "" {
-		return "", output.ErrValidation("--message-id is required")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id is required").WithParam("--message-id")
 	}
 	if strings.HasPrefix(id, "omt_") {
-		return "", output.ErrValidation(
-			"invalid message ID %q: omt_ prefix is a thread ID, not a message ID; flag operations require om_ message IDs", id)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"invalid message ID %q: omt_ prefix is a thread ID, not a message ID; flag operations require om_ message IDs", id).WithParam("--message-id")
 	}
 	return validateMessageID(id)
 }
@@ -65,10 +65,10 @@ func buildMGetURL(ids []string) string {
 func validateMessageID(input string) (string, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", output.ErrValidation("message ID cannot be empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "message ID cannot be empty").WithParam("--message-id")
 	}
 	if !strings.HasPrefix(input, "om_") {
-		return "", output.ErrValidation("invalid message ID %q: must start with om_", input)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid message ID %q: must start with om_", input).WithParam("--message-id")
 	}
 	return input, nil
 }
@@ -173,14 +173,16 @@ func sanitizeURLForDisplay(rawURL string) string {
 // startURLDownload performs URL validation, creates an HTTP client, and sends a
 // GET request. It returns the response (with Body still open) and the file
 // extension inferred from the URL. The caller must close resp.Body.
-func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawURL string) (*http.Response, string, error) {
+func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawURL, param string) (*http.Response, string, error) {
 	if err := validate.ValidateDownloadSourceURL(ctx, rawURL); err != nil {
-		return nil, "", fmt.Errorf("blocked URL: %w", err)
+		return nil, "", errs.NewValidationError(errs.SubtypeInvalidArgument, "blocked URL: %v", err).
+			WithParam(param).
+			WithCause(err)
 	}
 
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		return nil, "", fmt.Errorf("http client: %w", err)
+		return nil, "", errs.NewInternalError(errs.SubtypeSDKError, "http client: %v", err).WithCause(err)
 	}
 	httpClient = validate.NewDownloadHTTPClient(httpClient, validate.DownloadHTTPClientOptions{
 		AllowHTTP: true,
@@ -188,17 +190,19 @@ func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawUR
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("invalid URL: %w", err)
+		return nil, "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid URL: %v", err).
+			WithParam(param).
+			WithCause(err)
 	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, "", fmt.Errorf("download failed: %w", err)
+		return nil, "", wrapIMNetworkErr(err, "download failed")
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
-		return nil, "", fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
+		return nil, "", errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed: HTTP %d", resp.StatusCode)
 	}
 
 	ext := filepath.Ext(fileNameFromURL(rawURL))
@@ -208,8 +212,8 @@ func startURLDownload(ctx context.Context, runtime *common.RuntimeContext, rawUR
 // downloadURLToReader returns a size-limited io.ReadCloser for the URL content
 // and the file extension inferred from the URL. The caller must close the
 // returned ReadCloser. No temp file is created and the content is not buffered.
-func downloadURLToReader(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (io.ReadCloser, string, error) {
-	resp, ext, err := startURLDownload(ctx, runtime, rawURL) //nolint:bodyclose // resp.Body is closed by the returned limitedReadCloser
+func downloadURLToReader(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64, param string) (io.ReadCloser, string, error) {
+	resp, ext, err := startURLDownload(ctx, runtime, rawURL, param) //nolint:bodyclose // resp.Body is closed by the returned limitedReadCloser
 	if err != nil {
 		return nil, "", err
 	}
@@ -233,7 +237,7 @@ func (l *limitedReadCloser) Read(p []byte) (int, error) {
 	n, err := l.r.Read(p)
 	l.n += int64(n)
 	if l.n > l.max {
-		return n, fmt.Errorf("download exceeds size limit (max %s)", common.FormatSize(l.max))
+		return n, fmt.Errorf("download exceeds size limit (max %s)", common.FormatSize(l.max)) //nolint:forbidigo // io.Reader.Read contract returns a plain error; classified by the download caller
 	}
 	return n, err
 }
@@ -314,7 +318,7 @@ func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s medi
 	fmt.Fprintf(runtime.IO().ErrOut, "downloading %s: %s\n", s.flagName, sanitizeURLForDisplay(s.value))
 
 	if s.kind == mediaKindImage {
-		rc, _, err := downloadURLToReader(ctx, runtime, s.value, s.maxSize)
+		rc, _, err := downloadURLToReader(ctx, runtime, s.value, s.maxSize, s.flagName)
 		if err != nil {
 			return "", err
 		}
@@ -324,7 +328,7 @@ func resolveURLMedia(ctx context.Context, runtime *common.RuntimeContext, s medi
 	}
 
 	// File-kind: buffer in memory for possible duration parsing.
-	mb, err := newMediaBuffer(ctx, runtime, s.value, s.maxSize)
+	mb, err := newMediaBuffer(ctx, runtime, s.value, s.maxSize, s.flagName)
 	if err != nil {
 		return "", err
 	}
@@ -341,7 +345,7 @@ func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s me
 	fmt.Fprintf(runtime.IO().ErrOut, "uploading %s: %s\n", s.mediaType, filepath.Base(s.value))
 
 	if s.kind == mediaKindImage {
-		return uploadImageToIM(ctx, runtime, s.value, "message")
+		return uploadImageToIM(ctx, runtime, s.value, "message", s.flagName)
 	}
 
 	ft := detectIMFileType(s.value)
@@ -349,7 +353,7 @@ func resolveLocalMedia(ctx context.Context, runtime *common.RuntimeContext, s me
 	if s.withDuration {
 		dur = parseMediaDuration(runtime, s.value, ft)
 	}
-	return uploadFileToIM(ctx, runtime, s.value, ft, dur)
+	return uploadFileToIM(ctx, runtime, s.value, ft, dur, s.flagName)
 }
 
 // resolveVideoContent handles the video case which needs both a file_key and
@@ -370,7 +374,7 @@ func resolveVideoContent(ctx context.Context, runtime *common.RuntimeContext, vi
 	}
 	coverKey, err := resolveOneMedia(ctx, runtime, coverSpec)
 	if err != nil {
-		return "", "", fmt.Errorf("cover image upload failed: %w", err)
+		return "", "", wrapIMNetworkErr(err, "cover image upload failed")
 	}
 
 	jsonBytes, _ := json.Marshal(map[string]string{"file_key": fKey, "image_key": coverKey})
@@ -386,13 +390,13 @@ func mediaFallbackOrError(originalValue, mediaType string, uploadErr error) (str
 		jsonBytes, _ := json.Marshal(map[string]string{"text": fallbackText})
 		return "text", string(jsonBytes), nil
 	}
-	return "", "", fmt.Errorf("%s upload failed: %w", mediaType, uploadErr)
+	return "", "", wrapIMNetworkErr(uploadErr, "%s upload failed", mediaType)
 }
 
 // resolveP2PChatID resolves user open_id to P2P chat_id.
 func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, error) {
 	if runtime.IsBot() {
-		return "", output.Errorf(output.ExitValidation, "validation", "--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id requires user identity (--as user); use --chat-id when calling with bot identity").WithParam("--user-id")
 	}
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 		HttpMethod: http.MethodPost,
@@ -405,11 +409,10 @@ func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, er
 	if err != nil {
 		return "", err
 	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse chat_p2p response: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-	data, _ := result["data"].(map[string]interface{})
 
 	chats, _ := data["p2p_chats"].([]interface{})
 	for _, item := range chats {
@@ -420,7 +423,7 @@ func resolveP2PChatID(runtime *common.RuntimeContext, openID string) (string, er
 		}
 	}
 
-	return "", output.Errorf(output.ExitAPI, "not_found", "P2P chat not found for this user")
+	return "", errs.NewAPIError(errs.SubtypeNotFound, "P2P chat not found for this user")
 }
 
 // resolveThreadID normalizes a message ID to its thread ID when possible.
@@ -429,7 +432,7 @@ func resolveThreadID(runtime *common.RuntimeContext, id string) (string, error) 
 		return id, nil
 	}
 	if !messageIDRe.MatchString(id) {
-		return "", output.Errorf(output.ExitValidation, "validation", "invalid thread ID format: must start with om_ or omt_")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid thread ID format: must start with om_ or omt_").WithParam("--thread")
 	}
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
@@ -439,11 +442,10 @@ func resolveThreadID(runtime *common.RuntimeContext, id string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("failed to parse message response: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-	data, _ := result["data"].(map[string]interface{})
 
 	items, _ := data["items"].([]interface{})
 	for _, item := range items {
@@ -454,7 +456,7 @@ func resolveThreadID(runtime *common.RuntimeContext, id string) (string, error) 
 		}
 	}
 
-	return "", output.Errorf(output.ExitAPI, "not_found", "thread ID not found for this message")
+	return "", errs.NewAPIError(errs.SubtypeNotFound, "thread ID not found for this message")
 }
 
 // parseOggOpusDuration parses the duration in milliseconds from an OGG/Opus
@@ -612,8 +614,8 @@ type mediaBuffer struct {
 }
 
 // newMediaBuffer downloads URL content into memory via downloadURLToReader.
-func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64) (*mediaBuffer, error) {
-	rc, ext, err := downloadURLToReader(ctx, runtime, rawURL, maxSize)
+func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL string, maxSize int64, param string) (*mediaBuffer, error) {
+	rc, ext, err := downloadURLToReader(ctx, runtime, rawURL, maxSize, param)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +623,7 @@ func newMediaBuffer(ctx context.Context, runtime *common.RuntimeContext, rawURL 
 
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		return nil, fmt.Errorf("download failed: %w", err)
+		return nil, wrapIMNetworkErr(err, "download failed")
 	}
 	return newMediaBufferFromBytes(data, ext, rawURL), nil
 }
@@ -927,7 +929,7 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 		}
 		imgURL := sub[1]
 
-		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize)
+		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize, "--markdown")
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
 			return ""
@@ -1049,14 +1051,14 @@ func detectIMFileType(filePath string) string {
 const maxImageUploadSize = 5 * 1024 * 1024  // 5MB — Lark API limit for images
 const maxFileUploadSize = 100 * 1024 * 1024 // 100MB — Lark API limit for files
 
-func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, imageType string) (string, error) {
+func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, imageType, param string) (string, error) {
 	if info, err := runtime.FileIO().Stat(filePath); err == nil && info.Size() > maxImageUploadSize {
-		return "", fmt.Errorf("image size %s exceeds limit (max 5MB)", common.FormatSize(info.Size()))
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "image size %s exceeds limit (max 5MB)", common.FormatSize(info.Size())).WithParam(param)
 	}
 
 	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
-		return "", err
+		return "", withIMValidationParam(common.WrapInputStatErrorTyped(err), param)
 	}
 	defer f.Close()
 
@@ -1073,27 +1075,25 @@ func uploadImageToIM(ctx context.Context, runtime *common.RuntimeContext, filePa
 		return "", err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("parse error: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-
-	data, _ := result["data"].(map[string]interface{})
 	imageKey, _ := data["image_key"].(string)
 	if imageKey == "" {
-		return "", fmt.Errorf("image_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "image_key missing from a successful upload response")
 	}
 	return imageKey, nil
 }
 
-func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, fileType, duration string) (string, error) {
+func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePath, fileType, duration, param string) (string, error) {
 	if info, err := runtime.FileIO().Stat(filePath); err == nil && info.Size() > maxFileUploadSize {
-		return "", fmt.Errorf("file size %s exceeds limit (max 100MB)", common.FormatSize(info.Size()))
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file size %s exceeds limit (max 100MB)", common.FormatSize(info.Size())).WithParam(param)
 	}
 
 	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
-		return "", err
+		return "", withIMValidationParam(common.WrapInputStatErrorTyped(err), param)
 	}
 	defer f.Close()
 
@@ -1114,15 +1114,13 @@ func uploadFileToIM(ctx context.Context, runtime *common.RuntimeContext, filePat
 		return "", err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("parse error: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-
-	data, _ := result["data"].(map[string]interface{})
 	fileKey, _ := data["file_key"].(string)
 	if fileKey == "" {
-		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "file_key missing from a successful upload response")
 	}
 	return fileKey, nil
 }
@@ -1142,15 +1140,13 @@ func uploadImageFromReader(ctx context.Context, runtime *common.RuntimeContext, 
 		return "", err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("parse error: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-
-	data, _ := result["data"].(map[string]interface{})
 	imageKey, _ := data["image_key"].(string)
 	if imageKey == "" {
-		return "", fmt.Errorf("image_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "image_key missing from a successful upload response")
 	}
 	return imageKey, nil
 }
@@ -1174,15 +1170,13 @@ func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r
 		return "", err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", fmt.Errorf("parse error: %w", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return "", err
 	}
-
-	data, _ := result["data"].(map[string]interface{})
 	fileKey, _ := data["file_key"].(string)
 	if fileKey == "" {
-		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "file_key missing from a successful upload response")
 	}
 	return fileKey, nil
 }
@@ -1237,9 +1231,9 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 	}
 	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
 	if err != nil {
-		return output.ErrWithHint(output.ExitAuth, "auth",
-			fmt.Sprintf("cannot verify required scope(s): %v", err),
-			flagScopeLoginHint(required))
+		return errs.NewAuthenticationError(errs.SubtypeTokenMissing, "cannot verify required scope(s): %v", err).
+			WithHint("%s", flagScopeLoginHint(required)).
+			WithCause(err)
 	}
 	if result == nil || result.Scopes == "" {
 		fmt.Fprintf(rt.IO().ErrOut,
@@ -1248,9 +1242,9 @@ func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, req
 		return nil
 	}
 	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
-		return output.ErrWithHint(output.ExitAuth, "missing_scope",
-			fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-			flagScopeLoginHint(missing))
+		return errs.NewPermissionError(errs.SubtypeMissingScope, "missing required scope(s): %s", strings.Join(missing, ", ")).
+			WithMissingScopes(missing...).
+			WithHint("%s", flagScopeLoginHint(missing))
 	}
 	return nil
 }
@@ -1276,11 +1270,11 @@ func parseItemID(id string) (ItemType, FlagType, error) {
 	case strings.HasPrefix(id, "om_"):
 		return ItemTypeDefault, FlagTypeMessage, nil
 	case id == "":
-		return 0, 0, output.ErrValidation("--message-id cannot be empty")
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id cannot be empty").WithParam("--message-id")
 	default:
-		return 0, 0, output.ErrValidation(
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"cannot infer item type from id %q: expected om_ (message) prefix; "+
-				"pass --item-type and --flag-type explicitly if you are using a different id format", id)
+				"pass --item-type and --flag-type explicitly if you are using a different id format", id).WithParam("--message-id")
 	}
 }
 
@@ -1294,7 +1288,7 @@ func parseItemType(s string) (ItemType, error) {
 	case "msg_thread":
 		return ItemTypeMsgThread, nil
 	}
-	return 0, output.ErrValidation("invalid --item-type %q: expected one of default|thread|msg_thread", s)
+	return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --item-type %q: expected one of default|thread|msg_thread", s).WithParam("--item-type")
 }
 
 // parseFlagType converts a user-facing string to the server enum.
@@ -1305,7 +1299,7 @@ func parseFlagType(s string) (FlagType, error) {
 	case "feed":
 		return FlagTypeFeed, nil
 	}
-	return 0, output.ErrValidation("invalid --flag-type %q: expected one of message|feed", s)
+	return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --flag-type %q: expected one of message|feed", s).WithParam("--flag-type")
 }
 
 // isValidCombo checks if the (ItemType, FlagType) pair is accepted by the server.
@@ -1363,24 +1357,24 @@ func newFlagItem(itemID string, it ItemType, ft FlagType) flagItem {
 // getMessageChatID queries the message API to get the chat_id.
 // Used by flag-create to determine the chat type for feed-layer flags.
 func getMessageChatID(rt *common.RuntimeContext, messageID string) (string, error) {
-	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/messages/"+validate.EncodePathSegment(messageID), nil, nil)
+	data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/messages/"+validate.EncodePathSegment(messageID), nil, nil)
 	if err != nil {
 		return "", err
 	}
 
 	items, ok := data["items"].([]any)
 	if !ok || len(items) == 0 {
-		return "", output.ErrValidation("message not found or unexpected API response format")
+		return "", errs.NewAPIError(errs.SubtypeNotFound, "message not found")
 	}
 
 	msg, ok := items[0].(map[string]any)
 	if !ok {
-		return "", output.ErrValidation("unexpected message format in API response")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "unexpected message format in API response")
 	}
 
 	chatID, ok := msg["chat_id"].(string)
 	if !ok {
-		return "", output.ErrValidation("message response missing chat_id field")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "message response missing chat_id field")
 	}
 	return chatID, nil
 }
@@ -1393,12 +1387,12 @@ func getMessageChatID(rt *common.RuntimeContext, messageID string) (string, erro
 // Returns an error if the chat query fails, since guessing the wrong item_type
 // can cause silent failures in flag operations.
 func resolveThreadFeedItemType(rt *common.RuntimeContext, chatID string) (ItemType, error) {
-	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/chats/"+validate.EncodePathSegment(chatID), nil, nil)
+	data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/chats/"+validate.EncodePathSegment(chatID), nil, nil)
 	if err != nil {
-		return ItemTypeDefault, fmt.Errorf("failed to query chat_mode for chat %s: %w", chatID, err)
+		return ItemTypeDefault, wrapIMNetworkErr(err, "failed to query chat_mode for chat %s", chatID)
 	}
 
-	// DoAPIJSON returns envelope.Data, so chat_mode is at the top level
+	// DoAPIJSONTyped returns envelope.Data, so chat_mode is at the top level
 	chatMode, _ := data["chat_mode"].(string)
 	if chatMode == "topic" {
 		return ItemTypeThread, nil
@@ -1433,7 +1427,7 @@ type shortcutItem struct {
 func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 	raw := rt.StrSlice("chat-id")
 	if len(raw) == 0 {
-		return nil, output.ErrValidation("--chat-id is required (oc_xxx); repeat the flag or pass comma-separated values")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx); repeat the flag or pass comma-separated values").WithParam("--chat-id")
 	}
 
 	seen := make(map[string]struct{}, len(raw))
@@ -1444,8 +1438,8 @@ func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 			continue
 		}
 		if !strings.HasPrefix(v, "oc_") {
-			return nil, output.ErrValidation(
-				"invalid --chat-id %q: must be an open_chat_id starting with oc_", v)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"invalid --chat-id %q: must be an open_chat_id starting with oc_", v).WithParam("--chat-id")
 		}
 		if _, ok := seen[v]; ok {
 			continue
@@ -1454,12 +1448,12 @@ func collectChatIDs(rt *common.RuntimeContext) ([]string, error) {
 		out = append(out, v)
 	}
 	if len(out) == 0 {
-		return nil, output.ErrValidation("--chat-id is required (oc_xxx)")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--chat-id is required (oc_xxx)").WithParam("--chat-id")
 	}
 	if len(out) > feedShortcutBatchLimit {
-		return nil, output.ErrValidation(
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"too many --chat-id values (%d); the server accepts up to %d per request",
-			len(out), feedShortcutBatchLimit)
+			len(out), feedShortcutBatchLimit).WithParam("--chat-id")
 	}
 	return out, nil
 }
@@ -1511,6 +1505,11 @@ func shortcutTypeFromValue(v any) ShortcutType {
 		return ShortcutType(int(n))
 	case int:
 		return ShortcutType(n)
+	case json.Number:
+		i, err := n.Int64()
+		if err == nil {
+			return ShortcutType(i)
+		}
 	}
 	return ShortcutTypeUnknown
 }
@@ -1520,7 +1519,7 @@ func shortcutTypeFromValue(v any) ShortcutType {
 // chat_id. Shared by feed-shortcut detail enrichment and message-search chat
 // context lookup, which apply their own per-chunk error policies.
 func queryChatBatch(rt *common.RuntimeContext, batch []string, dst map[string]map[string]any) error {
-	res, err := rt.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/chats/batch_query",
+	res, err := rt.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/chats/batch_query",
 		larkcore.QueryParams{"user_id_type": []string{"open_id"}},
 		map[string]any{"chat_ids": batch})
 	if err != nil {
@@ -1633,6 +1632,11 @@ func annotateFailedShortcuts(data map[string]any) {
 			m["reason_label"] = shortcutFailedReasonString(int(r))
 		case int:
 			m["reason_label"] = shortcutFailedReasonString(r)
+		case json.Number:
+			i, err := r.Int64()
+			if err == nil {
+				m["reason_label"] = shortcutFailedReasonString(int(i))
+			}
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -196,5 +197,60 @@ func TestCallAPITyped_NonObjectJSON(t *testing.T) {
 	}
 	if intErr.Subtype != errs.SubtypeInvalidResponse {
 		t.Errorf("subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+}
+
+// TestDoAPIJSONTyped_Success returns the data object on code 0, confirming the
+// typed DoAPIJSON replacement preserves the success contract of DoAPIJSON.
+func TestDoAPIJSONTyped_Success(t *testing.T) {
+	rt, reg := newCallAPITypedRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/x/z",
+		Body:   map[string]interface{}{"code": float64(0), "data": map[string]interface{}{"id": "z1"}},
+	})
+
+	data, err := rt.DoAPIJSONTyped("GET", "/open-apis/x/z", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data["id"] != "z1" {
+		t.Errorf("data[id] = %v, want z1", data["id"])
+	}
+}
+
+func TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal(t *testing.T) {
+	rt := TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+x"}, &core.CliConfig{}, nil, core.AsUser)
+	rt.apiClientFunc = func() (*client.APIClient, error) {
+		return nil, errors.New("raw client construction error")
+	}
+
+	_, err := rt.DoAPIJSONTyped("GET", "/open-apis/x/z", nil, nil)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected raw client errors to be lifted to typed internal errors, got %T: %v", err, err)
+	}
+	if internalErr.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeUnknown)
+	}
+}
+
+// TestDoAPIJSONTyped_NonZeroCode classifies a non-zero API code into a typed
+// errs.* error (carrying log_id), never a legacy output.ExitError envelope.
+func TestDoAPIJSONTyped_NonZeroCode(t *testing.T) {
+	rt, reg := newCallAPITypedRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/x/z",
+		Body:   map[string]interface{}{"code": float64(1061044), "msg": "boom", "log_id": "lz"},
+	})
+
+	_, err := rt.DoAPIJSONTyped("POST", "/open-apis/x/z", nil, map[string]any{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T: %v", err, err)
+	}
+	if p.LogID != "lz" {
+		t.Errorf("LogID = %q, want lz", p.LogID)
 	}
 }

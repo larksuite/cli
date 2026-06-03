@@ -47,7 +47,7 @@ var ImFeedShortcutRemove = common.Shortcut{
 			return err
 		}
 		items := buildShortcutItems(ids)
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/im/v2/feed_shortcuts/remove", nil,
+		data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v2/feed_shortcuts/remove", nil,
 			map[string]any{"shortcuts": items})
 		if err != nil {
 			return err

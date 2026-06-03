@@ -200,20 +200,20 @@ func batchResolveMergeForwardSenders(runtime *common.RuntimeContext, prefetch ma
 // container via a single API call. Returns a flat list of raw message items
 // with upper_message_id for tree reconstruction.
 //
-// Uses DoAPIJSON so the response envelope's code/msg are checked and surfaced
+// Uses DoAPIJSONTyped so the response envelope's code/msg are checked and surfaced
 // — earlier this used the low-level DoAPI and reported every non-zero code
 // as a generic "empty data" error, hiding the real failure (e.g. a server
 // "code: 2200 Internal Error" with its log_id would show up as just "empty
 // data" in the output).
 func fetchMergeForwardSubMessages(messageID string, runtime *common.RuntimeContext) ([]map[string]interface{}, error) {
-	data, err := runtime.DoAPIJSON(http.MethodGet, mergeForwardMessagesPath(messageID), larkcore.QueryParams{
+	data, err := runtime.DoAPIJSONTyped(http.MethodGet, mergeForwardMessagesPath(messageID), larkcore.QueryParams{
 		"user_id_type":          []string{"open_id"},
 		"card_msg_content_type": []string{"raw_card_content"},
 	}, nil)
 	if err != nil {
 		return nil, err
 	}
-	// DoAPIJSON returns the envelope's `data` field; when the server's JSON
+	// DoAPIJSONTyped returns the envelope's `data` field; when the server's JSON
 	// has `code: 0` but omits `data` entirely, that field comes back as nil.
 	// Reading from a nil map in Go is safe (returns the zero value, never
 	// panics), but guarding explicitly makes the "successful empty

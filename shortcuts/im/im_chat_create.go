@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -52,7 +53,7 @@ var ImChatCreate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Bool("set-bot-manager") && !runtime.IsBot() {
-			return output.ErrValidation("--set-bot-manager is only supported with bot identity (--as bot)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--set-bot-manager is only supported with bot identity (--as bot)").WithParam("--set-bot-manager")
 		}
 
 		name := runtime.Str("name")
@@ -60,25 +61,25 @@ var ImChatCreate = common.Shortcut{
 
 		// Public groups must have a name with at least 2 characters.
 		if chatType == "public" && len([]rune(name)) < 2 {
-			return output.ErrValidation("--name is required for public groups and must be at least 2 characters")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name is required for public groups and must be at least 2 characters").WithParam("--name")
 		}
 		// Group name length must not exceed 60 characters.
 		if len([]rune(name)) > 60 {
-			return output.ErrValidation("--name exceeds the maximum of 60 characters (got %d)", len([]rune(name)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name exceeds the maximum of 60 characters (got %d)", len([]rune(name))).WithParam("--name")
 		}
 		// Description length must not exceed 100 characters.
 		if desc := runtime.Str("description"); len([]rune(desc)) > 100 {
-			return output.ErrValidation("--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc))).WithParam("--description")
 		}
 
 		// Validate users.
 		if users := runtime.Str("users"); users != "" {
 			ids := common.SplitCSV(users)
 			if len(ids) > 50 {
-				return output.ErrValidation("--users exceeds the maximum of 50 (got %d)", len(ids))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--users exceeds the maximum of 50 (got %d)", len(ids)).WithParam("--users")
 			}
 			for _, id := range ids {
-				if _, err := common.ValidateUserID(id); err != nil {
+				if _, err := common.ValidateUserIDTyped("--users", id); err != nil {
 					return err
 				}
 			}
@@ -88,18 +89,18 @@ var ImChatCreate = common.Shortcut{
 		if bots := runtime.Str("bots"); bots != "" {
 			ids := common.SplitCSV(bots)
 			if len(ids) > 5 {
-				return output.ErrValidation("--bots exceeds the maximum of 5 (got %d)", len(ids))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--bots exceeds the maximum of 5 (got %d)", len(ids)).WithParam("--bots")
 			}
 			for _, id := range ids {
 				if !strings.HasPrefix(id, "cli_") {
-					return output.ErrValidation("invalid bot id %q: expected app ID (cli_xxx)", id)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid bot id %q: expected app ID (cli_xxx)", id).WithParam("--bots")
 				}
 			}
 		}
 
 		// Validate owner.
 		if owner := runtime.Str("owner"); owner != "" {
-			if _, err := common.ValidateUserID(owner); err != nil {
+			if _, err := common.ValidateUserIDTyped("--owner", owner); err != nil {
 				return err
 			}
 		}
@@ -112,7 +113,7 @@ var ImChatCreate = common.Shortcut{
 		if runtime.Bool("set-bot-manager") {
 			qp["set_bot_manager"] = []string{"true"}
 		}
-		resData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
+		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/chats", qp, body)
 		if err != nil {
 			return err
 		}
@@ -127,7 +128,7 @@ var ImChatCreate = common.Shortcut{
 
 		// Try to fetch the group share link without blocking on failure.
 		if chatID, ok := resData["chat_id"].(string); ok && chatID != "" {
-			linkData, err := runtime.DoAPIJSON(http.MethodPost,
+			linkData, err := runtime.DoAPIJSONTyped(http.MethodPost,
 				fmt.Sprintf("/open-apis/im/v1/chats/%s/link", validate.EncodePathSegment(chatID)),
 				nil, nil)
 			if err == nil {

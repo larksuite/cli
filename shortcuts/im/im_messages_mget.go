@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -42,10 +43,10 @@ var ImMessagesMGet = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
 		if len(ids) == 0 {
-			return output.ErrValidation("--message-ids is required (comma-separated om_xxx)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids is required (comma-separated om_xxx)").WithParam("--message-ids")
 		}
 		if len(ids) > maxMGetMessageIDs {
-			return output.ErrValidation("--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-ids supports at most %d IDs per request (got %d)", maxMGetMessageIDs, len(ids)).WithParam("--message-ids")
 		}
 		for _, id := range ids {
 			if _, err := validateMessageID(id); err != nil {
@@ -58,7 +59,7 @@ var ImMessagesMGet = common.Shortcut{
 		ids := common.SplitCSV(runtime.Str("message-ids"))
 		mgetURL := buildMGetURL(ids)
 
-		data, err := runtime.DoAPIJSON(http.MethodGet, mgetURL, nil, nil)
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, mgetURL, nil, nil)
 		if err != nil {
 			return err
 		}

@@ -194,6 +194,21 @@ func TestWrapSaveErrorTyped_ClassifiesPathAndFileIO(t *testing.T) {
 	}
 }
 
+func TestWrapSaveErrorTyped_PreservesTypedWriteCause(t *testing.T) {
+	typed := errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP 500: chunk failed").
+		WithCode(500)
+	err := WrapSaveErrorTyped(&fileio.WriteError{Err: typed})
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkServer || p.Code != 500 {
+		t.Fatalf("problem = category %q subtype %q code %d, want network/%s/500",
+			p.Category, p.Subtype, p.Code, errs.SubtypeNetworkServer)
+	}
+}
+
 func TestAtLeastOne(t *testing.T) {
 	tests := []struct {
 		name    string

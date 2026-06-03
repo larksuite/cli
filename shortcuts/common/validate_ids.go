@@ -9,18 +9,6 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// ValidateChatID checks if a chat ID has valid format (oc_ prefix).
-// Also extracts token from URL if provided.
-//
-// Deprecated: use ValidateChatIDTyped for typed error envelopes.
-func ValidateChatID(input string) (string, error) {
-	chatID, msg := normalizeChatID(input)
-	if msg != "" {
-		return "", output.ErrValidation("%s", msg)
-	}
-	return chatID, nil
-}
-
 // ValidateChatIDTyped checks if a chat ID has valid format (oc_ prefix).
 // Also extracts token from URL if provided. param names the flag being
 // validated (e.g. "--chat-ids") and is recorded on the typed error.

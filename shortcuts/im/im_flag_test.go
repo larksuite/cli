@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -593,18 +594,18 @@ func TestCheckFlagRequiredScopesReportsTokenResolutionError(t *testing.T) {
 	setRuntimeTokenError(t, rt, errors.New("token cache unavailable"))
 
 	err := checkFlagRequiredScopes(context.Background(), rt, flagMessageReadScopes)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("checkFlagRequiredScopes() error = %T %v, want ExitError", err, err)
+	var authErr *errs.AuthenticationError
+	if !errors.As(err, &authErr) {
+		t.Fatalf("checkFlagRequiredScopes() error = %T %v, want *errs.AuthenticationError", err, err)
 	}
-	if exitErr.Code != output.ExitAuth || exitErr.Detail.Type != "auth" {
-		t.Fatalf("checkFlagRequiredScopes() detail = %+v code=%d, want auth exit", exitErr.Detail, exitErr.Code)
+	if authErr.Subtype != errs.SubtypeTokenMissing {
+		t.Fatalf("checkFlagRequiredScopes() subtype = %q, want %q", authErr.Subtype, errs.SubtypeTokenMissing)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "cannot verify required scope") {
-		t.Fatalf("message = %q, want scope verification context", exitErr.Detail.Message)
+	if !strings.Contains(authErr.Message, "cannot verify required scope") {
+		t.Fatalf("message = %q, want scope verification context", authErr.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, strings.Join(flagMessageReadScopes, " ")) {
-		t.Fatalf("hint = %q, want required scopes", exitErr.Detail.Hint)
+	if !strings.Contains(authErr.Hint, strings.Join(flagMessageReadScopes, " ")) {
+		t.Fatalf("hint = %q, want required scopes", authErr.Hint)
 	}
 }
 
@@ -1337,6 +1338,10 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Execute() expected partial failure error, got nil")
 	}
+	var partialErr *output.PartialFailureError
+	if !errors.As(err, &partialErr) {
+		t.Fatalf("Execute() error = %T, want *output.PartialFailureError", err)
+	}
 
 	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
 	for _, want := range []string{`"results"`, `"item_type": "default"`, `"flag_type": "message"`, `"status": "ok"`, `"item_type": "msg_thread"`, `"flag_type": "feed"`, `"status": "failed"`, "feed failed"} {
@@ -1346,6 +1351,7 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	}
 
 	var envelope struct {
+		OK   bool `json:"ok"`
 		Data struct {
 			Results []map[string]any `json:"results"`
 		} `json:"data"`
@@ -1355,6 +1361,12 @@ func TestFlagCancelExecuteSummarizesPartialFailure(t *testing.T) {
 	}
 	if len(envelope.Data.Results) != 2 {
 		t.Fatalf("results len = %d, want 2", len(envelope.Data.Results))
+	}
+	if envelope.OK {
+		t.Fatalf("stdout ok = true, want false for partial failure")
+	}
+	if errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String(); errOut != "" {
+		t.Fatalf("stderr = %q, want empty for partial failure result envelope", errOut)
 	}
 }
 

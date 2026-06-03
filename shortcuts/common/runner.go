@@ -492,6 +492,28 @@ func (ctx *RuntimeContext) DoAPIJSONWithLogID(method, apiPath string, query lark
 	return ctx.doAPIJSON(method, apiPath, query, body, true)
 }
 
+// DoAPIJSONTyped is the typed-only replacement for DoAPIJSON: it issues the same
+// larkcore.ApiReq request (identical method / path / query / body model) but
+// classifies failures into typed errs.* errors via ClassifyAPIResponse instead
+// of emitting a legacy output.ExitError "api_error" envelope. A transport / auth
+// error from the client boundary is already typed and passes through unchanged;
+// a non-zero API code is classified with subtype / code / log_id.
+func (ctx *RuntimeContext) DoAPIJSONTyped(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
+	req := &larkcore.ApiReq{
+		HttpMethod:  method,
+		ApiPath:     apiPath,
+		QueryParams: query,
+	}
+	if body != nil {
+		req.Body = body
+	}
+	resp, err := ctx.DoAPI(req)
+	if err != nil {
+		return nil, typedOrInternal(err)
+	}
+	return ctx.ClassifyAPIResponse(resp)
+}
+
 func (ctx *RuntimeContext) doAPIJSON(method, apiPath string, query larkcore.QueryParams, body any, includeLogID bool) (map[string]any, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod:  method,
@@ -681,6 +703,9 @@ func WrapSaveErrorByCategory(err error, category string) error {
 func WrapSaveErrorTyped(err error) error {
 	if err == nil {
 		return nil
+	}
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
 	}
 	var me *fileio.MkdirError
 	switch {

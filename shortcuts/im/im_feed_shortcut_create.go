@@ -6,7 +6,7 @@ package im
 import (
 	"context"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -67,7 +67,7 @@ var ImFeedShortcutCreate = common.Shortcut{
 			return err
 		}
 		items := buildShortcutItems(ids)
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/im/v2/feed_shortcuts", nil,
+		data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v2/feed_shortcuts", nil,
 			map[string]any{
 				"shortcuts": items,
 				"is_header": isHeader,
@@ -88,7 +88,7 @@ func resolveIsHeader(rt *common.RuntimeContext) (bool, error) {
 	head := rt.Bool("head")
 	tail := rt.Bool("tail")
 	if head && tail {
-		return false, output.ErrValidation("--head and --tail are mutually exclusive")
+		return false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--head and --tail are mutually exclusive")
 	}
 	if tail {
 		return false, nil

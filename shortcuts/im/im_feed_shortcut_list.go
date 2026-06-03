@@ -48,7 +48,7 @@ var ImFeedShortcutList = common.Shortcut{
 		return d
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		data, err := runtime.DoAPIJSON("GET", "/open-apis/im/v2/feed_shortcuts",
+		data, err := runtime.DoAPIJSONTyped("GET", "/open-apis/im/v2/feed_shortcuts",
 			feedShortcutListQuery(runtime.Str("page-token")), nil)
 		if err != nil {
 			return err

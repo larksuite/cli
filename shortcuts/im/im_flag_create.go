@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -50,12 +50,14 @@ var ImFlagCreate = common.Shortcut{
 		}
 		// Combo validation already done in Validate, but double-check as a safety net.
 		if !isValidCombo(parseItemTypeFromRaw(item.ItemType), parseFlagTypeFromRaw(item.FlagType)) {
-			return output.ErrValidation(
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"invalid (item_type=%s, flag_type=%s) combination; the server only accepts "+
 					"(default, message), (thread, feed), or (msg_thread, feed)",
-				item.ItemType, item.FlagType)
+				item.ItemType, item.FlagType).WithParams(
+				errs.InvalidParam{Name: "--item-type", Reason: "unsupported with the given --flag-type"},
+				errs.InvalidParam{Name: "--flag-type", Reason: "unsupported with the given --item-type"})
 		}
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/im/v1/flags", nil,
+		data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v1/flags", nil,
 			map[string]any{"flag_items": []flagItem{item}})
 		if err != nil {
 			return err
@@ -138,18 +140,16 @@ func buildCreateItem(rt *common.RuntimeContext) (flagItem, error) {
 
 	chatID, err := getMessageChatID(rt, id)
 	if err != nil {
-		return flagItem{}, output.ErrValidation(
-			"failed to query message for feed-layer flag: %v; if you know the chat type, specify --item-type explicitly", err)
+		return flagItem{}, appendIMRecoveryHint(err, "specify --item-type explicitly")
 	}
 	if chatID == "" {
-		return flagItem{}, output.ErrValidation(
+		return flagItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"message does not belong to a chat; feed-layer flags are only for messages in chats")
 	}
 
 	feedIT, err := resolveThreadFeedItemType(rt, chatID)
 	if err != nil {
-		return flagItem{}, output.ErrValidation(
-			"failed to determine chat type: %v; if you know the chat type, specify --item-type explicitly", err)
+		return flagItem{}, appendIMRecoveryHint(err, "specify --item-type explicitly")
 	}
 	return newFlagItem(id, feedIT, FlagTypeFeed), nil
 }
@@ -186,18 +186,24 @@ func parseExplicitFlagCombo(itOverride, ftOverride string) (explicitFlagCombo, e
 	if combo.ItemTypeSet && !combo.FlagTypeSet {
 		switch combo.ItemType {
 		case ItemTypeThread, ItemTypeMsgThread:
-			return explicitFlagCombo{}, output.ErrValidation(
-				"--item-type=%s requires --flag-type=feed; message-layer flags always use item-type=default", itOverride)
+			return explicitFlagCombo{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--item-type=%s requires --flag-type=feed; message-layer flags always use item-type=default", itOverride).WithParams(
+				errs.InvalidParam{Name: "--item-type", Reason: "requires --flag-type=feed"},
+				errs.InvalidParam{Name: "--flag-type", Reason: "must be feed for this --item-type"})
 		case ItemTypeDefault:
-			return explicitFlagCombo{}, output.ErrValidation(
-				"--item-type=default requires --flag-type=message; or omit both to use default behavior")
+			return explicitFlagCombo{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--item-type=default requires --flag-type=message; or omit both to use default behavior").WithParams(
+				errs.InvalidParam{Name: "--item-type", Reason: "default requires --flag-type=message"},
+				errs.InvalidParam{Name: "--flag-type", Reason: "must be message for --item-type=default"})
 		}
 	}
 
 	if combo.ItemTypeSet && combo.FlagTypeSet && !isValidCombo(combo.ItemType, combo.FlagType) {
-		return explicitFlagCombo{}, output.ErrValidation(
+		return explicitFlagCombo{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"invalid --item-type=%s --flag-type=%s combination; supported pairs are default+message, thread+feed, and msg_thread+feed",
-			itOverride, ftOverride)
+			itOverride, ftOverride).WithParams(
+			errs.InvalidParam{Name: "--item-type", Reason: "unsupported pairing"},
+			errs.InvalidParam{Name: "--flag-type", Reason: "unsupported pairing"})
 	}
 
 	return combo, nil

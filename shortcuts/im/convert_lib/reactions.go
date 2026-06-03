@@ -156,7 +156,7 @@ func fetchReactionsBatch(runtime *common.RuntimeContext, batchIDs []string, idIn
 		queries = append(queries, map[string]interface{}{"message_id": id})
 	}
 
-	data, err := runtime.DoAPIJSON(http.MethodPost,
+	data, err := runtime.DoAPIJSONTyped(http.MethodPost,
 		"/open-apis/im/v1/messages/reactions/batch_query",
 		nil,
 		map[string]interface{}{"queries": queries},

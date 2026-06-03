@@ -377,9 +377,9 @@ func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 		OK:       false,
 		Identity: "bot",
 		Error: &output.ErrDetail{
-			Type:    "api_error",
+			Type:    "api",
 			Code:    230002,
-			Message: "HTTP 400: Bot/User can NOT be out of the chat.",
+			Message: "Bot/User can NOT be out of the chat.",
 		},
 	})
 }

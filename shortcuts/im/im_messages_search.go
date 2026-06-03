@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -268,7 +269,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
 		pageLimit := runtime.Int("page-limit")
 		if pageLimit < 1 || pageLimit > messagesSearchMaxPageLimit {
-			return nil, output.ErrValidation("--page-limit must be an integer between 1 and 40")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 40").WithParam("--page-limit")
 		}
 	}
 
@@ -278,7 +279,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if startFlag != "" {
 		ts, err := common.ParseTime(startFlag)
 		if err != nil {
-			return nil, output.ErrValidation("--start: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		startTs = ts
 		start := startFlag
@@ -287,7 +288,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if endFlag != "" {
 		ts, err := common.ParseTime(endFlag, "end")
 		if err != nil {
-			return nil, output.ErrValidation("--end: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		endTs = ts
 		end := endFlag
@@ -297,7 +298,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 		sv, _ := strconv.ParseInt(startTs, 10, 64)
 		ev, _ := strconv.ParseInt(endTs, 10, 64)
 		if sv > ev {
-			return nil, output.ErrValidation("--start cannot be later than --end")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start cannot be later than --end")
 		}
 	}
 	if len(timeRange) > 0 {
@@ -306,12 +307,12 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 
 	if senderTypeFlag != "" && excludeSenderTypeFlag != "" {
 		if senderTypeFlag == excludeSenderTypeFlag {
-			return nil, output.ErrValidation("--sender-type and --exclude-sender-type cannot be the same value")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--sender-type and --exclude-sender-type cannot be the same value")
 		}
 	}
 	if chatFlag != "" {
 		for _, chatID := range common.SplitCSV(chatFlag) {
-			if _, err := common.ValidateChatID(chatID); err != nil {
+			if _, err := common.ValidateChatIDTyped("--chat-id", chatID); err != nil {
 				return nil, err
 			}
 		}
@@ -319,7 +320,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	}
 	if senderFlag != "" {
 		for _, userID := range common.SplitCSV(senderFlag) {
-			if _, err := common.ValidateUserID(userID); err != nil {
+			if _, err := common.ValidateUserIDTyped("--sender", userID); err != nil {
 				return nil, err
 			}
 		}
@@ -343,7 +344,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	if atChatterIdsFlag != "" {
 		ids := common.SplitCSV(atChatterIdsFlag)
 		for _, id := range ids {
-			if _, err := common.ValidateUserID(id); err != nil {
+			if _, err := common.ValidateUserIDTyped("--at-chatter-ids", id); err != nil {
 				return nil, err
 			}
 		}
@@ -357,7 +358,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 
 	pageSize := runtime.Int("page-size")
 	if pageSize < 1 {
-		return nil, output.ErrValidation("--page-size must be an integer between 1 and 50")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
 	}
 	if pageSize > messagesSearchMaxPageSize {
 		pageSize = messagesSearchMaxPageSize
@@ -420,7 +421,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 			params["page_token"] = []string{pageToken}
 		}
 
-		searchData, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
+		searchData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
 		if err != nil {
 			return nil, false, "", false, pageLimit, err
 		}
@@ -446,7 +447,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
 	var items []interface{}
 	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
-		mgetData, err := runtime.DoAPIJSON(http.MethodGet, buildMGetURL(batch), nil, nil)
+		mgetData, err := runtime.DoAPIJSONTyped(http.MethodGet, buildMGetURL(batch), nil, nil)
 		if err != nil {
 			return nil, err
 		}
