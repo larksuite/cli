@@ -75,6 +75,11 @@ func validateValueAgainstSchema(fv flagView, name string, value interface{}) err
 	if command == "" {
 		return nil
 	}
+	// Fast path: commands without a registered schema can't fail this check,
+	// so skip the 256KB flag-schemas.json parse entirely for them.
+	if _, ok := commandsWithSchema[command]; !ok {
+		return nil
+	}
 	idx, _ := loadFlagSchemas()
 	if idx == nil {
 		return nil
@@ -109,6 +114,11 @@ func validateInputAgainstSchema(fv flagView, input map[string]interface{}) error
 	}
 	command := fv.Command()
 	if command == "" {
+		return nil
+	}
+	// Fast path: commands without a registered schema have nothing to
+	// validate, so skip the 256KB flag-schemas.json parse entirely.
+	if _, ok := commandsWithSchema[command]; !ok {
 		return nil
 	}
 	idx, _ := loadFlagSchemas()

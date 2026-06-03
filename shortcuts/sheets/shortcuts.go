@@ -14,9 +14,12 @@ import "github.com/larksuite/cli/shortcuts/common"
 // `--print-schema --flag-name <name>` locally.
 func Shortcuts() []common.Shortcut {
 	all := shortcutList()
-	withSchema := commandsWithFlagSchema()
+	// Gate on the codegen'd command set (flag_schemas_gen.go) so registration
+	// — which runs on every CLI invocation — does not parse the 256KB
+	// flag-schemas.json. The blob is unmarshaled lazily (printFlagSchemaFor /
+	// the validate fast-path) only when actually needed.
 	for i := range all {
-		if _, ok := withSchema[all[i].Command]; ok {
+		if _, ok := commandsWithSchema[all[i].Command]; ok {
 			all[i].PrintFlagSchema = printFlagSchemaFor(all[i].Command)
 		}
 	}
