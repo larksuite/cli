@@ -69,7 +69,7 @@ wait
 
 ### stdin EOF = graceful exit
 
-`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause an immediate graceful exit (stderr `reason: signal`). To keep running:
+`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). **Bounded runs are exempt: when `--max-events` or `--timeout` is set (> 0), stdin EOF is ignored and the run exits only via its own bound, timeout, or SIGTERM.** For unbounded runs, `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause an immediate graceful exit (stderr `reason: signal`). To keep an unbounded run alive:
 
 - Feed stdin a source that never EOFs: `< <(tail -f /dev/null)`
 - Or run bounded: `--max-events N` / `--timeout D`
@@ -82,7 +82,7 @@ On exit, the last stderr line is `[event] exited — received N event(s) in Xs (
 |---|---|---|
 | 0 | `reason: limit` | `--max-events` reached |
 | 0 | `reason: timeout` | `--timeout` reached |
-| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF |
+| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF (stdin EOF applies to unbounded runs only) |
 | non-0 | `Error: ...` (no `exited` line) | Startup / runtime failure (permissions, network, params, config) |
 
 Orchestrators should treat `reason: limit/timeout/signal` (all exit 0) as "business completion" and non-zero as "failure".

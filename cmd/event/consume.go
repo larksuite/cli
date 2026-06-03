@@ -64,8 +64,8 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
-	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop.")
-	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout').")
+	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
+	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot", "auto"}, cobra.ShellCompDirectiveNoFileComp
@@ -372,6 +372,7 @@ func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 	}()
 }
 
+// shouldWatchStdinEOF gates the stdin-EOF shutdown watcher: non-TTY unbounded runs only (<= 0 mirrors downstream's >0-is-bounded semantics, so negative bounds stay unbounded).
 func shouldWatchStdinEOF(isTerminal bool, maxEvents int, timeout time.Duration) bool {
 	return !isTerminal && maxEvents <= 0 && timeout <= 0
 }
