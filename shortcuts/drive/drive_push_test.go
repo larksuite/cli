@@ -871,21 +871,19 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 		"--if-exists", "overwrite",
 		"--as", "bot",
 	}, f, stdout)
-	// Item-level failures bump the exit code via output.ErrBare(ExitAPI),
-	// preserving the structured items[] envelope on stdout. Older behavior
-	// was to silently return nil; the assertion below pins the new contract.
+	// Item-level failures report a partial failure: an ok:false items[]
+	// envelope on stdout + a non-zero exit via the partial-failure signal.
+	// Older behavior was to silently return nil; the assertion below pins
+	// the new contract.
 	if err == nil {
 		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("expected ExitAPI (%d), got code=%d", output.ExitAPI, exitErr.Code)
-	}
-	if exitErr.Detail != nil {
-		t.Errorf("ErrBare should carry no Detail (the items[] envelope already covered the per-item error), got: %#v", exitErr.Detail)
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got code=%d", output.ExitAPI, pfErr.Code)
 	}
 
 	out := stdout.String()
@@ -959,12 +957,19 @@ func TestDrivePushOverwritePartialSuccessSurfacesReturnedToken(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI from output.ExitError, got %T %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) || pfErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI from *output.PartialFailureError, got %T %v", err, err)
 	}
 
 	out := stdout.String()
+	// Partial failure reports an ok:false result envelope on stdout (not a
+	// misleading ok:true) while still carrying BOTH the succeeded and failed
+	// items — consistent with the pre-change payload. The failed side is
+	// asserted via "failed": 1 and the succeeded side via tok_keep_partial.
+	if !strings.Contains(out, `"ok": false`) {
+		t.Errorf("partial failure must emit an ok:false result envelope, got: %s", out)
+	}
 	if !strings.Contains(out, `"failed": 1`) {
 		t.Errorf("expected failed=1, got: %s", out)
 	}
@@ -1042,9 +1047,9 @@ func TestDrivePushSkipsDeleteAfterUploadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit on overwrite failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI ExitError, got %v", err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) || pfErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI *output.PartialFailureError, got %v", err)
 	}
 
 	out := stdout.String()
@@ -1065,7 +1070,7 @@ func TestDrivePushSkipsDeleteAfterUploadFailure(t *testing.T) {
 
 // TestDrivePushExitsZeroOnCleanRun pins the inverse: a successful run
 // with no failures must NOT bump the exit code. Without this the
-// ErrBare-on-failure path could regress to "always non-zero" silently.
+// partial-failure path could regress to "always non-zero" silently.
 func TestDrivePushExitsZeroOnCleanRun(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 

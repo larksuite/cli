@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -1434,14 +1435,15 @@ func TestDriveSyncAskConflictEOFDuringExecuteReportsFailedItem(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected EOF failure during ask execution\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
+	// Collecting conflict decisions runs in the Phase-1 setup pass, before
+	// any sync operation executes, so the EOF abort propagates the typed
+	// *errs.ValidationError unchanged rather than a synthetic partial_failure.
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
-	if len(items) == 0 || !strings.Contains(items[0].Error, "stdin reached EOF") {
-		t.Fatalf("expected failed ask item, got detail: %#v", exitErr.Detail.Detail)
+	if !strings.Contains(validationErr.Error(), "stdin reached EOF") {
+		t.Fatalf("expected EOF failure, got: %v", validationErr)
 	}
 	data, readErr := os.ReadFile("local/a.txt")
 	if readErr != nil {
@@ -1503,12 +1505,15 @@ func TestDriveSyncAskConflictEOFDuringPlanningPreventsAnyWrites(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected EOF failure during ask planning\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Detail.Type != "partial_failure" || !strings.Contains(exitErr.Error(), "stdin reached EOF") {
-		t.Fatalf("expected planning failure detail mentioning EOF, got: %#v", exitErr.Detail)
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(validationErr.Error(), "stdin reached EOF") {
+		t.Fatalf("expected planning failure mentioning EOF, got: %v", validationErr)
 	}
 	if data, readErr := os.ReadFile("local/a.txt"); readErr != nil || string(data) != "local-a" {
 		t.Fatalf("a.txt should remain untouched, readErr=%v content=%q", readErr, string(data))
@@ -1706,14 +1711,10 @@ func TestDriveSyncReportsNewRemoteDownloadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected download failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || items[0].Direction != "pull" || !strings.Contains(items[0].Error, "save failed") {
-		t.Fatalf("expected failed pull item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed pull item, got detail: %#v", stdout.String())
 	}
 }
 
@@ -1758,14 +1759,10 @@ func TestDriveSyncReportsNewLocalEnsureFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected ensure failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || items[0].Direction != "push" || !strings.Contains(items[0].Error, "create parent failed") {
-		t.Fatalf("expected failed push item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed push item, got detail: %#v", stdout.String())
 	}
 }
 
@@ -1810,14 +1807,10 @@ func TestDriveSyncReportsNewLocalUploadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected upload failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || items[0].Direction != "push" || !strings.Contains(items[0].Error, "upload failed") {
-		t.Fatalf("expected failed upload item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed upload item, got detail: %#v", stdout.String())
 	}
 }
 
@@ -1875,14 +1868,10 @@ func TestDriveSyncLocalWinsReportsUploadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected local-wins upload failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || items[0].Direction != "push" || !strings.Contains(items[0].Error, "overwrite failed") {
-		t.Fatalf("expected failed overwrite item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed overwrite item, got detail: %#v", stdout.String())
 	}
 }
 
@@ -1965,30 +1954,13 @@ func TestDriveSyncKeepBothReportsRenameFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected keep-both suffix exhaustion error\nstdout: %s", stdout.String())
 	}
-	// The error may be a plain ExitError (no Detail.Detail) or a
-	// partial_failure with items. Either way it must mention the
-	// suffix exhaustion.
-	errMsg := err.Error()
-	// The suffix exhaustion message may be in the top-level error or
-	// inside a partial_failure detail item. Check both.
-	foundSuffixError := strings.Contains(errMsg, "could not generate a unique rel_path")
-	if !foundSuffixError {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) && exitErr.Detail != nil {
-			detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-			items, _ := detailMap["items"].([]driveSyncItem)
-			for _, item := range items {
-				if strings.Contains(item.Error, "could not generate a unique rel_path") {
-					foundSuffixError = true
-					break
-				}
-			}
-			if !foundSuffixError {
-				t.Fatalf("expected suffix exhaustion error, got: %s; detail: %#v", errMsg, exitErr.Detail.Detail)
-			}
-		} else {
-			t.Fatalf("expected suffix exhaustion error, got: %s", errMsg)
-		}
+	// The suffix-exhaustion failure is an item-level conflict failure, so
+	// it surfaces as the partial-failure signal: a typed PartialFailureError
+	// on the error channel and the ok:false items[] payload (carrying the
+	// suffix message) on stdout via OutPartialFailure.
+	assertDriveSyncPartialFailure(t, err)
+	if !strings.Contains(stdout.String(), "could not generate a unique rel_path") {
+		t.Fatalf("expected suffix exhaustion error in stdout items, got: %s", stdout.String())
 	}
 }
 
@@ -2341,14 +2313,10 @@ func TestDriveSyncRemoteWinsReportsModifiedPullFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected modified pull failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || items[0].Direction != "pull" || !strings.Contains(items[0].Error, "save failed") {
-		t.Fatalf("expected failed modified pull item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed modified pull item, got detail: %#v", stdout.String())
 	}
 }
 
@@ -2411,14 +2379,10 @@ func TestDriveSyncKeepBothReportsRollbackFailureAfterPullError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected keep-both rollback failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || !strings.Contains(items[0].Error, "rollback failed") {
-		t.Fatalf("expected rollback failure in item error, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected rollback failure in item error, got detail: %#v", stdout.String())
 	}
 }
 
@@ -2500,14 +2464,10 @@ func TestDriveSyncLocalWinsNestedFileReportsParentEnsureFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected parent ensure failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || !strings.Contains(items[0].Error, "create parent failed") {
-		t.Fatalf("expected failed item with create_folder error, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed item with create_folder error, got detail: %#v", stdout.String())
 	}
 }
 
@@ -2704,7 +2664,7 @@ func TestDriveSyncKeepBothReportsSuffixError(t *testing.T) {
 // TestDriveSyncKeepBothRollbackSucceedsOnPullFailure verifies the full
 // keep-both rollback path: when the pull download fails after the local
 // file has been renamed, the rollback restores the original file and
-// the error is reported as a partial_failure.
+// the failure is reported via the partial-failure signal.
 func TestDriveSyncKeepBothRollbackSucceedsOnPullFailure(t *testing.T) {
 	syncTestConfig := &core.CliConfig{
 		AppID: "drive-sync-keep-both-rollback-pull-fail", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -2762,14 +2722,10 @@ func TestDriveSyncKeepBothRollbackSucceedsOnPullFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected keep-both pull failure with rollback\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 || !strings.Contains(items[0].Error, "save failed") {
-		t.Fatalf("expected save failure in item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected save failure in item, got detail: %#v", stdout.String())
 	}
 
 	// Rollback should have restored the original file.
@@ -2978,14 +2934,10 @@ func TestDriveSyncLocalWinsUsesReturnedTokenOnUploadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected local-wins upload failure\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured ExitError, got: %v", err)
-	}
-	detailMap, _ := exitErr.Detail.Detail.(map[string]interface{})
-	items, _ := detailMap["items"].([]driveSyncItem)
+	assertDriveSyncPartialFailure(t, err)
+	items := driveSyncStdoutItems(t, stdout.Bytes())
 	if len(items) == 0 {
-		t.Fatalf("expected failed item, got detail: %#v", exitErr.Detail.Detail)
+		t.Fatalf("expected failed item, got detail: %#v", stdout.String())
 	}
 	// The reported token should be the new one from the partial-success
 	// response, not the stale existingToken ("tok_a").
@@ -3094,4 +3046,40 @@ func TestDriveSyncRejectsLocalDirVsRemoteFileTypeConflict(t *testing.T) {
 	if !strings.Contains(err.Error(), "local directory") {
 		t.Fatalf("error should mention local directory, got: %v", err)
 	}
+}
+
+// assertDriveSyncPartialFailure asserts that err is the typed partial-failure
+// exit signal +sync returns on any item-level failure. The structured
+// {detection, diff, summary, items, note} payload rides on stdout as an
+// ok:false envelope via runtime.OutPartialFailure (in alignment with
+// +push/+pull), so this helper only checks the exit-code signal; callers read
+// the payload from stdout.
+func assertDriveSyncPartialFailure(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected partial-failure exit signal, got nil")
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
+	}
+}
+
+// driveSyncStdoutItems extracts the items[] payload from the stdout envelope
+// written by runtime.Out. The per-item failure context that used to live in
+// the partial_failure ExitError detail now rides on stdout.
+func driveSyncStdoutItems(t *testing.T, stdout []byte) []driveSyncItem {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			Items []driveSyncItem `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
+	}
+	return envelope.Data.Items
 }

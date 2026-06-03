@@ -5,14 +5,17 @@ package drive
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -52,6 +55,16 @@ func TestValidateDriveVersionHistorySpec(t *testing.T) {
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+			var vErr *errs.ValidationError
+			if !errors.As(err, &vErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if vErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
 			}
 		})
 	}
@@ -254,6 +267,13 @@ func TestDriveVersionGetRejectsExistingFileWithoutOverwrite(t *testing.T) {
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "output file already exists") {
 		t.Fatalf("expected output exists error, got %v", err)
+	}
+	var vErr *errs.ValidationError
+	if !errors.As(err, &vErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if vErr.Subtype != errs.SubtypeInvalidArgument || vErr.Param != "--output" {
+		t.Fatalf("typed shape = subtype %q param %q, want invalid_argument/--output", vErr.Subtype, vErr.Param)
 	}
 }
 

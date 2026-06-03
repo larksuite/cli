@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -72,7 +72,7 @@ var DriveCreateFolder = common.Shortcut{
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating folder %q in %s...\n", spec.Name, target)
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"POST",
 			"/open-apis/drive/v1/files/create_folder",
 			nil,
@@ -84,7 +84,7 @@ var DriveCreateFolder = common.Shortcut{
 
 		folderToken := common.GetString(data, "token")
 		if folderToken == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "drive create_folder succeeded but returned no folder token (data.token)")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "drive create_folder succeeded but returned no folder token (data.token)")
 		}
 		out := map[string]interface{}{
 			"created":             true,
@@ -108,14 +108,14 @@ var DriveCreateFolder = common.Shortcut{
 
 func validateDriveCreateFolderSpec(spec driveCreateFolderSpec) error {
 	if spec.Name == "" {
-		return output.ErrValidation("--name must not be empty")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name must not be empty").WithParam("--name")
 	}
 	if nameBytes := len([]byte(spec.Name)); nameBytes > 256 {
-		return output.ErrValidation("--name exceeds the maximum of 256 bytes (got %d)", nameBytes)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name exceeds the maximum of 256 bytes (got %d)", nameBytes).WithParam("--name")
 	}
 	if spec.FolderToken != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 	}
 	return nil

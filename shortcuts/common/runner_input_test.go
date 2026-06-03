@@ -129,6 +129,7 @@ func TestResolveInputFlags_StdinNotSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for stdin not supported")
 	}
+	assertValidationParam(t, err, "--data")
 	if !strings.Contains(err.Error(), "does not support stdin") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -142,6 +143,7 @@ func TestResolveInputFlags_FileNotSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for file not supported")
 	}
+	assertValidationParam(t, err, "--data")
 	if !strings.Contains(err.Error(), "does not support file input") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -158,6 +160,7 @@ func TestResolveInputFlags_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
+	assertValidationParam(t, err, "--markdown")
 	if !strings.Contains(err.Error(), "cannot read file") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -171,6 +174,7 @@ func TestResolveInputFlags_EmptyFilePath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty file path")
 	}
+	assertValidationParam(t, err, "--markdown")
 	if !strings.Contains(err.Error(), "file path cannot be empty after @") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -212,6 +216,7 @@ func TestResolveInputFlags_DuplicateStdin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate stdin usage")
 	}
+	assertValidationParam(t, err, "--b")
 	if !strings.Contains(err.Error(), "stdin (-) can only be used by one flag") {
 		t.Errorf("unexpected error: %v", err)
 	}

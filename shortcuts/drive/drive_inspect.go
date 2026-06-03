@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -37,18 +37,18 @@ var DriveInspect = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		raw := strings.TrimSpace(runtime.Str("url"))
 		if raw == "" {
-			return output.ErrValidation("--url cannot be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--url cannot be empty").WithParam("--url")
 		}
 
 		_, ok := common.ParseResourceURL(raw)
 		if !ok {
 			// Not a recognized URL pattern.
 			if strings.Contains(raw, "://") {
-				return output.ErrValidation("unsupported --url %q: use a recognized Lark document URL or a bare token with --type", raw)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --url %q: use a recognized Lark document URL or a bare token with --type", raw).WithParam("--url")
 			}
 			// Bare token: --type is required.
 			if strings.TrimSpace(runtime.Str("type")) == "" {
-				return output.ErrValidation("--type is required when --url is a bare token (allowed: doc, docx, sheet, bitable, wiki, file, folder, mindnote, slides)")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --url is a bare token (allowed: doc, docx, sheet, bitable, wiki, file, folder, mindnote, slides)").WithParam("--type")
 			}
 		}
 		return nil
@@ -111,7 +111,7 @@ var DriveInspect = common.Shortcut{
 		// Step 2: If type is "wiki", unwrap via get_node API.
 		if docType == "wiki" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Inspecting wiki node: %s\n", common.MaskToken(docToken))
-			data, err := runtime.CallAPI(
+			data, err := runtime.CallAPITyped(
 				"GET",
 				"/open-apis/wiki/v2/spaces/get_node",
 				map[string]interface{}{"token": docToken},
@@ -128,7 +128,7 @@ var DriveInspect = common.Shortcut{
 			nodeToken := common.GetString(node, "node_token")
 
 			if objType == "" || objToken == "" {
-				return output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
 			}
 
 			wikiNode = map[string]interface{}{

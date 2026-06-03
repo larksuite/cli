@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
@@ -133,7 +134,7 @@ func TestMailMessageUserMailboxMePassesValidation(t *testing.T) {
 func TestMailMessagesBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailMessages, []string{
-		"+messages", "--as", "bot", "--message-ids", "msg_xxx",
+		"+messages", "--as", "bot", "--message-ids", validMessageIDForTest("biz-x"),
 	}, f, stdout)
 	assertValidationError(t, err, "does not support --mailbox me")
 }
@@ -142,7 +143,7 @@ func TestMailMessagesBotDefaultMailboxMeReturnsValidationError(t *testing.T) {
 func TestMailMessagesBotExplicitMailboxPassesValidation(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailMessages, []string{
-		"+messages", "--as", "bot", "--mailbox", "alice@example.com", "--message-ids", "msg_xxx",
+		"+messages", "--as", "bot", "--mailbox", "alice@example.com", "--message-ids", validMessageIDForTest("biz-x"),
 	}, f, stdout)
 	assertValidatePasses(t, err)
 }
@@ -181,4 +182,88 @@ func TestMailTriageBotExplicitMailboxPassesValidation(t *testing.T) {
 		"+triage", "--as", "bot", "--mailbox", "alice@example.com",
 	}, f, stdout)
 	assertValidatePasses(t, err)
+}
+
+// --- message_ids validation tests (S2) ---
+
+func validMessageIDForTest(s string) string {
+	return base64.URLEncoding.EncodeToString([]byte(s))
+}
+
+func TestValidateMessageIDsAcceptsValidIDs(t *testing.T) {
+	_, err := validateMessageIDs(validMessageIDForTest("biz-001") + "," + validMessageIDForTest("biz-002"))
+	if err != nil {
+		t.Fatalf("expected nil error for valid IDs, got: %v", err)
+	}
+}
+
+func TestValidateMessageIDsRejectsEmpty(t *testing.T) {
+	_, err := validateMessageIDs("")
+	assertValidationError(t, err, "--message-ids is required")
+	_, err = validateMessageIDs("   ")
+	assertValidationError(t, err, "--message-ids is required")
+}
+
+func TestValidateMessageIDsAcceptsMoreThanSingleBackendBatch(t *testing.T) {
+	ids := make([]string, 21)
+	for i := range ids {
+		ids[i] = validMessageIDForTest(string(rune('a' + i)))
+	}
+	_, err := validateMessageIDs(strings.Join(ids, ","))
+	if err != nil {
+		t.Fatalf("expected nil error for more than one backend batch, got: %v", err)
+	}
+}
+
+func TestValidateMessageIDsRejectsEmptyEntry(t *testing.T) {
+	_, err := validateMessageIDs(validMessageIDForTest("biz-1") + ",," + validMessageIDForTest("biz-2"))
+	assertValidationError(t, err, "entry 2 is empty")
+}
+
+func TestValidateMessageIDsRejectsLeadingOrTrailingWhitespace(t *testing.T) {
+	id1 := validMessageIDForTest("biz-1")
+	id2 := validMessageIDForTest("biz-2")
+	_, err := validateMessageIDs(id1 + ", " + id2)
+	assertValidationError(t, err, "must not contain leading or trailing whitespace")
+	_, err = validateMessageIDs(" " + id1 + "," + id2)
+	assertValidationError(t, err, "must not contain leading or trailing whitespace")
+}
+
+func TestValidateMessageIDsRejectsDuplicateIDs(t *testing.T) {
+	id := validMessageIDForTest("biz-1")
+	_, err := validateMessageIDs(id + "," + id)
+	assertValidationError(t, err, "duplicate message ID is not allowed")
+}
+
+func TestValidateMessageIDsRejectsJSONLikeInput(t *testing.T) {
+	_, err := validateMessageIDs(`["id1","id2"]`)
+	assertValidationError(t, err, "expected a base64url")
+}
+
+func TestValidateMessageIDsRejectsColonJoinedInput(t *testing.T) {
+	_, err := validateMessageIDs("id1:id2")
+	assertValidationError(t, err, "expected a base64url")
+}
+
+func TestValidateMessageIDsRejectsNumericPrimaryID(t *testing.T) {
+	_, err := validateMessageIDs("123456789")
+	assertValidationError(t, err, "numeric primary IDs are not supported")
+}
+
+func TestValidateMessageIDsAcceptsExactlyTwenty(t *testing.T) {
+	ids := make([]string, 20)
+	for i := range ids {
+		ids[i] = validMessageIDForTest(string(rune('A' + i)))
+	}
+	_, err := validateMessageIDs(strings.Join(ids, ","))
+	if err != nil {
+		t.Fatalf("expected nil error for exactly 20 IDs, got: %v", err)
+	}
+}
+
+func TestValidateMessageIDRejectsInvalidBase64(t *testing.T) {
+	_, err := validateMessageIDs("msg 1")
+	assertValidationError(t, err, "expected a base64url")
+	_, err = validateMessageIDs("not-base64!")
+	assertValidationError(t, err, "expected a base64url")
 }

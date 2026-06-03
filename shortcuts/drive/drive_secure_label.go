@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -36,7 +36,7 @@ var DriveSecureLabelList = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pageSize := runtime.Int("page-size")
 		if pageSize < 1 || pageSize > 10 {
-			return output.ErrValidation("--page-size must be between 1 and 10")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be between 1 and 10").WithParam("--page-size")
 		}
 		return nil
 	},
@@ -47,7 +47,7 @@ var DriveSecureLabelList = common.Shortcut{
 			Params(buildSecureLabelListParams(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		data, err := runtime.CallAPI("GET",
+		data, err := runtime.CallAPITyped("GET",
 			"/open-apis/drive/v2/my_secure_labels",
 			buildSecureLabelListParams(runtime),
 			nil,
@@ -95,7 +95,7 @@ var DriveSecureLabelUpdate = common.Shortcut{
 			return err
 		}
 		body := map[string]interface{}{"id": runtime.Str("label-id")}
-		data, err := runtime.CallAPI("PATCH",
+		data, err := runtime.CallAPITyped("PATCH",
 			fmt.Sprintf("/open-apis/drive/v2/files/%s/secure_label", validate.EncodePathSegment(token)),
 			map[string]interface{}{"type": docType},
 			body,

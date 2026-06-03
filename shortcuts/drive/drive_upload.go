@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -151,7 +151,7 @@ var DriveUpload = common.Shortcut{
 
 		info, err := runtime.FileIO().Stat(spec.FilePath)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return driveInputStatError(err)
 		}
 		fileSize := info.Size()
 
@@ -194,13 +194,13 @@ var DriveUpload = common.Shortcut{
 
 func validateDriveUploadSpec(runtime *common.RuntimeContext, spec driveUploadSpec) error {
 	if driveUploadFlagExplicitlyEmpty(runtime, "file-token") {
-		return common.FlagErrorf("--file-token cannot be empty; omit --file-token for a new upload or pass an existing file token to overwrite")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-token cannot be empty; omit --file-token for a new upload or pass an existing file token to overwrite").WithParam("--file-token")
 	}
 	if driveUploadFlagExplicitlyEmpty(runtime, "folder-token") {
-		return common.FlagErrorf("--folder-token cannot be empty; omit --folder-token to upload into Drive root folder or pass a folder token")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--folder-token cannot be empty; omit --folder-token to upload into Drive root folder or pass a folder token").WithParam("--folder-token")
 	}
 	if driveUploadFlagExplicitlyEmpty(runtime, "wiki-token") {
-		return common.FlagErrorf("--wiki-token cannot be empty; omit --wiki-token to upload into Drive root folder or pass a wiki node token")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--wiki-token cannot be empty; omit --wiki-token to upload into Drive root folder or pass a wiki node token").WithParam("--wiki-token")
 	}
 
 	targets := 0
@@ -211,21 +211,21 @@ func validateDriveUploadSpec(runtime *common.RuntimeContext, spec driveUploadSpe
 		targets++
 	}
 	if targets > 1 {
-		return common.FlagErrorf("--folder-token and --wiki-token are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--folder-token and --wiki-token are mutually exclusive")
 	}
 	if spec.FolderToken != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 	}
 	if spec.WikiToken != "" {
 		if err := validate.ResourceName(spec.WikiToken, "--wiki-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--wiki-token")
 		}
 	}
 	if spec.FileToken != "" {
 		if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 		}
 	}
 	return nil
@@ -240,7 +240,7 @@ func driveUploadFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName str
 func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, filePath, fileName string, target driveUploadTarget, fileSize int64, existingFileToken string) (driveUploadResult, error) {
 	f, err := runtime.FileIO().Open(filePath)
 	if err != nil {
-		return driveUploadResult{}, common.WrapInputStatError(err)
+		return driveUploadResult{}, driveInputStatError(err)
 	}
 	defer f.Close()
 
@@ -265,23 +265,16 @@ func uploadFileToDrive(ctx context.Context, runtime *common.RuntimeContext, file
 		if errors.As(err, &exitErr) {
 			return driveUploadResult{}, err
 		}
-		return driveUploadResult{}, output.ErrNetwork("upload failed: %v", err)
+		return driveUploadResult{}, wrapDriveNetworkErr(err, "upload failed: %v", err)
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return driveUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "upload failed: invalid response JSON: %v", err)
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return driveUploadResult{}, err
 	}
-
-	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
-		msg, _ := result["msg"].(string)
-		return driveUploadResult{}, output.ErrAPI(larkCode, fmt.Sprintf("upload failed: [%d] %s", larkCode, msg), result["error"])
-	}
-
-	data, _ := result["data"].(map[string]interface{})
 	fileToken := common.GetString(data, "file_token")
 	if fileToken == "" {
-		return driveUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
+		return driveUploadResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned")
 	}
 	return driveUploadResult{
 		FileToken: fileToken,
@@ -304,7 +297,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 	if existingFileToken != "" {
 		prepareBody["file_token"] = existingFileToken
 	}
-	prepareResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
+	prepareResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
 	if err != nil {
 		return driveUploadResult{}, err
 	}
@@ -316,7 +309,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 	blockNum := int(blockNumF)
 
 	if uploadID == "" || blockSize <= 0 || blockNum <= 0 {
-		return driveUploadResult{}, output.Errorf(output.ExitAPI, "api_error",
+		return driveUploadResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum)
 	}
@@ -334,7 +327,7 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 
 		partFile, err := runtime.FileIO().Open(filePath)
 		if err != nil {
-			return driveUploadResult{}, common.WrapInputStatError(err)
+			return driveUploadResult{}, driveInputStatError(err)
 		}
 
 		fd := larkcore.NewFormdata()
@@ -354,16 +347,11 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 			if errors.As(err, &exitErr) {
 				return driveUploadResult{}, err
 			}
-			return driveUploadResult{}, output.ErrNetwork("upload part %d/%d failed: %v", seq+1, blockNum, err)
+			return driveUploadResult{}, wrapDriveNetworkErr(err, "upload part %d/%d failed: %v", seq+1, blockNum, err)
 		}
 
-		var partResult map[string]interface{}
-		if err := json.Unmarshal(apiResp.RawBody, &partResult); err != nil {
-			return driveUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "upload part %d/%d: invalid response JSON: %v", seq+1, blockNum, err)
-		}
-		if larkCode := int(common.GetFloat(partResult, "code")); larkCode != 0 {
-			msg, _ := partResult["msg"].(string)
-			return driveUploadResult{}, output.ErrAPI(larkCode, fmt.Sprintf("upload part %d/%d failed: [%d] %s", seq+1, blockNum, larkCode, msg), partResult["error"])
+		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+			return driveUploadResult{}, err
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
@@ -374,14 +362,14 @@ func uploadFileMultipart(_ context.Context, runtime *common.RuntimeContext, file
 		"upload_id": uploadID,
 		"block_num": blockNum,
 	}
-	finishResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_finish", nil, finishBody)
+	finishResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_finish", nil, finishBody)
 	if err != nil {
 		return driveUploadResult{}, err
 	}
 
 	fileToken := common.GetString(finishResult, "file_token")
 	if fileToken == "" {
-		return driveUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "upload_finish succeeded but no file_token returned")
+		return driveUploadResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload_finish succeeded but no file_token returned")
 	}
 
 	return driveUploadResult{

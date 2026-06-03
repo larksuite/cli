@@ -11,10 +11,31 @@ import (
 
 // ValidateChatID checks if a chat ID has valid format (oc_ prefix).
 // Also extracts token from URL if provided.
+//
+// Deprecated: use ValidateChatIDTyped for typed error envelopes.
 func ValidateChatID(input string) (string, error) {
+	chatID, msg := normalizeChatID(input)
+	if msg != "" {
+		return "", output.ErrValidation("%s", msg)
+	}
+	return chatID, nil
+}
+
+// ValidateChatIDTyped checks if a chat ID has valid format (oc_ prefix).
+// Also extracts token from URL if provided. param names the flag being
+// validated (e.g. "--chat-ids") and is recorded on the typed error.
+func ValidateChatIDTyped(param, input string) (string, error) {
+	chatID, msg := normalizeChatID(input)
+	if msg != "" {
+		return "", ValidationErrorf("%s", msg).WithParam(param)
+	}
+	return chatID, nil
+}
+
+func normalizeChatID(input string) (string, string) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", output.ErrValidation("chat ID cannot be empty")
+		return "", "chat ID cannot be empty"
 	}
 	// Extract from URL if present
 	if strings.Contains(input, "feishu.cn") || strings.Contains(input, "larksuite.com") {
@@ -28,19 +49,40 @@ func ValidateChatID(input string) (string, error) {
 		}
 	}
 	if !strings.HasPrefix(input, "oc_") {
-		return "", output.ErrValidation("invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)")
+		return "", "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)"
 	}
-	return input, nil
+	return input, ""
 }
 
 // ValidateUserID checks if a user ID has valid format (ou_ prefix).
+//
+// Deprecated: use ValidateUserIDTyped for typed error envelopes.
 func ValidateUserID(input string) (string, error) {
+	userID, msg := normalizeUserID(input)
+	if msg != "" {
+		return "", output.ErrValidation("%s", msg)
+	}
+	return userID, nil
+}
+
+// ValidateUserIDTyped checks if a user ID has valid format (ou_ prefix).
+// param names the flag being validated (e.g. "--creator-ids") and is
+// recorded on the typed error.
+func ValidateUserIDTyped(param, input string) (string, error) {
+	userID, msg := normalizeUserID(input)
+	if msg != "" {
+		return "", ValidationErrorf("%s", msg).WithParam(param)
+	}
+	return userID, nil
+}
+
+func normalizeUserID(input string) (string, string) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return "", output.ErrValidation("user ID cannot be empty")
+		return "", "user ID cannot be empty"
 	}
 	if !strings.HasPrefix(input, "ou_") {
-		return "", output.ErrValidation("invalid user ID format, should start with 'ou_' (e.g., ou_abc123)")
+		return "", "invalid user ID format, should start with 'ou_' (e.g., ou_abc123)"
 	}
-	return input, nil
+	return input, ""
 }

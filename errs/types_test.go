@@ -558,6 +558,71 @@ func TestTypedError_UnwrapSymmetry(t *testing.T) {
 	})
 }
 
+// TestValidationError_WithParams covers the structured-validation extension:
+// WithParams appends InvalidParam items, the scalar Param setter is unaffected,
+// and the wire shape nests {name, reason} under "params" (omitted when empty).
+func TestValidationError_WithParams(t *testing.T) {
+	t.Run("appends and exposes fields", func(t *testing.T) {
+		e := errs.NewValidationError(errs.SubtypeInvalidArgument, "duplicate rel_path").
+			WithParams(errs.InvalidParam{Name: "a.md", Reason: "duplicate"})
+		if len(e.Params) != 1 {
+			t.Fatalf("len(Params) = %d, want 1", len(e.Params))
+		}
+		if e.Params[0].Name != "a.md" {
+			t.Errorf("Params[0].Name = %q, want %q", e.Params[0].Name, "a.md")
+		}
+		if e.Params[0].Reason != "duplicate" {
+			t.Errorf("Params[0].Reason = %q, want %q", e.Params[0].Reason, "duplicate")
+		}
+	})
+
+	t.Run("appends across multiple calls and returns receiver", func(t *testing.T) {
+		e := errs.NewValidationError(errs.SubtypeInvalidArgument, "x")
+		returned := e.WithParams(errs.InvalidParam{Name: "a.md", Reason: "dup"})
+		if returned != e {
+			t.Errorf("WithParams returned different pointer; want same as receiver")
+		}
+		e.WithParams(
+			errs.InvalidParam{Name: "b.md", Reason: "dup"},
+			errs.InvalidParam{Name: "c.md", Reason: "dup"},
+		)
+		if len(e.Params) != 3 {
+			t.Fatalf("len(Params) = %d after two calls, want 3", len(e.Params))
+		}
+	})
+
+	t.Run("wire shape nests name and reason under params", func(t *testing.T) {
+		e := errs.NewValidationError(errs.SubtypeInvalidArgument, "duplicate rel_path").
+			WithParam("--rel-path").
+			WithParams(errs.InvalidParam{Name: "a.md", Reason: "duplicate"})
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Fatalf("marshal failed: %v", err)
+		}
+		got := string(b)
+		for _, want := range []string{
+			`"type":"validation"`,
+			`"param":"--rel-path"`,
+			`"params":[{"name":"a.md","reason":"duplicate"}]`,
+		} {
+			if !strings.Contains(got, want) {
+				t.Errorf("missing %q in %s", want, got)
+			}
+		}
+	})
+
+	t.Run("empty Params omitted from wire", func(t *testing.T) {
+		e := errs.NewValidationError(errs.SubtypeInvalidArgument, "x")
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Fatalf("marshal failed: %v", err)
+		}
+		if strings.Contains(string(b), `"params"`) {
+			t.Errorf("empty Params should be omitted from wire; got %s", b)
+		}
+	})
+}
+
 func TestBuilderSetter_DefensiveCopy(t *testing.T) {
 	t.Run("WithMissingScopes clones input", func(t *testing.T) {
 		scopes := []string{"docx:document", "im:message:send"}

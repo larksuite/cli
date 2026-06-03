@@ -9,8 +9,8 @@ Remove a member from a wiki space. OpenAPI: `DELETE /open-apis/wiki/v2/spaces/:s
 ```bash
 lark-cli wiki +member-remove \
   --space-id <space_id> \
-  --member-id <open_id|email|user_id|...> \
-  --member-type <openid|email|userid|unionid|openchat|opendepartmentid> \
+  --member-id <open_id|email|user_id|app_id|...> \
+  --member-type <openid|email|userid|unionid|openchat|opendepartmentid|appid> \
   --member-role <admin|member> \
   [--as user|bot]
 
@@ -32,7 +32,7 @@ lark-cli wiki +member-remove \
 |------|------|----------|---------|-------------|
 | `--space-id` | string | **Yes** | — | Wiki space ID; use `my_library` for the personal document library (user only) |
 | `--member-id` | string | **Yes** | — | Member ID; interpretation is decided by `--member-type` |
-| `--member-type` | enum | **Yes** | — | Must **match the original grant**: `openchat` / `userid` / `email` / `opendepartmentid` / `openid` / `unionid` |
+| `--member-type` | enum | **Yes** | — | Must **match the original grant**: `openchat` / `userid` / `email` / `opendepartmentid` / `openid` / `unionid` / `appid` |
 | `--member-role` | enum | **Yes** | — | Must **match the original grant**: `admin` / `member` |
 | `--as` | enum | No | `auto` | Identity `user`/`bot`; wiki is user-centric → pass `--as user` |
 

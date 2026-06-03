@@ -14,7 +14,7 @@ Use `+data-query` when the user asks for server-side:
 - sorted Top N or Bottom N
 - global statistical conclusions
 
-Do not use `+data-query` for raw record details. Use record commands for row-level output.
+`+data-query` can return dimension field rows, but those rows are grouped by dimension values and do not include `record_id`. Use `+record-list`, `+record-search`, or `+record-get` for row-level output, record identity, or full raw record details.
 
 ## Common Fewshots
 

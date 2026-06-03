@@ -822,12 +822,15 @@ func TestWalkLocalForStatusMissingRootReturnsInternalError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected walkLocalForStatus() to fail for missing root")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected structured ExitError, got %T", err)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "io" {
-		t.Fatalf("expected io error detail, got %#v", exitErr.Detail)
+	if internalErr.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("Subtype = %q, want %q", internalErr.Subtype, errs.SubtypeFileIO)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d (ExitInternal)", code, output.ExitInternal)
 	}
 	if !strings.Contains(err.Error(), "walk") {
 		t.Fatalf("expected walk-related error, got: %v", err)

@@ -341,6 +341,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": opts.AppID, "appSecret": "****", "brand": brand})
+		if err := runProbe(opts.Ctx, f, opts.AppID, opts.appSecret, brand); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -380,6 +383,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 		}
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
+		if err := runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -419,6 +425,11 @@ func configInitRun(opts *ConfigInitOptions) error {
 			output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf(msg.ConfigSaved, result.AppID))
 		}
 		printLangPreferenceConfirmation(opts)
+		if result.AppSecret != "" {
+			if err := runProbe(opts.Ctx, f, result.AppID, result.AppSecret, result.Brand); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -507,5 +518,10 @@ func configInitRun(opts *ConfigInitOptions) error {
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 	printLangPreferenceConfirmation(opts)
+	if appSecretInput != "" {
+		if err := runProbe(opts.Ctx, f, resolvedAppId, appSecretInput, parseBrand(resolvedBrand)); err != nil {
+			return err
+		}
+	}
 	return nil
 }

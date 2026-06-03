@@ -9,10 +9,31 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
+
+// assertContentValidationHint asserts err is a typed *errs.ValidationError
+// carrying SubtypeInvalidArgument, Param "--content", and a Hint containing
+// the given substring. The over-cap message now flows through a typed
+// ValidationError instead of the legacy *output.ExitError.Detail shape.
+func assertContentValidationHint(t *testing.T, err error, wantHint string) {
+	t.Helper()
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	if valErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", valErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if valErr.Param != "--content" {
+		t.Errorf("Param = %q, want %q", valErr.Param, "--content")
+	}
+	if !strings.Contains(valErr.Hint, wantHint) {
+		t.Errorf("expected hint substring %q, got %q", wantHint, valErr.Hint)
+	}
+}
 
 func decodeJSONMap(t *testing.T, raw string) map[string]interface{} {
 	t.Helper()
@@ -421,14 +442,8 @@ func TestParseCommentReplyElementsTextLength(t *testing.T) {
 					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
 				}
 				if tt.wantHint != "" {
-					// Hint lives on ExitError.Detail.Hint, not err.Error().
-					var exitErr *output.ExitError
-					if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-						t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
-					}
-					if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
-						t.Errorf("expected hint substring %q, got %q", tt.wantHint, exitErr.Detail.Hint)
-					}
+					// Hint lives on the typed ValidationError, not err.Error().
+					assertContentValidationHint(t, err, tt.wantHint)
 				}
 				return
 			}
@@ -458,11 +473,11 @@ func TestParseCommentReplyElementsHintForbidsSplitAdvice(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected over-cap error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
 	}
-	hint := exitErr.Detail.Hint
+	hint := valErr.Hint
 
 	// The hint must explicitly call out that splitting does NOT help.
 	if !strings.Contains(hint, "does NOT help") {
