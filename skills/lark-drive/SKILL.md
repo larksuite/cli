@@ -295,12 +295,14 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 ```
 
 > **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+>
+> **高频原生命令：** 读取 Drive 文件夹清单时使用 `drive files list`，必须按 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md) 的模板通过 `--params` 传 `folder_token` / `page_token`，并手动处理分页；不要把 `--page-all` 输出直接交给 JSON 解析脚本。
 
 ### files
 
   - `copy` — 复制文件
   - `create_folder` — 新建文件夹
-  - `list` — 获取文件夹下的清单
+  - `list` — 获取文件夹下的清单；使用前阅读 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md)
   - `patch` — 修改文件标题
 
 ### file.comments

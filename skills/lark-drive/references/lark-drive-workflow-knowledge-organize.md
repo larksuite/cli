@@ -89,7 +89,8 @@ Agent MUST maintain these internal fields during one workflow run:
 | `environment_profile` | Current environment and CLI profile, such as prod / BOE / PRE and config profile |
 | `identity` | `user` by default unless user explicitly asks for app / bot perspective |
 | `resource_items` | Complete normalized resource list from discovery |
-| `partial` | Whether inventory or content-read limits were hit |
+| `partial` | Whether inventory or content read cannot fully continue because of auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, or scope blockers; batching checkpoints alone are not partial |
+| `inventory_continuation_state` | Structured checkpoint for continuing inventory batches within the confirmed scope. Must preserve `scope`, `queue`, `current_cursor`, `visited_page_keys`, `dedupe_keys`, and `blockers`; Drive queue entries carry `folder_token`, `path`, `depth`, and `page_token`; Wiki queue entries carry `space_id` / `node_token`, `path`, `depth`, and pagination cursor; search entries carry query / filters and pagination cursor. Missing or corrupt state is a blocker, not a completed inventory. |
 | `low_confidence_items` | Items requiring mandatory partial content read |
 | `issue_summary` | Problem types, counts, evidence paths, and suggested handling |
 | `classification_rules` | Rules used to map resources to target paths |
@@ -211,6 +212,7 @@ Never request permission automatically, never batch permission requests, and nev
 - [Rollback phase](lark-drive-workflow-knowledge-organize-rollback.md)
 - [lark-shared](../../lark-shared/SKILL.md)
 - [lark-drive](../SKILL.md)
+- [lark-drive-files-list](lark-drive-files-list.md)
 - [lark-drive-search](lark-drive-search.md)
 - [lark-drive-inspect](lark-drive-inspect.md)
 - [lark-drive-apply-permission](lark-drive-apply-permission.md)
