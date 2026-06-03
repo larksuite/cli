@@ -53,6 +53,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/mail/filecheck"
 )
 
@@ -61,9 +62,12 @@ const MaxEMLSize = 25 * 1024 * 1024 // 25 MB
 
 // readFile reads the named file and returns its contents via FileIO.
 func readFile(fio fileio.FileIO, path string) ([]byte, error) {
+	if _, err := validate.SafeInputPath(path); err != nil {
+		return nil, fmt.Errorf("attachment %q: %w", path, err) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
+	}
 	f, err := fio.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("attachment %q: %w", path, err)
+		return nil, fmt.Errorf("attachment %q: %w", path, err) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	defer f.Close()
 	return io.ReadAll(f)
@@ -133,10 +137,10 @@ func New() Builder {
 func validateHeaderValue(v string) error {
 	for _, r := range v {
 		if r != '\t' && (r < 0x20 || r == 0x7f) {
-			return fmt.Errorf("emlbuilder: header value contains control character: %q", v)
+			return fmt.Errorf("emlbuilder: header value contains control character: %q", v) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 		if isHeaderDangerousUnicode(r) {
-			return fmt.Errorf("emlbuilder: header value contains dangerous Unicode character: %q", v)
+			return fmt.Errorf("emlbuilder: header value contains dangerous Unicode character: %q", v) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -165,11 +169,11 @@ func isHeaderDangerousUnicode(r rune) bool {
 // or non-printable ASCII characters, as required by RFC 5322 field-name syntax.
 func validateHeaderName(n string) error {
 	if strings.ContainsAny(n, ":\r\n") {
-		return fmt.Errorf("emlbuilder: header name contains ':', CR, or LF: %q", n)
+		return fmt.Errorf("emlbuilder: header name contains ':', CR, or LF: %q", n) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	for _, r := range n {
 		if r < 0x21 || r > 0x7e {
-			return fmt.Errorf("emlbuilder: header name contains non-printable character: %q", n)
+			return fmt.Errorf("emlbuilder: header name contains non-printable character: %q", n) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -179,7 +183,7 @@ func validateHeaderName(n string) error {
 // escape the quoted-string encoding used by mail.Address.String() and inject headers.
 func validateDisplayName(name string) error {
 	if strings.ContainsAny(name, "\r\n") {
-		return fmt.Errorf("emlbuilder: display name contains CR or LF: %q", name)
+		return fmt.Errorf("emlbuilder: display name contains CR or LF: %q", name) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	return nil
 }
@@ -189,7 +193,7 @@ func validateDisplayName(name string) error {
 func validateCID(cid string) error {
 	for _, r := range cid {
 		if r < 0x20 || r == 0x7f {
-			return fmt.Errorf("emlbuilder: content ID contains control character: %q", cid)
+			return fmt.Errorf("emlbuilder: content ID contains control character: %q", cid) //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 		}
 	}
 	return nil
@@ -672,10 +676,10 @@ func (b Builder) Build() ([]byte, error) {
 		return nil, b.err
 	}
 	if b.from.Address == "" {
-		return nil, fmt.Errorf("emlbuilder: From address is required")
+		return nil, fmt.Errorf("emlbuilder: From address is required") //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 	if !b.allowNoRecipients && len(b.to)+len(b.cc)+len(b.bcc) == 0 {
-		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required")
+		return nil, fmt.Errorf("emlbuilder: at least one recipient (To/CC/BCC) is required") //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 	}
 
 	date := b.date
@@ -754,7 +758,7 @@ func (b Builder) Build() ([]byte, error) {
 
 	raw := buf.Bytes()
 	if len(raw) > MaxEMLSize {
-		return nil, fmt.Errorf("emlbuilder: EML size %.1f MB exceeds the %.0f MB limit",
+		return nil, fmt.Errorf("emlbuilder: EML size %.1f MB exceeds the %.0f MB limit", //nolint:forbidigo // intermediate EML builder error; mail command layer wraps into typed ValidationError.
 			float64(len(raw))/1024/1024, float64(MaxEMLSize)/1024/1024)
 	}
 	return raw, nil

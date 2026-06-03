@@ -1353,6 +1353,34 @@ func TestValidateComposeInlineAndAttachments(t *testing.T) {
 	})
 }
 
+func TestResolveByNameAcceptsExactID(t *testing.T) {
+	folders := []folderInfo{{ID: "fld_custom", Name: "Team"}}
+	got, err := resolveByName("folder", "fld_custom", "me", folders,
+		func(item folderInfo) string { return item.ID },
+		func(item folderInfo) string { return item.Name },
+	)
+	if err != nil {
+		t.Fatalf("resolveByName returned error: %v", err)
+	}
+	if got != "fld_custom" {
+		t.Fatalf("resolveByName exact ID = %q, want fld_custom", got)
+	}
+}
+
+func TestResolveNameValueByNameAllowDuplicatesAcceptsExactID(t *testing.T) {
+	folders := []folderInfo{{ID: "fld_custom", Name: "Parent/Team"}}
+	got, err := resolveNameValueByNameAllowDuplicates("folder", "fld_custom", "me", folders,
+		func(item folderInfo) string { return item.ID },
+		func(item folderInfo) string { return item.Name },
+	)
+	if err != nil {
+		t.Fatalf("resolveNameValueByNameAllowDuplicates returned error: %v", err)
+	}
+	if got != "Parent/Team" {
+		t.Fatalf("query name for exact ID = %q, want Parent/Team", got)
+	}
+}
+
 // newRequestReceiptRuntime registers the --request-receipt bool flag alone
 // (no --from), so requireSenderForRequestReceipt tests can drive the flag
 // directly without pulling in unrelated compose plumbing.
@@ -1522,16 +1550,16 @@ func TestParseEventTimeRange_InvalidEnd(t *testing.T) {
 }
 
 func TestPrefixEventRangeError(t *testing.T) {
-	start := fmt.Errorf("start: invalid ISO 8601 time %q", "x")
+	start := mailValidationError("start: invalid ISO 8601 time %q", "x")
 	if got := prefixEventRangeError("--event-", start).Error(); got != `--event-start: invalid ISO 8601 time "x"` {
 		t.Errorf("got %q", got)
 	}
-	end := fmt.Errorf("end: invalid ISO 8601 time %q", "x")
+	end := mailValidationError("end: invalid ISO 8601 time %q", "x")
 	if got := prefixEventRangeError("--set-event-", end).Error(); got != `--set-event-end: invalid ISO 8601 time "x"` {
 		t.Errorf("got %q", got)
 	}
 	// Non-prefixed error passes through unchanged.
-	other := fmt.Errorf("end time must be after start time")
+	other := mailValidationError("end time must be after start time")
 	if got := prefixEventRangeError("--event-", other).Error(); got != "end time must be after start time" {
 		t.Errorf("got %q", got)
 	}

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -400,17 +401,21 @@ func TestRegisterShortcutsInstallsMailFlagSuggestHook(t *testing.T) {
 
 	// The FlagErrorFunc lookup walks up to the nearest non-nil hook, so
 	// invoking it on the mail parent (or any of its children) must yield
-	// a structured *output.ExitError with type "unknown_flag".
+	// a typed validation problem for the unknown flag.
 	got := mailCmd.FlagErrorFunc()(mailCmd, errors.New("unknown flag: --bogus"))
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T (%v)", got, got)
+	var validationErr *errs.ValidationError
+	if !errors.As(got, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", got, got)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "unknown_flag" {
-		t.Fatalf("expected Detail.Type=unknown_flag, got %#v", exitErr.Detail)
+	if validationErr.Param != "--bogus" {
+		t.Fatalf("expected Param=--bogus, got %q", validationErr.Param)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected Code=ExitAPI(%d), got %d", output.ExitAPI, exitErr.Code)
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", got, got)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation/invalid_argument, got %s/%s", problem.Category, problem.Subtype)
 	}
 }
 

@@ -4,8 +4,11 @@
 package mail
 
 import (
+	"errors"
+	"os"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/spf13/cobra"
@@ -79,6 +82,43 @@ func TestBuildDraftEditPatch_InvalidPriority(t *testing.T) {
 	rt := newDraftEditRuntime(map[string]string{"set-priority": "urgent"})
 	if _, err := buildDraftEditPatch(rt); err == nil {
 		t.Fatal("expected error for invalid --set-priority value")
+	}
+}
+
+func TestLoadPatchFileRejectsUnsafePathWithTypedParam(t *testing.T) {
+	chdirTemp(t)
+	f, _, _, _ := mailShortcutTestFactory(t)
+	rt := &common.RuntimeContext{Cmd: &cobra.Command{Use: "test"}, Factory: f, Config: mailTestConfig()}
+	_, err := loadPatchFile(rt, "../patch.json")
+	if err == nil {
+		t.Fatal("expected unsafe patch path to fail")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--patch-file" {
+		t.Fatalf("param = %q, want --patch-file", validationErr.Param)
+	}
+}
+
+func TestLoadPatchFileValidateFailureKeepsPatchFileParam(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("patch.json", []byte(`{"ops":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, _, _, _ := mailShortcutTestFactory(t)
+	rt := &common.RuntimeContext{Cmd: &cobra.Command{Use: "test"}, Factory: f, Config: mailTestConfig()}
+	_, err := loadPatchFile(rt, "patch.json")
+	if err == nil {
+		t.Fatal("expected invalid patch file to fail")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--patch-file" {
+		t.Fatalf("param = %q, want --patch-file", validationErr.Param)
 	}
 }
 

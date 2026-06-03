@@ -8,16 +8,19 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -218,6 +221,72 @@ func TestMailWatchDryRunEventFormatWithLabelFilterFetchesMessage(t *testing.T) {
 	}
 	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
+	}
+}
+
+func TestMailWatchOutputDirRejectsUnsafePathTyped(t *testing.T) {
+	chdirTemp(t)
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch",
+		"--output-dir", "../escape",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected unsafe output-dir error")
+	}
+
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--output-dir" {
+		t.Fatalf("param = %q, want --output-dir", validationErr.Param)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+}
+
+func TestMailWatchOutputDirMkdirFailureTyped(t *testing.T) {
+	chdirTemp(t)
+	mkdirErr := errors.New("mkdir denied")
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	oldFS := vfs.DefaultFS
+	vfs.DefaultFS = failingMkdirFS{OsFs: vfs.OsFs{}, err: mkdirErr}
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch",
+		"--output-dir", "watch-output",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected mkdir error")
+	}
+
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("expected internal error, got %T: %v", err, err)
+	}
+	if !errors.Is(err, mkdirErr) {
+		t.Fatalf("cause not preserved: %v", err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeFileIO)
+	}
+	if strings.Contains(p.Message, "%!(") {
+		t.Fatalf("message contains fmt extra marker: %q", p.Message)
+	}
+	if !strings.Contains(p.Message, "cannot create output directory") || !strings.Contains(p.Message, "mkdir denied") {
+		t.Fatalf("message missing context: %q", p.Message)
 	}
 }
 
@@ -523,24 +592,93 @@ func TestWrapWatchSubscribeErrorPlain(t *testing.T) {
 	}
 }
 
-func TestWrapWatchSubscribeErrorExitError(t *testing.T) {
-	exitErr := &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "api_error",
-			Message: "permission denied",
-			Hint:    "check app permissions",
-		},
-	}
-	err := wrapWatchSubscribeError(exitErr)
+func TestWrapWatchSubscribeErrorTypedProblem(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypePermissionDenied, "permission denied").
+		WithHint("check app permissions")
+	err := wrapWatchSubscribeError(apiErr)
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "subscribe mailbox events failed") {
-		t.Fatalf("unexpected message: %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
 	}
-	if !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("original message missing: %v", err)
+	if !strings.Contains(p.Message, "subscribe mailbox events failed") {
+		t.Fatalf("unexpected message: %v", p.Message)
+	}
+	if !strings.Contains(p.Message, "permission denied") {
+		t.Fatalf("original message missing: %v", p.Message)
+	}
+	if !strings.Contains(p.Hint, "check app permissions") {
+		t.Fatalf("original hint missing: %v", p.Hint)
+	}
+}
+
+func TestWrapWatchSubscribeErrorTypedProblemAddsMissingHint(t *testing.T) {
+	apiErr := errs.NewAPIError(errs.SubtypePermissionDenied, "permission denied")
+
+	err := wrapWatchSubscribeError(apiErr)
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if !strings.Contains(p.Hint, "mail:event") {
+		t.Fatalf("scope hint missing: %q", p.Hint)
+	}
+}
+
+func TestEnhanceProfileErrorAuthorization(t *testing.T) {
+	original := errs.NewPermissionError(errs.SubtypeMissingScope, "missing scope")
+
+	err := enhanceProfileError(original)
+
+	if err != original {
+		t.Fatalf("authorization error should be updated in place")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if !strings.Contains(p.Message, "unable to resolve mailbox address") {
+		t.Fatalf("message missing mailbox context: %q", p.Message)
+	}
+	if !strings.Contains(p.Hint, "mail:user_mailbox:readonly") {
+		t.Fatalf("profile scope hint missing: %q", p.Hint)
+	}
+}
+
+func TestEnhanceProfileErrorPermissionMessagePromotesToMissingScope(t *testing.T) {
+	original := errs.NewAPIError(errs.SubtypeUnknown, "scope denied").
+		WithCode(99991679).
+		WithLogID("logid-profile")
+
+	err := enhanceProfileError(original)
+
+	var permissionErr *errs.PermissionError
+	if !errors.As(err, &permissionErr) {
+		t.Fatalf("expected permission error, got %T", err)
+	}
+	if !errors.Is(err, original) {
+		t.Fatalf("original error not preserved as cause: %v", err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeMissingScope)
+	}
+	if p.Code != 99991679 || p.LogID != "logid-profile" {
+		t.Fatalf("code/logid not preserved: %+v", p)
+	}
+}
+
+func TestEnhanceProfileErrorPreservesNonPermissionError(t *testing.T) {
+	original := errs.NewNetworkError(errs.SubtypeNetworkTransport, "dial timeout")
+
+	if got := enhanceProfileError(original); got != original {
+		t.Fatalf("non-permission errors should pass through, got %T", got)
 	}
 }
 
@@ -686,6 +824,15 @@ func assertErr(msg string) error {
 type testErr struct{ msg string }
 
 func (e *testErr) Error() string { return e.msg }
+
+type failingMkdirFS struct {
+	vfs.OsFs
+	err error
+}
+
+func (f failingMkdirFS) MkdirAll(string, fs.FileMode) error {
+	return f.err
+}
 
 type watchDryRunPayload struct {
 	API []struct {

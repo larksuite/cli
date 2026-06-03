@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 // flagName is a package-private snapshot of a pflag.Flag's identity.
@@ -21,8 +21,7 @@ type flagName struct {
 }
 
 // Candidate is a single suggested flag returned to the user when an
-// unknown flag is detected. It is serialised into the ErrorEnvelope's
-// error.detail.candidates[] array.
+// unknown flag is detected.
 type Candidate struct {
 	// Flag is the long-form spelling of the suggested flag, e.g. "--to".
 	Flag string `json:"flag"`
@@ -56,9 +55,9 @@ func InstallOnMail(svc *cobra.Command) {
 	svc.SetFlagErrorFunc(flagSuggestErrorFunc)
 }
 
-// flagSuggestErrorFunc converts pflag's unknown-flag errors into a
-// structured *output.ExitError carrying candidate suggestions. Any other
-// error is passed through unchanged so cobra's existing handling kicks in.
+// flagSuggestErrorFunc converts pflag's unknown-flag errors into a typed
+// validation error carrying candidate suggestions. Any other error is passed
+// through unchanged so cobra's existing handling kicks in.
 func flagSuggestErrorFunc(c *cobra.Command, err error) error {
 	if err == nil {
 		return nil
@@ -83,22 +82,21 @@ func flagSuggestErrorFunc(c *cobra.Command, err error) error {
 		matches = []Candidate{}
 	}
 	hint := buildHint(c, matches)
-	detail := map[string]any{
-		"unknown":      rawUnknownToken(token, isShorthand),
-		"command_path": c.CommandPath(),
-		"candidates":   matches,
+	params := []errs.InvalidParam{{
+		Name:   rawUnknownToken(token, isShorthand),
+		Reason: "unknown flag",
+	}}
+	for _, match := range matches {
+		reason := fmt.Sprintf("candidate (%s, distance=%d)", match.Reason, match.Distance)
+		if match.Shorthand != "" {
+			reason += fmt.Sprintf(", shorthand=-%s", match.Shorthand)
+		}
+		params = append(params, errs.InvalidParam{Name: match.Flag, Reason: reason})
 	}
-	// Code is ExitAPI (=1), matching cobra's default unknown-flag exit
-	// code. The structured type discrimination lives in error.type.
-	return &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "unknown_flag",
-			Message: err.Error(),
-			Hint:    hint,
-			Detail:  detail,
-		},
-	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, err.Error()).
+		WithHint("%s", hint).
+		WithParam(rawUnknownToken(token, isShorthand)).
+		WithParams(params...)
 }
 
 // parseUnknownToken extracts the offending flag name from a pflag error

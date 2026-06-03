@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -79,13 +78,17 @@ var MailTemplateCreate = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("name")) == "" {
-			return output.ErrValidation("--name is required")
+			return mailValidationParamError("--name", "--name is required")
 		}
 		if len([]rune(runtime.Str("name"))) > 100 {
-			return output.ErrValidation("--name must be at most 100 characters")
+			return mailValidationParamError("--name", "--name must be at most 100 characters")
 		}
 		if runtime.Str("template-content") != "" && runtime.Str("template-content-file") != "" {
-			return output.ErrValidation("--template-content and --template-content-file are mutually exclusive")
+			return mailValidationError("--template-content and --template-content-file are mutually exclusive").
+				WithParams(
+					mailInvalidParam("--template-content", "mutually exclusive with --template-content-file"),
+					mailInvalidParam("--template-content-file", "mutually exclusive with --template-content"),
+				)
 		}
 		return nil
 	},
@@ -104,7 +107,7 @@ var MailTemplateCreate = common.Shortcut{
 
 		content = wrapTemplateContentIfNeeded(content, isPlainText)
 		if int64(len(content)) > maxTemplateContentBytes {
-			return output.ErrValidation("template content exceeds %d MB (got %.1f MB)",
+			return mailFailedPreconditionError("template content exceeds %d MB (got %.1f MB)",
 				maxTemplateContentBytes/(1024*1024),
 				float64(len(content))/1024/1024)
 		}
@@ -142,7 +145,7 @@ var MailTemplateCreate = common.Shortcut{
 
 		resp, err := createTemplate(runtime, mailboxID, payload)
 		if err != nil {
-			return fmt.Errorf("create template failed: %w", err)
+			return mailDecorateProblemMessage(err, "create template failed")
 		}
 		tpl, _ := extractTemplatePayload(resp)
 		out := map[string]interface{}{
@@ -173,12 +176,12 @@ func resolveTemplateContent(runtime *common.RuntimeContext) (content, sourcePath
 	}
 	f, err := runtime.FileIO().Open(path)
 	if err != nil {
-		return "", path, output.ErrValidation("open --template-content-file %s: %v", path, err)
+		return "", path, mailValidationParamError("--template-content-file", "open --template-content-file %s: %v", path, err).WithCause(mailInputStatError(err))
 	}
 	defer f.Close()
 	buf, err := io.ReadAll(f)
 	if err != nil {
-		return "", path, output.ErrValidation("read --template-content-file %s: %v", path, err)
+		return "", path, mailValidationParamError("--template-content-file", "read --template-content-file %s: %v", path, err).WithCause(err)
 	}
 	return string(buf), path, nil
 }

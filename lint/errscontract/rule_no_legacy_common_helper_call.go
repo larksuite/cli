@@ -16,6 +16,7 @@ import (
 // common replacements or construct an errs.* typed error directly.
 var migratedCommonHelperPaths = []string{
 	"shortcuts/drive/",
+	"shortcuts/mail/",
 }
 
 const commonImportPath = "github.com/larksuite/cli/shortcuts/common"

@@ -244,6 +244,8 @@ func APIHint(subtype errs.Subtype) string {
 		return "operate on source and target within the same tenant and region/unit"
 	case errs.SubtypeCrossBrand:
 		return "operate on source and target within the same brand environment"
+	case errs.SubtypeQuotaExceeded:
+		return "reduce the request volume or free quota, then retry after the relevant quota resets"
 	}
 	return ""
 }

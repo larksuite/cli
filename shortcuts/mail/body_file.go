@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -51,11 +50,15 @@ const maxBodyFileSize = 32 * 1024 * 1024 // 32 MB
 func validateBodyFileMutex(bodyFlag, bodyFile string, validatePath func(string) error) error {
 	bodyEmpty := strings.TrimSpace(bodyFlag) == ""
 	if !bodyEmpty && bodyFile != "" {
-		return output.ErrValidation("--body and --body-file are mutually exclusive; pass exactly one")
+		return mailValidationError("--body and --body-file are mutually exclusive; pass exactly one").
+			WithParams(
+				mailInvalidParam("--body", "mutually exclusive with --body-file"),
+				mailInvalidParam("--body-file", "mutually exclusive with --body"),
+			)
 	}
 	if bodyFile != "" {
 		if err := validatePath(bodyFile); err != nil {
-			return output.ErrValidation("--body-file: %v", err)
+			return mailValidationParamError("--body-file", "--body-file: %v", err).WithCause(err)
 		}
 	}
 	return nil
@@ -79,7 +82,7 @@ func resolveBodyFromFlags(runtime *common.RuntimeContext) (string, error) {
 
 func validateRequiredResolvedBody(body string, hasTemplate bool, message string) error {
 	if !hasTemplate && strings.TrimSpace(body) == "" {
-		return output.ErrValidation(message)
+		return mailValidationError("%s", message)
 	}
 	return nil
 }
@@ -95,15 +98,15 @@ func validateRequiredResolvedBody(body string, hasTemplate bool, message string)
 func readBodyFile(fio fileio.FileIO, path string) (string, error) {
 	f, err := fio.Open(path)
 	if err != nil {
-		return "", output.ErrValidation("open --body-file %s: %v", path, err)
+		return "", mailValidationParamError("--body-file", "open --body-file %s: %v", path, err).WithCause(mailInputStatError(err))
 	}
 	defer f.Close()
 	buf, err := io.ReadAll(io.LimitReader(f, maxBodyFileSize+1))
 	if err != nil {
-		return "", output.ErrValidation("read --body-file %s: %v", path, err)
+		return "", mailValidationParamError("--body-file", "read --body-file %s: %v", path, err).WithCause(err)
 	}
 	if len(buf) > maxBodyFileSize {
-		return "", output.ErrValidation("--body-file: file exceeds %d MB limit", maxBodyFileSize/1024/1024)
+		return "", mailValidationParamError("--body-file", "--body-file: file exceeds %d MB limit", maxBodyFileSize/1024/1024)
 	}
 	return string(buf), nil
 }

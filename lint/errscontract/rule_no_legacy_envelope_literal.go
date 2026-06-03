@@ -17,6 +17,7 @@ import (
 // appending their path prefix here.
 var migratedEnvelopePaths = []string{
 	"shortcuts/drive/",
+	"shortcuts/mail/",
 }
 
 // legacyOutputImportPath is the import path of the package that declares the

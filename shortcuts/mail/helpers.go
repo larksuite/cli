@@ -6,6 +6,7 @@ package mail
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -21,7 +22,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
@@ -111,7 +111,7 @@ func requireSenderForRequestReceipt(runtime *common.RuntimeContext, senderEmail 
 		return nil
 	}
 	if strings.TrimSpace(senderEmail) == "" {
-		return output.ErrValidation(
+		return mailValidationError(
 			"--request-receipt requires a resolvable sender address; specify a sender address where supported, or ensure the draft has a From address")
 	}
 	return nil
@@ -130,10 +130,10 @@ func requireSenderForRequestReceipt(runtime *common.RuntimeContext, senderEmail 
 func validateHeaderAddress(addr string) error {
 	for _, r := range addr {
 		if r != '\t' && (r < 0x20 || r == 0x7f) {
-			return fmt.Errorf("address contains control character: %q", addr)
+			return mailValidationError("address contains control character: %q", addr)
 		}
 		if common.IsDangerousUnicode(r) {
-			return fmt.Errorf("address contains dangerous Unicode code point: %q", addr)
+			return mailValidationError("address contains dangerous Unicode code point: %q", addr)
 		}
 	}
 	return nil
@@ -324,7 +324,7 @@ func fetchMailboxPrimaryEmail(runtime *common.RuntimeContext, mailboxID string) 
 	if mailboxID == "" {
 		mailboxID = "me"
 	}
-	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "profile"), nil, nil)
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "profile"), nil, nil)
 	if err != nil {
 		return "", err
 	}
@@ -336,7 +336,7 @@ func fetchMailboxPrimaryEmail(runtime *common.RuntimeContext, mailboxID string) 
 			return email, nil
 		}
 	}
-	return "", fmt.Errorf("profile API returned no primary_email_address")
+	return "", mailInvalidResponseError("profile API returned no primary_email_address")
 }
 
 // extractPrimaryEmail returns the user's primary email address from a
@@ -503,12 +503,14 @@ func resolveFolderID(runtime *common.RuntimeContext, mailboxID, input string) (s
 	if err != nil {
 		return "", err
 	}
-	return resolveByID("folder", value, mailboxID, folders, func(item folderInfo) string { return item.ID })
+	return resolveByName("folder", value, mailboxID, folders,
+		func(item folderInfo) string { return item.ID },
+		func(item folderInfo) string { return item.Name },
+	)
 }
 
 // resolveFolderName accepts either a folder ID or a folder name and returns
-// the human-readable folder name. Used for output rendering where the user
-// wants to see the name they originally chose, not the opaque ID.
+// the canonical folder ID.
 func resolveFolderName(runtime *common.RuntimeContext, mailboxID, input string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
@@ -542,11 +544,14 @@ func resolveLabelID(runtime *common.RuntimeContext, mailboxID, input string) (st
 	if err != nil {
 		return "", err
 	}
-	return resolveByID("label", value, mailboxID, labels, func(item labelInfo) string { return item.ID })
+	return resolveByName("label", value, mailboxID, labels,
+		func(item labelInfo) string { return item.ID },
+		func(item labelInfo) string { return item.Name },
+	)
 }
 
 // resolveLabelName accepts either a label ID or a label name and returns
-// the human-readable label name (mirror of resolveFolderName for labels).
+// the canonical label ID (mirror of resolveFolderName for labels).
 func resolveLabelName(runtime *common.RuntimeContext, mailboxID, input string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
@@ -846,9 +851,11 @@ func listMailboxFolders(runtime *common.RuntimeContext, mailboxID string) ([]fol
 	if err := validateFolderReadScope(runtime); err != nil {
 		return nil, err
 	}
-	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "folders"), nil, nil)
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "folders"), nil, nil)
 	if err != nil {
-		return nil, output.ErrValidation("unable to resolve --folder: failed to list folders (%v). %s", err, resolveLookupHint("folder", mailboxID))
+		return nil, mailAppendProblemHint(
+			mailDecorateProblemMessage(err, "unable to resolve --folder: failed to list folders"),
+			resolveLookupHint("folder", mailboxID))
 	}
 	items, _ := data["items"].([]interface{})
 	folders := make([]folderInfo, 0, len(items))
@@ -871,9 +878,11 @@ func listMailboxLabels(runtime *common.RuntimeContext, mailboxID string) ([]labe
 	if err := validateLabelReadScope(runtime); err != nil {
 		return nil, err
 	}
-	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "labels"), nil, nil)
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "labels"), nil, nil)
 	if err != nil {
-		return nil, output.ErrValidation("unable to resolve --label: failed to list labels (%v). %s", err, resolveLookupHint("label", mailboxID))
+		return nil, mailAppendProblemHint(
+			mailDecorateProblemMessage(err, "unable to resolve --label: failed to list labels"),
+			resolveLookupHint("label", mailboxID))
 	}
 	items, _ := data["items"].([]interface{})
 	labels := make([]labelInfo, 0, len(items))
@@ -891,26 +900,9 @@ func listMailboxLabels(runtime *common.RuntimeContext, mailboxID string) ([]labe
 	return labels, nil
 }
 
-// resolveByID looks up input as an ID in items, returning input itself when
-// found. kind ("folder" / "label") and mailboxID are used to construct the
-// not-found hint. Generic over T so the same logic serves both folder and
-// label tables.
-func resolveByID[T any](kind, input, mailboxID string, items []T, idFn func(T) string) (string, error) {
-	value := strings.TrimSpace(input)
-	if value == "" {
-		return "", nil
-	}
-	for _, item := range items {
-		if id := idFn(item); id != "" && id == value {
-			return id, nil
-		}
-	}
-	return "", output.ErrValidation("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
-}
-
-// resolveByName looks up input as a name in items and returns the matching
-// ID. Errors out on duplicates so callers get a clear "ambiguous name"
-// signal rather than silently picking one match.
+// resolveByName looks up input as an exact ID first, then as a name, and
+// returns the matching ID. Errors out on duplicate names so callers get a clear
+// "ambiguous name" signal rather than silently picking one match.
 func resolveByName[T any](kind, input, mailboxID string, items []T, idFn func(T) string, nameFn func(T) string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
@@ -919,7 +911,7 @@ func resolveByName[T any](kind, input, mailboxID string, items []T, idFn func(T)
 
 	for _, item := range items {
 		if id := idFn(item); id != "" && id == value {
-			return "", output.ErrValidation("%s %q looks like an ID; please use %s_id", kind, value, kind)
+			return id, nil
 		}
 	}
 
@@ -943,9 +935,9 @@ func resolveByName[T any](kind, input, mailboxID string, items []T, idFn func(T)
 		return matches[0], nil
 	}
 	if len(matches) > 1 {
-		return "", output.ErrValidation("%s name %q matches multiple IDs (%s); please use an ID", kind, value, strings.Join(matches, ","))
+		return "", mailValidationError("%s name %q matches multiple IDs (%s); please use an ID", kind, value, strings.Join(matches, ","))
 	}
-	return "", output.ErrValidation("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
+	return "", mailValidationError("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
 }
 
 // resolveNameValueByID is the inverse of resolveByID: it looks up an ID
@@ -959,18 +951,18 @@ func resolveNameValueByID[T any](kind, input, mailboxID string, items []T, idFn 
 		if id := idFn(item); id != "" && id == value {
 			name := strings.TrimSpace(nameFn(item))
 			if name == "" {
-				return "", output.ErrValidation("%s %q has empty name; cannot use it with query filters", kind, value)
+				return "", mailValidationError("%s %q has empty name; cannot use it with query filters", kind, value)
 			}
 			return name, nil
 		}
 	}
-	return "", output.ErrValidation("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
+	return "", mailValidationError("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
 }
 
-// resolveNameValueByNameAllowDuplicates is like resolveByName but tolerates
-// duplicate names — returning the first match. Used in query-style contexts
-// where ambiguity is acceptable because the API itself disambiguates server-
-// side.
+// resolveNameValueByNameAllowDuplicates looks up input as an exact ID first,
+// then as a name, and returns the matching name. Duplicate names are tolerated
+// by returning the first match. Used in query-style contexts where ambiguity is
+// acceptable because the API itself disambiguates server-side.
 func resolveNameValueByNameAllowDuplicates[T any](kind, input, mailboxID string, items []T, idFn func(T) string, nameFn func(T) string) (string, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
@@ -978,7 +970,11 @@ func resolveNameValueByNameAllowDuplicates[T any](kind, input, mailboxID string,
 	}
 	for _, item := range items {
 		if id := idFn(item); id != "" && id == value {
-			return "", output.ErrValidation("%s %q looks like an ID; please use %s_id", kind, value, kind)
+			name := strings.TrimSpace(nameFn(item))
+			if name == "" {
+				return "", mailValidationError("%s %q has empty name; cannot use it with query filters", kind, value)
+			}
+			return name, nil
 		}
 	}
 	lower := strings.ToLower(value)
@@ -989,7 +985,7 @@ func resolveNameValueByNameAllowDuplicates[T any](kind, input, mailboxID string,
 		}
 		return name, nil
 	}
-	return "", output.ErrValidation("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
+	return "", mailValidationError("%s %q not_exists. %s", kind, value, resolveLookupHint(kind, mailboxID))
 }
 
 // resolveLookupHint returns the CLI command a user should run to list
@@ -1015,13 +1011,13 @@ func resolveLookupHint(kind, mailboxID string) string {
 // html=false -> format=plain_text_full (server omits body_html)
 func fetchFullMessage(runtime *common.RuntimeContext, mailboxID, messageID string, html bool) (map[string]interface{}, error) {
 	params := map[string]interface{}{"format": messageGetFormat(html)}
-	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "messages", messageID), params, nil)
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "messages", messageID), params, nil)
 	if err != nil {
 		return nil, err
 	}
 	msg, _ := data["message"].(map[string]interface{})
 	if msg == nil {
-		return nil, fmt.Errorf("API response missing message field")
+		return nil, mailInvalidResponseError("API response missing message field")
 	}
 	return msg, nil
 }
@@ -1039,7 +1035,7 @@ func fetchFullMessages(runtime *common.RuntimeContext, mailboxID string, message
 		if end > len(messageIDs) {
 			end = len(messageIDs)
 		}
-		data, err := runtime.CallAPI("POST", mailboxPath(mailboxID, "messages", "batch_get"), nil, map[string]interface{}{
+		data, err := runtime.CallAPITyped("POST", mailboxPath(mailboxID, "messages", "batch_get"), nil, map[string]interface{}{
 			"format":      messageGetFormat(html),
 			"message_ids": messageIDs[start:end],
 		})
@@ -1232,7 +1228,7 @@ type calendarEventOutput struct {
 // It never returns an error: failed batches/IDs are converted to structured warnings so caller can continue.
 func fetchAttachmentURLs(runtime *common.RuntimeContext, mailboxID, messageID string, ids []string) (map[string]string, []warningEntry) {
 	callAPI := func(url string) (map[string]interface{}, error) {
-		return runtime.CallAPI("GET", url, nil, nil)
+		return runtime.CallAPITyped("GET", url, nil, nil)
 	}
 	emitWarning := func(w warningEntry) {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: code=%s message_id=%s attachment_id=%s retryable=%t detail=%s\n", w.Code, w.MessageID, w.AttachmentID, w.Retryable, w.Detail)
@@ -1668,7 +1664,7 @@ func validateForwardAttachmentURLs(src composeSourceMessage) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("failed to fetch download URLs for: %s", strings.Join(missing, ", "))
+		return mailInvalidResponseError("failed to fetch download URLs for: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -1683,7 +1679,7 @@ func validateInlineImageURLs(src composeSourceMessage) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("failed to fetch download URLs for: %s", strings.Join(missing, ", "))
+		return mailInvalidResponseError("failed to fetch download URLs for: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }
@@ -1786,41 +1782,51 @@ func toInlineSourceParts(out normalizedMessageForCompose) []inlineSourcePart {
 func downloadAttachmentContent(runtime *common.RuntimeContext, downloadURL string) ([]byte, error) {
 	u, err := url.Parse(downloadURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid attachment download URL: %w", err)
+		return nil, mailInvalidResponseError("invalid attachment download URL: %v", err).WithCause(err)
 	}
 	if u.Scheme != "https" {
-		return nil, fmt.Errorf("attachment download URL must use https (got %q)", u.Scheme)
+		return nil, mailInvalidResponseError("attachment download URL must use https (got %q)", u.Scheme)
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("attachment download URL has no host")
+		return nil, mailInvalidResponseError("attachment download URL has no host")
 	}
 
 	httpClient, err := runtime.Factory.HttpClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get HTTP client: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to get HTTP client: %v", err).WithCause(err)
 	}
 	req, err := http.NewRequestWithContext(runtime.Ctx(), http.MethodGet, downloadURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build attachment download request: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "failed to build attachment download request: %v", err).WithCause(err)
 	}
 	// Do NOT send Authorization: the download_url is a pre-signed URL with an
 	// authcode embedded in the query string. Attaching the Bearer token would
 	// leak it to whatever host the URL points at (SSRF / token exfiltration).
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download attachment: %w", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to download attachment: %v", err).WithCause(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("failed to download attachment: HTTP %d", resp.StatusCode)
+		if resp.StatusCode >= 500 {
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkServer, "failed to download attachment: HTTP %d", resp.StatusCode).
+				WithCode(resp.StatusCode).
+				WithRetryable()
+		}
+		subtype := errs.SubtypeUnknown
+		if resp.StatusCode == http.StatusNotFound {
+			subtype = errs.SubtypeNotFound
+		}
+		return nil, errs.NewAPIError(subtype, "failed to download attachment: HTTP %d", resp.StatusCode).WithCode(resp.StatusCode)
 	}
 	limitedReader := io.LimitReader(resp.Body, int64(MaxAttachmentDownloadBytes)+1)
 	data, err := io.ReadAll(limitedReader)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read attachment content: %w", err)
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to read attachment content: %v", err).WithCause(err)
 	}
 	if len(data) > MaxAttachmentDownloadBytes {
-		return nil, fmt.Errorf("attachment download exceeds %d MB size limit", MaxAttachmentDownloadBytes/1024/1024)
+		return nil, mailFailedPreconditionError("attachment download exceeds %d MB size limit", MaxAttachmentDownloadBytes/1024/1024).
+			WithHint("download or forward this large attachment outside the inline/small-attachment path")
 	}
 	return data, nil
 }
@@ -2062,7 +2068,7 @@ func parsePriority(value string) (string, error) {
 	case "low":
 		return "5", nil
 	default:
-		return "", fmt.Errorf("invalid --priority value %q: expected high, normal, or low", value)
+		return "", mailValidationParamError("--priority", "invalid --priority value %q: expected high, normal, or low", value)
 	}
 }
 
@@ -2232,7 +2238,7 @@ func validateInlineCIDs(html string, userCIDs, extraCIDs []string) error {
 	if len(userCIDs) > 0 {
 		orphaned := draftpkg.FindOrphanedCIDs(html, userCIDs)
 		if len(orphaned) > 0 {
-			return fmt.Errorf("inline images with cids %v are not referenced by any <img src=\"cid:...\"> in the HTML body and will appear as unexpected attachments; remove unused --inline entries or add matching <img> tags", orphaned)
+			return mailValidationParamError("--inline", "inline images with cids %v are not referenced by any <img src=\"cid:...\"> in the HTML body and will appear as unexpected attachments; remove unused --inline entries or add matching <img> tags", orphaned)
 		}
 	}
 	return nil
@@ -2251,7 +2257,7 @@ func addInlineImagesToBuilder(runtime *common.RuntimeContext, bld emlbuilder.Bui
 	for _, img := range images {
 		content, err := downloadAttachmentContent(runtime, img.DownloadURL)
 		if err != nil {
-			return bld, nil, 0, fmt.Errorf("failed to download inline resource %s: %w", img.Filename, err)
+			return bld, nil, 0, mailDecorateProblemMessage(err, "failed to download inline resource %s", img.Filename)
 		}
 		cid := normalizeInlineCID(img.CID)
 		if cid == "" {
@@ -2284,14 +2290,14 @@ func parseInlineSpecs(raw string) ([]InlineSpec, error) {
 	}
 	var specs []InlineSpec
 	if err := json.Unmarshal([]byte(raw), &specs); err != nil {
-		return nil, fmt.Errorf("--inline must be a JSON array, e.g. '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %w", err)
+		return nil, mailValidationParamError("--inline", "--inline must be a JSON array, e.g. '[{\"cid\":\"a1b2c3d4e5f6a7b8c9d0\",\"file_path\":\"./banner.png\"}]': %v", err).WithCause(err)
 	}
 	for i, s := range specs {
 		if strings.TrimSpace(s.CID) == "" {
-			return nil, fmt.Errorf("--inline entry %d: \"cid\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "--inline entry %d: \"cid\" must not be empty", i)
 		}
 		if strings.TrimSpace(s.FilePath) == "" {
-			return nil, fmt.Errorf("--inline entry %d: \"file_path\" must not be empty", i)
+			return nil, mailValidationParamError("--inline", "--inline entry %d: \"file_path\" must not be empty", i)
 		}
 	}
 	return specs, nil
@@ -2318,7 +2324,11 @@ func validateEventSendTimeExclusion(runtime *common.RuntimeContext) error {
 	}
 	for _, f := range []string{"event-summary", "event-start", "event-end", "event-location"} {
 		if runtime.Str(f) != "" {
-			return common.FlagErrorf("--send-time and --event-* are mutually exclusive: a calendar invitation must be sent immediately so recipients can respond before the event")
+			return mailValidationError("--send-time and --event-* are mutually exclusive: a calendar invitation must be sent immediately so recipients can respond before the event").
+				WithParams(
+					mailInvalidParam("--send-time", "mutually exclusive with --event-*"),
+					mailInvalidParam("--event-*", "mutually exclusive with --send-time"),
+				)
 		}
 	}
 	return nil
@@ -2332,15 +2342,15 @@ func validateSendTime(runtime *common.RuntimeContext) error {
 		return nil
 	}
 	if !runtime.Bool("confirm-send") {
-		return output.ErrValidation("--send-time requires --confirm-send to be set")
+		return mailValidationParamError("--send-time", "--send-time requires --confirm-send to be set")
 	}
 	ts, err := strconv.ParseInt(sendTime, 10, 64)
 	if err != nil {
-		return output.ErrValidation("--send-time must be a valid Unix timestamp in seconds, got %q", sendTime)
+		return mailValidationParamError("--send-time", "--send-time must be a valid Unix timestamp in seconds, got %q", sendTime).WithCause(err)
 	}
 	minTime := time.Now().Unix() + 5*60
 	if ts < minTime {
-		return output.ErrValidation("--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
+		return mailValidationParamError("--send-time", "--send-time must be at least 5 minutes in the future (minimum: %d, got: %d)", minTime, ts)
 	}
 	return nil
 }
@@ -2429,7 +2439,12 @@ func validateLabelReadScope(runtime *common.RuntimeContext) error {
 // all three (to/cc/bcc) are empty or whitespace-only.
 func validateComposeHasAtLeastOneRecipient(to, cc, bcc string) error {
 	if strings.TrimSpace(to) == "" && strings.TrimSpace(cc) == "" && strings.TrimSpace(bcc) == "" {
-		return fmt.Errorf("at least one recipient (--to, --cc, or --bcc) is required")
+		return mailValidationError("at least one recipient (--to, --cc, or --bcc) is required").
+			WithParams(
+				mailInvalidParam("--to", "at least one recipient is required"),
+				mailInvalidParam("--cc", "at least one recipient is required"),
+				mailInvalidParam("--bcc", "at least one recipient is required"),
+			)
 	}
 	return validateRecipientCount(to, cc, bcc)
 }
@@ -2439,7 +2454,12 @@ func validateComposeHasAtLeastOneRecipient(to, cc, bcc string) error {
 func validateRecipientCount(to, cc, bcc string) error {
 	count := len(ParseMailboxList(to)) + len(ParseMailboxList(cc)) + len(ParseMailboxList(bcc))
 	if count > MaxRecipientCount {
-		return fmt.Errorf("total recipient count %d exceeds the limit of %d (To + CC + BCC combined)", count, MaxRecipientCount)
+		return mailValidationError("total recipient count %d exceeds the limit of %d (To + CC + BCC combined)", count, MaxRecipientCount).
+			WithParams(
+				mailInvalidParam("--to", "recipient count contributes to combined limit"),
+				mailInvalidParam("--cc", "recipient count contributes to combined limit"),
+				mailInvalidParam("--bcc", "recipient count contributes to combined limit"),
+			)
 	}
 	return nil
 }
@@ -2451,10 +2471,14 @@ func validateRecipientCount(to, cc, bcc string) error {
 func validateComposeInlineAndAttachments(fio fileio.FileIO, attachFlag, inlineFlag string, plainText bool, body string) error {
 	if strings.TrimSpace(inlineFlag) != "" {
 		if plainText {
-			return output.ErrValidation("--inline is not supported with --plain-text (inline images require HTML body)")
+			return mailValidationError("--inline is not supported with --plain-text (inline images require HTML body)").
+				WithParams(
+					mailInvalidParam("--inline", "requires HTML body"),
+					mailInvalidParam("--plain-text", "mutually exclusive with --inline"),
+				)
 		}
 		if body != "" && !bodyIsHTML(body) {
-			return output.ErrValidation("--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
+			return mailValidationParamError("--inline", "--inline requires an HTML body (the provided body appears to be plain text; add HTML tags or remove --inline)")
 		}
 	}
 	inlineSpecs, err := parseInlineSpecs(inlineFlag)
@@ -2536,7 +2560,12 @@ func validateEventFlags(runtime *common.RuntimeContext) error {
 	hasAll := summary != "" && start != "" && end != ""
 
 	if hasAny && !hasAll {
-		return output.ErrValidation("--event-summary, --event-start, and --event-end must all be provided together")
+		return mailValidationError("--event-summary, --event-start, and --event-end must all be provided together").
+			WithParams(
+				mailInvalidParam("--event-summary", "required with --event-start/--event-end"),
+				mailInvalidParam("--event-start", "required with --event-summary/--event-end"),
+				mailInvalidParam("--event-end", "required with --event-summary/--event-start"),
+			)
 	}
 	if summary == "" {
 		return nil
@@ -2553,14 +2582,14 @@ func validateEventFlags(runtime *common.RuntimeContext) error {
 func parseEventTimeRange(start, end string) (time.Time, time.Time, error) {
 	startT, err := parseISO8601(start)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("start: invalid ISO 8601 time %q", start)
+		return time.Time{}, time.Time{}, mailValidationError("start: invalid ISO 8601 time %q", start).WithCause(err)
 	}
 	endT, err := parseISO8601(end)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("end: invalid ISO 8601 time %q", end)
+		return time.Time{}, time.Time{}, mailValidationError("end: invalid ISO 8601 time %q", end).WithCause(err)
 	}
 	if !endT.After(startT) {
-		return time.Time{}, time.Time{}, fmt.Errorf("end time must be after start time")
+		return time.Time{}, time.Time{}, mailValidationError("end time must be after start time")
 	}
 	return startT, endT, nil
 }
@@ -2569,12 +2598,27 @@ func parseEventTimeRange(start, end string) (time.Time, time.Time, error) {
 // error with the caller's flag-name prefix so users see the exact flag
 // that caused the failure.
 func prefixEventRangeError(flagPrefix string, err error) error {
-	msg := err.Error()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	var validationErr *errs.ValidationError
+	msg := p.Message
 	switch {
 	case strings.HasPrefix(msg, "start: "):
-		return fmt.Errorf("%sstart: %s", flagPrefix, strings.TrimPrefix(msg, "start: "))
+		p.Message = fmt.Sprintf("%sstart: %s", flagPrefix, strings.TrimPrefix(msg, "start: "))
+		p.Subtype = errs.SubtypeInvalidArgument
+		if strings.HasPrefix(flagPrefix, "--") && errors.As(err, &validationErr) {
+			validationErr.Param = flagPrefix + "start"
+		}
+		return err
 	case strings.HasPrefix(msg, "end: "):
-		return fmt.Errorf("%send: %s", flagPrefix, strings.TrimPrefix(msg, "end: "))
+		p.Message = fmt.Sprintf("%send: %s", flagPrefix, strings.TrimPrefix(msg, "end: "))
+		p.Subtype = errs.SubtypeInvalidArgument
+		if strings.HasPrefix(flagPrefix, "--") && errors.As(err, &validationErr) {
+			validationErr.Param = flagPrefix + "end"
+		}
+		return err
 	default:
 		return err
 	}
@@ -2595,7 +2639,7 @@ func parseISO8601(s string) (time.Time, error) {
 			return t, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("cannot parse %q as ISO 8601", s)
+	return time.Time{}, mailValidationError("cannot parse %q as ISO 8601", s)
 }
 
 // buildCalendarBody generates an ICS VCALENDAR from compose flags and returns the bytes.
@@ -2614,8 +2658,8 @@ func buildCalendarBody(runtime *common.RuntimeContext, senderEmail string, toAdd
 // bot uses tenant access token; "me" cannot be resolved to a user mailbox under TAT.
 func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
 	if runtime.IsBot() && runtime.Str("mailbox") == "me" {
-		return output.ErrValidation(
-			"--as bot does not support --mailbox me: bot identity uses a tenant token and cannot resolve \"me\" to a user mailbox; " +
+		return mailValidationParamError("--mailbox",
+			"--as bot does not support --mailbox me: bot identity uses a tenant token and cannot resolve \"me\" to a user mailbox; "+
 				"pass an explicit email address, e.g. --mailbox alice@example.com")
 	}
 	return nil
@@ -2627,7 +2671,7 @@ func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
 // fetchFullMessages chunks backend requests into batches of 20.
 func validateMessageIDs(raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, output.ErrValidation("--message-ids is required; provide one or more message IDs separated by commas")
+		return nil, mailValidationParamError("--message-ids", "--message-ids is required; provide one or more message IDs separated by commas")
 	}
 	parts := strings.Split(raw, ",")
 	ids := make([]string, 0, len(parts))
@@ -2635,16 +2679,16 @@ func validateMessageIDs(raw string) ([]string, error) {
 	for i, part := range parts {
 		id := strings.TrimSpace(part)
 		if id == "" {
-			return nil, output.ErrValidation("--message-ids entry %d is empty; remove extra commas or provide valid message IDs", i+1)
+			return nil, mailValidationParamError("--message-ids", "--message-ids entry %d is empty; remove extra commas or provide valid message IDs", i+1)
 		}
 		if part != id {
-			return nil, output.ErrValidation("--message-ids entry %d (%q): must not contain leading or trailing whitespace", i+1, part)
+			return nil, mailValidationParamError("--message-ids", "--message-ids entry %d (%q): must not contain leading or trailing whitespace", i+1, part)
 		}
 		if err := validateBatchGetMessageID(id, i); err != nil {
 			return nil, err
 		}
 		if _, ok := seen[id]; ok {
-			return nil, output.ErrValidation("--message-ids entry %d (%q): duplicate message ID is not allowed", i+1, id)
+			return nil, mailValidationParamError("--message-ids", "--message-ids entry %d (%q): duplicate message ID is not allowed", i+1, id)
 		}
 		seen[id] = struct{}{}
 		ids = append(ids, id)
@@ -2654,11 +2698,14 @@ func validateMessageIDs(raw string) ([]string, error) {
 
 func validateBatchGetMessageID(id string, index int) error {
 	if strings.Trim(id, "0123456789") == "" {
-		return output.ErrValidation("--message-ids entry %d (%q): numeric primary IDs are not supported by mail +messages; pass the Open API message_id from mail output", index+1, id)
+		return mailValidationParamError("--message-ids", "--message-ids entry %d (%q): numeric primary IDs are not supported by mail +messages; pass the Open API message_id from mail output", index+1, id)
 	}
-	decoded, err := base64.URLEncoding.DecodeString(id)
-	if err != nil || len(decoded) == 0 {
-		return output.ErrValidation("--message-ids entry %d (%q): expected a base64url Open API mail message_id from mail output", index+1, id)
+	decoded, rawErr := base64.RawURLEncoding.DecodeString(id)
+	if rawErr != nil {
+		decoded, rawErr = base64.URLEncoding.DecodeString(id)
+	}
+	if rawErr != nil || len(decoded) == 0 {
+		return mailValidationParamError("--message-ids", "--message-ids entry %d (%q): expected a base64url Open API mail message_id from mail output", index+1, id)
 	}
 	return nil
 }

@@ -5,7 +5,6 @@ package mail
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -88,9 +87,9 @@ var MailThread = common.Shortcut{
 		if runtime.Bool("include-spam-trash") {
 			params["include_spam_trash"] = true
 		}
-		listData, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
+		listData, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
 		if err != nil {
-			return fmt.Errorf("failed to get thread: %w", err)
+			return mailDecorateProblemMessage(err, "failed to get thread")
 		}
 		// New API: data.thread.messages[]; fallback to old API: data.items[].message
 		var items []interface{}

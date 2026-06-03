@@ -110,7 +110,7 @@ func executeSignatureDetail(runtime *common.RuntimeContext, resp *signature.GetS
 		}
 	}
 	if sig == nil {
-		return output.ErrValidation("signature not found: %s", sigID)
+		return mailValidationParamError("--detail", "signature not found: %s", sigID)
 	}
 
 	lang := resolveLang(runtime)

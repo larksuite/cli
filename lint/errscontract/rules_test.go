@@ -894,27 +894,33 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"ResolveOpenIDs",
 		"HandleApiResult",
 	}
-	for _, helper := range helpers {
-		t.Run(helper, func(t *testing.T) {
-			src := `package drive
+	paths := []string{
+		"shortcuts/drive/drive_search.go",
+		"shortcuts/mail/mail_send.go",
+	}
+	for _, path := range paths {
+		for _, helper := range helpers {
+			t.Run(path+"_"+helper, func(t *testing.T) {
+				src := `package migrated
 
 import "github.com/larksuite/cli/shortcuts/common"
 
 func boom() {
-	common.` + helper + `()
+common.` + helper + `()
 }
 `
-			v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
-			if len(v) != 1 {
-				t.Fatalf("expected 1 violation for %s, got %d: %+v", helper, len(v), v)
-			}
-			if v[0].Action != ActionReject {
-				t.Errorf("action = %q, want REJECT", v[0].Action)
-			}
-			if !strings.Contains(v[0].Message, "common."+helper) {
-				t.Errorf("message should name helper %s: %s", helper, v[0].Message)
-			}
-		})
+				v := CheckNoLegacyCommonHelperCall(path, src)
+				if len(v) != 1 {
+					t.Fatalf("expected 1 violation for %s on %s, got %d: %+v", helper, path, len(v), v)
+				}
+				if v[0].Action != ActionReject {
+					t.Errorf("action = %q, want REJECT", v[0].Action)
+				}
+				if !strings.Contains(v[0].Message, "common."+helper) {
+					t.Errorf("message should name helper %s: %s", helper, v[0].Message)
+				}
+			})
+		}
 	}
 }
 

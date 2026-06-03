@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -117,6 +119,36 @@ func TestBuildSearchParamsSystemLabelAsFolder(t *testing.T) {
 	}
 	if filterBody["label"] != nil {
 		t.Fatalf("expected label to be absent, got %#v", filterBody["label"])
+	}
+}
+
+func TestMailTriageRejectsDangerousQueryWithTypedValidation(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage", "--as", "user", "--query", "bad\x01",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected dangerous --query to return an error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--query" {
+		t.Errorf("param = %q, want --query", validationErr.Param)
+	}
+	if !strings.Contains(p.Message, "control character") {
+		t.Errorf("message should mention control character, got: %s", p.Message)
 	}
 }
 
@@ -704,6 +736,43 @@ func TestFormatAddressFallbackToAddress(t *testing.T) {
 	got := formatAddress(map[string]interface{}{"address": "bob@b.com"})
 	if got != "bob@b.com" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestShouldRetryTriageAPIError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "rate limit",
+			err:  errs.NewAPIError(errs.SubtypeRateLimit, "too many requests"),
+			want: true,
+		},
+		{
+			name: "network",
+			err:  errs.NewNetworkError(errs.SubtypeNetworkTransport, "dial timeout"),
+			want: true,
+		},
+		{
+			name: "validation",
+			err:  errs.NewValidationError(errs.SubtypeInvalidArgument, "bad query"),
+			want: false,
+		},
+		{
+			name: "plain",
+			err:  assertErr("legacy plain error"),
+			want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldRetryTriageAPIError(tc.err); got != tc.want {
+				t.Fatalf("shouldRetryTriageAPIError() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 
