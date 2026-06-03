@@ -142,7 +142,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 ### `+workbook-info`
 
-输出契约：返回 `sheets[]`，每个含 `sheet_id` / `sheet_name` / `row_count` / `column_count` / `index` / `is_hidden`，以及计数字段 `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count`（无 `frozen_*` 字段，冻结信息请用 `+sheet-info` 读取）。是操作飞书表格的第一步——任何后续 sheet 级动作都需要先拿这里的 sheet_id。
+输出契约：返回 `sheets[]`，每个含 `sheet_id` / `title`（工作表显示名；旧 payload 用 `sheet_name`，读取时优先取 `title`、缺失再回退 `sheet_name`）/ `row_count` / `column_count` / `index` / `is_hidden`，以及计数字段 `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count`（无 `frozen_*` 字段，冻结信息请用 `+sheet-info` 读取）。是操作飞书表格的第一步——任何后续 sheet 级动作都需要先拿这里的 sheet_id。
 
 ### `+sheet-create`
 
@@ -167,7 +167,7 @@ lark-cli sheets +sheet-rename --url "..." --sheet-id "$SID" --title "汇总"
 
 standalone 路径在缺 `--source-index` / 只给 `--sheet-name` 时会自动发起一次 `+workbook-info` 读把它们解出来。
 
-> ⚠️ **在 `+batch-update` 内调用 `+sheet-move`**：必须同时显式传 `--sheet-id` 和 `--source-index`。batch 中途无法发起结构查询，所以 batch translator 强制要求两者都显式。
+> ⚠️ **在 `+batch-update` 内调用 `+sheet-move`**：必须同时显式传 `--sheet-id`、`--source-index` 和 `--index`（目标位置）。batch 中途无法发起结构查询，且 `--index` 不显式给会静默落到默认位置 0，所以 batch translator 强制要求三者都显式。
 
 ### `+sheet-copy`
 
