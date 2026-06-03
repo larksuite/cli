@@ -24,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // RegisterServiceCommands registers all service commands from from_meta specs.
@@ -65,7 +66,7 @@ func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc 
 		for _, seg := range ref.ResourcePath {
 			resCmd = ensureChildCommand(resCmd, seg, seg+" operations")
 		}
-		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil))
+		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil, parent.PersistentFlags()))
 	}
 }
 
@@ -145,7 +146,9 @@ func NewCmdServiceMethod(f *cmdutil.Factory, svc meta.Service, m meta.Method, na
 func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, svc meta.Service, m meta.Method, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
 	m.Name = name
 	ref := apicatalog.MethodRef{Service: svc, ResourcePath: []string{resName}, Method: m}
-	return buildMethodCommand(ctx, f, newMethodCommandSpec(ref), runF)
+	// No root in scope here; persistent-flag collisions don't apply to a
+	// standalone command, and local/standard-flag collisions are still caught.
+	return buildMethodCommand(ctx, f, newMethodCommandSpec(ref), runF, nil)
 }
 
 // methodCommandSpec is the static description of one generated service method
@@ -203,7 +206,7 @@ func methodTakesBody(httpMethod string) bool {
 // static spec: the standard flags, the conditional --data/--file/--yes flags,
 // the generated typed param flags (via paramFlagBinder), and the risk/identity
 // policy annotations.
-func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodCommandSpec, runF func(*ServiceMethodOptions) error) *cobra.Command {
+func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodCommandSpec, runF func(*ServiceMethodOptions) error, reserved *pflag.FlagSet) *cobra.Command {
 	m := spec.method
 	opts := &ServiceMethodOptions{
 		Factory:     f,
@@ -260,7 +263,10 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	})
 
 	// Registered last so the collision guard sees the standard flags above.
-	opts.binder = newParamFlagBinder(cmd, spec.params)
+	opts.binder = newParamFlagBinder(cmd, spec.params, reserved)
+	// Surface params that got no typed flag (name taken by another flag) so the
+	// reader knows to set them via --params instead of guessing.
+	cmd.Long += opts.binder.paramsOnlyHelp()
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not

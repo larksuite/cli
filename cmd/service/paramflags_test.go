@@ -10,6 +10,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // imChatMembersCreate: POST chats/{chat_id}/members with one path param and one
@@ -265,5 +266,68 @@ func TestServiceMethod_TypedFlag_BoolAndArrayOverrideParams(t *testing.T) {
 	}
 	if strings.Contains(out, "from_params") {
 		t.Errorf("--params array value should have been overridden by --ids, got:\n%s", out)
+	}
+}
+
+// A param whose kebab name collides with a global flag (here "format" vs the
+// global --format) gets no typed flag, but the collision is no longer silent:
+// non-colliding params still get flags, the global --format is untouched, and
+// --help shows the exact --params form and steers the reader off --format.
+func TestServiceMethod_ParamsOnly_HelpSteersToParams(t *testing.T) {
+	method := map[string]interface{}{
+		"path":       "things/{thing_id}",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"thing_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
+			"format": map[string]interface{}{"type": "string", "location": "query", "options": []interface{}{
+				map[string]interface{}{"value": "full"},
+				map[string]interface{}{"value": "metadata"},
+			}},
+		},
+	}
+	cmd := NewCmdServiceMethod(&cmdutil.Factory{}, imSpec(), meta.FromMap(method), "get", "things", nil)
+
+	if cmd.Flags().Lookup("thing-id") == nil {
+		t.Error("non-colliding param should still get a typed --thing-id flag")
+	}
+	if fl := cmd.Flags().Lookup("format"); fl == nil || fl.DefValue != "json" {
+		t.Fatalf("global --format must be preserved (not shadowed), got %+v", fl)
+	}
+	for _, want := range []string{`--params '{"format"`, "full", "metadata", "do not use --format"} {
+		if !strings.Contains(cmd.Long, want) {
+			t.Errorf("help should contain %q so the reader uses --params, not --format; got:\n%s", want, cmd.Long)
+		}
+	}
+}
+
+// The collision guard derives reserved names from the actual flag sets — local
+// flags plus the root's persistent flags passed in — so a future persistent
+// flag is covered with no hand-maintained list. Here a param named "profile"
+// (a root persistent flag) is skipped while a normal param is bound.
+func TestParamFlagBinder_PersistentFlagReserved(t *testing.T) {
+	cmd := &cobra.Command{Use: "x"}
+	reserved := pflag.NewFlagSet("root", pflag.ContinueOnError)
+	reserved.String("profile", "", "use a specific profile")
+
+	m := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+		"profile": map[string]interface{}{"type": "string", "location": "query"},
+		"id":      map[string]interface{}{"type": "string", "location": "path"},
+	}})
+	b := newParamFlagBinder(cmd, m.Params(), reserved)
+
+	if cmd.Flags().Lookup("id") == nil {
+		t.Error("non-colliding param should get a typed flag")
+	}
+	if cmd.Flags().Lookup("profile") != nil {
+		t.Error("param colliding with a reserved persistent flag must not be registered")
+	}
+	found := false
+	for _, p := range b.paramsOnly {
+		if p.field.Name == "profile" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("colliding param should be recorded for the --params help note")
 	}
 }
