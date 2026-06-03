@@ -125,6 +125,31 @@ func TestUnknownSubcommandRunE_FlagBeforeSubcommandIsStructured(t *testing.T) {
 	if !strings.Contains(err.Error(), "unknown flag") {
 		t.Errorf("error = %q, want it to mention an unknown flag", err.Error())
 	}
+
+	// The detail must stay schema-compatible with flagDidYouMean's unknown_flag
+	// (same Type → same keys), so a consumer keyed on Type reads a stable shape.
+	exitErr, ok := err.(*output.ExitError)
+	if !ok || exitErr.Detail == nil {
+		t.Fatalf("expected *output.ExitError with Detail, got %T", err)
+	}
+	if exitErr.Detail.Type != "unknown_flag" {
+		t.Errorf("detail.Type = %q, want unknown_flag", exitErr.Detail.Type)
+	}
+	detail, ok := exitErr.Detail.Detail.(map[string]any)
+	if !ok {
+		t.Fatalf("expected detail to be map[string]any, got %T", exitErr.Detail.Detail)
+	}
+	if detail["unknown"] != "--badflag" {
+		t.Errorf("detail.unknown = %v, want --badflag", detail["unknown"])
+	}
+	if got, _ := detail["unknown_flags"].([]string); len(got) != 1 || got[0] != "--badflag" {
+		t.Errorf("detail.unknown_flags = %v, want [--badflag]", detail["unknown_flags"])
+	}
+	for _, key := range []string{"suggestions", "valid_flags"} {
+		if _, present := detail[key]; !present {
+			t.Errorf("detail.%s missing; must be present (empty) to match the unknown_flag schema", key)
+		}
+	}
 }
 
 func TestUnknownSubcommandRunE_NoArgsShowsHelp(t *testing.T) {

@@ -391,8 +391,18 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 					Message: fmt.Sprintf("unknown flag %s before a subcommand for %q", strings.Join(unknown, ", "), cmd.CommandPath()),
 					Hint:    fmt.Sprintf("flags belong to a subcommand; run `%s --help` to list subcommands and their flags", cmd.CommandPath()),
 					Detail: map[string]any{
+						// Keep the same detail keys as flagDidYouMean's unknown_flag
+						// so a consumer keyed on Type can read a stable shape. The
+						// subcommand isn't resolved here, so suggestions/valid_flags
+						// have no meaningful universe to draw from — emit empty
+						// rather than the group's own (misleading) flags. unknown is
+						// the back-compat singular field; unknown_flags carries the
+						// full list when more than one flag was supplied.
+						"unknown":       strings.Join(unknown, ", "),
 						"unknown_flags": unknown,
 						"command_path":  cmd.CommandPath(),
+						"suggestions":   []string{},
+						"valid_flags":   []string{},
 					},
 				},
 			}
