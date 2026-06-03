@@ -377,12 +377,12 @@ func installUnknownSubcommandGuard(cmd *cobra.Command) {
 // they have moved to the typed surface.
 func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		// A truly bare group (e.g. `sheets`) legitimately prints help. But any
-		// flag token with no subcommand is a user error: a pure group consumes
-		// no flags of its own, so the flag must belong to a (missing) subcommand.
-		// installUnknownSubcommandGuard whitelists those flags and leaves args
-		// empty, so without this they would silently fall through to help +
-		// exit 0 — letting an agent mistake a malformed call (`im --format json`,
+		// A bare group (e.g. `sheets`), or one carrying only group-valid flags
+		// like the global --profile, legitimately prints help. But a flag that
+		// belongs to a (missing) subcommand is a user error: the guard's
+		// FParseErrWhitelist swallows such flags and leaves args empty, so without
+		// the checks below they would silently fall through to help + exit 0 —
+		// letting an agent mistake a malformed call (`im --format json`,
 		// `sheets --badflag`) for success. Recover the swallowed tokens from the
 		// raw invocation and fail structured instead.
 		flags := flagTokensInArgs(rawInvocationArgs)
@@ -413,18 +413,25 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 				},
 			}
 		}
-		// Every flag is valid for some subcommand, but no subcommand was given
-		// (e.g. `im --format json`). Distinct from unknown_flag: the flags are
+		// The remaining flags are all defined somewhere in the tree. Those valid
+		// on the group itself or inherited (e.g. the global --profile) do not
+		// require a subcommand, so a bare group carrying only those still prints
+		// help. Anything left belongs to a subcommand that was omitted
+		// (e.g. `im --format json`): distinct from unknown_flag — the flags are
 		// real, the subcommand is what's missing.
+		misplaced := subcommandOnlyFlagTokens(cmd, rawInvocationArgs)
+		if len(misplaced) == 0 {
+			return cmd.Help()
+		}
 		return &output.ExitError{
 			Code: output.ExitValidation,
 			Detail: &output.ErrDetail{
 				Type:    "missing_subcommand",
-				Message: fmt.Sprintf("missing subcommand for %q; flag %s belongs to a subcommand, not the group", cmd.CommandPath(), strings.Join(flags, ", ")),
+				Message: fmt.Sprintf("missing subcommand for %q; flag %s belongs to a subcommand, not the group", cmd.CommandPath(), strings.Join(misplaced, ", ")),
 				Hint:    fmt.Sprintf("run `%s --help` to list subcommands and their flags", cmd.CommandPath()),
 				Detail: map[string]any{
 					"command_path": cmd.CommandPath(),
-					"flags":        flags,
+					"flags":        misplaced,
 					"suggestions":  []string{},
 				},
 			},
@@ -500,6 +507,39 @@ func unknownFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
 		}
 	}
 	return unknown
+}
+
+// flagKnownOnGroup reports whether name is a flag defined on cmd itself or
+// inherited (a global persistent flag like --profile) — i.e. valid on the bare
+// group and therefore not requiring a subcommand.
+func flagKnownOnGroup(cmd *cobra.Command, name string) bool {
+	short := len(name) == 1
+	lookup := func(fs *pflag.FlagSet) bool {
+		if short {
+			return fs.ShorthandLookup(name) != nil
+		}
+		return fs.Lookup(name) != nil
+	}
+	return lookup(cmd.Flags()) || lookup(cmd.InheritedFlags())
+}
+
+// subcommandOnlyFlagTokens returns the flag tokens in rawArgs that are valid on
+// a subcommand of cmd but not on cmd itself/inherited — flags supplied while
+// omitting the subcommand they belong to (`im --format json`). Global flags
+// valid on the bare group (e.g. --profile) are excluded so
+// `lark-cli --profile p im` still prints help rather than erroring.
+func subcommandOnlyFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
+	var misplaced []string
+	for _, a := range flagTokensInArgs(rawArgs) {
+		name := strings.SplitN(strings.TrimLeft(a, "-"), "=", 2)[0]
+		if name == "" || flagKnownOnGroup(cmd, name) {
+			continue
+		}
+		if flagDefinedInTree(cmd, name) {
+			misplaced = append(misplaced, a)
+		}
+	}
+	return misplaced
 }
 
 // flagDefinedInTree reports whether name is defined on cmd, its inherited

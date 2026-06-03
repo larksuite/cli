@@ -194,6 +194,28 @@ func TestUnknownSubcommandRunE_ValidFlagWithoutSubcommandIsStructured(t *testing
 	}
 }
 
+// A bare group carrying only a group-valid global flag (e.g. the inherited
+// --profile) is not missing a subcommand — those flags do not belong to a
+// subcommand — so it must print help, not fail with missing_subcommand.
+func TestUnknownSubcommandRunE_GroupValidGlobalFlagShowsHelp(t *testing.T) {
+	_, drive, _ := newGroupTree()
+	drive.Root().PersistentFlags().String("profile", "", "") // global, inherited by drive
+	installUnknownSubcommandGuard(drive.Root())
+
+	rawInvocationArgs = []string{"--profile", "p", "drive"}
+	t.Cleanup(func() { rawInvocationArgs = nil })
+
+	var buf bytes.Buffer
+	drive.SetOut(&buf)
+	drive.SetErr(&buf)
+	if err := drive.RunE(drive, nil); err != nil {
+		t.Fatalf("bare group with only a global flag should print help, got error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "drive ops") {
+		t.Errorf("expected help output, got:\n%s", buf.String())
+	}
+}
+
 func TestUnknownSubcommandRunE_NoArgsShowsHelp(t *testing.T) {
 	_, drive, _ := newGroupTree()
 	installUnknownSubcommandGuard(drive.Root())
