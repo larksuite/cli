@@ -6,6 +6,8 @@ package sheets
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 )
 
@@ -273,7 +275,18 @@ func (m mapFlagView) validateRawTypes() error {
 			continue // unknown key — leave it for the translator / schema layer
 		}
 		switch typ {
-		case "int", "float64":
+		case "int":
+			// Int(): float64 → int(t) truncates, so a non-integer number would
+			// be silently floored (1.9 → 1). Standalone cobra rejects it at
+			// parse time; reject here too to keep batch/standalone parity.
+			f, isNum := val.(float64)
+			if !isNum {
+				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
+			}
+			if math.Trunc(f) != f {
+				return fmt.Errorf("--%s must be an integer, got %s", name, strconv.FormatFloat(f, 'g', -1, 64))
+			}
+		case "float64":
 			if _, isNum := val.(float64); !isNum {
 				return fmt.Errorf("--%s must be a number, got %s", name, jsonTypeName(val))
 			}

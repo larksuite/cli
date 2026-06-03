@@ -493,6 +493,15 @@ func TestBatchOp_RejectsWrongScalarType(t *testing.T) {
 			wantContains: "--source-index must be a number",
 		},
 		{
+			// Standalone cobra rejects 1.5 for an int flag at parse time;
+			// mapFlagView.Int would silently truncate it to 1, so the batch
+			// path must reject it too instead of executing on a floored index.
+			name:         "int flag given a non-integer number",
+			subShortcut:  "+sheet-move",
+			subInput:     `{"sheet-id":"sh1","source-index":2,"index":1.5}`,
+			wantContains: "--index must be an integer",
+		},
+		{
 			name:         "bool flag given a string",
 			subShortcut:  "+cells-set",
 			subInput:     `{"sheet-id":"sh1","range":"A1","cells":[[{"value":1}]],"allow-overwrite":"true"}`,
