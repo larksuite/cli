@@ -99,6 +99,24 @@ func TestShouldWatchStdinEOF(t *testing.T) {
 			timeout: 10 * time.Minute,
 			want:    false,
 		},
+		{
+			name:      "non terminal both bounds positive",
+			maxEvents: 1,
+			timeout:   10 * time.Minute,
+			want:      false,
+		},
+		{
+			name:      "non terminal bounded max events with negative timeout",
+			maxEvents: 1,
+			timeout:   -1 * time.Second,
+			want:      false,
+		},
+		{
+			name:      "non terminal bounded timeout with negative max events",
+			maxEvents: -1,
+			timeout:   10 * time.Minute,
+			want:      false,
+		},
 	}
 
 	for _, tt := range tests {
