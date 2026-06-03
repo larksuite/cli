@@ -130,7 +130,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	if !opts.Quiet {
 		fmt.Fprintln(errOut, listeningText(opts))
 		if !opts.IsTTY {
-			fmt.Fprintln(errOut, stopHintText())
+			fmt.Fprintln(errOut, stopHintText(opts))
 		}
 	}
 
@@ -213,7 +213,11 @@ func exitReason(ctx context.Context, emitted int64, opts Options) string {
 	return "signal"
 }
 
-func stopHintText() string {
+func stopHintText(opts Options) string {
+	if opts.MaxEvents > 0 || opts.Timeout > 0 {
+		return "[event] to stop gracefully: send SIGTERM (kill <pid>). " +
+			"Avoid kill -9 — it skips cleanup and may leak server-side subscriptions."
+	}
 	return "[event] to stop gracefully: send SIGTERM (kill <pid>) or close stdin. " +
 		"Avoid kill -9 — it skips cleanup and may leak server-side subscriptions."
 }
