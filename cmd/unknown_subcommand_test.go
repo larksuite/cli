@@ -152,6 +152,48 @@ func TestUnknownSubcommandRunE_FlagBeforeSubcommandIsStructured(t *testing.T) {
 	}
 }
 
+func TestUnknownSubcommandRunE_ValidFlagWithoutSubcommandIsStructured(t *testing.T) {
+	_, drive, _ := newGroupTree()
+	// --query is defined on the +search subcommand, so it is a *valid* flag that
+	// was placed before the (omitted) subcommand. Unlike an unknown flag, this
+	// must still fail structured (missing_subcommand) rather than fall through to
+	// help + exit 0 — `drive --query x` is a malformed call, not a help request.
+	for _, c := range drive.Commands() {
+		if c.Name() == "+search" {
+			c.Flags().String("query", "", "")
+		}
+	}
+	installUnknownSubcommandGuard(drive.Root())
+
+	rawInvocationArgs = []string{"drive", "--query", "x"}
+	t.Cleanup(func() { rawInvocationArgs = nil })
+
+	err := drive.RunE(drive, nil)
+	if err == nil {
+		t.Fatal("expected a structured missing_subcommand error, got nil (help fallthrough)")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *output.ExitError, got %T", err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	}
+	if exitErr.Detail == nil || exitErr.Detail.Type != "missing_subcommand" {
+		t.Fatalf("detail.Type = %v, want missing_subcommand", exitErr.Detail)
+	}
+	detail, ok := exitErr.Detail.Detail.(map[string]any)
+	if !ok {
+		t.Fatalf("detail is not a map: %#v", exitErr.Detail.Detail)
+	}
+	if flags, _ := detail["flags"].([]string); len(flags) != 1 || flags[0] != "--query" {
+		t.Errorf("detail.flags = %v, want [--query]", detail["flags"])
+	}
+	if detail["command_path"] != "lark-cli drive" {
+		t.Errorf("detail.command_path = %v, want lark-cli drive", detail["command_path"])
+	}
+}
+
 func TestUnknownSubcommandRunE_NoArgsShowsHelp(t *testing.T) {
 	_, drive, _ := newGroupTree()
 	installUnknownSubcommandGuard(drive.Root())

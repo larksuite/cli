@@ -1117,8 +1117,15 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
 	if s.PrintFlagSchema != nil {
-		cmd.Flags().Bool("print-schema", false, "print JSON Schema for a composite flag instead of executing")
-		cmd.Flags().String("flag-name", "", "flag whose schema to print (omit to list introspectable flags); used with --print-schema")
+		// Guard against a shortcut that already declares these reserved
+		// introspection flags: pflag panics on a duplicate registration.
+		// Mirrors the Lookup guard on --format above.
+		if cmd.Flags().Lookup("print-schema") == nil {
+			cmd.Flags().Bool("print-schema", false, "print JSON Schema for a composite flag instead of executing")
+		}
+		if cmd.Flags().Lookup("flag-name") == nil {
+			cmd.Flags().String("flag-name", "", "flag whose schema to print (omit to list introspectable flags); used with --print-schema")
+		}
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)

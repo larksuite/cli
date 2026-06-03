@@ -377,12 +377,18 @@ func installUnknownSubcommandGuard(cmd *cobra.Command) {
 // they have moved to the typed surface.
 func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
-		// A bare group (e.g. `sheets`) legitimately prints help. But an unknown
-		// flag placed before any subcommand (`sheets --badflag`) is whitelisted
-		// away by installUnknownSubcommandGuard, which also leaves args empty —
-		// without this check it would silently fall through to help + exit 0.
-		// Recover the swallowed flag tokens and fail structured so agents (and
-		// the flagDidYouMean contract) still see a real error.
+		// A truly bare group (e.g. `sheets`) legitimately prints help. But any
+		// flag token with no subcommand is a user error: a pure group consumes
+		// no flags of its own, so the flag must belong to a (missing) subcommand.
+		// installUnknownSubcommandGuard whitelists those flags and leaves args
+		// empty, so without this they would silently fall through to help +
+		// exit 0 — letting an agent mistake a malformed call (`im --format json`,
+		// `sheets --badflag`) for success. Recover the swallowed tokens from the
+		// raw invocation and fail structured instead.
+		flags := flagTokensInArgs(rawInvocationArgs)
+		if len(flags) == 0 {
+			return cmd.Help()
+		}
 		if unknown := unknownFlagTokens(cmd, rawInvocationArgs); len(unknown) > 0 {
 			return &output.ExitError{
 				Code: output.ExitValidation,
@@ -407,7 +413,22 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 				},
 			}
 		}
-		return cmd.Help()
+		// Every flag is valid for some subcommand, but no subcommand was given
+		// (e.g. `im --format json`). Distinct from unknown_flag: the flags are
+		// real, the subcommand is what's missing.
+		return &output.ExitError{
+			Code: output.ExitValidation,
+			Detail: &output.ErrDetail{
+				Type:    "missing_subcommand",
+				Message: fmt.Sprintf("missing subcommand for %q; flag %s belongs to a subcommand, not the group", cmd.CommandPath(), strings.Join(flags, ", ")),
+				Hint:    fmt.Sprintf("run `%s --help` to list subcommands and their flags", cmd.CommandPath()),
+				Detail: map[string]any{
+					"command_path": cmd.CommandPath(),
+					"flags":        flags,
+					"suggestions":  []string{},
+				},
+			},
+		}
 	}
 	unknown := args[0]
 	available, deprecated := availableSubcommandNames(cmd)
@@ -444,13 +465,14 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// unknownFlagTokens returns the -/-- tokens in rawArgs that cmd does not define.
-// installUnknownSubcommandGuard whitelists unknown flags on pure groups so a
-// mistyped subcommand still reaches the suggestion path; the side effect is that
-// a lone unknown flag (no subcommand) is swallowed, leaving the group to fall
-// through to help. This recovers those tokens so the caller can fail structured.
-func unknownFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
-	var unknown []string
+// flagTokensInArgs returns the flag-like tokens (-x, --foo, --foo=bar) in
+// rawArgs, stopping at the "--" positional terminator. Whether a flag is
+// defined is not considered (see unknownFlagTokens for that). A pure group
+// with any flag token but no subcommand is a user error — a pure group
+// consumes no flags of its own, so the flag must belong to a subcommand — so
+// the caller fails structured instead of falling through to help.
+func flagTokensInArgs(rawArgs []string) []string {
+	var toks []string
 	for _, a := range rawArgs {
 		if a == "--" {
 			break // everything after -- is positional
@@ -458,6 +480,20 @@ func unknownFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
 		if len(a) < 2 || a[0] != '-' {
 			continue
 		}
+		toks = append(toks, a)
+	}
+	return toks
+}
+
+// unknownFlagTokens returns the flag tokens in rawArgs that cmd does not define
+// (on itself, inherited, or any direct subcommand). installUnknownSubcommandGuard
+// whitelists unknown flags on pure groups so a mistyped subcommand still reaches
+// the suggestion path; the side effect is that flags before a subcommand are
+// swallowed. This recovers the genuinely-unknown ones so the caller can name
+// them in a "did you mean" envelope.
+func unknownFlagTokens(cmd *cobra.Command, rawArgs []string) []string {
+	var unknown []string
+	for _, a := range flagTokensInArgs(rawArgs) {
 		name := strings.SplitN(strings.TrimLeft(a, "-"), "=", 2)[0]
 		if name != "" && !flagDefinedInTree(cmd, name) {
 			unknown = append(unknown, a)
@@ -566,6 +602,11 @@ func flagDidYouMean(c *cobra.Command, ferr error) error {
 // error text ("unknown flag: --query" → "query"). Returns ok=false for anything
 // else (missing argument, invalid value, unknown shorthand) so the caller keeps
 // those structured but generic — hallucinated flags are essentially always long.
+//
+// CONTRACT: this matches cobra's English wording "unknown flag: --" (go.mod
+// pins github.com/spf13/cobra). If cobra rewords this or gains i18n the match
+// silently fails and unknown flags degrade to a generic flag_error — re-verify
+// this prefix when bumping cobra.
 func unknownFlagName(err error) (string, bool) {
 	const p = "unknown flag: --"
 	msg := err.Error()
