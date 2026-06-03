@@ -73,7 +73,18 @@ func redactProxyURL(raw string) string {
 // WarnIfProxied prints a one-time warning to w when a proxy environment variable
 // is detected and proxy is not disabled via LARK_CLI_NO_PROXY. Proxy credentials
 // are redacted. Safe to call multiple times; only the first call prints.
-func WarnIfProxied(w io.Writer) {
+//
+// The warning is suppressed entirely when interactive is false — i.e. stdin is
+// not a TTY, which is the case for agent / CI / piped invocations. Those callers
+// frequently parse the CLI's stdout as JSON and merge streams with `2>&1`; a
+// stray stderr warning then corrupts the parsed payload. Suppressing in the
+// non-interactive case keeps machine-consumed output clean, while human
+// interactive sessions still get the security notice. Passing interactive=false
+// does not consume the once guard, so a later interactive call can still warn.
+func WarnIfProxied(w io.Writer, interactive bool) {
+	if !interactive {
+		return
+	}
 	proxyWarningOnce.Do(func() {
 		// Proxy plugin mode overrides env proxies and LARK_CLI_NO_PROXY (see
 		// Shared), so its warning and disable instructions take precedence.
