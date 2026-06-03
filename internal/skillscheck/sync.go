@@ -4,6 +4,7 @@
 package skillscheck
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -57,6 +58,34 @@ func ParseSkillsList(text string) []string {
 	return nil
 }
 
+func ParseGlobalSkillsJSON(text string) []string {
+	type globalSkill struct {
+		Name string `json:"name"`
+	}
+
+	var skills []globalSkill
+	if err := json.Unmarshal([]byte(text), &skills); err != nil {
+		return nil
+	}
+
+	seen := map[string]bool{}
+	for _, skill := range skills {
+		candidate := strings.TrimSpace(skill.Name)
+		if at := strings.Index(candidate, "@"); at > 0 {
+			candidate = candidate[:at]
+		}
+		if candidate == "" || strings.Contains(candidate, " ") || strings.HasSuffix(candidate, ":") {
+			continue
+		}
+		if !skillNamePattern.MatchString(candidate) {
+			continue
+		}
+		seen[candidate] = true
+	}
+
+	return sortedKeys(seen)
+}
+
 // parseGlobalSkillsList parses the output of "npx -y skills ls -g"
 func parseGlobalSkillsList(lines []string) []string {
 	seen := map[string]bool{}
@@ -77,8 +106,10 @@ func parseGlobalSkillsList(lines []string) []string {
 			continue
 		}
 
-		// Skip indented lines (Agents: ...)
-		if strings.HasPrefix(line, "  ") || strings.HasPrefix(line, "\t") {
+		if strings.HasPrefix(trimmed, "Agents:") {
+			continue
+		}
+		if isGlobalSkillsSectionHeader(trimmed) {
 			continue
 		}
 
@@ -104,6 +135,15 @@ func parseGlobalSkillsList(lines []string) []string {
 	}
 
 	return sortedKeys(seen)
+}
+
+func isGlobalSkillsSectionHeader(line string) bool {
+	switch line {
+	case "General", "Project", "Local":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseOfficialSkillsList parses the output of "npx -y skills add ... --list"
@@ -195,6 +235,7 @@ func PlanSync(input SyncInput) SyncPlan {
 
 type SkillsRunner interface {
 	ListOfficialSkills() *selfupdate.NpmResult
+	ListGlobalSkillsJSON() *selfupdate.NpmResult
 	ListGlobalSkills() *selfupdate.NpmResult
 	InstallSkill(nameList []string) *selfupdate.NpmResult
 	InstallAllSkills() *selfupdate.NpmResult
@@ -239,10 +280,9 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 
 	// --- Step 2: List local (installed) skills ---
-	local := []string{}
-	localResult := opts.Runner.ListGlobalSkills()
-	if localResult != nil && localResult.Err == nil {
-		local = ParseSkillsList(localResult.Stdout.String())
+	local, ok := listLocalSkills(opts.Runner)
+	if !ok {
+		return fallbackFullInstall(opts, "local skills list failed or parsed as empty", official)
 	}
 
 	// --- Step 3: Read previous state ---
@@ -296,6 +336,24 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 	}
 
 	return result
+}
+
+func listLocalSkills(runner SkillsRunner) ([]string, bool) {
+	jsonResult := runner.ListGlobalSkillsJSON()
+	if jsonResult != nil && jsonResult.Err == nil {
+		if local := ParseGlobalSkillsJSON(jsonResult.Stdout.String()); len(local) > 0 {
+			return local, true
+		}
+	}
+
+	textResult := runner.ListGlobalSkills()
+	if textResult != nil && textResult.Err == nil {
+		if local := ParseSkillsList(textResult.Stdout.String()); len(local) > 0 {
+			return local, true
+		}
+	}
+
+	return nil, false
 }
 
 // fallbackFullInstall performs a full skills install (npx -y skills add <source> -g -y)

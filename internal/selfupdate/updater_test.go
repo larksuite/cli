@@ -189,6 +189,13 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			want: "-y skills ls -g",
 		},
 		{
+			name: "list global json",
+			run: func(u *Updater) *NpmResult {
+				return u.ListGlobalSkillsJSON()
+			},
+			want: "-y skills ls -g --json",
+		},
+		{
 			name: "install skill primary",
 			run: func(u *Updater) *NpmResult {
 				return u.runSkillsInstall("https://open.feishu.cn", []string{"lark-mail"})

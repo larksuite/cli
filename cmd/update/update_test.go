@@ -61,6 +61,8 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 		switch strings.Join(args, " ") {
 		case "-y skills add https://open.feishu.cn --list":
 			r.Stdout.WriteString("Available Skills\n │    lark-calendar\n │    lark-mail\n")
+		case "-y skills ls -g --json":
+			r.Stdout.WriteString(`[{"name":"lark-calendar","path":"/tmp/lark-calendar","scope":"global","agents":["Codex"]},{"name":"custom-skill","path":"/tmp/custom-skill","scope":"global","agents":["Codex"]}]`)
 		case "-y skills ls -g":
 			r.Stdout.WriteString("Global Skills\nlark-calendar /tmp/lark-calendar\ncustom-skill /tmp/custom-skill\n")
 		default:

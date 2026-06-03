@@ -165,6 +165,10 @@ func (u *Updater) ListGlobalSkills() *NpmResult {
 	return u.runSkillsListGlobal()
 }
 
+func (u *Updater) ListGlobalSkillsJSON() *NpmResult {
+	return u.runSkillsCommand("-y", "skills", "ls", "-g", "--json")
+}
+
 func (u *Updater) InstallSkill(nameList []string) *NpmResult {
 	r := u.runSkillsInstall("https://open.feishu.cn", nameList)
 	if r.Err != nil {
