@@ -73,20 +73,20 @@ linters:
           - forbidigo
       # errs-typed-only enforced on paths already migrated to errs.NewXxxError.
       # Add a path when its migration is complete.
-      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/calendar/helpers\.go|shortcuts/drive/|shortcuts/mail/|shortcuts/base/)
+      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/calendar/|shortcuts/drive/|shortcuts/mail/|shortcuts/base/)
         text: errs-typed-only
         linters:
           - forbidigo
       # errs-no-bare-wrap enforced on paths fully migrated to typed final
       # errors. Scoped separately from errs-typed-only because cmd/auth/,
       # cmd/config/ still have residual fmt.Errorf and must not be caught.
-      - path-except: (shortcuts/drive/|shortcuts/mail/|shortcuts/base/|shortcuts/calendar/helpers\.go|shortcuts/common/mcp_client\.go)
+      - path-except: (shortcuts/drive/|shortcuts/mail/|shortcuts/base/|shortcuts/calendar/|shortcuts/common/mcp_client\.go)
         text: errs-no-bare-wrap
         linters:
           - forbidigo
-      # errs-no-legacy-helper is scoped to migrated domains: the shared helpers
-      # it bans are still used by other domains until their later migration phase.
-      - path-except: (shortcuts/drive/|shortcuts/mail/|shortcuts/base/)
+      # errs-no-legacy-helper enforced on domains whose shared validation/save
+      # helpers have migrated to typed final errors.
+      - path-except: (shortcuts/drive/|shortcuts/mail/|shortcuts/base/|shortcuts/calendar/)
         text: errs-no-legacy-helper
         linters:
           - forbidigo
@@ -116,16 +116,14 @@ linters:
             [errs-typed-only] use errs.NewXxxError(...) builder
             (see errs/types.go).
         # ── legacy shared error helpers banned on migrated domains ──
-        # These helpers internally produce legacy output.Err* shapes, so they
-        # are invisible to the errs-typed-only ban above. Migrated domains use
-        # typed errs.* builders or domain-local file-I/O helpers instead; this
-        # prevents reintroduction while unmigrated domains continue to use the
-        # shared helpers until their later migration phase.
-        - pattern: (common\.FlagErrorf|common\.WrapInputStatError|common\.WrapSaveErrorByCategory)\b
+        # These helpers emit legacy output.Err* / bare error shapes or drop
+        # typed metadata such as Param/Cause. Migrated domains must use typed
+        # common replacements or local typed helpers instead.
+        - pattern: (common\.FlagErrorf|common\.RejectDangerousChars|common\.WrapInputStatError|common\.WrapSaveErrorByCategory)\b
           msg: >-
-            [errs-no-legacy-helper] these shared helpers emit legacy output.Err*
-            shapes. Use typed errs.NewXxxError builders or a domain-local
-            file-I/O helper.
+            [errs-no-legacy-helper] these shared helpers emit legacy or
+            metadata-poor error shapes. Use typed common replacements, typed
+            errs.NewXxxError builders, or domain-local typed helpers.
         # ── bare error wraps banned on fully-typed paths ──
         - pattern: (fmt\.Errorf|errors\.New)\b
           msg: >-

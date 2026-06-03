@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -53,14 +54,14 @@ func validateCalendarUpdate(runtime *common.RuntimeContext) error {
 	}
 	for _, flag := range []string{"event-id", "summary", "description", "rrule", "calendar-id", "start", "end", "add-attendee-ids", "remove-attendee-ids"} {
 		if val := runtime.Str(flag); val != "" {
-			if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-				return output.ErrValidation(err.Error())
+			if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+				return err
 			}
 		}
 	}
 
 	if strings.TrimSpace(runtime.Str("event-id")) == "" {
-		return common.FlagErrorf("specify --event-id")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --event-id").WithParam("--event-id")
 	}
 	if _, _, err := buildCalendarUpdateEventData(runtime); err != nil {
 		return err
@@ -69,7 +70,7 @@ func validateCalendarUpdate(runtime *common.RuntimeContext) error {
 		return err
 	}
 	if !hasCalendarUpdateOperation(runtime) {
-		return common.FlagErrorf("nothing to update: specify at least one of --summary, --description, --start/--end, --rrule, --add-attendee-ids, or --remove-attendee-ids")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "nothing to update: specify at least one of --summary, --description, --start/--end, --rrule, --add-attendee-ids, or --remove-attendee-ids")
 	}
 	return nil
 }
@@ -77,11 +78,11 @@ func validateCalendarUpdate(runtime *common.RuntimeContext) error {
 func validateCalendarUpdateAttendees(runtime *common.RuntimeContext) error {
 	addIDs, err := parseCalendarAttendeeIDs(runtime.Str("add-attendee-ids"))
 	if err != nil {
-		return err
+		return withParam(err, "--add-attendee-ids")
 	}
 	removeIDs, err := parseCalendarAttendeeIDs(runtime.Str("remove-attendee-ids"))
 	if err != nil {
-		return err
+		return withParam(err, "--remove-attendee-ids")
 	}
 	removeSet := make(map[string]struct{}, len(removeIDs))
 	for _, id := range removeIDs {
@@ -89,7 +90,7 @@ func validateCalendarUpdateAttendees(runtime *common.RuntimeContext) error {
 	}
 	for _, id := range addIDs {
 		if _, ok := removeSet[id]; ok {
-			return output.ErrValidation("attendee id %q appears in both --add-attendee-ids and --remove-attendee-ids", id)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "attendee id %q appears in both --add-attendee-ids and --remove-attendee-ids", id)
 		}
 	}
 	return nil
@@ -124,27 +125,27 @@ func buildCalendarUpdateEventData(runtime *common.RuntimeContext) (map[string]in
 	startChanged := runtime.Cmd.Flags().Changed("start")
 	endChanged := runtime.Cmd.Flags().Changed("end")
 	if startChanged != endChanged {
-		return nil, false, common.FlagErrorf("--start and --end must be specified together when updating event time")
+		return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start and --end must be specified together when updating event time")
 	}
 	if startChanged {
 		startTs, err := common.ParseTime(runtime.Str("start"))
 		if err != nil {
-			return nil, false, common.FlagErrorf("--start: %v", err)
+			return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		endTs, err := common.ParseTime(runtime.Str("end"), "end")
 		if err != nil {
-			return nil, false, common.FlagErrorf("--end: %v", err)
+			return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		s, err := strconv.ParseInt(startTs, 10, 64)
 		if err != nil {
-			return nil, false, common.FlagErrorf("invalid start time: %v", err)
+			return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
 		}
 		e, err := strconv.ParseInt(endTs, 10, 64)
 		if err != nil {
-			return nil, false, common.FlagErrorf("invalid end time: %v", err)
+			return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
 		}
 		if e <= s {
-			return nil, false, common.FlagErrorf("end time must be after start time")
+			return nil, false, errs.NewValidationError(errs.SubtypeInvalidArgument, "end time must be after start time")
 		}
 		body["start_time"] = map[string]string{"timestamp": startTs}
 		body["end_time"] = map[string]string{"timestamp": endTs}
@@ -169,7 +170,7 @@ func parseCalendarAttendeeIDs(attendeesStr string) ([]string, error) {
 			continue
 		}
 		if !strings.HasPrefix(id, "ou_") && !strings.HasPrefix(id, "oc_") && !strings.HasPrefix(id, "omm_") {
-			return nil, output.ErrValidation("invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id)
 		}
 		if _, ok := seen[id]; ok {
 			continue
@@ -195,7 +196,7 @@ func attendeeDeleteIDs(attendeesStr string) ([]map[string]string, error) {
 		case strings.HasPrefix(id, "ou_"):
 			deleteIDs = append(deleteIDs, map[string]string{"type": "user", "user_id": id})
 		default:
-			return nil, output.ErrValidation("invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id).WithParam("--remove-attendee-ids")
 		}
 	}
 	return deleteIDs, nil
@@ -280,7 +281,7 @@ func dryRunCalendarUpdate(runtime *common.RuntimeContext) *common.DryRunAPI {
 func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) error {
 	calendarID, eventID := calendarUpdateIDs(runtime)
 	if eventID == "" {
-		return output.ErrValidation("specify --event-id")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --event-id").WithParam("--event-id")
 	}
 
 	body, hasEventFields, err := buildCalendarUpdateEventData(runtime)
@@ -291,10 +292,9 @@ func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) er
 	completed := []string{}
 	event := map[string]interface{}{}
 	if hasEventFields {
-		data, err := runtime.CallAPI("PATCH", calendarUpdateEventPath(calendarID, eventID), map[string]interface{}{"user_id_type": "open_id"}, body)
-		err = wrapPredefinedError(err)
+		data, err := runtime.CallAPITyped("PATCH", calendarUpdateEventPath(calendarID, eventID), map[string]interface{}{"user_id_type": "open_id"}, body)
 		if err != nil {
-			return output.Errorf(output.ExitAPI, "api_error", "failed to update event %s: %v", eventID, err)
+			return withStepContext(err, "failed to update event %s after completed steps %v", eventID, completed)
 		}
 		if v, _ := data["event"].(map[string]interface{}); v != nil {
 			event = v
@@ -308,12 +308,11 @@ func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) er
 		if err != nil {
 			return err
 		}
-		_, err = runtime.CallAPI("POST", calendarUpdateAttendeesPath(calendarID, eventID)+"/batch_delete",
+		_, err = runtime.CallAPITyped("POST", calendarUpdateAttendeesPath(calendarID, eventID)+"/batch_delete",
 			map[string]interface{}{"user_id_type": "open_id"},
 			map[string]interface{}{"delete_ids": deleteIDs, "need_notification": runtime.Bool("notify")})
-		err = wrapPredefinedError(err)
 		if err != nil {
-			return output.Errorf(output.ExitAPI, "api_error", "failed to remove attendees from event %s after completed steps %v: %v", eventID, completed, err)
+			return withStepContext(err, "failed to remove attendees from event %s after completed steps %v", eventID, completed)
 		}
 		removedCount = len(deleteIDs)
 		completed = append(completed, "remove_attendees")
@@ -323,14 +322,13 @@ func executeCalendarUpdate(_ context.Context, runtime *common.RuntimeContext) er
 	if addStr := runtime.Str("add-attendee-ids"); strings.TrimSpace(addStr) != "" {
 		attendees, err := parseAttendees(addStr, "")
 		if err != nil {
-			return output.ErrValidation("invalid attendee id: %v", err)
+			return withParam(err, "--add-attendee-ids")
 		}
-		_, err = runtime.CallAPI("POST", calendarUpdateAttendeesPath(calendarID, eventID),
+		_, err = runtime.CallAPITyped("POST", calendarUpdateAttendeesPath(calendarID, eventID),
 			map[string]interface{}{"user_id_type": "open_id"},
 			map[string]interface{}{"attendees": attendees, "need_notification": runtime.Bool("notify")})
-		err = wrapPredefinedError(err)
 		if err != nil {
-			return output.Errorf(output.ExitAPI, "api_error", "failed to add attendees to event %s after completed steps %v: %v", eventID, completed, err)
+			return withStepContext(err, "failed to add attendees to event %s after completed steps %v", eventID, completed)
 		}
 		addedCount = len(attendees)
 	}

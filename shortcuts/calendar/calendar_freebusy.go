@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -20,20 +21,20 @@ func parseFreebusyTimeRange(runtime *common.RuntimeContext) (string, string, err
 
 	startTs, err := common.ParseTime(startInput)
 	if err != nil {
-		return "", "", output.ErrValidation("--start: %v", err)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 	}
 	endTs, err := common.ParseTime(endInput, "end")
 	if err != nil {
-		return "", "", output.ErrValidation("--end: %v", err)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 	}
 
 	startSec, err := strconv.ParseInt(startTs, 10, 64)
 	if err != nil {
-		return "", "", output.ErrValidation("invalid start timestamp: %v", err)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 	}
 	endSec, err := strconv.ParseInt(endTs, 10, 64)
 	if err != nil {
-		return "", "", output.ErrValidation("invalid end timestamp: %v", err)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 	}
 
 	timeMin := time.Unix(startSec, 0).Format(time.RFC3339)
@@ -73,13 +74,13 @@ var CalendarFreebusy = common.Shortcut{
 		}
 		userId := runtime.Str("user-id")
 		if userId == "" && runtime.IsBot() {
-			return common.FlagErrorf("--user-id is required for bot identity")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id is required for bot identity").WithParam("--user-id")
 		}
 		if userId == "" && runtime.UserOpenId() == "" {
-			return common.FlagErrorf("cannot determine user ID, specify --user-id or ensure you are logged in")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot determine user ID, specify --user-id or ensure you are logged in").WithParam("--user-id")
 		}
 		if userId != "" {
-			if _, err := common.ValidateUserID(userId); err != nil {
+			if _, err := common.ValidateUserIDTyped("--user-id", userId); err != nil {
 				return err
 			}
 		}
@@ -93,16 +94,17 @@ var CalendarFreebusy = common.Shortcut{
 
 		timeMin, timeMax, err := parseFreebusyTimeRange(runtime)
 		if err != nil {
-			return output.ErrValidation("--start/--end: %v", err)
+			// parseFreebusyTimeRange already returns a typed *errs.ValidationError
+			// carrying the offending flag in .Param; pass it through unchanged.
+			return err
 		}
 
-		data, err := runtime.CallAPI("POST", "/open-apis/calendar/v4/freebusy/list", nil, map[string]interface{}{
+		data, err := runtime.CallAPITyped("POST", "/open-apis/calendar/v4/freebusy/list", nil, map[string]interface{}{
 			"time_min":         timeMin,
 			"time_max":         timeMax,
 			"user_id":          userId,
 			"need_rsvp_status": true,
 		})
-		err = wrapPredefinedError(err)
 		if err != nil {
 			return err
 		}

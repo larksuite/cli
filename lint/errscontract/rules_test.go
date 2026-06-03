@@ -662,7 +662,7 @@ func boom() error {
 	return &output.ExitError{Code: 1}
 }
 `
-	v := CheckNoLegacyEnvelopeLiteral("shortcuts/calendar/foo.go", src)
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/im/foo.go", src)
 	if len(v) != 0 {
 		t.Errorf("non-migrated path should pass, got: %+v", v)
 	}
@@ -921,6 +921,27 @@ common.` + helper + `()
 				}
 			})
 		}
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_RejectsDangerousCharsOnCalendarPath(t *testing.T) {
+	src := `package calendar
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	common.RejectDangerousChars("--summary", "x")
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/calendar/calendar_create.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation, got %d: %+v", len(v), v)
+	}
+	if v[0].Action != ActionReject {
+		t.Errorf("action = %q, want REJECT", v[0].Action)
+	}
+	if !strings.Contains(v[0].Suggestion, "common.RejectDangerousCharsTyped") {
+		t.Errorf("suggestion should name typed replacement, got: %s", v[0].Suggestion)
 	}
 }
 

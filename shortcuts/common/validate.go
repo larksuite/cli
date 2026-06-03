@@ -4,7 +4,6 @@
 package common
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -173,25 +172,6 @@ func ValidateSafePathTyped(fio fileio.FileIO, path string) error {
 	_, err := fio.ResolvePath(path)
 	if err != nil {
 		return ValidationErrorf("%s", err).WithCause(err)
-	}
-	return nil
-}
-
-// RejectDangerousChars returns an error if value contains ASCII control
-// characters or dangerous Unicode code points.
-//
-// Deprecated: use RejectDangerousCharsTyped for typed error envelopes.
-func RejectDangerousChars(paramName, value string) error {
-	for _, r := range value {
-		if r < 0x20 && r != '\t' && r != '\n' {
-			return fmt.Errorf("parameter %q contains control character U+%04X", paramName, r)
-		}
-		if r == 0x7F {
-			return fmt.Errorf("parameter %q contains DEL character", paramName)
-		}
-		if IsDangerousUnicode(r) {
-			return fmt.Errorf("parameter %q contains dangerous Unicode character U+%04X", paramName, r)
-		}
 	}
 	return nil
 }

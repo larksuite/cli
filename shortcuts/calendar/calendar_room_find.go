@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -126,40 +126,40 @@ func collectRoomFindResults(slots []roomFindSlot, limit int, fetch func(roomFind
 func parseRoomFindSlots(runtime *common.RuntimeContext) ([]roomFindSlot, error) {
 	rawSlots := runtime.StrArray(flagSlot)
 	if len(rawSlots) == 0 {
-		return nil, output.ErrValidation("specify at least one --slot")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one --slot").WithParam("--slot")
 	}
 	slots := make([]roomFindSlot, 0, len(rawSlots))
 	for _, raw := range rawSlots {
 		parts := strings.Split(strings.TrimSpace(raw), "~")
 		if len(parts) != 2 {
-			return nil, output.ErrValidation("invalid --slot format %q, expected start~end", raw)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --slot format %q, expected start~end", raw).WithParam("--slot")
 		}
 		startTs, err := common.ParseTime(parts[0])
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start time %q: %v", parts[0], err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start time %q: %v", parts[0], err).WithParam("--slot")
 		}
 		endTs, err := common.ParseTime(parts[1])
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end time %q: %v", parts[1], err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end time %q: %v", parts[1], err).WithParam("--slot")
 		}
 		startSec, err := strconv.ParseInt(startTs, 10, 64)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start timestamp %q: %v", startTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start timestamp %q: %v", startTs, err).WithParam("--slot")
 		}
 		endSec, err := strconv.ParseInt(endTs, 10, 64)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end timestamp %q: %v", endTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end timestamp %q: %v", endTs, err).WithParam("--slot")
 		}
 		if endSec <= startSec {
-			return nil, output.ErrValidation("--slot end time must be after start time: %q", raw)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--slot end time must be after start time: %q", raw).WithParam("--slot")
 		}
 		startRFC3339, err := unixStringToRFC3339(startTs)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot start timestamp %q: %v", startTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot start timestamp %q: %v", startTs, err).WithParam("--slot")
 		}
 		endRFC3339, err := unixStringToRFC3339(endTs)
 		if err != nil {
-			return nil, output.ErrValidation("invalid slot end timestamp %q: %v", endTs, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid slot end timestamp %q: %v", endTs, err).WithParam("--slot")
 		}
 		slots = append(slots, roomFindSlot{Start: startRFC3339, End: endRFC3339})
 	}
@@ -196,7 +196,7 @@ func parseRoomFindAttendees(attendeesStr string, currentUserID string) ([]string
 				seenChats[id] = true
 			}
 		default:
-			return nil, nil, output.ErrValidation("invalid attendee id format %q: should start with 'ou_' or 'oc_'", id)
+			return nil, nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_' or 'oc_'", id).WithParam("--" + flagAttendees)
 		}
 	}
 	if currentUserID != "" && !seenUsers[currentUserID] {
@@ -249,20 +249,19 @@ func callRoomFind(runtime *common.RuntimeContext, req *roomFindRequest) ([]*room
 		Body:       req,
 	})
 	if err != nil {
-		return nil, err
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
+		return nil, errs.WrapInternal(err)
 	}
 
-	if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-		return nil, output.ErrAPI(apiResp.StatusCode, "", string(apiResp.RawBody))
+	if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+		return nil, err
 	}
 
 	var resp = &OpenAPIResponse[*roomFindData]{}
 	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return nil, output.ErrWithHint(output.ExitInternal, "validation", "unmarshal response fail", err.Error())
-	}
-
-	if resp.Code != 0 {
-		return nil, output.ErrAPI(resp.Code, resp.Msg, resp.Data)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "unmarshal response fail").WithCause(err)
 	}
 
 	if resp.Data != nil {
@@ -317,8 +316,8 @@ var CalendarRoomFind = common.Shortcut{
 		}
 		for _, flag := range []string{flagCity, flagBuilding, flagFloor, flagEventRrule, flagTimezone} {
 			if val := strings.TrimSpace(runtime.Str(flag)); val != "" {
-				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-					return output.ErrValidation(err.Error())
+				if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+					return err
 				}
 			}
 		}
@@ -327,8 +326,8 @@ var CalendarRoomFind = common.Shortcut{
 			if name == "" {
 				continue
 			}
-			if err := common.RejectDangerousChars("--"+flagRoomName, name); err != nil {
-				return output.ErrValidation(err.Error())
+			if err := common.RejectDangerousCharsTyped("--"+flagRoomName, name); err != nil {
+				return err
 			}
 		}
 		if _, err := parseRoomFindSlots(runtime); err != nil {
@@ -338,13 +337,13 @@ var CalendarRoomFind = common.Shortcut{
 			return err
 		}
 		if minCapacity := runtime.Int(flagMinCapacity); minCapacity < 0 {
-			return output.ErrValidation("--min-capacity must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--min-capacity must be >= 0").WithParam("--min-capacity")
 		}
 		if maxCapacity := runtime.Int(flagMaxCapacity); maxCapacity < 0 {
-			return output.ErrValidation("--max-capacity must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--max-capacity must be >= 0").WithParam("--max-capacity")
 		}
 		if minCapacity, maxCapacity := runtime.Int(flagMinCapacity), runtime.Int(flagMaxCapacity); minCapacity > 0 && maxCapacity > 0 && minCapacity > maxCapacity {
-			return output.ErrValidation("--min-capacity must be <= --max-capacity")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--min-capacity must be <= --max-capacity").WithParam("--min-capacity")
 		}
 		return nil
 	},
