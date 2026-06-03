@@ -63,6 +63,56 @@ func TestAppsList_WithPageToken(t *testing.T) {
 	}
 }
 
+func TestAppsList_WithKeywordScopeAppType(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?app_type=html&keyword=%E9%97%AE%E5%8D%B7&page_size=20&scope=created_by_me",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+		},
+	})
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--keyword", "问卷", "--scope", "created_by_me", "--app-type", "html", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
+
+func TestAppsList_InvalidScope(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--scope", "bogus", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected enum validation error for --scope bogus")
+	}
+}
+
+func TestAppsList_InvalidAppType(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--app-type", "HTML", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected enum validation error for --app-type HTML (hard cut to lowercase)")
+	}
+}
+
+func TestAppsList_DryRunWithFilters(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--keyword", "q", "--scope", "all", "--app-type", "full_stack", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{"keyword", "scope", "app_type", "full_stack"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("dry-run missing %q: %s", want, got)
+		}
+	}
+}
+
 func TestAppsList_DryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsList,

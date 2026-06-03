@@ -12,23 +12,25 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsList lists Miaoda apps owned by the calling user (cursor pagination).
+// AppsList lists Miaoda apps visible to the calling user (cursor pagination).
 //
-// Hidden from --help / tab completion (Hidden: true) so agents do not discover it
-// as a way to enumerate / search applications. Direct invocation still works for
-// humans who know the command. When agents need an existing app_id, they should
-// ask the user to provide either the Miaoda app URL (extract app_id from the
-// path segment after /app/) or the app_id string directly; see lark-apps SKILL.md.
+// Supports name fuzzy match (--keyword), collaborator-dimension filter
+// (--scope), and app-type filter (--app-type). See lark-apps SKILL.md for when
+// an agent should use this to resolve an app_id from a user-supplied name
+// (only when the user named an app and a downstream op needs its app_id — never
+// unconditional enumeration).
 var AppsList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+list",
-	Description: "List Miaoda apps owned by the calling user (cursor pagination)",
+	Description: "List Miaoda apps visible to the calling user (cursor pagination)",
 	Risk:        "read",
 	Scopes:      []string{"spark:app:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
-	Hidden:      true,
 	Flags: []common.Flag{
+		{Name: "keyword", Desc: "fuzzy match on app name"},
+		{Name: "scope", Desc: "collaborator dimension", Enum: []string{"all", "created_by_me", "shared_with_me"}},
+		{Name: "app-type", Desc: "app type filter (html or full_stack)", Enum: []string{"html", "full_stack"}},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
 	},
@@ -75,6 +77,15 @@ func buildAppsListParams(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 	if token := strings.TrimSpace(rctx.Str("page-token")); token != "" {
 		params["page_token"] = token
+	}
+	if kw := strings.TrimSpace(rctx.Str("keyword")); kw != "" {
+		params["keyword"] = kw
+	}
+	if scope := strings.TrimSpace(rctx.Str("scope")); scope != "" {
+		params["scope"] = scope
+	}
+	if at := strings.TrimSpace(rctx.Str("app-type")); at != "" {
+		params["app_type"] = at
 	}
 	return params
 }

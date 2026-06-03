@@ -69,7 +69,7 @@ func TestAppsCreate_Success(t *testing.T) {
 	reg.Register(stub)
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--description", "d", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "html", "--description", "d", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -84,8 +84,8 @@ func TestAppsCreate_Success(t *testing.T) {
 	if sent["name"] != "Demo" {
 		t.Fatalf("body.name = %v", sent["name"])
 	}
-	if sent["app_type"] != "HTML" {
-		t.Fatalf("body.app_type = %v (want HTML)", sent["app_type"])
+	if sent["app_type"] != "html" {
+		t.Fatalf("body.app_type = %v (want html)", sent["app_type"])
 	}
 	if sent["description"] != "d" {
 		t.Fatalf("body.description = %v", sent["description"])
@@ -109,7 +109,7 @@ func TestAppsCreate_WithIconURL(t *testing.T) {
 	})
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--icon-url", "https://example.com/icon.svg", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "html", "--icon-url", "https://example.com/icon.svg", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -134,7 +134,7 @@ func TestAppsCreate_PrettyOutputReadsNestedAppID(t *testing.T) {
 	})
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--format", "pretty", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "html", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -145,7 +145,7 @@ func TestAppsCreate_PrettyOutputReadsNestedAppID(t *testing.T) {
 
 func TestAppsCreate_RequiresName(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsCreate, []string{"+create", "--app-type", "HTML", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsCreate, []string{"+create", "--app-type", "html", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "name") {
 		t.Fatalf("expected name required error, got %v", err)
 	}
@@ -168,13 +168,16 @@ func TestAppsCreate_RejectsInvalidAppType(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "not supported") {
 		t.Fatalf("expected unsupported app-type error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "fullstack") {
-		t.Fatalf("expected allow-list error to mention \"fullstack\", got %v", err)
+	if !strings.Contains(err.Error(), "full_stack") {
+		t.Fatalf("expected allow-list error to mention \"full_stack\", got %v", err)
 	}
 }
 
-func TestAppsCreate_RejectsWrongCaseFullstack(t *testing.T) {
-	cases := []string{"FULLSTACK", "Fullstack", "FullStack"}
+// TestAppsCreate_RejectsLegacyAppType guards the hard cut to lowercase
+// html/full_stack: the old values (HTML, fullstack) and other casings must
+// all be rejected, no backward-compat shim.
+func TestAppsCreate_RejectsLegacyAppType(t *testing.T) {
+	cases := []string{"HTML", "fullstack", "FULL_STACK", "FullStack", "FULLSTACK", "Html"}
 	for _, appType := range cases {
 		t.Run(appType, func(t *testing.T) {
 			factory, stdout, _ := newAppsExecuteFactory(t)
@@ -191,7 +194,7 @@ func TestAppsCreate_RejectsWrongCaseFullstack(t *testing.T) {
 func TestAppsCreate_DryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "HTML", "--dry-run", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "html", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -202,7 +205,7 @@ func TestAppsCreate_DryRun(t *testing.T) {
 	if !strings.Contains(got, `"name": "Demo"`) {
 		t.Fatalf("dry-run missing body: %s", got)
 	}
-	if !strings.Contains(got, `"app_type": "HTML"`) {
+	if !strings.Contains(got, `"app_type": "html"`) {
 		t.Fatalf("dry-run missing app_type: %s", got)
 	}
 }
@@ -222,7 +225,7 @@ func TestAppsCreate_FullstackSuccess(t *testing.T) {
 	reg.Register(stub)
 
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "fullstack", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "full_stack", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -231,8 +234,8 @@ func TestAppsCreate_FullstackSuccess(t *testing.T) {
 	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if sent["app_type"] != "fullstack" {
-		t.Fatalf("body.app_type = %v (want fullstack)", sent["app_type"])
+	if sent["app_type"] != "full_stack" {
+		t.Fatalf("body.app_type = %v (want full_stack)", sent["app_type"])
 	}
 	if _, present := sent["message"]; present {
 		t.Fatalf("message should never be sent: %v", sent)
@@ -242,13 +245,13 @@ func TestAppsCreate_FullstackSuccess(t *testing.T) {
 func TestAppsCreate_FullstackDryRun(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "fullstack", "--dry-run", "--as", "user"},
+		[]string{"+create", "--name", "Demo", "--app-type", "full_stack", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	got := stdout.String()
-	if !strings.Contains(got, `"app_type": "fullstack"`) {
-		t.Fatalf("dry-run missing app_type fullstack: %s", got)
+	if !strings.Contains(got, `"app_type": "full_stack"`) {
+		t.Fatalf("dry-run missing app_type full_stack: %s", got)
 	}
 	if strings.Contains(got, `"message"`) {
 		t.Fatalf("dry-run should not contain message: %s", got)

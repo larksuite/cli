@@ -24,7 +24,7 @@ var AppsCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "app display name", Required: true},
-		{Name: "app-type", Desc: "app type (HTML or fullstack)", Required: true},
+		{Name: "app-type", Desc: "app type (html or full_stack)", Required: true},
 		{Name: "description", Desc: "app description"},
 		{Name: "icon-url", Desc: "app icon URL (server uses default if omitted)"},
 	},
@@ -37,7 +37,7 @@ var AppsCreate = common.Shortcut{
 			return output.ErrValidation("--app-type is required")
 		}
 		if !validAppTypes[appType] {
-			return output.ErrValidation(fmt.Sprintf("--app-type %q is not supported (allowed: HTML, fullstack)", appType))
+			return output.ErrValidation(fmt.Sprintf("--app-type %q is not supported (allowed: html, full_stack)", appType))
 		}
 		return nil
 	},
@@ -59,10 +59,10 @@ var AppsCreate = common.Shortcut{
 	},
 }
 
-// 应用类型枚举。大小写敏感精确匹配。
+// 应用类型枚举。大小写敏感精确匹配（对外统一小写）。
 var validAppTypes = map[string]bool{
-	"HTML":      true,
-	"fullstack": true,
+	"html":       true,
+	"full_stack": true,
 }
 
 func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {

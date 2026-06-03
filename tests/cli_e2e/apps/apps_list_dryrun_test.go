@@ -65,6 +65,63 @@ func TestAppsListDryRun(t *testing.T) {
 		assert.Equal(t, "20", gjson.Get(result.Stdout, "api.0.params.page_size").String())
 	})
 
+	t.Run("WithKeywordScopeAppType", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args: []string{"apps", "+list",
+				"--keyword", "survey", "--scope", "created_by_me", "--app-type", "html",
+				"--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		assert.Equal(t, "survey", gjson.Get(result.Stdout, "api.0.params.keyword").String())
+		assert.Equal(t, "created_by_me", gjson.Get(result.Stdout, "api.0.params.scope").String())
+		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.params.app_type").String())
+	})
+
+	t.Run("OmitsEmptyFilters", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		for _, p := range []string{"keyword", "scope", "app_type"} {
+			assert.False(t, gjson.Get(result.Stdout, "api.0.params."+p).Exists(),
+				"empty %s must be omitted", p)
+		}
+	})
+
+	t.Run("RejectsInvalidScope", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--scope", "bogus", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		assert.NotEqual(t, 0, result.ExitCode, "invalid --scope enum must be rejected")
+	})
+
+	t.Run("RejectsLegacyUppercaseAppType", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		t.Cleanup(cancel)
+
+		result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			Args:      []string{"apps", "+list", "--app-type", "HTML", "--dry-run"},
+			DefaultAs: "user",
+		})
+		require.NoError(t, err)
+		assert.NotEqual(t, 0, result.ExitCode, "legacy uppercase --app-type must be rejected")
+	})
+
 	t.Run("NegativePageSizePassesThrough", func(t *testing.T) {
 		// By design CLI does not bound page_size; server validates. Test pins that
 		// invariant so a well-meaning client-side check doesn't sneak in.

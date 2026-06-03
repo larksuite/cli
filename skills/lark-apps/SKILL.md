@@ -19,7 +19,7 @@ metadata:
 
 ```bash
 # A. 本地全栈：建应用 → 拿凭证 → 原生 git clone → 起本地开发 → 编码 → 部署
-lark-cli apps +create --app-type fullstack --name "审批系统" --message "部门审批系统，支持登录、提交申请、多级审批"
+lark-cli apps +create --app-type full_stack --name "审批系统" --message "部门审批系统，支持登录、提交申请、多级审批"
 lark-cli apps +git-credential-init --app-id app_xxx       # 配 git 凭证（一次性，后续自动用）
 git clone <repo>; cd <repo>; npm install && npm dev run   # 起本地开发，自动拉 env（非阻塞）
 git push miaoda develop; lark-cli apps +publish --app-id app_xxx
@@ -165,4 +165,4 @@ lark-cli auth login --domain apps
 - **拿到存量应用的 `app_id`（按顺序试，不要直接问用户要）**：
   1. 用户已给 `app_id` 或**妙搭链接**（`https://miaoda.feishu.cn/app/app_xxx` → 取 `/app/` 后的 segment）→ 用它；
   2. 已在本地项目目录里 → 读项目根的 **`.spark/meta.json`**（记录了 `app_id`）；
-  3. 都没有 → **`+list --filter <关键词>`** 按应用名 / 描述过滤定位。
+  3. 都没有 → **`+list --keyword <关键词>`** 按应用名 / 描述过滤定位。

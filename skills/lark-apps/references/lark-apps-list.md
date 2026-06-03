@@ -1,10 +1,8 @@
 # apps +list
 
-> **Agent 可用本命令定位存量应用的 `app_id`**：当用户没直接给 app_id 时，用 `+list --filter <关键词>` 按应用名 / 描述过滤出来。也可优先读本地项目根的 `.spark/meta.json`（若已在项目目录内，那里记录了 app_id）。完整解析顺序见 [`../SKILL.md`](../SKILL.md) 「拿到存量应用的 app_id」。
-
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
-列出当前用户名下的妙搭应用。**cursor 分页**：默认拉一页（`--page-size 20`），通过 `--page-token` 拉下一页。
+列出当前用户可见的妙搭应用，支持**名称模糊搜索**（`--keyword`）、**协作者维度过滤**（`--scope`）和**类型过滤**（`--app-type`）。**cursor 分页**：默认拉一页（`--page-size 20`），通过 `--page-token` 拉下一页。
 
 ## 命令
 
@@ -21,18 +19,26 @@ lark-cli apps +list --page-size 50
 # 翻页（拿上一次响应的 page_token）
 lark-cli apps +list --page-token "eyJQaW5PcmRlciI6..."
 
+# 按名称模糊搜索本人创建的应用，拿 app_id
+lark-cli apps +list --keyword 问卷 --scope created_by_me
+
+# 只看全栈应用
+lark-cli apps +list --app-type full_stack
+
 # 取 ID 列表（脚本场景）
 lark-cli apps +list -q '.data.items[].app_id'
 
 # 按名字找 app_id
-lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .app_id'
+lark-cli apps +list --keyword 客户调研问卷 -q '.data.items[] | select(.name=="客户调研问卷") | .app_id'
 ```
 
 ## 参数
 
 | 参数 | 必填 | 默认 | 说明 |
 |---|---|---|---|
-| `--filter <str>` | ❌ | `""` | 按应用名 / 描述模糊过滤（本期新增；定位存量应用首选） |
+| `--keyword <str>` | ❌ | `""` | 应用名称模糊匹配 |
+| `--scope <str>` | ❌ | `all` | 协作者维度：`all`（本人+协作）/ `created_by_me`（仅本人创建）/ `shared_with_me`（仅他人分享给我）|
+| `--app-type <str>` | ❌ | `""` | 类型过滤：`html` / `full_stack`；不填返回所有受支持类型 |
 | `--page-size <int>` | ❌ | `20` | 每页条数 |
 | `--page-token <str>` | ❌ | `""` | 翻页 cursor，从上次响应的 `data.page_token` 拿 |
 
@@ -78,9 +84,9 @@ lark-cli apps +list -q '.data.items[] | select(.name=="客户调研问卷") | .a
 - `data.has_more=true` 表示还有下一页；用 `data.page_token` 作为下次 `--page-token` 传入
 - `data.has_more=false` 且 `data.page_token` 为空 / 缺省表示已经到末尾
 
-## 用途
+## Agent 使用契约
 
-定位存量应用的 `app_id`：用户没给 app_id 时，`+list --filter <关键词>` 按名字 / 描述过滤出目标应用。新建场景仍直接 `apps +create`，不必先 list。完整解析顺序（用户给的 → `.spark/meta.json` → `+list --filter`）见 [`../SKILL.md`](../SKILL.md) 「拿到存量应用的 app_id」。
+何时该调用本命令（默认仍走 `+create`、仅凭用户给的应用名解析 `app_id`、禁止无条件枚举）以 [`../SKILL.md`](../SKILL.md) "用户没给 app_id" 一节为准，不在此重复。命中触发条件后，用上面的 `--keyword` 示例搜索，并用 `-q '.data.items[] | select(.name=="<名称>") | .app_id'` 提取候选交用户确认。
 
 ## 协同命令
 
