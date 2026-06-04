@@ -817,3 +817,138 @@ func TestExtractEnvPullVars_ArraySkipsInvalidKeys(t *testing.T) {
 		t.Fatalf("GOOD_KEY = %q, want val1", got["GOOD_KEY"])
 	}
 }
+
+func TestAppsEnvPull_InjectsForceDBBranchWhenAbsent(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	projectDir := t.TempDir()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"env_vars": map[string]interface{}{
+					"AAA": "value-a",
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env.local"))
+	if err != nil {
+		t.Fatalf("ReadFile() err=%v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, `FORCE_DB_BRANCH="dev"`) {
+		t.Fatalf("expected FORCE_DB_BRANCH to be injected, got %q", got)
+	}
+	if !strings.Contains(got, `AAA="value-a"`) {
+		t.Fatalf("expected upstream env vars to remain, got %q", got)
+	}
+}
+
+func TestAppsEnvPull_InjectsForceDBBranchAlongsideArrayEnvVars(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	projectDir := t.TempDir()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"env_vars": []interface{}{
+					map[string]interface{}{"key": "AAA", "value": "value-a"},
+				},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env.local"))
+	if err != nil {
+		t.Fatalf("ReadFile() err=%v", err)
+	}
+	if !strings.Contains(string(data), `FORCE_DB_BRANCH="dev"`) {
+		t.Fatalf("expected FORCE_DB_BRANCH to be injected for array env_vars, got %q", string(data))
+	}
+}
+
+func TestAppsEnvPull_ForceDBBranchOverwritesExistingLocalValue(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	projectDir := t.TempDir()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"env_vars": map[string]interface{}{
+					"AAA": "value-a",
+				},
+			},
+		},
+	})
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.local"), []byte(strings.Join([]string{
+		`FORCE_DB_BRANCH="prod"`,
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatalf("WriteFile() err=%v", err)
+	}
+
+	if err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env.local"))
+	if err != nil {
+		t.Fatalf("ReadFile() err=%v", err)
+	}
+	got := string(data)
+	if !strings.Contains(got, `FORCE_DB_BRANCH="dev"`) {
+		t.Fatalf("expected FORCE_DB_BRANCH to be overwritten with dev, got %q", got)
+	}
+	if strings.Contains(got, `FORCE_DB_BRANCH="prod"`) {
+		t.Fatalf("expected stale FORCE_DB_BRANCH=\"prod\" to be replaced, got %q", got)
+	}
+	if strings.Count(got, "FORCE_DB_BRANCH=") != 1 {
+		t.Fatalf("expected exactly one FORCE_DB_BRANCH assignment, got %q", got)
+	}
+}
+
+func TestAppsEnvPull_ForceDBBranchInjectedEvenWhenUpstreamReturnsEmptyMap(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	projectDir := t.TempDir()
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"env_vars": map[string]interface{}{},
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, ".env.local"))
+	if err != nil {
+		t.Fatalf("ReadFile() err=%v", err)
+	}
+	if !strings.Contains(string(data), `FORCE_DB_BRANCH="dev"`) {
+		t.Fatalf("expected FORCE_DB_BRANCH to be injected even with empty upstream map, got %q", string(data))
+	}
+}

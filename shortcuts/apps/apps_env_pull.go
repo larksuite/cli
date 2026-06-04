@@ -87,6 +87,10 @@ var AppsEnvPull = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if envVars == nil {
+			envVars = map[string]string{}
+		}
+		envVars["FORCE_DB_BRANCH"] = "dev"
 		original, err := readEnvPullFile(envFile)
 		if err != nil {
 			return err
