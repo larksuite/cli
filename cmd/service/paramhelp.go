@@ -74,9 +74,10 @@ var markdownLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 
 // inlineClause compresses metadata prose into one help clause: markdown links
 // keep their text, the clause cuts at the first rune in stops, whitespace
-// collapses, trailing sentence punctuation goes (the clause join adds its
-// own), and the result caps at max runes. The two policies below differ only
-// in where they cut and how much they keep.
+// collapses, trailing punctuation goes — sentence enders (the clause join adds
+// its own) and connectors a cut can strand, like a colon introducing a list the
+// newline cut dropped — and the result caps at max runes. The two policies
+// below differ only in where they cut and how much they keep.
 func inlineClause(s, stops string, max int) string {
 	if s == "" {
 		return ""
@@ -86,7 +87,7 @@ func inlineClause(s, stops string, max int) string {
 		s = s[:i]
 	}
 	s = strings.Join(strings.Fields(s), " ")
-	s = strings.TrimRight(s, "。.")
+	s = strings.TrimRight(s, "。.：:，,、")
 	return util.TruncateStrWithEllipsis(s, max)
 }
 

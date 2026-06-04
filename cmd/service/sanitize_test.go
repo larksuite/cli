@@ -32,3 +32,19 @@ func TestSanitizeOptionDesc(t *testing.T) {
 		t.Errorf("truncation = %q (%d runes), want 40 runes ending in ...", got, len(r))
 	}
 }
+
+func TestSanitizeFieldDesc_TrimsDanglingPunctuation(t *testing.T) {
+	// A clause cut can strand a connector (e.g. a colon introducing a list the
+	// newline cut drops, as in im.reactions.list's message_id); the help line
+	// joiner then renders "…获取方式：." — so dangling punctuation must go too.
+	cases := map[string]string{
+		"待查询的消息ID。ID 获取方式：\n- 调用接口获取": "待查询的消息ID。ID 获取方式",
+		"see the list below:\nitem":  "see the list below",
+		"逗号结尾，\n下一行":                 "逗号结尾",
+	}
+	for in, want := range cases {
+		if got := sanitizeFieldDesc(in); got != want {
+			t.Errorf("sanitizeFieldDesc(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
