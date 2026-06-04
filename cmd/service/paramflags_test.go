@@ -521,6 +521,41 @@ func TestParamFlagUsage_Description(t *testing.T) {
 	})
 }
 
+// Pins the convergence contract: the params-only addendum renders the SAME
+// fieldFacts list the typed flag's usage line joins inline — a fact added to
+// fieldFacts reaches both surfaces, and neither can drift over what a param's
+// help says (the addendum once rendered values-only enums and silently lacked
+// the API default).
+func TestParamHelp_BothSurfacesRenderFieldFacts(t *testing.T) {
+	f := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+		"mode": map[string]interface{}{
+			"type": "string", "location": "query",
+			"description": "模式选择。",
+			"default":     "fast",
+			"min":         "1", "max": "8",
+			"options": []interface{}{
+				map[string]interface{}{"value": "fast", "description": "快速"},
+				map[string]interface{}{"value": "full"},
+			},
+		},
+	}}).Params()[0]
+
+	facts := fieldFacts(f)
+	if len(facts) != 4 { // description, enum, bounds, API default
+		t.Fatalf("fieldFacts = %v, want 4 facts", facts)
+	}
+	usage := paramFlagUsage(f)
+	help := (&paramFlagBinder{paramsOnly: []paramsOnlyField{{field: f}}}).paramsOnlyHelp()
+	for _, fact := range facts {
+		if !strings.Contains(usage, fact) {
+			t.Errorf("usage line missing fact %q: %q", fact, usage)
+		}
+		if !strings.Contains(help, fact) {
+			t.Errorf("params-only addendum missing fact %q:\n%s", fact, help)
+		}
+	}
+}
+
 // Bounds reach the registered flag's help end to end.
 func TestServiceMethod_TypedFlag_HelpShowsBounds(t *testing.T) {
 	method := meta.FromMap(map[string]interface{}{

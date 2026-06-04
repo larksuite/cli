@@ -5,13 +5,10 @@ package service
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -95,8 +92,9 @@ func flagClaiming(cmd *cobra.Command, reserved *pflag.FlagSet, name string) *pfl
 }
 
 // paramsOnlyHelp renders the --help addendum for parameters that have no typed
-// flag, or "" when there are none. Each line is copy-pasteable and names what
-// the colliding flag actually does, so neither a human nor an agent sets the
+// flag, or "" when there are none. Per field: a copy-pasteable --params form,
+// the same fieldFacts a typed flag would show on its usage line, and what the
+// colliding flag actually does — so neither a human nor an agent sets the
 // wrong one (e.g. --format, which is the output format, not the API parameter).
 func (b *paramFlagBinder) paramsOnlyHelp() string {
 	if len(b.paramsOnly) == 0 {
@@ -107,32 +105,14 @@ func (b *paramFlagBinder) paramsOnlyHelp() string {
 	for _, p := range b.paramsOnly {
 		name := p.field.Name
 		fmt.Fprintf(&sb, "  %s: --params '{%q: %s}'\n", name, name, paramExample(p.field))
-		if d := sanitizeFieldDesc(p.field.Description); d != "" {
-			fmt.Fprintf(&sb, "      %s\n", d)
-		}
-		if vals := enumStrings(p.field.EnumValues()); len(vals) > 0 {
-			fmt.Fprintf(&sb, "      allowed: %s\n", strings.Join(vals, " | "))
-		}
-		if b := formatBoundsInline(p.field); b != "" {
-			fmt.Fprintf(&sb, "      %s\n", b)
+		for _, fact := range fieldFacts(p.field) {
+			fmt.Fprintf(&sb, "      %s\n", fact)
 		}
 		if p.claimed != nil {
 			fmt.Fprintf(&sb, "      do not use --%s (%s)\n", p.claimed.Name, p.claimed.Usage)
 		}
 	}
 	return sb.String()
-}
-
-// paramExample picks a concrete sample for a params-only field's --help snippet:
-// its first allowed enum value, else its example, else a placeholder.
-func paramExample(f meta.Field) string {
-	if vals := enumStrings(f.EnumValues()); len(vals) > 0 {
-		return fmt.Sprintf("%q", vals[0])
-	}
-	if s := literalStr(f.CoercedExample()); s != "" {
-		return fmt.Sprintf("%q", s)
-	}
-	return `"<value>"`
 }
 
 // overlay lets an explicit typed flag override the same key in --params
@@ -167,130 +147,4 @@ func registerTypedFlag(fs *pflag.FlagSet, name, kind, usage string) func() inter
 
 func flagReader[T any](p *T) func() interface{} {
 	return func() interface{} { return *p }
-}
-
-// paramFlagUsage renders the typed param flag's agent-readable help line:
-//
-//	<param_name>, required|optional[. <description>][. enum: a|b|c][. min: x, max: y][. API default: x]
-//
-// It leads with the canonical underscore param name (the key this flag overrides
-// in --params), states required/optional, then the sanitized description — a
-// bare name like user_mailbox_id carries no meaning on its own — followed by
-// the allowed enum values, the min/max constraint, and the API default.
-// Per-option meanings and the unabridged prose stay in `lark-cli schema` so
-// --help stays scannable. Values come from the meta.Field accessors, so this
-// carries no internal/schema dependency.
-func paramFlagUsage(f meta.Field) string {
-	req := "optional"
-	if f.Required {
-		req = "required"
-	}
-	parts := []string{fmt.Sprintf("%s, %s", f.Name, req)}
-	if d := sanitizeFieldDesc(f.Description); d != "" {
-		parts = append(parts, d)
-	}
-	if opts := f.EnumOptions(); len(opts) > 0 {
-		parts = append(parts, "enum: "+formatEnumInline(opts))
-	}
-	if b := formatBoundsInline(f); b != "" {
-		parts = append(parts, b)
-	}
-	if s := literalStr(f.CoercedDefault()); s != "" {
-		parts = append(parts, "API default: "+s)
-	}
-	return strings.Join(parts, ". ") + "."
-}
-
-// sanitizeFieldDesc compresses a field description for the help line: strips
-// markdown link URLs (keeping the text), cuts at the first note separator
-// (;/；/newline — meta_data appends bullet notes after them), trims trailing
-// sentence punctuation (the clause join adds its own "."), collapses
-// whitespace and truncates. Unlike enum option descriptions it does NOT cut at
-// the first sentence end (。): the later sentence often carries the key
-// affordance — e.g. user_mailbox_id's `可以输入"me"`. Full prose stays in
-// `lark-cli schema`.
-func sanitizeFieldDesc(s string) string {
-	if s == "" {
-		return ""
-	}
-	s = markdownLinkRe.ReplaceAllString(s, "$1")
-	if i := strings.IndexAny(s, "；;\n\r"); i >= 0 {
-		s = s[:i]
-	}
-	s = strings.Join(strings.Fields(s), " ")
-	s = strings.TrimRight(s, "。.")
-	return util.TruncateStrWithEllipsis(s, 60)
-}
-
-// formatBoundsInline renders the field's min/max constraint for the help line
-// ("min: 1, max: 100", or the single declared side), or "" when the field
-// declares neither. The vocabulary matches the envelope's minimum/maximum, so
-// help and `lark-cli schema` state the same constraint.
-func formatBoundsInline(f meta.Field) string {
-	min, max := f.MinBound(), f.MaxBound()
-	switch {
-	case min != nil && max != nil:
-		return fmt.Sprintf("min: %s, max: %s", formatBound(*min), formatBound(*max))
-	case min != nil:
-		return "min: " + formatBound(*min)
-	case max != nil:
-		return "max: " + formatBound(*max)
-	}
-	return ""
-}
-
-// formatBound renders a bound without a float artifact (100 not 100.000000).
-func formatBound(v float64) string {
-	return strconv.FormatFloat(v, 'f', -1, 64)
-}
-
-// formatEnumInline renders allowed values for the flag help line: "v=meaning"
-// when the value carries a (sanitized, truncated) description — so opaque
-// numeric enums like succeed_type read as "0=…|1=…|2=…" — else just "v". Full
-// meanings live in the envelope's enumDescriptions / `lark-cli schema`.
-func formatEnumInline(opts []meta.EnumOption) string {
-	items := make([]string, len(opts))
-	for i, o := range opts {
-		if d := sanitizeOptionDesc(o.Description); d != "" {
-			items[i] = fmt.Sprintf("%v=%s", o.Value, d)
-		} else {
-			items[i] = fmt.Sprintf("%v", o.Value)
-		}
-	}
-	return strings.Join(items, "|")
-}
-
-var markdownLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-
-// sanitizeOptionDesc compresses an enum option description for the inline help
-// line: strips markdown link URLs (keeping the link text), keeps the first
-// clause, collapses whitespace and truncates. The full text stays in the
-// envelope / `lark-cli schema`.
-func sanitizeOptionDesc(s string) string {
-	if s == "" {
-		return ""
-	}
-	s = markdownLinkRe.ReplaceAllString(s, "$1")
-	if i := strings.IndexAny(s, "。；;\n\r"); i >= 0 {
-		s = s[:i]
-	}
-	s = strings.Join(strings.Fields(s), " ")
-	return util.TruncateStrWithEllipsis(s, 40)
-}
-
-// literalStr renders a coerced literal (default/example) for flag help,
-// returning "" for a nil or empty value so the caller can omit the clause.
-func literalStr(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	return fmt.Sprintf("%v", v)
-}
-
-func enumStrings(enum []interface{}) []string {
-	out := make([]string, 0, len(enum))
-	for _, e := range enum {
-		out = append(out, fmt.Sprintf("%v", e))
-	}
-	return out
 }
