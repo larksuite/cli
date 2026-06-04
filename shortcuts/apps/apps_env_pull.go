@@ -44,11 +44,11 @@ var AppsEnvPull = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "--app-id is required"}, Param: "app-id"}
+			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: "--app-id is required"}, Param: "app-id"}
 		}
 		_, envFile, err := resolveEnvPullTarget(strings.TrimSpace(rctx.Str("project-path")))
 		if err != nil {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
+			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
 		}
 		if err := checkEnvPullTarget(envFile); err != nil {
 			return err
@@ -68,7 +68,7 @@ var AppsEnvPull = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		_, envFile, err := resolveEnvPullTarget(strings.TrimSpace(rctx.Str("project-path")))
 		if err != nil {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
+			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
 		}
 		if err := checkEnvPullTarget(envFile); err != nil {
 			return err
@@ -96,7 +96,7 @@ var AppsEnvPull = common.Shortcut{
 			return err
 		}
 		if err := validate.AtomicWrite(envFile, []byte(merged), 0o600); err != nil {
-			return &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Message: fmt.Sprintf("cannot write %s: %v", envFile, err)}, Cause: err}
+			return &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Subtype: errs.SubtypeUnknown, Message: fmt.Sprintf("cannot write %s: %v", envFile, err)}, Cause: err}
 		}
 
 		result := buildEnvPullSuccessData(appID, envFile, databaseInfo)
@@ -130,13 +130,13 @@ func checkEnvPullTarget(envFile string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: fmt.Sprintf("cannot inspect %s: %v", envFile, err)}, Param: "project-path", Cause: err}
+		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("cannot inspect %s: %v", envFile, err)}, Param: "project-path", Cause: err}
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: fmt.Sprintf("target %s must be a regular file, not a symlink", envFile)}, Param: "project-path"}
+		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("target %s must be a regular file, not a symlink", envFile)}, Param: "project-path"}
 	}
 	if !info.Mode().IsRegular() {
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: fmt.Sprintf("target %s must be a regular file", envFile)}, Param: "project-path"}
+		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("target %s must be a regular file", envFile)}, Param: "project-path"}
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 		}
 	}
 	if raw == nil {
-		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidResponse, Message: "response field env_vars must be an object or array of key/value entries"}}
 	}
 
 	var skippedKeys []string
@@ -196,7 +196,7 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 		}
 		return out, info, skippedKeys, nil
 	default:
-		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidResponse, Message: "response field env_vars must be an object or array of key/value entries"}}
 	}
 }
 
@@ -206,7 +206,7 @@ func readEnvPullFile(envFile string) (string, error) {
 		if os.IsNotExist(err) {
 			return "", nil
 		}
-		return "", &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Message: fmt.Sprintf("cannot read %s: %v", envFile, err)}, Cause: err}
+		return "", &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Subtype: errs.SubtypeUnknown, Message: fmt.Sprintf("cannot read %s: %v", envFile, err)}, Cause: err}
 	}
 	return string(data), nil
 }
@@ -214,7 +214,7 @@ func readEnvPullFile(envFile string) (string, error) {
 func ensureEnvPullParentDir(envFile string) error {
 	dir := filepath.Dir(envFile)
 	if err := os.MkdirAll(dir, 0o755); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; local mkdir for target env parent dir.
-		return &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Message: fmt.Sprintf("cannot create %s: %v", dir, err)}, Cause: err}
+		return &errs.InternalError{Problem: errs.Problem{Category: errs.CategoryInternal, Subtype: errs.SubtypeUnknown, Message: fmt.Sprintf("cannot create %s: %v", dir, err)}, Cause: err}
 	}
 	return nil
 }
