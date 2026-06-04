@@ -6,6 +6,7 @@ package service
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -109,6 +110,9 @@ func (b *paramFlagBinder) paramsOnlyHelp() string {
 		if vals := enumStrings(p.field.EnumValues()); len(vals) > 0 {
 			fmt.Fprintf(&sb, "      allowed: %s\n", strings.Join(vals, " | "))
 		}
+		if b := formatBoundsInline(p.field); b != "" {
+			fmt.Fprintf(&sb, "      %s\n", b)
+		}
 		if p.claimed != nil {
 			fmt.Fprintf(&sb, "      do not use --%s (%s)\n", p.claimed.Name, p.claimed.Usage)
 		}
@@ -164,13 +168,14 @@ func flagReader[T any](p *T) func() interface{} {
 
 // paramFlagUsage renders the typed param flag's agent-readable help line:
 //
-//	<param_name>, required|optional[. enum: a|b|c][. API default: x]
+//	<param_name>, required|optional[. enum: a|b|c][. min: x, max: y][. API default: x]
 //
 // It leads with the canonical underscore param name (the key this flag overrides
-// in --params), states required/optional, lists the allowed enum values, and the
-// API default. Full prose descriptions and per-option meanings are intentionally
-// left to `lark-cli schema` so --help stays scannable. Values come from the
-// meta.Field accessors, so this carries no internal/schema dependency.
+// in --params), states required/optional, lists the allowed enum values, the
+// min/max constraint, and the API default. Full prose descriptions and
+// per-option meanings are intentionally left to `lark-cli schema` so --help
+// stays scannable. Values come from the meta.Field accessors, so this carries
+// no internal/schema dependency.
 func paramFlagUsage(f meta.Field) string {
 	req := "optional"
 	if f.Required {
@@ -180,10 +185,35 @@ func paramFlagUsage(f meta.Field) string {
 	if opts := f.EnumOptions(); len(opts) > 0 {
 		parts = append(parts, "enum: "+formatEnumInline(opts))
 	}
+	if b := formatBoundsInline(f); b != "" {
+		parts = append(parts, b)
+	}
 	if s := literalStr(f.CoercedDefault()); s != "" {
 		parts = append(parts, "API default: "+s)
 	}
 	return strings.Join(parts, ". ") + "."
+}
+
+// formatBoundsInline renders the field's min/max constraint for the help line
+// ("min: 1, max: 100", or the single declared side), or "" when the field
+// declares neither. The vocabulary matches the envelope's minimum/maximum, so
+// help and `lark-cli schema` state the same constraint.
+func formatBoundsInline(f meta.Field) string {
+	min, max := f.MinBound(), f.MaxBound()
+	switch {
+	case min != nil && max != nil:
+		return fmt.Sprintf("min: %s, max: %s", formatBound(*min), formatBound(*max))
+	case min != nil:
+		return "min: " + formatBound(*min)
+	case max != nil:
+		return "max: " + formatBound(*max)
+	}
+	return ""
+}
+
+// formatBound renders a bound without a float artifact (100 not 100.000000).
+func formatBound(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 // formatEnumInline renders allowed values for the flag help line: "v=meaning"

@@ -279,7 +279,7 @@ func TestServiceMethod_ParamsOnly_HelpSteersToParams(t *testing.T) {
 		"httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"thing_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
-			"format": map[string]interface{}{"type": "string", "location": "query", "options": []interface{}{
+			"format": map[string]interface{}{"type": "string", "location": "query", "min": "1", "max": "64", "options": []interface{}{
 				map[string]interface{}{"value": "full"},
 				map[string]interface{}{"value": "metadata"},
 			}},
@@ -293,7 +293,7 @@ func TestServiceMethod_ParamsOnly_HelpSteersToParams(t *testing.T) {
 	if fl := cmd.Flags().Lookup("format"); fl == nil || fl.DefValue != "json" {
 		t.Fatalf("global --format must be preserved (not shadowed), got %+v", fl)
 	}
-	for _, want := range []string{`--params '{"format"`, "full", "metadata", "do not use --format"} {
+	for _, want := range []string{`--params '{"format"`, "full", "metadata", "min: 1, max: 64", "do not use --format"} {
 		if !strings.Contains(cmd.Long, want) {
 			t.Errorf("help should contain %q so the reader uses --params, not --format; got:\n%s", want, cmd.Long)
 		}
@@ -444,5 +444,52 @@ func TestServiceMethod_Params_EmptyOptionalDroppedUndeclaredKept(t *testing.T) {
 	}
 	if !strings.Contains(out, `"custom_key": "v1"`) {
 		t.Errorf("undeclared key must pass through verbatim, got:\n%s", out)
+	}
+}
+
+// min/max from the metadata surface on the typed flag's help line, in the same
+// vocabulary as the envelope's minimum/maximum.
+func TestParamFlagUsage_Bounds(t *testing.T) {
+	cases := []struct{ name, min, max, want string }{
+		{"both", "1", "100", "min: 1, max: 100"},
+		{"min only", "1", "", "min: 1"},
+		{"max only", "", "64", "max: 64"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+				"page_size": map[string]interface{}{"type": "integer", "location": "query", "min": tc.min, "max": tc.max},
+			}}).Params()
+			if usage := paramFlagUsage(fields[0]); !strings.Contains(usage, tc.want) {
+				t.Errorf("usage = %q, want contains %q", usage, tc.want)
+			}
+		})
+	}
+	t.Run("no bounds, no clause", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"page_token": map[string]interface{}{"type": "string", "location": "query"},
+		}}).Params()
+		if usage := paramFlagUsage(fields[0]); strings.Contains(usage, "min:") || strings.Contains(usage, "max:") {
+			t.Errorf("usage without bounds should not mention min/max, got %q", usage)
+		}
+	})
+}
+
+// Bounds reach the registered flag's help end to end.
+func TestServiceMethod_TypedFlag_HelpShowsBounds(t *testing.T) {
+	method := meta.FromMap(map[string]interface{}{
+		"path":       "items",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"page_size": map[string]interface{}{"type": "integer", "location": "query", "min": "1", "max": "100", "default": "20"},
+		},
+	})
+	cmd := NewCmdServiceMethod(&cmdutil.Factory{}, imSpec(), method, "list", "items", nil)
+	fl := cmd.Flags().Lookup("page-size")
+	if fl == nil {
+		t.Fatal("expected generated --page-size flag")
+	}
+	if !strings.Contains(fl.Usage, "min: 1, max: 100") {
+		t.Errorf("flag usage should carry bounds, got %q", fl.Usage)
 	}
 }

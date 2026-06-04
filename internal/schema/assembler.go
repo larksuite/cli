@@ -5,7 +5,6 @@ package schema
 
 import (
 	"sort"
-	"strconv"
 
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/core"
@@ -26,8 +25,8 @@ func Convert(f meta.Field) Property {
 	p.Description = f.Description
 	p.Default = f.CoercedDefault()
 	p.Example = f.CoercedExample()
-	p.Minimum = parseBound(f.Min)
-	p.Maximum = parseBound(f.Max)
+	p.Minimum = f.MinBound()
+	p.Maximum = f.MaxBound()
 	p.Enum, p.EnumDescriptions = enumSchema(f.EnumOptions())
 
 	if children := f.Children(); len(children) > 0 {
@@ -75,18 +74,6 @@ func enumSchema(opts []meta.EnumOption) (values []interface{}, descriptions []st
 		descriptions = descs
 	}
 	return values, descriptions
-}
-
-// parseBound parses a meta_data numeric bound (min/max, stored as a string) into
-// a float pointer, or nil when absent or unparseable.
-func parseBound(s string) *float64 {
-	if s == "" {
-		return nil
-	}
-	if v, err := strconv.ParseFloat(s, 64); err == nil {
-		return &v
-	}
-	return nil
 }
 
 // propsOf renders fields as an ordered JSON-Schema property map. meta's field

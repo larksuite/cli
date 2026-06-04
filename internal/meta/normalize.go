@@ -179,3 +179,24 @@ func (f Field) coerce(raw any) any {
 	}
 	return nil
 }
+
+// MinBound returns the field's min constraint as a number, or nil when absent
+// or unparseable. meta_data carries min/max as strings and does not say
+// whether they bound a value or a string's length; the accessors stay equally
+// agnostic, so every renderer (envelope minimum/maximum, flag help) presents
+// the same numbers without inventing a semantic the source doesn't declare.
+func (f Field) MinBound() *float64 { return parseBound(f.Min) }
+
+// MaxBound returns the field's max constraint as a number, or nil when absent
+// or unparseable. See MinBound.
+func (f Field) MaxBound() *float64 { return parseBound(f.Max) }
+
+func parseBound(s string) *float64 {
+	if s == "" {
+		return nil
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return &v
+	}
+	return nil
+}
