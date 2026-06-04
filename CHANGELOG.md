@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.48] - 2026-06-04
+
+### Features
+
+- **mail**: Preserve mailbox context in `+triage` output for public mailboxes (#1238)
+- **contact**: Add contact skill domain guidance (#1144)
+
+### Bug Fixes
+
+- **skills**: Use JSON skills list during update (#1251)
+
+### Documentation
+
+- **drive**: Refine lark-drive knowledge organize workflow (#1253)
+- **vc-agent**: Require explicit leave request (#1260)
+- **slides**: Add whiteboard element documentation and improve slide guidance (#1029)
+
 ## [v1.0.47] - 2026-06-03
 
 ### Features
@@ -1009,6 +1026,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48
 [v1.0.47]: https://github.com/larksuite/cli/releases/tag/v1.0.47
 [v1.0.46]: https://github.com/larksuite/cli/releases/tag/v1.0.46
 [v1.0.45]: https://github.com/larksuite/cli/releases/tag/v1.0.45
