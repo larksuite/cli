@@ -39,26 +39,26 @@ var serviceFlagGroupOrder = []struct{ key, title string }{
 	{groupOutput, "Output"},
 }
 
-// serviceMethodUsageTemplate renders a generated method command's local flags
-// via the grouped renderer instead of cobra's flat Flags: list. Global
-// (inherited) flags and the Risk/Tips sections appended by the root help func
-// are unaffected.
-const serviceMethodUsageTemplate = `Usage:
-  {{.UseLine}}
-{{if .HasAvailableLocalFlags}}
-{{serviceFlagGroups .}}
-{{end}}{{if .HasAvailableInheritedFlags}}
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}`
-
-func init() {
-	cobra.AddTemplateFunc("serviceFlagGroups", renderServiceFlagGroups)
-}
-
-// applyGroupedUsage installs the grouped usage template on a service method cmd.
+// applyGroupedUsage installs the grouped usage renderer on a service method
+// cmd: local flags via the grouped renderer instead of cobra's flat Flags:
+// list; global (inherited) flags and the Risk/Tips sections appended by the
+// root help func are unaffected. Rendered by hand rather than via
+// cmd.SetUsageTemplate: cobra lazy-links text/template on the first
+// SetUsageTemplate call, whose executor reaches reflect.Value.MethodByName —
+// that disables the linker's method-level dead-code elimination and costs
+// ~19 MB of binary size.
 func applyGroupedUsage(cmd *cobra.Command) {
-	cmd.SetUsageTemplate(serviceMethodUsageTemplate)
+	cmd.SetUsageFunc(func(c *cobra.Command) error {
+		w := c.OutOrStderr()
+		fmt.Fprintf(w, "Usage:\n  %s\n", c.UseLine())
+		if c.HasAvailableLocalFlags() {
+			fmt.Fprintf(w, "\n%s\n", renderServiceFlagGroups(c))
+		}
+		if c.HasAvailableInheritedFlags() {
+			fmt.Fprintf(w, "\nGlobal Flags:\n%s\n", strings.TrimRight(c.InheritedFlags().FlagUsages(), " \t\n"))
+		}
+		return nil
+	})
 }
 
 func annotate(f *pflag.Flag, key string, vals []string) {
@@ -98,7 +98,7 @@ func flagSubOf(f *pflag.Flag) string {
 
 // renderServiceFlagGroups renders the command's local flags into ordered,
 // titled groups; the API Parameters group is further split into Required /
-// Optional. It is the template func behind serviceMethodUsageTemplate.
+// Optional. It is the body of the usage func applyGroupedUsage installs.
 func renderServiceFlagGroups(cmd *cobra.Command) string {
 	var b strings.Builder
 	seen := map[*pflag.Flag]bool{}
