@@ -6,7 +6,6 @@ package mail
 import (
 	"context"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,7 +18,8 @@ type mailMessagesOutput struct {
 }
 
 // MailMessages is the `+messages` shortcut: batch-fetch full content for
-// up to 20 message IDs in a single call, preserving request order.
+// multiple message IDs, chunking backend calls into batches of 20 while
+// preserving request order.
 var MailMessages = common.Shortcut{
 	Service:     "mail",
 	Command:     "+messages",
@@ -35,11 +35,15 @@ var MailMessages = common.Shortcut{
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateBotMailboxNotMe(runtime)
+		if err := validateBotMailboxNotMe(runtime); err != nil {
+			return err
+		}
+		_, err := validateMessageIDs(runtime.Str("message-ids"))
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
-		messageIDs := splitByComma(runtime.Str("message-ids"))
+		messageIDs, _ := validateMessageIDs(runtime.Str("message-ids"))
 		body := map[string]interface{}{
 			"format":      messageGetFormat(runtime.Bool("html")),
 			"message_ids": []string{"<message_id_1>", "<message_id_2>"},
@@ -59,9 +63,9 @@ var MailMessages = common.Shortcut{
 		}
 		mailboxID := resolveMailboxID(runtime)
 		hintIdentityFirst(runtime, mailboxID)
-		messageIDs := splitByComma(runtime.Str("message-ids"))
-		if len(messageIDs) == 0 {
-			return output.ErrValidation("--message-ids is required; provide one or more message IDs separated by commas")
+		messageIDs, err := validateMessageIDs(runtime.Str("message-ids"))
+		if err != nil {
+			return err
 		}
 		html := runtime.Bool("html")
 

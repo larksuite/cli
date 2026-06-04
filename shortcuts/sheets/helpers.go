@@ -1,51 +1,52 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+// Package sheets contains lark-sheets shortcuts aligned with the
+// sheet-skill-spec canonical layout. Each shortcut wraps a single
+// sheet-ai-skills tool behind the One-OpenAPI endpoint
+// (sheet_ai/v2/.../tools/invoke_{read,write}).
 package sheets
 
 import (
-	"fmt"
-	"regexp"
-	"strconv"
+	"context"
+	"encoding/json"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var (
-	singleCellRangePattern = regexp.MustCompile(`^[A-Za-z]+[1-9][0-9]*$`)
-	cellSpanRangePattern   = regexp.MustCompile(`^[A-Za-z]+[1-9][0-9]*:[A-Za-z]+[1-9][0-9]*$`)
-	cellToColRangePattern  = regexp.MustCompile(`^[A-Za-z]+[1-9][0-9]*:[A-Za-z]+$`)
-	colSpanRangePattern    = regexp.MustCompile(`^[A-Za-z]+:[A-Za-z]+$`)
-	rowSpanRangePattern    = regexp.MustCompile(`^[1-9][0-9]*:[1-9][0-9]*$`)
-	cellRefPattern         = regexp.MustCompile(`^([A-Za-z]+)([1-9][0-9]*)$`)
-)
-
-var sheetRangeSeparatorReplacer = strings.NewReplacer(`\！`, "!", `\!`, "!", "！", "!")
-
-// getFirstSheetID queries the spreadsheet and returns the first sheet's ID.
-func getFirstSheetID(runtime *common.RuntimeContext, spreadsheetToken string) (string, error) {
-	data, err := runtime.CallAPI("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/query", validate.EncodePathSegment(spreadsheetToken)), nil, nil)
-	if err != nil {
+// resolveSpreadsheetToken applies the public --url / --spreadsheet-token XOR
+// pair shared by every sheets canonical shortcut and returns the resolved
+// token. Network-free, safe to call from Validate and DryRun.
+func resolveSpreadsheetToken(runtime *common.RuntimeContext) (string, error) {
+	if err := common.ExactlyOne(runtime, "url", "spreadsheet-token"); err != nil {
 		return "", err
 	}
-	sheets, _ := data["sheets"].([]interface{})
-	if len(sheets) > 0 {
-		sheet, _ := sheets[0].(map[string]interface{})
-		if id, ok := sheet["sheet_id"].(string); ok && id != "" {
-			return id, nil
+	if token := strings.TrimSpace(runtime.Str("spreadsheet-token")); token != "" {
+		if err := validate.RejectControlChars(token, "spreadsheet-token"); err != nil {
+			return "", common.FlagErrorf("%v", err)
 		}
+		return token, nil
 	}
-	return "", output.Errorf(output.ExitAPI, "not_found", "no sheets found in this spreadsheet")
+
+	url := strings.TrimSpace(runtime.Str("url"))
+	token := extractSpreadsheetToken(url)
+	if token == "" || token == url {
+		return "", common.FlagErrorf("--url must be a spreadsheet URL like https://.../sheets/<token>")
+	}
+	if err := validate.RejectControlChars(token, "url"); err != nil {
+		return "", common.FlagErrorf("%v", err)
+	}
+	return token, nil
 }
 
-// extractSpreadsheetToken extracts spreadsheet token from URL.
+// extractSpreadsheetToken pulls the token segment out of a /sheets/<token>
+// or /spreadsheets/<token> URL. Returns the input unchanged when no known
+// prefix is present (callers must check token != originalInput).
 func extractSpreadsheetToken(input string) string {
 	input = strings.TrimSpace(input)
-	prefixes := []string{"/sheets/", "/spreadsheets/"}
-	for _, prefix := range prefixes {
+	for _, prefix := range []string{"/sheets/", "/spreadsheets/"} {
 		if idx := strings.Index(input, prefix); idx >= 0 {
 			token := input[idx+len(prefix):]
 			if idx2 := strings.IndexAny(token, "/?#"); idx2 >= 0 {
@@ -57,183 +58,254 @@ func extractSpreadsheetToken(input string) string {
 	return input
 }
 
-func normalizeSheetRange(sheetID, input string) string {
-	input = normalizeSheetRangeSeparators(input)
-	if input == "" || strings.Contains(input, "!") || sheetID == "" {
-		return input
+// resolveSheetSelector validates the --sheet-id / --sheet-name XOR and
+// returns whichever was supplied. Network-free.
+//
+// Returned tuple: (sheetID, sheetName). Exactly one is non-empty — callers
+// pass both through to the tool input; the server picks whichever fits.
+func resolveSheetSelector(runtime *common.RuntimeContext) (sheetID, sheetName string, err error) {
+	if err := common.ExactlyOne(runtime, "sheet-id", "sheet-name"); err != nil {
+		return "", "", err
 	}
-	if looksLikeRelativeRange(input) {
-		return sheetID + "!" + input
-	}
-	return input
-}
-
-func normalizePointRange(sheetID, input string) string {
-	input = normalizeSheetRange(sheetID, input)
-	if input == "" {
-		return input
-	}
-	rangeSheetID, subRange, ok := splitSheetRange(input)
-	if !ok || !singleCellRangePattern.MatchString(subRange) {
-		return input
-	}
-	return rangeSheetID + "!" + subRange + ":" + subRange
-}
-
-func normalizeWriteRange(sheetID, input string, values interface{}) string {
-	rows, cols := matrixDimensions(values)
-	input = normalizeSheetRangeSeparators(input)
-	if input == "" {
-		return buildRectRange(sheetID, "A1", rows, cols)
-	}
-
-	input = normalizeSheetRange(sheetID, input)
-	rangeSheetID, subRange, ok := splitSheetRange(input)
-	if !ok {
-		return buildRectRange(input, "A1", rows, cols)
-	}
-	if singleCellRangePattern.MatchString(subRange) {
-		return buildRectRange(rangeSheetID, subRange, rows, cols)
-	}
-	return input
-}
-
-func validateSheetRangeInput(sheetID, input string) error {
-	input = normalizeSheetRangeSeparators(input)
-	if input == "" || strings.Contains(input, "!") || sheetID != "" {
-		return nil
-	}
-	if looksLikeRelativeRange(input) {
-		return common.FlagErrorf("--range %q requires --sheet-id or a <sheetId>! prefix", input)
-	}
-	return nil
-}
-
-// validateSingleCellRange rejects multi-cell spans (e.g. "A1:B2") that are
-// invalid for single-cell operations like write-image. Empty and single-cell
-// values pass through.
-func validateSingleCellRange(input string) error {
-	input = normalizeSheetRangeSeparators(input)
-	if input == "" {
-		return nil
-	}
-	// Extract the sub-range after the sheet ID prefix, if present.
-	subRange := input
-	if _, sr, ok := splitSheetRange(input); ok {
-		subRange = sr
-	}
-	if cellSpanRangePattern.MatchString(subRange) {
-		parts := strings.SplitN(subRange, ":", 2)
-		if strings.EqualFold(parts[0], parts[1]) {
-			return nil
+	if id := strings.TrimSpace(runtime.Str("sheet-id")); id != "" {
+		if err := validate.RejectControlChars(id, "sheet-id"); err != nil {
+			return "", "", common.FlagErrorf("%v", err)
 		}
-		return common.FlagErrorf("--range %q must be a single cell (e.g. A1 or A1:A1), got a multi-cell span", input)
+		return id, "", nil
+	}
+	name := strings.TrimSpace(runtime.Str("sheet-name"))
+	if err := validate.RejectControlChars(name, "sheet-name"); err != nil {
+		return "", "", common.FlagErrorf("%v", err)
+	}
+	return "", name, nil
+}
+
+// validateViaInput shrinks a shortcut's Validate to the minimal
+// "token + ask the xxxInput builder if everything else is OK" pattern.
+// The builder owns the sheet selector and shortcut-specific checks
+// (--range required, --start >= 0, ...), so Validate no longer duplicates
+// them — the same error fires whether the shortcut runs standalone or as a
+// +batch-update sub-op. Use the inline form when the builder needs extra
+// arguments (operation enum, withMergeType bool, ...).
+func validateViaInput(
+	build func(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error),
+) func(ctx context.Context, runtime *common.RuntimeContext) error {
+	return func(ctx context.Context, runtime *common.RuntimeContext) error {
+		token, err := resolveSpreadsheetToken(runtime)
+		if err != nil {
+			return err
+		}
+		sheetID := strings.TrimSpace(runtime.Str("sheet-id"))
+		sheetName := strings.TrimSpace(runtime.Str("sheet-name"))
+		_, err = build(runtime, token, sheetID, sheetName)
+		return err
+	}
+}
+
+// requireSheetSelector is the flagView-agnostic counterpart of
+// resolveSheetSelector: given the already-extracted (sheetID, sheetName) pair,
+// it enforces the same XOR and control-char rules.
+//
+// Every batchable xxxInput builder calls this at the top so the same friendly
+// error fires whether the shortcut runs standalone (Validate sees the error
+// through the builder) or as a +batch-update sub-op (translator sees it
+// directly, prefixed by operations[i]). Without this, batch sub-ops
+// missing --sheet-id would slip through CLI validation and only fail on the
+// server with an opaque "sheet undefined not found".
+func requireSheetSelector(sheetID, sheetName string) error {
+	sheetID = strings.TrimSpace(sheetID)
+	sheetName = strings.TrimSpace(sheetName)
+	if sheetID == "" && sheetName == "" {
+		return common.FlagErrorf("specify at least one of --sheet-id or --sheet-name")
+	}
+	if sheetID != "" && sheetName != "" {
+		return common.FlagErrorf("--sheet-id and --sheet-name are mutually exclusive")
+	}
+	if sheetID != "" {
+		if err := validate.RejectControlChars(sheetID, "sheet-id"); err != nil {
+			return common.FlagErrorf("%v", err)
+		}
+	} else {
+		if err := validate.RejectControlChars(sheetName, "sheet-name"); err != nil {
+			return common.FlagErrorf("%v", err)
+		}
 	}
 	return nil
 }
 
-func looksLikeRelativeRange(input string) bool {
-	input = normalizeSheetRangeSeparators(input)
-	if input == "" {
-		return false
+// optionalSheetSelector is the "at most one" counterpart of
+// requireSheetSelector: both empty is acceptable (the backend tool then
+// decides what to do — e.g. manage_pivot_table_object auto-creates a new
+// sub-sheet to host the pivot), and both set is rejected. Control-char
+// validation still applies whenever a value is provided.
+//
+// Used by shortcuts whose backend tool treats sheet_id/sheet_name as the
+// placement target rather than the operation context (currently only
+// +pivot-create). Other shortcuts continue to use requireSheetSelector.
+//
+// idFlagName / nameFlagName parameterize the flag names quoted back in
+// the mutex / control-char errors — +pivot-create exposes the placement
+// selector as `--target-sheet-id` / `--target-sheet-name`, not the
+// generic `--sheet-id` / `--sheet-name`, and the error wording must
+// match what the user actually typed.
+func optionalSheetSelector(sheetID, sheetName, idFlagName, nameFlagName string) error {
+	sheetID = strings.TrimSpace(sheetID)
+	sheetName = strings.TrimSpace(sheetName)
+	if sheetID != "" && sheetName != "" {
+		return common.FlagErrorf("--%s and --%s are mutually exclusive", idFlagName, nameFlagName)
 	}
-	return singleCellRangePattern.MatchString(input) ||
-		cellSpanRangePattern.MatchString(input) ||
-		cellToColRangePattern.MatchString(input) ||
-		colSpanRangePattern.MatchString(input) ||
-		rowSpanRangePattern.MatchString(input)
+	if sheetID != "" {
+		if err := validate.RejectControlChars(sheetID, idFlagName); err != nil {
+			return common.FlagErrorf("%v", err)
+		}
+	} else if sheetName != "" {
+		if err := validate.RejectControlChars(sheetName, nameFlagName); err != nil {
+			return common.FlagErrorf("%v", err)
+		}
+	}
+	return nil
 }
 
-func splitSheetRange(input string) (sheetID, subRange string, ok bool) {
-	parts := strings.SplitN(normalizeSheetRangeSeparators(input), "!", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", false
+// sheetSelectorForToolInput packs --sheet-id / --sheet-name into the tool
+// input map, omitting empty fields. Use after resolveSheetSelector returns.
+func sheetSelectorForToolInput(input map[string]interface{}, sheetID, sheetName string) {
+	if sheetID != "" {
+		input["sheet_id"] = sheetID
 	}
-	return parts[0], parts[1], true
+	if sheetName != "" {
+		input["sheet_name"] = sheetName
+	}
 }
 
-func normalizeSheetRangeSeparators(input string) string {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return input
-	}
-	return sheetRangeSeparatorReplacer.Replace(input)
-}
-
-func buildRectRange(sheetID, anchor string, rows, cols int) string {
-	if sheetID == "" {
-		return ""
-	}
-	if rows < 1 {
-		rows = 1
-	}
-	if cols < 1 {
-		cols = 1
-	}
-	endCell, err := offsetCell(anchor, rows-1, cols-1)
-	if err != nil {
+// sheetSelectorPlaceholder returns a human-readable identifier for the
+// selected sheet, suitable for DryRun output. Avoids leaking that --sheet-name
+// would be resolved server-side at execute time.
+func sheetSelectorPlaceholder(sheetID, sheetName string) string {
+	if sheetID != "" {
 		return sheetID
 	}
-	return sheetID + "!" + anchor + ":" + endCell
+	return "<resolve:" + sheetName + ">"
 }
 
-func matrixDimensions(values interface{}) (rows, cols int) {
-	rowList, ok := values.([]interface{})
-	if !ok || len(rowList) == 0 {
-		return 1, 1
+// parseJSONFlag parses a JSON string from a flag value. Returns nil when the
+// flag is empty (caller decides if that's acceptable). Used by --data /
+// --style / --options / --ranges / --colors and friends.
+func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
+	raw := strings.TrimSpace(runtime.Str(name))
+	if raw == "" {
+		return nil, nil
 	}
-	rows = len(rowList)
-	for _, row := range rowList {
-		if cells, ok := row.([]interface{}); ok && len(cells) > cols {
-			cols = len(cells)
-		}
+	var out interface{}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, common.FlagErrorf("--%s: invalid JSON: %v", name, err)
 	}
-	if cols == 0 {
-		cols = 1
+	// Schema-driven flag validation at the user-input boundary. Skips
+	// --properties (validated at the input-builder tail after enhance
+	// hooks fill in flat-flag-derived fields) and any flag without an
+	// embedded schema entry.
+	if err := validateParsedJSONFlag(runtime, name, out); err != nil {
+		return nil, err
 	}
-	return rows, cols
+	return out, nil
 }
 
-func offsetCell(cell string, rowOffset, colOffset int) (string, error) {
-	matches := cellRefPattern.FindStringSubmatch(strings.TrimSpace(cell))
-	if len(matches) != 3 {
-		return "", fmt.Errorf("invalid cell reference: %s", cell)
-	}
-	colIndex := columnNameToIndex(matches[1])
-	if colIndex < 1 {
-		return "", fmt.Errorf("invalid column: %s", matches[1])
-	}
-	rowIndex, err := strconv.Atoi(matches[2])
+// requireJSONObject is parseJSONFlag + a type assertion to map[string]interface{}.
+func requireJSONObject(runtime flagView, name string) (map[string]interface{}, error) {
+	v, err := parseJSONFlag(runtime, name)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return fmt.Sprintf("%s%d", columnIndexToName(colIndex+colOffset), rowIndex+rowOffset), nil
+	if v == nil {
+		return nil, common.FlagErrorf("--%s is required", name)
+	}
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, common.FlagErrorf("--%s must be a JSON object", name)
+	}
+	return m, nil
 }
 
-func columnNameToIndex(name string) int {
-	name = strings.ToUpper(strings.TrimSpace(name))
-	if name == "" {
-		return 0
+// requireJSONArray is parseJSONFlag + a type assertion to []interface{}.
+func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
+	v, err := parseJSONFlag(runtime, name)
+	if err != nil {
+		return nil, err
 	}
-	index := 0
-	for _, r := range name {
-		if r < 'A' || r > 'Z' {
-			return 0
-		}
-		index = index*26 + int(r-'A'+1)
+	if v == nil {
+		return nil, common.FlagErrorf("--%s is required", name)
 	}
-	return index
+	a, ok := v.([]interface{})
+	if !ok {
+		return nil, common.FlagErrorf("--%s must be a JSON array", name)
+	}
+	return a, nil
 }
 
-func columnIndexToName(index int) string {
-	if index < 1 {
-		return ""
+// ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
+
+// buildCellStyleFromFlags reads the 11 flat style flags and returns the
+// cell_styles map expected by set_cell_range. Skips any flag the user
+// didn't set so partial styles work.
+func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
+	style := map[string]interface{}{}
+	if v := runtime.Str("background-color"); v != "" {
+		style["background_color"] = v
 	}
-	var out []byte
-	for index > 0 {
-		index--
-		out = append([]byte{byte('A' + index%26)}, out...)
-		index /= 26
+	if v := runtime.Str("font-color"); v != "" {
+		style["font_color"] = v
 	}
-	return string(out)
+	if runtime.Changed("font-size") && runtime.Float64("font-size") > 0 {
+		style["font_size"] = runtime.Float64("font-size")
+	}
+	if v := runtime.Str("font-style"); v != "" {
+		style["font_style"] = v
+	}
+	if v := runtime.Str("font-weight"); v != "" {
+		style["font_weight"] = v
+	}
+	if v := runtime.Str("font-line"); v != "" {
+		style["font_line"] = v
+	}
+	if v := runtime.Str("horizontal-alignment"); v != "" {
+		style["horizontal_alignment"] = v
+	}
+	if v := runtime.Str("vertical-alignment"); v != "" {
+		style["vertical_alignment"] = v
+	}
+	if v := runtime.Str("word-wrap"); v != "" {
+		style["word_wrap"] = v
+	}
+	if v := runtime.Str("number-format"); v != "" {
+		style["number_format"] = v
+	}
+	return style
+}
+
+// borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
+// left/right with style sub-objects). Returns nil when the flag is empty.
+func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
+	if runtime.Str("border-styles") == "" {
+		return nil, nil
+	}
+	v, err := parseJSONFlag(runtime, "border-styles")
+	if err != nil {
+		return nil, err
+	}
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, common.FlagErrorf("--border-styles must be a JSON object")
+	}
+	return m, nil
+}
+
+// requireAnyStyleFlag ensures at least one style-defining flag (style or
+// border) is set — otherwise the request would do nothing.
+func requireAnyStyleFlag(runtime flagView) error {
+	if len(buildCellStyleFromFlags(runtime)) > 0 {
+		return nil
+	}
+	if runtime.Str("border-styles") != "" {
+		return nil
+	}
+	return common.FlagErrorf("at least one style flag is required (e.g. --background-color, --font-weight, --border-styles)")
 }

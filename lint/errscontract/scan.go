@@ -108,6 +108,7 @@ func ScanRepo(root string) ([]Violation, error) {
 		all = append(all, CheckTypedErrorCompleteness(rel, string(src))...)
 		all = append(all, CheckNoLegacyEnvelopeLiteral(rel, string(src))...)
 		all = append(all, CheckNoLegacyRuntimeAPICall(rel, string(src))...)
+		all = append(all, CheckNoLegacyCommonHelperCall(rel, string(src))...)
 		// Typed-error invariants — self-scope to errs/ + classify.go.
 		all = append(all, CheckNilSafeError(rel, string(src))...)
 		all = append(all, CheckUnwrapSymmetry(rel, string(src))...)

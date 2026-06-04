@@ -238,7 +238,7 @@ lark-cli vc +meeting-events \
 ## 参考
 
 - [lark-vc-agent-meeting-join](lark-vc-agent-meeting-join.md) — 先真实入会
-- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 完成任务后离会
+- [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
 - [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
 - [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
 - [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 获取会议纪要

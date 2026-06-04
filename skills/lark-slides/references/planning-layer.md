@@ -185,15 +185,15 @@ Use an object for one planned asset, an array for multiple real needs, or `asset
 - `asset_type`: one of `paper_figure`, `architecture_diagram`, `icon`, `logo`, `chart`, `infographic`, `screenshot`, `flow_diagram`, or `none`.
 - `purpose`: why this asset helps the page's key message.
 - `suggested_query`: short future lookup hint only; do not execute it unless separately requested.
-- `fallback_if_missing`: concrete XML-native visual plan using shapes, arrows, labels, tables, simple charts, or placeholder panels.
+- `fallback_if_missing`: concrete XML-native visual plan using shapes, labels, tables, whiteboard diagrams, or placeholder panels.
 
 For detailed rules and examples, read `asset-planning.md`.
 
 Good examples:
 
-- `{"asset_type":"architecture_diagram","purpose":"Explain component relationships.","suggested_query":"service architecture diagram","fallback_if_missing":"Draw grouped boxes and arrows with short labels."}`
+- `{"asset_type":"architecture_diagram","purpose":"Explain component relationships.","suggested_query":"service architecture diagram","fallback_if_missing":"Draw a component diagram with grouped boxes, connector arrows, and short labels."}`
 - `{"asset_type":"logo","purpose":"Identify the customer context.","suggested_query":"customer logo","fallback_if_missing":"Use a text label in a small badge."}`
-- `{"asset_type":"chart","purpose":"Show adoption trend.","suggested_query":"monthly adoption trend chart","fallback_if_missing":"Draw a simple line chart with shapes and value labels."}`
+- `{"asset_type":"chart","purpose":"Show adoption trend.","suggested_query":"monthly adoption trend chart","fallback_if_missing":"Draw a simple trend line chart with axis labels and data points."}`
 
 ## XML Generation Contract
 

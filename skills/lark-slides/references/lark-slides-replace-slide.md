@@ -88,10 +88,11 @@ lark-cli slides +replace-slide --as user \
 | `<table>` | 表格 | 整表替换会**重建内部 td id**，旧 td block_id 立即失效 |
 | `<td>` | 单元格局部替换 | 只能 `block_replace`，不能 `block_insert`；`block_id` 必须是最新 `slide.get` 拿到的 td id |
 | `<chart>` | 图表（line/bar/column/pie/area/radar/combo） | 必须嵌 `<chartPlotArea>` + `<chartData>` + `<dim1>/<dim2>/<chartField>` |
+| `<whiteboard>` | 画板（SVG 或 Mermaid） | 内嵌 `<svg>` 或 `<mermaid>`；`slide.get` 返回结构不含内部数据，但可直接写完整新 XML 做 `block_replace` 覆盖；详见 [`lark-slides-whiteboard.md`](lark-slides-whiteboard.md) |
 
 **不可作为根元素**：
 
-- `<video>` / `<audio>` / `<whiteboard>` —— SML 2.0 没有这三个原生元素；`<undefined type="video|audio|whiteboard">` 是**导出时**的占位符（服务端遇到不支持的类型时用它代替），**不能写入**。尝试 insert/replace 都会返回 3350001。
+- `<video>` / `<audio>` —— SML 2.0 没有这两个原生元素；`<undefined type="video|audio">` 是**导出时**的占位符（服务端遇到不支持的类型时用它代替），**不能写入**。尝试 insert/replace 都会返回 3350001。
 
 ### 最小 XML 片段（JSON 嵌入时记得把 `"` 转义成 `\"`）
 

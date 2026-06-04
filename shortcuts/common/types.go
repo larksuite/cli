@@ -18,7 +18,7 @@ const (
 // Flag describes a CLI flag for a shortcut.
 type Flag struct {
 	Name     string // flag name (e.g. "calendar-id")
-	Type     string // "string" (default) | "bool" | "int" | "string_array" | "string_slice"
+	Type     string // "string" (default) | "bool" | "int" | "float64" | "string_array" | "string_slice"
 	Default  string // default value as string
 	Desc     string // help text
 	Hidden   bool   // hidden from --help, still readable at runtime
@@ -57,6 +57,29 @@ type Shortcut struct {
 	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
 	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
 	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+
+	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
+	// cobra validates required flags — so its side effect fires even when the
+	// call later fails on a missing required flag (which short-circuits before
+	// Validate/Execute). The backward-compat aliases use it to record a
+	// deprecation notice that must surface regardless of whether the call
+	// validates. Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
+	OnInvoke func()
+
+	// PrintFlagSchema, when non-nil, opts this shortcut into the
+	// `--print-schema --flag-name <name>` runtime introspection contract.
+	// The framework auto-injects those two system flags and short-circuits
+	// Validate/Execute when --print-schema is set, dispatching to this hook.
+	//
+	// Contract:
+	//   - flagName == ""     → list the flags this shortcut can describe
+	//                          (output is impl-defined; agents read this to
+	//                          discover which flags are introspectable).
+	//   - flagName == "...": → return the JSON Schema (or schema-like blob)
+	//                          for that flag.
+	// Return value is written to stdout verbatim; callers typically format
+	// it as JSON. Returning an error surfaces as a normal command error.
+	PrintFlagSchema func(flagName string) ([]byte, error)
 
 	// PostMount is an optional hook called after the cobra.Command is fully
 	// configured (flags registered, tips set) and after parent.AddCommand(cmd)

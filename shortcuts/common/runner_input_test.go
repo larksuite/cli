@@ -129,6 +129,7 @@ func TestResolveInputFlags_StdinNotSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for stdin not supported")
 	}
+	assertValidationParam(t, err, "--data")
 	if !strings.Contains(err.Error(), "does not support stdin") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -142,6 +143,7 @@ func TestResolveInputFlags_FileNotSupported(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for file not supported")
 	}
+	assertValidationParam(t, err, "--data")
 	if !strings.Contains(err.Error(), "does not support file input") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -158,6 +160,7 @@ func TestResolveInputFlags_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
+	assertValidationParam(t, err, "--markdown")
 	if !strings.Contains(err.Error(), "cannot read file") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -171,6 +174,7 @@ func TestResolveInputFlags_EmptyFilePath(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty file path")
 	}
+	assertValidationParam(t, err, "--markdown")
 	if !strings.Contains(err.Error(), "file path cannot be empty after @") {
 		t.Errorf("unexpected error: %v", err)
 	}
@@ -212,7 +216,58 @@ func TestResolveInputFlags_DuplicateStdin(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate stdin usage")
 	}
+	assertValidationParam(t, err, "--b")
 	if !strings.Contains(err.Error(), "stdin (-) can only be used by one flag") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestStripUTF8BOM(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"leading BOM removed", "\uFEFFhello", "hello"},
+		{"no BOM unchanged", "hello", "hello"},
+		{"empty unchanged", "", ""},
+		{"only BOM becomes empty", "\uFEFF", ""},
+		{"interior BOM preserved", "a\uFEFFb", "a\uFEFFb"},
+		{"only the first BOM removed", "\uFEFF\uFEFFx", "\uFEFFx"},
+	}
+	for _, c := range cases {
+		if got := stripUTF8BOM(c.in); got != c.want {
+			t.Errorf("%s: stripUTF8BOM(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
+
+func TestResolveInputFlags_StripBOMStdin(t *testing.T) {
+	// A CSV piped via stdin with a leading BOM (e.g. from an upstream export)
+	// must reach the shortcut without the BOM, so it can't corrupt the first cell.
+	rctx := newTestRuntimeWithStdin(map[string]string{"csv": "-"}, "\uFEFFname,age\nzhang,8")
+	flags := []Flag{{Name: "csv", Input: []string{File, Stdin}}}
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("csv"); got != "name,age\nzhang,8" {
+		t.Errorf("leading BOM not stripped from stdin, got %q", got)
+	}
+}
+
+func TestResolveInputFlags_StripBOMFile(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	// A JSON operations file saved with a BOM would otherwise fail json.Unmarshal
+	// with "invalid character 'ï'".
+	if err := os.WriteFile("ops.json", []byte("\uFEFF[{\"shortcut\":\"+cells-set\"}]"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rctx := newTestRuntimeWithStdin(map[string]string{"operations": "@ops.json"}, "")
+	flags := []Flag{{Name: "operations", Input: []string{File, Stdin}}}
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("operations"); got != "[{\"shortcut\":\"+cells-set\"}]" {
+		t.Errorf("leading BOM not stripped from file, got %q", got)
 	}
 }

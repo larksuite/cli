@@ -117,6 +117,13 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+	// SilenceUsage as a static field (not only in PersistentPreRun) so it also
+	// covers flag-parse errors, which fail before PreRun runs — otherwise cobra
+	// dumps usage instead of our structured error. SetFlagErrorFunc on root is
+	// inherited by every subcommand, turning unknown-flag errors into a
+	// structured "did you mean" envelope.
+	rootCmd.SilenceUsage = true
+	rootCmd.SetFlagErrorFunc(flagDidYouMean)
 
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {

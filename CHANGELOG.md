@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.47] - 2026-06-03
+
+### Features
+
+- **sheets**: Add spec-driven shortcut package with backward-compatible wrapper (#1220)
+- **base**: Add base block shortcuts (#1044)
+- **im**: Complete card message format (#1198)
+- **im**: Improve markdown guidance for messages (#1237)
+- **vc**: Forward invite call-id on meeting join (#1243)
+- **drive**: Emit typed error envelopes across the drive domain (#1205)
+- **common**: Emit typed validation errors from shared shortcut pre-checks (#1242)
+- **mail**: Validate `message_ids` in `+messages` before batch get (#1202)
+- **wiki**: Support `appid` member type (#1235)
+- **cli**: Add `--json` flag as no-op alias for `--format json` (#1104)
+- **config**: Validate credentials after `config init` (#1151)
+
+### Bug Fixes
+
+- **skills**: Recover empty fallback for skills to update (#1233)
+
 ## [v1.0.46] - 2026-06-02
 
 ### Features
@@ -989,6 +1009,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.47]: https://github.com/larksuite/cli/releases/tag/v1.0.47
 [v1.0.46]: https://github.com/larksuite/cli/releases/tag/v1.0.46
 [v1.0.45]: https://github.com/larksuite/cli/releases/tag/v1.0.45
 [v1.0.44]: https://github.com/larksuite/cli/releases/tag/v1.0.44

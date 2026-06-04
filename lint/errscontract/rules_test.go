@@ -877,3 +877,123 @@ func boom(runtime *common.RuntimeContext) error {
 		t.Errorf("test files must be skipped, got: %+v", v)
 	}
 }
+
+func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *testing.T) {
+	helpers := []string{
+		"FlagErrorf",
+		"MutuallyExclusive",
+		"AtLeastOne",
+		"ExactlyOne",
+		"ValidatePageSize",
+		"ValidateChatID",
+		"ValidateUserID",
+		"ValidateSafePath",
+		"RejectDangerousChars",
+		"WrapInputStatError",
+		"WrapSaveErrorByCategory",
+		"ResolveOpenIDs",
+		"HandleApiResult",
+	}
+	for _, helper := range helpers {
+		t.Run(helper, func(t *testing.T) {
+			src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	common.` + helper + `()
+}
+`
+			v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation for %s, got %d: %+v", helper, len(v), v)
+			}
+			if v[0].Action != ActionReject {
+				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+			if !strings.Contains(v[0].Message, "common."+helper) {
+				t.Errorf("message should name helper %s: %s", helper, v[0].Message)
+			}
+		})
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_AllowsNonMigratedPath(t *testing.T) {
+	src := `package im
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	common.FlagErrorf("legacy allowed until domain migrates")
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/im/im_send.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-migrated path must pass, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_AllowsTypedHelpersOnMigratedPath(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	common.ValidationErrorf("typed")
+	common.MutuallyExclusiveTyped(nil, "a", "b")
+	common.ValidateChatIDTyped("--chat-ids", "oc_abc")
+	common.ResolveOpenIDsTyped("--user-ids", nil, nil)
+	common.WrapSaveErrorTyped(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
+	if len(v) != 0 {
+		t.Errorf("typed helpers must pass, got: %+v", v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_RejectsAliasedImport(t *testing.T) {
+	src := `package drive
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	c.FlagErrorf("legacy")
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for aliased common import, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_RejectsDotImport(t *testing.T) {
+	src := `package drive
+
+import . "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	FlagErrorf("legacy")
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for dot-imported common, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_RejectsFunctionValueReference(t *testing.T) {
+	src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() error {
+	f := common.FlagErrorf
+	return f("legacy")
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
+	if len(v) != 1 {
+		t.Fatalf("expected 1 violation for function-value reference, got %d: %+v", len(v), v)
+	}
+}

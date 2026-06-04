@@ -32,6 +32,29 @@ func TestDryRunTableOps(t *testing.T) {
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
 
+func TestDryRunBaseBlockOps(t *testing.T) {
+	ctx := context.Background()
+
+	listRT := newBaseTestRuntime(map[string]string{"base-token": "app_x"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockList(ctx, listRT), "POST /open-apis/base/v3/bases/app_x/blocks/list")
+
+	listFolderRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "parent-id": "bfl_1", "type": "docx"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockList(ctx, listFolderRT), "POST /open-apis/base/v3/bases/app_x/blocks/list", `"parent_id":"bfl_1"`)
+
+	createRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "type": "docx", "name": "Spec", "parent-id": "bfl_1"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockCreate(ctx, createRT), "POST /open-apis/base/v3/bases/app_x/blocks", `"type":"docx"`, `"name":"Spec"`, `"parent_id":"bfl_1"`)
+
+	moveRootRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveRootRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/move", `"parent_id":null`)
+
+	moveAfterRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1", "parent-id": "bfl_1", "after-id": "blk_0"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveAfterRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/move", `"parent_id":"bfl_1"`, `"after_id":"blk_0"`)
+
+	renameRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1", "name": "New name"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockRename(ctx, renameRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/rename", `"name":"New name"`)
+	assertDryRunContains(t, dryRunBaseBlockDelete(ctx, renameRT), "DELETE /open-apis/base/v3/bases/app_x/blocks/blk_1")
+}
+
 func TestDryRunFieldOps(t *testing.T) {
 	ctx := context.Background()
 

@@ -94,7 +94,7 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 ## 注意事项
 
 1. **执行前必做**：`lark-cli schema slides.xml_presentation.slide.get` 查看最新参数结构
-2. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
+2. **block_id 提取**：返回 XML 里每个顶层块（shape、img、table、chart、whiteboard 等）的 `id` 属性即为 `block_id`，通常是 3 字符短码，例如 `<shape id="bUn" ...>`。用以下命令列出当前页所有 block_id：
 
    ```bash
    lark-cli slides xml_presentation.slide get --as user \
