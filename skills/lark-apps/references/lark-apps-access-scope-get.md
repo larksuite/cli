@@ -1,104 +1,28 @@
 # apps +access-scope-get
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
+查看妙搭应用运行时可见范围。运行时命令事实以 `lark-cli apps +access-scope-get --help` 为准。
 
-获取应用当前的可用范围配置。一次 `GET /apps/{appId}/access-scope` 调用，响应原样透传服务端契约（字符串 scope 枚举 + 拆分数组）。
+## 何时用
 
-## 命令
+用于确认应用运行时对谁可见。它不表示谁能开发或管理应用；协作者、仓库权限不从这里判断。
 
-```bash
-lark-cli apps +access-scope-get --app-id app_xxx
-```
+## 命令骨架
 
-## 参数
+- 必填：`--app-id`。
+- 服务端返回枚举是 `All` / `Tenant` / `Range`。
+- `Range` 下用户、部门、群分别在 `users` / `departments` / `chats` 数组中；CLI 不合并回 `targets`。
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID |
-
-## 返回值
-
-**成功（specific，三种 target 类型混合）：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "scope": "Range",
-    "users": ["ou_xxx", "ou_yyy"],
-    "departments": ["od_xxx"],
-    "chats": ["oc_xxx"],
-    "apply_config": {
-      "enabled": true,
-      "approvers": ["ou_approver"]
-    }
-  }
-}
-```
-
-**成功（public + 免登）：**
-
-```json
-{ "ok": true, "data": { "scope": "All", "require_login": false } }
-```
-
-**成功（tenant）：**
-
-```json
-{ "ok": true, "data": { "scope": "Tenant" } }
-```
-
-**失败：**
-
-```json
-{ "ok": false, "error": { "type": "api", "message": "...", "hint": "..." } }
-```
-
-## 字段语义
-
-- `scope` 是**字符串枚举**：
-  - `"All"` = 互联网公开 — 对应 `apps +access-scope-set --scope public`
-  - `"Tenant"` = 组织内 — 对应 `--scope tenant`
-  - `"Range"` = 部分人员 — 对应 `--scope specific`
-- `users` / `departments` / `chats` 三个数组（仅 `scope="Range"` 时）：服务端拆分形态，CLI 不合并回统一 targets
-- `apply_config`（可选，仅 `scope="Range"` 且申请开启时）：含 `enabled` 和 `approvers`（只允许一个 user open_id）
-- `require_login`（仅 `scope="All"` 时）：bool
-
-## 典型场景
-
-### 场景 1：查看当前应用对谁可见
+## 示例
 
 ```bash
 lark-cli apps +access-scope-get --app-id app_xxx
 ```
 
-按 `scope` 值组装报告：
-- `scope="All"` → "应用 `{app_id}` 当前互联网公开（require_login={require_login}）"
-- `scope="Tenant"` → "应用 `{app_id}` 当前对企业全员可见"
-- `scope="Range"` → "应用 `{app_id}` 当前指定可见，包含 N 个用户 / M 个部门 / K 个群"
+## 输出契约
 
-### 场景 2：把 GET 响应拼回 `+access-scope-set` 命令（复制 / 备份可用范围）
+- 成功读取 `data.scope`：`All`、`Tenant`、`Range`。
+- `scope=All` 时关注 `data.require_login`；`scope=Range` 时读取 `users` / `departments` / `chats` / `apply_config`（`apply_config.approvers` 仅含一个 user open_id）。
 
-```bash
-# 拼一个 --targets JSON 数组（jq）
-lark-cli apps +access-scope-get --app-id app_src -q '
-  .data
-  | (.users        // [] | map({type:"user",       id:.}))
-  + (.departments // [] | map({type:"department", id:.}))
-  + (.chats        // [] | map({type:"chat",       id:.}))
-'
-```
+## Agent 规则
 
-得到 `[{"type":"user","id":"ou_x"}, ...]` 数组，可作为 `apps +access-scope-set --targets '...'` 的入参。
-
-## 协同命令
-
-| 场景 | 命令 |
-|---|---|
-| 设置可用范围 | `apps +access-scope-set` |
-| 拿 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
-
-## 参考
-
-- [lark-apps](../SKILL.md)
-- [lark-shared](../../lark-shared/SKILL.md)
+向用户解释时映射为：`All` = public，`Tenant` = tenant，`Range` = specific；`Range` 按用户、部门、群分组摘要后再呈现。用户要修改时转到 [`+access-scope-set`](lark-apps-access-scope-set.md)。

@@ -1,99 +1,29 @@
 # apps +publish
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+为妙搭应用创建发布 release。运行时命令事实以 `lark-cli apps +publish --help` 为准。
 
-为指定妙搭应用创建一个发布单（release），触发应用发布流水线。
+## 何时用
 
-## 命令
+用于把全栈应用的代码分支推进到发布流程。它不是 HTML 静态发布入口；本地 `index.html` / `dist` 要读 [`lark-apps-html-publish.md`](lark-apps-html-publish.md)。
 
-```bash
-# 使用服务端默认分支发布
-lark-cli apps +publish --app-id app_xxx
+## 命令骨架
 
-# 指定发布分支
-lark-cli apps +publish --app-id app_xxx --branch main
+- 必填：`--app-id`。
+- 可选：`--branch`；省略时服务端使用默认发布分支。
+- 返回 `release_id` 和 `status`，后续用 `+publish-status` 轮询。
 
-# 预演（打印意图请求，不执行，当前可用）
-lark-cli apps +publish --app-id app_xxx --dry-run
-```
-
-## 参数
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID（如 `app_xxx`）|
-| `--branch <branch>` | ❌ | 发布分支；不传则服务端使用默认分支 |
-
-## 返回值
-
-**成功：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "release_id": "release_yyy",
-    "status": "publishing"
-  }
-}
-```
-
-`release_id` 即发布ID；后续查状态 / 错误日志时把该值传给 `--release-id`。`status` 为字符串，初始值为 `publishing`，最终值为 `finished` 或 `failed`。
-
-**Validate 失败（如缺 --app-id）：**
-
-```json
-{
-  "ok": false,
-  "error": { "type": "validation", "message": "--app-id is required" }
-}
-```
-
-## --dry-run 示例输出
-
-```json
-{
-  "ok": true,
-  "data": {
-    "dry_run": true,
-    "api": [
-      {
-        "method": "POST",
-        "url": "/open-apis/spark/v1/apps/app_xxx/releases",
-        "body": { "branch": "main" }
-      }
-    ]
-  }
-}
-```
-
-## 字段语义
-
-| 字段 | 含义 |
-|---|---|
-| `data.release_id` | 发布ID，用于 `+publish-status` / `+publish-error-log` 的 `--release-id` |
-| `data.status` | 发布状态字符串：`publishing`（进行中）/ `finished`（成功）/ `failed`（失败）|
-| `error.type=validation` | 本地参数错，修正 flag 后重试 |
-
-## 典型场景
-
-### 场景 1：触发发布并轮询状态
+## 示例
 
 ```bash
 lark-cli apps +publish --app-id app_xxx
-# 拿到 release_id 后查状态：
-lark-cli apps +publish-status --app-id app_xxx --release-id release_yyy
+lark-cli apps +publish --app-id app_xxx --branch sprint/default --dry-run
 ```
 
-## 协同命令
+## 输出契约
 
-| 场景 | 命令 |
-|---|---|
-| 查发布历史 | `apps +publish-history` |
-| 查单个发布状态 | `apps +publish-status` |
-| 查发布错误日志 | `apps +publish-error-log` |
+- 成功读取 `data.release_id` 和 `data.status`；`release_id` 是后续 `+publish-status` / `+publish-error-log` 的入参。
+- `status=publishing` 表示发布仍在进行；继续用 `+publish-status` 轮询。
 
-## 参考
+## Agent 规则
 
-- [lark-apps](../SKILL.md)
-- [lark-shared](../../lark-shared/SKILL.md)
+发布前通常先确认本地 `git status` 干净且已 push `sprint/default`。发布后若 status 是 `publishing`，用 [`+publish-status`](lark-apps-publish-status.md) 查询。`+publish` 部署上线属高影响动作——作为别的命令的连带前置时，按 SKILL.md「失败与高影响动作」先征得用户同意再发布。

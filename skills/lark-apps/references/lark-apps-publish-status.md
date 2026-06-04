@@ -1,92 +1,25 @@
 # apps +publish-status
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+按 release ID 查询单次发布详情。运行时命令事实以 `lark-cli apps +publish-status --help` 为准。
 
-查询指定发布的状态和详情。通常在触发 `apps +publish` 后，用返回的 `release_id` 轮询进度。对应 `GET /open-apis/spark/v1/apps/:app_id/releases/:release_id`。
+## 何时用
 
-> **⚠️ 注意：** 这里的「发布ID / release_id」是妙搭**发布** ID（`apps +publish` 返回的 `release_id`），**不是飞书审批实例号**。查发布进度用 `apps +publish-status`、查失败原因用 `apps +publish-error-log`；不要路由到 lark-approval / 审批相关命令。
+用于跟进已知 `release_id` 的发布状态。没有 `release_id` 时先读 [`lark-apps-publish-history.md`](lark-apps-publish-history.md)，不要让用户手填。
 
-## 命令
+`release_id` 是妙搭发布 ID（`+publish` 返回），不是飞书审批实例号；查发布进度/失败都在 `apps +publish-*` 命令族内完成，不要路由到 lark-approval。
 
-```bash
-# 查询发布状态
-lark-cli apps +publish-status --app-id app_xxx --release-id release_yyy
+## 命令骨架
 
-# 预演（当前可用）
-lark-cli apps +publish-status --app-id app_xxx --release-id release_yyy --dry-run
-```
+- 必填：`--app-id`、`--release-id`。
+- `release_id` 来自 `+publish` 或 `+publish-history`。
 
-## 参数
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID |
-| `--release-id <id>` | ✅ | 发布ID（即 `apps +publish` 响应的 `release_id`）|
-
-## 返回值
-
-**成功：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "release": {
-      "release_id": "release_yyy",
-      "status": "finished",
-      "created_at": 1748000000000,
-      "updated_at": 1748000120000
-    }
-  }
-}
-```
-
-**Validate 失败：**
-
-```json
-{
-  "ok": false,
-  "error": { "type": "validation", "message": "--release-id is required" }
-}
-```
-
-## 字段语义
-
-| 字段 | 含义 |
-|---|---|
-| `release.status` | 发布状态字符串：`publishing`（进行中）/ `finished`（成功）/ `failed`（失败）|
-| `release.created_at` / `updated_at` | Unix 毫秒时间戳（不做时区格式化）|
-
-## 典型场景
-
-### 场景 1：轮询发布进度
+## 示例
 
 ```bash
-# 触发发布
-lark-cli apps +publish --app-id app_xxx
-# 拿到 release_id，查状态
 lark-cli apps +publish-status --app-id app_xxx --release-id release_yyy
 ```
 
-- `status=publishing`：发布仍在进行，稍后重试
-- `status=finished`：发布成功
-- `status=failed`：发布失败，用 `apps +publish-error-log` 获取错误详情
+## 输出契约
 
-### 场景 2：发布失败后跳转错误日志
-
-```bash
-lark-cli apps +publish-error-log --app-id app_xxx --release-id release_yyy
-```
-
-## 协同命令
-
-| 场景 | 命令 |
-|---|---|
-| 触发新发布 | `apps +publish` |
-| 查发布历史（获取 release_id） | `apps +publish-history` |
-| 查发布错误详情 | `apps +publish-error-log` |
-
-## 参考
-
-- [lark-apps](../SKILL.md)
-- [lark-shared](../../lark-shared/SKILL.md)
+- 成功可能直接返回 release 字段，也可能包在 `data.release`；读取 `release_id`、`status`、`created_at`、`updated_at`。
+- `status=publishing` 继续轮询；`finished` 告知成功；`failed` 接 [`+publish-error-log`](lark-apps-publish-error-log.md) 取错误日志。
