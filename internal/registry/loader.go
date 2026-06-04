@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/update"
 )
 
 //go:embed scope_priorities.json scope_overrides.json
@@ -110,7 +111,11 @@ func InitWithBrand(brand core.LarkBrand) {
 			brandChanged := metaErr == nil && meta.Brand != "" && meta.Brand != string(brand)
 
 			if !brandChanged {
-				if cached, err := loadCachedMerged(); err == nil {
+				// Only overlay the cached remote definitions when their version is
+				// strictly newer than the embedded baseline. Versions are not bumped
+				// on every CLI release, so an equal/older cache must not shadow the
+				// freshly shipped embedded commands.
+				if cached, err := loadCachedMerged(); err == nil && update.IsNewer(cached.Version, embeddedVersion) {
 					overlayMergedServices(cached)
 				}
 			}
