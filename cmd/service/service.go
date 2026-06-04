@@ -20,7 +20,6 @@ import (
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 	"github.com/spf13/cobra"
@@ -336,8 +335,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	if err != nil {
 		return err
 	}
-	// Identity info is now included in the JSON envelope; skip stderr printing.
-	// cmdutil.PrintIdentity(f.IOStreams.ErrOut, opts.As, config, f.IdentityAutoDetected)
+	// Identity is not printed to stderr here: it is part of the JSON envelope.
 
 	if !opts.As.IsBot() {
 		if err := checkServiceScopes(opts.Ctx, f.Credential, opts.As, config, opts.Method); err != nil {
@@ -454,6 +452,24 @@ func newPreflightMissingScopeError(brand, appID, identity string, missing []stri
 		WithIdentity(identity)
 }
 
+// unusableParamValue reports whether a provided path/query parameter value
+// cannot form a usable request value: nil or an empty string. A key's presence
+// in params is the intent signal — a typed flag is overlaid only when
+// explicitly Changed, and a --params JSON key is deliberately written — so
+// false and 0 are real values and must not be conflated with "unset"
+// (reflect.IsZero would drop an explicit --with-deleted=false or --foo 0).
+// Only nil/"" stay treated as missing: that keeps the friendly pre-flight
+// error when a required param is fed an empty placeholder, and never emits a
+// declared param as an empty path segment or query value. Undeclared keys are
+// not judged by this rule — they pass through verbatim as the raw escape hatch.
+func unusableParamValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	s, ok := v.(string)
+	return ok && s == ""
+}
+
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
 // When dryRun is true and a file is provided, file reading is skipped and
 // FileUploadMeta is returned instead so the caller can render dry-run output.
@@ -488,7 +504,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 			continue
 		}
 		val, ok := params[s.Name]
-		if !ok || util.IsEmptyValue(val) {
+		if !ok || unusableParamValue(val) {
 			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"missing required path parameter: %s", s.Name).
 				WithHint("lark-cli schema %s", schemaPath).
@@ -509,20 +525,24 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		}
 		value, exists := params[s.Name]
 		isPaginationParam := opts.PageAll && (s.Name == "page_token" || s.Name == "page_size")
-		if s.Required && !isPaginationParam && (!exists || util.IsEmptyValue(value)) {
+		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
 			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"missing required query parameter: %s", s.Name).
 				WithHint("lark-cli schema %s", schemaPath).
 				WithParam(s.Name)
 		}
-		if exists && !util.IsEmptyValue(value) {
+		if exists && !unusableParamValue(value) {
 			queryParams[s.Name] = value
 		}
+		// This loop owns declared query params: consume the key so the
+		// passthrough below can't resurrect a value the gate dropped (an
+		// unusable "" would otherwise be sent as an empty query value).
+		delete(params, s.Name)
 	}
+	// Whatever remains is undeclared — the raw escape hatch for params the
+	// metadata doesn't (yet) describe; passed through verbatim, no filtering.
 	for name, value := range params {
-		if _, ok := queryParams[name]; !ok {
-			queryParams[name] = value
-		}
+		queryParams[name] = value
 	}
 
 	request := client.RawApiRequest{

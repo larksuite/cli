@@ -331,3 +331,118 @@ func TestParamFlagBinder_PersistentFlagReserved(t *testing.T) {
 		t.Error("colliding param should be recorded for the --params help note")
 	}
 }
+
+// boolIntQueryMethod is the fixture for the zero-value semantics tests: one
+// boolean and one integer query param, where false and 0 are meaningful values.
+func boolIntQueryMethod(required bool) meta.Method {
+	return meta.FromMap(map[string]interface{}{
+		"path":       "items",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"with_deleted": map[string]interface{}{"type": "boolean", "location": "query", "required": required},
+			"page_size":    map[string]interface{}{"type": "integer", "location": "query"},
+		},
+	})
+}
+
+// Presence is intent: a typed flag is only overlaid when explicitly Changed,
+// so --flag=false / --flag 0 are real values and must be sent — not silently
+// dropped as "empty", which would let the API default win over an explicit
+// user choice.
+func TestServiceMethod_TypedFlag_ExplicitFalseAndZeroAreSent(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), boolIntQueryMethod(false), "list", "items", nil)
+	cmd.SetArgs([]string{"--with-deleted=false", "--page-size", "0", "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{`"with_deleted": false`, `"page_size": 0`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("explicit zero value must be sent (want %s), got:\n%s", want, out)
+		}
+	}
+}
+
+// An explicitly provided false satisfies a required query parameter — the
+// pre-flight must not report "missing" for a value the user just set.
+func TestServiceMethod_TypedFlag_ExplicitFalseSatisfiesRequired(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), boolIntQueryMethod(true), "list", "items", nil)
+	cmd.SetArgs([]string{"--with-deleted=false", "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("required param explicitly set to false must pass pre-flight, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"with_deleted": false`) {
+		t.Errorf("explicit false must be sent, got:\n%s", stdout.String())
+	}
+}
+
+// The same presence-is-intent rule applies to the --params JSON base: a key
+// deliberately written as false/0 is sent. (Zero values used to be silently
+// dropped; this locks the corrected semantics as the contract.)
+func TestServiceMethod_Params_JSONZeroValuesAreSent(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), boolIntQueryMethod(false), "list", "items", nil)
+	cmd.SetArgs([]string{"--params", `{"with_deleted":false,"page_size":0}`, "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{`"with_deleted": false`, `"page_size": 0`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--params zero value must be sent (want %s), got:\n%s", want, out)
+		}
+	}
+}
+
+// "" stays unusable: a required parameter fed an empty-string placeholder is
+// still caught by the friendly pre-flight error, not sent as an empty value.
+func TestServiceMethod_Params_EmptyStringStillMissing(t *testing.T) {
+	method := meta.FromMap(map[string]interface{}{
+		"path":       "items",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"user_id_type": map[string]interface{}{"type": "string", "location": "query", "required": true},
+		},
+	})
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "items", nil)
+	cmd.SetArgs([]string{"--params", `{"user_id_type":""}`, "--dry-run"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "missing required query parameter") {
+		t.Fatalf("empty string for a required param should still pre-flight error, got: %v", err)
+	}
+}
+
+// A declared optional query param fed "" is dropped (unusable value), not sent
+// as an empty query value — the declared-param loop owns the decision and the
+// undeclared passthrough must not resurrect it. Undeclared keys stay the
+// verbatim raw escape hatch.
+func TestServiceMethod_Params_EmptyOptionalDroppedUndeclaredKept(t *testing.T) {
+	method := meta.FromMap(map[string]interface{}{
+		"path":       "items",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"user_id_type": map[string]interface{}{"type": "string", "location": "query"},
+		},
+	})
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "items", nil)
+	cmd.SetArgs([]string{"--params", `{"user_id_type":"","custom_key":"v1"}`, "--dry-run"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if strings.Contains(out, "user_id_type") {
+		t.Errorf("declared optional param with empty value must be dropped, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"custom_key": "v1"`) {
+		t.Errorf("undeclared key must pass through verbatim, got:\n%s", out)
+	}
+}
