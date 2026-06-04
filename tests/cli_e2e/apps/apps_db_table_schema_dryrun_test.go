@@ -16,8 +16,9 @@ import (
 
 // TestAppsDBTableSchemaDryRun pins +db-table-schema 复用存量 URL。
 // 没有独立 --ddl flag —— 由 --format 同时驱动 CLI 渲染和 server 请求形态：
-//   --format pretty → CLI 给 server 带 ?format=ddl
-//   --format json / table / ndjson / csv（含默认）→ CLI 不传 format query
+//
+//	--format pretty → CLI 给 server 带 ?format=ddl
+//	--format json / table / ndjson / csv（含默认）→ CLI 不传 format query
 func TestAppsDBTableSchemaDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
