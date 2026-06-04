@@ -45,11 +45,21 @@ type failedDraft struct {
 //	  "success_count":  2,
 //	  "failure_count":  1,
 //	  "sent":  [{"draft_id":..., "message_id":..., "thread_id":...}, ...],
-//	  "failed":[{"draft_id":..., "error":...}]
+//	  "failed":[{"draft_id":..., "error":...}],
+//	  "aborted":     true,
+//	  "abort_error": {"type":..., "subtype":..., "code":..., "message":..., "hint":...}
 //	}
 //
 // failed is marked omitempty so a fully successful batch returns a clean shape
 // without an empty array.
+//
+// aborted reports an account-level abort: the failure repeats identically for
+// every draft, so the remaining drafts were not attempted and retrying the
+// batch as-is fails the same way. abort_error carries the typed error that
+// triggered the abort (same wire shape as a stderr error envelope's error
+// object) so callers can route recovery from stdout alone. A --stop-on-error
+// stop does NOT set aborted: there the failure is draft-level and the caller
+// chose to stop early.
 type batchSendOutput struct {
 	MailboxID    string        `json:"mailbox_id"`
 	Total        int           `json:"total"`
@@ -57,6 +67,8 @@ type batchSendOutput struct {
 	FailureCount int           `json:"failure_count"`
 	Sent         []sentDraft   `json:"sent"`
 	Failed       []failedDraft `json:"failed,omitempty"`
+	Aborted      bool          `json:"aborted,omitempty"`
+	AbortError   interface{}   `json:"abort_error,omitempty"`
 }
 
 // MailDraftSend is the `+draft-send` shortcut: send N existing drafts
@@ -101,9 +113,11 @@ var MailDraftSend = common.Shortcut{
 //     no empty elements).
 //  3. Loop over each draft ID, calling POST .../drafts/:id/send directly via
 //     runtime.CallAPITyped. Per-draft outcomes:
-//     - fatal err (isFatalSendErr) → return immediately (bypasses --stop-on-error).
+//     - fatal err (isFatalSendErr) → abort immediately (bypasses
+//     --stop-on-error): with earlier progress, emit the aborted ledger as the
+//     single failure result; with none, return the typed error directly.
 //     - recoverable err → append to failed[]; honor --stop-on-error.
-//     - success + automation_send_disable signal → return immediately with a
+//     - success + automation_send_disable signal → abort the same way with a
 //     failed-precondition error.
 //     - success → append to sent[].
 //  4. Emit batchSendOutput via runtime.Out.
@@ -131,13 +145,15 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 					idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(err.Error()))
 				hadProgress := out.hasProgress()
 				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
-				if hadProgress {
-					_ = emitDraftSendPartialFailure(rt, &out)
-				}
 				// Account- / mailbox-level failures (auth, permission, network,
 				// quota) will repeat identically for every remaining draft —
 				// abort immediately so the caller sees a single clear error
-				// instead of 100 redundant failed[] entries.
+				// instead of 100 redundant failed[] entries. With earlier
+				// progress the aborted ledger is the single failure result;
+				// with none, stdout stays empty and the typed error envelope is.
+				if hadProgress {
+					return emitDraftSendAborted(rt, &out, err)
+				}
 				return err
 			}
 			writeDraftSendProgressf(rt, "[%d/%d] failed draft %s: %s",
@@ -154,13 +170,14 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 				WithHint("enable automation send for this mailbox, or send the draft from the Lark client")
 			writeDraftSendProgressf(rt, "[%d/%d] aborting after draft %s: %s",
 				idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(err.Error()))
-			if out.hasProgress() {
-				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
-				_ = emitDraftSendPartialFailure(rt, &out)
-			}
 			// HTTP success (code: 0) but the backend signaled automation send
 			// is disabled — every subsequent send will fail the same way, so
-			// abort the batch with a single descriptive error.
+			// abort the batch with a single failure result: the aborted ledger
+			// when earlier drafts made progress, the typed error otherwise.
+			if out.hasProgress() {
+				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
+				return emitDraftSendAborted(rt, &out, err)
+			}
 			return err
 		}
 		s := sentDraft{DraftID: id}
@@ -248,6 +265,18 @@ func emitDraftSendPartialFailure(rt *common.RuntimeContext, out *batchSendOutput
 	out.SuccessCount = len(out.Sent)
 	out.FailureCount = len(out.Failed)
 	return rt.OutPartialFailure(*out, nil)
+}
+
+// emitDraftSendAborted emits the batch ledger as the single failure result for
+// an account-level abort: the ledger carries aborted/abort_error and the
+// returned partial-failure signal sets the exit code without a second error
+// envelope on stderr.
+func emitDraftSendAborted(rt *common.RuntimeContext, out *batchSendOutput, cause error) error {
+	out.Aborted = true
+	if typed, ok := errs.UnwrapTypedError(errs.WrapInternal(cause)); ok {
+		out.AbortError = typed
+	}
+	return emitDraftSendPartialFailure(rt, out)
 }
 
 func writeDraftSendProgressf(rt *common.RuntimeContext, format string, args ...interface{}) {

@@ -315,6 +315,14 @@ func TestMailDraftSend_StopOnError(t *testing.T) {
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
 	}
+	// A --stop-on-error stop is a caller choice over a draft-level failure,
+	// not an account-level abort: the aborted/abort_error fields stay unset.
+	if _, present := data["aborted"]; present {
+		t.Errorf("aborted should be unset for --stop-on-error, got %v", data["aborted"])
+	}
+	if _, present := data["abort_error"]; present {
+		t.Errorf("abort_error should be unset for --stop-on-error, got %v", data["abort_error"])
+	}
 }
 
 // TestMailDraftSend_FatalAborts verifies that a fatal errno (mailbox not
@@ -350,9 +358,10 @@ func TestMailDraftSend_FatalAborts(t *testing.T) {
 }
 
 // TestMailDraftSend_FatalAfterSuccessEmitsLedger verifies that a fatal error
-// after earlier side effects still emits the aggregate stdout ledger before
-// returning the fatal stderr error. This lets callers avoid blindly retrying a
-// draft that was already sent.
+// after earlier side effects emits the aborted stdout ledger as the single
+// failure result: the returned partial-failure signal sets the exit code
+// without a second error envelope, and abort_error carries the typed cause so
+// callers can avoid blindly retrying a draft that was already sent.
 func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubDraftSend(reg, "d1", map[string]interface{}{
@@ -370,14 +379,14 @@ func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 		"--yes",
 	}, f, stdout)
 	if err == nil {
-		t.Fatal("expected fatal abort error, got nil")
+		t.Fatal("expected partial-failure abort signal, got nil")
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed problem, got %T", err)
-	}
-	if p.Code != output.LarkErrMailSendQuotaUser {
-		t.Errorf("expected code = %d, got %#v", output.LarkErrMailSendQuotaUser, p)
+	// The ledger is the single failure result: the returned error must be the
+	// envelope-less partial-failure signal, not a typed error that the root
+	// dispatcher would render as a second failure envelope on stderr.
+	assertPartialFailureSignal(t, err)
+	if _, ok := errs.ProblemOf(err); ok {
+		t.Fatalf("abort signal must not carry a typed problem, got %v", err)
 	}
 
 	data := decodeDraftSendPartialEnvelopeData(t, stdout)
@@ -395,6 +404,19 @@ func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 	}
 	if got := gjsonLikeString(t, data, "failed", 0, "draft_id"); got != "d2" {
 		t.Errorf("failed[0].draft_id = %q, want d2", got)
+	}
+	if data["aborted"] != true {
+		t.Errorf("aborted = %v, want true", data["aborted"])
+	}
+	abortErr, ok := data["abort_error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("abort_error = %v, want object", data["abort_error"])
+	}
+	if abortErr["type"] != "api" {
+		t.Errorf("abort_error.type = %v, want api", abortErr["type"])
+	}
+	if abortErr["code"].(float64) != float64(output.LarkErrMailSendQuotaUser) {
+		t.Errorf("abort_error.code = %v, want %d", abortErr["code"], output.LarkErrMailSendQuotaUser)
 	}
 }
 
@@ -436,8 +458,9 @@ func TestMailDraftSend_AutomationDisabled(t *testing.T) {
 }
 
 // TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger verifies that an
-// automation-send policy stop after earlier successful sends still writes the
-// batch ledger to stdout before returning the structured fatal error.
+// automation-send policy stop after earlier successful sends emits the aborted
+// batch ledger as the single failure result, with the failed-precondition
+// cause carried in abort_error.
 func TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubDraftSend(reg, "d1", map[string]interface{}{
@@ -460,17 +483,27 @@ func TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger(t *testing.T) {
 		"--yes",
 	}, f, stdout)
 	if err == nil {
-		t.Fatal("expected automation_send_disabled error, got nil")
+		t.Fatal("expected partial-failure abort signal, got nil")
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed problem, got %T", err)
-	}
-	if p.Subtype != errs.SubtypeFailedPrecondition {
-		t.Errorf("Subtype = %v, want failed_precondition", p.Subtype)
+	assertPartialFailureSignal(t, err)
+	if _, ok := errs.ProblemOf(err); ok {
+		t.Fatalf("abort signal must not carry a typed problem, got %v", err)
 	}
 
 	data := decodeDraftSendPartialEnvelopeData(t, stdout)
+	if data["aborted"] != true {
+		t.Errorf("aborted = %v, want true", data["aborted"])
+	}
+	abortErr, ok := data["abort_error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("abort_error = %v, want object", data["abort_error"])
+	}
+	if abortErr["type"] != "validation" || abortErr["subtype"] != "failed_precondition" {
+		t.Errorf("abort_error type/subtype = %v/%v, want validation/failed_precondition", abortErr["type"], abortErr["subtype"])
+	}
+	if msg, _ := abortErr["message"].(string); !strings.Contains(msg, "outbound automation disabled") {
+		t.Errorf("abort_error.message should carry the reason, got %q", msg)
+	}
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
 	}
