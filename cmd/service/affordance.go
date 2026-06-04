@@ -10,11 +10,13 @@ import (
 	"github.com/larksuite/cli/internal/meta"
 )
 
-// methodLong composes a method command's long help: the description, the
-// affordance guidance block (when the method has one), and the pointer to the
-// full schema. Affordance sits near the top so an agent sees when-to-use and
-// few-shot examples before the flag list.
-func methodLong(description, affordance, schemaPath string) string {
+// methodLong composes a method command's long help in one place: the
+// description, the affordance guidance block (when the method has one), the
+// pointer to the full schema, and the params-only addendum (params whose flag
+// name is taken — paramFlagBinder.paramsOnlyHelp, "" when none). Affordance
+// sits near the top so an agent sees when-to-use and few-shot examples before
+// the flag list.
+func methodLong(description, affordance, schemaPath, paramsOnly string) string {
 	var b strings.Builder
 	b.WriteString(description)
 	if affordance != "" {
@@ -22,6 +24,7 @@ func methodLong(description, affordance, schemaPath string) string {
 		b.WriteString(affordance)
 	}
 	fmt.Fprintf(&b, "\n\nView parameter definitions before calling:\n  lark-cli schema %s", schemaPath)
+	b.WriteString(paramsOnly)
 	return b.String()
 }
 

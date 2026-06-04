@@ -219,7 +219,8 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	cmd := &cobra.Command{
 		Use:   m.Name,
 		Short: m.Description,
-		Long:  methodLong(m.Description, spec.affordance, spec.schemaPath),
+		// Long is assembled below, once the binder knows which params got no
+		// typed flag.
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Cmd = cmd
 			opts.Ctx = cmd.Context()
@@ -263,9 +264,10 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 
 	// Registered last so the collision guard sees the standard flags above.
 	opts.binder = newParamFlagBinder(cmd, spec.params, reserved)
-	// Surface params that got no typed flag (name taken by another flag) so the
-	// reader knows to set them via --params instead of guessing.
-	cmd.Long += opts.binder.paramsOnlyHelp()
+	// Single composition point for Long: description, affordance, schema
+	// pointer, and the binder's params-only addendum (params whose flag name is
+	// taken, reachable via --params only).
+	cmd.Long = methodLong(m.Description, spec.affordance, spec.schemaPath, opts.binder.paramsOnlyHelp())
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not
