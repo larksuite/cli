@@ -68,8 +68,8 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 	if err := validateIssuedCredential(appID, url, issued, now); err != nil {
 		return nil, err
 	}
-	ref := BuildPATRef(profile, appID, url)
-	previous, err := m.Store.Current()
+	ref := BuildPATRef(profile, appID)
+	previous, err := m.currentAppRecord(appID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +93,7 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 		return nil, err
 	}
 	if err := m.Secrets.Set(ref, issued.PAT); err != nil {
-		m.restoreAfterInitFailure(previous, previousPAT)
+		m.restoreAfterInitFailure(appID, previous, previousPAT)
 		return nil, err
 	}
 	record.Status = StatusConfirmed
@@ -103,7 +103,7 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 		} else {
 			_ = m.Secrets.Remove(ref)
 		}
-		m.restoreAfterInitFailure(previous, previousPAT)
+		m.restoreAfterInitFailure(appID, previous, previousPAT)
 		return nil, err
 	}
 	if previous != nil && previous.PATRef != "" && previous.PATRef != ref {
@@ -135,13 +135,9 @@ func (m *Manager) Remove(ctx context.Context, profile ProfileContext, appID stri
 		return nil, fmt.Errorf("acquire Git credential lock for %s: %w", appID, err)
 	}
 	defer unlockApp()
-	record, err := m.Store.Current()
+	records, err := m.Store.FindByAppID(appID, ProfileContext{})
 	if err != nil {
 		return nil, err
-	}
-	var records []CredentialRecord
-	if record != nil && record.AppID == appID {
-		records = append(records, *record)
 	}
 	result := &RemoveResult{AppID: appID, Records: records}
 	for _, record := range records {
@@ -262,11 +258,21 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 	return writeGitCredential(out, record.Username, issued.PAT)
 }
 
-func (m *Manager) restoreAfterInitFailure(existing *CredentialRecord, existingPAT string) {
+func (m *Manager) currentAppRecord(appID string) (*CredentialRecord, error) {
+	records, err := m.Store.FindByAppID(appID, ProfileContext{})
+	if err != nil || len(records) == 0 {
+		return nil, err
+	}
+	return &records[0], nil
+}
+
+func (m *Manager) restoreAfterInitFailure(appID string, existing *CredentialRecord, existingPAT string) {
 	if existing == nil {
-		current, err := m.Store.Current()
-		if err == nil && current != nil {
-			_, _ = m.Store.DeleteByURL(current.GitHTTPURL)
+		records, err := m.Store.FindByAppID(appID, ProfileContext{})
+		if err == nil {
+			for _, record := range records {
+				_, _ = m.Store.DeleteByURL(record.GitHTTPURL)
+			}
 		}
 		return
 	}

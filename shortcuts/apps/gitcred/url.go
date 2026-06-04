@@ -66,11 +66,31 @@ func normalizeHost(scheme, host string) string {
 	name, port, err := net.SplitHostPort(host)
 	if err == nil {
 		if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
-			return strings.ToLower(name)
+			return normalizeHostname(name)
 		}
-		return strings.ToLower(net.JoinHostPort(name, port))
+		return net.JoinHostPort(strings.ToLower(name), port)
+	}
+	return normalizeHostname(host)
+}
+
+func normalizeHostname(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		name := strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+		if ip := net.ParseIP(name); ip != nil && ip.To4() == nil {
+			return joinHostWithoutPort(name)
+		}
+		return host
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.To4() == nil {
+		return joinHostWithoutPort(host)
 	}
 	return host
+}
+
+func joinHostWithoutPort(host string) string {
+	joined := net.JoinHostPort(host, "")
+	return strings.TrimSuffix(joined, ":")
 }
 
 func cleanURLPath(rawPath string) string {
@@ -87,7 +107,7 @@ func cleanURLPath(rawPath string) string {
 	return path.Clean(decoded)
 }
 
-func BuildPATRef(profile ProfileContext, appID, gitHTTPURL string) string {
+func BuildPATRef(profile ProfileContext, appID string) string {
 	seed := fmt.Sprintf("%s\x00%s", profile.UserOpenID, appID)
 	sum := sha256.Sum256([]byte(seed))
 	return "app-git-pat:" + hex.EncodeToString(sum[:16])

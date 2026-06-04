@@ -102,7 +102,8 @@ func Delete(appID, key string) error {
 }
 
 // List returns the keys stored under appID, skipping subdirectories and names
-// that fail to unescape. A missing app directory yields an empty list.
+// that fail to unescape or validate after decoding. A missing app directory
+// yields an empty list.
 func List(appID string) ([]string, error) {
 	if err := checkSeg(appID, "appID"); err != nil {
 		return nil, err
@@ -121,6 +122,9 @@ func List(appID string) ([]string, error) {
 		}
 		key, err := url.PathUnescape(e.Name())
 		if err != nil {
+			continue
+		}
+		if err := checkSeg(key, "key"); err != nil {
 			continue
 		}
 		keys = append(keys, key)

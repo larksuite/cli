@@ -53,7 +53,20 @@ func (s *SecretStore) Remove(ref string) error {
 		return nil
 	}
 	if s.kc == nil {
-		return nil
+		return &errs.ConfigError{Problem: errs.Problem{
+			Category: errs.CategoryConfig,
+			Subtype:  errs.SubtypeInvalidConfig,
+			Message:  "local keychain is unavailable",
+			Hint:     "make sure the system credential store is available, then retry lark-cli apps +git-credential-remove",
+		}}
 	}
-	return s.kc.Remove(KeychainService, ref)
+	if err := s.kc.Remove(KeychainService, ref); err != nil {
+		return &errs.ConfigError{Problem: errs.Problem{
+			Category: errs.CategoryConfig,
+			Subtype:  errs.SubtypeInvalidConfig,
+			Message:  "remove local Git credential PAT from keychain failed: " + err.Error(),
+			Hint:     "make sure the system credential store is available, then retry lark-cli apps +git-credential-remove",
+		}, Cause: err}
+	}
+	return nil
 }

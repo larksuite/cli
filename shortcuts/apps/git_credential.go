@@ -35,7 +35,7 @@ const gitCredentialIssuePath = apiBasePath + "/apps/:app_id/git_info"
 var AppsGitCredentialInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-init",
-	Description: "Initialize Git credentials for a Miaoda app repository",
+	Description: "Initialize Git credentials and a URL-scoped Git helper for a Miaoda app repository",
 	Risk:        "write",
 	Scopes:      []string{"spark:app:read"},
 	AuthTypes:   []string{"user"},
@@ -100,7 +100,7 @@ var AppsGitCredentialInit = common.Shortcut{
 var AppsGitCredentialRemove = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-remove",
-	Description: "Remove local Git credentials for a Miaoda app repository",
+	Description: "Remove local Git credentials and the URL-scoped Git helper for a Miaoda app repository",
 	Risk:        "write",
 	Scopes:      []string{},
 	AuthTypes:   []string{"user"},
@@ -180,6 +180,9 @@ var AppsGitCredentialList = common.Shortcut{
 				fmt.Fprintf(tw, "%s\t%s\t%s\n", record.AppID, record.GitHTTPURL, gitCredentialDisplayStatus(record.Status))
 			}
 			_ = tw.Flush()
+			fmt.Fprintln(w)
+			fmt.Fprintln(w, "Profile switches do not remove old URL-scoped Git helpers automatically.")
+			fmt.Fprintln(w, "Cleanup: lark-cli apps +git-credential-remove --app-id <app_id>")
 		})
 		return nil
 	},

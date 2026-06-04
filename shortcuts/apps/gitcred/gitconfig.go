@@ -22,19 +22,23 @@ type GlobalGitConfig struct {
 }
 
 func (g GlobalGitConfig) SetHelper(ctx context.Context, gitHTTPURL, appID string) error {
+	normalizedURL, err := NormalizeGitHTTPURL(gitHTTPURL)
+	if err != nil {
+		return err
+	}
 	appID = strings.TrimSpace(appID)
 	if err := validate.ResourceName(appID, "appID"); err != nil {
 		return err
 	}
 	helper := g.helperCommand(appID)
-	helperKey := gitCredentialKey(gitHTTPURL, "helper")
-	useHTTPPathKey := gitCredentialKey(gitHTTPURL, "useHttpPath")
+	helperKey := gitCredentialKey(normalizedURL, "helper")
+	useHTTPPathKey := gitCredentialKey(normalizedURL, "useHttpPath")
 	previousHelper, hadHelper, err := gitConfigGet(ctx, helperKey)
 	if err != nil {
 		return err
 	}
 	if hadHelper && previousHelper != helper && !g.isManagedHelper(previousHelper) {
-		return fmt.Errorf("git credential helper already configured for %s; refusing to overwrite non-lark helper", gitHTTPURL)
+		return fmt.Errorf("git credential helper already configured for %s; refusing to overwrite non-lark helper", normalizedURL)
 	}
 	if err := exec.CommandContext(ctx, "git", "config", "--global", helperKey, helper).Run(); err != nil {
 		return err
@@ -51,8 +55,12 @@ func (g GlobalGitConfig) SetHelper(ctx context.Context, gitHTTPURL, appID string
 }
 
 func (g GlobalGitConfig) UnsetHelper(ctx context.Context, gitHTTPURL string) error {
-	helperKey := gitCredentialKey(gitHTTPURL, "helper")
-	useHTTPPathKey := gitCredentialKey(gitHTTPURL, "useHttpPath")
+	normalizedURL, err := NormalizeGitHTTPURL(gitHTTPURL)
+	if err != nil {
+		return err
+	}
+	helperKey := gitCredentialKey(normalizedURL, "helper")
+	useHTTPPathKey := gitCredentialKey(normalizedURL, "useHttpPath")
 	helper, found, err := gitConfigGet(ctx, helperKey)
 	if err != nil {
 		return err

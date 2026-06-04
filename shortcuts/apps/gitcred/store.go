@@ -12,7 +12,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // git credential metadata is CLI config-dir state, not user file I/O.
 )
@@ -61,7 +60,9 @@ func (s *Store) Load() (*CredentialFile, error) {
 	}
 	var file CredentialFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, output.Errorf(output.ExitAPI, "config", "invalid %s: %s", MetadataFilename, err)
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig, "invalid %s: %s", MetadataFilename, err).
+			WithHint("the local Git credential metadata is damaged; rerun `lark-cli apps +git-credential-init --app-id <app_id>` after backing up or removing the damaged app metadata").
+			WithCause(err)
 	}
 	if file.Version == 0 {
 		file.Version = CurrentCredentialVersion

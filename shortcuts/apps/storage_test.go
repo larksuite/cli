@@ -148,6 +148,25 @@ func TestStorageListSkipsSubdirs(t *testing.T) {
 	}
 }
 
+func TestStorageListSkipsInvalidDecodedKeys(t *testing.T) {
+	dir := storageTempDir(t)
+	if err := Write("app_a", "git.json", []byte("x")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	for _, name := range []string{"%zz", "%2E", "%2E%2E", "bad%2F..%2Fkey"} {
+		if err := os.WriteFile(filepath.Join(dir, "spark", "app_a", name), []byte("x"), 0600); err != nil {
+			t.Fatalf("write polluted key %s: %v", name, err)
+		}
+	}
+	got, err := List("app_a")
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0] != "git.json" {
+		t.Errorf("want [git.json], got %v", got)
+	}
+}
+
 func TestStorageEscapesAppIDAndKey(t *testing.T) {
 	dir := storageTempDir(t)
 	const appID, key = "a/b", "x/y"

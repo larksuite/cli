@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestMain(m *testing.M) {
@@ -368,7 +370,7 @@ func TestManagerInitRemovesPreviousPATRefAfterLoginChanges(t *testing.T) {
 	if _, err := manager.Init(context.Background(), oldProfile, "app_xxx"); err != nil {
 		t.Fatalf("initial Init returned error: %v", err)
 	}
-	oldRef := BuildPATRef(oldProfile, "app_xxx", "https://example.com/git/u/app.git")
+	oldRef := BuildPATRef(oldProfile, "app_xxx")
 
 	newProfile := ProfileContext{Profile: "default", ProfileAppID: "cli_xxx", UserOpenID: "ou_new"}
 	issuer.next = &IssuedCredential{
@@ -379,12 +381,50 @@ func TestManagerInitRemovesPreviousPATRefAfterLoginChanges(t *testing.T) {
 	if _, err := manager.Init(context.Background(), newProfile, "app_xxx"); err != nil {
 		t.Fatalf("second Init returned error: %v", err)
 	}
-	newRef := BuildPATRef(newProfile, "app_xxx", "https://example.com/git/u/app.git")
+	newRef := BuildPATRef(newProfile, "app_xxx")
 	if got := kc.values[oldRef]; got != "" {
 		t.Fatalf("old keychain PAT = %q, want removed", got)
 	}
 	if got := kc.values[newRef]; got != "new-pat" {
 		t.Fatalf("new keychain PAT = %q, want new-pat", got)
+	}
+}
+
+func TestManagerInitDoesNotTreatOtherAppRecordAsRefresh(t *testing.T) {
+	now := time.Unix(1780000000, 0)
+	kc := newFakeKeychain()
+	storage := newFakeAppStorage()
+	otherStore := NewAppStore("app_other", storage)
+	otherRecord := CredentialRecord{
+		AppID:      "app_other",
+		GitHTTPURL: "https://example.com/git/u/other.git",
+		PATRef:     "other-ref",
+		Status:     StatusConfirmed,
+		ExpiresAt:  now.Add(24 * time.Hour).Unix(),
+	}
+	if err := otherStore.Upsert(otherRecord); err != nil {
+		t.Fatalf("seed other app record: %v", err)
+	}
+	kc.values[otherRecord.PATRef] = "other-pat"
+	manager := NewManager(NewAppStore("app_xxx", storage), NewSecretStore(kc), nil, &fakeIssuer{next: &IssuedCredential{
+		GitHTTPURL: "https://example.com/git/u/app.git",
+		PAT:        "app-pat",
+		ExpiresAt:  now.Add(48 * time.Hour).Unix(),
+	}})
+	manager.Now = func() time.Time { return now }
+
+	result, err := manager.Init(context.Background(), testProfile(), "app_xxx")
+	if err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+	if result.Refreshed {
+		t.Fatalf("Init marked refreshed with only another app record present")
+	}
+	if got := kc.values[otherRecord.PATRef]; got != "other-pat" {
+		t.Fatalf("other app PAT = %q, want untouched", got)
+	}
+	if record, err := otherStore.FindByURL(otherRecord.GitHTTPURL); err != nil || record == nil {
+		t.Fatalf("other app record = %#v, %v; want untouched", record, err)
 	}
 }
 
@@ -879,6 +919,31 @@ func TestGlobalGitConfigSetAndUnsetHelper(t *testing.T) {
 	}
 }
 
+func TestGlobalGitConfigNormalizesCredentialKeyURL(t *testing.T) {
+	logPath := installFakeGit(t, 0)
+	cfg := GlobalGitConfig{HelperCommand: "!custom-helper"}
+	rawURL := "HTTPS://[2001:DB8::1]:443//repo.git?x=1"
+
+	if err := cfg.SetHelper(context.Background(), rawURL, "app_xxx"); err != nil {
+		t.Fatalf("SetHelper returned error: %v", err)
+	}
+	if err := cfg.UnsetHelper(context.Background(), rawURL); err != nil {
+		t.Fatalf("UnsetHelper returned error: %v", err)
+	}
+
+	log := readFileString(t, logPath)
+	for _, want := range []string{
+		"config --global credential.https://[2001:db8::1]/repo.git.helper !custom-helper",
+		"config --global credential.https://[2001:db8::1]/repo.git.useHttpPath true",
+		"config --global --unset credential.https://[2001:db8::1]/repo.git.helper",
+		"config --global --unset credential.https://[2001:db8::1]/repo.git.useHttpPath",
+	} {
+		if !strings.Contains(log, want) {
+			t.Fatalf("git log missing normalized key %q in:\n%s", want, log)
+		}
+	}
+}
+
 func TestGlobalGitConfigRollsBackHelperWhenUseHttpPathFails(t *testing.T) {
 	logPath := installFakeGit(t, 7)
 	err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "app_xxx")
@@ -1171,6 +1236,11 @@ func TestStoreLoadRejectsInvalidAndNewerVersions(t *testing.T) {
 	}
 	if _, err := NewStoreAt(path).Load(); err == nil {
 		t.Fatal("Load invalid json returned nil error")
+	} else {
+		var cfgErr *errs.ConfigError
+		if !errors.As(err, &cfgErr) {
+			t.Fatalf("Load invalid json error = %T %v, want ConfigError", err, err)
+		}
 	}
 	if err := os.WriteFile(path, []byte(`{"version":99,"credentials":{}}`), 0600); err != nil {
 		t.Fatalf("write newer version: %v", err)
@@ -1229,6 +1299,8 @@ func TestNormalizeGitHTTPURLBranches(t *testing.T) {
 		{name: "empty host", raw: "https:///repo.git", wantErr: true},
 		{name: "http default port", raw: "http://EXAMPLE.com:80/repo.git/", want: "http://example.com/repo.git"},
 		{name: "custom port", raw: "https://Example.com:8443//repo.git?x=1", want: "https://example.com:8443/repo.git"},
+		{name: "ipv6 default port", raw: "HTTPS://[2001:DB8::1]:443//repo.git", want: "https://[2001:db8::1]/repo.git"},
+		{name: "ipv6 custom port", raw: "https://[2001:db8::1]:8443/repo.git", want: "https://[2001:db8::1]:8443/repo.git"},
 		{name: "root path", raw: "https://Example.com", want: "https://example.com/"},
 	}
 	for _, tt := range tests {
@@ -1284,14 +1356,19 @@ func TestSecretStoreBranches(t *testing.T) {
 	if len(kc.removed) != 0 {
 		t.Fatalf("keychain removals for empty ref = %#v, want none", kc.removed)
 	}
-	if err := NewSecretStore(nil).Remove("ref"); err != nil {
-		t.Fatalf("nil keychain SecretStore Remove returned error: %v", err)
+	if err := NewSecretStore(nil).Remove("ref"); err == nil {
+		t.Fatal("nil keychain SecretStore Remove returned nil error")
 	}
 	if got, err := NewSecretStore(nil).Get("ref"); err != nil || got != "" {
 		t.Fatalf("nil keychain SecretStore Get = %q, %v", got, err)
 	}
 	if err := NewSecretStore(newFakeKeychain()).Set("", "pat"); err == nil {
 		t.Fatal("SecretStore.Set empty ref returned nil error")
+	}
+	kc.removeErr = errors.New("keychain remove failed")
+	var cfgErr *errs.ConfigError
+	if err := NewSecretStore(kc).Remove("ref"); err == nil || !errors.As(err, &cfgErr) {
+		t.Fatalf("SecretStore.Remove keychain error = %T %v, want ConfigError", err, err)
 	}
 }
 
@@ -1541,6 +1618,13 @@ func TestManagerRemoveValidationNoMatchAndErrors(t *testing.T) {
 	}
 	if _, err := manager.Remove(context.Background(), testProfile(), "app_xxx"); err == nil {
 		t.Fatal("Remove with keychain error returned nil error")
+	}
+	record, err = manager.Store.Current()
+	if err != nil {
+		t.Fatalf("Current after keychain remove error returned error: %v", err)
+	}
+	if record == nil {
+		t.Fatalf("metadata should stay after keychain remove error")
 	}
 }
 

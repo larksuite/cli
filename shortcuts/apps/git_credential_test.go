@@ -354,6 +354,8 @@ func TestAppsGitCredentialListScansAllLocalAppStorage(t *testing.T) {
 		"app_b",
 		"https://example.com/git/u/b.git",
 		gitcred.ListStatusValid,
+		"Profile switches do not remove old URL-scoped Git helpers automatically.",
+		"Cleanup: lark-cli apps +git-credential-remove --app-id <app_id>",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("list pretty stdout missing %q in:\n%s", want, got)
