@@ -24,7 +24,7 @@ const defaultInitBranch = "sprint/default"
 
 // Fixed init commit subjects. Constants — never interpolate user input. The
 // empty-repo (`app init`) path splits the scaffolded tree into two commits;
-// the non-empty (`app upgrade`) path stays a single commit.
+// the non-empty (`app sync`) path stays a single commit.
 const (
 	commitMsgAppCode   = "chore: initialize app project code"
 	commitMsgAppConfig = "chore: initialize miaoda app config"
@@ -86,7 +86,7 @@ var AppsInit = common.Shortcut{
 			Desc("Initialize Miaoda app repository (credential-init, clone, checkout, npx code-init, optional commit/push)").
 			Set("credential_init", fmt.Sprintf("apps +git-credential-init --app-id %s --format json", appID)).
 			Set("checkout", "git checkout "+defaultInitBranch).
-			Set("scaffold", fmt.Sprintf("empty repo: npx %s app init --template %s --app-id %s; non-empty: npx %s app upgrade + .spark/meta.json app_id patch + conditional skills sync", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
+			Set("scaffold", fmt.Sprintf("empty repo: npx -y --prefer-online %s app init --template %s --app-id %s; non-empty: npx -y --prefer-online %s app sync + .spark/meta.json app_id patch + conditional skills sync", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
 			Set("commit_push", "conditional: git add -A + commit + push origin "+defaultInitBranch+" when the working tree has changes").
 			Set("template", template)
 		dir, err := resolveTargetPath(rctx, appID)
@@ -152,7 +152,7 @@ func resolveTargetPath(rctx *common.RuntimeContext, appID string) (string, error
 	if err := charcheck.RejectControlChars(raw, "--dir"); err != nil {
 		return "", output.ErrValidation("%v", err)
 	}
-	abs, err := filepath.Abs(raw)
+	abs, err := filepath.Abs(raw) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); raw is control-char-validated above, and FileIO.ResolvePath cannot resolve a clone target (it rejects absolute paths).
 	if err != nil {
 		return "", output.ErrValidation("--dir cannot be resolved: %v", err)
 	}
@@ -163,7 +163,7 @@ func resolveTargetPath(rctx *common.RuntimeContext, appID string) (string, error
 // a non-directory. A non-existent path is fine (git clone creates it). Uses
 // Lstat so a symlinked target is rejected rather than followed.
 func ensureEmptyDir(dir string) error {
-	info, err := os.Lstat(dir)
+	info, err := os.Lstat(dir) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); dir is the validated clone target, and lstat is required to reject a symlink (FileIO has no Lstat; its Stat follows symlinks).
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -176,7 +176,7 @@ func ensureEmptyDir(dir string) error {
 	if !info.IsDir() {
 		return output.ErrValidation("--dir exists and is not a directory: %q", dir)
 	}
-	entries, err := os.ReadDir(dir)
+	entries, err := os.ReadDir(dir) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); dir is the validated clone target, and FileIO has no ReadDir.
 	if err != nil {
 		return output.ErrValidation("--dir cannot be read: %v", err)
 	}
@@ -190,7 +190,7 @@ func ensureEmptyDir(dir string) error {
 // repo, detected by the presence of <dir>/.spark/meta.json (regardless of its
 // app_id value). Used to short-circuit +init into a friendly no-op.
 func isAlreadyInitialized(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, metaRelPath))
+	info, err := os.Stat(filepath.Join(dir, metaRelPath)) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Stat rejects absolute paths.
 	return err == nil && !info.IsDir()
 }
 
@@ -199,7 +199,7 @@ func isAlreadyInitialized(dir string) bool {
 // the file does not exist, this is a no-op (we never create it).
 func ensureMetaAppID(dir, appID string) error {
 	path := filepath.Join(dir, metaRelPath)
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Open rejects absolute paths.
 	if os.IsNotExist(err) {
 		return nil
 	}
@@ -221,7 +221,7 @@ func ensureMetaAppID(dir, appID string) error {
 	if err != nil {
 		return output.Errorf(output.ExitAPI, "meta_write", "marshal %s failed: %v", metaRelPath, err)
 	}
-	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil {
+	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Save rejects absolute paths.
 		return output.Errorf(output.ExitAPI, "meta_write", "write %s failed: %v", metaRelPath, err)
 	}
 	return nil
@@ -229,7 +229,7 @@ func ensureMetaAppID(dir, appID string) error {
 
 // hasSteeringSkills reports whether <dir>/.agent/skills/steering exists as a dir.
 func hasSteeringSkills(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, steeringRelPath))
+	info, err := os.Stat(filepath.Join(dir, steeringRelPath)) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Stat rejects absolute paths.
 	return err == nil && info.IsDir()
 }
 
@@ -257,7 +257,7 @@ func isEmptyRepo(ctx context.Context, dir string) (bool, error) {
 }
 
 // runScaffold runs the npx scaffolding step inside the cloned repo (cwd=dir).
-// Empty repo -> `app init`; non-empty -> `app upgrade` + meta app_id patch +
+// Empty repo -> `app init`; non-empty -> `app sync` + meta app_id patch +
 // conditional `skills sync`. Returns "init" or "upgrade".
 func runScaffold(ctx context.Context, dir, appID, template string) (string, error) {
 	empty, err := isEmptyRepo(ctx, dir)
@@ -268,19 +268,19 @@ func runScaffold(ctx context.Context, dir, appID, template string) (string, erro
 		// isEmptyRepo treats a repo with no tracked files — or only the backend's
 		// seed README.md — as empty. If other seed files (e.g. .gitignore) can
 		// appear, extend isEmptyRepo's allow-list accordingly.
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", miaodaCLIPkg, "app", "init", "--template", template, "--app-id", appID); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", template, "--app-id", appID); err != nil {
 			return "", output.Errorf(output.ExitAPI, "npx_app_init", "npx app init failed: %s", gitErr(stderr, err))
 		}
 		return scaffoldKindInit, nil
 	}
-	if _, stderr, err := initRunner.Run(ctx, dir, "npx", miaodaCLIPkg, "app", "upgrade"); err != nil {
-		return "", output.Errorf(output.ExitAPI, "npx_app_upgrade", "npx app upgrade failed: %s", gitErr(stderr, err))
+	if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "app", "sync"); err != nil {
+		return "", output.Errorf(output.ExitAPI, "npx_app_sync", "npx app sync failed: %s", gitErr(stderr, err))
 	}
 	if err := ensureMetaAppID(dir, appID); err != nil {
 		return "", err
 	}
 	if !hasSteeringSkills(dir) {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", miaodaCLIPkg, "skills", "sync"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "skills", "sync"); err != nil {
 			return "", output.Errorf(output.ExitAPI, "npx_skills_sync", "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}

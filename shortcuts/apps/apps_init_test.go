@@ -263,8 +263,8 @@ func TestRunScaffold_EmptyRepo(t *testing.T) {
 			if err != nil || kind != "init" {
 				t.Fatalf("ls=%q kind=%q err=%v, want init", ls, kind, err)
 			}
-			c := findCall(f.calls, "npx", miaodaCLIPkg)
-			if c == nil || !containsAll(c, "app", "init", "--template", "nestjs-react-fullstack", "--app-id", "app_x") {
+			c := findCall(f.calls, "npx", "-y")
+			if c == nil || !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", "nestjs-react-fullstack", "--app-id", "app_x") {
 				t.Errorf("app init not invoked with expected args: %v", f.calls)
 			}
 		})
@@ -279,11 +279,11 @@ func TestRunScaffold_NonEmpty_SyncsWhenNoSteering(t *testing.T) {
 	if err != nil || kind != "upgrade" {
 		t.Fatalf("kind=%q err=%v, want upgrade", kind, err)
 	}
-	if findCallArg(f.calls, "npx", "app", "upgrade") == nil {
-		t.Error("app upgrade not invoked")
+	if c := findCallArg(f.calls, "npx", "app", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online") {
+		t.Error("app sync not invoked with --prefer-online")
 	}
-	if findCallArg(f.calls, "npx", "skills", "sync") == nil {
-		t.Error("skills sync should run when steering dir absent")
+	if c := findCallArg(f.calls, "npx", "skills", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online") {
+		t.Error("skills sync should run with --prefer-online when steering dir absent")
 	}
 }
 
@@ -302,8 +302,8 @@ func TestRunScaffold_NonEmpty_SkipsSyncWhenSteeringExists(t *testing.T) {
 
 func TestRunScaffold_AppInitFailure(t *testing.T) {
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{
-		"git ls-files":        {stdout: ""},
-		"npx " + miaodaCLIPkg: {stderr: "boom", err: errors.New("exit 1")},
+		"git ls-files": {stdout: ""},
+		"npx -y":       {stderr: "boom", err: errors.New("exit 1")},
 	}}
 	withFakeRunner(t, f)
 	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "nestjs-react-fullstack"); err == nil {
@@ -337,10 +337,10 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 	}
 	// --template is omitted here, so resolveTemplate falls back to
 	// defaultTemplate and `app init` must still receive --template nestjs-react-fullstack.
-	c := findCall(f.calls, "npx", miaodaCLIPkg)
+	c := findCall(f.calls, "npx", "-y")
 	if c == nil {
 		t.Error("npx scaffold not invoked")
-	} else if !containsAll(c, "app", "init", "--template", defaultTemplate, "--app-id", "app_x") {
+	} else if !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", defaultTemplate, "--app-id", "app_x") {
 		t.Errorf("app init missing expected --template fallback args: %v", c)
 	}
 }
@@ -422,7 +422,7 @@ func TestAppsInit_DirtyTreeCommitPush(t *testing.T) {
 		"credential-init": credInitOK("http://u:t@h/app_x.git"),
 		"git clone":       {},
 		"git checkout":    {},
-		"git ls-files":    {stdout: "src/x.ts\n"}, // non-empty repo -> app upgrade scaffold
+		"git ls-files":    {stdout: "src/x.ts\n"}, // non-empty repo -> app sync scaffold
 		"git status":      {stdout: " M file.txt"},
 	}}
 	withFakeRunner(t, f)
@@ -1006,7 +1006,7 @@ func TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade(t *testing.T) {
 	gitMust(t, dir, "commit", "-q", "-m", "baseline")
 	baseline := strings.TrimSpace(gitMust(t, dir, "rev-parse", "HEAD"))
 
-	// Simulate `app upgrade`: a modified app file, a patched .spark config, and an
+	// Simulate `app sync`: a modified app file, a patched .spark config, and an
 	// IGNORED .agent dir produced by `skills sync`.
 	mustWrite(t, filepath.Join(dir, "src", "old.ts"), "export const old = 1\n")
 	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {

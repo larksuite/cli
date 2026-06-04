@@ -2,7 +2,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-初始化妙搭应用的**本地开发仓库**。这是一个编排命令（orchestrator）：先解析目标目录 → **若目录已初始化则友好 no-op 直接返回** → 检查 `git` / `npx` 依赖 → 调 `apps +git-credential-init` 签发带凭据的仓库地址 → `git clone` → 切到 `sprint/default` 分支 → 跑 npx 代码初始化（空仓库 `app init`，非空仓库 `app upgrade` + 补 `.spark/meta.json` 的 `app_id` + 按需 `skills sync`）→ 若工作区有改动则提交并 `git push origin sprint/default`（**空仓库初始化拆成两次提交：先应用项目代码、再妙搭配置**；非空仓库单次提交），工作区干净则跳过 commit/push。返回本地克隆路径。
+初始化妙搭应用的**本地开发仓库**。这是一个编排命令（orchestrator）：先解析目标目录 → **若目录已初始化则友好 no-op 直接返回** → 检查 `git` / `npx` 依赖 → 调 `apps +git-credential-init` 签发带凭据的仓库地址 → `git clone` → 切到 `sprint/default` 分支 → 跑 npx 代码初始化（空仓库 `app init`，非空仓库 `app sync` + 补 `.spark/meta.json` 的 `app_id` + 按需 `skills sync`）→ 若工作区有改动则提交并 `git push origin sprint/default`（**空仓库初始化拆成两次提交：先应用项目代码、再妙搭配置**；非空仓库单次提交），工作区干净则跳过 commit/push。返回本地克隆路径。
 
 > ⚠️ **跑 `+init` 前 MUST 先问用户「clone 到哪」，不得自行假定路径：** `+init` 会把仓库克隆到本地磁盘。用户只说「初始化到本地」而没给目录时，**你的第一句回复必须是反问目标目录**，拿到答复后再用 `--dir` 传入（接受绝对 / 相对路径）；**在确认前不得开始授权 / 探测 / 执行任何后续步骤**。即使用户表示「随便 / 用默认」，也要等这句确认——**禁止**把「当前目录」「当前目录附近」「`./<app-id>`」之类假定值直接塞进下游调用。
 >
@@ -34,7 +34,7 @@ lark-cli apps +init --app-id app_xxx --dry-run
 |---|---|---|
 | `--app-id <id>` | ✅ | 妙搭应用 ID；缺失时 Validate 阶段以结构化 `validation` 错误退出（exit code 2），**不是**纯文本错误 |
 | `--dir <path>` | ❌ | 克隆目标目录，默认 `./<app-id>`。**接受绝对路径或相对路径**（不再强制 cwd 内）；只拒绝控制字符。目标目录是**符号链接**、或已存在且**非空**会被拒绝（不存在则由 git clone 创建）。**例外：** 目标目录若已是初始化过的妙搭仓库（含 `.spark/meta.json`），即使非空也不拒绝，而是走「已初始化 no-op」（见下） |
-| `--template <tpl>` | ❌ | 空仓库脚手架（`app init`）使用的模板，**可选、无硬编码默认**：显式传入则用传入值；**省略时未来按 app 技术栈派生**（按 app_id 经 apps API 查到应用、再把技术栈经枚举映射到模板，**尚未实现**），**在该能力落地前省略时回退到 `nestjs-react-fullstack`**。非空仓库走 `app upgrade`，不使用该模板 |
+| `--template <tpl>` | ❌ | 空仓库脚手架（`app init`）使用的模板，**可选、无硬编码默认**：显式传入则用传入值；**省略时未来按 app 技术栈派生**（按 app_id 经 apps API 查到应用、再把技术栈经枚举映射到模板，**尚未实现**），**在该能力落地前省略时回退到 `nestjs-react-fullstack`**。非空仓库走 `app sync`，不使用该模板 |
 | `--format <fmt>` | ❌ | 输出格式，默认 `json` |
 | `--dry-run` | ❌ | 仅打印计划步骤，不执行 |
 
@@ -116,7 +116,7 @@ lark-cli apps +init --app-id app_xxx --dry-run
 | `pushed` | 是否 push 成功（工作区干净时为 `false`；commit 成功但 push 失败时为 `committed=true, pushed=false` 并带 `git_push` 错误） |
 | `message` | 固定的成功提示文案 |
 
-错误 `type` 取值随失败阶段不同：`validation`（参数 / 路径 / repository_url scheme 非 http(s)）、`dependency`（PATH 上找不到 `git` 或 `npx`）、`credential_init`（凭据签发失败或返回不可解析）、`git_clone` / `git_checkout` / `git_status` / `git_add` / `git_commit` / `git_push`（对应 git 步骤失败）、`git_ls_files`（探测空仓库时 `git ls-files` 失败）、`npx_app_init` / `npx_app_upgrade` / `npx_skills_sync`（对应 npx 脚手架步骤失败）、`meta_write`（读写 / 解析 `.spark/meta.json` 失败）。优先转述 `error.hint`，为空时退回 `error.message`。
+错误 `type` 取值随失败阶段不同：`validation`（参数 / 路径 / repository_url scheme 非 http(s)）、`dependency`（PATH 上找不到 `git` 或 `npx`）、`credential_init`（凭据签发失败或返回不可解析）、`git_clone` / `git_checkout` / `git_status` / `git_add` / `git_commit` / `git_push`（对应 git 步骤失败）、`git_ls_files`（探测空仓库时 `git ls-files` 失败）、`npx_app_init` / `npx_app_sync` / `npx_skills_sync`（对应 npx 脚手架步骤失败）、`meta_write`（读写 / 解析 `.spark/meta.json` 失败）。优先转述 `error.hint`，为空时退回 `error.message`。
 
 ## --dry-run 行为
 
@@ -129,9 +129,9 @@ lark-cli apps +init --app-id app_xxx --dry-run
 ## 前置条件与注意事项
 
 - **`git` 和 `npx` 都必须在 PATH 上**：缺任一个都以结构化 `dependency` 错误退出（缺 `git` 时 hint 为 `install git and ensure it is on your PATH`；缺 `npx` 时提示安装 Node.js）。`npx` 用于跑妙搭脚手架（`@lark-apaas/miaoda-cli@alpha`）。
-- **npx 脚手架**：clone + checkout 后，`+init` 在仓库内跑脚手架。**空仓库**跑 `npx @lark-apaas/miaoda-cli@alpha app init --template <tpl> --app-id <id>`（`scaffold:"init"`）；这里的「空」是 README 感知的：后端给新建应用仓库种了一个默认空 `README.md`，所以判定规则为——`git ls-files` **列不出任何文件**，**或仅列出根目录的 `README.md`**（精确匹配根目录 `README.md`，`docs/README.md`、`readme.md` 不算），即视为空仓库；除此之外任何被跟踪的文件都算**非空**。**非空仓库**跑 `npx ... app upgrade`，随后在 `.spark/meta.json` 存在且缺 `app_id` 时补上该字段（已存在则不动），再在缺 `.agent/skills/steering` 目录时跑 `npx ... skills sync`（`scaffold:"upgrade"`）。
+- **npx 脚手架**：clone + checkout 后，`+init` 在仓库内跑脚手架。**空仓库**跑 `npx -y --prefer-online @lark-apaas/miaoda-cli@alpha app init --template <tpl> --app-id <id>`（`scaffold:"init"`）；这里的「空」是 README 感知的：后端给新建应用仓库种了一个默认空 `README.md`，所以判定规则为——`git ls-files` **列不出任何文件**，**或仅列出根目录的 `README.md`**（精确匹配根目录 `README.md`，`docs/README.md`、`readme.md` 不算），即视为空仓库；除此之外任何被跟踪的文件都算**非空**。**非空仓库**跑 `npx -y --prefer-online ... app sync`，随后在 `.spark/meta.json` 存在且缺 `app_id` 时补上该字段（已存在则不动），再在缺 `.agent/skills/steering` 目录时跑 `npx -y --prefer-online ... skills sync`（`scaffold:"upgrade"`）。所有 npx 脚手架命令都带 `-y --prefer-online`，自动确认安装并强制从 registry 拉取最新版而非复用本地缓存。
 - **依赖 `apps +git-credential-init`**：`+init` 通过 shell out 调用同一个 lark-cli 可执行文件去跑 `apps +git-credential-init --app-id <id> --format json`（设置了 `--as` 时会透传），从其 `data.repository_url` 取仓库地址，再用它 `git clone`。运行时若凭据签发失败或远端不可达，`+init` 在此步返回 `credential_init` 结构化错误。
-- **commit message 固定且按场景拆分**：commit 主题是固定常量、绝不拼接用户输入。**空仓库初始化**（`app init`）把脚手架产物拆成两次提交——`chore: initialize app project code`（`.spark/`、`.agent/` 之外的应用代码）+ `chore: initialize miaoda app config`（`.spark/`、`.agent/`）；某一组无改动则跳过那一条，不产生空提交。**非空仓库**（`app upgrade`）单次提交 `chore: initialize miaoda app repository`。每次 commit 都跑 `git commit --no-verify`，以跳过脚手架模板可能携带的 pre-commit / commit-msg 钩子（仅跳过本地钩子；随后的 `git push` **不带** `--no-verify`）。
+- **commit message 固定且按场景拆分**：commit 主题是固定常量、绝不拼接用户输入。**空仓库初始化**（`app init`）把脚手架产物拆成两次提交——`chore: initialize app project code`（`.spark/`、`.agent/` 之外的应用代码）+ `chore: initialize miaoda app config`（`.spark/`、`.agent/`）；某一组无改动则跳过那一条，不产生空提交。**非空仓库**（`app sync`）单次提交 `chore: initialize miaoda app repository`。每次 commit 都跑 `git commit --no-verify`，以跳过脚手架模板可能携带的 pre-commit / commit-msg 钩子（仅跳过本地钩子；随后的 `git push` **不带** `--no-verify`）。
 - **repository_url 仅接受 http(s)**：从 `+git-credential-init` 拿到的地址若不是 `http://` / `https://`（如 `ssh://`、`ext::`、`file://`）会被直接拒绝（`validation` 错误），以防危险的 git transport 与参数注入。
 - **不要**原样把 envelope JSON 复述给用户。
 
