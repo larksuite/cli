@@ -352,6 +352,8 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 ### quota_details
 
   - `get` — 获取当前用户的容量信息，包含各业务使用量、租户配额是否超限、用户配额、所在部门配额
+    - 仅支持 `--as user`，不要使用默认的 bot 身份
+    - `quota_detail_id` 传当前用户的 `user_id`
 
 ## 权限表
 
@@ -382,3 +384,5 @@ lark-cli drive <resource> <method> [flags] # 调用 API
 | `file.view_records.list`                       | `drive:file:view_record:readonly`    |
 | `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create`       |
 | `quota_details.get`                            | `drive:quota_detail:read_one`        |
+
+> `quota_details.get` 是 user-only OpenAPI：调用时必须显式传 `--as user`，且 `quota_detail_id` 应填写当前用户的 `user_id`。
