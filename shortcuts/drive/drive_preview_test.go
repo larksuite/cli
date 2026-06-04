@@ -401,6 +401,9 @@ func TestDrivePreviewDryRunIncludesVersionAndMode(t *testing.T) {
 		t.Fatalf("requested_type=%v, want image", got)
 	}
 	api, _ := data["api"].([]interface{})
+	if len(api) != 2 {
+		t.Fatalf("len(api)=%d, want 2", len(api))
+	}
 	call, _ := api[0].(map[string]interface{})
 	if got := call["method"]; got != "POST" {
 		t.Fatalf("method=%v, want POST", got)
@@ -411,6 +414,20 @@ func TestDrivePreviewDryRunIncludesVersionAndMode(t *testing.T) {
 	body, _ := call["body"].(map[string]interface{})
 	if got := body["version"]; got != "7" {
 		t.Fatalf("body.version=%v, want 7", got)
+	}
+	downloadCall, _ := api[1].(map[string]interface{})
+	if got := downloadCall["method"]; got != "GET" {
+		t.Fatalf("download method=%v, want GET", got)
+	}
+	if got := downloadCall["url"]; got != "/open-apis/drive/v1/medias/file_preview/preview_download" {
+		t.Fatalf("download url=%v, want preview_download", got)
+	}
+	params, _ := downloadCall["params"].(map[string]interface{})
+	if got := params["preview_type"]; got != "<selected type_code from preview_result>" {
+		t.Fatalf("download params.preview_type=%v, want placeholder", got)
+	}
+	if got := params["version"]; got != "7" {
+		t.Fatalf("download params.version=%v, want 7", got)
 	}
 }
 
@@ -429,6 +446,28 @@ func TestDrivePreviewDryRunListOmitsBodyWithoutVersion(t *testing.T) {
 	call, _ := api[0].(map[string]interface{})
 	if _, ok := call["body"]; ok {
 		t.Fatalf("dry-run body should be omitted when version is empty: %#v", call)
+	}
+}
+
+// TestDrivePreviewDryRunDownloadWithoutVersionShowsResolvedVersion verifies
+// download-mode DryRun documents the second preview_download step even when the
+// final version is only known after preview_result resolves candidates.
+func TestDrivePreviewDryRunDownloadWithoutVersionShowsResolvedVersion(t *testing.T) {
+	runtime := newDrivePreviewRuntime(t, "drive +preview", map[string]string{
+		"file-token": "file_preview",
+		"type":       "pdf",
+		"output":     "preview",
+	}, nil)
+
+	data := decodeDryRunOutput(t, DrivePreview.DryRun(context.Background(), runtime))
+	api, _ := data["api"].([]interface{})
+	if len(api) != 2 {
+		t.Fatalf("len(api)=%d, want 2", len(api))
+	}
+	downloadCall, _ := api[1].(map[string]interface{})
+	params, _ := downloadCall["params"].(map[string]interface{})
+	if got := params["version"]; got != "<resolved version from preview_result>" {
+		t.Fatalf("download params.version=%v, want resolved-version placeholder", got)
 	}
 }
 

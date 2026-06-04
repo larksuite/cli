@@ -46,7 +46,7 @@ var DrivePreview = common.Shortcut{
 		}
 		dry := common.NewDryRunAPI().
 			POST("/open-apis/drive/v1/medias/:file_token/preview_result").
-			Desc("Fetch preview candidates for a Drive file").
+			Desc("[1] Fetch preview candidates for a Drive file").
 			Set("file_token", fileToken)
 		if len(body) > 0 {
 			dry.Body(body)
@@ -54,7 +54,18 @@ var DrivePreview = common.Shortcut{
 		if runtime.Bool("list-only") {
 			return dry.Set("mode", "list")
 		}
+		downloadParams := map[string]interface{}{
+			"preview_type": "<selected type_code from preview_result>",
+		}
+		if version != "" {
+			downloadParams["version"] = version
+		} else {
+			downloadParams["version"] = "<resolved version from preview_result>"
+		}
 		return dry.
+			GET("/open-apis/drive/v1/medias/:file_token/preview_download").
+			Desc("[2] Download the requested preview after selecting a matching candidate from preview_result").
+			Params(downloadParams).
 			Set("mode", "download").
 			Set("requested_type", runtime.Str("type")).
 			Set("output", runtime.Str("output"))

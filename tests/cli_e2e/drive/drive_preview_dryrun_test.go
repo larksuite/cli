@@ -68,8 +68,23 @@ func TestDrivePreviewDryRun_Download(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
+	if got := gjson.Get(out, "api.#").Int(); got != 2 {
+		t.Fatalf("api count=%d, want 2\nstdout:\n%s", got, out)
+	}
 	if got := gjson.Get(out, "api.0.body.version").String(); got != "12" {
 		t.Fatalf("version=%q, want 12\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.1.method").String(); got != "GET" {
+		t.Fatalf("download method=%q, want GET\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/fileDryRunPreview/preview_download" {
+		t.Fatalf("download url=%q, want preview_download endpoint\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.1.params.preview_type").String(); got != "<selected type_code from preview_result>" {
+		t.Fatalf("preview_type=%q, want placeholder\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.1.params.version").String(); got != "12" {
+		t.Fatalf("download version=%q, want 12\nstdout:\n%s", got, out)
 	}
 	if got := gjson.Get(out, "requested_type").String(); got != "pdf" {
 		t.Fatalf("requested_type=%q, want pdf\nstdout:\n%s", got, out)
