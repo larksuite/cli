@@ -5,28 +5,42 @@ package meta
 
 import "sort"
 
-// IdentityForToken maps a metadata accessToken to the CLI identity (--as value)
-// that uses it: "tenant" -> "bot" (bot calls use tenant_access_token), "user"
-// -> "user". ok is false for unrecognized tokens. This is the single source of
-// truth for the token<->identity vocabulary; schema, registry and command code
-// all go through it instead of re-spelling the mapping.
-func IdentityForToken(token string) (string, bool) {
+// Token is the metadata accessTokens vocabulary: which token kind a method
+// accepts. It is a distinct type so the two directions of the token<->identity
+// mapping below cannot be swapped silently — a bare string compiles on either
+// side of a string/string signature, a Token does not. The CLI identity
+// vocabulary ("bot"/"user") already has a home in internal/core (core.Identity);
+// meta is a leaf and must not import core, so the identity side stays a plain
+// string here and is typed at the core boundary.
+type Token string
+
+const (
+	TokenTenant Token = "tenant" // bot calls use tenant_access_token
+	TokenUser   Token = "user"
+)
+
+// IdentityForToken maps a metadata access token to the CLI identity (--as
+// value) that uses it: tenant -> "bot", user -> "user". ok is false for
+// unrecognized tokens. This is the single source of truth for the
+// token<->identity vocabulary; schema, registry and command code all go
+// through it instead of re-spelling the mapping.
+func IdentityForToken(token Token) (string, bool) {
 	switch token {
-	case "tenant":
+	case TokenTenant:
 		return "bot", true
-	case "user":
+	case TokenUser:
 		return "user", true
 	}
 	return "", false
 }
 
-// TokenForIdentity is the inverse of IdentityForToken: "bot" -> "tenant";
+// TokenForIdentity is the inverse of IdentityForToken: "bot" -> TokenTenant;
 // everything else (notably "user") maps to itself.
-func TokenForIdentity(identity string) string {
+func TokenForIdentity(identity string) Token {
 	if identity == "bot" {
-		return "tenant"
+		return TokenTenant
 	}
-	return identity
+	return Token(identity)
 }
 
 // RestrictsIdentity reports whether the method limits which identities may call
@@ -39,11 +53,11 @@ func (m Method) RestrictsIdentity() bool {
 }
 
 // SupportsToken reports whether this method is reachable with the given access
-// token ("tenant"/"user" — see TokenForIdentity). An unrestricted method
-// (RestrictsIdentity == false, i.e. nil or empty accessTokens) is reachable by
-// any token. This is the single source of truth for the predicate; registry
-// scope policy and command identity checks build on it.
-func (m Method) SupportsToken(token string) bool {
+// token (see TokenForIdentity). An unrestricted method (RestrictsIdentity ==
+// false, i.e. nil or empty accessTokens) is reachable by any token. This is
+// the single source of truth for the predicate; registry scope policy and
+// command identity checks build on it.
+func (m Method) SupportsToken(token Token) bool {
 	if !m.RestrictsIdentity() {
 		return true
 	}
@@ -56,7 +70,7 @@ func (m Method) SupportsToken(token string) bool {
 }
 
 // Identities returns the CLI identities (--as values) that can call this
-// method, derived from its metadata accessTokens: "tenant" -> "bot", "user"
+// method, derived from its metadata accessTokens: tenant -> "bot", user
 // stays "user"; unrecognized tokens are dropped; the result is deduped and
 // name-sorted. The slice is always non-nil so callers rendering it (e.g. the
 // envelope's access_tokens) emit [] rather than null.

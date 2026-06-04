@@ -63,7 +63,7 @@ type Method struct {
 	Tips           []string         `json:"tips"`
 	Scopes         []string         `json:"scopes"`
 	RequiredScopes []string         `json:"requiredScopes"`
-	AccessTokens   []string         `json:"accessTokens"`
+	AccessTokens   []Token          `json:"accessTokens"`
 	Affordance     json.RawMessage  `json:"affordance"`
 	Parameters     map[string]Field `json:"parameters"`
 	RequestBody    map[string]Field `json:"requestBody"`

@@ -31,10 +31,10 @@ func TestMethod_RestrictsIdentity(t *testing.T) {
 	if (Method{}).RestrictsIdentity() {
 		t.Error("nil accessTokens must be unrestricted")
 	}
-	if (Method{AccessTokens: []string{}}).RestrictsIdentity() {
+	if (Method{AccessTokens: []Token{}}).RestrictsIdentity() {
 		t.Error("empty accessTokens must be unrestricted (same as nil)")
 	}
-	if !(Method{AccessTokens: []string{"tenant"}}).RestrictsIdentity() {
+	if !(Method{AccessTokens: []Token{"tenant"}}).RestrictsIdentity() {
 		t.Error("populated accessTokens must restrict identity")
 	}
 }
@@ -42,13 +42,13 @@ func TestMethod_RestrictsIdentity(t *testing.T) {
 func TestMethod_SupportsToken(t *testing.T) {
 	// unrestricted (nil OR empty) -> permissive for any token; the two must not
 	// diverge, else strict/scope and the command gate disagree.
-	for _, m := range []Method{{}, {AccessTokens: []string{}}} {
+	for _, m := range []Method{{}, {AccessTokens: []Token{}}} {
 		if !m.SupportsToken("tenant") || !m.SupportsToken("user") {
 			t.Errorf("unrestricted method %#v should support any token", m.AccessTokens)
 		}
 	}
 	// restricted: only the declared tokens are reachable
-	m := Method{AccessTokens: []string{"tenant"}}
+	m := Method{AccessTokens: []Token{"tenant"}}
 	if !m.SupportsToken("tenant") {
 		t.Error("tenant-declared method should support tenant")
 	}
@@ -63,17 +63,17 @@ func TestMethod_Identities(t *testing.T) {
 	// renders [] not null.
 	tests := []struct {
 		name   string
-		tokens []string
+		tokens []Token
 		want   []string
 	}{
-		{"tenant only", []string{"tenant"}, []string{"bot"}},
-		{"user only", []string{"user"}, []string{"user"}},
-		{"tenant then user", []string{"tenant", "user"}, []string{"bot", "user"}},
-		{"user then tenant", []string{"user", "tenant"}, []string{"bot", "user"}},
-		{"deduped", []string{"tenant", "tenant", "user"}, []string{"bot", "user"}},
-		{"empty", []string{}, []string{}},
+		{"tenant only", []Token{"tenant"}, []string{"bot"}},
+		{"user only", []Token{"user"}, []string{"user"}},
+		{"tenant then user", []Token{"tenant", "user"}, []string{"bot", "user"}},
+		{"user then tenant", []Token{"user", "tenant"}, []string{"bot", "user"}},
+		{"deduped", []Token{"tenant", "tenant", "user"}, []string{"bot", "user"}},
+		{"empty", []Token{}, []string{}},
 		{"nil", nil, []string{}},
-		{"unknown skipped", []string{"user", "admin"}, []string{"user"}},
+		{"unknown skipped", []Token{"user", "admin"}, []string{"user"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
