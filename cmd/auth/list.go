@@ -6,6 +6,8 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -42,20 +44,22 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 func authListRun(opts *ListOptions) error {
 	f := opts.Factory
 
-	multi, _ := core.LoadMultiAppConfig()
-	if multi == nil || len(multi.Apps) == 0 {
-		// auth list is a read-only probe; the "configured but no users"
-		// branch below already returns exit 0 with a stderr hint, so we
-		// keep the same contract here. We still want the hint to be
-		// workspace-aware, so we pull the message+hint out of
-		// NotConfiguredError() instead of hard-coding it.
-		var cfgErr *core.ConfigError
-		if errors.As(core.NotConfiguredError(), &cfgErr) {
-			fmt.Fprintln(f.IOStreams.ErrOut, cfgErr.Message)
-			if cfgErr.Hint != "" {
-				fmt.Fprintln(f.IOStreams.ErrOut, "  hint: "+cfgErr.Hint)
-			}
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		// auth list is a read-only probe — when the file is simply
+		// missing we keep exit 0 with a workspace-aware stderr hint.
+		// Anything else (R2 forward-incompat, parse error) must still
+		// surface with its envelope intact: a *core.ConfigError must
+		// reach the dispatcher with its upgrade Hint preserved.
+		if errors.Is(err, os.ErrNotExist) {
+			printNotConfiguredHint(f.IOStreams.ErrOut)
+			return nil
 		}
+		return core.PassThroughOrNotConfigured(err)
+	}
+	if multi == nil || len(multi.Apps) == 0 {
+		// Configured but empty Apps[] — read-only probe, exit 0 with hint.
+		printNotConfiguredHint(f.IOStreams.ErrOut)
 		return nil
 	}
 
@@ -81,4 +85,18 @@ func authListRun(opts *ListOptions) error {
 	}
 	output.PrintJson(f.IOStreams.Out, items)
 	return nil
+}
+
+// printNotConfiguredHint emits the workspace-aware "not configured /
+// no users" hint to stderr without failing the read-only probe.
+// Pulls Message+Hint from core.NotConfiguredError() so a single source
+// of truth governs both the error path and the soft-success path.
+func printNotConfiguredHint(errOut io.Writer) {
+	var cfgErr *core.ConfigError
+	if errors.As(core.NotConfiguredError(), &cfgErr) {
+		fmt.Fprintln(errOut, cfgErr.Message)
+		if cfgErr.Hint != "" {
+			fmt.Fprintln(errOut, "  hint: "+cfgErr.Hint)
+		}
+	}
 }

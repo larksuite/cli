@@ -329,6 +329,13 @@ func TestConfigRemoveRun_SaveFailurePreservesExistingConfigAndSecrets(t *testing
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	f.Keychain = kc
 
+	// Pre-create the locks dir so the flock acquired by configRemoveRun
+	// inside the read-only configDir can still take its file lock — only
+	// the config.json write should fail when we make the dir read-only.
+	if err := os.MkdirAll(filepath.Join(configDir, "locks"), 0700); err != nil {
+		t.Fatalf("pre-create locks dir: %v", err)
+	}
+
 	// Make subsequent config saves fail while keeping the existing config readable.
 	if err := os.Chmod(configDir, 0500); err != nil {
 		t.Fatalf("Chmod(%s) error = %v", configDir, err)

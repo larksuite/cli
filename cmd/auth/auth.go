@@ -26,13 +26,9 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 		Use:   "auth",
 		Short: "OAuth credentials and authorization management",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Replicate rootCmd's PersistentPreRun behaviour: cobra stops at the first
-			// PersistentPreRun[E] found walking up the chain, so the root-level
-			// SilenceUsage=true would be skipped without this line.
+			// cobra stops at the first PersistentPreRun[E] walking up; root's SilenceUsage=true is skipped without this.
 			cmd.SilenceUsage = true
-			// cmd.Name() returns the subcommand name (e.g. "login"), not "auth".
-			// Pass "auth" as a literal so the error message reads
-			// `"auth" is not supported: ...`
+			// Pass "auth" literally; cmd.Name() is the subcommand.
 			return f.RequireBuiltinCredentialProvider(cmd.Context(), "auth")
 		},
 	}
@@ -45,6 +41,7 @@ func NewCmdAuth(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdAuthList(f, nil))
 	cmd.AddCommand(NewCmdAuthCheck(f, nil))
 	cmd.AddCommand(NewCmdAuthQRCode(f, nil))
+	cmd.AddCommand(NewCmdAuthUsers(f))
 	return cmd
 }
 
@@ -53,38 +50,44 @@ type userInfoResponse struct {
 	Code int    `json:"code"`
 	Msg  string `json:"msg"`
 	Data struct {
-		OpenID string `json:"open_id"`
-		Name   string `json:"name"`
+		OpenID  string `json:"open_id"`
+		UnionID string `json:"union_id"`
+		Name    string `json:"name"`
 	} `json:"data"`
 }
 
-// getUserInfo fetches the current user's OpenID and name using the given access token.
-func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, name string, err error) {
+// getUserInfoFn is the test seam for getUserInfo (mirrors getAppInfoFn).
+var getUserInfoFn = getUserInfo
+
+// getUserInfo fetches the current user's OpenID, UnionID, and name.
+// UnionID is captured for cross-app reconciliation in per-user state files;
+// absence is non-fatal.
+func getUserInfo(ctx context.Context, sdk *lark.Client, accessToken string) (openId, unionId, name string, err error) {
 	apiResp, err := sdk.Do(ctx, &larkcore.ApiReq{
 		HttpMethod:                http.MethodGet,
 		ApiPath:                   larkauth.PathUserInfoV1,
 		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeUser},
 	}, larkcore.WithUserAccessToken(accessToken))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	var resp userInfoResponse
 	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return "", "", fmt.Errorf("failed to parse user info: %w", err)
+		return "", "", "", fmt.Errorf("failed to parse user info: %w", err)
 	}
 	if resp.Code != 0 {
-		return "", "", fmt.Errorf("failed to get user info [%d]: %s", resp.Code, resp.Msg)
+		return "", "", "", fmt.Errorf("failed to get user info [%d]: %s", resp.Code, resp.Msg)
 	}
 	if resp.Data.OpenID == "" {
-		return "", "", fmt.Errorf("failed to get user info: missing open_id in response")
+		return "", "", "", fmt.Errorf("failed to get user info: missing open_id in response")
 	}
 
 	name = resp.Data.Name
 	if name == "" {
 		name = "(unknown)"
 	}
-	return resp.Data.OpenID, name, nil
+	return resp.Data.OpenID, resp.Data.UnionID, name, nil
 }
 
 // appInfo contains application information (owner, scopes).
@@ -111,9 +114,7 @@ type appInfoResponse struct {
 	} `json:"data"`
 }
 
-// getAppInfoFn is the package-level seam used by callers (scopes.go) so tests
-// can substitute a fake without standing up a full SDK + httpmock pipeline.
-// Mirrors the pollDeviceToken pattern in login.go.
+// getAppInfoFn is the test seam for getAppInfo.
 var getAppInfoFn = getAppInfo
 
 // getAppInfo queries app info from the Lark API.

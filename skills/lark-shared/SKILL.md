@@ -104,6 +104,62 @@ lark-cli auth login --device-code <device_code>
 - **不要在同一轮中展示 URL 后立刻执行 `--device-code`**，这会导致用户看不到 URL
 - **禁止缓存 `verification_url` 或 `device_code`**：每次需要授权时，必须重新执行 `lark-cli auth login --no-wait --json` 生成新的链接。不要将授权链接和 device code 存入上下文供后续复用
 
+#### `auth login --json` 输出契约（NDJSON）
+
+`auth login --json` 输出的是 **NDJSON**（每行一个 JSON 对象）—— **只解析最后一条非空行作为成功载荷**。三种调用路径下输出形态如下：
+
+| 调用 | 输出行（顺序） |
+|---|---|
+| `--no-wait --json` | 1 行：`{verification_url, device_code, expires_in, hint}`（**无 `event` 字段**） |
+| `--device-code <code> --json` | 1 行：`{event: "authorization_complete", ...}` |
+| `--json`（同步阻塞，罕见） | 2 行：先 `{event: "device_authorization", verification_uri, verification_uri_complete, user_code, expires_in, agent_hint}`，再 `{event: "authorization_complete", ...}` |
+
+`authorization_complete` 行的关键字段：
+
+- `event`（恒为 `"authorization_complete"`）
+- `user_open_id` —— 实际授权的 open_id（**不是** profile 上的 active user）
+- `user_name` —— 实际授权身份的 display name
+- `scope` —— 单数，本次最终授予的 scope 列表，空格分隔字符串
+- `requested` / `granted` / `newly_granted` / `already_granted` / `missing` —— 数组（永不为 `null`，无内容时为 `[]`）；`requested` 是本次请求的 scope，`granted` 是 `scope` 字段的数组形式，`newly_granted` 是与上次登录相比新拿到的，`already_granted` 是延续的，`missing` 是请求了但被拒的
+- 可选 `warning` —— scope 不足软告警，schema 见下文
+- 可选 `holder_mismatch_warning` —— 多用户软告警，schema 见下文
+
+授权失败会发 `{event: "authorization_failed", error}`。
+
+只看最后一行就够了：split-flow 第一步只有 `--no-wait` 那一行；第二步只有 `authorization_complete`；同步路径下最后一行也是 `authorization_complete`。
+
+##### `holder_mismatch_warning` 字段（多用户软告警）
+
+当存在以下条件**全部成立**时，`authorization_complete` 会带 `holder_mismatch_warning`：
+
+- 用户**没有**通过 `--user` / `LARKSUITE_CLI_OPEN_ID` 显式指定目标身份
+- 当前 profile 的 `currentUser`（来自上次 `auth login` 或 `auth users use`）与本次设备授权的 open_id 不一致
+
+这是**软告警，不是错误**：本次登录会成功，新身份会追加到 profile 的 `Users[]`，但 active user **不会**自动切换。要切换 active user，运行 `lark-cli auth users use <open_id>`。
+
+干净登录（首次登录或 currentUser 与本次授权的身份相同）**完全不会**有这个 key —— consumer 应通过 key 是否存在判断（不要 nil-check）。
+
+字段 schema：
+
+```json
+{
+  "type": "holder_currentuser_mismatch",
+  "message": "[lark-cli] [WARN] auth login: ...",
+  "holder_open_id": "ou_alice",
+  "holder_user_name": "Alice",
+  "fresh_open_id": "ou_bob",
+  "fresh_user_name": "Bob"
+}
+```
+
+- `type`：discriminator，与现有 scope `warning.type`（`missing_scope`）共用 schema 形状但取值独立。`holder_currentuser_mismatch` 是当前唯一取值；后续若新增 holder 告警子型，会用 `holder_*` 前缀复用同一字段。
+- `message`：人类可读 stderr WARN 文本的副本，**已经过 terminal escape 净化**（没有 ANSI / C0 控制字节）。
+- `holder_*` / `fresh_*` 字段：**未净化的原始字节**（按 JSON 消费者契约，由消费者自行 escape）。`holder_*` 是 profile 中保留的 active user，`fresh_*` 是这次刚授权的身份。
+
+scope 告警（`warning`，type=`missing_scope`）和 holder 告警（`holder_mismatch_warning`，type=`holder_currentuser_mismatch`）是**两个独立的 key**，互不影响。一次登录可以同时触发两者；分别 branch 即可。
+
+stderr WARN 与这个 JSON 字段是**双通道**：在 JSON 模式下 stderr WARN **仍然会输出**，方便人 tail `2>&1`。
+
 ## 更新检查
 
 lark-cli 命令执行后，如果检测到新版本，JSON 输出中会包含 `_notice.update` 字段（含 `message`、`command` 等）。

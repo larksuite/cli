@@ -162,8 +162,11 @@ func TestProfileRemoveRun_RemovesCurrentProfileAndSwitchesToFirstRemaining(t *te
 	if saved.CurrentApp != "default" {
 		t.Fatalf("CurrentApp = %q, want %q", saved.CurrentApp, "default")
 	}
-	if saved.PreviousApp != "default" {
-		t.Fatalf("PreviousApp = %q, want %q", saved.PreviousApp, "default")
+	// PreviousApp must be cleared, not left equal to the new CurrentApp.
+	// Pre-A7 fix this asserted PreviousApp == "default" (== CurrentApp),
+	// which broke the `profile use -` toggle invariant.
+	if saved.PreviousApp != "" {
+		t.Fatalf("PreviousApp = %q, want \"\" (cleared to restore CurrentApp != PreviousApp)", saved.PreviousApp)
 	}
 	if len(saved.Apps) != 1 || saved.Apps[0].ProfileName() != "default" {
 		t.Fatalf("remaining apps = %#v, want only default", saved.Apps)

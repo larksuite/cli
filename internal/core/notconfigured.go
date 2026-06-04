@@ -23,23 +23,40 @@ import (
 func LoadOrNotConfigured() (*MultiAppConfig, error) {
 	multi, err := LoadMultiAppConfig()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, NotConfiguredError()
-		}
-		// Surface the real cause (parse error, permission denied, etc.)
-		// so the user can fix the broken file. Wrapping as ConfigError
-		// keeps it on the standard structured-envelope path at the root
-		// command's error sink.
-		return nil, &ConfigError{
-			Code:    3,
-			Type:    "config",
-			Message: fmt.Sprintf("failed to load config: %v", err),
-		}
+		return nil, PassThroughOrNotConfigured(err)
 	}
 	if multi == nil || len(multi.Apps) == 0 {
 		return nil, NotConfiguredError()
 	}
 	return multi, nil
+}
+
+// PassThroughOrNotConfigured classifies a non-nil error from LoadMultiAppConfig:
+//   - *ConfigError → returned verbatim (R2 transparency: forward-incompat
+//     schema must NOT be coerced into "run init", which would overwrite
+//     fields a newer-binary file populated).
+//   - errors.Is(err, os.ErrNotExist) → workspace-aware NotConfiguredError().
+//   - otherwise (parse error, permission denied, …) → wrap as *ConfigError
+//     with "failed to load config: <err>" so the dispatcher renders a
+//     structured envelope while the operator still sees the real cause.
+//
+// nil passes through unchanged.
+func PassThroughOrNotConfigured(err error) error {
+	if err == nil {
+		return nil
+	}
+	var cfgErr *ConfigError
+	if errors.As(err, &cfgErr) {
+		return cfgErr
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return NotConfiguredError()
+	}
+	return &ConfigError{
+		Code:    3,
+		Type:    "config",
+		Message: fmt.Sprintf("failed to load config: %v", err),
+	}
 }
 
 const (

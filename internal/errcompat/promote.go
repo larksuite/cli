@@ -31,9 +31,19 @@ func PromoteConfigError(cfgErr *core.ConfigError) error {
 			WithHint("%s", cfgErr.Hint).
 			WithCause(cfgErr)
 	case "config":
+		// SubtypeInvalidConfig covers every "the file exists but lark-cli
+		// can't safely use it" case: parse failures, semantic invalidity,
+		// AND R2 forward-incompat schema (whose message says
+		// "newer lark-cli ... schemaVersion N > supported M"). Misrouting
+		// R2 to SubtypeNotConfigured pushes AI agents toward `config init`,
+		// which would overwrite fields the newer binary populated.
 		subtype := errs.SubtypeNotConfigured
 		lower := strings.ToLower(cfgErr.Message)
-		if strings.Contains(lower, "parse") || strings.Contains(lower, "invalid") {
+		if strings.Contains(lower, "parse") ||
+			strings.Contains(lower, "invalid") ||
+			strings.Contains(lower, "schemaversion") ||
+			strings.Contains(lower, "newer lark-cli") ||
+			strings.Contains(lower, "failed to load config") {
 			subtype = errs.SubtypeInvalidConfig
 		}
 		return errs.NewConfigError(subtype, "%s", cfgErr.Message).

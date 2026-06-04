@@ -49,6 +49,43 @@ func TestRegisterGlobalFlags_PolicyHidden(t *testing.T) {
 	}
 }
 
+func TestRegisterGlobalFlags_UserFlagWired(t *testing.T) {
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	opts := &GlobalOptions{}
+	RegisterGlobalFlags(fs, opts)
+
+	flag := fs.Lookup("user")
+	if flag == nil {
+		t.Fatal("user flag should be registered")
+	}
+	if flag.Value.String() != "" {
+		t.Errorf("default value = %q, want empty", flag.Value.String())
+	}
+	if err := fs.Parse([]string{"--user", "ou_alice"}); err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if opts.User != "ou_alice" {
+		t.Errorf("opts.User = %q, want ou_alice", opts.User)
+	}
+}
+
+// --user has no HideUser mirror; asymmetric hiding vs --profile would surprise operators.
+func TestRegisterGlobalFlags_UserFlagAlwaysVisible(t *testing.T) {
+	for _, hide := range []bool{false, true} {
+		fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		opts := &GlobalOptions{HideProfile: hide}
+		RegisterGlobalFlags(fs, opts)
+
+		flag := fs.Lookup("user")
+		if flag == nil {
+			t.Fatalf("user flag should be registered (HideProfile=%v)", hide)
+		}
+		if flag.Hidden {
+			t.Errorf("user flag should be visible regardless of HideProfile (got hidden, HideProfile=%v)", hide)
+		}
+	}
+}
+
 func TestIsSingleAppMode_NoConfig(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	if !isSingleAppMode() {

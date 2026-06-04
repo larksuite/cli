@@ -5,13 +5,16 @@ package profile
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
@@ -78,11 +81,23 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 		return output.ErrValidation("app secret read from stdin is empty")
 	}
 
-	// Load or create config
+	// Serialise against any concurrent login / users use / profile mutator;
+	// the login flock under SingleUser() scope is the documented MultiAppConfig
+	// serializer (see cmd/auth/login.go.syncLoginUserToProfile).
+	root := larkauth.NewLocalRoot(core.GetConfigDir())
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(larkauth.SingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "profile add: acquire flock: %v", err)
+	}
+	defer lk.Release()
+
+	// Load (or create empty) AFTER the flock so the read is consistent with the save.
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			return output.Errorf(output.ExitInternal, "internal", "failed to load config: %v", err)
+			return core.PassThroughOrNotConfigured(err)
 		}
 		multi = &core.MultiAppConfig{}
 	}

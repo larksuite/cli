@@ -4,21 +4,23 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -131,6 +133,26 @@ func configBindRun(opts *BindOptions) error {
 	core.SetCurrentWorkspace(core.Workspace(source))
 	targetConfigPath := core.GetConfigPath()
 
+	// Serialise the entire bind flow against any concurrent config mutator.
+	// Lock OUTSIDE the TUI prompts: reconcileExistingBinding reads bytes
+	// pre-prompt and commitBinding writes post-prompt, so the TUI window is
+	// itself the race surface. 30s wait is acceptable because the caller is
+	// already gate-keeping on human input.
+	//
+	// IMPORTANT: acquire AFTER SetCurrentWorkspace. NewLocalRoot captures
+	// configDir eagerly, so a lock taken pre-switch lands at
+	// <sourceWS>/locks/login.lock while the write lands at
+	// <targetWS>/config.json — peer auth login in the target workspace would
+	// take <targetWS>/locks/login.lock and race the same target file.
+	root := larkauth.NewLocalRoot(core.GetConfigDir())
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(larkauth.SingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "config bind: acquire flock: %v", err).WithCause(err)
+	}
+	defer lk.Release()
+
 	existing, err := reconcileExistingBinding(opts, source, targetConfigPath)
 	if err != nil {
 		return err
@@ -240,11 +262,40 @@ func finalizeSource(opts *BindOptions) (string, error) {
 // how to proceed. In TUI mode the user is prompted to keep or replace. In flag
 // mode the existing binding is silently overwritten — commitBinding will emit a
 // notice on success so the caller still sees that a rebind happened.
+//
+// R2 schema-version gate: bytes that parse to a SchemaVersion newer than this
+// binary supports MUST refuse the rebind, not silently clobber. The
+// downstream renderers (tuiConflictPrompt, priorLang, hasStrictBotLock,
+// cleanupKeychainFromData) keep their fault-tolerant `Unmarshal != nil →
+// empty` behavior because the bytes that reach them have already cleared
+// this gate. Garbled JSON is left to those renderers (the rebind will
+// overwrite it cleanly anyway, matching the rest of the bind flow's
+// lenient handling) — the gate fires only on a parseable but
+// future-binary file, where silent overwrite would lose newer-only fields.
+//
 // See existingBinding for the returned fields.
 func reconcileExistingBinding(opts *BindOptions, source, configPath string) (existingBinding, error) {
 	oldConfigData, _ := vfs.ReadFile(configPath)
 	if oldConfigData == nil {
 		return existingBinding{}, nil
+	}
+
+	// R2 forward-incompat refusal. We can't go through core.LoadMultiAppConfig
+	// because (a) it errors on len(Apps)==0 which is a perfectly valid pre-bind
+	// shape (the user already ran an earlier bind that wrote zero apps for some
+	// reason — corrupt-but-parseable, the bind flow tolerates it), and (b) it
+	// reads from core.GetConfigPath() which would re-resolve through the
+	// workspace machinery rather than honor configPath directly. Inline the
+	// version-check; the rest of the load is left to the lenient renderers
+	// downstream.
+	var probe core.MultiAppConfig
+	if err := json.Unmarshal(oldConfigData, &probe); err == nil && probe.SchemaVersion > core.CurrentSchemaVersion {
+		return existingBinding{}, &core.ConfigError{
+			Code: 3, Type: "config",
+			Message: fmt.Sprintf("config.json at %s was written by a newer lark-cli (schemaVersion %d > supported %d); refusing to overwrite",
+				configPath, probe.SchemaVersion, core.CurrentSchemaVersion),
+			Hint: "upgrade lark-cli before re-binding this workspace, or rebind in a different workspace to avoid losing fields the newer binary populated",
+		}
 	}
 
 	if opts.IsTUI {
@@ -410,14 +461,22 @@ func priorLang(previousConfigBytes []byte) i18n.Lang {
 func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigBytes []byte, source, configPath string) error {
 	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
 
-	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
-		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
-	}
-	data, err := json.MarshalIndent(multi, "", "  ")
-	if err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "failed to marshal config: %v", err).WithCause(err)
-	}
-	if err := validate.AtomicWrite(configPath, append(data, '\n'), 0600); err != nil {
+	// core.SaveMultiAppConfig stamps SchemaVersion = CurrentSchemaVersion and
+	// uses the same atomic-write contract as the inline path used to. The
+	// previous inline `json.MarshalIndent + validate.AtomicWrite` skipped the
+	// stamp, leaving the post-bind file at SchemaVersion=0 (legacy). On the
+	// next load that file looked legacy, defeating the gate's whole purpose
+	// the moment any forward-incompat field was added. Going through the
+	// canonical save closes that gap, and keeps the bind path on the same
+	// serialization trunk as every other config writer (init, login,
+	// profile add/remove, users use).
+	//
+	// configPath was set up front from core.GetConfigPath() after
+	// SetCurrentWorkspace; SaveMultiAppConfig reads core.GetConfigPath()
+	// internally and resolves to the same path. The MkdirAll is also
+	// internal to SaveMultiAppConfig (vfs.MkdirAll on GetConfigDir()), so
+	// the explicit workspace mkdir is no longer needed.
+	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to write config %s: %v", configPath, err).WithCause(err)
 	}
 
@@ -475,10 +534,23 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 
 // cleanupKeychainFromData removes keychain entries referenced by a previous
 // config snapshot, skipping any entry whose keychain ID is still in use by
-// the new app config. This prevents rebinding the same appId from deleting
-// the secret that ForStorage just wrote (old and new secret share the same
-// keychain key, derived from appId). Best-effort: errors are silently
-// ignored (same contract as config init's cleanup).
+// the new app config. Two classes of entry are swept:
+//
+//   - AppSecret: the workspace-app credential. Skipped when the new app
+//     reuses the same keychain ID (rebinding the same appId), since old
+//     and new secret share the key — without the skip, ForStorage's
+//     freshly-written secret would be clobbered.
+//   - Per-user artifacts: every (appId, userOpenId) pair the previous
+//     config listed under Users[] — including the keychain UAT, the
+//     sidecar profile JSON on disk, and the user_index.json row.
+//     binder.Build returns Users: [] for every source today, so on
+//     rebind the entire Users[] of the prior workspace is replaced and
+//     any artifact not swept here orphans forever. Skipping is
+//     per-(appId, userOpenId) so a future binder that propagates users
+//     to the new config does not destroy still-referenced state.
+//
+// Best-effort: errors are silently ignored (same contract as
+// cleanupOldConfig in cmd/config/init.go).
 func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core.AppConfig) {
 	var multi core.MultiAppConfig
 	if err := json.Unmarshal(data, &multi); err != nil {
@@ -488,11 +560,25 @@ func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core
 	if keep != nil && keep.AppSecret.Ref != nil && keep.AppSecret.Ref.Source == "keychain" {
 		keepID = keep.AppSecret.Ref.ID
 	}
-	for _, app := range multi.Apps {
-		if keepID != "" && app.AppSecret.Ref != nil && app.AppSecret.Ref.Source == "keychain" && app.AppSecret.Ref.ID == keepID {
-			continue
+	// keepUsers indexes (appId, userOpenId) pairs the new config still
+	// references — any UAT outside this set is stale.
+	keepUsers := make(map[string]struct{})
+	if keep != nil {
+		for _, u := range keep.Users {
+			keepUsers[keep.AppId+"\x00"+u.UserOpenId] = struct{}{}
 		}
-		core.RemoveSecretStore(app.AppSecret, kc)
+	}
+	root := larkauth.NewLocalRoot(core.GetConfigDir())
+	for _, app := range multi.Apps {
+		if keepID == "" || app.AppSecret.Ref == nil || app.AppSecret.Ref.Source != "keychain" || app.AppSecret.Ref.ID != keepID {
+			core.RemoveSecretStore(app.AppSecret, kc)
+		}
+		for _, user := range app.Users {
+			if _, ok := keepUsers[app.AppId+"\x00"+user.UserOpenId]; ok {
+				continue
+			}
+			_ = larkauth.PurgeUserArtifacts(root, app.AppId, user.UserOpenId)
+		}
 	}
 }
 

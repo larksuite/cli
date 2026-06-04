@@ -72,8 +72,22 @@ func profileListRun(f *cmdutil.Factory) error {
 		}
 
 		if len(app.Users) > 0 {
-			item.User = app.Users[0].UserName
-			stored := larkauth.GetStoredToken(app.AppId, app.Users[0].UserOpenId)
+			// Honor CurrentUser so `profile list` reflects the active pick
+			// after `auth users use`. Falls back to Users[0] (insertion
+			// order) when CurrentUser is empty or stale, matching the
+			// AppConfig.CurrentUser → Users[0] precedence used by
+			// ResolveConfigFromMulti and resolveActiveUserOpenId. Without
+			// this, the output stayed pinned on Users[0] forever and the
+			// "active" semantics diverged across `auth users list` and
+			// `profile list`.
+			active := &app.Users[0]
+			if app.CurrentUser != "" {
+				if hit := app.FindUser(app.CurrentUser); hit != nil {
+					active = hit
+				}
+			}
+			item.User = active.UserName
+			stored := larkauth.GetStoredToken(app.AppId, active.UserOpenId)
 			if stored != nil {
 				item.TokenStatus = larkauth.TokenStatus(stored)
 			}

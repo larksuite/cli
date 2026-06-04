@@ -12,6 +12,11 @@ const (
 	CliDefaultAs         = "LARKSUITE_CLI_DEFAULT_AS"
 	CliStrictMode        = "LARKSUITE_CLI_STRICT_MODE"
 
+	// CliOpenID selects a user (open_id or username) within the active
+	// profile when --user is not passed. Read only at bootstrap; the
+	// credential and core.config resolver layers stay env-agnostic.
+	CliOpenID = "LARKSUITE_CLI_OPEN_ID"
+
 	// Sidecar proxy (auth proxy mode)
 	CliAuthProxy = "LARKSUITE_CLI_AUTH_PROXY" // sidecar HTTP address, e.g. "http://127.0.0.1:16384"
 	CliProxyKey  = "LARKSUITE_CLI_PROXY_KEY"  // HMAC signing key shared with sidecar

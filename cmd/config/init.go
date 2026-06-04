@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
@@ -140,18 +141,24 @@ func (o *ConfigInitOptions) hasAnyNonInteractiveFlag() bool {
 	return o.New || o.AppID != "" || o.AppSecretStdin
 }
 
-// cleanupOldConfig clears keychain entries (AppSecret + UAT) for all apps in existing config except the app whose AppId equals skipAppID.
+// cleanupOldConfig clears keychain entries (AppSecret + UAT + sidecar
+// profile + index row) for all apps in existing config except the app
+// whose AppId equals skipAppID.
 func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipAppID string) {
 	if existing == nil {
 		return
 	}
+	root := larkauthRoot()
 	for _, app := range existing.Apps {
 		if app.AppId == skipAppID {
 			continue
 		}
 		core.RemoveSecretStore(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
-			auth.RemoveStoredToken(app.AppId, user.UserOpenId)
+			// Best-effort: the on-disk legs (sidecar / index) must not
+			// orphan when the keychain is cleaned up. Errors swallowed
+			// to match the pre-existing cleanup contract.
+			_ = auth.PurgeUserArtifacts(root, app.AppId, user.UserOpenId)
 		}
 	}
 }
@@ -183,6 +190,99 @@ func saveInitConfig(profileName string, existing *core.MultiAppConfig, f *cmduti
 	return saveAsOnlyApp(appId, secret, brand, string(preferredLang(i18n.Lang(lang), prior)))
 }
 
+// lockedSaveInit serialises the load-modify-save cycle of `config init`
+// against any concurrent MultiAppConfig mutator (auth login, profile add,
+// users use, config bind, peer config init).
+//
+// Pre-fix, configInitRun loaded the config pre-prompt and saved
+// post-prompt with no flock; a peer `auth login` writing in that gap was
+// silently overwritten when init's stale buffer was flushed. Symptom:
+// users disappearing from a profile right after a successful login.
+//
+// Lock semantics mirror the documented MultiAppConfig serializer
+// (cmd/auth/login.go.syncLoginUserToProfile and cmd/profile/add.go):
+// SingleUser scope, "login" lock name, 30s wait. The pre-prompt load
+// stays as-is — the prompts read its values for defaults and R2-refusal
+// happens early — but the durable read is the post-flock one.
+//
+// Caller-supplied existingFallback is used when the file does not exist
+// (init's first run); R2 / parse errors short-circuit the save.
+func lockedSaveInit(profileName string, f *cmdutil.Factory, appId string, secret core.SecretInput, brand core.LarkBrand, lang string) error {
+	root := larkauthRoot()
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(authSingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "config init: acquire flock: %v", err).WithCause(err)
+	}
+	defer lk.Release()
+
+	existing, lerr := core.LoadMultiAppConfig()
+	if lerr != nil {
+		if !errors.Is(lerr, os.ErrNotExist) {
+			return core.PassThroughOrNotConfigured(lerr)
+		}
+		existing = nil
+	}
+	return saveInitConfig(profileName, existing, f, appId, secret, brand, lang)
+}
+
+// lockedUpdateExistingProfile is the lock-wrapped sibling of
+// updateExistingProfileWithoutSecret; it serialises the same R-M-W
+// hazard as lockedSaveInit for the "interactive existing-profile,
+// secret unchanged" path.
+func lockedUpdateExistingProfile(f *cmdutil.Factory, profileName, appID string, brand core.LarkBrand, lang string) error {
+	root := larkauthRoot()
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(authSingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "config init: acquire flock: %v", err).WithCause(err)
+	}
+	defer lk.Release()
+
+	existing, lerr := core.LoadMultiAppConfig()
+	if lerr != nil {
+		if !errors.Is(lerr, os.ErrNotExist) {
+			return core.PassThroughOrNotConfigured(lerr)
+		}
+		existing = nil
+	}
+	return updateExistingProfileWithoutSecret(existing, profileName, appID, brand, lang)
+}
+
+// larkauthRoot / authSingleUser are tiny indirections so the rest of the
+// file can avoid the `larkauth` import alias gymnastics — `auth` is already
+// imported for RemoveStoredToken, and `auth.NewLocalRoot`/`auth.SingleUser`
+// are the same package as larkauth.
+func larkauthRoot() *auth.LocalRoot { return auth.NewLocalRoot(core.GetConfigDir()) }
+func authSingleUser() auth.AuthContext { return auth.SingleUser() }
+
+// wrapLockedSaveInitErr classifies errors emerging from lockedSaveInit /
+// lockedUpdateExistingProfile. lockedSaveInit already returns typed errors
+// for the lock-acquisition (InternalError/Storage) and R2-load failure
+// (*core.ConfigError) paths; this wrapper preserves both, plus typed
+// errors leaking from the inner save-or-validate logic, and only wraps
+// genuinely-untyped errors as InternalError/Storage so exit codes stay
+// stable.
+func wrapLockedSaveInitErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errs.IsTyped(err) {
+		return err
+	}
+	var cfgErr *core.ConfigError
+	if errors.As(err, &cfgErr) {
+		return err
+	}
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+}
+
 // saveAsProfile appends or updates a named profile in the config.
 // If a profile with the same name exists, it updates it; otherwise appends.
 // When updating, cleans up old keychain secrets if AppId changed.
@@ -196,10 +296,19 @@ func saveAsProfile(existing *core.MultiAppConfig, kc keychain.KeychainAccess, pr
 		// Clean up old keychain secret and user tokens if AppId changed
 		if multi.Apps[idx].AppId != appId {
 			core.RemoveSecretStore(multi.Apps[idx].AppSecret, kc)
+			root := larkauthRoot()
 			for _, user := range multi.Apps[idx].Users {
-				auth.RemoveStoredToken(multi.Apps[idx].AppId, user.UserOpenId)
+				_ = auth.PurgeUserArtifacts(root, multi.Apps[idx].AppId, user.UserOpenId)
 			}
 			multi.Apps[idx].Users = []core.AppUser{}
+			// CurrentUser is keyed on UserOpenId; once Users[] is wiped
+			// because the AppId pivoted under us, the dangling
+			// CurrentUser is a phantom reference that ResolveConfigFromMulti
+			// will silently fall back from to Users[0] (which no longer
+			// exists). Clear it so a subsequent `auth login` correctly
+			// re-stamps the active user via the empty-CurrentUser branch
+			// in syncLoginUserToProfile.
+			multi.Apps[idx].CurrentUser = ""
 		}
 		multi.Apps[idx].AppId = appId
 		multi.Apps[idx].AppSecret = secret
@@ -318,7 +427,15 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	existing, err := core.LoadMultiAppConfig()
 	if err != nil {
-		existing = nil // treat as empty
+		// CRITICAL: a *ConfigError from LoadMultiAppConfig means the file
+		// is parseable but semantically forbidden (today: R2 forward-incompat
+		// schema). Silently dropping it would let SaveMultiAppConfig stamp
+		// SchemaVersion back down and erase omitempty fields a newer binary
+		// populated. Refuse and surface the upgrade hint.
+		if !errors.Is(err, os.ErrNotExist) {
+			return core.PassThroughOrNotConfigured(err)
+		}
+		existing = nil
 	}
 
 	// Validate --profile name if set
@@ -335,8 +452,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
-		if err := saveInitConfig(opts.ProfileName, existing, f, opts.AppID, secret, brand, opts.Lang); err != nil {
-			return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+		if err := lockedSaveInit(opts.ProfileName, f, opts.AppID, secret, brand, opts.Lang); err != nil {
+			return wrapLockedSaveInitErr(err)
 		}
 		output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 		printLangPreferenceConfirmation(opts)
@@ -373,13 +490,12 @@ func configInitRun(opts *ConfigInitOptions) error {
 		if result == nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "app creation returned no result")
 		}
-		existing, _ := core.LoadMultiAppConfig()
 		secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 		if err != nil {
 			return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 		}
-		if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
-			return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+		if err := lockedSaveInit(opts.ProfileName, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
+			return wrapLockedSaveInitErr(err)
 		}
 		printLangPreferenceConfirmation(opts)
 		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "appSecret": "****", "brand": result.Brand})
@@ -400,20 +516,18 @@ func configInitRun(opts *ConfigInitOptions) error {
 				WithParam("--app-id")
 		}
 
-		existing, _ := core.LoadMultiAppConfig()
-
 		if result.AppSecret != "" {
 			// New secret provided (either from "create" or "existing" with input)
 			secret, err := core.ForStorage(result.AppID, core.PlainSecret(result.AppSecret), f.Keychain)
 			if err != nil {
 				return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 			}
-			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
-				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+			if err := lockedSaveInit(opts.ProfileName, f, result.AppID, secret, result.Brand, opts.Lang); err != nil {
+				return wrapLockedSaveInitErr(err)
 			}
 		} else if result.Mode == "existing" && result.AppID != "" {
 			// Existing app with unchanged secret — update app ID and brand only
-			if err := wrapUpdateExistingProfileErr(updateExistingProfileWithoutSecret(existing, opts.ProfileName, result.AppID, result.Brand, opts.Lang)); err != nil {
+			if err := wrapUpdateExistingProfileErr(lockedUpdateExistingProfile(f, opts.ProfileName, result.AppID, result.Brand, opts.Lang)); err != nil {
 				return err
 			}
 		} else {
@@ -513,8 +627,8 @@ func configInitRun(opts *ConfigInitOptions) error {
 	if err != nil {
 		return errs.NewInternalError(errs.SubtypeSDKError, "%v", err).WithCause(err)
 	}
-	if err := saveInitConfig(opts.ProfileName, existing, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
-		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+	if err := lockedSaveInit(opts.ProfileName, f, resolvedAppId, storedSecret, parseBrand(resolvedBrand), opts.Lang); err != nil {
+		return wrapLockedSaveInitErr(err)
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Configuration saved to %s", core.GetConfigPath()))
 	printLangPreferenceConfirmation(opts)
