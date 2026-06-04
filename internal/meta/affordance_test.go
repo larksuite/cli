@@ -10,8 +10,14 @@ import (
 
 func TestMethod_ParsedAffordance(t *testing.T) {
 	// absent / empty / malformed all resolve to ok=false.
+	t.Run("nil affordance", func(t *testing.T) {
+		if _, ok := (Method{}).ParsedAffordance(); ok {
+			t.Error("ParsedAffordance on a method without affordance ok=true, want false")
+		}
+	})
+
 	notOK := map[string]string{
-		"nil":                  ``,
+		"empty payload":        ``,
 		"empty object":         `{}`,
 		"all empty arrays":     `{"use_when":[],"do_not_use_when":[],"prerequisites":[],"examples":[],"related":[]}`,
 		"malformed string":     `"not an object"`,
