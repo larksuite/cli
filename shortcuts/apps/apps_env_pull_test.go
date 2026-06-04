@@ -364,7 +364,7 @@ func TestAppsEnvPull_JSONOutput_UsesSummaryFieldsOnly(t *testing.T) {
 	}
 }
 
-func TestAppsEnvPull_MalformedPayloadFails(t *testing.T) {
+func TestAppsEnvPull_MalformedPayloadSkipsInvalidEntries(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	projectDir := t.TempDir()
 	reg.Register(&httpmock.Stub{
@@ -379,9 +379,11 @@ func TestAppsEnvPull_MalformedPayloadFails(t *testing.T) {
 	})
 
 	err := runAppsShortcut(t, AppsEnvPull,
-		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--as", "user"},
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", projectDir, "--format", "pretty", "--as", "user"},
 		factory, stdout)
-	assertValidationError(t, err, "env_vars")
+	if err != nil {
+		t.Fatalf("malformed entries should be skipped, not fail; err=%v", err)
+	}
 }
 
 func TestAppsEnvPull_TargetSymlinkIsRejectedBeforeAPI(t *testing.T) {
@@ -730,7 +732,7 @@ func TestAppsEnvPull_DatabaseExtrasWithoutExpiresAtDoesNotFail(t *testing.T) {
 
 func TestWriteEnvPullPretty(t *testing.T) {
 	var buf bytes.Buffer
-	writeEnvPullPretty(&buf, "app_x", "/repo/.env.local", envPullDatabaseInfo{Detected: true, ExpiresAtText: "2026-06-02 16:30:06 CST"})
+	writeEnvPullPretty(&buf, "app_x", "/repo/.env.local", envPullDatabaseInfo{Detected: true, ExpiresAtText: "2026-06-02 16:30:06 CST"}, nil)
 	got := buf.String()
 	if !strings.Contains(got, "App detected: app_x") {
 		t.Fatalf("missing app line: %q", got)
@@ -744,7 +746,71 @@ func TestWriteEnvPullPretty(t *testing.T) {
 	if !strings.Contains(got, "\n\nDATABASE_URL is valid until 2026-06-02 16:30:06 CST.\n") {
 		t.Fatalf("missing blank-line separated expiry block: %q", got)
 	}
+	if strings.Contains(got, "Skipped") {
+		t.Fatalf("no skipped warning when skippedKeys is nil: %q", got)
+	}
 	if !strings.Contains(got, "Run `lark-cli apps +env-pull --app-id <app_id>` again to refresh it.") {
 		t.Fatalf("missing refresh hint line: %q", got)
+	}
+}
+
+func TestWriteEnvPullPretty_SkippedKeys(t *testing.T) {
+	var buf bytes.Buffer
+	writeEnvPullPretty(&buf, "app_x", "/repo/.env.local", envPullDatabaseInfo{}, []string{"bad key", "=eq"})
+	got := buf.String()
+	if !strings.Contains(got, "⚠ Skipped 2 invalid key(s): bad key, =eq") {
+		t.Fatalf("missing skipped keys warning: %q", got)
+	}
+}
+
+func TestExtractEnvPullVars_SkipsInvalidKeys(t *testing.T) {
+	data := map[string]interface{}{
+		"env_vars": map[string]interface{}{
+			"VALID_KEY":      "ok",
+			"also_valid_123": "ok2",
+			"has space":      "skip1",
+			"has\nnewline":   "skip2",
+			"=starts-eq":     "skip3",
+			"":               "skip4",
+			"has=equals":     "skip5",
+		},
+	}
+	got, _, skipped, err := extractEnvPullVars(data)
+	if err != nil {
+		t.Fatalf("extractEnvPullVars() err=%v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 valid keys, got %d: %v", len(got), got)
+	}
+	if len(skipped) != 5 {
+		t.Fatalf("expected 5 skipped keys, got %d: %v", len(skipped), skipped)
+	}
+	if got["VALID_KEY"] != "ok" {
+		t.Fatalf("VALID_KEY = %q, want ok", got["VALID_KEY"])
+	}
+	if got["also_valid_123"] != "ok2" {
+		t.Fatalf("also_valid_123 = %q, want ok2", got["also_valid_123"])
+	}
+}
+
+func TestExtractEnvPullVars_ArraySkipsInvalidKeys(t *testing.T) {
+	data := map[string]interface{}{
+		"env_vars": []interface{}{
+			map[string]interface{}{"key": "GOOD_KEY", "value": "val1"},
+			map[string]interface{}{"key": "bad key", "value": "val2"},
+		},
+	}
+	got, _, skipped, err := extractEnvPullVars(data)
+	if err != nil {
+		t.Fatalf("extractEnvPullVars() err=%v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 valid key, got %d: %v", len(got), got)
+	}
+	if len(skipped) != 1 || skipped[0] != "bad key" {
+		t.Fatalf("expected 1 skipped key 'bad key', got %v", skipped)
+	}
+	if got["GOOD_KEY"] != "val1" {
+		t.Fatalf("GOOD_KEY = %q, want val1", got["GOOD_KEY"])
 	}
 }

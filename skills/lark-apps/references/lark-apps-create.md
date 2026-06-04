@@ -96,7 +96,7 @@ lark-cli apps +create --name "X" --app-type html
 
 ### 场景 2：用户要在本地做全栈开发
 
-`--app-type fullstack`（**必带 `--message`** = 用户需求原话），建完走 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)（配 git 凭证 → clone → `npm dev run` 起本地开发（自动拉 env）→ 编码 → publish）：
+`--app-type fullstack`（**必带 `--message`** = 用户需求原话），建完走 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)（配 git 凭证 → clone → `npm run dev` 起本地开发（自动拉 env）→ 编码 → publish）：
 
 ```bash
 lark-cli apps +create --name "审批系统" --app-type full_stack \

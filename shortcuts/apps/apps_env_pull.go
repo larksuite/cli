@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +19,9 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// envKeyPattern matches valid environment variable names: [A-Za-z_][A-Za-z0-9_]*
+var envKeyPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type envPullDatabaseInfo struct {
 	Detected      bool
@@ -79,7 +83,7 @@ var AppsEnvPull = common.Shortcut{
 			return err
 		}
 
-		envVars, databaseInfo, err := extractEnvPullVars(data)
+		envVars, databaseInfo, skippedKeys, err := extractEnvPullVars(data)
 		if err != nil {
 			return err
 		}
@@ -97,7 +101,7 @@ var AppsEnvPull = common.Shortcut{
 
 		result := buildEnvPullSuccessData(appID, envFile, databaseInfo)
 		rctx.OutFormat(result, nil, func(w io.Writer) {
-			writeEnvPullPretty(w, appID, envFile, databaseInfo)
+			writeEnvPullPretty(w, appID, envFile, databaseInfo, skippedKeys)
 		})
 		_ = updated
 		_ = created
@@ -137,7 +141,7 @@ func checkEnvPullTarget(envFile string) error {
 	return nil
 }
 
-func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPullDatabaseInfo, error) {
+func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPullDatabaseInfo, []string, error) {
 	raw := data["env_vars"]
 	if raw == nil {
 		if nested, ok := data["data"].(map[string]interface{}); ok {
@@ -145,35 +149,44 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 		}
 	}
 	if raw == nil {
-		return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
 	}
 
+	var skippedKeys []string
 	switch typed := raw.(type) {
 	case map[string]interface{}:
 		out := make(map[string]string, len(typed))
 		for key, value := range typed {
+			if !envKeyPattern.MatchString(key) {
+				skippedKeys = append(skippedKeys, key)
+				continue
+			}
 			s, ok := value.(string)
 			if !ok {
-				return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+				continue
 			}
 			out[key] = s
 		}
-		return out, envPullDatabaseInfo{Detected: hasEnvPullDatabase(out)}, nil
+		return out, envPullDatabaseInfo{Detected: hasEnvPullDatabase(out)}, skippedKeys, nil
 	case []interface{}:
 		out := make(map[string]string, len(typed))
 		info := envPullDatabaseInfo{}
 		for _, item := range typed {
 			entry, ok := item.(map[string]interface{})
 			if !ok {
-				return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+				continue
 			}
 			key, ok := entry["key"].(string)
 			if !ok || strings.TrimSpace(key) == "" {
-				return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+				continue
+			}
+			if !envKeyPattern.MatchString(key) {
+				skippedKeys = append(skippedKeys, key)
+				continue
 			}
 			value, ok := entry["value"].(string)
 			if !ok {
-				return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+				continue
 			}
 			out[key] = value
 			if key == "SUDA_DATABASE_URL" {
@@ -181,9 +194,9 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 				info.ExpiresAtRaw, info.ExpiresAtText = extractEnvPullDatabaseExpiry(entry["extras"])
 			}
 		}
-		return out, info, nil
+		return out, info, skippedKeys, nil
 	default:
-		return nil, envPullDatabaseInfo{}, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Message: "response field env_vars must be an object or array of key/value entries"}}
 	}
 }
 
@@ -335,7 +348,7 @@ func extractEnvPullDatabaseExpiry(rawExtras interface{}) (string, string) {
 	return "", ""
 }
 
-func writeEnvPullPretty(w io.Writer, appID, envFile string, databaseInfo envPullDatabaseInfo) {
+func writeEnvPullPretty(w io.Writer, appID, envFile string, databaseInfo envPullDatabaseInfo, skippedKeys []string) {
 	fmt.Fprintf(w, "✓ App detected: %s\n", appID)
 	if databaseInfo.Detected {
 		fmt.Fprintln(w, "✓ Development database detected")
@@ -344,6 +357,10 @@ func writeEnvPullPretty(w io.Writer, appID, envFile string, databaseInfo envPull
 	if databaseInfo.ExpiresAtText != "" {
 		fmt.Fprintln(w)
 		fmt.Fprintf(w, "DATABASE_URL is valid until %s.\n", databaseInfo.ExpiresAtText)
+	}
+	if len(skippedKeys) > 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintf(w, "⚠ Skipped %d invalid key(s): %s (key names must match [A-Za-z_][A-Za-z0-9_]*)\n", len(skippedKeys), strings.Join(skippedKeys, ", "))
 	}
 	fmt.Fprintf(w, "Run `lark-cli apps +env-pull --app-id <app_id>` again to refresh it.\n")
 }

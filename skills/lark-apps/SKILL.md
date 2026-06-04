@@ -21,7 +21,7 @@ metadata:
 # A. 本地全栈：建应用 → 一键初始化本地仓库(+init) → 起本地开发 → 编码 → 部署
 lark-cli apps +create --app-type full_stack --name "审批系统" --message "部门审批系统，支持登录、提交申请、多级审批"
 lark-cli apps +init --app-id app_xxx --dir ./my-app       # 一步：配凭证+clone+脚手架+推初始代码（先问用户 clone 到哪）
-cd ./my-app && npm install && npm dev run                 # 初始化完成后才起本地开发，自动拉 env（非阻塞）
+cd ./my-app && npm install && npm run dev                 # 初始化完成后才起本地开发，自动拉 env（非阻塞）
 git push origin sprint/default; lark-cli apps +publish --app-id app_xxx
 
 # B. HTML 托管
@@ -67,16 +67,15 @@ lark-cli apps +session-read --app-id app_xxx --session-id sess_xxx              
 1. **代码读写走原生 `git`，不走 CLI。** CLI 在本地开发里只做两件事：`+git-credential-init`（配推送凭证）和 `+publish`（部署）。`clone` / `pull` / `push` / `diff` / `log` / `blame` / 解冲突**全部用原生 `git`**。不存在 `apps +pull` / `apps +push` / `apps code +read` 这类命令，别去找、别去拼。
 2. **`sprint/default` / `main` 双分支模型。** `sprint/default` 是唯一工作分支（本地 push、云端 chat 提交都进它）；`main` 是「当前部署态」只读快照，**只能由 `+publish` 推进**（发布成功后服务端自动 fast-forward `main ← sprint/default`）。客户端不要 push main、不要 force-push，服务端 pre-receive hook 会硬拒。
 3. **DB 调试走 `+db-*` 命令（经妙搭封装），不是裸连数据库。** 用 `+db-table-list` / `+db-table-schema` / `+db-sql` 经妙搭服务端鉴权访问应用的多环境数据库，做查表 / 看 schema / 跑 SQL 调试，不用自己拼连接串。（应用运行时自己连库用的是 env 里的凭证，那是另一回事。）
-4. **凭证自动管理，不用手动刷新。** `+git-credential-init` 配好后，后续 git 操作的鉴权由 git credential helper **自动触发**；DB 凭证在环境变量里、`npm dev run` 时**自动更新**——不存在"PAT 过期要手动刷新"这回事，别去找刷新 / 续期命令。
-
-5. **环境变量不走独立命令。** env 由脚手架的 `npm dev run` 在启动本地开发时**自动拉取**，且**不阻塞** `npm dev run` 执行（拉取在后台进行）。没有 `apps +env-pull` 命令，别去找。
+4. **凭证自动管理，不用手动刷新。** `+git-credential-init` 配好后，后续 git 操作的鉴权由 git credential helper **自动触发**；DB 凭证在环境变量里、`npm run dev` 时**自动更新**——不存在"PAT 过期要手动刷新"这回事，别去找刷新 / 续期命令。
+5. **环境变量不走独立命令。** env 由脚手架的 `npm run dev` 在启动本地开发时**自动拉取**，且**不阻塞** `npm run dev` 执行（拉取在后台进行）。 不需要手动执行 `apps +env-pull` 命令。
 
 ## 前置条件 — 执行操作前必读
 
 **CRITICAL — 执行对应操作前，MUST 先用 Read 工具读取以下文件：**
 
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
-2. **本地全栈开发** → 必读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)（端到端：建应用 → 凭证 → 原生 git → `npm dev run` 起本地开发（自动拉 env）→ DB 调试 → publish）
+2. **本地全栈开发** → 必读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)（端到端：建应用 → 凭证 → 原生 git → `npm run dev` 起本地开发（自动拉 env）→ DB 调试 → publish）
 3. **HTML / 静态网站托管** → 必读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（`--path` 文件 vs 目录、index.html 入口、凭据文件扫描）
 4. **云端会话开发** → 必读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)（session 生命周期、chat、附件、轮询拿状态）
 5. **创建 / 更新 / 列出应用** → 必读 [`lark-apps-create.md`](references/lark-apps-create.md) / [`lark-apps-update.md`](references/lark-apps-update.md)
@@ -118,7 +117,7 @@ lark-cli auth login --domain apps
 | [`+init`](references/lark-apps-init.md) | 一键初始化本地开发仓库（编排 `+git-credential-init` → clone → 切 `sprint/default` → npx 脚手架；agent 应先问用户 clone 到哪并传 `--dir`，接受绝对 / 相对路径） | 本期新增 |
 
 ### 本地开发 · 环境与数据库
-> 环境变量**不提供独立命令**：由脚手架的 `npm dev run` 在起本地开发时自动拉取（非阻塞）。
+> 环境变量**不提供独立命令**：由脚手架的 `npm run dev` 在起本地开发时自动拉取（非阻塞）。
 > 多环境数据库**推荐在 `+create` 时勾选开启**（`--enable-multi-env-db`）；DB 分 **dev / online 两环境**，**dev 的库结构变更随 `+publish` 一起发布到 online**（与代码同一条发布链路）。flag / scope 细节见各命令 reference。
 
 | 命令 | 用途 | 状态 |
