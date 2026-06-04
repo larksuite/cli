@@ -330,11 +330,14 @@ func TestDriveCoverDownload404ReturnsFailedPrecondition(t *testing.T) {
 	if !strings.Contains(validationErr.Hint, "--list-only") {
 		t.Fatalf("hint=%q, want --list-only guidance", validationErr.Hint)
 	}
+	if !strings.Contains(validationErr.Hint, "file token/version is invalid") {
+		t.Fatalf("hint=%q, want invalid file token/version guidance", validationErr.Hint)
+	}
 	if !strings.Contains(validationErr.Hint, "available cover specs") && !strings.Contains(validationErr.Hint, "default, icon, grid") {
 		t.Fatalf("hint=%q, want available cover specs guidance", validationErr.Hint)
 	}
-	if !strings.Contains(validationErr.Error(), `requested cover spec "square" is not available for this file`) {
-		t.Fatalf("message=%q, want unavailable cover spec message", validationErr.Error())
+	if !strings.Contains(validationErr.Error(), `preview_download returned HTTP 404 for --spec "square"`) {
+		t.Fatalf("message=%q, want neutral 404 message", validationErr.Error())
 	}
 }
 

@@ -110,13 +110,13 @@ func wrapDriveCoverDownloadError(err error, requestedSpec string) error {
 		return err
 	}
 	hint := fmt.Sprintf(
-		"HTTP 404 from preview_download means this file has no artifact for --spec %q; run `lark-cli drive +cover --file-token <file-token> --list-only` to review the built-in presets. Available cover specs: %s",
+		"This may mean no artifact exists for --spec %q, or that the file token/version is invalid. Verify the inputs, or rerun with `lark-cli drive +cover --file-token <file-token> --list-only`. Available cover specs: %s",
 		requestedSpec,
 		strings.Join(availableDriveCoverSpecs(), ", "),
 	)
 	return errs.NewValidationError(
 		errs.SubtypeFailedPrecondition,
-		"requested cover spec %q is not available for this file",
+		"preview_download returned HTTP 404 for --spec %q",
 		requestedSpec,
 	).WithParam("--spec").WithCode(problem.Code).WithLogID(problem.LogID).WithHint(hint).WithCause(err)
 }
