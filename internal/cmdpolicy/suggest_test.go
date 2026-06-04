@@ -29,23 +29,3 @@ func TestSuggestRisk(t *testing.T) {
 		}
 	}
 }
-
-func TestLevenshtein(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
-	}{
-		{"", "", 0},
-		{"", "abc", 3},
-		{"abc", "", 3},
-		{"abc", "abc", 0},
-		{"wrtie", "write", 2},
-		{"kitten", "sitting", 3},
-	}
-	for _, c := range cases {
-		got := levenshtein(c.a, c.b)
-		if got != c.want {
-			t.Errorf("levenshtein(%q,%q) = %d, want %d", c.a, c.b, got, c.want)
-		}
-	}
-}

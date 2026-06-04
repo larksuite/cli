@@ -57,6 +57,14 @@ linters:
       - path: internal/vfs/
         linters:
           - forbidigo
+      # internal/gen build-time generators (standalone `package main` run via
+      # go:generate) are not shortcut runtime code — no ctx/runtime/framework —
+      # so the shortcut forbidigo bans don't apply. Going "compliant" is also
+      # impossible here: a structured error return needs os.Exit (also banned),
+      # and the vfs.Xxx() alternative is blocked by depguard shortcuts-no-vfs.
+      - path: shortcuts/.*/internal/gen/
+        linters:
+          - forbidigo
       # shortcuts-no-raw-http is shortcuts-only; internal/ wraps raw HTTP
       # for the client / credential layer.
       - path-except: shortcuts/

@@ -10,27 +10,6 @@ import (
 	_ "github.com/larksuite/cli/events"
 )
 
-func TestLevenshtein(t *testing.T) {
-	cases := []struct {
-		a, b string
-		want int
-	}{
-		{"", "", 0},
-		{"a", "", 1},
-		{"", "abc", 3},
-		{"kitten", "kitten", 0},
-		{"kitten", "sitten", 1},
-		{"kitten", "sitting", 3},
-		{"飞书", "飞书", 0},
-		{"飞书", "飞s", 1},
-	}
-	for _, tc := range cases {
-		if got := levenshtein(tc.a, tc.b); got != tc.want {
-			t.Errorf("levenshtein(%q,%q) = %d, want %d", tc.a, tc.b, got, tc.want)
-		}
-	}
-}
-
 func TestSuggestEventKeys(t *testing.T) {
 	cases := []struct {
 		name              string

@@ -133,6 +133,7 @@ func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
+		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
@@ -188,6 +189,7 @@ func TestBaseDeleteShortcutsRisk(t *testing.T) {
 		BaseFormQuestionsDelete.Command:    BaseFormQuestionsDelete.Risk,
 		BaseDashboardDelete.Command:        BaseDashboardDelete.Risk,
 		BaseDashboardBlockDelete.Command:   BaseDashboardBlockDelete.Risk,
+		BaseBaseBlockDelete.Command:        BaseBaseBlockDelete.Risk,
 		BaseRoleDelete.Command:             BaseRoleDelete.Risk,
 	}
 
@@ -238,6 +240,30 @@ func TestBaseFieldUpdateHelpHidesReadGuideFlag(t *testing.T) {
 	}
 	if strings.Contains(cmd.Flags().FlagUsages(), "--i-have-read-guide") {
 		t.Fatalf("help should not include --i-have-read-guide")
+	}
+}
+
+func TestBaseBlockMoveRejectsBeforeAndAfter(t *testing.T) {
+	runtime := newBaseTestRuntime(
+		map[string]string{"before-id": "blk_before", "after-id": "blk_after"},
+		nil,
+		nil,
+	)
+	err := validateBaseBlockMove(runtime)
+	if err == nil || !strings.Contains(err.Error(), "--before-id and --after-id are mutually exclusive") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestBaseBlockCreateAndRenameRequireName(t *testing.T) {
+	createRT := newBaseTestRuntime(map[string]string{"type": "folder", "name": "   "}, nil, nil)
+	if err := validateBaseBlockCreate(createRT); err == nil || !strings.Contains(err.Error(), "--name must not be blank") {
+		t.Fatalf("create err=%v", err)
+	}
+
+	renameRT := newBaseTestRuntime(map[string]string{"name": "   "}, nil, nil)
+	if err := validateBaseBlockRename(renameRT); err == nil || !strings.Contains(err.Error(), "--name must not be blank") {
+		t.Fatalf("rename err=%v", err)
 	}
 }
 
@@ -708,6 +734,79 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
 				"lark-base-cell-value.md",
 				"do not invent values for fields not covered by the happy path",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+
+			tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+			for _, want := range tt.wantTips {
+				if !strings.Contains(tips, want) {
+					t.Fatalf("tips missing %q:\n%s", want, tips)
+				}
+			}
+		})
+	}
+}
+
+func TestBaseBlockHelpGuidesAgents(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		wantTips []string
+	}{
+		{
+			name:     "list",
+			shortcut: BaseBaseBlockList,
+			wantTips: []string{
+				"lark-cli base +base-block-list --base-token <base_token>",
+				"lark-cli base +base-block-list --base-token <base_token> --type table",
+				"lark-cli base +base-block-list --base-token <base_token> --parent-id <folder_block_id>",
+				`jq '.blocks[] | {type, name, block_id: .id, parent_id}'`,
+				`--type docx | jq '.blocks[] | {name, docx_token}'`,
+				"returned id is the table-id, dashboard-id, or workflow-id",
+				"For docx blocks, use the returned docx_token with docx commands.",
+			},
+		},
+		{
+			name:     "create",
+			shortcut: BaseBaseBlockCreate,
+			wantTips: []string{
+				`lark-cli base +base-block-create --base-token <base_token> --type folder --name "Project Docs"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type table --name "Tasks"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type docx --name "Spec" --parent-id <folder_block_id>`,
+				`lark-cli base +base-block-create --base-token <base_token> --type dashboard --name "Metrics"`,
+				`lark-cli base +base-block-create --base-token <base_token> --type workflow --name "Approval Flow"`,
+			},
+		},
+		{
+			name:     "move",
+			shortcut: BaseBaseBlockMove,
+			wantTips: []string{
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --parent-id <folder_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --after-id <sibling_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id> --before-id <sibling_block_id>",
+				"lark-cli base +base-block-move --base-token <base_token> --block-id <block_id>",
+			},
+		},
+		{
+			name:     "rename",
+			shortcut: BaseBaseBlockRename,
+			wantTips: []string{
+				`lark-cli base +base-block-rename --base-token <base_token> --block-id <block_id> --name "New name"`,
+			},
+		},
+		{
+			name:     "delete",
+			shortcut: BaseBaseBlockDelete,
+			wantTips: []string{
+				"lark-cli base +base-block-delete --base-token <base_token> --block-id <block_id> --yes",
+				"Recursive folder deletion is not supported.",
 			},
 		},
 	}

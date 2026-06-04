@@ -97,6 +97,46 @@ func TestShortcutMount_FlagCompletionsDisabled(t *testing.T) {
 	}
 }
 
+// TestShortcutMount_ReservedIntrospectionFlagCollision verifies the reserved
+// --print-schema / --flag-name flags are registered defensively: a shortcut
+// that already declares same-named flags must not trigger pflag's duplicate-
+// registration panic (the Lookup guard in registerShortcutFlagsWithContext).
+func TestShortcutMount_ReservedIntrospectionFlagCollision(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	parent := &cobra.Command{Use: "root"}
+	shortcut := Shortcut{
+		Service:     "docs",
+		Command:     "+introspect",
+		Description: "x",
+		// The shortcut's own flags collide with the names the runner auto-
+		// injects when PrintFlagSchema is set. Without the guard, pflag panics.
+		Flags: []Flag{
+			{Name: "print-schema", Desc: "user-defined collision"},
+			{Name: "flag-name", Desc: "user-defined collision"},
+		},
+		PrintFlagSchema: func(string) ([]byte, error) { return nil, nil },
+		Execute:         func(context.Context, *RuntimeContext) error { return nil },
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Mount panicked on a reserved-flag name collision (Lookup guard missing?): %v", r)
+		}
+	}()
+	shortcut.Mount(parent, f)
+
+	cmd, _, err := parent.Find([]string{"+introspect"})
+	if err != nil {
+		t.Fatalf("Find() error = %v", err)
+	}
+	if cmd.Flags().Lookup("print-schema") == nil {
+		t.Error("print-schema flag should still exist after the guarded registration")
+	}
+	if cmd.Flags().Lookup("flag-name") == nil {
+		t.Error("flag-name flag should still exist after the guarded registration")
+	}
+}
+
 func TestShortcutMount_JsonFlag_AcceptedWhenHasFormat(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	parent := &cobra.Command{Use: "root"}

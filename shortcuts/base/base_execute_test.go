@@ -411,6 +411,108 @@ func decodeCapturedJSONBody(t *testing.T, stub *httpmock.Stub) map[string]interf
 	return body
 }
 
+func TestBaseBlockExecuteShortcuts(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	listStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"blocks": []interface{}{
+					map[string]interface{}{"id": "blk_doc", "type": "docx", "name": "Spec"},
+					map[string]interface{}{"id": "blk_folder", "type": "folder", "name": "Folder"},
+				},
+				"total": 2,
+			},
+		},
+	}
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "type": "docx", "name": "Spec"},
+		},
+	}
+	moveStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc/move",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "parent_id": "bfl_1"},
+		},
+	}
+	renameStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc/rename",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "name": "Final Spec"},
+		},
+	}
+	deleteStub := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc"},
+		},
+	}
+	for _, stub := range []*httpmock.Stub{listStub, createStub, moveStub, renameStub, deleteStub} {
+		reg.Register(stub)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockList, []string{"+base-block-list", "--base-token", "app_x", "--parent-id", "bfl_1", "--type", "docx"}, factory, stdout); err != nil {
+		t.Fatalf("list err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"total": 1`) || !strings.Contains(got, `"blk_doc"`) || strings.Contains(got, `"blk_folder"`) {
+		t.Fatalf("list stdout=%s", got)
+	}
+	if body := decodeCapturedJSONBody(t, listStub); body["parent_id"] != "bfl_1" || body["type"] != nil {
+		t.Fatalf("list body=%#v", body)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockCreate, []string{"+base-block-create", "--base-token", "app_x", "--type", "docx", "--name", " Spec ", "--parent-id", "bfl_1"}, factory, stdout); err != nil {
+		t.Fatalf("create err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"blk_doc"`) {
+		t.Fatalf("create stdout=%s", got)
+	}
+	createBody := decodeCapturedJSONBody(t, createStub)
+	if createBody["type"] != "docx" || createBody["name"] != "Spec" || createBody["parent_id"] != "bfl_1" {
+		t.Fatalf("create body=%#v", createBody)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockMove, []string{"+base-block-move", "--base-token", "app_x", "--block-id", "blk_doc", "--parent-id", "bfl_1", "--after-id", "blk_prev"}, factory, stdout); err != nil {
+		t.Fatalf("move err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"moved": true`) {
+		t.Fatalf("move stdout=%s", got)
+	}
+	moveBody := decodeCapturedJSONBody(t, moveStub)
+	if moveBody["parent_id"] != "bfl_1" || moveBody["after_id"] != "blk_prev" {
+		t.Fatalf("move body=%#v", moveBody)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockRename, []string{"+base-block-rename", "--base-token", "app_x", "--block-id", "blk_doc", "--name", " Final Spec "}, factory, stdout); err != nil {
+		t.Fatalf("rename err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"renamed": true`) || !strings.Contains(got, `"Final Spec"`) {
+		t.Fatalf("rename stdout=%s", got)
+	}
+	if body := decodeCapturedJSONBody(t, renameStub); body["name"] != "Final Spec" {
+		t.Fatalf("rename body=%#v", body)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockDelete, []string{"+base-block-delete", "--base-token", "app_x", "--block-id", "blk_doc", "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("delete err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"blk_doc"`) {
+		t.Fatalf("delete stdout=%s", got)
+	}
+}
+
 func TestBaseHistoryExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

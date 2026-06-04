@@ -32,6 +32,7 @@ var VCMeetingJoin = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "meeting-number", Required: true, Desc: "meeting number to join"},
 		{Name: "password", Desc: "meeting password (if required)"},
+		{Name: "call-id", Desc: "correlation id forwarded from invite event"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mn := strings.TrimSpace(runtime.Str("meeting-number"))
@@ -89,6 +90,9 @@ func buildMeetingJoinBody(runtime *common.RuntimeContext) map[string]interface{}
 	}
 	if pw := strings.TrimSpace(runtime.Str("password")); pw != "" {
 		body["password"] = pw
+	}
+	if cid := strings.TrimSpace(runtime.Str("call-id")); cid != "" {
+		body["call_id"] = cid
 	}
 	return body
 }

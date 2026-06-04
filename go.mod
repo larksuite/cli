@@ -14,7 +14,7 @@ require (
 	github.com/sergi/go-diff v1.4.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/smartystreets/goconvey v1.8.1
-	github.com/spf13/cobra v1.10.2
+	github.com/spf13/cobra v1.10.2 // flag-error-text contract: see cmd/root.go unknownFlagName
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0

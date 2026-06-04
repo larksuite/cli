@@ -30,6 +30,7 @@ import (
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // RuntimeContext provides helpers for shortcut execution.
@@ -70,6 +71,16 @@ func (ctx *RuntimeContext) As() core.Identity {
 // IsBot returns true if current identity is bot.
 func (ctx *RuntimeContext) IsBot() bool {
 	return ctx.As().IsBot()
+}
+
+// Command returns the shortcut command name as cobra knows it (e.g.
+// "+pivot-create"). Used by per-service helpers (e.g. sheets schema
+// validation) that key off the shortcut identity.
+func (ctx *RuntimeContext) Command() string {
+	if ctx.Cmd == nil {
+		return ""
+	}
+	return ctx.Cmd.Name()
 }
 
 // UserOpenId returns the current user's open_id from config.
@@ -197,6 +208,12 @@ func (ctx *RuntimeContext) Bool(name string) bool {
 // Int returns an int flag value.
 func (ctx *RuntimeContext) Int(name string) int {
 	v, _ := ctx.Cmd.Flags().GetInt(name)
+	return v
+}
+
+// Float64 returns a float64 flag value (non-integer numbers).
+func (ctx *RuntimeContext) Float64(name string) float64 {
+	v, _ := ctx.Cmd.Flags().GetFloat64(name)
 	return v
 }
 
@@ -625,6 +642,8 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 //   - Other errors → readMsg prefix (default "cannot read file")
 //
 // Pass an optional readMsg to override the non-path-validation message prefix.
+//
+// Deprecated: use WrapInputStatErrorTyped for typed error envelopes.
 func WrapInputStatError(err error, readMsg ...string) error {
 	if err == nil {
 		return nil
@@ -639,9 +658,28 @@ func WrapInputStatError(err error, readMsg ...string) error {
 	return output.ErrValidation("%s: %s", msg, err)
 }
 
+// WrapInputStatErrorTyped wraps a FileIO.Stat/Open error for input file validation.
+func WrapInputStatErrorTyped(err error, readMsg ...string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe file path: %s", err).
+			WithCause(err)
+	}
+	msg := "cannot read file"
+	if len(readMsg) > 0 && readMsg[0] != "" {
+		msg = readMsg[0]
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %s", msg, err).
+		WithCause(err)
+}
+
 // WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
 // using standardized messages and the given error category (e.g. "api_error", "io").
 // Path validation errors always use ErrValidation (exit code 2).
+//
+// Deprecated: use WrapSaveErrorTyped for typed error envelopes.
 func WrapSaveErrorByCategory(err error, category string) error {
 	if err == nil {
 		return nil
@@ -654,6 +692,28 @@ func WrapSaveErrorByCategory(err error, category string) error {
 		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
 	default:
 		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
+	}
+}
+
+// WrapSaveErrorTyped maps a FileIO.Save error to typed validation/internal errors.
+// Unlike WrapSaveErrorByCategory, non-path failures always emit the canonical
+// "internal" wire type: call sites migrating from a custom category
+// (e.g. "io", "api_error") change their envelope's type field.
+func WrapSaveErrorTyped(err error) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
+			WithCause(err)
+	case errors.As(err, &me):
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
+			WithCause(err)
+	default:
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create file: %s", err).
+			WithCause(err)
 	}
 }
 
@@ -895,6 +955,29 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
+	if shortcut.PrintFlagSchema != nil || shortcut.OnInvoke != nil {
+		onInvoke := shortcut.OnInvoke
+		relaxRequiredForSchema := shortcut.PrintFlagSchema != nil
+		// PreRunE runs before cobra's ValidateRequiredFlags. Two opt-in uses:
+		//   - OnInvoke: fire a side effect (e.g. a deprecation notice) that must
+		//     surface even when the call later fails on a missing required flag.
+		//   - --print-schema: pure local introspection; relax the required-flag
+		//     gate so callers don't fill in unrelated flags just to ask for a
+		//     schema (clearing the annotation here is the supported opt-out).
+		cmd.PreRunE = func(c *cobra.Command, _ []string) error {
+			if onInvoke != nil {
+				onInvoke()
+			}
+			if relaxRequiredForSchema {
+				if want, _ := c.Flags().GetBool("print-schema"); want {
+					c.Flags().VisitAll(func(fl *pflag.Flag) {
+						delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+					})
+				}
+			}
+			return nil
+		}
+	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -908,6 +991,31 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → context → validate → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
+	// --print-schema short-circuits everything below: it's pure local
+	// introspection, no identity / scope / network needed. The flag is
+	// only registered when the shortcut opts in via PrintFlagSchema.
+	if s.PrintFlagSchema != nil {
+		if want, _ := cmd.Flags().GetBool("print-schema"); want {
+			flagName, _ := cmd.Flags().GetString("flag-name")
+			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
+			if err != nil {
+				// PrintFlagSchema implementations return bare errors; wrap as a
+				// structured ExitError so --print-schema (an agent-facing
+				// introspection path) yields a parseable envelope, not a plain
+				// string.
+				if _, ok := err.(*output.ExitError); !ok {
+					err = output.Errorf(output.ExitValidation, "print_schema_error", "%s", err.Error())
+				}
+				return err
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			fmt.Fprintln(f.IOStreams.Out, string(out))
+			return nil
+		}
+	}
+
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -1012,6 +1120,16 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	return rctx, nil
 }
 
+// stripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
+// file or stdin. A BOM that survives into a CSV cell corrupts the first value
+// (e.g. "\ufeffNorth", which then makes a MAXIFS/lookup miss it), and a BOM at the
+// head of a JSON payload makes json.Unmarshal fail with "invalid character 'ï'".
+// Some editors and exporters add it silently. Only a leading BOM is removed; interior
+// occurrences are left untouched.
+func stripUTF8BOM(s string) string {
+	return strings.TrimPrefix(s, "\uFEFF")
+}
+
 // resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
 // Must be called before Validate/DryRun/Execute so that runtime.Str() returns resolved content.
 func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
@@ -1022,7 +1140,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		}
 		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
 		if err != nil {
-			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+			return ValidationErrorf("--%s: Input is only supported for string flags", fl.Name).
+				WithParam("--" + fl.Name)
 		}
 		if raw == "" {
 			continue
@@ -1031,17 +1150,23 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// stdin: -
 		if raw == "-" {
 			if !slices.Contains(fl.Input, Stdin) {
-				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
+				return ValidationErrorf("--%s does not support stdin (-)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			if stdinUsed {
-				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
+				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			stdinUsed = true
 			data, err := io.ReadAll(rctx.IO().In)
 			if err != nil {
-				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
+				return ValidationErrorf("--%s: failed to read from stdin: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			// strip a leading UTF-8 BOM so it can't corrupt the first CSV
+			// cell or break JSON parsing downstream.
+			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
 			continue
 		}
 
@@ -1054,17 +1179,23 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// file: @path
 		if strings.HasPrefix(raw, "@") {
 			if !slices.Contains(fl.Input, File) {
-				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
+				return ValidationErrorf("--%s does not support file input (@path)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			path := strings.TrimSpace(raw[1:])
 			if path == "" {
-				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
+				return ValidationErrorf("--%s: file path cannot be empty after @", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				return FlagErrorf("--%s: %v", fl.Name, err)
+				return ValidationErrorf("--%s: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			// strip a leading UTF-8 BOM so it
+			// can't corrupt the first CSV cell or break JSON parsing downstream.
+			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
 			continue
 		}
 	}
@@ -1088,7 +1219,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 		}
 		if !valid {
-			return FlagErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", "))
+			return ValidationErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", ")).
+				WithParam("--" + fl.Name)
 		}
 	}
 	return nil
@@ -1096,7 +1228,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
 	if s.DryRun == nil {
-		return FlagErrorf("--dry-run is not supported for %s %s", s.Service, s.Command)
+		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
+			WithParam("--dry-run")
 	}
 	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
@@ -1149,6 +1282,10 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			var d int
 			fmt.Sscanf(fl.Default, "%d", &d)
 			cmd.Flags().Int(fl.Name, d, desc)
+		case "float64":
+			var d float64
+			fmt.Sscanf(fl.Default, "%g", &d)
+			cmd.Flags().Float64(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
 		case "string_slice":
@@ -1182,6 +1319,17 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
+	}
+	if s.PrintFlagSchema != nil {
+		// Guard against a shortcut that already declares these reserved
+		// introspection flags: pflag panics on a duplicate registration.
+		// Mirrors the Lookup guard on --format above.
+		if cmd.Flags().Lookup("print-schema") == nil {
+			cmd.Flags().Bool("print-schema", false, "print JSON Schema for a composite flag instead of executing")
+		}
+		if cmd.Flags().Lookup("flag-name") == nil {
+			cmd.Flags().String("flag-name", "", "flag whose schema to print (omit to list introspectable flags); used with --print-schema")
+		}
 	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)

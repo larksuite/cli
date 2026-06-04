@@ -2620,3 +2620,45 @@ func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
 	}
 	return nil
 }
+
+// validateMessageIDs parses and validates the existing +messages comma-separated
+// flag format. Unlike splitByComma, it keeps empty entries so "id1,,id2" fails
+// locally. It intentionally does not enforce the server-side single-call limit:
+// fetchFullMessages chunks backend requests into batches of 20.
+func validateMessageIDs(raw string) ([]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, output.ErrValidation("--message-ids is required; provide one or more message IDs separated by commas")
+	}
+	parts := strings.Split(raw, ",")
+	ids := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for i, part := range parts {
+		id := strings.TrimSpace(part)
+		if id == "" {
+			return nil, output.ErrValidation("--message-ids entry %d is empty; remove extra commas or provide valid message IDs", i+1)
+		}
+		if part != id {
+			return nil, output.ErrValidation("--message-ids entry %d (%q): must not contain leading or trailing whitespace", i+1, part)
+		}
+		if err := validateBatchGetMessageID(id, i); err != nil {
+			return nil, err
+		}
+		if _, ok := seen[id]; ok {
+			return nil, output.ErrValidation("--message-ids entry %d (%q): duplicate message ID is not allowed", i+1, id)
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func validateBatchGetMessageID(id string, index int) error {
+	if strings.Trim(id, "0123456789") == "" {
+		return output.ErrValidation("--message-ids entry %d (%q): numeric primary IDs are not supported by mail +messages; pass the Open API message_id from mail output", index+1, id)
+	}
+	decoded, err := base64.URLEncoding.DecodeString(id)
+	if err != nil || len(decoded) == 0 {
+		return output.ErrValidation("--message-ids entry %d (%q): expected a base64url Open API mail message_id from mail output", index+1, id)
+	}
+	return nil
+}
