@@ -267,7 +267,11 @@ var MailTriage = common.Shortcut{
 
 		switch outFormat {
 		case "json", "data":
+			for i := range messages {
+				messages[i]["mailbox_id"] = mailbox
+			}
 			outData := map[string]interface{}{
+				"mailbox_id": mailbox,
 				"messages":   messages,
 				"count":      len(messages),
 				"has_more":   hasMore,
@@ -286,6 +290,7 @@ var MailTriage = common.Shortcut{
 					"from":       sanitizeForTerminal(strVal(msg["from"])),
 					"subject":    sanitizeForTerminal(strVal(msg["subject"])),
 					"message_id": msg["message_id"],
+					"mailbox_id": mailbox,
 				}
 				if showLabels {
 					row["labels"] = msg["labels"]
@@ -306,7 +311,7 @@ var MailTriage = common.Shortcut{
 				hint.WriteString(" --page-token " + shellQuote(nextPageToken))
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
-			fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
+			fmt.Fprintf(runtime.IO().ErrOut, "tip: use mail +message --mailbox %s --message-id <id> to read full content\n", mailbox)
 		}
 		return nil
 	},

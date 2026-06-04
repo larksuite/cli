@@ -1405,3 +1405,56 @@ func TestParseTriagePageTokenInvalidPrefix(t *testing.T) {
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+
+// --- mailbox_id in output ---
+
+func TestBuildTriageMessageMetaPreservesFields(t *testing.T) {
+	msg := map[string]interface{}{
+		"message_id": "msg_001",
+		"subject":    "Test subject",
+		"folder_id":  "INBOX",
+		"thread_id":  "thread_001",
+		"head_from": map[string]interface{}{
+			"name":         "Alice",
+			"mail_address": "alice@example.com",
+		},
+	}
+	got := buildTriageMessageMeta(msg, "msg_001")
+	if got["message_id"] != "msg_001" {
+		t.Fatalf("message_id mismatch: %v", got["message_id"])
+	}
+	if got["subject"] != "Test subject" {
+		t.Fatalf("subject mismatch: %v", got["subject"])
+	}
+	if got["thread_id"] != "thread_001" {
+		t.Fatalf("thread_id mismatch: %v", got["thread_id"])
+	}
+}
+
+func TestBuildTriageMessagesFromSearchItemsIncludesAllFields(t *testing.T) {
+	raw := []interface{}{
+		map[string]interface{}{
+			"meta_data": map[string]interface{}{
+				"message_biz_id": "biz_msg_100",
+				"title":          "Search hit",
+				"thread_id":      "thread_100",
+				"create_time":    "2026-04-01T12:00:00+08:00",
+				"from": map[string]interface{}{
+					"name":         "Bob",
+					"mail_address": "bob@example.com",
+				},
+			},
+		},
+	}
+	got := buildTriageMessagesFromSearchItems(raw)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(got))
+	}
+	if got[0]["message_id"] != "biz_msg_100" {
+		t.Fatalf("message_id mismatch: %v", got[0]["message_id"])
+	}
+	if got[0]["subject"] != "Search hit" {
+		t.Fatalf("subject mismatch: %v", got[0]["subject"])
+	}
+}
