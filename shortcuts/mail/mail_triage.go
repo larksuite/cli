@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/ratelimit"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -1106,6 +1107,9 @@ func doJSONAPI(runtime *common.RuntimeContext, req *larkcore.ApiReq, action stri
 				return nil, handleErr
 			}
 		} else {
+			if ratelimit.IsLocalRateLimit(err) {
+				return nil, err
+			}
 			lastErr = output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)
 			if attempt == triageAPIRetries {
 				return nil, lastErr

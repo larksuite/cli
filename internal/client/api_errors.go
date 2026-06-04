@@ -14,6 +14,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/ratelimit"
 )
 
 // rawAPIJSONHint guides users when an SDK or response body parse fails. The
@@ -29,6 +30,9 @@ const rawAPIJSONHint = "The endpoint may have returned an empty or non-standard 
 func WrapDoAPIError(err error) error {
 	if err == nil {
 		return nil
+	}
+	if ratelimit.IsLocalRateLimit(err) {
+		return err
 	}
 
 	// (1) Pass-through any typed errs.* error.

@@ -196,6 +196,21 @@ func TestWrapDoAPIError_Nil(t *testing.T) {
 	}
 }
 
+func TestWrapDoAPIError_PreservesLocalMailRateLimit(t *testing.T) {
+	original := output.ErrAPI(output.LarkErrRateLimit, "rate limited", map[string]any{
+		"source":         "local_ratelimit",
+		"retry_after_ms": 100,
+	})
+	err := WrapDoAPIError(original)
+	if err != original {
+		t.Fatalf("WrapDoAPIError returned %p, want original %p", err, original)
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "rate_limit" {
+		t.Fatalf("err = %v, want preserved rate_limit ExitError", err)
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WrapJSONResponseParseError: typed error contract.
 //

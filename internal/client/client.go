@@ -25,6 +25,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/errcompat"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/ratelimit"
 	"github.com/larksuite/cli/internal/util"
 )
 
@@ -130,6 +131,10 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
+	if err := ratelimit.Allow(ctx, c.rateLimitRequest(req)); err != nil {
+		return nil, err
+	}
+
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
 		// WrapDoAPIError is idempotent on already-classified errors:
@@ -165,6 +170,10 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 // closed, and returned as an output.ErrNetwork — callers only receive successful responses.
 func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
 	cfg := buildConfig(opts)
+
+	if err := ratelimit.Allow(ctx, c.rateLimitRequest(req)); err != nil {
+		return nil, err
+	}
 
 	// Resolve auth
 	token, err := c.resolveAccessToken(ctx, as)
@@ -248,6 +257,21 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	}
 
 	return resp, nil
+}
+
+func (c *APIClient) rateLimitRequest(req *larkcore.ApiReq) ratelimit.Request {
+	if req == nil {
+		return ratelimit.Request{}
+	}
+	limitReq := ratelimit.Request{
+		Method: req.HttpMethod,
+		Path:   req.ApiPath,
+	}
+	if c != nil && c.Config != nil {
+		limitReq.Brand = c.Config.Brand
+		limitReq.AppID = c.Config.AppID
+	}
+	return limitReq
 }
 
 func streamLogID(header http.Header) string {
@@ -379,7 +403,7 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 			ExtraOpts: request.ExtraOpts,
 		})
 		if err != nil {
-			if page == 1 {
+			if page == 1 || ratelimit.IsLocalRateLimit(err) {
 				return nil, err
 			}
 			fmt.Fprintf(c.ErrOut, "[page %d] error, stopping pagination\n", page)

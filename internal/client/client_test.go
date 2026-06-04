@@ -24,6 +24,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/ratelimit"
 )
 
 // roundTripFunc is an adapter to use a function as http.RoundTripper.
@@ -48,6 +49,15 @@ func (s *staticTokenResolver) ResolveToken(_ context.Context, _ credential.Token
 	return &credential.TokenResult{Token: "test-token"}, nil
 }
 
+type countingTokenResolver struct {
+	count int
+}
+
+func (s *countingTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	s.count++
+	return &credential.TokenResult{Token: "test-token"}, nil
+}
+
 // newTestAPIClient creates an APIClient with a mock HTTP transport.
 func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Buffer) {
 	t.Helper()
@@ -66,6 +76,14 @@ func newTestAPIClient(t *testing.T, rt http.RoundTripper) (*APIClient, *bytes.Bu
 		Credential: testCred,
 		Config:     cfg,
 	}, errBuf
+}
+
+func TestRateLimitRequestNilNoops(t *testing.T) {
+	ac := &APIClient{Config: &core.CliConfig{AppID: "test-app", Brand: core.BrandFeishu}}
+	req := ac.rateLimitRequest(nil)
+	if req.Brand != "" || req.AppID != "" || req.Method != "" || req.Path != "" {
+		t.Fatalf("rateLimitRequest(nil) = %#v, want empty request", req)
+	}
 }
 
 func TestIsJSONContentType(t *testing.T) {
@@ -231,6 +249,48 @@ func TestPaginateAll_PageLimitStopsPagination(t *testing.T) {
 	}
 	if _, exists := data["page_token"]; exists {
 		t.Errorf("expected page_token to be dropped from merged output, got %v", data["page_token"])
+	}
+}
+
+func TestPaginateAll_ReturnsMailRateLimitAfterFirstPage(t *testing.T) {
+	now := time.Unix(100, 0)
+	rule := ratelimit.Rule{
+		Method:        "GET",
+		CanonicalPath: "/open-apis/mail/v1/user_mailboxes/:user_mailbox_id/messages",
+		Window:        2 * time.Second,
+		Limit:         1,
+		Scope:         ratelimit.ScopeApp,
+	}
+	restore := ratelimit.SetDefaultLimiterForTest(ratelimit.NewLimiterForDir(t.TempDir(), []ratelimit.Rule{rule}, func() time.Time { return now }))
+	defer restore()
+
+	apiCalls := 0
+	ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": apiCalls}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		}), nil
+	}))
+
+	_, err := ac.PaginateAll(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/me/messages",
+		As:     core.AsBot,
+	}, PaginationOptions{PageLimit: 10, PageDelay: -1})
+	if err == nil {
+		t.Fatal("expected local rate limit")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "rate_limit" {
+		t.Fatalf("err = %v, want rate_limit ExitError", err)
+	}
+	if apiCalls != 1 {
+		t.Fatalf("api calls = %d, want 1", apiCalls)
 	}
 }
 
@@ -464,6 +524,60 @@ func TestDoStream_TransportFailureSplitsSubtype(t *testing.T) {
 	}
 }
 
+func TestDoStream_MailRateLimitRunsBeforeTokenAndHTTP(t *testing.T) {
+	now := time.Unix(100, 0)
+	rule := ratelimit.Rule{
+		Method:        "GET",
+		CanonicalPath: "/open-apis/mail/v1/user_mailboxes/:user_mailbox_id/messages/:message_id",
+		Window:        2 * time.Second,
+		Limit:         1,
+		Scope:         ratelimit.ScopeApp,
+	}
+	restore := ratelimit.SetDefaultLimiterForTest(ratelimit.NewLimiterForDir(t.TempDir(), []ratelimit.Rule{rule}, func() time.Time { return now }))
+	defer restore()
+
+	httpCalls := 0
+	ac := &APIClient{
+		HTTP: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			httpCalls++
+			return &http.Response{
+				StatusCode: 200,
+				Body:       io.NopCloser(strings.NewReader("ok")),
+			}, nil
+		})},
+		Config: &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu},
+	}
+	resolver := &countingTokenResolver{}
+	ac.Credential = credential.NewCredentialProvider(nil, nil, resolver, nil)
+
+	newReq := func() *larkcore.ApiReq {
+		return &larkcore.ApiReq{
+			HttpMethod: http.MethodGet,
+			ApiPath:    "/open-apis/mail/v1/user_mailboxes/me/messages/msg_1",
+		}
+	}
+	resp, err := ac.DoStream(context.Background(), newReq(), core.AsBot)
+	if err != nil {
+		t.Fatalf("first DoStream err = %v", err)
+	}
+	resp.Body.Close()
+
+	_, err = ac.DoStream(context.Background(), newReq(), core.AsBot)
+	if err == nil {
+		t.Fatal("expected local rate limit")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "rate_limit" {
+		t.Fatalf("err = %v, want rate_limit ExitError", err)
+	}
+	if httpCalls != 1 {
+		t.Fatalf("http calls = %d, want 1", httpCalls)
+	}
+	if resolver.count != 1 {
+		t.Fatalf("token resolutions = %d, want 1", resolver.count)
+	}
+}
+
 // failingTokenResolver always returns TokenUnavailableError, exercising the
 // auth/credential failure path through resolveAccessToken.
 type failingTokenResolver struct{}
@@ -579,6 +693,81 @@ func TestDoSDKRequest_AuthFailureSurfacesTypedAuthenticationError(t *testing.T) 
 	}
 	if authErr.Subtype != errs.SubtypeTokenMissing {
 		t.Errorf("Subtype = %v, want %v", authErr.Subtype, errs.SubtypeTokenMissing)
+	}
+}
+
+func TestDoSDKRequest_MailRateLimitRunsBeforeTokenAndSDK(t *testing.T) {
+	now := time.Unix(100, 0)
+	rule := ratelimit.Rule{
+		Method:        "GET",
+		CanonicalPath: "/open-apis/mail/v1/user_mailboxes/:user_mailbox_id/messages/:message_id",
+		Window:        2 * time.Second,
+		Limit:         1,
+		Scope:         ratelimit.ScopeApp,
+	}
+	restore := ratelimit.SetDefaultLimiterForTest(ratelimit.NewLimiterForDir(t.TempDir(), []ratelimit.Rule{rule}, func() time.Time { return now }))
+	defer restore()
+
+	httpCalls := 0
+	ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		httpCalls++
+		return jsonResponse(map[string]interface{}{"code": 0, "msg": "ok"}), nil
+	}))
+	resolver := &countingTokenResolver{}
+	ac.Credential = credential.NewCredentialProvider(nil, nil, resolver, nil)
+
+	newReq := func() *larkcore.ApiReq {
+		return &larkcore.ApiReq{
+			HttpMethod: http.MethodGet,
+			ApiPath:    "/open-apis/mail/v1/user_mailboxes/me/messages/msg_1",
+		}
+	}
+	if _, err := ac.DoSDKRequest(context.Background(), newReq(), core.AsBot); err != nil {
+		t.Fatalf("first DoSDKRequest err = %v", err)
+	}
+	_, err := ac.DoSDKRequest(context.Background(), newReq(), core.AsBot)
+	if err == nil {
+		t.Fatal("expected local rate limit")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "rate_limit" {
+		t.Fatalf("err = %v, want rate_limit ExitError", err)
+	}
+	if httpCalls != 1 {
+		t.Fatalf("http calls = %d, want 1", httpCalls)
+	}
+	if resolver.count != 1 {
+		t.Fatalf("token resolutions = %d, want 1", resolver.count)
+	}
+}
+
+func TestDoSDKRequest_NonMailAndUnconfiguredMailStillSend(t *testing.T) {
+	rule := ratelimit.Rule{
+		Method:        "GET",
+		CanonicalPath: "/open-apis/mail/v1/user_mailboxes/:user_mailbox_id/messages/:message_id",
+		Window:        time.Second,
+		Limit:         1,
+		Scope:         ratelimit.ScopeApp,
+	}
+	restore := ratelimit.SetDefaultLimiterForTest(ratelimit.NewLimiterForDir(t.TempDir(), []ratelimit.Rule{rule}, time.Now))
+	defer restore()
+
+	httpCalls := 0
+	ac, _ := newTestAPIClient(t, roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		httpCalls++
+		return jsonResponse(map[string]interface{}{"code": 0, "msg": "ok"}), nil
+	}))
+
+	for _, path := range []string{
+		"/open-apis/contact/v3/users/u1",
+		"/open-apis/mail/v1/user_mailboxes/me/settings",
+	} {
+		if _, err := ac.DoSDKRequest(context.Background(), &larkcore.ApiReq{HttpMethod: http.MethodGet, ApiPath: path}, core.AsBot); err != nil {
+			t.Fatalf("DoSDKRequest(%s) err = %v", path, err)
+		}
+	}
+	if httpCalls != 2 {
+		t.Fatalf("http calls = %d, want 2", httpCalls)
 	}
 }
 
