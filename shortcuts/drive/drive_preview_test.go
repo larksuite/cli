@@ -290,6 +290,54 @@ func TestDriveCoverDownloadUsesMappedCoverOptionAndPreviewType(t *testing.T) {
 	}
 }
 
+// TestDriveCoverDownload404ReturnsFailedPrecondition verifies the +cover path
+// reclassifies preview_download HTTP 404 as a non-retryable spec/state issue.
+func TestDriveCoverDownload404ReturnsFailedPrecondition(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/medias/file_cover/preview_download",
+		Status: http.StatusNotFound,
+		Body:   []byte(`{"code":404,"msg":"no artifact"}`),
+		Headers: http.Header{
+			"Content-Type": []string{"application/json"},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveCover, []string{
+		"+cover",
+		"--file-token", "file_cover",
+		"--spec", "square",
+		"--output", "cover",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected cover 404 error, got nil")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype=%q, want %q", validationErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if validationErr.Param != "--spec" {
+		t.Fatalf("param=%q, want --spec", validationErr.Param)
+	}
+	if validationErr.Code != http.StatusNotFound {
+		t.Fatalf("code=%d, want %d", validationErr.Code, http.StatusNotFound)
+	}
+	if !strings.Contains(validationErr.Hint, "--list-only") {
+		t.Fatalf("hint=%q, want --list-only guidance", validationErr.Hint)
+	}
+	if !strings.Contains(validationErr.Hint, "available cover specs") && !strings.Contains(validationErr.Hint, "default, icon, grid") {
+		t.Fatalf("hint=%q, want available cover specs guidance", validationErr.Hint)
+	}
+	if !strings.Contains(validationErr.Error(), `requested cover spec "square" is not available for this file`) {
+		t.Fatalf("message=%q, want unavailable cover spec message", validationErr.Error())
+	}
+}
+
 // newDrivePreviewRuntime builds a shortcut runtime with preconfigured preview
 // and cover flags for DryRun and helper tests.
 func newDrivePreviewRuntime(t *testing.T, use string, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {

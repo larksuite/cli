@@ -6,6 +6,7 @@ package drive
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -86,7 +87,7 @@ var DriveCover = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Downloading cover %s for file %s\n", spec.Name, common.MaskToken(fileToken))
 		result, err := downloadDrivePreviewArtifactWithParams(ctx, runtime, fileToken, buildDriveCoverDownloadParams(version, spec), outputPath, ifExists, spec.FallbackExt)
 		if err != nil {
-			return err
+			return wrapDriveCoverDownloadError(err, spec.Name)
 		}
 		result["mode"] = "download"
 		result["file_token"] = fileToken
@@ -94,4 +95,28 @@ var DriveCover = common.Shortcut{
 		runtime.Out(result, nil)
 		return nil
 	},
+}
+
+// wrapDriveCoverDownloadError reclassifies preview_download HTTP 404 responses
+// on the +cover path as a failed precondition on --spec, because the Drive
+// shortcut contract documents 404 as "this file has no artifact for that cover
+// preset" rather than a transient transport failure.
+func wrapDriveCoverDownloadError(err error, requestedSpec string) error {
+	if err == nil {
+		return nil
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem.Code != http.StatusNotFound {
+		return err
+	}
+	hint := fmt.Sprintf(
+		"HTTP 404 from preview_download means this file has no artifact for --spec %q; run `lark-cli drive +cover --file-token <file-token> --list-only` to review the built-in presets. Available cover specs: %s",
+		requestedSpec,
+		strings.Join(availableDriveCoverSpecs(), ", "),
+	)
+	return errs.NewValidationError(
+		errs.SubtypeFailedPrecondition,
+		"requested cover spec %q is not available for this file",
+		requestedSpec,
+	).WithParam("--spec").WithCode(problem.Code).WithLogID(problem.LogID).WithHint(hint).WithCause(err)
 }
