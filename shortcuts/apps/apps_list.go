@@ -47,12 +47,15 @@ var AppsList = common.Shortcut{
 		}
 		items, _ := data["items"].([]interface{})
 		rctx.OutFormat(data, nil, func(w io.Writer) {
-			// Table view (--format table) intentionally shows only the columns
-			// most useful for visual scanning: app_id (to copy-paste downstream),
-			// name (to match what the user sees in the UI), and updated_at (to
-			// pick the most recent variant). description / icon_url / created_at
-			// stay in the underlying JSON (--format json) but would make the
-			// table too wide for a terminal.
+			// Curated pretty view (--format pretty) shows the columns most useful
+			// for visual scanning: app_id (to copy-paste downstream), name (to match
+			// what the user sees in the UI), is_published / online_url (publish state
+			// and post-publish access link — the actionable fields after a deploy),
+			// and updated_at (to pick the most recent variant). online_url can be long
+			// but is the key value once published; the renderer clamps column width.
+			// Unpublished apps carry no online_url, so that cell renders empty.
+			// description / icon_url / created_at stay in the underlying data
+			// (--format json / table) but would make the curated view too wide.
 			rows := make([]map[string]interface{}, 0, len(items))
 			for _, item := range items {
 				m, ok := item.(map[string]interface{})
@@ -60,9 +63,11 @@ var AppsList = common.Shortcut{
 					continue
 				}
 				rows = append(rows, map[string]interface{}{
-					"app_id":     m["app_id"],
-					"name":       m["name"],
-					"updated_at": m["updated_at"],
+					"app_id":       m["app_id"],
+					"name":         m["name"],
+					"is_published": m["is_published"],
+					"online_url":   m["online_url"],
+					"updated_at":   m["updated_at"],
 				})
 			}
 			output.PrintTable(w, rows)

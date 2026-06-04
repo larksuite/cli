@@ -128,3 +128,44 @@ func TestAppsList_DryRun(t *testing.T) {
 		t.Fatalf("dry-run missing page_size param: %s", got)
 	}
 }
+
+func TestAppsList_PrettyShowsPublishFields(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"app_id":       "app_pub",
+						"name":         "Published App",
+						"is_published": true,
+						"online_url":   "https://example.com/spark/faas/app_pub",
+						"updated_at":   "2026-05-28T10:05:16Z",
+					},
+					map[string]interface{}{
+						"app_id":       "app_draft",
+						"name":         "Draft App",
+						"is_published": false,
+						"updated_at":   "2026-05-31T12:31:27Z",
+					},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsList,
+		[]string{"+list", "--format", "pretty", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{"is_published", "online_url", "https://example.com/spark/faas/app_pub", "true", "false"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("pretty output missing %q:\n%s", want, got)
+		}
+	}
+}
