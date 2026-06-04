@@ -279,7 +279,7 @@ func TestServiceMethod_ParamsOnly_HelpSteersToParams(t *testing.T) {
 		"httpMethod": "GET",
 		"parameters": map[string]interface{}{
 			"thing_id": map[string]interface{}{"type": "string", "location": "path", "required": true},
-			"format": map[string]interface{}{"type": "string", "location": "query", "min": "1", "max": "64", "options": []interface{}{
+			"format": map[string]interface{}{"type": "string", "location": "query", "min": "1", "max": "64", "description": "返回的消息体格式。", "options": []interface{}{
 				map[string]interface{}{"value": "full"},
 				map[string]interface{}{"value": "metadata"},
 			}},
@@ -293,7 +293,7 @@ func TestServiceMethod_ParamsOnly_HelpSteersToParams(t *testing.T) {
 	if fl := cmd.Flags().Lookup("format"); fl == nil || fl.DefValue != "json" {
 		t.Fatalf("global --format must be preserved (not shadowed), got %+v", fl)
 	}
-	for _, want := range []string{`--params '{"format"`, "full", "metadata", "min: 1, max: 64", "do not use --format"} {
+	for _, want := range []string{`--params '{"format"`, "返回的消息体格式", "full", "metadata", "min: 1, max: 64", "do not use --format"} {
 		if !strings.Contains(cmd.Long, want) {
 			t.Errorf("help should contain %q so the reader uses --params, not --format; got:\n%s", want, cmd.Long)
 		}
@@ -471,6 +471,52 @@ func TestParamFlagUsage_Bounds(t *testing.T) {
 		}}).Params()
 		if usage := paramFlagUsage(fields[0]); strings.Contains(usage, "min:") || strings.Contains(usage, "max:") {
 			t.Errorf("usage without bounds should not mention min/max, got %q", usage)
+		}
+	})
+}
+
+// The sanitized field description rides the help line — a bare name like
+// user_mailbox_id carries no meaning. The cut is at note separators (;), NOT
+// at sentence ends (。): the later sentence often holds the key affordance.
+func TestParamFlagUsage_Description(t *testing.T) {
+	fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+		"user_mailbox_id": map[string]interface{}{
+			"type": "string", "location": "path", "required": true,
+			"description": `用户邮箱地址。当使用用户身份访问时，可以输入"me"代表当前调用接口用户;后续补充说明不该出现`,
+		},
+	}}).Params()
+	usage := paramFlagUsage(fields[0])
+	if !strings.Contains(usage, `可以输入"me"代表当前调用接口用户`) {
+		t.Errorf("description must keep full sentences up to the note separator, got %q", usage)
+	}
+	if strings.Contains(usage, "补充说明") {
+		t.Errorf("text after the note separator must be cut, got %q", usage)
+	}
+
+	t.Run("long description truncated", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"x": map[string]interface{}{
+				"type": "string", "location": "query",
+				"description": strings.Repeat("长", 80),
+			},
+		}}).Params()
+		usage := paramFlagUsage(fields[0])
+		if !strings.Contains(usage, "...") {
+			t.Errorf("long description should be truncated with ellipsis, got %q", usage)
+		}
+		if strings.Contains(usage, strings.Repeat("长", 61)) {
+			t.Errorf("description should not exceed the cap, got %q", usage)
+		}
+	})
+
+	t.Run("trailing sentence punctuation trimmed", func(t *testing.T) {
+		fields := meta.FromMap(map[string]interface{}{"parameters": map[string]interface{}{
+			"x": map[string]interface{}{
+				"type": "string", "location": "query", "description": "返回格式。",
+			},
+		}}).Params()
+		if usage := paramFlagUsage(fields[0]); strings.Contains(usage, "。.") {
+			t.Errorf("clause join must not double the punctuation, got %q", usage)
 		}
 	})
 }
