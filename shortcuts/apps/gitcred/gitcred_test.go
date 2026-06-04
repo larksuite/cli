@@ -461,6 +461,39 @@ func TestManagerGetRefreshesWithinTenMinutes(t *testing.T) {
 	}
 }
 
+func TestManagerGetDoesNotReuseUnusableRecordWhenRefreshReturnsOlderExpiry(t *testing.T) {
+	now := time.Unix(1780000000, 0)
+	kc := newFakeKeychain()
+	issuer := &fakeIssuer{next: &IssuedCredential{
+		GitHTTPURL: "https://example.com/git/u/app.git",
+		Username:   "x-access-token",
+		PAT:        "old-pat",
+		ExpiresAt:  now.Add(5 * time.Minute).Unix(),
+	}}
+	manager := NewManager(NewStoreAt(filepath.Join(t.TempDir(), MetadataFilename)), NewSecretStore(kc), nil, issuer)
+	manager.Now = func() time.Time { return now }
+	if _, err := manager.Init(context.Background(), testProfile(), "app_xxx"); err != nil {
+		t.Fatalf("Init returned error: %v", err)
+	}
+	issuer.next = &IssuedCredential{
+		GitHTTPURL: "https://example.com/git/u/app.git",
+		Username:   "x-access-token",
+		PAT:        "older-pat",
+		ExpiresAt:  now.Add(time.Minute).Unix(),
+	}
+
+	var out bytes.Buffer
+	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty because reread record is still not usable", out.String())
+	}
+	if issuer.calls != 2 {
+		t.Fatalf("issuer calls = %d, want 2", issuer.calls)
+	}
+}
+
 func TestManagerGetUsesValidPATWithoutRefresh(t *testing.T) {
 	now := time.Unix(1780000000, 0)
 	kc := newFakeKeychain()
@@ -1024,6 +1057,13 @@ func TestGlobalGitConfigUnsetIgnoresMissingManagedKeys(t *testing.T) {
 }
 
 func TestGlobalGitConfigAdditionalBranches(t *testing.T) {
+	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "ssh://example.com/git/u/app.git", "app_xxx"); err == nil {
+		t.Fatal("SetHelper invalid URL returned nil error")
+	}
+	if err := (GlobalGitConfig{}).UnsetHelper(context.Background(), "ssh://example.com/git/u/app.git"); err == nil {
+		t.Fatal("UnsetHelper invalid URL returned nil error")
+	}
+
 	if err := (GlobalGitConfig{}).SetHelper(context.Background(), "https://example.com/git/u/app.git", "../bad"); err == nil {
 		t.Fatal("SetHelper invalid appID returned nil error")
 	}
@@ -1323,6 +1363,12 @@ func TestNormalizeGitHTTPURLBranches(t *testing.T) {
 	}
 	if got := cleanURLPath("/%zz"); got != "/%zz" {
 		t.Fatalf("cleanURLPath(/%%zz) = %q", got)
+	}
+	if got := normalizeHostname("[example.com]"); got != "[example.com]" {
+		t.Fatalf("normalizeHostname([example.com]) = %q", got)
+	}
+	if got := normalizeHostname("[2001:db8::1]"); got != "[2001:db8::1]" {
+		t.Fatalf("normalizeHostname([2001:db8::1]) = %q", got)
 	}
 	got, err := normalizeParsedURL(&url.URL{Scheme: "https", Host: "example.com", Path: ".."})
 	if err != nil {
@@ -1710,8 +1756,8 @@ func TestManagerGetBranches(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get stale refresh returned error: %v", err)
 	}
-	if got := out.String(); got != "username=x-access-token\npassword=old-pat\n\n" {
-		t.Fatalf("stale refresh output = %q", got)
+	if got := out.String(); got != "" {
+		t.Fatalf("stale refresh output = %q, want empty", got)
 	}
 
 	kc.setErr = errors.New("keychain locked")

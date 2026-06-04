@@ -235,7 +235,7 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 			fmt.Fprintf(errOut, "Git credential unavailable: %s\n", readErr)
 			return nil
 		}
-		if found {
+		if found && m.usable(latest, latestPAT) {
 			return writeGitCredential(out, latest.Username, latestPAT)
 		}
 		return nil

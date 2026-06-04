@@ -35,12 +35,18 @@ func TestAppsGitCredentialListLocalE2E(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	assert.Equal(t, int64(2), gjson.Get(result.Stdout, "data.count").Int())
-	assert.Equal(t, "app_a", gjson.Get(result.Stdout, "data.credentials.0.app_id").String())
-	assert.Equal(t, "https://example.com/git/u/a.git", gjson.Get(result.Stdout, "data.credentials.0.repository_url").String())
-	assert.Equal(t, "missing_secret", gjson.Get(result.Stdout, "data.credentials.0.status").String())
-	assert.Equal(t, "app_b", gjson.Get(result.Stdout, "data.credentials.1.app_id").String())
-	assert.False(t, gjson.Get(result.Stdout, "data.credentials.0.expires_at").Exists())
-	assert.False(t, gjson.Get(result.Stdout, "data.credentials.0.expired").Exists())
+	credentials := map[string]gjson.Result{}
+	for _, credential := range gjson.Get(result.Stdout, "data.credentials").Array() {
+		credentials[credential.Get("app_id").String()] = credential
+	}
+	require.Contains(t, credentials, "app_a")
+	require.Contains(t, credentials, "app_b")
+	assert.Equal(t, "https://example.com/git/u/a.git", credentials["app_a"].Get("repository_url").String())
+	assert.Equal(t, "missing_secret", credentials["app_a"].Get("status").String())
+	assert.Equal(t, "https://example.com/git/u/b.git", credentials["app_b"].Get("repository_url").String())
+	assert.Equal(t, "missing_secret", credentials["app_b"].Get("status").String())
+	assert.False(t, credentials["app_a"].Get("expires_at").Exists())
+	assert.False(t, credentials["app_a"].Get("expired").Exists())
 }
 
 func TestAppsGitCredentialRemoveLocalE2E(t *testing.T) {
