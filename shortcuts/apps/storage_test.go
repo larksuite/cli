@@ -213,6 +213,71 @@ func TestStorageRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestStorageReadNonNotExistError(t *testing.T) {
+	dir := storageTempDir(t)
+	// A directory at the key path makes ReadFile fail with a non-ErrNotExist error.
+	if err := os.MkdirAll(filepath.Join(dir, "spark", "app_a", "git.json"), 0700); err != nil {
+		t.Fatalf("mkdir key path: %v", err)
+	}
+	if _, err := Read("app_a", "git.json"); err == nil {
+		t.Fatal("expected error reading a directory key path")
+	}
+}
+
+func TestStorageWriteMkdirError(t *testing.T) {
+	dir := storageTempDir(t)
+	// A file at spark/ makes creating the per-app directory under it fail.
+	if err := os.WriteFile(filepath.Join(dir, "spark"), []byte("x"), 0600); err != nil {
+		t.Fatalf("write spark file: %v", err)
+	}
+	if err := Write("app_a", "git.json", []byte("x")); err == nil {
+		t.Fatal("expected mkdir error when spark/ is a file")
+	}
+}
+
+func TestStorageWriteAtomicError(t *testing.T) {
+	dir := storageTempDir(t)
+	// A directory at the key path makes the atomic write/rename over it fail.
+	if err := os.MkdirAll(filepath.Join(dir, "spark", "app_a", "git.json"), 0700); err != nil {
+		t.Fatalf("mkdir key path: %v", err)
+	}
+	if err := Write("app_a", "git.json", []byte("x")); err == nil {
+		t.Fatal("expected atomic write error when key path is a directory")
+	}
+}
+
+func TestStorageDeleteInvalidKey(t *testing.T) {
+	storageTempDir(t)
+	if err := Delete("app_a", ".."); err == nil {
+		t.Fatal("expected error deleting an invalid key")
+	}
+}
+
+func TestStorageDeleteRemoveError(t *testing.T) {
+	dir := storageTempDir(t)
+	// A non-empty directory at the key path makes Remove fail (non-ErrNotExist).
+	if err := os.MkdirAll(filepath.Join(dir, "spark", "app_a", "git.json", "child"), 0700); err != nil {
+		t.Fatalf("mkdir key path: %v", err)
+	}
+	if err := Delete("app_a", "git.json"); err == nil {
+		t.Fatal("expected error removing a non-empty directory key path")
+	}
+}
+
+func TestStorageListReadDirError(t *testing.T) {
+	dir := storageTempDir(t)
+	// A file at the per-app directory path makes ReadDir fail (non-ErrNotExist).
+	if err := os.MkdirAll(filepath.Join(dir, "spark"), 0700); err != nil {
+		t.Fatalf("mkdir spark: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "spark", "app_a"), []byte("x"), 0600); err != nil {
+		t.Fatalf("write app file: %v", err)
+	}
+	if _, err := List("app_a"); err == nil {
+		t.Fatal("expected error listing a file app directory")
+	}
+}
+
 func TestStoragePermsAndDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("perm bits not meaningful on windows")

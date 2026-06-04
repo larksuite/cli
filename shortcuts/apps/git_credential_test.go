@@ -521,6 +521,44 @@ func TestGitCredentialListPayloadDoesNotExposeExpiry(t *testing.T) {
 	}
 }
 
+func TestAppsGitCredentialRemoveReportsGitConfigWarning(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	factory.Keychain = newAppsTestKeychain()
+	installAppsFakeGit(t, 7) // unsetting useHttpPath exits non-zero -> ConfigWarning
+	expiresAt := time.Now().Add(24 * time.Hour).Unix()
+	for _, appID := range []string{"app_one", "app_two"} {
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/spark/v1/apps/" + appID + "/git_info",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"gitURL":      "https://example.com/git/u/" + appID + ".git",
+					"token":       "pat-token",
+					"expiredTime": float64(expiresAt),
+				},
+			},
+		})
+		if err := runAppsShortcut(t, AppsGitCredentialInit, []string{"+git-credential-init", "--app-id", appID, "--as", "user"}, factory, stdout); err != nil {
+			t.Fatalf("init %s err=%v", appID, err)
+		}
+	}
+	// Pretty output surfaces the cleanup-warning block.
+	if err := runAppsShortcut(t, AppsGitCredentialRemove, []string{"+git-credential-remove", "--app-id", "app_one", "--format", "pretty", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("remove pretty err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "Git config cleanup warning") || !strings.Contains(got, "Reason:") {
+		t.Fatalf("pretty remove missing git config warning: %s", got)
+	}
+	// JSON output exposes git_config_warning.
+	if err := runAppsShortcut(t, AppsGitCredentialRemove, []string{"+git-credential-remove", "--app-id", "app_two", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("remove json err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, "git_config_warning") {
+		t.Fatalf("json remove missing git_config_warning: %s", got)
+	}
+}
+
 func TestAppsGitCredentialRemoveRequiresAppID(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsGitCredentialRemove, []string{"+git-credential-remove", "--app-id", " ", "--as", "user"}, factory, stdout)
@@ -563,6 +601,10 @@ func TestGitCredentialLocalErrorWrapsOnlyPlainErrors(t *testing.T) {
 	exitErr := output.ErrValidation("bad app")
 	if got := gitCredentialLocalError("action", exitErr); got != exitErr {
 		t.Fatalf("legacy output error was rewrapped: %#v", got)
+	}
+
+	if got := gitCredentialLocalError("action", nil); got != nil {
+		t.Fatalf("nil error must stay nil, got %#v", got)
 	}
 }
 
