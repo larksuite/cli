@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -667,5 +670,381 @@ func TestIsEmptyRepo(t *testing.T) {
 				t.Errorf("ls=%q -> empty=%v err=%v, want %v", c.ls, got, err, c.want)
 			}
 		})
+	}
+}
+
+// newAppsExecuteFactoryWithStderr mirrors newAppsExecuteFactory but also returns
+// the stderr buffer, so tests can assert on the +init progress log lines that
+// initLogf writes to IO().ErrOut.
+func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	cfg := &core.CliConfig{
+		AppID:      "test-app-" + strings.ToLower(t.Name()),
+		AppSecret:  "test-secret",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_test",
+	}
+	factory, stdout, stderr, _ := cmdutil.TestFactory(t, cfg)
+	return factory, stdout, stderr
+}
+
+func TestAppsInit_Req1_Wording(t *testing.T) {
+	var tmpl *common.Flag
+	for i := range AppsInit.Flags {
+		if AppsInit.Flags[i].Name == "template" {
+			tmpl = &AppsInit.Flags[i]
+		}
+	}
+	if tmpl == nil {
+		t.Fatal("--template flag missing")
+	}
+	if strings.Contains(strings.ToLower(tmpl.Desc), "scaffold") {
+		t.Errorf("--template Desc still mentions scaffold: %q", tmpl.Desc)
+	}
+	if !strings.Contains(strings.ToLower(tmpl.Desc), "code-init") {
+		t.Errorf("--template Desc should use code-init wording: %q", tmpl.Desc)
+	}
+
+	// The --dry-run output is a flat object (DryRunAPI marshals to top-level keys
+	// description/scaffold/api/...), NOT wrapped in {"data":...}, so parse stdout
+	// directly rather than via parseEnvelopeData.
+	factory, stdout, _ := newAppsExecuteFactoryWithStderr(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var data map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
+		t.Fatalf("decode dry-run output: %v (raw=%q)", err, stdout.String())
+	}
+	desc, _ := data["description"].(string)
+	if strings.Contains(strings.ToLower(desc), "scaffold") {
+		t.Errorf("dry-run description still mentions scaffold: %q", desc)
+	}
+	if _, ok := data["scaffold"]; !ok {
+		t.Error("dry-run must keep machine-contract key `scaffold`")
+	}
+
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_x.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"git status":      {},
+	}}
+	withFakeRunner(t, f)
+	factory2, stdout2, stderr2 := newAppsExecuteFactoryWithStderr(t)
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory2, stdout2); err != nil {
+		t.Fatalf("run err=%v", err)
+	}
+	if strings.Contains(stderr2.String(), "Scaffolding") {
+		t.Errorf("progress log still says Scaffolding: %q", stderr2.String())
+	}
+	if !strings.Contains(stderr2.String(), "Initializing app code") {
+		t.Errorf("progress log should say 'Initializing app code': %q", stderr2.String())
+	}
+}
+
+func TestClassifyPorcelain(t *testing.T) {
+	cases := []struct {
+		name, status            string
+		wantAppCode, wantConfig bool
+	}{
+		{"empty", "", false, false},
+		{"app code only", " M src/x.ts\n?? package.json\n", true, false},
+		{"config only", "?? .spark/meta.json\n?? .agent/skills/steering/x.md\n", false, true},
+		{"both", " M src/x.ts\n?? .spark/meta.json\n", true, true},
+		{"rename to config", "R  old.txt -> .spark/meta.json\n", false, true},
+		{"rename to app code", "R  .spark/old -> src/new.ts\n", true, false},
+		{"quoted config path", "?? \".spark/with space.json\"\n", false, true},
+		{"spark prefix lookalike not config", "?? .sparkrc\n", true, false},
+		{"exact .spark dir", "?? .spark\n", false, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotApp, gotCfg := classifyPorcelain(c.status)
+			if (len(gotApp) > 0) != c.wantAppCode || (len(gotCfg) > 0) != c.wantConfig {
+				t.Errorf("classifyPorcelain(%q) = (app=%v,cfg=%v), want app=%v cfg=%v",
+					c.status, gotApp, gotCfg, c.wantAppCode, c.wantConfig)
+			}
+		})
+	}
+}
+
+// commitMessages returns the -m messages of all recorded `git commit` calls.
+func commitMessages(calls [][]string) []string {
+	var msgs []string
+	for _, c := range calls {
+		if len(c) >= 3 && c[1] == "git" && c[2] == "commit" {
+			for i := 3; i+1 < len(c); i++ {
+				if c[i] == "-m" {
+					msgs = append(msgs, c[i+1])
+				}
+			}
+		}
+	}
+	return msgs
+}
+
+func TestAppsInit_EmptyRepo_TwoCommits(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_x.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"git status":      {stdout: " A src/app.ts\n A .spark/meta.json\n A .agent/skills/steering/x.md\n"},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	msgs := commitMessages(f.calls)
+	want := []string{"chore: initialize app project code", "chore: initialize miaoda app config"}
+	if len(msgs) != 2 || msgs[0] != want[0] || msgs[1] != want[1] {
+		t.Fatalf("commit messages = %v, want %v", msgs, want)
+	}
+	// The split's core invariant: each commit stages its own group's exact
+	// porcelain paths (no :(exclude) magic, no explicitly-named ignored dirs —
+	// see TestCommitAndPushIfDirty_RealGit_IgnoredAgentDir). The app-code commit
+	// stages src/app.ts and not .spark/meta.json; the config commit, the reverse.
+	appAdd := findCallArg(f.calls, "git", "add", "-A", "--", "src/app.ts")
+	if appAdd == nil {
+		t.Errorf("app-code git add missing src/app.ts; calls=%v", f.calls)
+	} else if containsAll(appAdd, ".spark/meta.json") {
+		t.Errorf("app-code commit must not stage config paths; got %v", appAdd)
+	}
+	cfgAdd := findCallArg(f.calls, "git", "add", "-A", "--", ".spark/meta.json")
+	if cfgAdd == nil {
+		t.Errorf("config git add missing .spark/meta.json; calls=%v", f.calls)
+	} else if containsAll(cfgAdd, "src/app.ts") {
+		t.Errorf("config commit must not stage app code; got %v", cfgAdd)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["committed"] != true || data["pushed"] != true {
+		t.Errorf("committed/pushed = %v/%v, want true/true", data["committed"], data["pushed"])
+	}
+}
+
+func TestAppsInit_EmptyRepo_AppCodeOnly_SingleCommit(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_x.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"git status":      {stdout: " A src/app.ts\n"},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	msgs := commitMessages(f.calls)
+	if len(msgs) != 1 || msgs[0] != "chore: initialize app project code" {
+		t.Fatalf("commit messages = %v, want one app-code commit", msgs)
+	}
+}
+
+func TestAppsInit_EmptyRepo_ConfigOnly_SingleCommit(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_x.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: ""},
+		"git status":      {stdout: " A .spark/meta.json\n"},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	msgs := commitMessages(f.calls)
+	if len(msgs) != 1 || msgs[0] != "chore: initialize miaoda app config" {
+		t.Fatalf("commit messages = %v, want one config commit", msgs)
+	}
+}
+
+func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"credential-init": credInitOK("http://u:t@h/app_x.git"),
+		"git clone":       {},
+		"git checkout":    {},
+		"git ls-files":    {stdout: "src/x.ts\n"},
+		"git status":      {stdout: " M file.txt\n M .spark/meta.json\n"},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	dir := relCloneDir(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	msgs := commitMessages(f.calls)
+	if len(msgs) != 1 || msgs[0] != "chore: initialize miaoda app repository" {
+		t.Fatalf("commit messages = %v, want one upgrade commit", msgs)
+	}
+	for _, c := range f.calls {
+		if len(c) >= 3 && c[1] == "git" && c[2] == "commit" && !containsAll(c, "--no-verify") {
+			t.Errorf("commit missing --no-verify: %v", c)
+		}
+	}
+}
+
+// gitMust runs a git command in dir with a real binary, failing the test on error.
+func gitMust(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v in %s failed: %v\n%s", args, dir, err, out)
+	}
+	return string(out)
+}
+
+// TestCommitAndPushIfDirty_RealGit_IgnoredAgentDir exercises the empty-repo
+// commit split against a REAL git repo whose scaffold gitignores .agent. This
+// reproduces the production failure where `git add -- .spark .agent` errored on
+// the ignored .agent path; the fix stages the config remainder with ".".
+func TestCommitAndPushIfDirty_RealGit_IgnoredAgentDir(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	// Bare remote so `git push origin sprint/default` succeeds.
+	remote := t.TempDir()
+	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
+
+	dir := t.TempDir()
+	gitMust(t, dir, "init", "-q", "--initial-branch", defaultInitBranch)
+	gitMust(t, dir, "config", "user.email", "t@example.com")
+	gitMust(t, dir, "config", "user.name", "Test")
+	gitMust(t, dir, "remote", "add", "origin", remote)
+
+	// Scaffold: app code + .spark config + an IGNORED .agent dir.
+	mustWrite(t, filepath.Join(dir, ".gitignore"), ".agent\n")
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, "src", "x.ts"), "export const x = 1\n")
+	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, ".spark", "meta.json"), `{"app_id":"app_x"}`)
+	if err := os.MkdirAll(filepath.Join(dir, ".agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, ".agent", "skill.md"), "ignored\n")
+
+	// Use the real exec runner (not the fake) so gitignore semantics apply.
+	orig := initRunner
+	initRunner = execCommandRunner{}
+	t.Cleanup(func() { initRunner = orig })
+
+	committed, pushed, err := commitAndPushIfDirty(context.Background(), dir, scaffoldKindInit)
+	if err != nil {
+		t.Fatalf("commitAndPushIfDirty returned error: %v", err)
+	}
+	if !committed || !pushed {
+		t.Fatalf("committed=%v pushed=%v, want true/true", committed, pushed)
+	}
+
+	// Two commits, newest first: config then app code.
+	subjects := strings.Split(strings.TrimSpace(gitMust(t, dir, "log", "--format=%s", "-2")), "\n")
+	want := []string{commitMsgAppConfig, commitMsgAppCode}
+	if len(subjects) != 2 || subjects[0] != want[0] || subjects[1] != want[1] {
+		t.Fatalf("commit subjects = %v, want %v", subjects, want)
+	}
+
+	// .agent must NOT be tracked; .spark and src must be.
+	tracked := gitMust(t, dir, "ls-files")
+	if strings.Contains(tracked, ".agent") {
+		t.Errorf("ignored .agent must not be committed; tracked=%q", tracked)
+	}
+	if !strings.Contains(tracked, ".spark/meta.json") {
+		t.Errorf(".spark/meta.json should be committed; tracked=%q", tracked)
+	}
+	if !strings.Contains(tracked, "src/x.ts") {
+		t.Errorf("src/x.ts should be committed; tracked=%q", tracked)
+	}
+}
+
+func mustWrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade pins down that the non-empty
+// (upgrade) path is unaffected by the commit-split / exact-path changes: it must
+// stay a SINGLE commit using `git add -A -- .`, which silently skips a gitignored
+// .agent (no ignored-path error), with the upgrade subject.
+func TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	remote := t.TempDir()
+	gitMust(t, remote, "init", "--bare", "-q", "--initial-branch", defaultInitBranch)
+
+	dir := t.TempDir()
+	gitMust(t, dir, "init", "-q", "--initial-branch", defaultInitBranch)
+	gitMust(t, dir, "config", "user.email", "t@example.com")
+	gitMust(t, dir, "config", "user.name", "Test")
+	gitMust(t, dir, "remote", "add", "origin", remote)
+
+	// Existing (non-empty) repo: a committed baseline with .agent already ignored.
+	mustWrite(t, filepath.Join(dir, ".gitignore"), ".agent\n")
+	if err := os.MkdirAll(filepath.Join(dir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, "src", "old.ts"), "export const old = 0\n")
+	gitMust(t, dir, "add", "-A")
+	gitMust(t, dir, "commit", "-q", "-m", "baseline")
+	baseline := strings.TrimSpace(gitMust(t, dir, "rev-parse", "HEAD"))
+
+	// Simulate `app upgrade`: a modified app file, a patched .spark config, and an
+	// IGNORED .agent dir produced by `skills sync`.
+	mustWrite(t, filepath.Join(dir, "src", "old.ts"), "export const old = 1\n")
+	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, ".spark", "meta.json"), `{"app_id":"app_x"}`)
+	if err := os.MkdirAll(filepath.Join(dir, ".agent"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(dir, ".agent", "skill.md"), "ignored\n")
+
+	orig := initRunner
+	initRunner = execCommandRunner{}
+	t.Cleanup(func() { initRunner = orig })
+
+	committed, pushed, err := commitAndPushIfDirty(context.Background(), dir, scaffoldKindUpgrade)
+	if err != nil {
+		t.Fatalf("commitAndPushIfDirty returned error: %v", err)
+	}
+	if !committed || !pushed {
+		t.Fatalf("committed=%v pushed=%v, want true/true", committed, pushed)
+	}
+
+	// Exactly ONE commit added, with the upgrade subject (not a split).
+	added := strings.TrimSpace(gitMust(t, dir, "rev-list", "--count", baseline+"..HEAD"))
+	if added != "1" {
+		t.Fatalf("upgrade path added %s commits, want exactly 1 (no split)", added)
+	}
+	if subj := strings.TrimSpace(gitMust(t, dir, "log", "--format=%s", "-1")); subj != commitMsgUpgrade {
+		t.Errorf("upgrade commit subject = %q, want %q", subj, commitMsgUpgrade)
+	}
+
+	// .agent stays ignored; the real changes are committed.
+	tracked := gitMust(t, dir, "ls-files")
+	if strings.Contains(tracked, ".agent") {
+		t.Errorf("ignored .agent must not be committed; tracked=%q", tracked)
+	}
+	if !strings.Contains(tracked, ".spark/meta.json") {
+		t.Errorf(".spark/meta.json should be committed; tracked=%q", tracked)
 	}
 }

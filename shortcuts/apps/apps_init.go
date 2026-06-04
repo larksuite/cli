@@ -22,9 +22,20 @@ import (
 // defaultInitBranch is the fixed remote branch +init checks out after clone.
 const defaultInitBranch = "sprint/default"
 
-// initCommitMessage is the fixed commit subject used when the post-init working
-// tree has changes to push. Fixed constant — never interpolates user input.
-const initCommitMessage = "chore: scaffold app via lark-cli apps +init"
+// Fixed init commit subjects. Constants — never interpolate user input. The
+// empty-repo (`app init`) path splits the scaffolded tree into two commits;
+// the non-empty (`app upgrade`) path stays a single commit.
+const (
+	commitMsgAppCode   = "chore: initialize app project code"
+	commitMsgAppConfig = "chore: initialize miaoda app config"
+	commitMsgUpgrade   = "chore: initialize miaoda app repository"
+)
+
+// scaffold kinds returned by runScaffold and consumed by commitAndPushIfDirty.
+const (
+	scaffoldKindInit    = "init"
+	scaffoldKindUpgrade = "upgrade"
+)
 
 const (
 	miaodaCLIPkg    = "@lark-apaas/miaoda-cli@alpha"
@@ -60,7 +71,7 @@ var AppsInit = common.Shortcut{
 		// check lives in Validate (output.ErrValidation -> ExitValidation=2).
 		{Name: "app-id", Desc: "Miaoda app ID"},
 		{Name: "dir", Desc: "clone target directory; absolute or relative path (default ./<app-id>)"},
-		{Name: "template", Desc: "scaffold template for an empty repo; optional — if omitted, derived from the app's tech stack"},
+		{Name: "template", Desc: "code-init template for an empty repo; optional — if omitted, derived from the app's tech stack"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -72,7 +83,7 @@ var AppsInit = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		template := resolveTemplate(rctx, appID)
 		dry := common.NewDryRunAPI().
-			Desc("Initialize Miaoda app repository (credential-init, clone, checkout, npx scaffold, optional commit/push)").
+			Desc("Initialize Miaoda app repository (credential-init, clone, checkout, npx code-init, optional commit/push)").
 			Set("credential_init", fmt.Sprintf("apps +git-credential-init --app-id %s --format json", appID)).
 			Set("checkout", "git checkout "+defaultInitBranch).
 			Set("scaffold", fmt.Sprintf("empty repo: npx %s app init --template %s --app-id %s; non-empty: npx %s app upgrade + .spark/meta.json app_id patch + conditional skills sync", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
@@ -260,7 +271,7 @@ func runScaffold(ctx context.Context, dir, appID, template string) (string, erro
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", miaodaCLIPkg, "app", "init", "--template", template, "--app-id", appID); err != nil {
 			return "", output.Errorf(output.ExitAPI, "npx_app_init", "npx app init failed: %s", gitErr(stderr, err))
 		}
-		return "init", nil
+		return scaffoldKindInit, nil
 	}
 	if _, stderr, err := initRunner.Run(ctx, dir, "npx", miaodaCLIPkg, "app", "upgrade"); err != nil {
 		return "", output.Errorf(output.ExitAPI, "npx_app_upgrade", "npx app upgrade failed: %s", gitErr(stderr, err))
@@ -273,7 +284,7 @@ func runScaffold(ctx context.Context, dir, appID, template string) (string, erro
 			return "", output.Errorf(output.ExitAPI, "npx_skills_sync", "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}
-	return "upgrade", nil
+	return scaffoldKindUpgrade, nil
 }
 
 // parseRepoURLFromEnvelope extracts data.repository_url from a lark-cli JSON
@@ -366,13 +377,13 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		return output.Errorf(output.ExitAPI, "git_checkout", "git checkout %s failed: %s", defaultInitBranch, gitErr(stderr, err))
 	}
 
-	initLogf(rctx, "Scaffolding (running miaoda-cli)...")
+	initLogf(rctx, "Initializing app code (running miaoda-cli)...")
 	scaffold, err := runScaffold(ctx, dir, appID, resolveTemplate(rctx, appID))
 	if err != nil {
 		return err
 	}
 
-	committed, pushed, err := commitAndPushIfDirty(ctx, dir)
+	committed, pushed, err := commitAndPushIfDirty(ctx, dir, scaffold)
 	if err != nil {
 		return err
 	}
@@ -421,8 +432,12 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 }
 
 // commitAndPushIfDirty commits and pushes only when the working tree has
-// changes; a clean tree is a no-op (returns false,false).
-func commitAndPushIfDirty(ctx context.Context, dir string) (committed, pushed bool, err error) {
+// changes; a clean tree is a no-op (returns false,false). For the empty-repo
+// init path (scaffoldKind == "init") it splits the scaffolded tree into two
+// commits — app project code, then Miaoda config (.spark/.agent) — skipping
+// either commit when that group has no changes (no empty commits). Other paths
+// commit once. Push is a single `git push origin <branch>` for all commits.
+func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (committed, pushed bool, err error) {
 	status, stderr, runErr := initRunner.Run(ctx, dir, "git", "status", "--porcelain")
 	if runErr != nil {
 		return false, false, output.Errorf(output.ExitAPI, "git_status", "git status failed: %s", gitErr(stderr, runErr))
@@ -430,20 +445,100 @@ func commitAndPushIfDirty(ctx context.Context, dir string) (committed, pushed bo
 	if strings.TrimSpace(status) == "" {
 		return false, false, nil
 	}
-	if _, se, e := initRunner.Run(ctx, dir, "git", "add", "-A"); e != nil {
-		return false, false, output.Errorf(output.ExitAPI, "git_add", "git add failed: %s", gitErr(se, e))
+
+	if scaffoldKind == scaffoldKindInit {
+		// Stage each group by its exact porcelain paths (never gitignored files),
+		// so neither `git add` errors on an ignored path like .agent.
+		appPaths, configPaths := classifyPorcelain(status)
+		if len(appPaths) > 0 {
+			if e := stageAndCommit(ctx, dir, commitMsgAppCode, appPaths...); e != nil {
+				return committed, false, e
+			}
+			committed = true
+		}
+		if len(configPaths) > 0 {
+			if e := stageAndCommit(ctx, dir, commitMsgAppConfig, configPaths...); e != nil {
+				return committed, false, e
+			}
+			committed = true
+		}
+	} else {
+		if e := stageAndCommit(ctx, dir, commitMsgUpgrade, "."); e != nil {
+			return false, false, e
+		}
+		committed = true
 	}
-	// --no-verify skips the scaffold repo's pre-commit / commit-msg hooks, which
-	// the miaoda template may carry and which would otherwise block or prompt on
-	// this automated init commit. Local hooks only — signing/remote checks are
-	// unaffected.
-	if _, se, e := initRunner.Run(ctx, dir, "git", "commit", "--no-verify", "-m", initCommitMessage); e != nil {
-		return false, false, output.Errorf(output.ExitAPI, "git_commit", "git commit failed: %s", gitErr(se, e))
+
+	if !committed {
+		return false, false, nil
 	}
+
 	if _, se, e := initRunner.Run(ctx, dir, "git", "push", "origin", defaultInitBranch); e != nil {
 		return true, false, output.Errorf(output.ExitAPI, "git_push", "git push failed: %s", gitErr(se, e))
 	}
 	return true, true, nil
+}
+
+// stageAndCommit stages the given pathspecs (`git add -A -- <pathspecs>`) and
+// makes one `git commit --no-verify -m message`. --no-verify skips the scaffold
+// repo's local pre-commit / commit-msg hooks (local only; the later push is not
+// --no-verify). Callers gate this on classifyPorcelain so the group is non-empty
+// and the commit never hits "nothing to commit".
+func stageAndCommit(ctx context.Context, dir, message string, pathspecs ...string) error {
+	addArgs := append([]string{"add", "-A", "--"}, pathspecs...)
+	if _, se, e := initRunner.Run(ctx, dir, "git", addArgs...); e != nil {
+		return output.Errorf(output.ExitAPI, "git_add", "git add failed: %s", gitErr(se, e))
+	}
+	if _, se, e := initRunner.Run(ctx, dir, "git", "commit", "--no-verify", "-m", message); e != nil {
+		return output.Errorf(output.ExitAPI, "git_commit", "git commit failed: %s", gitErr(se, e))
+	}
+	return nil
+}
+
+// classifyPorcelain parses `git status --porcelain` output and partitions the
+// changed paths into the "app code" group (anything outside .spark/ and .agent/)
+// and the "Miaoda config" group (.spark/ and .agent/). It returns the exact
+// porcelain paths so callers can stage them verbatim: porcelain never lists
+// gitignored files, so `git add -- <these paths>` never trips git's ignored-path
+// error. (Naming an ignored dir explicitly — or combining a "." pathspec with
+// :(exclude) magic — DOES error when a scaffold template gitignores e.g. .agent,
+// which is why we stage exact paths instead of pathspecs.)
+func classifyPorcelain(status string) (appPaths, configPaths []string) {
+	for _, line := range strings.Split(status, "\n") {
+		p := porcelainPath(line)
+		if p == "" {
+			continue
+		}
+		if isConfigPath(p) {
+			configPaths = append(configPaths, p)
+		} else {
+			appPaths = append(appPaths, p)
+		}
+	}
+	return appPaths, configPaths
+}
+
+// porcelainPath extracts the path from a `git status --porcelain` v1 line.
+// Format is "XY <path>" (2 status chars + space); rename/copy lines are
+// "XY <orig> -> <dest>" (dest is what matters). Quoted paths are unquoted.
+func porcelainPath(line string) string {
+	if len(line) < 4 {
+		return ""
+	}
+	p := line[3:]
+	if i := strings.Index(p, " -> "); i >= 0 {
+		p = p[i+len(" -> "):]
+	}
+	p = strings.TrimSpace(p)
+	p = strings.Trim(p, `"`)
+	return p
+}
+
+// isConfigPath reports whether p is the Miaoda app-config group: the .spark or
+// .agent directory itself, or anything under them. ".sparkrc" is NOT config.
+func isConfigPath(p string) bool {
+	return p == ".spark" || p == ".agent" ||
+		strings.HasPrefix(p, ".spark/") || strings.HasPrefix(p, ".agent/")
 }
 
 // gitErr builds a redacted, single-line error detail from stderr (falling back
