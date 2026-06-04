@@ -44,10 +44,14 @@ type MergedRegistry struct {
 	Services []meta.Service `json:"services"`
 }
 
-// remoteResponse is the envelope returned by the remote API.
+// remoteResponse is the envelope returned by the remote API. Data stays raw:
+// the on-disk cache must store the server payload verbatim, and a typed
+// re-marshal would strip every field the model doesn't (yet) declare — overlay
+// entries replace embedded services wholesale, so a stripped cache written by
+// today's binary would starve a future binary that models more of the metadata.
 type remoteResponse struct {
-	Msg  string         `json:"msg"`
-	Data MergedRegistry `json:"data"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
 }
 
 // configuredBrand is set by InitWithBrand and determines which API host to use.
@@ -166,6 +170,8 @@ func loadCachedMerged() (*MergedRegistry, error) {
 	return &reg, nil
 }
 
+// saveCachedMerged writes the cache file. data must be the server's data
+// payload verbatim (see remoteResponse) — never a typed re-marshal.
 func saveCachedMerged(data []byte, cm CacheMeta) error {
 	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
 		return err
@@ -214,18 +220,21 @@ func fetchRemoteMerged(localVersion string) (data []byte, reg *MergedRegistry, e
 		return nil, nil, fmt.Errorf("remote meta: unexpected msg %q", envelope.Msg)
 	}
 
-	// If data.Services is nil, the version is up-to-date (not modified)
-	if envelope.Data.Services == nil {
+	var parsed MergedRegistry
+	if len(envelope.Data) > 0 {
+		if err := json.Unmarshal(envelope.Data, &parsed); err != nil {
+			return nil, nil, fmt.Errorf("remote meta: parse data: %w", err)
+		}
+	}
+
+	// If data.services is nil, the version is up-to-date (not modified)
+	if parsed.Services == nil {
 		return nil, nil, nil
 	}
 
-	// Re-marshal just the data portion for caching
-	dataBytes, err := json.Marshal(envelope.Data)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return dataBytes, &envelope.Data, nil
+	// Cache the data portion verbatim (see remoteResponse for why not a typed
+	// re-marshal).
+	return envelope.Data, &parsed, nil
 }
 
 type httpError struct {

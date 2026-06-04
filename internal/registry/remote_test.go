@@ -94,9 +94,10 @@ func testCacheJSON(name string) []byte {
 
 // testEnvelopeJSON returns the remote API envelope format: {"msg":"succeeded","data":{...}}.
 func testEnvelopeJSON(name string) []byte {
+	regData, _ := json.Marshal(testRegistry(name))
 	resp := remoteResponse{
 		Msg:  "succeeded",
-		Data: testRegistry(name),
+		Data: regData,
 	}
 	data, _ := json.Marshal(resp)
 	return data
@@ -372,6 +373,31 @@ func TestFetchRemoteMerged_200(t *testing.T) {
 	}
 	if reg.Version != "test-1.0" {
 		t.Errorf("expected version test-1.0, got %s", reg.Version)
+	}
+}
+
+// TestFetchRemoteMerged_CacheBytesPreserveUnmodeledKeys pins that the bytes
+// destined for the on-disk cache are the server's data payload verbatim: a key
+// the typed model does not (yet) declare must survive (see remoteResponse for
+// why).
+func TestFetchRemoteMerged_CacheBytesPreserveUnmodeledKeys(t *testing.T) {
+	const payload = `{"msg":"succeeded","data":{"version":"test-1.0","services":[{"name":"svc","servicePath":"/open-apis/svc/v1","resources":{"items":{"methods":{"list":{"httpMethod":"GET","path":"items","parameters":{"status":{"type":"string","enumName":"StatusEnum"}}}}}}}]}}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(payload))
+	}))
+	defer ts.Close()
+	testMetaURL = ts.URL
+
+	data, reg, err := fetchRemoteMerged("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reg == nil || len(reg.Services) != 1 || reg.Services[0].Name != "svc" {
+		t.Fatalf("typed registry not decoded, got %+v", reg)
+	}
+	if !strings.Contains(string(data), `"enumName":"StatusEnum"`) {
+		t.Errorf("cache payload dropped unmodeled key enumName, got:\n%s", data)
 	}
 }
 
