@@ -130,6 +130,16 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `delete` — 将用户或机器人移出群聊。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request.
   - `get` — 获取群成员列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
 
+### chat.managers
+
+  - `add_managers` — 指定群管理员。Identity: supports `user` and `bot`; only the group owner can add managers; max 10 managers per chat (20 for super-large chats), and at most 5 bots per request.
+  - `delete_managers` — 删除群管理员。Identity: supports `user` and `bot`; only the group owner can remove managers; max 50 users or 5 bots per request.
+
+### chat.moderation
+
+  - `get` — 获取群成员发言权限。Identity: supports `user` and `bot`; the caller must be in the target chat and belong to the same tenant.
+  - `update` — 更新群发言权限。Identity: supports `user` and `bot`; only the group owner (or creator bot with `im:chat:operate_as_owner`) can update; the caller must be in the chat.
+
 ### messages
 
   - `delete` — 撤回消息。Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability.
@@ -182,6 +192,10 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chat.members.create` | `im:chat.members:write_only` |
 | `chat.members.delete` | `im:chat.members:write_only` |
 | `chat.members.get` | `im:chat.members:read` |
+| `chat.managers.add_managers` | `im:chat.managers:write_only` |
+| `chat.managers.delete_managers` | `im:chat.managers:write_only` |
+| `chat.moderation.get` | `im:chat.moderation:read` |
+| `chat.moderation.update` | `im:chat:moderation:write_only` |
 | `messages.delete` | `im:message:recall` |
 | `messages.forward` | `im:message` |
 | `messages.merge_forward` | `im:message` |
