@@ -467,6 +467,69 @@
             }
           }
         },
+        "attachment": {
+          "methods": {
+            "get": {
+              "path": "v1/attachments/{attachment_id}",
+              "httpMethod": "GET",
+              "description": "获取附件信息",
+              "parameters": {
+                "attachment_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "附件id"
+                },
+                "type": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "附件类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "attachment.get",
+              "parameterOrder": [
+                "attachment_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/attachment/get",
+              "scopes": [
+                "hire:attachment:readonly",
+                "hire:attachment"
+              ]
+            },
+            "preview": {
+              "path": "v1/attachments/{attachment_id}/preview",
+              "httpMethod": "GET",
+              "description": "获取附件预览信息",
+              "parameters": {
+                "attachment_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "附件id"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "attachment.preview",
+              "parameterOrder": [
+                "attachment_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/attachment/preview",
+              "scopes": [
+                "hire:attachment"
+              ]
+            }
+          }
+        },
         "ehr_import_task": {
           "methods": {
             "patch": {
@@ -2381,6 +2444,168 @@
               "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=job_type&version=v1",
               "scopes": [
                 "hire:job:readonly"
+              ]
+            }
+          }
+        },
+        "note": {
+          "methods": {
+            "create": {
+              "path": "v1/notes",
+              "httpMethod": "POST",
+              "description": "创建备注",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "note.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/note/create",
+              "scopes": [
+                "hire:note"
+              ]
+            },
+            "delete": {
+              "path": "v1/notes/{note_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "note_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "备注 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "note.delete",
+              "parameterOrder": [
+                "note_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=note&version=v1",
+              "scopes": [
+                "hire:note"
+              ]
+            },
+            "get": {
+              "path": "v1/notes/{note_id}",
+              "httpMethod": "GET",
+              "description": "获取备注",
+              "parameters": {
+                "note_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "备注ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "note.get",
+              "parameterOrder": [
+                "note_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/note/get",
+              "scopes": [
+                "hire:note:readonly",
+                "hire:note"
+              ]
+            },
+            "list": {
+              "path": "v1/notes",
+              "httpMethod": "GET",
+              "description": "获取备注列表",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页限制, 每页最大不超过100"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "查询游标, 由上一页结果返回, 第一页不传"
+                },
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "人才ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "note.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/note/list",
+              "scopes": [
+                "hire:note:readonly",
+                "hire:note"
+              ]
+            },
+            "patch": {
+              "path": "v1/notes/{note_id}",
+              "httpMethod": "PATCH",
+              "description": "更新备注",
+              "parameters": {
+                "note_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "备注 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "note.patch",
+              "parameterOrder": [
+                "note_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/note/patch",
+              "scopes": [
+                "hire:note"
               ]
             }
           }
