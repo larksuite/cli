@@ -11,13 +11,18 @@ import (
 )
 
 const (
-	eventTypeMeetingEnded  = "vc.meeting.participant_meeting_ended_v1"
-	eventTypeNoteGenerated = "vc.note.generated_v1"
+	eventTypeMeetingEnded                 = "vc.meeting.participant_meeting_ended_v1"
+	eventTypeNoteGenerated                = "vc.note.generated_v1"
+	eventTypeRecordingStarted             = "vc.recording.recording_started_v1"
+	eventTypeRecordingTranscriptGenerated = "vc.recording.recording_transcript_generated_v1"
+	eventTypeRecordingEnded               = "vc.recording.recording_ended_v1"
 
-	pathMeetingSubscribe   = "/open-apis/vc/v1/meetings/subscription"
-	pathMeetingUnsubscribe = "/open-apis/vc/v1/meetings/unsubscription"
-	pathNoteSubscribe      = "/open-apis/vc/v1/notes/subscription"
-	pathNoteUnsubscribe    = "/open-apis/vc/v1/notes/unsubscription"
+	pathMeetingSubscribe     = "/open-apis/vc/v1/meetings/subscription"
+	pathMeetingUnsubscribe   = "/open-apis/vc/v1/meetings/unsubscription"
+	pathNoteSubscribe        = "/open-apis/vc/v1/notes/subscription"
+	pathNoteUnsubscribe      = "/open-apis/vc/v1/notes/unsubscription"
+	pathRecordingSubscribe   = "/open-apis/vc/v1/recordings/subscription"
+	pathRecordingUnsubscribe = "/open-apis/vc/v1/recordings/unsubscription"
 
 	pathNoteDetailFmt = "/open-apis/vc/v1/notes/%s"
 )
@@ -56,6 +61,54 @@ func Keys() []event.KeyDefinition {
 				"user",
 			},
 			RequiredConsoleEvents: []string{eventTypeNoteGenerated},
+		},
+		{
+			Key:         eventTypeRecordingStarted,
+			DisplayName: "Recording started",
+			Description: "Triggered when a recording_bean recording starts; only generated when connected to Feishu software.",
+			EventType:   eventTypeRecordingStarted,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingStartedOutput{})},
+			},
+			Process:    processVCRecordingStarted,
+			PreConsume: subscriptionPreConsume(eventTypeRecordingStarted, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			Scopes:     []string{"vc:recording:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeRecordingStarted},
+		},
+		{
+			Key:         eventTypeRecordingTranscriptGenerated,
+			DisplayName: "Recording transcript generated",
+			Description: "Triggered when recording_bean transcript items are generated; only generated when connected to Feishu software.",
+			EventType:   eventTypeRecordingTranscriptGenerated,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingTranscriptGeneratedOutput{})},
+			},
+			Process:    processVCRecordingTranscriptGenerated,
+			PreConsume: subscriptionPreConsume(eventTypeRecordingTranscriptGenerated, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			Scopes:     []string{"vc:recording:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeRecordingTranscriptGenerated},
+		},
+		{
+			Key:         eventTypeRecordingEnded,
+			DisplayName: "Recording ended",
+			Description: "Triggered when a recording_bean recording ends and uploads successfully; only generated when connected to Feishu software.",
+			EventType:   eventTypeRecordingEnded,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCRecordingEndedOutput{})},
+			},
+			Process:    processVCRecordingEnded,
+			PreConsume: subscriptionPreConsume(eventTypeRecordingEnded, pathRecordingSubscribe, pathRecordingUnsubscribe),
+			Scopes:     []string{"vc:recording:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeRecordingEnded},
 		},
 	}
 }
