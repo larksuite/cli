@@ -467,6 +467,540 @@
             }
           }
         },
+        "interview": {
+          "methods": {
+            "get_by_talent": {
+              "path": "v1/interviews/get_by_talent",
+              "httpMethod": "GET",
+              "description": "获取人才面试信息",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "人才 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview.get_by_talent",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview/get_by_talent",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            },
+            "list": {
+              "path": "v1/interviews",
+              "httpMethod": "GET",
+              "description": "获取面试信息",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小，不能超过 100"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "查询游标, 由上一页结果返回, 第一页不传"
+                },
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID"
+                },
+                "interview_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "面试 ID"
+                },
+                "start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早开始时间，格式为时间戳"
+                },
+                "end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚开始时间，格式为时间戳"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview/list",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_feedback_form": {
+          "methods": {
+            "list": {
+              "path": "v1/interview_feedback_forms",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_feedback_form.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=interview_feedback_form&version=v1",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_record": {
+          "methods": {
+            "get": {
+              "path": "v1/interview_records/{interview_record_id}",
+              "httpMethod": "GET",
+              "description": "获取面试评价详细信息",
+              "parameters": {
+                "interview_record_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "记录 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_record.get",
+              "parameterOrder": [
+                "interview_record_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview_record/get",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            },
+            "get_v2": {
+              "path": "v2/interview_records/{interview_record_id}",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "interview_record_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "面试记录ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "user",
+                "tenant"
+              ],
+              "id": "interview_record.get_v2",
+              "parameterOrder": [
+                "interview_record_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=interview_record&version=v2",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            },
+            "list": {
+              "path": "v1/interview_records",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_record.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=interview_record&version=v1",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            },
+            "list_v2": {
+              "path": "v2/interview_records",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "user",
+                "tenant"
+              ],
+              "id": "interview_record.list_v2",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=interview_record&version=v2",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_record_attachment": {
+          "methods": {
+            "get": {
+              "path": "v1/interview_records/attachments",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID"
+                },
+                "interview_record_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "面试记录 ID"
+                },
+                "language": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "面试记录语言"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_record_attachment.get",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=interview_record.attachment&version=v1",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_registration_schema": {
+          "methods": {
+            "list": {
+              "path": "v1/interview_registration_schemas",
+              "httpMethod": "GET",
+              "description": "获取面试登记表模板列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_registration_schema.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview_registration_schema/list",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_round_type": {
+          "methods": {
+            "list": {
+              "path": "v1/interview_round_types",
+              "httpMethod": "GET",
+              "description": "获取面试轮次类型列表",
+              "parameters": {
+                "process_type": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "职位流程类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_round_type.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview_round_type/list",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
+        "interview_task": {
+          "methods": {
+            "list": {
+              "path": "v1/interview_tasks",
+              "httpMethod": "GET",
+              "description": "获取员工面试任务",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 默认10，不能超过 20"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID"
+                },
+                "activity_status": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "任务状态"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interview_task.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/interview_task/list",
+              "scopes": [
+                "hire:interview:readonly"
+              ]
+            }
+          }
+        },
+        "interviewer": {
+          "methods": {
+            "list": {
+              "path": "v1/interviewers",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "verify_status": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "认证状态"
+                },
+                "earliest_update_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒时间戳"
+                },
+                "latest_update_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒时间戳"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interviewer.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=interviewer&version=v1",
+              "scopes": [
+                "hire:interviewer",
+                "hire:interviewer:readonly"
+              ]
+            },
+            "patch": {
+              "path": "v1/interviewers/{interviewer_id}",
+              "httpMethod": "PATCH",
+              "description": "-",
+              "parameters": {
+                "interviewer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "面试官userID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "interviewer.patch",
+              "parameterOrder": [
+                "interviewer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=hire&resource=interviewer&version=v1"
+            }
+          }
+        },
         "job": {
           "methods": {
             "close": {
