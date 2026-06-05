@@ -266,7 +266,7 @@ func TestBaseFormQuestionsExecuteList(t *testing.T) {
 func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 	t.Run("create questions", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
+		createStub := &httpmock.Stub{
 			Method: "POST",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
 			Body: map[string]interface{}{
@@ -277,7 +277,8 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 					},
 				},
 			},
-		})
+		}
+		reg.Register(createStub)
 		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
 			"--questions", `[{"type":"text","title":"您的姓名","required":true}]`}
 		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
@@ -285,6 +286,69 @@ func TestBaseFormQuestionsExecuteCreate(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"questions"`) || !strings.Contains(got, `"q_new1"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("attachment defaults to all file types", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		createStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"questions": []interface{}{
+						map[string]interface{}{"id": "q_file", "title": "请上传PDF简历", "required": true},
+					},
+				},
+			},
+		}
+		reg.Register(createStub)
+		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--questions", `[{"type":"attachment","title":"请上传PDF简历","required":true}]`}
+		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, createStub)
+		questions, _ := body["questions"].([]interface{})
+		if len(questions) != 1 {
+			t.Fatalf("questions=%#v", body["questions"])
+		}
+		question, _ := questions[0].(map[string]interface{})
+		attachment, _ := question["attachment"].(map[string]interface{})
+		fileTypes, _ := attachment["file_types"].([]interface{})
+		if len(fileTypes) != 1 || fileTypes[0] != "all" {
+			t.Fatalf("attachment file_types=%#v, body=%s", attachment["file_types"], string(createStub.CapturedBody))
+		}
+	})
+
+	t.Run("attachment preserves explicit file types", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		createStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/forms/vew_form1/questions",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"questions": []interface{}{
+						map[string]interface{}{"id": "q_image", "title": "请上传图片", "required": false},
+					},
+				},
+			},
+		}
+		reg.Register(createStub)
+		args := []string{"+form-questions-create", "--base-token", "app_x", "--table-id", "tbl_x", "--form-id", "vew_form1",
+			"--questions", `[{"type":"attachment","title":"请上传图片","attachment":{"file_types":["image"]}}]`}
+		if err := runShortcut(t, BaseFormQuestionsCreate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := decodeCapturedJSONBody(t, createStub)
+		questions, _ := body["questions"].([]interface{})
+		question, _ := questions[0].(map[string]interface{})
+		attachment, _ := question["attachment"].(map[string]interface{})
+		fileTypes, _ := attachment["file_types"].([]interface{})
+		if len(fileTypes) != 1 || fileTypes[0] != "image" {
+			t.Fatalf("attachment file_types=%#v, body=%s", attachment["file_types"], string(createStub.CapturedBody))
 		}
 	})
 

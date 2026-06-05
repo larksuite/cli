@@ -37,6 +37,13 @@ lark-cli base +form-questions-create \
   --table-id <table_id> \
   --form-id <form_id> \
   --questions '[{"type":"number","title":"服务评分","style":{"type":"rating","icon":"star","min":1,"max":5}}]'
+
+# 添加附件题（默认允许上传所有文件类型）
+lark-cli base +form-questions-create \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --form-id <form_id> \
+  --questions '[{"type":"attachment","title":"请上传PDF简历","required":true}]'
   
 # 添加带描述的问题（纯文本）
 lark-cli base +form-questions-create \
@@ -78,6 +85,7 @@ lark-cli base +form-questions-create \
 | `multiple`            | 否 | 是否多选（`select`/`user` 类型有效，bool） |
 | `options`             | 否 | 选项列表（仅 `select` 有效）：`[{"name":"选项1","hue":"Blue"}]`，hue 可选：`Red`/`Orange`/`Yellow`/`Green`/`Blue`/`Purple`/`Gray` |
 | `style`               | 否 | 字段样式配置（见下方说明） |
+| `attachment`          | 否 | 附件题配置（仅 `attachment` 有效）：`{"file_types":["all"]}`。未提供时 CLI 默认补为 `["all"]`，与飞书 UI 新建附件题一致 |
 
 ### `style` 字段说明
 

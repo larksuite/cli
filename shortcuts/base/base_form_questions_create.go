@@ -25,14 +25,18 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
-		{Name: "questions", Desc: `questions JSON array, max 10 items. Each item requires "title"(field title) and "type"(text/number/select/datetime/user/attachment/location). Optional fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"multiple"(bool,select/user),"options"([{"name":"opt","hue":"Blue"}],select only),"style"({"type":"plain/phone/url/email/barcode/rating","precision":2,"format":"yyyy/MM/dd","icon":"star","min":1,"max":5}). E.g. '[{"type":"text","title":"Your name","required":true}]'`, Required: true},
+		{Name: "questions", Desc: `questions JSON array, max 10 items. Each item requires "title"(field title) and "type"(text/number/select/datetime/user/attachment/location). Optional fields: "description"(plain text or markdown link like [text](https://example.com)),"required","option_display_mode"(0=dropdown/1=vertical/2=horizontal,select only),"multiple"(bool,select/user),"options"([{"name":"opt","hue":"Blue"}],select only),"style"({"type":"plain/phone/url/email/barcode/rating","precision":2,"format":"yyyy/MM/dd","icon":"star","min":1,"max":5}),"attachment"({"file_types":["all"]},attachment only). E.g. '[{"type":"text","title":"Your name","required":true}]'`, Required: true},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().
+		dr := common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", runtime.Str("table-id")).
 			Set("form_id", runtime.Str("form-id"))
+		if questions, err := parseFormQuestions(runtime.Str("questions")); err == nil {
+			dr.Body(map[string]interface{}{"questions": questions})
+		}
+		return dr
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		baseToken := runtime.Str("base-token")
@@ -40,8 +44,8 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		formId := runtime.Str("form-id")
 		questionsJSON := runtime.Str("questions")
 
-		var questions []interface{}
-		if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
+		questions, err := parseFormQuestions(questionsJSON)
+		if err != nil {
 			return output.Errorf(output.ExitValidation, "invalid_json", "--questions must be a valid JSON array: %s", err)
 		}
 
@@ -70,4 +74,30 @@ var BaseFormQuestionsCreate = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func parseFormQuestions(questionsJSON string) ([]interface{}, error) {
+	var questions []interface{}
+	if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
+		return nil, err
+	}
+	normalizeFormQuestionAttachments(questions)
+	return questions, nil
+}
+
+func normalizeFormQuestionAttachments(questions []interface{}) {
+	for _, question := range questions {
+		q, ok := question.(map[string]interface{})
+		if !ok || q["type"] != "attachment" {
+			continue
+		}
+		attachment, ok := q["attachment"].(map[string]interface{})
+		if !ok {
+			q["attachment"] = map[string]interface{}{"file_types": []interface{}{"all"}}
+			continue
+		}
+		if fileTypes, ok := attachment["file_types"]; !ok || fileTypes == nil {
+			attachment["file_types"] = []interface{}{"all"}
+		}
+	}
 }
