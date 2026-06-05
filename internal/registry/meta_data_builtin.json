@@ -8,6 +8,465 @@
       "description": "Feishu/Lark Hire (招聘): jobs, talents, applications, offers, interviews, onboarding, referrals, agencies, websites and ecosystem integrations",
       "servicePath": "/open-apis/hire",
       "resources": {
+        "application": {
+          "methods": {
+            "cancel_onboard": {
+              "path": "v1/applications/{application_id}/cancel_onboard",
+              "httpMethod": "POST",
+              "description": "取消候选人入职",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.cancel_onboard",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/cancel_onboard",
+              "scopes": [
+                "hire:application"
+              ]
+            },
+            "create": {
+              "path": "v1/applications",
+              "httpMethod": "POST",
+              "description": "创建投递",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/create",
+              "scopes": [
+                "hire:application"
+              ]
+            },
+            "get": {
+              "path": "v1/applications/{application_id}",
+              "httpMethod": "GET",
+              "description": "获取投递信息",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.get",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/get",
+              "scopes": [
+                "hire:application:readonly",
+                "hire:application"
+              ]
+            },
+            "get_detail": {
+              "path": "v1/applications/{application_id}/get_detail",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.get_detail",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_detail&project=hire&resource=application&version=v1",
+              "scopes": [
+                "hire:application:readonly",
+                "hire:application"
+              ]
+            },
+            "list": {
+              "path": "v1/applications",
+              "httpMethod": "GET",
+              "description": "获取投递列表",
+              "parameters": {
+                "process_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "按流程过滤，招聘流程 ID，枚举值通过接口「获取招聘流程信息」接口获取"
+                },
+                "stage_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "按招聘阶段过滤，招聘阶段 ID，枚举值通过「获取招聘流程信息」接口获取"
+                },
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "按人才过滤"
+                },
+                "active_status": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "按活跃状态筛选 1=活跃投递, 2=非活跃投递, 3=全部"
+                },
+                "job_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "职位 ID"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "查询游标, 由上一页结果返回, 第一页不传"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页限制, 每页最大不超过100"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/list",
+              "scopes": [
+                "hire:application:readonly",
+                "hire:application"
+              ]
+            },
+            "offer": {
+              "path": "v1/applications/{application_id}/offer",
+              "httpMethod": "GET",
+              "description": "获取 Offer 信息",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.offer",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/offer",
+              "scopes": [
+                "hire:application",
+                "hire:application:readonly"
+              ]
+            },
+            "recover": {
+              "path": "v1/applications/{application_id}/recover",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.recover",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=recover&project=hire&resource=application&version=v1",
+              "scopes": [
+                "hire:application"
+              ]
+            },
+            "terminate": {
+              "path": "v1/applications/{application_id}/terminate",
+              "httpMethod": "POST",
+              "description": "终止投递",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.terminate",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/terminate",
+              "scopes": [
+                "hire:application"
+              ]
+            },
+            "transfer_onboard": {
+              "path": "v1/applications/{application_id}/transfer_onboard",
+              "httpMethod": "POST",
+              "description": "操作候选人入职",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.transfer_onboard",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/transfer_onboard",
+              "scopes": [
+                "hire:application"
+              ]
+            },
+            "transfer_stage": {
+              "path": "v1/applications/{application_id}/transfer_stage",
+              "httpMethod": "POST",
+              "description": "转移阶段",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application.transfer_stage",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/application/transfer_stage",
+              "scopes": [
+                "hire:application"
+              ]
+            }
+          }
+        },
+        "application_interview": {
+          "methods": {
+            "list": {
+              "path": "v1/applications/{application_id}/interviews",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递 ID"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小，不能超过 50"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "application_interview.list",
+              "parameterOrder": [
+                "application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=application.interview&version=v1"
+            }
+          }
+        },
         "job": {
           "methods": {
             "close": {
