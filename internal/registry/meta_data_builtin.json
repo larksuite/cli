@@ -467,6 +467,208 @@
             }
           }
         },
+        "ehr_import_task": {
+          "methods": {
+            "patch": {
+              "path": "v1/ehr_import_tasks/{ehr_import_task_id}",
+              "httpMethod": "PATCH",
+              "description": "更新 e-HR 导入任务结果",
+              "parameters": {
+                "ehr_import_task_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "导入任务 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "ehr_import_task.patch",
+              "parameterOrder": [
+                "ehr_import_task_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/ehr_import_task/patch",
+              "scopes": [
+                "hire:ehr_import"
+              ]
+            }
+          }
+        },
+        "employee": {
+          "methods": {
+            "get": {
+              "path": "v1/employees/{employee_id}",
+              "httpMethod": "GET",
+              "description": "通过员工 ID 获取入职信息",
+              "parameters": {
+                "employee_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "员工ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "employee.get",
+              "parameterOrder": [
+                "employee_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/employee/get",
+              "scopes": [
+                "hire:employee:readonly",
+                "hire:employee"
+              ]
+            },
+            "get_by_application": {
+              "path": "v1/employees/get_by_application",
+              "httpMethod": "GET",
+              "description": "通过投递 ID 获取入职信息",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "employee.get_by_application",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/employee/get_by_application",
+              "scopes": [
+                "hire:employee",
+                "hire:employee:readonly"
+              ]
+            },
+            "patch": {
+              "path": "v1/employees/{employee_id}",
+              "httpMethod": "PATCH",
+              "description": "更新入职状态",
+              "parameters": {
+                "employee_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "员工ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "employee.patch",
+              "parameterOrder": [
+                "employee_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/employee/patch",
+              "scopes": [
+                "hire:employee"
+              ]
+            }
+          }
+        },
         "evaluation": {
           "methods": {
             "list": {
