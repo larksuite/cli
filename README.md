@@ -13,7 +13,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 ## Why lark-cli?
 
 - **Agent-Native Design** — 24 structured [Skills](./skills/) out of the box, compatible with popular AI tools — Agents can operate Lark with zero extra setup
-- **Wide Coverage** — 18 business domains, 200+ curated commands, 26 AI Agent [Skills](./skills/)
+- **Wide Coverage** — 19 business domains, 200+ curated commands, 27 AI Agent [Skills](./skills/)
 - **AI-Friendly & Optimized** — Every command is tested with real Agents, featuring concise parameters, smart defaults, and structured output to maximize Agent call success rates
 - **Open Source, Zero Barriers** — MIT license, ready to use, just `npm install`
 - **Up and Running in 3 Minutes** — One-click app creation, interactive login, from install to first API call in just 3 steps
@@ -40,6 +40,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | 🕐 Attendance | Query personal attendance check-in records                                                                                        |
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
+| 🧑‍💼 Hire      | Recruitment: jobs, talents, applications, offers — query, create, update; track stages & onboarding                               |
 | 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
 | 🔗 Apps       | Create Spark/Miaoda apps, publish HTML/static sites, run cloud generation, and manage access scope                                 |
 
@@ -152,6 +153,7 @@ lark-cli auth status
 | `lark-workflow-meeting-summary` | Workflow: meeting minutes aggregation & structured report                                                      |
 | `lark-workflow-standup-report`  | Workflow: agenda & todo summary                                                                                |
 | `lark-okr`                      | Query, create, update OKRs; manage objective & key results, alignments and indicators.                         |
+| `lark-hire`                     | Recruitment: jobs, talents, applications, offers, interviews & onboarding                                      |
 
 ## Authentication
 
