@@ -999,6 +999,587 @@
               ]
             }
           }
+        },
+        "talent": {
+          "methods": {
+            "add_to_folder": {
+              "path": "v1/talents/add_to_folder",
+              "httpMethod": "POST",
+              "description": "将人才加入指定文件夹",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.add_to_folder",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/add_to_folder",
+              "scopes": [
+                "hire:talent",
+                "hire:talent_folder_association"
+              ]
+            },
+            "batch_get_id": {
+              "path": "v1/talents/batch_get_id",
+              "httpMethod": "POST",
+              "description": "通过人才信息获取人才 ID",
+              "parameters": {},
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.batch_get_id",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/batch_get_id",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            },
+            "combined_create": {
+              "path": "v1/talents/combined_create",
+              "httpMethod": "POST",
+              "description": "创建人才",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.combined_create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/combined_create",
+              "scopes": [
+                "hire:talent"
+              ]
+            },
+            "combined_update": {
+              "path": "v1/talents/combined_update",
+              "httpMethod": "POST",
+              "description": "更新人才信息",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.combined_update",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/combined_update",
+              "scopes": [
+                "hire:talent"
+              ]
+            },
+            "get": {
+              "path": "v1/talents/{talent_id}",
+              "httpMethod": "GET",
+              "description": "获取人才信息",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.get",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/get",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            },
+            "get_v2": {
+              "path": "v2/talents/{talent_id}",
+              "httpMethod": "GET",
+              "description": "获取人才信息V2",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.get_v2",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/hire-v2/talent/get",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            },
+            "list": {
+              "path": "v1/talents",
+              "httpMethod": "GET",
+              "description": "获取人才列表",
+              "parameters": {
+                "keyword": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "搜索关键词，支持布尔语言（使用 and、or、not 连接关键词）"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 不能超过 20"
+                },
+                "sort_by": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "排序规则"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "query_option": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "请求控制参数"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/list",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            },
+            "onboard_status": {
+              "path": "v1/talents/{talent_id}/onboard_status",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.onboard_status",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=onboard_status&project=hire&resource=talent&version=v1",
+              "scopes": [
+                "hire:talent"
+              ]
+            },
+            "remove_to_folder": {
+              "path": "v1/talents/remove_to_folder",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.remove_to_folder",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=remove_to_folder&project=hire&resource=talent&version=v1",
+              "scopes": [
+                "hire:talent_folder_association"
+              ]
+            },
+            "tag": {
+              "path": "v1/talents/{talent_id}/tag",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent.tag",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=tag&project=hire&resource=talent&version=v1",
+              "scopes": [
+                "hire:talent"
+              ]
+            }
+          }
+        },
+        "talent_blocklist": {
+          "methods": {
+            "change_talent_block": {
+              "path": "v1/talent_blocklist/change_talent_block",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_blocklist.change_talent_block",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=change_talent_block&project=hire&resource=talent_blocklist&version=v1",
+              "scopes": [
+                "hire:talent_blocklist"
+              ]
+            }
+          }
+        },
+        "talent_external_info": {
+          "methods": {
+            "create": {
+              "path": "v1/talents/{talent_id}/external_info",
+              "httpMethod": "POST",
+              "description": "创建人才外部信息",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_external_info.create",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent-external_info/create",
+              "scopes": [
+                "hire:talent"
+              ]
+            },
+            "update": {
+              "path": "v1/talents/{talent_id}/external_info",
+              "httpMethod": "PUT",
+              "description": "更新人才外部信息",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_external_info.update",
+              "parameterOrder": [
+                "talent_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent-external_info/update",
+              "scopes": [
+                "hire:talent"
+              ]
+            }
+          }
+        },
+        "talent_folder": {
+          "methods": {
+            "list": {
+              "path": "v1/talent_folders",
+              "httpMethod": "GET",
+              "description": "获取人才文件夹信息",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户ID类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_folder.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent_folder/list",
+              "scopes": [
+                "hire:talent_folder:readonly",
+                "hire:talent_folder"
+              ]
+            }
+          }
+        },
+        "talent_operation_log": {
+          "methods": {
+            "search": {
+              "path": "v1/talent_operation_logs/search",
+              "httpMethod": "POST",
+              "description": "查询操作人对人才的操作记录",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_operation_log.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/talent/talent_operation_log/search"
+            }
+          }
+        },
+        "talent_pool": {
+          "methods": {
+            "batch_change_talent_pool": {
+              "path": "v1/talent_pools/{talent_pool_id}/batch_change_talent_pool",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "talent_pool_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才库ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_pool.batch_change_talent_pool",
+              "parameterOrder": [
+                "talent_pool_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_change_talent_pool&project=hire&resource=talent_pool&version=v1",
+              "scopes": [
+                "hire:talent_folder"
+              ]
+            },
+            "move_talent": {
+              "path": "v1/talent_pools/{talent_pool_id}/talent_relationship",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "talent_pool_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "人才库ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_pool.move_talent",
+              "parameterOrder": [
+                "talent_pool_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=move_talent&project=hire&resource=talent_pool&version=v1",
+              "scopes": [
+                "hire:talent_folder"
+              ]
+            },
+            "search": {
+              "path": "v1/talent_pools",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_pool.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search&project=hire&resource=talent_pool&version=v1"
+            }
+          }
+        },
+        "talent_tag": {
+          "methods": {
+            "list": {
+              "path": "v1/talent_tags",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "keyword": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "搜索关键词"
+                },
+                "type": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "标签类型"
+                },
+                "include_inactive": {
+                  "type": "boolean",
+                  "location": "query",
+                  "required": false,
+                  "description": "包含停用"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "talent_tag.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=talent_tag&version=v1",
+              "scopes": [
+                "hire:talent_tag",
+                "hire:talent_tag:readonly"
+              ]
+            }
+          }
         }
       }
     }
