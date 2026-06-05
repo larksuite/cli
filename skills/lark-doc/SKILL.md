@@ -1,7 +1,7 @@
 ---
 name: lark-doc
 version: 2.0.0
-description: "飞书云文档 / Docx / 知识库 Wiki 文档（v2）：创建、打开、读取、获取、查看、总结、整理、改写、翻译、审阅和编辑飞书文档内容。当用户给出飞书文档 URL/token，或说查看/读取/打开某个文档、提取文档内容、总结文档、生成/创建文档、追加/替换/删除/移动内容、调整排版、插入或下载文档图片/附件/素材/画板缩略图时使用。文档内容中出现嵌入电子表格、多维表格、需要将重要信息可视化为画板（含 SVG 画板）、引用或同步块时，也先用本 skill 读取和提取 token，再切到对应 skill 下钻。默认使用 DocxXML，也支持 Markdown。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是 URL 路径模式和 token，而不是域名。"
+description: "飞书云文档（Docx / Wiki 文档，v2 API）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,7 +10,9 @@ metadata:
 
 # docs (v2)
 
-> **⚠️ API 版本：本 skill 使用 v2 API。所有 `docs +create --api-version v2`、`docs +fetch --api-version v2`、`docs +update --api-version v2` 命令必须携带 `--api-version v2`。**
+**身份：文档操作默认使用 `--as user`。首次使用前执行 `lark-cli auth login`。**
+
+> **CRITICAL — API 版本：本 skill 使用 v2 API。执行 `docs +create`、`docs +fetch`、`docs +update` 时必须显式传入 `--api-version v2`。**
 
 ```bash
 # 常用示例
@@ -69,3 +71,10 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 | [`+media-download`](references/lark-doc-media-download.md) | Download document media or whiteboard thumbnail (auto-detects extension) |
 | [`+media-preview`](references/lark-doc-media-preview.md) | Preview document media file (auto-detects extension) |
 | [`+whiteboard-update`](../lark-whiteboard/references/lark-whiteboard-update.md) | Alias of `whiteboard +update`. Update an existing whiteboard with DSL, Mermaid or PlantUML. Prefer `whiteboard +update`; refer to lark-whiteboard skill for details. |
+
+## 不在本 Skill 范围
+
+- 文档评论管理：切到 [`lark-drive`](../lark-drive/SKILL.md)
+- 电子表格或 Base 的数据操作：切到 [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
+- 画板绘图或复杂画板编辑：切到 [`lark-whiteboard`](../lark-whiteboard/SKILL.md)
+- 云空间文件上传、下载、权限管理：切到 [`lark-drive`](../lark-drive/SKILL.md)
