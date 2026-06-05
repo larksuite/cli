@@ -467,6 +467,196 @@
             }
           }
         },
+        "evaluation": {
+          "methods": {
+            "list": {
+              "path": "v1/evaluations",
+              "httpMethod": "GET",
+              "description": "获取简历评估信息",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户ID类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "evaluation.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/evaluation/list",
+              "scopes": [
+                "hire:evaluation:readonly"
+              ]
+            }
+          }
+        },
+        "evaluation_task": {
+          "methods": {
+            "list": {
+              "path": "v1/evaluation_tasks",
+              "httpMethod": "GET",
+              "description": "获取员工评估任务",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 默认10，不能超过 20"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID"
+                },
+                "activity_status": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "任务状态"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "evaluation_task.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/evaluation_task/list",
+              "scopes": [
+                "hire:evaluation:readonly"
+              ]
+            }
+          }
+        },
+        "exam": {
+          "methods": {
+            "create": {
+              "path": "v1/exams",
+              "httpMethod": "POST",
+              "description": "添加笔试结果",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "exam.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/exam/create",
+              "scopes": [
+                "hire:exam"
+              ]
+            }
+          }
+        },
+        "exam_marking_task": {
+          "methods": {
+            "list": {
+              "path": "v1/exam_marking_tasks",
+              "httpMethod": "GET",
+              "description": "获取员工笔试阅卷任务",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 默认10，不能超过 20"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID"
+                },
+                "activity_status": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "任务状态"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "exam_marking_task.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/exam_marking_task/list",
+              "scopes": [
+                "hire:exam:readonly"
+              ]
+            }
+          }
+        },
         "interview": {
           "methods": {
             "get_by_talent": {
