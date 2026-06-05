@@ -15,10 +15,14 @@ import (
 // legacy validation/save helpers are forbidden; callers must use the typed
 // common replacements or construct an errs.* typed error directly.
 var migratedCommonHelperPaths = []string{
+	"cmd/event/",
+	"events/",
+	"internal/event/consume/",
 	"shortcuts/base/",
 	"shortcuts/calendar/",
 	"shortcuts/contact/",
 	"shortcuts/drive/",
+	"shortcuts/event/",
 	"shortcuts/mail/",
 	"shortcuts/minutes/",
 	"shortcuts/okr/",

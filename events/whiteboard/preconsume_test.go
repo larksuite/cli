@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 )
 
@@ -58,6 +59,16 @@ func TestWhiteboardSubscriptionPreConsume_MissingWhiteboardID(t *testing.T) {
 	if !strings.Contains(err.Error(), "whiteboard_id") {
 		t.Fatalf("error should mention whiteboard_id, got: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument || ve.Param != "--param" {
+		t.Errorf("subtype/param = %s/%q, want %s/%q", ve.Subtype, ve.Param, errs.SubtypeInvalidArgument, "--param")
+	}
+	if ve.Hint == "" {
+		t.Error("missing whiteboard_id should carry a hint")
+	}
 }
 
 // TestWhiteboardSubscriptionPreConsume_NilRuntime verifies that PreConsume
@@ -69,6 +80,9 @@ func TestWhiteboardSubscriptionPreConsume_NilRuntime(t *testing.T) {
 	_, err := pc(context.Background(), nil, map[string]string{"whiteboard_id": "wb1"})
 	if err == nil {
 		t.Fatalf("expected error when runtime client is nil")
+	}
+	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryInternal {
+		t.Errorf("nil-runtime invariant should be a typed internal error, got %T: %v", err, err)
 	}
 }
 

@@ -813,6 +813,8 @@ func boom() error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnDrivePath(t *testing.T) {
 	src := `package drive
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -833,6 +835,8 @@ func boom(runtime *common.RuntimeContext) error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnTaskPath(t *testing.T) {
 	src := `package task
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -852,6 +856,8 @@ func boom(runtime *common.RuntimeContext) error {
 
 func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
 	src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.DoAPIJSONWithLogID("POST", "/x", nil, nil)
@@ -1074,5 +1080,25 @@ func boom() error {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
 	if len(v) != 1 {
 		t.Fatalf("expected 1 violation for function-value reference, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_SkipsNonCommonReceiver(t *testing.T) {
+	// The event domain's APIClient interface has a same-named CallAPI method
+	// whose implementation classifies into typed errs.* errors; without the
+	// shortcuts/common import the call cannot be the legacy RuntimeContext
+	// helper and must not fire.
+	src := `package vc
+
+import "github.com/larksuite/cli/internal/event"
+
+func boom(rt event.APIClient) error {
+	_, err := rt.CallAPI(nil, "POST", "/x", nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("events/vc/preconsume.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-common CallAPI receiver must not fire, got: %+v", v)
 	}
 }

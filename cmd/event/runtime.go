@@ -6,8 +6,8 @@ package event
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
 )
@@ -26,7 +26,11 @@ func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body 
 		As:     r.accessIdentity,
 	})
 	if err != nil {
-		return nil, err
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport,
+			"api %s %s: %s", method, path, err).WithCause(err)
 	}
 	// Non-JSON HTTP errors (gateway text/plain 404 etc.) skip OAPI envelope parsing.
 	ct := resp.Header.Get("Content-Type")
@@ -36,11 +40,20 @@ func (r *consumeRuntime) CallAPI(ctx context.Context, method, path string, body 
 		if len(body) > maxBodyEcho {
 			body = body[:maxBodyEcho] + "…(truncated)"
 		}
-		return nil, fmt.Errorf("api %s %s returned %d: %s", method, path, resp.StatusCode, body)
+		if resp.StatusCode >= 500 {
+			return nil, errs.NewNetworkError(errs.SubtypeNetworkServer,
+				"api %s %s returned %d: %s", method, path, resp.StatusCode, body).WithRetryable()
+		}
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"api %s %s returned %d: %s", method, path, resp.StatusCode, body)
 	}
 	result, err := client.ParseJSONResponse(resp)
 	if err != nil {
-		return nil, err
+		if _, ok := errs.ProblemOf(err); ok {
+			return nil, err
+		}
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"api %s %s: %s", method, path, err).WithCause(err)
 	}
 	if apiErr := r.client.CheckResponse(result, r.accessIdentity); apiErr != nil {
 		return json.RawMessage(resp.RawBody), apiErr

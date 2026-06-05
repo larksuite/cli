@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -24,11 +25,15 @@ const cleanupTimeout = 5 * time.Second
 func whiteboardSubscriptionPreConsume(eventType string) func(context.Context, event.APIClient, map[string]string) (func(), error) {
 	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func(), error) {
 		if rt == nil {
-			return nil, fmt.Errorf("runtime API client is required for pre-consume subscription")
+			return nil, errs.NewInternalError(errs.SubtypeUnknown,
+				"runtime API client is required for pre-consume subscription")
 		}
 		whiteboardID := params["whiteboard_id"]
 		if whiteboardID == "" {
-			return nil, fmt.Errorf("param whiteboard_id is required for %s", eventType)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"param whiteboard_id is required for %s", eventType).
+				WithParam("--param").
+				WithHint("pass it as --param whiteboard_id=<id>; run `lark-cli event schema %s` for details", eventType)
 		}
 		encoded := validate.EncodePathSegment(whiteboardID)
 		subscribePath := fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/subscribe", encoded)

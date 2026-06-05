@@ -75,7 +75,31 @@ The one rule to internalize: **every error message you write will be parsed by a
 
 ### Structured errors in commands
 
-`RunE` functions must return `output.Errorf` / `output.ErrWithHint` — never bare `fmt.Errorf`. AI agents parse stderr as JSON; bare errors break this contract.
+Command-facing failures must be typed `errs.*` errors — never the legacy `output.Err*` helpers and never a final bare `fmt.Errorf`. AI agents parse the stderr envelope's `type` / `subtype` / `param` / `hint` fields to decide their next action; the full taxonomy lives in `errs/ERROR_CONTRACT.md`.
+
+Picking a constructor:
+
+| Failure | Constructor |
+|---------|-------------|
+| User flag/arg fails validation | `errs.NewValidationError(errs.SubtypeInvalidArgument, ...).WithParam("--flag")` |
+| Valid request, wrong system state | `errs.NewValidationError(errs.SubtypeFailedPrecondition, ...).WithHint(...)` |
+| Lark API returned `code != 0` | `runtime.CallAPITyped` (shortcuts) / `errclass.BuildAPIError` (raw responses) — never hand-build |
+| Network / transport failure | `errs.NewNetworkError(errs.SubtypeNetworkTransport, ...)` |
+| Local file I/O failure | `errs.NewInternalError(errs.SubtypeFileIO, ...)` — validate the path first (`validate.SafeInputPath` / `SafeOutputPath`) and use `vfs.*` |
+| Unclassified lower-layer error as final | `errs.NewInternalError(errs.SubtypeUnknown, ...).WithCause(err)` |
+| Lower layer already returned a typed error | pass it through unchanged — re-wrapping downgrades its classification |
+
+Signatures that are easy to guess wrong:
+
+- `runtime.CallAPITyped(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error)` — it performs the HTTP request itself and classifies `code != 0` into a typed error; just return the error it gives you.
+- Typed pass-through check: `if _, ok := errs.ProblemOf(err); ok { return err }` — `ProblemOf` returns `(*errs.Problem, bool)`, not a nilable pointer.
+- `.WithParam` exists only on `*errs.ValidationError`. `InternalError` / `NetworkError` have no param field — file or endpoint context goes in the message or `.WithHint(...)`.
+
+`forbidigo` + `lint/errscontract` reject the legacy `output.Err*` helpers, bare final `fmt.Errorf` / `errors.New`, and legacy envelope literals on migrated paths. Beyond what lint catches, three authoring conventions apply:
+
+- Preserve the underlying error with `.WithCause(err)` so `errors.Is` / `errors.Unwrap` keep working.
+- `param` names only the user input that actually failed. Recovery guidance goes in `.WithHint(...)`; machine-readable recovery fields (`missing_scopes`, `log_id`) carry server/system ground truth only — never caller-side guesses.
+- Error-path tests assert typed metadata via `errs.ProblemOf` (`category` / `subtype` / `param`) and cause preservation, not message substrings alone.
 
 ### stdout is data, stderr is everything else
 

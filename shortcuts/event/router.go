@@ -4,7 +4,6 @@
 package event
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -34,27 +33,27 @@ func ParseRoutes(specs []string) (*EventRouter, error) {
 	for _, spec := range specs {
 		parts := strings.SplitN(spec, "=", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid route %q: expected format regex=dir:./path", spec)
+			return nil, eventValidationParamError("--route", "invalid --route %q: expected format regex=dir:./path", spec)
 		}
 		pattern := parts[0]
 		target := parts[1]
 
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return nil, fmt.Errorf("invalid regex in route %q: %w", spec, err)
+			return nil, eventValidationParamErrorWithCause(err, "--route", "invalid regex in --route %q", spec)
 		}
 
 		if !strings.HasPrefix(target, "dir:") {
-			return nil, fmt.Errorf("invalid route target %q: must start with \"dir:\" prefix (format: regex=dir:./path)", target)
+			return nil, eventValidationParamError("--route", "invalid --route target %q: must start with \"dir:\" prefix (format: regex=dir:./path)", target)
 		}
 		dir := strings.TrimPrefix(target, "dir:")
 		if dir == "" {
-			return nil, fmt.Errorf("invalid route %q: directory path is empty", spec)
+			return nil, eventValidationParamError("--route", "invalid --route %q: directory path is empty", spec)
 		}
 
 		safeDir, err := validate.SafeOutputPath(dir)
 		if err != nil {
-			return nil, fmt.Errorf("invalid route %q: %w", spec, err)
+			return nil, eventValidationParamErrorWithCause(err, "--route", "invalid --route %q", spec)
 		}
 
 		routes = append(routes, Route{pattern: re, dir: safeDir})

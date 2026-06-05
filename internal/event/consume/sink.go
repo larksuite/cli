@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -23,7 +24,8 @@ type Sink interface {
 func newSink(opts Options) (Sink, error) {
 	if opts.OutputDir != "" {
 		if err := vfs.MkdirAll(opts.OutputDir, 0755); err != nil {
-			return nil, fmt.Errorf("create output dir: %w", err)
+			return nil, errs.NewInternalError(errs.SubtypeFileIO,
+				"create output dir: %s", err).WithCause(err)
 		}
 		// PID disambiguates filenames across processes sharing a Dir.
 		return &DirSink{Dir: opts.OutputDir, pid: os.Getpid()}, nil

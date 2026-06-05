@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
@@ -127,5 +128,40 @@ func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	got := parsed["properties"].(map[string]interface{})["sender_id"].(map[string]interface{})["format"]
 	if got != "open_id" {
 		t.Errorf("overlay format = %v, want open_id", got)
+	}
+}
+
+func TestRenderSpec_EmptySpecIsTypedInternalError(t *testing.T) {
+	_, err := renderSpec(&eventlib.SchemaSpec{})
+	if err == nil {
+		t.Fatal("expected error for spec with neither Type nor Raw")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal {
+		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
+	}
+}
+
+func TestResolveSchemaJSON_InvalidBaseWithOverridesIsTypedInternalError(t *testing.T) {
+	def := &eventlib.KeyDefinition{
+		Key: "synthetic.invalid.base",
+		Schema: eventlib.SchemaDef{
+			Custom:         &eventlib.SchemaSpec{Raw: json.RawMessage("{not json")},
+			FieldOverrides: map[string]schemas.FieldMeta{"x": {}},
+		},
+	}
+	_, _, err := resolveSchemaJSON(def)
+	if err == nil {
+		t.Fatal("expected error for unparsable base schema")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal {
+		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
 	}
 }
