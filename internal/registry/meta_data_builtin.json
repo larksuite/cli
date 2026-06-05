@@ -857,6 +857,342 @@
             }
           }
         },
+        "eco_account_custom_field": {
+          "methods": {
+            "batch_delete": {
+              "path": "v1/eco_account_custom_fields/batch_delete",
+              "httpMethod": "POST",
+              "description": "删除帐号自定义字段",
+              "parameters": {},
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_account_custom_field.batch_delete",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_account_custom_field/batch_delete",
+              "scopes": [
+                "hire:background_check_order",
+                "hire:exam"
+              ]
+            },
+            "batch_update": {
+              "path": "v1/eco_account_custom_fields/batch_update",
+              "httpMethod": "PATCH",
+              "description": "更新帐号自定义字段",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_account_custom_field.batch_update",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_account_custom_field/batch_update",
+              "scopes": [
+                "hire:background_check_order",
+                "hire:exam"
+              ]
+            },
+            "create": {
+              "path": "v1/eco_account_custom_fields",
+              "httpMethod": "POST",
+              "description": "创建帐号自定义字段",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_account_custom_field.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_account_custom_field/create",
+              "scopes": [
+                "hire:background_check_order",
+                "hire:exam"
+              ]
+            }
+          }
+        },
+        "eco_background_check": {
+          "methods": {
+            "cancel": {
+              "path": "v1/eco_background_checks/cancel",
+              "httpMethod": "POST",
+              "description": "终止背调订单",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check.cancel",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check/cancel",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "update_progress": {
+              "path": "v1/eco_background_checks/update_progress",
+              "httpMethod": "POST",
+              "description": "更新背调进度",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check.update_progress",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check/update_progress",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "update_result": {
+              "path": "v1/eco_background_checks/update_result",
+              "httpMethod": "POST",
+              "description": "回传背调的最终结果",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check.update_result",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check/update_result",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            }
+          }
+        },
+        "eco_background_check_custom_field": {
+          "methods": {
+            "batch_delete": {
+              "path": "v1/eco_background_check_custom_fields/batch_delete",
+              "httpMethod": "POST",
+              "description": "删除背调自定义字段",
+              "parameters": {},
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_custom_field.batch_delete",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_custom_field/batch_delete",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "batch_update": {
+              "path": "v1/eco_background_check_custom_fields/batch_update",
+              "httpMethod": "PATCH",
+              "description": "更新背调自定义字段",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_custom_field.batch_update",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_custom_field/batch_update",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "create": {
+              "path": "v1/eco_background_check_custom_fields",
+              "httpMethod": "POST",
+              "description": "创建背调自定义字段",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_custom_field.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_custom_field/create",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            }
+          }
+        },
+        "eco_background_check_package": {
+          "methods": {
+            "batch_delete": {
+              "path": "v1/eco_background_check_packages/batch_delete",
+              "httpMethod": "POST",
+              "description": "删除背调套餐和附加调查项",
+              "parameters": {},
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_package.batch_delete",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_package/batch_delete",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "batch_update": {
+              "path": "v1/eco_background_check_packages/batch_update",
+              "httpMethod": "PATCH",
+              "description": "更新背调套餐和附加调查项",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_package.batch_update",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_package/batch_update",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            },
+            "create": {
+              "path": "v1/eco_background_check_packages",
+              "httpMethod": "POST",
+              "description": "推送背调套餐和附加调查项",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_background_check_package.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/eco_background_check_package/create",
+              "scopes": [
+                "hire:background_check_order"
+              ]
+            }
+          }
+        },
+        "eco_exam": {
+          "methods": {
+            "login_info": {
+              "path": "v1/eco_exams/{exam_id}/login_info",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "exam_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "exam id"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_exam.login_info",
+              "parameterOrder": [
+                "exam_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=login_info&project=hire&resource=eco_exam&version=v1",
+              "scopes": [
+                "hire:exam",
+                "hire:exam:readonly"
+              ]
+            },
+            "update_result": {
+              "path": "v1/eco_exams/{exam_id}/update_result",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "exam_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "exam id"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_exam.update_result",
+              "parameterOrder": [
+                "exam_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update_result&project=hire&resource=eco_exam&version=v1",
+              "scopes": [
+                "hire:exam",
+                "hire:exam:readonly"
+              ]
+            }
+          }
+        },
+        "eco_exam_paper": {
+          "methods": {
+            "batch_delete": {
+              "path": "v1/eco_exam_papers/batch_delete",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_exam_paper.batch_delete",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_delete&project=hire&resource=eco_exam_paper&version=v1",
+              "scopes": [
+                "hire:exam"
+              ]
+            },
+            "batch_update": {
+              "path": "v1/eco_exam_papers/batch_update",
+              "httpMethod": "PATCH",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_exam_paper.batch_update",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_update&project=hire&resource=eco_exam_paper&version=v1",
+              "scopes": [
+                "hire:exam"
+              ]
+            },
+            "create": {
+              "path": "v1/eco_exam_papers",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "eco_exam_paper.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=hire&resource=eco_exam_paper&version=v1",
+              "scopes": [
+                "hire:exam"
+              ]
+            }
+          }
+        },
         "ehr_import_task": {
           "methods": {
             "patch": {
