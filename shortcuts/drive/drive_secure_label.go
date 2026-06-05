@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	secureLabelReadScope   = "drive:file.meta.sec_label.read_only"
+	secureLabelReadScope   = "docs:secure_label:readonly"
 	secureLabelUpdateScope = "docs:secure_label:write_only"
 )
 
