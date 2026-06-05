@@ -857,6 +857,28 @@
             }
           }
         },
+        "diversity_inclusion": {
+          "methods": {
+            "search": {
+              "path": "v1/applications/diversity_inclusions/search",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "diversity_inclusion.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search&project=hire&resource=diversity_inclusion&version=v1",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            }
+          }
+        },
         "eco_account_custom_field": {
           "methods": {
             "batch_delete": {
@@ -3657,6 +3679,117 @@
             }
           }
         },
+        "location": {
+          "methods": {
+            "list": {
+              "path": "v1/locations",
+              "httpMethod": "GET",
+              "description": "获取地址列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "usage": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "地址类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "location.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/location/list",
+              "scopes": [
+                "hire:location:readonly"
+              ]
+            },
+            "query": {
+              "path": "v1/locations/query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token,下次遍历可采用该 page_token 获取查询结果"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页限制, 数据校验规则 1-100"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "location.query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=query&project=hire&resource=location&version=v1",
+              "scopes": [
+                "hire:location:readonly"
+              ]
+            }
+          }
+        },
+        "minutes": {
+          "methods": {
+            "get": {
+              "path": "v1/minutes",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "interview_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "面试ID"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该page_token获取查询结果"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小，表示本次请求获取的速记中的语句的最大数量"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "minutes.get",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=minutes&version=v1",
+              "scopes": [
+                "hire:interview:readonly",
+                "hire:interview"
+              ]
+            }
+          }
+        },
         "note": {
           "methods": {
             "create": {
@@ -4279,6 +4412,65 @@
             }
           }
         },
+        "questionnaire": {
+          "methods": {
+            "list": {
+              "path": "v1/questionnaires",
+              "httpMethod": "GET",
+              "description": "获取面试满意度问卷列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID"
+                },
+                "interview_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "面试 ID"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "questionnaire.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/questionnaire/list",
+              "scopes": [
+                "hire:questionnaire:readonly",
+                "hire:questionnaire"
+              ]
+            }
+          }
+        },
         "referral": {
           "methods": {
             "get_by_application": {
@@ -4595,6 +4787,184 @@
               "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=referral_website.job_post&version=v1",
               "scopes": [
                 "hire:referral_website:readonly"
+              ]
+            }
+          }
+        },
+        "registration_schema": {
+          "methods": {
+            "list": {
+              "path": "v1/registration_schemas",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "scenario": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "登记表适用场景；不填表示获取全部类型信息登记表"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "registration_schema.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=registration_schema&version=v1",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            }
+          }
+        },
+        "resume_source": {
+          "methods": {
+            "list": {
+              "path": "v1/resume_sources",
+              "httpMethod": "GET",
+              "description": "获取简历来源列表",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "resume_source.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/resume_source/list",
+              "scopes": [
+                "hire:talent:readonly",
+                "hire:talent"
+              ]
+            }
+          }
+        },
+        "role": {
+          "methods": {
+            "get": {
+              "path": "v1/roles/{role_id}",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "role_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "角色ID"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "role.get",
+              "parameterOrder": [
+                "role_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=role&version=v1",
+              "scopes": [
+                "hire:auth:readonly",
+                "hire:auth"
+              ]
+            },
+            "list": {
+              "path": "v1/roles",
+              "httpMethod": "GET",
+              "description": "获取角色列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "role.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/role/list",
+              "scopes": [
+                "hire:auth:readonly",
+                "hire:auth"
+              ]
+            }
+          }
+        },
+        "subject": {
+          "methods": {
+            "list": {
+              "path": "v1/subjects",
+              "httpMethod": "GET",
+              "description": "获取项目列表",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "subject.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/subject/list",
+              "scopes": [
+                "hire:subject:readonly"
               ]
             }
           }
@@ -5176,6 +5546,315 @@
               "scopes": [
                 "hire:talent_tag",
                 "hire:talent_tag:readonly"
+              ]
+            }
+          }
+        },
+        "termination_reason": {
+          "methods": {
+            "list": {
+              "path": "v1/termination_reasons",
+              "httpMethod": "GET",
+              "description": "获取终止投递原因",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "termination_reason.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/termination_reason/list",
+              "scopes": [
+                "hire:application:readonly",
+                "hire:application"
+              ]
+            }
+          }
+        },
+        "test": {
+          "methods": {
+            "search": {
+              "path": "v1/tests/search",
+              "httpMethod": "POST",
+              "description": "获取笔试列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "test.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/test/search",
+              "scopes": [
+                "hire:exam",
+                "hire:exam:readonly"
+              ]
+            }
+          }
+        },
+        "todo": {
+          "methods": {
+            "list": {
+              "path": "v1/todos",
+              "httpMethod": "GET",
+              "description": "获取待办列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "user_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID，当 token 为租户 token 时，必须传入该字段，当 token 为用户 token 时，不传该字段"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "待办类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "user"
+              ],
+              "id": "todo.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/todo/list",
+              "scopes": [
+                "hire:todo:readonly"
+              ]
+            }
+          }
+        },
+        "tripartite_agreement": {
+          "methods": {
+            "create": {
+              "path": "v1/tripartite_agreements",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "tripartite_agreement.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=hire&resource=tripartite_agreement&version=v1",
+              "scopes": [
+                "hire:tripartite_agreement"
+              ]
+            },
+            "delete": {
+              "path": "v1/tripartite_agreements/{tripartite_agreement_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "tripartite_agreement_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "三方协议 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "tripartite_agreement.delete",
+              "parameterOrder": [
+                "tripartite_agreement_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=tripartite_agreement&version=v1",
+              "scopes": [
+                "hire:tripartite_agreement"
+              ]
+            },
+            "list": {
+              "path": "v1/tripartite_agreements",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID，必填投递 id 与三方协议 ID 其中之一"
+                },
+                "tripartite_agreement_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "三方协议 ID，必填投递 id 与三方协议 ID 其中之一"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "tripartite_agreement.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=tripartite_agreement&version=v1",
+              "scopes": [
+                "hire:tripartite_agreement",
+                "hire:tripartite_agreement:readonly"
+              ]
+            },
+            "update": {
+              "path": "v1/tripartite_agreements/{tripartite_agreement_id}",
+              "httpMethod": "PUT",
+              "description": "-",
+              "parameters": {
+                "tripartite_agreement_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "三方协议的 id"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "tripartite_agreement.update",
+              "parameterOrder": [
+                "tripartite_agreement_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=hire&resource=tripartite_agreement&version=v1",
+              "scopes": [
+                "hire:tripartite_agreement"
+              ]
+            }
+          }
+        },
+        "user_role": {
+          "methods": {
+            "list": {
+              "path": "v1/user_roles",
+              "httpMethod": "GET",
+              "description": "获取用户角色列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                },
+                "user_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID"
+                },
+                "role_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "角色 ID"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "user_role.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/user_role/list",
+              "scopes": [
+                "hire:auth:readonly",
+                "hire:auth"
               ]
             }
           }
