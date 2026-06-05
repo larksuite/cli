@@ -1585,6 +1585,552 @@
             }
           }
         },
+        "external_application": {
+          "methods": {
+            "create": {
+              "path": "v1/external_applications",
+              "httpMethod": "POST",
+              "description": "创建外部投递",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_application.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/external_application/create",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "delete": {
+              "path": "v1/external_applications/{external_application_id}",
+              "httpMethod": "DELETE",
+              "description": "删除外部投递",
+              "parameters": {
+                "external_application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部投递 id"
+                },
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "人才ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_application.delete",
+              "parameterOrder": [
+                "external_application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=external_application&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "list": {
+              "path": "v1/external_applications",
+              "httpMethod": "GET",
+              "description": "根据人才 id 获取外部投递列表",
+              "parameters": {
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "人才ID"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_application.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=external_application&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "update": {
+              "path": "v1/external_applications/{external_application_id}",
+              "httpMethod": "PUT",
+              "description": "更新外部投递",
+              "parameters": {
+                "external_application_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部投递 id"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_application.update",
+              "parameterOrder": [
+                "external_application_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=hire&resource=external_application&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            }
+          }
+        },
+        "external_background_check": {
+          "methods": {
+            "batch_query": {
+              "path": "v1/external_background_checks/batch_query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "external_application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "外部投递 ID"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_background_check.batch_query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=hire&resource=external_background_check&version=v1",
+              "scopes": [
+                "hire:external_application",
+                "hire:external_application:readonly"
+              ]
+            },
+            "create": {
+              "path": "v1/external_background_checks",
+              "httpMethod": "POST",
+              "description": "创建外部背调",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_background_check.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/external_background_check/create",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "delete": {
+              "path": "v1/external_background_checks/{external_background_check_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "external_background_check_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部背调 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_background_check.delete",
+              "parameterOrder": [
+                "external_background_check_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=external_background_check&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "update": {
+              "path": "v1/external_background_checks/{external_background_check_id}",
+              "httpMethod": "PUT",
+              "description": "-",
+              "parameters": {
+                "external_background_check_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部背调 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_background_check.update",
+              "parameterOrder": [
+                "external_background_check_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=hire&resource=external_background_check&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            }
+          }
+        },
+        "external_interview": {
+          "methods": {
+            "batch_query": {
+              "path": "v1/external_interviews/batch_query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "external_application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "外部投递 ID"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview.batch_query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=hire&resource=external_interview&version=v1",
+              "scopes": [
+                "hire:external_application",
+                "hire:external_application:readonly"
+              ]
+            },
+            "create": {
+              "path": "v1/external_interviews",
+              "httpMethod": "POST",
+              "description": "创建外部面试",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/external_interview/create",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "delete": {
+              "path": "v1/external_interviews/{external_interview_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "external_interview_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部面试 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview.delete",
+              "parameterOrder": [
+                "external_interview_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=external_interview&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "update": {
+              "path": "v1/external_interviews/{external_interview_id}",
+              "httpMethod": "PUT",
+              "description": "-",
+              "parameters": {
+                "external_interview_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部面试 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview.update",
+              "parameterOrder": [
+                "external_interview_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=hire&resource=external_interview&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            }
+          }
+        },
+        "external_interview_assessment": {
+          "methods": {
+            "create": {
+              "path": "v1/external_interview_assessments",
+              "httpMethod": "POST",
+              "description": "创建外部面评",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview_assessment.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/external_interview_assessment/create",
+              "scopes": [
+                "hire:external_application"
+              ]
+            },
+            "patch": {
+              "path": "v1/external_interview_assessments/{external_interview_assessment_id}",
+              "httpMethod": "PATCH",
+              "description": "-",
+              "parameters": {
+                "external_interview_assessment_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部面评 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_interview_assessment.patch",
+              "parameterOrder": [
+                "external_interview_assessment_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=patch&project=hire&resource=external_interview_assessment&version=v1",
+              "scopes": [
+                "hire:external_application"
+              ]
+            }
+          }
+        },
+        "external_offer": {
+          "methods": {
+            "batch_query": {
+              "path": "v1/external_offers/batch_query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "external_application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "外部投递 ID"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_offer.batch_query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=hire&resource=external_offer&version=v1",
+              "scopes": [
+                "hire:external_offer",
+                "hire:external_offer:readonly"
+              ]
+            },
+            "create": {
+              "path": "v1/external_offers",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_offer.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=hire&resource=external_offer&version=v1",
+              "scopes": [
+                "hire:external_offer"
+              ]
+            },
+            "delete": {
+              "path": "v1/external_offers/{external_offer_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "external_offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部Offer ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_offer.delete",
+              "parameterOrder": [
+                "external_offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=external_offer&version=v1",
+              "scopes": [
+                "hire:external_offer"
+              ]
+            },
+            "update": {
+              "path": "v1/external_offers/{external_offer_id}",
+              "httpMethod": "PUT",
+              "description": "-",
+              "parameters": {
+                "external_offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部Offer ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_offer.update",
+              "parameterOrder": [
+                "external_offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=update&project=hire&resource=external_offer&version=v1",
+              "scopes": [
+                "hire:external_offer"
+              ]
+            }
+          }
+        },
+        "external_referral_reward": {
+          "methods": {
+            "create": {
+              "path": "v1/external_referral_rewards",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_referral_reward.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=hire&resource=external_referral_reward&version=v1",
+              "scopes": [
+                "hire:external_referral_reward"
+              ]
+            },
+            "delete": {
+              "path": "v1/external_referral_rewards/{external_referral_reward_id}",
+              "httpMethod": "DELETE",
+              "description": "-",
+              "parameters": {
+                "external_referral_reward_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "外部内推奖励 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "external_referral_reward.delete",
+              "parameterOrder": [
+                "external_referral_reward_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=delete&project=hire&resource=external_referral_reward&version=v1",
+              "scopes": [
+                "hire:external_referral_reward"
+              ]
+            }
+          }
+        },
         "interview": {
           "methods": {
             "get_by_talent": {
