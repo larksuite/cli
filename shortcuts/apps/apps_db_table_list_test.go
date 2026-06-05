@@ -207,3 +207,92 @@ func TestAppsDBTableList_RejectsBadEnv(t *testing.T) {
 		t.Fatalf("expected env enum rejection, got %v", err)
 	}
 }
+
+func TestNumericAsFloat_AllTypes(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want float64
+		ok   bool
+	}{
+		{"float64", float64(3.5), 3.5, true},
+		{"float32", float32(2), 2, true},
+		{"int", int(7), 7, true},
+		{"int32", int32(8), 8, true},
+		{"int64", int64(9), 9, true},
+		{"uint", uint(10), 10, true},
+		{"uint32", uint32(11), 11, true},
+		{"uint64", uint64(12), 12, true},
+		{"json.Number valid", json.Number("13.5"), 13.5, true},
+		{"json.Number invalid", json.Number("abc"), 0, false},
+		{"nil", nil, 0, false},
+		{"unsupported string", "x", 0, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := numericAsFloat(c.in)
+			if ok != c.ok || got != c.want {
+				t.Fatalf("numericAsFloat(%v) = %v,%v want %v,%v", c.in, got, ok, c.want, c.ok)
+			}
+		})
+	}
+}
+
+func TestFormatFloat_IntegerVsFractional(t *testing.T) {
+	cases := []struct {
+		in   float64
+		want string
+	}{
+		{24, "24"},
+		{1.5, "1.5"},
+		{2.04, "2.0"},
+		{0, "0"},
+	}
+	for _, c := range cases {
+		if got := formatFloat(c.in); got != c.want {
+			t.Errorf("formatFloat(%v)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestHumanBytes_UnitBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"non-numeric", "x", "—"},
+		{"bytes", float64(512), "512 B"},
+		{"kb", float64(2048), "2 KB"},
+		{"mb fractional", float64(1572864), "1.5 MB"},
+		{"gb integer", float64(2 * 1024 * 1024 * 1024), "2 GB"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := humanBytes(c.in); got != c.want {
+				t.Errorf("humanBytes(%v)=%q want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIntString_Cases(t *testing.T) {
+	if got := intString(float64(42)); got != "42" {
+		t.Errorf("intString(42)=%q want 42", got)
+	}
+	if got := intString("x"); got != "—" {
+		t.Errorf("intString(non-numeric)=%q want —", got)
+	}
+}
+
+func TestDeriveColumnCount_Cases(t *testing.T) {
+	if got := deriveColumnCount(map[string]interface{}{"columns": []interface{}{1, 2, 3}}); got != 3 {
+		t.Errorf("deriveColumnCount=%d want 3", got)
+	}
+	if got := deriveColumnCount(map[string]interface{}{}); got != 0 {
+		t.Errorf("deriveColumnCount(missing)=%d want 0", got)
+	}
+	if got := deriveColumnCount(map[string]interface{}{"columns": "notarray"}); got != 0 {
+		t.Errorf("deriveColumnCount(wrongtype)=%d want 0", got)
+	}
+}

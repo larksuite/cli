@@ -1048,3 +1048,126 @@ func TestCommitAndPushIfDirty_RealGit_NonEmptyUpgrade(t *testing.T) {
 		t.Errorf(".spark/meta.json should be committed; tracked=%q", tracked)
 	}
 }
+
+func TestEnsureEmptyDir_RejectsNonDirAndNonEmpty(t *testing.T) {
+	t.Run("non-existent is ok", func(t *testing.T) {
+		if err := ensureEmptyDir(filepath.Join(t.TempDir(), "nope")); err != nil {
+			t.Errorf("non-existent dir should be ok, got %v", err)
+		}
+	})
+	t.Run("file is rejected", func(t *testing.T) {
+		f := filepath.Join(t.TempDir(), "afile")
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureEmptyDir(f); err == nil {
+			t.Error("a regular file must be rejected")
+		}
+	})
+	t.Run("non-empty dir is rejected", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "child"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := ensureEmptyDir(dir); err == nil {
+			t.Error("a non-empty dir must be rejected")
+		}
+	})
+	t.Run("empty dir is ok", func(t *testing.T) {
+		if err := ensureEmptyDir(t.TempDir()); err != nil {
+			t.Errorf("empty dir should be ok, got %v", err)
+		}
+	})
+}
+
+func TestEnsureMetaAppID_MalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureMetaAppID(dir, "app_x"); err == nil {
+		t.Error("malformed meta.json must return a parse error")
+	}
+}
+
+func TestIsEmptyRepo_GitError(t *testing.T) {
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"git ls-files": {err: errors.New("fatal: not a git repository")},
+	}}
+	withFakeRunner(t, f)
+	if _, err := isEmptyRepo(context.Background(), t.TempDir()); err == nil {
+		t.Error("git ls-files failure must surface as an error")
+	}
+}
+
+func TestRunScaffold_NonEmpty_SyncFailure(t *testing.T) {
+	// Non-empty repo takes the `app sync` path; make that npx call fail.
+	withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+		"git ls-files": {stdout: "src/x.ts\n"},
+		"npx -y":       {err: errors.New("sync boom")},
+	}})
+	if _, err := runScaffold(context.Background(), t.TempDir(), "app_x", "tpl"); err == nil {
+		t.Error("npx app sync failure must surface as an error")
+	}
+}
+
+func TestStageAndCommit_Errors(t *testing.T) {
+	t.Run("git add fails", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git add": {err: errors.New("boom")},
+		}})
+		if err := stageAndCommit(context.Background(), t.TempDir(), "msg", "."); err == nil {
+			t.Error("git add failure must surface as an error")
+		}
+	})
+	t.Run("git commit fails", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git commit": {err: errors.New("boom")},
+		}})
+		if err := stageAndCommit(context.Background(), t.TempDir(), "msg", "."); err == nil {
+			t.Error("git commit failure must surface as an error")
+		}
+	})
+}
+
+func TestCommitAndPushIfDirty_Branches(t *testing.T) {
+	t.Run("clean tree is a no-op", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git status": {stdout: "   "},
+		}})
+		committed, pushed, err := commitAndPushIfDirty(context.Background(), t.TempDir(), scaffoldKindUpgrade)
+		if err != nil || committed || pushed {
+			t.Errorf("clean tree: got committed=%v pushed=%v err=%v, want false,false,nil", committed, pushed, err)
+		}
+	})
+	t.Run("status error", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git status": {err: errors.New("boom")},
+		}})
+		if _, _, err := commitAndPushIfDirty(context.Background(), t.TempDir(), scaffoldKindUpgrade); err == nil {
+			t.Error("git status failure must surface as an error")
+		}
+	})
+	t.Run("upgrade path commits and pushes", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git status": {stdout: " M src/app.ts\n"},
+		}})
+		committed, pushed, err := commitAndPushIfDirty(context.Background(), t.TempDir(), scaffoldKindUpgrade)
+		if err != nil || !committed || !pushed {
+			t.Errorf("dirty upgrade: got committed=%v pushed=%v err=%v, want true,true,nil", committed, pushed, err)
+		}
+	})
+	t.Run("push failure", func(t *testing.T) {
+		withFakeRunner(t, &fakeCommandRunner{results: map[string]fakeCallResult{
+			"git status": {stdout: " M src/app.ts\n"},
+			"git push":   {err: errors.New("rejected")},
+		}})
+		committed, pushed, err := commitAndPushIfDirty(context.Background(), t.TempDir(), scaffoldKindUpgrade)
+		if err == nil || !committed || pushed {
+			t.Errorf("push failure: got committed=%v pushed=%v err=%v, want true,false,err", committed, pushed, err)
+		}
+	})
+}

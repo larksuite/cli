@@ -137,3 +137,9 @@ func TestBuildHTMLPublishFailureHint_NotFoundHintNoLongerMentionsList(t *testing
 		t.Fatalf("hint should reference app_id, got: %q", hint)
 	}
 }
+
+func TestParseHTMLPublishResponse_InvalidJSON(t *testing.T) {
+	if _, err := parseHTMLPublishResponse([]byte("{not json")); err == nil {
+		t.Error("malformed html-publish response must surface a decode error")
+	}
+}

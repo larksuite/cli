@@ -8,8 +8,45 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func testRuntimeWithNameDesc(t *testing.T, name, desc string) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "update"}
+	cmd.Flags().String("name", name, "")
+	cmd.Flags().String("description", desc, "")
+	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func TestBuildAppsUpdateBody_FieldCombos(t *testing.T) {
+	t.Run("both empty -> empty body", func(t *testing.T) {
+		if body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "  ", "")); len(body) != 0 {
+			t.Errorf("empty inputs should yield empty body, got %v", body)
+		}
+	})
+	t.Run("name only", func(t *testing.T) {
+		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "App", ""))
+		if body["name"] != "App" || len(body) != 1 {
+			t.Errorf("name-only body=%v", body)
+		}
+	})
+	t.Run("description only", func(t *testing.T) {
+		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "", "desc"))
+		if body["description"] != "desc" || len(body) != 1 {
+			t.Errorf("desc-only body=%v", body)
+		}
+	})
+	t.Run("both set and trimmed", func(t *testing.T) {
+		body := buildAppsUpdateBody(testRuntimeWithNameDesc(t, "  App  ", "  d  "))
+		if body["name"] != "App" || body["description"] != "d" {
+			t.Errorf("both body=%v", body)
+		}
+	})
+}
 
 func TestAppsUpdate_PartialFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)

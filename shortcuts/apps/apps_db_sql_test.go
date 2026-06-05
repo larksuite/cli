@@ -541,3 +541,208 @@ func TestAppsDBSQL_SingleErrorReturnsTypedError(t *testing.T) {
 		t.Errorf("completed = %v, want empty", detail["completed"])
 	}
 }
+
+func TestCellString_AllKinds(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"nil", nil, ""},
+		{"string", "hello", "hello"},
+		{"bool true", true, "true"},
+		{"bool false", false, "false"},
+		{"int float", float64(101), "101"},
+		{"fractional", float64(1.25), "1.25"},
+		{"object", map[string]interface{}{"a": float64(1)}, `{"a":1}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := cellString(c.in); got != c.want {
+				t.Errorf("cellString(%v)=%q want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestCodeString_Forms(t *testing.T) {
+	cases := []struct {
+		name string
+		in   interface{}
+		want string
+	}{
+		{"nil", nil, ""},
+		{"k_dl prefix", "k_dl_1300015", "1300015"},
+		{"plain string", "1300015", "1300015"},
+		{"float64", float64(42), "42"},
+		{"unsupported", []int{1}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := codeString(c.in); got != c.want {
+				t.Errorf("codeString(%v)=%q want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestDmlVerb_AllVerbs(t *testing.T) {
+	cases := map[string]string{
+		"INSERT":       "inserted",
+		"update":       "updated",
+		"DELETE":       "deleted",
+		"Merge":        "merged",
+		"CREATE_TABLE": "affected",
+	}
+	for in, want := range cases {
+		if got := dmlVerb(in); got != want {
+			t.Errorf("dmlVerb(%q)=%q want %q", in, got, want)
+		}
+	}
+}
+
+func TestIntOrZero_Cases(t *testing.T) {
+	if got := intOrZero(float64(5)); got != 5 {
+		t.Errorf("intOrZero(5)=%d want 5", got)
+	}
+	if got := intOrZero("x"); got != 0 {
+		t.Errorf("intOrZero(non-numeric)=%d want 0", got)
+	}
+	if got := intOrZero(nil); got != 0 {
+		t.Errorf("intOrZero(nil)=%d want 0", got)
+	}
+}
+
+func TestErrorSummary_Cases(t *testing.T) {
+	cases := []struct {
+		name, in, want string
+	}{
+		{"empty", "", "(unknown error)"},
+		{"malformed json", "not json", "not json"},
+		{"with code", `{"code":"k_dl_1300015","message":"boom"}`, "boom [1300015]"},
+		{"no code", `{"message":"plain"}`, "plain"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := errorSummary(c.in); got != c.want {
+				t.Errorf("errorSummary(%q)=%q want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseErrorSentinel_Cases(t *testing.T) {
+	cases := []struct {
+		name, in string
+		wantCode int
+		wantMsg  string
+	}{
+		{"empty", "", 0, "(unknown error)"},
+		{"malformed", "xyz", 0, "xyz"},
+		{"code+msg", `{"code":"1300015","message":"boom"}`, 1300015, "boom"},
+		{"empty msg", `{"code":"1300015","message":""}`, 1300015, "(unknown error)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			code, msg := parseErrorSentinel(c.in)
+			if code != c.wantCode || msg != c.wantMsg {
+				t.Errorf("parseErrorSentinel(%q)=%d,%q want %d,%q", c.in, code, msg, c.wantCode, c.wantMsg)
+			}
+		})
+	}
+}
+
+func TestIsStructuredResult_Cases(t *testing.T) {
+	if !isStructuredResult([]map[string]interface{}{{"sql_type": "SELECT"}}) {
+		t.Error("expected structured=true when sql_type present")
+	}
+	if isStructuredResult([]map[string]interface{}{{}}) {
+		t.Error("expected structured=false when sql_type absent")
+	}
+	if isStructuredResult(nil) {
+		t.Error("expected structured=false for empty")
+	}
+}
+
+func TestNormalizeLegacyStatement_Cases(t *testing.T) {
+	t.Run("empty -> OK", func(t *testing.T) {
+		got := normalizeLegacyStatement("")
+		if got["sql_type"] != "OK" {
+			t.Errorf("got sql_type=%v want OK", got["sql_type"])
+		}
+	})
+	t.Run("null -> OK", func(t *testing.T) {
+		got := normalizeLegacyStatement("null")
+		if got["sql_type"] != "OK" {
+			t.Errorf("got sql_type=%v want OK", got["sql_type"])
+		}
+	})
+	t.Run("rows -> SELECT", func(t *testing.T) {
+		got := normalizeLegacyStatement(`[{"id":1}]`)
+		if got["sql_type"] != "SELECT" {
+			t.Errorf("got sql_type=%v want SELECT", got["sql_type"])
+		}
+		if got["record_count"] != float64(1) {
+			t.Errorf("got record_count=%v want 1", got["record_count"])
+		}
+	})
+	t.Run("non-json kept as OK", func(t *testing.T) {
+		got := normalizeLegacyStatement(`notjson`)
+		if got["sql_type"] != "OK" {
+			t.Errorf("got sql_type=%v want OK", got["sql_type"])
+		}
+	})
+}
+
+func TestCellString_MarshalFallback(t *testing.T) {
+	// complex128 is not switch-handled and json.Marshal rejects it →
+	// falls back to fmt.Sprintf("%v", v), which is deterministic for complex.
+	if got := cellString(complex(1, 2)); got != "(1+2i)" {
+		t.Errorf("cellString(complex)=%q want (1+2i)", got)
+	}
+}
+
+func TestRenderSingleStatementPretty_Branches(t *testing.T) {
+	cases := []struct {
+		name   string
+		stmt   map[string]interface{}
+		substr string
+	}{
+		{"select empty", map[string]interface{}{"sql_type": "SELECT", "data": "[]"}, "(0 rows)"},
+		{"error", map[string]interface{}{"sql_type": "ERROR", "data": `{"message":"boom"}`}, "✗ boom"},
+		{"dml insert", map[string]interface{}{"sql_type": "INSERT", "affected_rows": float64(3)}, "✓ 3 rows inserted"},
+		{"legacy ok", map[string]interface{}{"sql_type": "OK"}, "✓ ok"},
+		{"ddl default", map[string]interface{}{"sql_type": "CREATE_TABLE"}, "✓ DDL executed"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var b strings.Builder
+			renderSingleStatementPretty(&b, c.stmt)
+			if !strings.Contains(b.String(), c.substr) {
+				t.Errorf("output %q does not contain %q", b.String(), c.substr)
+			}
+		})
+	}
+}
+
+func TestRenderSelectRowsAsTable_Branches(t *testing.T) {
+	cases := []struct {
+		name   string
+		data   string
+		substr string
+	}{
+		{"empty string", "", "(0 rows)"},
+		{"empty array", "[]", "(0 rows)"},
+		{"malformed fallback", "{bad", "{bad"},
+		{"rows", `[{"id":1}]`, "id"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var b strings.Builder
+			renderSelectRowsAsTable(&b, c.data)
+			if !strings.Contains(b.String(), c.substr) {
+				t.Errorf("output %q does not contain %q", b.String(), c.substr)
+			}
+		})
+	}
+}

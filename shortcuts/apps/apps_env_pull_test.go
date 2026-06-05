@@ -952,3 +952,130 @@ func TestAppsEnvPull_ForceDBBranchInjectedEvenWhenUpstreamReturnsEmptyMap(t *tes
 		t.Fatalf("expected FORCE_DB_BRANCH to be injected even with empty upstream map, got %q", string(data))
 	}
 }
+
+func TestEnsureTrailingNewline_Cases(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"", ""},
+		{"abc", "abc\n"},
+		{"abc\n", "abc\n"},
+	}
+	for _, c := range cases {
+		if got := ensureTrailingNewline(c.in); got != c.want {
+			t.Errorf("ensureTrailingNewline(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestExtractEnvPullDatabaseExpiry_Cases(t *testing.T) {
+	t.Run("not a slice", func(t *testing.T) {
+		raw, text := extractEnvPullDatabaseExpiry("nope")
+		if raw != "" || text != "" {
+			t.Errorf("got %q,%q want empty", raw, text)
+		}
+	})
+	t.Run("no expiresAt key", func(t *testing.T) {
+		raw, text := extractEnvPullDatabaseExpiry([]interface{}{
+			map[string]interface{}{"key": "other", "value": "1"},
+		})
+		if raw != "" || text != "" {
+			t.Errorf("got %q,%q want empty", raw, text)
+		}
+	})
+	t.Run("non-map element skipped", func(t *testing.T) {
+		raw, text := extractEnvPullDatabaseExpiry([]interface{}{"not-a-map"})
+		if raw != "" || text != "" {
+			t.Errorf("got %q,%q want empty", raw, text)
+		}
+	})
+	t.Run("string timestamp", func(t *testing.T) {
+		ts := int64(1700000000)
+		raw, text := extractEnvPullDatabaseExpiry([]interface{}{
+			map[string]interface{}{"key": "expiresAt", "value": "1700000000"},
+		})
+		want := time.Unix(ts, 0).Local().Format("2006-01-02 15:04:05 MST")
+		if raw != "1700000000" || text != want {
+			t.Errorf("got %q,%q want 1700000000,%q", raw, text, want)
+		}
+	})
+	t.Run("float timestamp", func(t *testing.T) {
+		ts := int64(1700000000)
+		raw, text := extractEnvPullDatabaseExpiry([]interface{}{
+			map[string]interface{}{"key": "expiresAt", "value": float64(ts)},
+		})
+		want := time.Unix(ts, 0).Local().Format("2006-01-02 15:04:05 MST")
+		if raw != "1700000000" || text != want {
+			t.Errorf("got %q,%q want 1700000000,%q", raw, text, want)
+		}
+	})
+	t.Run("invalid string timestamp", func(t *testing.T) {
+		raw, text := extractEnvPullDatabaseExpiry([]interface{}{
+			map[string]interface{}{"key": "expiresAt", "value": "notanumber"},
+		})
+		if raw != "" || text != "" {
+			t.Errorf("got %q,%q want empty", raw, text)
+		}
+	})
+}
+
+func TestExtractEnvPullVars_EdgeCases(t *testing.T) {
+	t.Run("missing env_vars", func(t *testing.T) {
+		_, _, _, err := extractEnvPullVars(map[string]interface{}{})
+		if err == nil {
+			t.Fatal("expected error for missing env_vars")
+		}
+	})
+	t.Run("nested under data", func(t *testing.T) {
+		vars, _, _, err := extractEnvPullVars(map[string]interface{}{
+			"data": map[string]interface{}{
+				"env_vars": map[string]interface{}{"FOO": "bar"},
+			},
+		})
+		if err != nil || vars["FOO"] != "bar" {
+			t.Fatalf("got vars=%v err=%v", vars, err)
+		}
+	})
+	t.Run("array form skips non-string value", func(t *testing.T) {
+		vars, _, _, err := extractEnvPullVars(map[string]interface{}{
+			"env_vars": []interface{}{
+				map[string]interface{}{"key": "K1", "value": "v1"},
+				map[string]interface{}{"key": "K2", "value": 5},
+			},
+		})
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if vars["K1"] != "v1" {
+			t.Errorf("K1 missing: %v", vars)
+		}
+		if _, ok := vars["K2"]; ok {
+			t.Errorf("K2 should be skipped (non-string value)")
+		}
+	})
+}
+
+func TestResolveEnvPullTarget_RejectsControlChars(t *testing.T) {
+	if _, _, err := resolveEnvPullTarget("bad\x01path"); err == nil {
+		t.Error("control char in --project-path must be rejected")
+	}
+}
+
+func TestReadEnvPullFile_ReadErrorOnDirectory(t *testing.T) {
+	// Reading a directory as a file is a non-ENOENT error path.
+	if _, err := readEnvPullFile(t.TempDir()); err == nil {
+		t.Error("reading a directory as env file must surface an error")
+	}
+}
+
+func TestEnsureEnvPullParentDir_MkdirError(t *testing.T) {
+	// A file occupying the would-be parent component makes MkdirAll fail.
+	base := t.TempDir()
+	blocker := filepath.Join(base, "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureEnvPullParentDir(filepath.Join(blocker, "child", ".env.local")); err == nil {
+		t.Error("MkdirAll over a file component must surface an error")
+	}
+}
