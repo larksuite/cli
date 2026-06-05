@@ -10,7 +10,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -45,7 +44,7 @@ var AppsAccessScopeSet = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		return validateAccessScopeFlags(rctx)
 	},
@@ -90,36 +89,42 @@ func validateAccessScopeFlags(rctx *common.RuntimeContext) error {
 	switch scope {
 	case "specific":
 		if targets == "" {
-			return output.ErrValidation("--targets is required when --scope=specific")
+			return appsValidationParamError("--targets", "--targets is required when --scope=specific")
 		}
 		if err := validateTargetsJSON(targets); err != nil {
 			return err
 		}
 		if approver != "" && !applyEnabled {
-			return output.ErrValidation("--approver requires --apply-enabled")
+			return appsValidationParamError("--approver", "--approver requires --apply-enabled")
 		}
 		if requireLogin {
-			return output.ErrValidation("--require-login is not allowed when --scope=specific")
+			return appsValidationParamError("--require-login", "--require-login is not allowed when --scope=specific")
 		}
 	case "public":
 		if targets != "" {
-			return output.ErrValidation("--targets is not allowed when --scope=public")
+			return appsValidationParamError("--targets", "--targets is not allowed when --scope=public")
 		}
 		if applyEnabled {
-			return output.ErrValidation("--apply-enabled is not allowed when --scope=public")
+			return appsValidationParamError("--apply-enabled", "--apply-enabled is not allowed when --scope=public")
 		}
 		if approver != "" {
-			return output.ErrValidation("--approver is not allowed when --scope=public")
+			return appsValidationParamError("--approver", "--approver is not allowed when --scope=public")
 		}
 		if !rctx.Cmd.Flags().Changed("require-login") {
-			return output.ErrValidation("--require-login is required when --scope=public (pass true or false explicitly; do not rely on the default)")
+			return appsValidationParamError("--require-login", "--require-login is required when --scope=public (pass true or false explicitly; do not rely on the default)")
 		}
 	case "tenant":
 		if targets != "" || applyEnabled || approver != "" || requireLogin {
-			return output.ErrValidation("no extra flags allowed when --scope=tenant")
+			return appsValidationError("no extra flags allowed when --scope=tenant").
+				WithParams(
+					appsInvalidParam("--targets", "not allowed when --scope=tenant"),
+					appsInvalidParam("--apply-enabled", "not allowed when --scope=tenant"),
+					appsInvalidParam("--approver", "not allowed when --scope=tenant"),
+					appsInvalidParam("--require-login", "not allowed when --scope=tenant"),
+				)
 		}
 	default:
-		return output.ErrValidation("--scope must be specific / public / tenant")
+		return appsValidationParamError("--scope", "--scope must be specific / public / tenant")
 	}
 	return nil
 }
@@ -127,18 +132,18 @@ func validateAccessScopeFlags(rctx *common.RuntimeContext) error {
 func validateTargetsJSON(targetsJSON string) error {
 	var items []map[string]interface{}
 	if err := json.Unmarshal([]byte(targetsJSON), &items); err != nil {
-		return output.ErrValidation("--targets is not valid JSON: %v", err)
+		return appsValidationParamError("--targets", "--targets is not valid JSON: %v", err).WithCause(err)
 	}
 	if len(items) == 0 {
-		return output.ErrValidation("--targets must contain at least one entry; specific scope requires concrete user/department/chat ids")
+		return appsValidationParamError("--targets", "--targets must contain at least one entry; specific scope requires concrete user/department/chat ids")
 	}
 	for i, t := range items {
 		typ, _ := t["type"].(string)
 		if !allowedAccessTargetTypes[typ] {
-			return output.ErrValidation("--targets[%d].type %q must be one of: user / department / chat", i, typ)
+			return appsValidationParamError("--targets", "--targets[%d].type %q must be one of: user / department / chat", i, typ)
 		}
 		if id, _ := t["id"].(string); strings.TrimSpace(id) == "" {
-			return output.ErrValidation("--targets[%d].id is empty", i)
+			return appsValidationParamError("--targets", "--targets[%d].id is empty", i)
 		}
 	}
 	return nil
@@ -157,7 +162,7 @@ func buildAccessScopeBody(rctx *common.RuntimeContext) (map[string]interface{}, 
 	scope := rctx.Str("scope")
 	enum, ok := scopeStringToServerEnum[scope]
 	if !ok {
-		return nil, output.ErrValidation("--scope must be specific / public / tenant, got %q", scope)
+		return nil, appsValidationParamError("--scope", "--scope must be specific / public / tenant, got %q", scope)
 	}
 	body := map[string]interface{}{"scope": enum}
 
@@ -166,7 +171,7 @@ func buildAccessScopeBody(rctx *common.RuntimeContext) (map[string]interface{}, 
 		// 用户传统一格式 [{type:user|department|chat, id:...}]，body 里拆 3 个并列数组发后端。
 		var targets []map[string]interface{}
 		if err := json.Unmarshal([]byte(rctx.Str("targets")), &targets); err != nil {
-			return nil, output.ErrValidation("--targets is not valid JSON: %v", err)
+			return nil, appsValidationParamError("--targets", "--targets is not valid JSON: %v", err).WithCause(err)
 		}
 		users, departments, chats := splitAccessScopeTargets(targets)
 		if len(users) > 0 {

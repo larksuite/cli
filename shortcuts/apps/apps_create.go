@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -36,7 +35,7 @@ var AppsCreate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("name")) == "" {
-			return output.ErrValidation("--name is required")
+			return appsValidationParamError("--name", "--name is required")
 		}
 		return nil
 	},

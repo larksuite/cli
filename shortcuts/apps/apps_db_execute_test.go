@@ -495,9 +495,9 @@ func TestAppsDBExecute_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *t
 	}
 }
 
-// TestAppsDBExecute_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → typed api_error」：
-// json 默认不再打 ok:true 假成功，而是返回 *output.ExitError（type=api_error、非零 exit），
-// detail 带 statement_index / completed / rolled_back。rolled_back=false 因 CLI 永远 DBA 模式
+// TestAppsDBExecute_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → partial failure」：
+// 逐条结果 + statement_index / error_code / rolled_back / note 作为 ok:false 数据落 stdout，
+// 退出信号是 PartialFailureError（非零 exit）。rolled_back=false 因 CLI 永远 DBA 模式
 // （真机 boe 实证：失败前的语句已落地）。
 func TestAppsDBExecute_MultiStatementFailureReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -518,45 +518,64 @@ func TestAppsDBExecute_MultiStatementFailureReturnsTypedError(t *testing.T) {
 		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
-		t.Fatalf("multi-statement failure must return a typed error; stdout:\n%s", stdout.String())
+		t.Fatalf("multi-statement failure must return a partial-failure error; stdout:\n%s", stdout.String())
 	}
 	// json 失败路径不得打成功 envelope。
 	if strings.Contains(stdout.String(), `"ok": true`) {
 		t.Errorf("must not emit ok:true success envelope on failure; stdout:\n%s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("want *output.ExitError with detail, got %T: %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
 	}
-	if exitErr.Detail.Type != "api_error" {
-		t.Errorf("error.type = %q, want api_error", exitErr.Detail.Type)
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("exit = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
 	}
-	if exitErr.Detail.Code != 1300002 {
-		t.Errorf("error.code = %d, want 1300002", exitErr.Detail.Code)
+	payload := decodePartialFailureData(t, stdout.String())
+	if got := payload["statement_index"]; got != float64(1) {
+		t.Errorf("statement_index = %v, want 1", got)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "(at statement 2 of 2)") {
-		t.Errorf("error.message missing statement locator: %q", exitErr.Detail.Message)
+	if got := payload["error_code"]; got != float64(1300002) {
+		t.Errorf("error_code = %v, want 1300002", got)
 	}
-	if output.ExitCodeOf(err) != output.ExitAPI {
-		t.Errorf("exit = %d, want %d (ExitAPI)", output.ExitCodeOf(err), output.ExitAPI)
+	msg, _ := payload["error_message"].(string)
+	if !strings.Contains(msg, "(at statement 2 of 2)") {
+		t.Errorf("error_message missing statement locator: %q", msg)
 	}
-	detail, ok := exitErr.Detail.Detail.(map[string]interface{})
-	if !ok {
-		t.Fatalf("error.detail not a map: %T", exitErr.Detail.Detail)
+	if got := payload["rolled_back"]; got != false {
+		t.Errorf("rolled_back = %v, want false (DBA mode persists prior statements)", got)
 	}
-	if detail["statement_index"] != 1 {
-		t.Errorf("statement_index = %v, want 1", detail["statement_index"])
+	results, _ := payload["results"].([]interface{})
+	if len(results) != 2 {
+		t.Errorf("results length = %d, want 2 (persisted statement + ERROR sentinel)", len(results))
 	}
-	if detail["rolled_back"] != false {
-		t.Errorf("rolled_back = %v, want false (DBA mode persists prior statements)", detail["rolled_back"])
-	}
-	if completed, ok := detail["completed"].([]map[string]interface{}); !ok || len(completed) != 1 {
-		t.Errorf("completed = %v, want 1 persisted statement", detail["completed"])
+	note, _ := payload["note"].(string)
+	if !strings.Contains(note, "already applied") {
+		t.Errorf("note should warn prior statements persisted, got %q", note)
 	}
 }
 
+// decodePartialFailureData 解析 stdout 上 ok:false 的 partial-failure envelope，返回 data 块。
+func decodePartialFailureData(t *testing.T, stdoutStr string) map[string]interface{} {
+	t.Helper()
+	var envelope struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdoutStr), &envelope); err != nil {
+		t.Fatalf("stdout is not a JSON envelope: %v\n%s", err, stdoutStr)
+	}
+	if envelope.OK {
+		t.Fatalf("envelope.ok = true, want false on partial failure")
+	}
+	if envelope.Data == nil {
+		t.Fatalf("envelope.data missing; stdout:\n%s", stdoutStr)
+	}
+	return envelope.Data
+}
+
 // TestAppsDBExecute_SingleErrorReturnsTypedError 单条语句失败（server 也返 code:0 + ERROR 哨兵）
-// 同样升级成 typed error：statement_index=0、completed 空、message 标注 (at statement 1 of 1)。
+// 同样走 partial failure：statement_index=0、note 说明无语句落地、message 标注 (at statement 1 of 1)。
 func TestAppsDBExecute_SingleErrorReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -573,21 +592,23 @@ func TestAppsDBExecute_SingleErrorReturnsTypedError(t *testing.T) {
 		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
-		t.Fatalf("single ERROR sentinel must return a typed error; stdout:\n%s", stdout.String())
+		t.Fatalf("single ERROR sentinel must return a partial-failure error; stdout:\n%s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("want *output.ExitError with detail, got %T: %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "(at statement 1 of 1)") {
-		t.Errorf("error.message missing locator: %q", exitErr.Detail.Message)
+	payload := decodePartialFailureData(t, stdout.String())
+	msg, _ := payload["error_message"].(string)
+	if !strings.Contains(msg, "(at statement 1 of 1)") {
+		t.Errorf("error_message missing locator: %q", msg)
 	}
-	detail, _ := exitErr.Detail.Detail.(map[string]interface{})
-	if detail["statement_index"] != 0 {
-		t.Errorf("statement_index = %v, want 0", detail["statement_index"])
+	if got := payload["statement_index"]; got != float64(0) {
+		t.Errorf("statement_index = %v, want 0", got)
 	}
-	if completed, ok := detail["completed"].([]map[string]interface{}); !ok || len(completed) != 0 {
-		t.Errorf("completed = %v, want empty", detail["completed"])
+	note, _ := payload["note"].(string)
+	if !strings.Contains(note, "no statements were applied") {
+		t.Errorf("note should say nothing was applied, got %q", note)
 	}
 }
 
@@ -793,5 +814,37 @@ func TestRenderSelectRowsAsTable_Branches(t *testing.T) {
 				t.Errorf("output %q does not contain %q", b.String(), c.substr)
 			}
 		})
+	}
+}
+
+// TestAppsDBExecute_PrettyPartialFailureKeepsStdoutHumanOnly pins the pretty
+// contract on a statement failure: stdout carries only the per-statement
+// human summary (no JSON envelope stacked after it), and the command still
+// exits non-zero via the partial-failure signal.
+func TestAppsDBExecute_PrettyPartialFailureKeepsStdoutHumanOnly(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"ERROR","data":"{\"code\":\"k_dl_000002\",\"message\":\"syntax error\"}"}]`,
+			},
+		},
+	})
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
+		factory, stdout)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "✗") {
+		t.Fatalf("pretty summary missing failure marker; stdout:\n%s", out)
+	}
+	if strings.Contains(out, `"ok"`) {
+		t.Fatalf("pretty stdout must not stack a JSON envelope after the summary; stdout:\n%s", out)
 	}
 }

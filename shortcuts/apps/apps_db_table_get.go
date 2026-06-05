@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -45,7 +44,7 @@ var AppsDBTableGet = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("table")) == "" {
-			return output.ErrValidation("--table is required")
+			return appsValidationParamError("--table", "--table is required")
 		}
 		return nil
 	},

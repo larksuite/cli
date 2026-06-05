@@ -19,6 +19,7 @@ var migratedEnvelopePaths = []string{
 	"cmd/event/",
 	"events/",
 	"internal/event/consume/",
+	"shortcuts/apps/",
 	"shortcuts/base/",
 	"shortcuts/calendar/",
 	"shortcuts/contact/",

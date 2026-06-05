@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -1464,5 +1465,30 @@ func TestAppsInit_Description_IsAboutCode(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(AppsInit.Description), "code") {
 		t.Errorf("Description should mention app code: %q", AppsInit.Description)
+	}
+}
+
+// TestRunScaffold_SubprocessFailureIsExternalTool pins the typed
+// classification of an external-tool failure: a failing git subprocess
+// surfaces as internal/external_tool with the cause preserved.
+func TestRunScaffold_SubprocessFailureIsExternalTool(t *testing.T) {
+	cause := errors.New("exit status 128")
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"git ls-files": {stderr: "fatal: not a git repository", err: cause},
+	}}
+	withFakeRunner(t, f)
+	_, err := runScaffold(context.Background(), t.TempDir(), "app_x", "nestjs-react-fullstack")
+	if err == nil {
+		t.Fatalf("expected error from failing git subprocess")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeExternalTool {
+		t.Fatalf("classification = %s/%s, want internal/external_tool", p.Category, p.Subtype)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("cause chain not preserved: %v", err)
 	}
 }

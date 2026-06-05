@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -31,7 +30,7 @@ var AppsSessionCreate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		return nil
 	},

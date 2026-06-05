@@ -4,11 +4,9 @@
 package apps
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // appsService 是 CLI 命令的 service 前缀（lark-cli apps ...）。
@@ -23,11 +21,11 @@ const apiBasePath = "/open-apis/spark/v1"
 // lark-apps SKILL.md ("app_id 获取"); the hint stays lean and does not repeat it.
 const appIDListHint = "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`"
 
-// withAppsHint attaches an actionable next-step hint to a failure returned by
-// CallAPI, preserving its original classification (typed subtype/code/log_id or
-// legacy detail). A hint already present on the error is kept (the upstream
-// wording wins); only an empty hint is filled in. Mirrors
-// drive.appendDriveExportRecoveryHint. err==nil passes through.
+// withAppsHint attaches an actionable next-step hint to a typed failure,
+// preserving its original classification (subtype/code/log_id). A hint already
+// present on the error is kept (the upstream wording wins); only an empty hint
+// is filled in. Mirrors drive.appendDriveExportRecoveryHint. err==nil and
+// untyped errors pass through unchanged.
 func withAppsHint(err error, hint string) error {
 	if err == nil {
 		return nil
@@ -36,15 +34,6 @@ func withAppsHint(err error, hint string) error {
 	if p, ok := errs.ProblemOf(err); ok {
 		if strings.TrimSpace(p.Hint) == "" {
 			p.Hint = hint
-		}
-		return err
-	}
-	// Legacy *output.ExitError fallback: fill the hint in place, preserving the
-	// original class / exit code rather than downgrading the error.
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		if strings.TrimSpace(exitErr.Detail.Hint) == "" {
-			exitErr.Detail.Hint = hint
 		}
 		return err
 	}

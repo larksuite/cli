@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/charcheck"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -72,14 +72,14 @@ var AppsInit = common.Shortcut{
 		// exit-1 (root.go handleRootError case 4), bypassing the structured
 		// envelope. The spec and the E2E assert exit-2 + a structured
 		// {"ok":false,"error":{...}} envelope for missing --app-id, so the empty
-		// check lives in Validate (output.ErrValidation -> ExitValidation=2).
+		// check lives in Validate (typed validation error -> exit 2).
 		{Name: "app-id", Desc: "Miaoda app ID"},
 		{Name: "dir", Desc: "clone target directory; absolute or relative path (default ./<app-id>)"},
 		{Name: "template", Desc: "code-init template for an empty repo; optional — if omitted, derived from the app's tech stack"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		return nil
 	},
@@ -152,14 +152,14 @@ func resolveTargetPath(rctx *common.RuntimeContext, appID string) (string, error
 	// path is a log-injection vector); charcheck additionally rejects dangerous
 	// Unicode (bidi overrides, zero-width) that IsControl does not.
 	if strings.IndexFunc(raw, unicode.IsControl) >= 0 {
-		return "", output.ErrValidation("--dir must not contain control characters")
+		return "", appsValidationParamError("--dir", "--dir must not contain control characters")
 	}
 	if err := charcheck.RejectControlChars(raw, "--dir"); err != nil {
-		return "", output.ErrValidation("%v", err)
+		return "", appsValidationParamError("--dir", "%v", err).WithCause(err)
 	}
 	abs, err := filepath.Abs(raw) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); raw is control-char-validated above, and FileIO.ResolvePath cannot resolve a clone target (it rejects absolute paths).
 	if err != nil {
-		return "", output.ErrValidation("--dir cannot be resolved: %v", err)
+		return "", appsValidationParamError("--dir", "--dir cannot be resolved: %v", err)
 	}
 	return abs, nil
 }
@@ -173,20 +173,20 @@ func ensureEmptyDir(dir string) error {
 		return nil
 	}
 	if err != nil {
-		return output.ErrValidation("--dir cannot be read: %v", err)
+		return appsValidationParamError("--dir", "--dir cannot be read: %v", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return output.ErrValidation("--dir must not be a symlink: %q", dir)
+		return appsValidationParamError("--dir", "--dir must not be a symlink: %q", dir)
 	}
 	if !info.IsDir() {
-		return output.ErrValidation("--dir exists and is not a directory: %q", dir)
+		return appsValidationParamError("--dir", "--dir exists and is not a directory: %q", dir)
 	}
 	entries, err := os.ReadDir(dir) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); dir is the validated clone target, and FileIO has no ReadDir.
 	if err != nil {
-		return output.ErrValidation("--dir cannot be read: %v", err)
+		return appsValidationParamError("--dir", "--dir cannot be read: %v", err)
 	}
 	if len(entries) > 0 {
-		return output.ErrValidation("target directory %q already exists and is not empty", dir)
+		return appsValidationParamError("--dir", "target directory %q already exists and is not empty", dir)
 	}
 	return nil
 }
@@ -209,11 +209,11 @@ func ensureMetaAppID(dir, appID string) error {
 		return nil
 	}
 	if err != nil {
-		return output.Errorf(output.ExitAPI, "meta_write", "read %s failed: %v", metaRelPath, err)
+		return appsFileIOError(err, "read %s failed: %v", metaRelPath, err)
 	}
 	var m map[string]interface{}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return output.Errorf(output.ExitAPI, "meta_write", "parse %s failed: %v", metaRelPath, err)
+		return appsFileIOError(err, "parse %s failed: %v", metaRelPath, err)
 	}
 	if cur, _ := m["app_id"].(string); strings.TrimSpace(cur) != "" {
 		return nil
@@ -224,10 +224,10 @@ func ensureMetaAppID(dir, appID string) error {
 	m["app_id"] = appID
 	out, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return output.Errorf(output.ExitAPI, "meta_write", "marshal %s failed: %v", metaRelPath, err)
+		return appsFileIOError(err, "marshal %s failed: %v", metaRelPath, err)
 	}
 	if err := os.WriteFile(path, append(out, '\n'), 0o644); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Save rejects absolute paths.
-		return output.Errorf(output.ExitAPI, "meta_write", "write %s failed: %v", metaRelPath, err)
+		return appsFileIOError(err, "write %s failed: %v", metaRelPath, err)
 	}
 	return nil
 }
@@ -244,7 +244,7 @@ func hasSteeringSkills(dir string) bool {
 func isEmptyRepo(ctx context.Context, dir string) (bool, error) {
 	stdout, stderr, err := initRunner.Run(ctx, dir, "git", "ls-files")
 	if err != nil {
-		return false, output.Errorf(output.ExitAPI, "git_ls_files", "git ls-files failed: %s", gitErr(stderr, err))
+		return false, appsExternalToolError(err, "git ls-files failed: %s", gitErr(stderr, err))
 	}
 	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
 		f := strings.TrimSpace(line)
@@ -274,19 +274,19 @@ func runScaffold(ctx context.Context, dir, appID, template string) (string, erro
 		// seed README.md — as empty. If other seed files (e.g. .gitignore) can
 		// appear, extend isEmptyRepo's allow-list accordingly.
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", template, "--app-id", appID); err != nil {
-			return "", output.Errorf(output.ExitAPI, "npx_app_init", "npx app init failed: %s", gitErr(stderr, err))
+			return "", appsExternalToolError(err, "npx app init failed: %s", gitErr(stderr, err))
 		}
 		return scaffoldKindInit, nil
 	}
 	if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "app", "sync"); err != nil {
-		return "", output.Errorf(output.ExitAPI, "npx_app_sync", "npx app sync failed: %s", gitErr(stderr, err))
+		return "", appsExternalToolError(err, "npx app sync failed: %s", gitErr(stderr, err))
 	}
 	if err := ensureMetaAppID(dir, appID); err != nil {
 		return "", err
 	}
 	if !hasSteeringSkills(dir) {
 		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
-			return "", output.Errorf(output.ExitAPI, "npx_skills_sync", "npx skills sync failed: %s", gitErr(stderr, err))
+			return "", appsExternalToolError(err, "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}
 	return scaffoldKindUpgrade, nil
@@ -303,13 +303,13 @@ func parseRepoURLFromEnvelope(stdout string) (string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
-		return "", output.Errorf(output.ExitInternal, "credential_init", "could not parse +git-credential-init output as JSON: %v", err)
+		return "", appsSubprocessEnvelopeError("could not parse +git-credential-init output as JSON: %v", err)
 	}
 	if !env.OK {
-		return "", output.Errorf(output.ExitInternal, "credential_init", "+git-credential-init reported failure")
+		return "", appsSubprocessEnvelopeError("+git-credential-init reported failure")
 	}
 	if strings.TrimSpace(env.Data.RepositoryURL) == "" {
-		return "", output.Errorf(output.ExitInternal, "credential_init", "+git-credential-init returned no repository_url")
+		return "", appsSubprocessEnvelopeError("+git-credential-init returned no repository_url")
 	}
 	return env.Data.RepositoryURL, nil
 }
@@ -324,13 +324,13 @@ func parseEnvFileFromEnvelope(stdout string) (string, error) {
 		} `json:"data"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
-		return "", output.Errorf(output.ExitInternal, "env_pull", "could not parse +env-pull output as JSON: %v", err)
+		return "", appsSubprocessEnvelopeError("could not parse +env-pull output as JSON: %v", err)
 	}
 	if !env.OK {
-		return "", output.Errorf(output.ExitInternal, "env_pull", "+env-pull reported failure")
+		return "", appsSubprocessEnvelopeError("+env-pull reported failure")
 	}
 	if strings.TrimSpace(env.Data.EnvFile) == "" {
-		return "", output.Errorf(output.ExitInternal, "env_pull", "+env-pull returned no env_file")
+		return "", appsSubprocessEnvelopeError("+env-pull returned no env_file")
 	}
 	return env.Data.EnvFile, nil
 }
@@ -364,7 +364,9 @@ func validateRepoURLScheme(repoURL string) error {
 	if strings.HasPrefix(repoURL, "http://") || strings.HasPrefix(repoURL, "https://") {
 		return nil
 	}
-	return output.Errorf(output.ExitValidation, "validation",
+	// The URL comes from the +git-credential-init subprocess response, not user
+	// input, so a non-http(s) scheme is a broken upstream contract.
+	return appsSubprocessEnvelopeError(
 		"repository_url from +git-credential-init must be http(s); refusing %q", redactURLCredentials(repoURL))
 }
 
@@ -415,12 +417,12 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
-		return output.ErrWithHint(output.ExitInternal, "dependency",
-			"git executable not found on PATH", "install git and ensure it is on your PATH")
+		return appsFailedPreconditionError("git executable not found on PATH").
+			WithHint("install git and ensure it is on your PATH")
 	}
 	if _, err := exec.LookPath("npx"); err != nil {
-		return output.ErrWithHint(output.ExitInternal, "dependency",
-			"npx executable not found on PATH", "install Node.js (which provides npx) and ensure it is on your PATH")
+		return appsFailedPreconditionError("npx executable not found on PATH").
+			WithHint("install Node.js (which provides npx) and ensure it is on your PATH")
 	}
 
 	if err := ensureEmptyDir(dir); err != nil {
@@ -438,11 +440,11 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 
 	initLogf(rctx, "Cloning into %s...", dir)
 	if _, stderr, err := initRunner.Run(ctx, "", "git", "clone", "--", repoURL, dir); err != nil {
-		return output.Errorf(output.ExitAPI, "git_clone", "git clone failed: %s", gitErr(stderr, err))
+		return appsExternalToolError(err, "git clone failed: %s", gitErr(stderr, err))
 	}
 	initLogf(rctx, "Checking out %s...", defaultInitBranch)
 	if _, stderr, err := initRunner.Run(ctx, dir, "git", "checkout", defaultInitBranch); err != nil {
-		return output.Errorf(output.ExitAPI, "git_checkout", "git checkout %s failed: %s", defaultInitBranch, gitErr(stderr, err))
+		return appsExternalToolError(err, "git checkout %s failed: %s", defaultInitBranch, gitErr(stderr, err))
 	}
 
 	initLogf(rctx, "Initializing app code (running miaoda-cli)...")
@@ -536,7 +538,7 @@ func pullEnv(ctx context.Context, rctx *common.RuntimeContext, appID, dir string
 func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID string) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
-		return "", output.Errorf(output.ExitInternal, "internal", "cannot locate lark-cli executable: %v", err)
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "cannot locate lark-cli executable: %v", err).WithCause(err)
 	}
 	args := []string{"apps", "+git-credential-init", "--app-id", appID, "--format", "json"}
 	if as := strings.TrimSpace(rctx.Str("as")); as != "" {
@@ -544,9 +546,9 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 	}
 	stdout, stderr, err := initRunner.Run(ctx, "", self, args...)
 	if err != nil {
-		return "", output.ErrWithHint(output.ExitAPI, "credential_init",
-			fmt.Sprintf("apps +git-credential-init failed: %s", gitErr(stderr, err)),
-			"ensure apps +git-credential-init is available and you are logged in")
+		return "", appsExternalToolError(err, "apps +git-credential-init failed: %s", gitErr(stderr, err)).
+			WithHint("ensure apps +git-credential-init is available and you are logged in").
+			WithCause(err)
 	}
 	return parseRepoURLFromEnvelope(stdout)
 }
@@ -560,7 +562,7 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (committed, pushed bool, err error) {
 	status, stderr, runErr := initRunner.Run(ctx, dir, "git", "status", "--porcelain")
 	if runErr != nil {
-		return false, false, output.Errorf(output.ExitAPI, "git_status", "git status failed: %s", gitErr(stderr, runErr))
+		return false, false, appsExternalToolError(runErr, "git status failed: %s", gitErr(stderr, runErr))
 	}
 	if strings.TrimSpace(status) == "" {
 		return false, false, nil
@@ -595,7 +597,7 @@ func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (commit
 
 	if _, se, e := initRunner.Run(ctx, dir, "git", "push", "origin", defaultInitBranch); e != nil {
 		return true, false, withAppsHint(
-			output.Errorf(output.ExitAPI, "git_push", "git push failed: %s", gitErr(se, e)),
+			appsExternalToolError(e, "git push failed: %s", gitErr(se, e)),
 			"the push was rejected — the git output is in the message above; if it is a non-fast-forward (remote has new commits), sync the remote and retry; if it is an auth failure, make sure `lark-cli apps +git-credential-init` has succeeded")
 	}
 	return true, true, nil
@@ -609,10 +611,10 @@ func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (commit
 func stageAndCommit(ctx context.Context, dir, message string, pathspecs ...string) error {
 	addArgs := append([]string{"add", "-A", "--"}, pathspecs...)
 	if _, se, e := initRunner.Run(ctx, dir, "git", addArgs...); e != nil {
-		return output.Errorf(output.ExitAPI, "git_add", "git add failed: %s", gitErr(se, e))
+		return appsExternalToolError(e, "git add failed: %s", gitErr(se, e))
 	}
 	if _, se, e := initRunner.Run(ctx, dir, "git", "commit", "--no-verify", "-m", message); e != nil {
-		return output.Errorf(output.ExitAPI, "git_commit", "git commit failed: %s", gitErr(se, e))
+		return appsExternalToolError(e, "git commit failed: %s", gitErr(se, e))
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -40,21 +40,21 @@ func NewManager(store *Store, secrets *SecretStore, gitConfig GitConfig, issuer 
 func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string) (*InitResult, error) {
 	appID = strings.TrimSpace(appID)
 	if appID == "" {
-		return nil, output.ErrValidation("--app-id is required")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id is required").WithParam("--app-id")
 	}
 	if err := validate.ResourceName(appID, "--app-id"); err != nil {
-		return nil, err
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--app-id").WithCause(err)
 	}
 	if profile.UserOpenID == "" {
-		return nil, output.ErrAuth("not logged in: run `lark-cli auth login --scope \"spark:app:read\"`")
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").WithHint("run `lark-cli auth login --scope \"spark:app:read\"`")
 	}
 	unlockApp, err := lockApp(appID)
 	if err != nil {
-		return nil, fmt.Errorf("acquire Git credential lock for %s: %w", appID, err)
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "acquire Git credential lock for %s: %v", appID, err).WithCause(err)
 	}
 	defer unlockApp()
 	if m.Issuer == nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "git credential issuer is not configured")
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "git credential issuer is not configured")
 	}
 	issued, err := m.Issuer.Issue(ctx, appID, profile)
 	if err != nil {
@@ -125,14 +125,14 @@ func (m *Manager) Init(ctx context.Context, profile ProfileContext, appID string
 func (m *Manager) Remove(ctx context.Context, profile ProfileContext, appID string) (*RemoveResult, error) {
 	appID = strings.TrimSpace(appID)
 	if appID == "" {
-		return nil, output.ErrValidation("--app-id is required")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--app-id is required").WithParam("--app-id")
 	}
 	if err := validate.ResourceName(appID, "--app-id"); err != nil {
-		return nil, err
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--app-id").WithCause(err)
 	}
 	unlockApp, err := lockApp(appID)
 	if err != nil {
-		return nil, fmt.Errorf("acquire Git credential lock for %s: %w", appID, err)
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "acquire Git credential lock for %s: %v", appID, err).WithCause(err)
 	}
 	defer unlockApp()
 	records, err := m.Store.FindByAppID(appID, ProfileContext{})
@@ -335,7 +335,7 @@ func (m *Manager) Erase(r io.Reader) error {
 	}
 	unlockApp, err := lockApp(record.AppID)
 	if err != nil {
-		return fmt.Errorf("acquire Git credential lock for %s: %w", record.AppID, err)
+		return errs.NewInternalError(errs.SubtypeStorage, "acquire Git credential lock for %s: %v", record.AppID, err).WithCause(err)
 	}
 	defer unlockApp()
 	record, err = m.Store.FindByURL(url)
@@ -360,7 +360,8 @@ func (m *Manager) readConfirmed(url string, current ProfileContext) (CredentialR
 		return CredentialRecord{}, "", false, err
 	}
 	if record.ProfileAppID != current.ProfileAppID || record.UserOpenID != current.UserOpenID {
-		return CredentialRecord{}, "", false, fmt.Errorf("current login does not match initialized credential; run `lark-cli apps +git-credential-init --app-id %s` with the current login or switch back to the original account", record.AppID)
+		return CredentialRecord{}, "", false, errs.NewValidationError(errs.SubtypeFailedPrecondition, "current login does not match initialized credential").
+			WithHint(fmt.Sprintf("run `lark-cli apps +git-credential-init --app-id %s` with the current login or switch back to the original account", record.AppID))
 	}
 	pat, err := m.Secrets.Get(record.PATRef)
 	if err != nil {
@@ -423,7 +424,7 @@ func ParseCredentialInput(r io.Reader) (CredentialInput, error) {
 func parseNormalizedForInput(raw string) (CredentialInput, error) {
 	parts := strings.SplitN(raw, "://", 2)
 	if len(parts) != 2 {
-		return CredentialInput{}, output.ErrValidation("invalid credential URL")
+		return CredentialInput{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid credential URL")
 	}
 	hostPath := parts[1]
 	idx := strings.Index(hostPath, "/")
@@ -457,19 +458,19 @@ func defaultUsername(username string) string {
 
 func validateIssuedCredential(appID, normalizedURL string, issued *IssuedCredential, now int64) error {
 	if issued == nil {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: empty credential")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: empty credential")
 	}
 	if issued.AppID != "" && issued.AppID != appID {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
 	}
 	if normalizedURL == "" {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing gitURL")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response missing gitURL")
 	}
 	if strings.TrimSpace(issued.PAT) == "" {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing token")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response missing token")
 	}
 	if issued.ExpiresAt <= now {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response expiredTime must be in the future")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response expiredTime must be in the future")
 	}
 	return nil
 }
