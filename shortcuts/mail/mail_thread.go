@@ -5,7 +5,6 @@ package mail
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strconv"
 
@@ -58,6 +57,9 @@ var MailThread = common.Shortcut{
 		{Name: "include-spam-trash", Type: "bool", Desc: "Also return messages from SPAM and TRASH folders (excluded by default)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
 		threadID := runtime.Str("thread-id")
@@ -85,9 +87,9 @@ var MailThread = common.Shortcut{
 		if runtime.Bool("include-spam-trash") {
 			params["include_spam_trash"] = true
 		}
-		listData, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
+		listData, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "threads", threadID), params, nil)
 		if err != nil {
-			return fmt.Errorf("failed to get thread: %w", err)
+			return mailDecorateProblemMessage(err, "failed to get thread")
 		}
 		// New API: data.thread.messages[]; fallback to old API: data.items[].message
 		var items []interface{}

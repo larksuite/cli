@@ -4,6 +4,7 @@
 package common
 
 import (
+	"net/url"
 	"strings"
 
 	"github.com/larksuite/cli/internal/core"
@@ -54,4 +55,83 @@ func BuildResourceURL(brand core.LarkBrand, kind, token string) string {
 	default:
 		return ""
 	}
+}
+
+// ResourceRef holds the parsed type and token from a Lark resource URL.
+type ResourceRef struct {
+	Type  string // e.g. "docx", "bitable", "wiki", "sheet", etc.
+	Token string // the token extracted from the URL path
+}
+
+// urlPathToType maps URL path prefixes to resource types.
+// Longer prefixes must come first to avoid false matches
+// (e.g. "/drive/folder/" before a hypothetical "/drive/").
+// Aliases (e.g. "/bitable/" → "bitable") must come after the
+// canonical prefix to keep the list deterministic.
+var urlPathToType = []struct {
+	Prefix string
+	Type   string
+}{
+	{"/drive/folder/", "folder"},
+	{"/drive/file/", "file"},
+	{"/drive/shr/", "folder"},
+	{"/chat/drive/", "folder"},
+	{"/docx/", "docx"},
+	{"/doc/", "doc"},
+	{"/sheets/", "sheet"},
+	{"/base/", "bitable"},
+	{"/bitable/", "bitable"},
+	{"/wiki/", "wiki"},
+	{"/file/", "file"},
+	{"/mindnote/", "mindnote"},
+	{"/slides/", "slides"},
+}
+
+// ParseResourceURL parses a Lark/Feishu URL and extracts the resource type
+// and token from the URL path. It is the inverse of BuildResourceURL.
+//
+// Supported path patterns:
+//
+//	/docx/TOKEN      -> {Type: "docx", Token: TOKEN}
+//	/doc/TOKEN       -> {Type: "doc",  Token: TOKEN}
+//	/sheets/TOKEN    -> {Type: "sheet", Token: TOKEN}
+//	/base/TOKEN      -> {Type: "bitable", Token: TOKEN}
+//	/wiki/TOKEN      -> {Type: "wiki", Token: TOKEN}
+//	/file/TOKEN      -> {Type: "file", Token: TOKEN}
+//	/drive/folder/TOKEN -> {Type: "folder", Token: TOKEN}
+//	/mindnote/TOKEN  -> {Type: "mindnote", Token: TOKEN}
+//	/slides/TOKEN    -> {Type: "slides", Token: TOKEN}
+//
+// Returns (ResourceRef{}, false) when the URL does not match any known pattern.
+func ParseResourceURL(rawURL string) (ResourceRef, bool) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ResourceRef{}, false
+	}
+
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ResourceRef{}, false
+	}
+
+	path := u.Path
+
+	for _, mapping := range urlPathToType {
+		if !strings.HasPrefix(path, mapping.Prefix) {
+			continue
+		}
+		token := path[len(mapping.Prefix):]
+		// Trim trailing slashes and stop at the next path segment boundary.
+		token = strings.TrimRight(token, "/")
+		if idx := strings.IndexByte(token, '/'); idx >= 0 {
+			token = token[:idx]
+		}
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return ResourceRef{}, false
+		}
+		return ResourceRef{Type: mapping.Type, Token: token}, true
+	}
+
+	return ResourceRef{}, false
 }

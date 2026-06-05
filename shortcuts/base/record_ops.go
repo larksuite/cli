@@ -15,6 +15,13 @@ import (
 const maxRecordSelectionCount = 200
 const maxBatchGetSelectFieldCount = 100
 
+var recordCellValueHappyPathTips = []string{
+	`CellValue happy path: text/phone/url -> "text"; number/currency/percent/rating -> 12.5; select -> "Todo"; multi-select -> ["Tag A","Tag B"]; datetime -> "2026-03-24 10:00:00"; checkbox -> true/false.`,
+	`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}], [{"id":"oc_xxx"}], [{"id":"rec_xxx"}]; location uses {"lng":116.397428,"lat":39.90923}; null clears a cell when allowed.`,
+	"Do not guess user/chat/linked-record IDs or location coordinates; resolve them first with the relevant contact/im/record lookup flow.",
+	"Use lark-base-cell-value.md for complex CellValue shapes and special field types; do not invent values for fields not covered by the happy path.",
+}
+
 type recordSelection struct {
 	recordIDs    []string
 	selectFields []string
@@ -42,7 +49,7 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 	fieldIDs := runtime.StrArray("field-id")
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
-		return recordSelection{}, common.FlagErrorf("--record-id and --json are mutually exclusive")
+		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
 	}
 	if jsonRaw != "" {
 		pc := newParseCtx(runtime)
@@ -52,11 +59,11 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 		}
 		recordIDListValue, ok := body["record_id_list"]
 		if !ok {
-			return recordSelection{}, common.FlagErrorf(`--json must include "record_id_list" as a non-empty string array; %s`, jsonInputTip("json"))
+			return recordSelection{}, baseFlagErrorf(`--json must include "record_id_list" as a non-empty string array; %s`, jsonInputTip("json"))
 		}
 		recordIDItems, ok := recordIDListValue.([]interface{})
 		if !ok {
-			return recordSelection{}, common.FlagErrorf(`--json field "record_id_list" must be a string array; %s`, jsonInputTip("json"))
+			return recordSelection{}, baseFlagErrorf(`--json field "record_id_list" must be a string array; %s`, jsonInputTip("json"))
 		}
 		normalized, err := normalizeRecordIDs(recordIDItems)
 		if err != nil {
@@ -110,14 +117,14 @@ func resolveRecordGetSelectFields(flagFields []string, body map[string]interface
 		return fromFlags, nil
 	}
 	if len(fromFlags) > 0 {
-		return nil, common.FlagErrorf(`--field-id and --json field "select_fields" are mutually exclusive`)
+		return nil, baseFlagErrorf(`--field-id and --json field "select_fields" are mutually exclusive`)
 	}
 	items, ok := rawJSONFields.([]interface{})
 	if !ok {
-		return nil, common.FlagErrorf(`--json field "select_fields" must be a string array; %s`, jsonInputTip("json"))
+		return nil, baseFlagErrorf(`--json field "select_fields" must be a string array; %s`, jsonInputTip("json"))
 	}
 	if len(items) == 0 {
-		return nil, common.FlagErrorf(`--json field "select_fields" must not be empty; %s`, jsonInputTip("json"))
+		return nil, baseFlagErrorf(`--json field "select_fields" must not be empty; %s`, jsonInputTip("json"))
 	}
 	normalized, err := normalizeRecordGetSelectFields(items)
 	if err != nil {
@@ -145,7 +152,7 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 		if opts.allowNil {
 			return nil, nil
 		}
-		return nil, common.FlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf(opts.typeError)
 	case []interface{}:
 		rawItems = typed
 	case []string:
@@ -154,30 +161,30 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 			rawItems = append(rawItems, item)
 		}
 	default:
-		return nil, common.FlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf(opts.typeError)
 	}
 	if len(rawItems) == 0 {
 		if opts.allowEmpty {
 			return nil, nil
 		}
-		return nil, common.FlagErrorf(opts.emptyError)
+		return nil, baseFlagErrorf(opts.emptyError)
 	}
 	if opts.max > 0 && len(rawItems) > opts.max {
-		return nil, common.FlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))
+		return nil, baseFlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))
 	}
 	seen := make(map[string]int, len(rawItems))
 	result := make([]string, 0, len(rawItems))
 	for index, value := range rawItems {
 		item, ok := value.(string)
 		if !ok {
-			return nil, common.FlagErrorf("%s %d must be a string", opts.itemName, index+1)
+			return nil, baseFlagErrorf("%s %d must be a string", opts.itemName, index+1)
 		}
 		item = strings.TrimSpace(item)
 		if item == "" {
-			return nil, common.FlagErrorf("%s %d must not be empty", opts.itemName, index+1)
+			return nil, baseFlagErrorf("%s %d must not be empty", opts.itemName, index+1)
 		}
 		if first, exists := seen[item]; exists {
-			return nil, common.FlagErrorf("duplicate %s %q at positions %d and %d", opts.duplicateName, item, first, index+1)
+			return nil, baseFlagErrorf("duplicate %s %q at positions %d and %d", opts.duplicateName, item, first, index+1)
 		}
 		seen[item] = index + 1
 		result = append(result, item)
@@ -210,6 +217,9 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params.Set("view_id", viewID)
 	}
+	if err := applyRecordQueryToURLValues(runtime, params); err != nil {
+		return common.NewDryRunAPI()
+	}
 	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
 	return common.NewDryRunAPI().
 		GET(path).
@@ -230,8 +240,12 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 }
 
 func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	pc := newParseCtx(runtime)
-	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	var body map[string]interface{}
+	if strings.TrimSpace(runtime.Str("json")) != "" {
+		body, _ = recordSearchJSONBody(runtime)
+	} else {
+		body, _ = recordSearchFlagBody(runtime)
+	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
 		Body(body).
@@ -318,10 +332,10 @@ const maxShareBatchSize = 100
 func validateRecordShareBatch(runtime *common.RuntimeContext) error {
 	recordIDs := deduplicateRecordIDs(runtime)
 	if len(recordIDs) == 0 {
-		return common.FlagErrorf("--record-ids is required and must not be empty")
+		return baseFlagErrorf("--record-ids is required and must not be empty")
 	}
 	if len(recordIDs) > maxShareBatchSize {
-		return common.FlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
+		return baseFlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
 	}
 	return nil
 }
@@ -381,6 +395,9 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if viewID := runtime.Str("view-id"); viewID != "" {
 		params["view_id"] = viewID
 	}
+	if err := applyRecordQueryToParams(runtime, params); err != nil {
+		return err
+	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records"), params, nil)
 	if err != nil {
 		return err
@@ -413,8 +430,13 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 }
 
 func executeRecordSearch(runtime *common.RuntimeContext) error {
-	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	var body map[string]interface{}
+	var err error
+	if strings.TrimSpace(runtime.Str("json")) != "" {
+		body, err = recordSearchJSONBody(runtime)
+	} else {
+		body, err = recordSearchFlagBody(runtime)
+	}
 	if err != nil {
 		return err
 	}

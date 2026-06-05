@@ -1,9 +1,9 @@
 # IM CLI E2E Coverage
 
 ## Metrics
-- Denominator: 29 leaf commands
-- Covered: 9
-- Coverage: 31.0%
+- Denominator: 30 leaf commands
+- Covered: 11
+- Coverage: 36.7%
 
 ## Summary
 - TestIM_ChatUpdateWorkflow: proves `im +chat-create`, `im +chat-update`, and `im chats get`; key `t.Run(...)` proof points are `update chat name as bot`, `update chat description as bot`, and `get updated chat as bot`.
@@ -12,6 +12,7 @@
 - TestIM_ChatMessageWorkflowAsUser: proves the user chat message flow through `create chat as user`, `send message as user`, and `list chat messages as user` with the created message ID and content asserted from read-after-write output.
 - TestIM_MessageGetWorkflowAsUser: proves user message readback through `batch get message as user` after creating a fresh chat and sending a unique message.
 - TestIM_MessageReplyWorkflowAsBot: proves threaded reply flow through `reply to message in thread as bot` and `list thread replies as bot`, reading back the reply from `im +threads-messages-list`.
+- TestIM_MessageForwardWorkflowAsUser: proves UAT-backed API forwarding through `im messages forward` and `im threads forward` using a fresh message/thread fixture; skips the forward assertions when the current test app/UAT lacks IM forward permission.
 - Blocked area: `im +chat-search` did not reliably return freshly created private chats in UAT, and `im +messages-search` did not reliably index freshly sent messages in time for a deterministic read-after-write assertion, so both remain uncovered.
 
 ## Command Table
@@ -37,9 +38,10 @@
 | ✕ | im chats update | api |  | none | only covered indirectly through `+chat-update` |
 | ✕ | im images create | api |  | none | no image upload workflow yet |
 | ✕ | im messages delete | api |  | none | no recall workflow yet |
-| ✕ | im messages forward | api |  | none | no forward workflow yet |
+| ✓ | im messages forward | api | im/message_forward_workflow_test.go::TestIM_MessageForwardWorkflowAsUser/forward message with api command as user | `message_id`; `receive_id_type`; `uuid`; `receive_id` | forwards a fresh message back into the test chat using UAT |
 | ✕ | im messages merge_forward | api |  | none | no merge-forward workflow yet |
 | ✕ | im messages read_users | api |  | none | no read-user workflow yet |
+| ✓ | im threads forward | api | im/message_forward_workflow_test.go::TestIM_MessageForwardWorkflowAsUser/forward thread with api command as user | `thread_id`; `receive_id_type`; `uuid`; `receive_id` | forwards a fresh thread back into the test chat using UAT |
 | ✕ | im pins create | api |  | none | pin workflows not covered |
 | ✕ | im pins delete | api |  | none | pin workflows not covered |
 | ✕ | im pins list | api |  | none | pin workflows not covered |

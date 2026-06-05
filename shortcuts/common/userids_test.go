@@ -75,3 +75,24 @@ func TestResolveOpenIDs_DedupIsCaseInsensitive(t *testing.T) {
 		t.Fatalf("case-insensitive dedup failed: got %v, want [ou_abc123]", out)
 	}
 }
+
+func TestResolveOpenIDsTyped_MeWithoutLogin_ReturnsTypedValidation(t *testing.T) {
+	rt := resolveOpenIDsTestRuntime("")
+	_, err := ResolveOpenIDsTyped("--user-ids", []string{"me"}, rt)
+	validationErr := assertValidationParam(t, err, "--user-ids")
+	if !strings.Contains(validationErr.Message, "--user-ids") {
+		t.Fatalf("error should mention the offending flag name; got: %v", err)
+	}
+}
+
+func TestResolveOpenIDsTyped_ExpandsMeAndDedups(t *testing.T) {
+	rt := resolveOpenIDsTestRuntime("ou_self")
+	out, err := ResolveOpenIDsTyped("--user-ids", []string{"me", "ou_a", "me", "ou_a"}, rt)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"ou_self", "ou_a"}
+	if len(out) != len(want) || out[0] != want[0] || out[1] != want[1] {
+		t.Fatalf("got %v, want %v", out, want)
+	}
+}

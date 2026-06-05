@@ -11,13 +11,15 @@ lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}'
+  --json '{"name":"状态","type":"select","multiple":false,"options":[{"name":"Todo","hue":"Blue","lightness":"Lighter"},{"name":"Doing","hue":"Orange","lightness":"Light"},{"name":"Done","hue":"Green","lightness":"Light"}]}' \
+  --yes
 
 lark-cli base +field-update \
   --base-token <base_token> \
   --table-id <table_id> \
   --field-id <field_id> \
-  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}'
+  --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}' \
+  --yes
 ```
 
 ## 参数
@@ -28,6 +30,10 @@ lark-cli base +field-update \
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--field-id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
+| `--yes` | 是 | 确认执行高风险字段更新 |
+
+> 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。CLI 层要求显式传 `--yes`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
+
 ## API 入参详情
 
 **HTTP 方法和路径：**
@@ -95,7 +101,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 | 目标类型 | 允许的源类型 | 说明 |
 |------|------|------|
-| `text` | `number`、`select`、`datetime`、`created_at`、`updated_at`、`location`、`auto_number`、`checkbox` | 保留字符串表示；丢失原类型语义和结构化能力 |
+| `text` | `number`、`select`、`datetime`、`created_at`、`updated_at`、`location`（只保留 `full_address`）、`auto_number`、`checkbox` | 保留字符串表示；丢失原类型语义和结构化能力 |
 | `number` | `text`、`number`、`datetime`、`created_at`、`updated_at`、`checkbox` | 保留可解析的数字值；无法解析的值会变空，原文本格式会丢失 |
 | `datetime` | `text`、`number`、`datetime`、`created_at`、`updated_at` | 保留可解析的时间字符串和时间戳；无法解析的值会变空，原文本格式会丢失 |
 | `select` | `text -> select`、`number -> select`、`single select -> multi select` | 只有完全匹配目标选项名的值会转成对应选项；没匹配上的值会被丢弃 |
@@ -154,13 +160,12 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 ## 坑点
 
 - ⚠️ 这是全量字段属性更新语义，不是 patch。
-- ⚠️ 这是写入操作，执行前必须确认。
+- ⚠️ 这是高风险写入操作，执行时必须带 `--yes`。
 - ⚠️ 当 `type` 是 `formula` 或 `lookup` 时，先阅读对应指南再执行。
 
 ## 参考
 
-- [lark-base-field.md](lark-base-field.md) — field 索引页
-- [lark-base-field-get.md](lark-base-field-get.md) — 查字段
-- [lark-base-shortcut-field-properties.md](lark-base-shortcut-field-properties.md) — shortcut 字段 JSON 规范（推荐）
+- 更新前读取当前字段，确认现有 `type` 和具体配置细节，再决定是原地更新还是新建字段迁移。
+- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
 - [formula-field-guide.md](formula-field-guide.md) — formula 指南（更新公式前必读）
 - [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（更新查找引用前必读）

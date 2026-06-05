@@ -10,7 +10,9 @@ import (
 
 	"github.com/charmbracelet/huh"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
@@ -105,7 +107,7 @@ func buildDomainMeta(name, lang string) domainMeta {
 }
 
 // runInteractiveLogin shows an interactive TUI form for domain and permission selection.
-func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg) (*interactiveResult, error) {
+func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg, brand core.LarkBrand) (*interactiveResult, error) {
 	allDomains := getDomainMetadata(lang)
 
 	// Build multi-select options
@@ -161,11 +163,11 @@ func runInteractiveLogin(ios *cmdutil.IOStreams, lang string, msg *loginMsg) (*i
 	}
 
 	if len(selectedDomains) == 0 {
-		return nil, output.ErrValidation("no domains selected")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "no domains selected").WithParam("--domain")
 	}
 
 	// Compute scope summary
-	scopes := collectScopesForDomains(selectedDomains, "user")
+	scopes := collectScopesForDomains(selectedDomains, "user", brand)
 	if permLevel == "common" {
 		scopes = registry.FilterAutoApproveScopes(scopes)
 	}

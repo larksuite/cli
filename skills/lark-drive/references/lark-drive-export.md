@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-把 `doc` / `docx` / `sheet` / `bitable` 导出到本地文件。这个 shortcut 内置有限轮询：
+把 `doc` / `docx` / `sheet` / `bitable` / `slides` 导出到本地文件。这个 shortcut 内置有限轮询：
 
 - 如果导出任务在轮询窗口内完成，会直接下载到本地目录
 - 如果轮询结束仍未完成，会返回 `ticket`、`ready=false`、`timed_out=true` 和 `next_command`
@@ -25,8 +25,8 @@ lark-cli drive +export \
   --doc-type doc \
   --file-extension docx
 
-# 导出 docx 为 markdown
-# 注意：markdown 只支持 docx，底层走 /open-apis/docs/v1/content
+# 导出 docx 为 markdown（Lark-flavored Markdown）
+# 注意：markdown 只支持 docx
 lark-cli drive +export \
   --token "<DOCX_TOKEN>" \
   --doc-type docx \
@@ -37,6 +37,20 @@ lark-cli drive +export \
   --token "<SHEET_TOKEN>" \
   --doc-type sheet \
   --file-extension xlsx \
+  --output-dir ./exports
+
+# 导出幻灯片为 pptx
+lark-cli drive +export \
+  --token "<SLIDES_TOKEN>" \
+  --doc-type slides \
+  --file-extension pptx \
+  --output-dir ./exports
+
+# 导出幻灯片为 pdf
+lark-cli drive +export \
+  --token "<SLIDES_TOKEN>" \
+  --doc-type slides \
+  --file-extension pdf \
   --output-dir ./exports
 
 # 指定本地文件名（会按导出格式自动补扩展名）
@@ -75,8 +89,8 @@ lark-cli drive +export \
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | `--token` | 是 | 源文档 token |
-| `--doc-type` | 是 | 源文档类型：`doc` / `docx` / `sheet` / `bitable` |
-| `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` / `base` |
+| `--doc-type` | 是 | 源文档类型：`doc` / `docx` / `sheet` / `bitable` / `slides` |
+| `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` / `base` / `pptx` |
 | `--sub-id` | 条件必填 | 当 `sheet` / `bitable` 导出为 `csv` 时必填 |
 | `--file-name` | 否 | 覆盖默认本地文件名；如未带扩展名，会按 `--file-extension` 自动补齐 |
 | `--output-dir` | 否 | 本地输出目录，默认当前目录 |
@@ -86,6 +100,8 @@ lark-cli drive +export \
 
 - `markdown` 只支持 `docx`
 - `base` 只支持 `bitable`
+- `pptx` 只支持 `slides`
+- `slides` 支持导出为 `pptx` / `pdf`
 - `sheet` / `bitable` 导出为 `csv` 时必须带 `--sub-id`
 - shortcut 内部固定有限轮询：最多 10 次，每次间隔 5 秒
 - 轮询超时不是失败；会返回 `ticket`、`timed_out=true` 和 `next_command`，供后续继续查询
@@ -115,5 +131,5 @@ lark-cli drive +export-download \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

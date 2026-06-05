@@ -36,14 +36,36 @@ func TestValidateDriveImportSpec(t *testing.T) {
 			spec: driveImportSpec{FilePath: "./snapshot.base", DocType: "bitable"},
 		},
 		{
+			name: "pptx slides ok",
+			spec: driveImportSpec{FilePath: "./deck.pptx", DocType: "slides"},
+		},
+		{
 			name:    "base non bitable rejected",
 			spec:    driveImportSpec{FilePath: "./snapshot.base", DocType: "sheet"},
 			wantErr: ".base files can only be imported as 'bitable'",
 		},
 		{
+			name:    "pptx non slides rejected",
+			spec:    driveImportSpec{FilePath: "./deck.pptx", DocType: "docx"},
+			wantErr: ".pptx files can only be imported as 'slides'",
+		},
+		{
 			name:    "unknown extension rejected",
 			spec:    driveImportSpec{FilePath: "./data.rtf", DocType: "docx"},
 			wantErr: "unsupported file extension",
+		},
+		{
+			name:    "target-token rejected for non-bitable type",
+			spec:    driveImportSpec{FilePath: "./data.xlsx", DocType: "sheet", TargetToken: "bascnxxx"},
+			wantErr: "--target-token is only supported when --type is bitable",
+		},
+		{
+			name: "target-token accepted for bitable",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable", TargetToken: "bascnxxx"},
+		},
+		{
+			name: "target-token empty for bitable still ok",
+			spec: driveImportSpec{FilePath: "./data.xlsx", DocType: "bitable"},
 		},
 	}
 
@@ -100,6 +122,19 @@ func TestValidateDriveImportFileSize(t *testing.T) {
 			filePath: "./data.xlsx",
 			docType:  "sheet",
 			fileSize: driveImport800MBFileSizeLimit,
+		},
+		{
+			name:     "pptx exceeds 500mb limit",
+			filePath: "./deck.pptx",
+			docType:  "slides",
+			fileSize: driveImport500MBFileSizeLimit + 1,
+			wantText: "exceeds 500.0 MB import limit for .pptx",
+		},
+		{
+			name:     "pptx within 500mb limit",
+			filePath: "./deck.pptx",
+			docType:  "slides",
+			fileSize: driveImport500MBFileSizeLimit,
 		},
 		{
 			name:     "base exceeds 20mb limit",

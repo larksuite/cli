@@ -4,6 +4,8 @@
 
 Search Feishu messages across conversations. This shortcut automatically performs a multi-step workflow: search for message IDs, batch fetch message details, then enrich the results with chat context.
 
+By default each result message also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. With `--page-all`, every page is enriched; pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+
 > **User identity only** (`--as user`). Bot identity is not supported.
 
 This skill maps to the shortcut: `lark-cli im +messages-search` (internally calls `POST /open-apis/im/v1/messages/search` + batched `GET /open-apis/im/v1/messages/mget`, then batch-fetches chat context).
@@ -156,6 +158,21 @@ Use `im +messages-resources-download` if you need to fetch the underlying image 
 
 ## AI Usage Guidance
 
+### Query boundary for activity review
+
+Use `--query` only for real message keywords. If the user asks for activity review such as "最近一周我和哪些 Bot 有过交互" or "整理我和某人的聊天记录", and the useful constraints are sender type, chat, person, or time range, keep `--query ""` and rely on those filters. Do not put generic instruction words such as "看看", "总结", "交互内容", or "聊天记录" into `--query`; those words often over-constrain message search and hide the relevant messages.
+
+This guidance applies only when using user identity. `im +messages-search` is user-only; if the user explicitly asks for application/bot identity, do not try `--as bot`. For bot identity with a named group and history/listing intent, resolve the group with `im +chat-search --as bot`, then list messages with `im +chat-messages-list --as bot --chat-id <chat_id>`.
+
+```bash
+# Review recent bot interactions without forcing a keyword
+lark-cli im +messages-search --query "" --sender-type bot --start "<YYYY-MM-DDT00:00:00+08:00>" --end "<YYYY-MM-DDT23:59:59+08:00>" --page-all --format json
+```
+
+Replace the time placeholders at execution time. For example, "最近一周" means computing the start date and end date from the current day before running the command; do not copy date literals from this reference into answers for relative requests.
+
+For activity summaries, validate evidence by message IDs and chat context. The final answer should cite or retain the `message_id`, sender, chat, and create time for each important item. If the row's source data contains concrete `om_...` message IDs or `ou_...` user IDs, treat those IDs as strong recall targets during verification; do not rely only on a high-level keyword match.
+
 ### Resolving chat_id from a chat name
 
 When the user refers to a chat by name and you need its `chat_id` for the `--chat-id` filter, use [`+chat-search`](lark-im-chat-search.md) first:
@@ -168,7 +185,7 @@ lark-cli im +chat-search --query "<chat name keyword>" --format json
 lark-cli im +messages-search --query "keyword" --chat-id <chat_id>
 ```
 
-**Do not use `im chats search` or `im chats list` — always use the `+chat-search` shortcut.**
+**Do not use `im chats search` or `+chat-list` — always use the `+chat-search` shortcut.**
 
 ## Work Summary / Report Generation
 

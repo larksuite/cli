@@ -15,6 +15,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -234,37 +235,6 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	}
 }
 
-func TestHandleResponse_EmptyJSONBody_ShowsDiagnostic(t *testing.T) {
-	resp := newApiResp([]byte{}, map[string]string{"Content-Type": "application/json"})
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	err := HandleResponse(resp, ResponseOptions{
-		Out:    &out,
-		ErrOut: &errOut,
-	})
-	if err == nil {
-		t.Fatal("expected error for empty JSON body")
-	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T", err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI, got %d", exitErr.Code)
-	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected detail on exit error")
-	}
-	if exitErr.Detail.Message != "API returned an empty JSON response body" {
-		t.Fatalf("unexpected message: %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "--output") {
-		t.Fatalf("expected hint to mention --output, got %q", exitErr.Detail.Hint)
-	}
-}
-
 func TestHandleResponse_BinaryAutoSave(t *testing.T) {
 	dir := t.TempDir()
 	origWd, _ := os.Getwd()
@@ -325,9 +295,12 @@ func TestHandleResponse_NonJSONError_404(t *testing.T) {
 	if !strings.Contains(got, "HTTP 404") || !strings.Contains(got, "404 page not found") {
 		t.Errorf("expected 'HTTP 404: 404 page not found', got: %s", got)
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
-		t.Errorf("expected ExitAPI (%d) for 4xx, got code: %d", output.ExitAPI, exitErr.Code)
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Errorf("expected *errs.APIError, got %T", err)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got %d", output.ExitAPI, output.ExitCodeOf(err))
 	}
 }
 
@@ -343,9 +316,12 @@ func TestHandleResponse_NonJSONError_502(t *testing.T) {
 	if !strings.Contains(got, "HTTP 502") || !strings.Contains(got, "Bad Gateway") {
 		t.Errorf("expected 'HTTP 502' and 'Bad Gateway' in error, got: %s", got)
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitNetwork {
-		t.Errorf("expected ExitNetwork (%d) for 5xx, got code: %d", output.ExitNetwork, exitErr.Code)
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Errorf("expected *errs.NetworkError, got %T", err)
+	}
+	if output.ExitCodeOf(err) != output.ExitNetwork {
+		t.Errorf("expected ExitNetwork (%d) for 5xx, got %d", output.ExitNetwork, output.ExitCodeOf(err))
 	}
 }
 
@@ -422,19 +398,5 @@ func TestSaveResponse_MetadataContainsAbsolutePath(t *testing.T) {
 	savedPath, _ := meta["saved_path"].(string)
 	if !filepath.IsAbs(savedPath) {
 		t.Errorf("saved_path should be absolute, got %q", savedPath)
-	}
-}
-
-func TestHandleResponse_403JSON_CheckLarkResponse(t *testing.T) {
-	body := []byte(`{"code":99991400,"msg":"invalid token"}`)
-	resp := newApiRespWithStatus(403, body, map[string]string{"Content-Type": "application/json"})
-
-	var out, errOut bytes.Buffer
-	err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &errOut, FileIO: &localfileio.LocalFileIO{}})
-	if err == nil {
-		t.Fatal("expected error for 403 JSON with non-zero code")
-	}
-	if !strings.Contains(err.Error(), "99991400") {
-		t.Errorf("expected lark error code in message, got: %s", err.Error())
 	}
 }

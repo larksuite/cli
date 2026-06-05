@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -19,7 +20,7 @@ func validateRecordReadFormat(runtime *common.RuntimeContext) error {
 	case "", "json", "markdown":
 		return nil
 	default:
-		return output.ErrValidation("--format must be json or markdown")
+		return baseValidationErrorf("--format must be json or markdown")
 	}
 }
 
@@ -33,7 +34,7 @@ func outputRecordMarkdownWithRenderer(runtime *common.RuntimeContext, data map[s
 			runtime.Out(data, nil)
 			return nil
 		}
-		return output.ErrValidation("--jq and --format markdown are mutually exclusive")
+		return baseValidationErrorf("--jq and --format markdown are mutually exclusive")
 	}
 	rendered, err := renderer(data)
 	if err != nil {
@@ -43,13 +44,27 @@ func outputRecordMarkdownWithRenderer(runtime *common.RuntimeContext, data map[s
 	}
 	scanResult := output.ScanForSafety(runtime.Cmd.CommandPath(), data, runtime.IO().ErrOut)
 	if scanResult.Blocked {
-		return scanResult.BlockErr
+		return baseContentSafetyBlockError(scanResult)
 	}
 	if scanResult.Alert != nil {
 		output.WriteAlertWarning(runtime.IO().ErrOut, scanResult.Alert)
 	}
 	fmt.Fprint(runtime.IO().Out, rendered)
 	return nil
+}
+
+func baseContentSafetyBlockError(scanResult output.ScanResult) error {
+	message := "content safety violation detected"
+	var rules []string
+	if scanResult.Alert != nil {
+		rules = scanResult.Alert.MatchedRules
+	}
+	if len(rules) > 0 {
+		message = fmt.Sprintf("content safety violation detected (rules: %s)", strings.Join(rules, ", "))
+	}
+	return errs.NewContentSafetyError(errs.SubtypeUnknown, "%s", message).
+		WithRules(rules...).
+		WithCause(scanResult.BlockErr)
 }
 
 func outputRecordGetMarkdown(runtime *common.RuntimeContext, data map[string]interface{}) error {
@@ -61,7 +76,7 @@ func renderRecordGetMarkdown(data map[string]interface{}) (string, error) {
 	recordIDs := stringSliceValue(data["record_id_list"])
 	rows, ok := data["data"].([]interface{})
 	if len(fields) == 0 || !ok {
-		return "", output.ErrValidation("--format markdown requires record matrix response with fields, record_id_list, and data")
+		return "", baseValidationErrorf("--format markdown requires record matrix response with fields, record_id_list, and data")
 	}
 	if len(recordIDs) == 1 && len(rows) == 1 {
 		rowItems, _ := rows[0].([]interface{})
@@ -78,7 +93,7 @@ func renderRecordMarkdown(data map[string]interface{}) (string, error) {
 	recordIDs := stringSliceValue(data["record_id_list"])
 	rows, ok := data["data"].([]interface{})
 	if len(fields) == 0 || !ok {
-		return "", output.ErrValidation("--format markdown requires record matrix response with fields, record_id_list, and data")
+		return "", baseValidationErrorf("--format markdown requires record matrix response with fields, record_id_list, and data")
 	}
 
 	var b strings.Builder

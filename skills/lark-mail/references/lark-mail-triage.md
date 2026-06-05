@@ -87,29 +87,38 @@ lark-cli mail +triage --page-size 10
   "messages": [
     {
       "message_id": "SEU2...",
+      "mailbox_id": "me",
       "date": "Fri, 21 Mar 2026 11:40:00 +0800",
       "from": "Alice <alice@example.com>",
       "subject": "Weekly update",
       "labels": "INBOX,UNREAD"
     }
   ],
+  "mailbox_id": "me",
   "count": 20,
   "has_more": true,
   "page_token": "list:FfccvoqPd_loLhtcRx8cx..."
 }
 ```
 
+- `mailbox_id`：当前邮箱标识，用于传递给 `mail +message --mailbox` 以保持公共邮箱上下文
 - `has_more`：是否还有下一页
 - `page_token`：传入 `--page-token` 可获取下一页；为空字符串表示已到末尾
 - token 前缀 `search:` / `list:` 标识来源 API 路径，不可混用
 
 ### `table` 格式
 
-`page_token` 信息输出在 stderr，自动携带 `--query`/`--filter` 参数方便续页：
+`page_token` 信息输出在 stderr，自动携带 `--query`/`--filter`/`--mailbox` 参数方便续页：
 ```text
 15 message(s)
 next page: mail +triage --query '合同审批' --page-token 'search:abc123...'
 tip: use mail +message --message-id <id> to read full content
+```
+
+公共邮箱场景下，`--mailbox` 会自动出现在续页和 tip 中：
+```text
+next page: mail +triage --mailbox 'shared@example.com' --query '合同审批' --page-token 'search:abc123...'
+tip: use mail +message --mailbox 'shared@example.com' --message-id <id> to read full content
 ```
 
 ### 搜索分页注意事项

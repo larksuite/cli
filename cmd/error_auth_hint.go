@@ -4,9 +4,13 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+
+	"github.com/larksuite/cli/errs"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -14,12 +18,43 @@ import (
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts"
 	shortcutcommon "github.com/larksuite/cli/shortcuts/common"
-	"github.com/spf13/cobra"
 )
 
-// enrichMissingScopeError preserves the original need_user_authorization
-// message and appends a scope hint when the current command declares the
-// required scopes locally.
+// applyNeedAuthorizationHint augments a typed *errs.AuthenticationError with a
+// "current command requires scope(s): X, Y" hint when the underlying error is
+// a need_user_authorization signal AND the current command declares scopes
+// locally (via shortcut registration or service-method metadata). Existing
+// Hint text is preserved; scopes are appended on a new line.
+func applyNeedAuthorizationHint(f *cmdutil.Factory, err error) {
+	if err == nil || f == nil {
+		return
+	}
+	if !internalauth.IsNeedUserAuthorizationError(err) {
+		return
+	}
+	var authErr *errs.AuthenticationError
+	if !errors.As(err, &authErr) {
+		return
+	}
+	scopes := resolveDeclaredScopesForCurrentCommand(f)
+	if len(scopes) == 0 {
+		return
+	}
+	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
+	if authErr.Hint == "" {
+		authErr.Hint = scopeHint
+		return
+	}
+	authErr.Hint += "\n" + scopeHint
+}
+
+// enrichMissingScopeError appends a "current command requires scope(s): X"
+// hint to a legacy *output.ExitError when the underlying error carries the
+// need_user_authorization marker AND the current command declares scopes
+// locally.
+//
+// Deprecated: enrichment for the legacy envelope; the typed path is
+// applyNeedAuthorizationHint above.
 func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if exitErr == nil || exitErr.Detail == nil {
 		return
@@ -27,12 +62,10 @@ func enrichMissingScopeError(f *cmdutil.Factory, exitErr *output.ExitError) {
 	if !internalauth.IsNeedUserAuthorizationError(exitErr) {
 		return
 	}
-
 	scopes := resolveDeclaredScopesForCurrentCommand(f)
 	if len(scopes) == 0 {
 		return
 	}
-
 	scopeHint := fmt.Sprintf("current command requires scope(s): %s", strings.Join(scopes, ", "))
 	if exitErr.Detail.Hint == "" {
 		exitErr.Detail.Hint = scopeHint
@@ -75,7 +108,7 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 		if sc.Service != service || sc.Command != cmd.Name() || !shortcutSupportsIdentity(sc, identity) {
 			continue
 		}
-		scopes := sc.ScopesForIdentity(identity)
+		scopes := sc.DeclaredScopesForIdentity(identity)
 		if len(scopes) == 0 {
 			return nil
 		}
@@ -116,47 +149,7 @@ func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []s
 	if methodMap == nil {
 		return nil
 	}
-	return declaredScopesForMethod(methodMap, identity)
-}
-
-// declaredScopesForMethod returns all requiredScopes when present; otherwise it
-// resolves the single recommended scope from the method's scopes list.
-func declaredScopesForMethod(method map[string]interface{}, identity string) []string {
-	if requiredRaw, ok := method["requiredScopes"].([]interface{}); ok && len(requiredRaw) > 0 {
-		return interfaceStrings(requiredRaw)
-	}
-
-	rawScopes, _ := method["scopes"].([]interface{})
-	if len(rawScopes) == 0 {
-		return nil
-	}
-	recommended := registry.SelectRecommendedScope(rawScopes, identity)
-	if recommended == "" {
-		for _, raw := range rawScopes {
-			if scope, ok := raw.(string); ok && scope != "" {
-				recommended = scope
-				break
-			}
-		}
-	}
-	if recommended == "" {
-		return nil
-	}
-	return []string{recommended}
-}
-
-// interfaceStrings converts a []interface{} containing strings into a compact
-// []string, skipping empty or non-string values.
-func interfaceStrings(values []interface{}) []string {
-	scopes := make([]string, 0, len(values))
-	for _, value := range values {
-		scope, ok := value.(string)
-		if !ok || scope == "" {
-			continue
-		}
-		scopes = append(scopes, scope)
-	}
-	return scopes
+	return registry.DeclaredScopesForMethod(methodMap, identity)
 }
 
 // shortcutSupportsIdentity reports whether a shortcut supports the requested

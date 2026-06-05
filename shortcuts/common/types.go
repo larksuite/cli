@@ -18,7 +18,7 @@ const (
 // Flag describes a CLI flag for a shortcut.
 type Flag struct {
 	Name     string // flag name (e.g. "calendar-id")
-	Type     string // "string" (default) | "bool" | "int" | "string_array" | "string_slice"
+	Type     string // "string" (default) | "bool" | "int" | "float64" | "string_array" | "string_slice"
 	Default  string // default value as string
 	Desc     string // help text
 	Hidden   bool   // hidden from --help, still readable at runtime
@@ -33,14 +33,23 @@ type Shortcut struct {
 	Command     string
 	Description string
 	Risk        string   // "read" | "write" | "high-risk-write" (empty defaults to "read")
-	Scopes      []string // default scopes (fallback when UserScopes/BotScopes are empty)
-	UserScopes  []string // optional: user-identity scopes (overrides Scopes when non-empty)
-	BotScopes   []string // optional: bot-identity scopes (overrides Scopes when non-empty)
+	Scopes      []string // unconditional pre-flight scopes (fallback when UserScopes/BotScopes are empty)
+	UserScopes  []string // optional: user-identity unconditional scopes (overrides Scopes when non-empty)
+	BotScopes   []string // optional: bot-identity unconditional scopes (overrides Scopes when non-empty)
+
+	// ConditionalScopes are additional scopes that only some execution paths
+	// need (for example a default mode vs. a lighter --quick mode, or a
+	// destructive flag like --delete-remote). They are surfaced in metadata,
+	// auth hints, and scope-diagnosis output via DeclaredScopesForIdentity, but
+	// they are NOT enforced by the framework's unconditional pre-flight check.
+	ConditionalScopes     []string // fallback when ConditionalUserScopes/BotScopes are empty
+	ConditionalUserScopes []string // optional: user-identity conditional scopes
+	ConditionalBotScopes  []string // optional: bot-identity conditional scopes
 
 	// Declarative fields (new framework).
 	AuthTypes []string // supported identities: "user", "bot" (default: ["user"])
 	Flags     []Flag   // flag definitions; --dry-run is auto-injected
-	HasFormat bool     // auto-inject --format flag (json|pretty|table|ndjson|csv)
+	HasFormat bool     // Deprecated: --format is now always injected; this field has no effect.
 	Tips      []string // optional tips shown in --help output
 	Hidden    bool     // hide from --help / tab completion (still executable); use when deprecating a command in favor of a replacement
 
@@ -48,6 +57,29 @@ type Shortcut struct {
 	DryRun   func(ctx context.Context, runtime *RuntimeContext) *DryRunAPI // optional: framework prints & returns when --dry-run is set
 	Validate func(ctx context.Context, runtime *RuntimeContext) error      // optional pre-execution validation
 	Execute  func(ctx context.Context, runtime *RuntimeContext) error      // main logic
+
+	// OnInvoke, when non-nil, runs from the command's cobra PreRunE — before
+	// cobra validates required flags — so its side effect fires even when the
+	// call later fails on a missing required flag (which short-circuits before
+	// Validate/Execute). The backward-compat aliases use it to record a
+	// deprecation notice that must surface regardless of whether the call
+	// validates. Fire-and-forget: no args, no return (e.g. deprecation.SetPending).
+	OnInvoke func()
+
+	// PrintFlagSchema, when non-nil, opts this shortcut into the
+	// `--print-schema --flag-name <name>` runtime introspection contract.
+	// The framework auto-injects those two system flags and short-circuits
+	// Validate/Execute when --print-schema is set, dispatching to this hook.
+	//
+	// Contract:
+	//   - flagName == ""     → list the flags this shortcut can describe
+	//                          (output is impl-defined; agents read this to
+	//                          discover which flags are introspectable).
+	//   - flagName == "...": → return the JSON Schema (or schema-like blob)
+	//                          for that flag.
+	// Return value is written to stdout verbatim; callers typically format
+	// it as JSON. Returning an error surfaces as a normal command error.
+	PrintFlagSchema func(flagName string) ([]byte, error)
 
 	// PostMount is an optional hook called after the cobra.Command is fully
 	// configured (flags registered, tips set) and after parent.AddCommand(cmd)
@@ -71,4 +103,48 @@ func (s *Shortcut) ScopesForIdentity(identity string) []string {
 		}
 	}
 	return s.Scopes
+}
+
+// ConditionalScopesForIdentity returns additional flag/path-dependent scopes
+// for the given identity. Identity-specific conditional scopes override the
+// default ConditionalScopes when present.
+func (s *Shortcut) ConditionalScopesForIdentity(identity string) []string {
+	switch identity {
+	case "user":
+		if len(s.ConditionalUserScopes) > 0 {
+			return s.ConditionalUserScopes
+		}
+	case "bot":
+		if len(s.ConditionalBotScopes) > 0 {
+			return s.ConditionalBotScopes
+		}
+	}
+	return s.ConditionalScopes
+}
+
+// DeclaredScopesForIdentity returns the full scope set agents/help/diagnostics
+// should know about for this shortcut: unconditional pre-flight scopes plus
+// any conditional scopes that some execution paths may require.
+func (s *Shortcut) DeclaredScopesForIdentity(identity string) []string {
+	base := s.ScopesForIdentity(identity)
+	extra := s.ConditionalScopesForIdentity(identity)
+	if len(base) == 0 && len(extra) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(base)+len(extra))
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	for _, scope := range append(base, extra...) {
+		if scope == "" {
+			continue
+		}
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		out = append(out, scope)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

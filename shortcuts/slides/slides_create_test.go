@@ -147,6 +147,55 @@ func TestSlidesCreateBotSkippedWithoutCurrentUser(t *testing.T) {
 	if grant["status"] != common.PermissionGrantSkipped {
 		t.Fatalf("permission_grant.status = %v, want %q", grant["status"], common.PermissionGrantSkipped)
 	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "auth login") {
+		t.Fatalf("hint = %#v, want string containing 'auth login'", grant["hint"])
+	}
+}
+
+func TestSlidesCreateBotAutoGrantFailed(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, "ou_current_user"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"xml_presentation_id": "pres_grant_fail",
+				"revision_id":         1,
+			},
+		},
+	})
+	registerBatchQueryStub(reg, "pres_grant_fail", "https://example.feishu.cn/slides/pres_grant_fail")
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/pres_grant_fail/members",
+		Body: map[string]interface{}{
+			"code": 230001,
+			"msg":  "no permission",
+		},
+	})
+
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--title", "Grant Fail PPT",
+		"--as", "bot",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data := decodeSlidesCreateEnvelope(t, stdout)
+	grant, _ := data["permission_grant"].(map[string]interface{})
+	if grant["status"] != common.PermissionGrantFailed {
+		t.Fatalf("permission_grant.status = %v, want %q", grant["status"], common.PermissionGrantFailed)
+	}
+	if hint, ok := grant["hint"].(string); !ok || !strings.Contains(hint, "Retry later") {
+		t.Fatalf("hint = %#v, want string containing 'Retry later'", grant["hint"])
+	}
 }
 
 // TestSlidesCreateDryRunDefaultTitle verifies that dry-run also normalizes an empty title to "Untitled".

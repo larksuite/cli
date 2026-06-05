@@ -21,7 +21,7 @@ var BaseDashboardUpdate = common.Shortcut{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "new dashboard name"},
-		{Name: "theme-style", Desc: "theme style"},
+		{Name: "theme-style", Desc: "theme style, leave empty to keep current theme"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{}

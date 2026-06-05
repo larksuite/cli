@@ -7,9 +7,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -66,20 +66,21 @@ explicit user confirmation — never run on your own initiative.`,
 
 	cmd.Flags().BoolVar(&global, "global", false, "set at global level (applies to all profiles)")
 	cmd.Flags().BoolVar(&reset, "reset", false, "reset profile setting to inherit global")
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }
 
 func resetStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.AppConfig, global bool, args []string) error {
 	if global {
-		return output.ErrValidation("--reset cannot be used with --global")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--reset cannot be used with --global").WithParam("--reset")
 	}
 	if len(args) > 0 {
-		return output.ErrValidation("--reset cannot be used with a value argument")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--reset cannot be used with a value argument").WithParam("--reset")
 	}
 	app.StrictMode = nil
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 	fmt.Fprintln(f.IOStreams.ErrOut, "Profile strict-mode reset (inherits global)")
 	return nil
@@ -103,7 +104,7 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 	switch mode {
 	case core.StrictModeBot, core.StrictModeUser, core.StrictModeOff:
 	default:
-		return output.ErrValidation("invalid value %q, valid values: bot | user | off", value)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid value %q, valid values: bot | user | off", value)
 	}
 
 	// Capture the old mode at the SAME scope being changed, so we can warn
@@ -143,7 +144,7 @@ func setStrictMode(f *cmdutil.Factory, multi *core.MultiAppConfig, app *core.App
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	if oldMode == core.StrictModeBot && (mode == core.StrictModeUser || mode == core.StrictModeOff) {

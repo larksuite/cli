@@ -18,9 +18,8 @@ func resetPending(t *testing.T) {
 func TestInit_InSync_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := WriteStamp("1.0.21"); err != nil {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.21"}); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
@@ -29,26 +28,34 @@ func TestInit_InSync_NoNotice(t *testing.T) {
 	}
 }
 
-func TestInit_ColdStart_NoticeWithEmptyCurrent(t *testing.T) {
+func TestInit_ColdStart_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	Init("1.0.21")
-	got := GetPending()
-	if got == nil {
-		t.Fatal("GetPending() = nil, want non-nil for cold start")
-	}
-	if got.Current != "" || got.Target != "1.0.21" {
-		t.Errorf("notice = %+v, want {Current:\"\", Target:\"1.0.21\"}", got)
+	if got := GetPending(); got != nil {
+		t.Errorf("GetPending() = %+v, want nil (cold start is silent)", got)
 	}
 }
 
-func TestInit_Drift_NoticeWithStampVersion(t *testing.T) {
+func TestInit_NormalizedVersion_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
-	dir := t.TempDir()
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	if err := WriteStamp("1.0.20"); err != nil {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.21"}); err != nil {
+		t.Fatal(err)
+	}
+	Init("v1.0.21")
+	if got := GetPending(); got != nil {
+		t.Errorf("GetPending() = %+v, want nil (normalized versions are in-sync)", got)
+	}
+}
+
+func TestInit_Drift_NoticeWithStateVersion(t *testing.T) {
+	clearSkillsSkipEnv(t)
+	resetPending(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	if err := WriteState(SkillsState{Version: "1.0.20"}); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")
@@ -65,22 +72,18 @@ func TestInit_Skipped_NoNotice(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	// Even with an empty config dir (no stamp), DEV version should skip
-	// the check entirely and never emit a notice.
 	Init("DEV")
 	if got := GetPending(); got != nil {
 		t.Errorf("GetPending() = %+v, want nil (skip rules met)", got)
 	}
 }
 
-func TestInit_ReadStampError_FailsClosed(t *testing.T) {
+func TestInit_ReadStateError_FailsClosed(t *testing.T) {
 	clearSkillsSkipEnv(t)
 	resetPending(t)
 	dir := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
-	// Make the stamp path a directory so vfs.ReadFile returns a
-	// non-ENOENT I/O error.
-	if err := os.MkdirAll(filepath.Join(dir, "skills.stamp"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "skills-state.json"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	Init("1.0.21")

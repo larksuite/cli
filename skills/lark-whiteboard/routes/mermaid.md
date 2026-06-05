@@ -16,10 +16,10 @@ Step 3: 渲染验证 & 写入画板 & 交付
   1. 创建产物目录 ./diagrams/YYYY-MM-DDTHHMMSS/
   2. 保存为 diagram.mmd
   3. 渲染（仅用于预览验证，PNG 不是最终产物）：
-       npx -y @larksuite/whiteboard-cli@^0.2.10 -i diagram.mmd -o diagram.png
+       npx -y @larksuite/whiteboard-cli@^0.2.11 -i diagram.mmd -o diagram.png
   4. 审查 PNG，有问题修改后重新渲染（最多 2 轮）
   5. 写入画板：用 whiteboard-cli 将 diagram.mmd 转换为 OpenAPI 格式并 pipe 给 +update：
-       npx -y @larksuite/whiteboard-cli@^0.2.10 -i diagram.mmd --to openapi --format json \
+       npx -y @larksuite/whiteboard-cli@^0.2.11 -i diagram.mmd --to openapi --format json \
          | lark-cli whiteboard +update --whiteboard-token <board_token> \
              --source - --input_format raw --idempotent-token <时间戳+标识> --as user
        → 完整 dry-run / 确认流程见 SKILL.md [§ 写入画板](../SKILL.md#写入画板)

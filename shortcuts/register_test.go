@@ -5,15 +5,22 @@ package shortcuts
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/deprecation"
+	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
@@ -94,6 +101,45 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	if workspaceCmd == nil || workspaceCmd.Name() != "+base-get" {
 		t.Fatalf("base workspace shortcut not mounted: %#v", workspaceCmd)
 	}
+
+	blockDataCmd, _, err := program.Find([]string{"base", "+dashboard-block-get-data"})
+	if err != nil {
+		t.Fatalf("find dashboard block get-data shortcut: %v", err)
+	}
+	if blockDataCmd == nil || blockDataCmd.Name() != "+dashboard-block-get-data" {
+		t.Fatalf("base dashboard block get-data shortcut not mounted: %#v", blockDataCmd)
+	}
+}
+
+// Service-level cobra commands created by RegisterShortcuts must carry
+// the cmdmeta.Domain annotation so plugin Selectors (platform.ByDomain)
+// and Rule.Allow path-globs can resolve a command's business domain.
+// The annotation is set on the parent; cmdmeta.Domain walks up the
+// parent chain so every leaf shortcut inherits without extra tagging.
+func TestRegisterShortcutsTagsServiceDomain(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	for _, svc := range []string{"im", "docs", "drive", "calendar", "base"} {
+		group, _, err := program.Find([]string{svc})
+		if err != nil || group == nil {
+			t.Errorf("service %q not mounted", svc)
+			continue
+		}
+		if got := cmdmeta.Domain(group); got != svc {
+			t.Errorf("service %q domain = %q, want %q", svc, got, svc)
+		}
+	}
+
+	// Inheritance: a leaf shortcut under a service must also resolve
+	// to the parent's domain via cmdmeta.Domain's parent-chain walk.
+	leaf, _, err := program.Find([]string{"im", "+messages-send"})
+	if err != nil || leaf == nil {
+		t.Fatalf("expected im/+messages-send to be mounted")
+	}
+	if got := cmdmeta.Domain(leaf); got != "im" {
+		t.Errorf("leaf domain via parent inheritance = %q, want %q", got, "im")
+	}
 }
 
 func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
@@ -109,7 +155,7 @@ func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
 	}
 }
 
-func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndLegacyTips(t *testing.T) {
+func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndUpgradeTips(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -135,11 +181,11 @@ func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndLegacyTips(t *testing.T)
 	}
 	for _, want := range []string{
 		"Tips:",
-		"Agent version rule",
-		"use --api-version v2 only when the installed lark-doc skill explicitly instructs",
-		"otherwise use the default v1 flags",
-		"if the skill does not mention v2",
-		"legacy v1 examples and flags",
+		"Docs v1 is deprecated and will be removed soon",
+		"Check the installed lark-doc skill first",
+		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+		"After confirming lark-doc is v2",
+		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
 	} {
 		if !strings.Contains(defaultHelp.String(), want) {
 			t.Fatalf("docs default help missing %q:\n%s", want, defaultHelp.String())
@@ -168,13 +214,20 @@ func TestRegisterShortcutsDocsV2HelpUsesV2Description(t *testing.T) {
 	for _, want := range []string{
 		"Document and content operations (v2).",
 		"Tips:",
-		"Agent version rule",
-		"otherwise use the default v1 flags",
-		"if the skill does not mention v2",
-		"legacy v1 examples and flags",
+		"Check the installed lark-doc skill first",
+		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("docs v2 help missing %q:\n%s", want, out.String())
+		}
+	}
+	for _, unwanted := range []string{
+		"Docs v1 is deprecated and will be removed soon",
+		"After confirming lark-doc is v2",
+		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+	} {
+		if strings.Contains(out.String(), unwanted) {
+			t.Fatalf("docs v2 help should not include %q:\n%s", unwanted, out.String())
 		}
 	}
 }
@@ -253,24 +306,47 @@ func TestRegisterShortcutsDocsVersionedShortcutHelpAddsVersionTips(t *testing.T)
 				t.Fatalf("docs %s help failed: %v", tt.shortcut, err)
 			}
 
+			wantTips := []string{
+				"Tips:",
+				"Docs v1 is deprecated and will be removed soon",
+				"Check the installed lark-doc skill first",
+				"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+				"After confirming lark-doc is v2",
+				"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+			}
+			unwantedTips := []string{
+				"[NOTE]",
+				"Use --api-version v2 for the latest API",
+				"otherwise use the default v1 flags",
+				"legacy v1 examples and flags",
+			}
+			if tt.apiVersion == "v2" {
+				wantTips = []string{
+					"Tips:",
+					"Check the installed lark-doc skill first",
+					"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
+				}
+				unwantedTips = append(unwantedTips,
+					"Docs v1 is deprecated and will be removed soon",
+					"After confirming lark-doc is v2",
+					"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+				)
+			}
+
 			for _, want := range []string{
 				tt.shortcutHelp,
 				tt.versionedFlag,
-				"Tips:",
-				"Agent version rule",
-				"use --api-version v2 only when the installed lark-doc skill explicitly instructs",
-				"otherwise use the default v1 flags",
-				"if the skill does not mention v2",
-				"legacy v1 examples and flags",
 			} {
 				if !strings.Contains(out.String(), want) {
 					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
 				}
 			}
-			for _, unwanted := range []string{
-				"[NOTE]",
-				"Use --api-version v2 for the latest API",
-			} {
+			for _, want := range wantTips {
+				if !strings.Contains(out.String(), want) {
+					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
+				}
+			}
+			for _, unwanted := range unwantedTips {
 				if strings.Contains(out.String(), unwanted) {
 					t.Fatalf("docs %s %s help should not include %q:\n%s", tt.shortcut, tt.apiVersion, unwanted, out.String())
 				}
@@ -305,6 +381,69 @@ func TestRegisterShortcutsReusesExistingServiceCommand(t *testing.T) {
 	}
 }
 
+// TestRegisterShortcutsInstallsMailFlagSuggestHook is the end-to-end
+// wiring guard for the mail unknown-flag fuzzy-match feature: it ensures
+// the `if service == "mail" { mail.InstallOnMail(svc) }` branch in
+// RegisterShortcutsWithContext is actually exercised, so a future refactor
+// that drops the branch (or breaks the import) will fail this test rather
+// than silently regressing the structured-error contract.
+func TestRegisterShortcutsInstallsMailFlagSuggestHook(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	mailCmd, _, err := program.Find([]string{"mail"})
+	if err != nil {
+		t.Fatalf("find mail command: %v", err)
+	}
+	if mailCmd == nil || mailCmd.Name() != "mail" {
+		t.Fatalf("mail command not mounted: %#v", mailCmd)
+	}
+
+	// The FlagErrorFunc lookup walks up to the nearest non-nil hook, so
+	// invoking it on the mail parent (or any of its children) must yield
+	// a typed validation problem for the unknown flag.
+	got := mailCmd.FlagErrorFunc()(mailCmd, errors.New("unknown flag: --bogus"))
+	var validationErr *errs.ValidationError
+	if !errors.As(got, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", got, got)
+	}
+	if validationErr.Param != "--bogus" {
+		t.Fatalf("expected Param=--bogus, got %q", validationErr.Param)
+	}
+	problem, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", got, got)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected validation/invalid_argument, got %s/%s", problem.Category, problem.Subtype)
+	}
+}
+
+// TestRegisterShortcutsLeavesNonMailFlagErrorUntouched confirms the
+// install is scoped: a non-mail service must keep the default cobra
+// pass-through behaviour, otherwise an accidental fall-through in
+// register.go would silently change every domain's error envelope.
+func TestRegisterShortcutsLeavesNonMailFlagErrorUntouched(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	baseCmd, _, err := program.Find([]string{"base"})
+	if err != nil {
+		t.Fatalf("find base command: %v", err)
+	}
+	in := errors.New("unknown flag: --bogus")
+	got := baseCmd.FlagErrorFunc()(baseCmd, in)
+	// Default cobra hook is identity — anything else means the mail hook
+	// leaked across domains.
+	var exitErr *output.ExitError
+	if errors.As(got, &exitErr) {
+		t.Fatalf("base service unexpectedly produced *output.ExitError: %#v", exitErr)
+	}
+	if got != in {
+		t.Fatalf("base service should pass through original error pointer, got %T (%v)", got, got)
+	}
+}
+
 func TestGenerateShortcutsJSON(t *testing.T) {
 	output := os.Getenv("SHORTCUTS_OUTPUT")
 	if output == "" {
@@ -324,7 +463,7 @@ func TestGenerateShortcutsJSON(t *testing.T) {
 		grouped[s.Service] = append(grouped[s.Service], entry{
 			Verb:        verb,
 			Description: s.Description,
-			Scopes:      s.ScopesForIdentity("user"),
+			Scopes:      s.DeclaredScopesForIdentity("user"),
 		})
 	}
 
@@ -339,4 +478,153 @@ func TestGenerateShortcutsJSON(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 	t.Logf("wrote %d bytes to %s", len(data), output)
+}
+
+// applySheetsCompatGroups must split the sheets service into a current group
+// (refactored "+"-shortcuts) and a deprecated group (backward-compat aliases),
+// append a "(→ +new)" migration pointer to each alias, and leave non-"+"
+// subcommands (OpenAPI metaapi, help/completion) ungrouped so cobra files them
+// under "Additional Commands".
+func TestApplySheetsCompatGroups(t *testing.T) {
+	svc := &cobra.Command{Use: "sheets"}
+	newCmd := &cobra.Command{Use: "+cells-get", Short: "Read ranges"}
+	aliasCmd := &cobra.Command{Use: "+read", Short: "Read spreadsheet cell values"}
+	metaCmd := &cobra.Command{Use: "spreadsheets", Short: "spreadsheets operations"}
+	svc.AddCommand(newCmd, aliasCmd, metaCmd)
+
+	applySheetsCompatGroups(svc)
+
+	if !svc.ContainsGroup(sheetsCurrentGroupID) {
+		t.Errorf("current group %q not registered", sheetsCurrentGroupID)
+	}
+	if !svc.ContainsGroup(sheetsDeprecatedGroupID) {
+		t.Errorf("deprecated group %q not registered", sheetsDeprecatedGroupID)
+	}
+	if newCmd.GroupID != sheetsCurrentGroupID {
+		t.Errorf("+cells-get GroupID = %q, want %q", newCmd.GroupID, sheetsCurrentGroupID)
+	}
+	if aliasCmd.GroupID != sheetsDeprecatedGroupID {
+		t.Errorf("+read GroupID = %q, want %q", aliasCmd.GroupID, sheetsDeprecatedGroupID)
+	}
+	if !strings.Contains(aliasCmd.Short, "(→ +cells-get)") {
+		t.Errorf("+read Short missing migration pointer, got %q", aliasCmd.Short)
+	}
+	if metaCmd.GroupID != "" {
+		t.Errorf("metaapi spreadsheets should stay ungrouped, got GroupID %q", metaCmd.GroupID)
+	}
+}
+
+// End-to-end: the rendered `sheets --help` must surface the deprecated-group
+// heading (telling users to update their skill) plus the per-alias migration
+// pointers, while keeping the refactored shortcuts under Available Commands.
+func TestRegisterShortcutsSheetsHelpGroupsDeprecatedAliases(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	sheetsCmd, _, err := program.Find([]string{"sheets"})
+	if err != nil {
+		t.Fatalf("find sheets command: %v", err)
+	}
+
+	var out bytes.Buffer
+	sheetsCmd.SetOut(&out)
+	if err := sheetsCmd.Help(); err != nil {
+		t.Fatalf("sheets help failed: %v", err)
+	}
+	got := out.String()
+
+	for _, want := range []string{
+		"Available Commands:",
+		"Deprecated pre-refactor commands",
+		"update your lark-sheets skill",
+		"+read",
+		"(→ +cells-get)",
+		"+write",
+		"(→ +cells-set)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("sheets help missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// wrapSheetsBackwardDeprecation must decorate each alias's Execute so that
+// invoking it records a process-level deprecation notice (reusing
+// sheetsAliasReplacement for the migration target) while still calling the
+// original Execute. cmd/root.go reads that notice into the JSON "_notice".
+func TestWrapSheetsBackwardDeprecation(t *testing.T) {
+	t.Cleanup(func() { deprecation.SetPending(nil) })
+	deprecation.SetPending(nil)
+
+	called := false
+	in := []common.Shortcut{{
+		Service: "sheets",
+		Command: "+read",
+		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
+			called = true
+			return nil
+		},
+	}}
+
+	out := wrapSheetsBackwardDeprecation(in)
+	if len(out) != 1 {
+		t.Fatalf("wrapped list len = %d, want 1", len(out))
+	}
+	if deprecation.GetPending() != nil {
+		t.Fatal("notice set before wrapped Execute ran")
+	}
+
+	if err := out[0].Execute(context.Background(), nil); err != nil {
+		t.Fatalf("wrapped Execute returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("original Execute was not invoked by the wrapper")
+	}
+
+	dep := deprecation.GetPending()
+	if dep == nil {
+		t.Fatal("expected a pending deprecation notice after Execute")
+	}
+	if dep.Command != "+read" {
+		t.Errorf("notice Command = %q, want +read", dep.Command)
+	}
+	if dep.Replacement != "+cells-get" {
+		t.Errorf("notice Replacement = %q, want +cells-get (from sheetsAliasReplacement)", dep.Replacement)
+	}
+	if dep.Skill != "lark-sheets" {
+		t.Errorf("notice Skill = %q, want lark-sheets", dep.Skill)
+	}
+}
+
+// The wrapper must also decorate Validate, so an out-of-date skill whose
+// pre-refactor argument shape fails validation (before Execute) still gets the
+// deprecation notice in its error envelope.
+func TestWrapSheetsBackwardDeprecationValidateHook(t *testing.T) {
+	t.Cleanup(func() { deprecation.SetPending(nil) })
+	deprecation.SetPending(nil)
+
+	validated := false
+	in := []common.Shortcut{{
+		Service: "sheets",
+		Command: "+write",
+		Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+			validated = true
+			return nil
+		},
+	}}
+
+	out := wrapSheetsBackwardDeprecation(in)
+	if out[0].Validate == nil {
+		t.Fatal("Validate hook was dropped by the wrapper")
+	}
+	if err := out[0].Validate(context.Background(), nil); err != nil {
+		t.Fatalf("wrapped Validate returned error: %v", err)
+	}
+	if !validated {
+		t.Fatal("original Validate was not invoked")
+	}
+	dep := deprecation.GetPending()
+	if dep == nil || dep.Command != "+write" || dep.Replacement != "+cells-set" {
+		t.Fatalf("Validate hook did not record expected notice: %#v", dep)
+	}
 }

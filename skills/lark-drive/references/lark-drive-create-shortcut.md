@@ -48,7 +48,7 @@ lark-cli drive +create-shortcut \
 - CLI 层会把 `--file-token` 和 `--type` 组装为底层 API 所需的 `refer_entity`
 - `--file-token` 必须是 Drive 文件 token，不要直接传 wiki 节点 token
 - 如果来源是 `/wiki/...` 链接，必须先按 [`lark-drive`](../SKILL.md) 中的 wiki 解析流程拿到真实 `obj_token`，再创建快捷方式
-- 目标位置必须是云空间文件夹；这个 shortcut 不是“复制文件内容”，而是“在另一个文件夹里挂一个引用入口”
+- 目标位置必须是云空间（云盘/云存储）文件夹；这个 shortcut 不是“复制文件内容”，而是“在另一个文件夹里挂一个引用入口”
 
 ## 类型说明
 
@@ -99,5 +99,5 @@ lark-cli drive +create-shortcut \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

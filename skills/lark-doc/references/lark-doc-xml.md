@@ -15,7 +15,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 |-|-|-|
 | `<callout>` | 高亮框，子块仅支持文本、标题、列表、待办、引用 | `emoji`(默认 bulb), `background-color`, `border-color`, `text-color` |
 | `<grid>` + `<column>` | 分栏布局，各列 width-ratio 之和为 1 | `width-ratio` |
-| `<whiteboard>` | 嵌入画板 | `type`: `mermaid` \| `plantuml` \| `blank` |
+| `<whiteboard>` | 嵌入画板 | `type`: `blank` \| `mermaid` \| `plantuml` \| `svg` |
 | `<pre>` | （代码块，内含 `code`）| `lang`, `caption` |
 | `<figure>` | 视图容器 | `view-type` |
 | `<bookmark>` | 书签链接 | `<bookmark name="标题" href="https://..."></bookmark>`，必传 name 和 href |
@@ -41,7 +41,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 文档中可嵌入外部资源块（属于容器标签的特殊形式），需要额外语法创建：
 
 - `<img>` — `<img href="https://..."/>` 上传网络图片
-- `<whiteboard>` — `<whiteboard type="blank"></whiteboard>` 空白；`<whiteboard type="mermaid|plantuml">内容</whiteboard>` 带内容；
+- `<whiteboard>` — 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整自包含 SVG</whiteboard>`；复杂图使用 `<whiteboard type="blank"></whiteboard>` 先创建空白画板，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 调用 `lark-whiteboard` 写入；
 - `<sheet>` — `<sheet type="blank"></sheet>` 空白；`<sheet sheet-id="SID" token="TOKEN"></sheet>` 复制已有
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id

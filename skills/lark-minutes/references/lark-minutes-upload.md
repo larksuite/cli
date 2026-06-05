@@ -17,8 +17,8 @@
 
 当用户要求将音视频文件转换为妙记，或进一步要纪要/逐字稿/文字稿/撰写文字时，必须按照以下步骤执行：
 
-1. **上传文件至云空间获取 file_token**
-   - 使用 `lark-cli drive +upload` 命令上传本地文件到云空间（Drive）：
+1. **上传文件至云空间（云盘/云存储）获取 file_token**
+   - 使用 `lark-cli drive +upload` 命令上传本地文件到云空间/云盘/云存储（Drive）：
      ```bash
      lark-cli drive +upload --file <path/to/media/file>
      ```
@@ -44,7 +44,7 @@
 ## 命令示例
 
 ```bash
-# 通过已上传到云空间的 file_token 生成妙记
+# 通过已上传到云空间（云盘/云存储）的 file_token 生成妙记
 lark-cli minutes +upload --file-token boxcnxxxxxxxxxxxxxxxx
 
 # 通过 minute_token 继续获取纪要 / 逐字稿 / 文字稿 / AI 产物
@@ -55,7 +55,7 @@ lark-cli vc +notes --minute-tokens obcnxxxxxxxxxxxxxxxx
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--file-token <token>` | 是 | 已经上传到飞书云空间的音视频文件的 file_token |
+| `--file-token <token>` | 是 | 已经上传到飞书云空间（云盘/云存储）的音视频文件的 file_token |
 
 ## 支持的格式与限制
 
@@ -72,13 +72,13 @@ lark-cli vc +notes --minute-tokens obcnxxxxxxxxxxxxxxxx
 
 ### 1. 必须提供 file_token
 
-本接口不直接处理本地文件的上传，必须先使用 `drive +upload` 将文件上传到云空间获取 `file_token`，然后再调用本接口。
+本接口不直接处理本地文件的上传，必须先使用 `drive +upload` 将文件上传到云空间（云盘/云存储）获取 `file_token`，然后再调用本接口。
 
 ### 2. 先上传，再生成妙记
 
 推荐流程如下：
 
-1. 使用 `lark-cli drive +upload --file <path>` 上传本地音视频文件到云空间
+1. 使用 `lark-cli drive +upload --file <path>` 上传本地音视频文件到云空间（云盘/云存储）
 2. 从返回结果中取出 `file_token`
 3. 调用 `lark-cli minutes +upload --file-token <file_token>` 生成妙记
 4. 如果目标是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，再从 `minute_url` 提取 `minute_token`，继续调用 `lark-cli vc +notes --minute-tokens <minute_token>`
@@ -100,5 +100,5 @@ lark-cli vc +notes --minute-tokens obcnxxxxxxxxxxxxxxxx
 ## 参考
 
 - [lark-minutes](../SKILL.md) -- 妙记相关功能说明
-- [drive +upload](../../lark-drive/references/lark-drive-upload.md) -- 上传文件到云空间
+- [drive +upload](../../lark-drive/references/lark-drive-upload.md) -- 上传文件到云空间（云盘/云存储）
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

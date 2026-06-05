@@ -1,7 +1,5 @@
 
 ## 快速决策
-- 按标题或关键词找云空间里的表格文件，先用 `lark-cli docs +search`。
-- `docs +search` 会直接返回 `SHEET` 结果，不要把它误解成只能搜文档 / Wiki。
 - 已知 spreadsheet URL / token 后，再进入 `sheets +info`、`sheets +read`、`sheets +find` 等对象内部操作。
 
 ## 核心概念

@@ -9,10 +9,31 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
+
+// assertContentValidationHint asserts err is a typed *errs.ValidationError
+// carrying SubtypeInvalidArgument, Param "--content", and a Hint containing
+// the given substring. The over-cap message now flows through a typed
+// ValidationError instead of the legacy *output.ExitError.Detail shape.
+func assertContentValidationHint(t *testing.T, err error, wantHint string) {
+	t.Helper()
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	if valErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", valErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if valErr.Param != "--content" {
+		t.Errorf("Param = %q, want %q", valErr.Param, "--content")
+	}
+	if !strings.Contains(valErr.Hint, wantHint) {
+		t.Errorf("expected hint substring %q, got %q", wantHint, valErr.Hint)
+	}
+}
 
 func decodeJSONMap(t *testing.T, raw string) map[string]interface{} {
 	t.Helper()
@@ -106,6 +127,13 @@ func TestParseCommentDocRef(t *testing.T) {
 			wantToken: "docToken",
 		},
 		{
+			name:      "raw token with type file",
+			input:     "fileToken",
+			docType:   "file",
+			wantKind:  "file",
+			wantToken: "fileToken",
+		},
+		{
 			name:    "raw token without type",
 			input:   "xxxxxx",
 			wantErr: "--type is required",
@@ -121,6 +149,12 @@ func TestParseCommentDocRef(t *testing.T) {
 			input:     "https://example.larksuite.com/slides/pres_123?from=share",
 			wantKind:  "slides",
 			wantToken: "pres_123",
+		},
+		{
+			name:      "file url",
+			input:     "https://example.larksuite.com/file/boxcn123?from=share",
+			wantKind:  "file",
+			wantToken: "boxcn123",
 		},
 		{
 			name:    "unsupported url",
@@ -408,14 +442,8 @@ func TestParseCommentReplyElementsTextLength(t *testing.T) {
 					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
 				}
 				if tt.wantHint != "" {
-					// Hint lives on ExitError.Detail.Hint, not err.Error().
-					var exitErr *output.ExitError
-					if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-						t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
-					}
-					if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
-						t.Errorf("expected hint substring %q, got %q", tt.wantHint, exitErr.Detail.Hint)
-					}
+					// Hint lives on the typed ValidationError, not err.Error().
+					assertContentValidationHint(t, err, tt.wantHint)
 				}
 				return
 			}
@@ -445,11 +473,11 @@ func TestParseCommentReplyElementsHintForbidsSplitAdvice(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected over-cap error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with Detail, got %T (%v)", err, err)
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
 	}
-	hint := exitErr.Detail.Hint
+	hint := valErr.Hint
 
 	// The hint must explicitly call out that splitting does NOT help.
 	if !strings.Contains(hint, "does NOT help") {
@@ -542,6 +570,29 @@ func TestBuildCommentCreateV2RequestFull(t *testing.T) {
 	}
 	if gotReplyElements[0]["text"] != "全文评论" {
 		t.Fatalf("expected text %q, got %#v", "全文评论", gotReplyElements[0]["text"])
+	}
+}
+
+func TestBuildCommentCreateV2RequestFile(t *testing.T) {
+	t.Parallel()
+
+	replyElements := []map[string]interface{}{
+		{
+			"type": "text",
+			"text": "README comment",
+		},
+	}
+	got := buildCommentCreateV2Request("file", "", "", replyElements, nil)
+
+	if got["file_type"] != "file" {
+		t.Fatalf("expected file_type file, got %#v", got["file_type"])
+	}
+	anchor, ok := got["anchor"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected anchor map, got %#v", got["anchor"])
+	}
+	if blockID, ok := anchor["block_id"].(string); !ok || blockID != fileFullCommentAnchorBlockID {
+		t.Fatalf("expected file anchor.block_id %q, got %#v", fileFullCommentAnchorBlockID, anchor["block_id"])
 	}
 }
 
@@ -906,6 +957,34 @@ func TestSlidesCommentValidateCompoundBlockID(t *testing.T) {
 	}
 }
 
+func TestFileCommentValidateRejectsBlockID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "blk_123",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
+		t.Fatalf("expected file local-comment rejection, got: %v", err)
+	}
+}
+
+func TestFileCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--selection-with-ellipsis", "something",
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "file comments only support full comments") {
+		t.Fatalf("expected file local-comment rejection, got: %v", err)
+	}
+}
+
 // ── Slides comment execute tests ────────────────────────────────────────────
 
 func TestSlidesCommentExecuteSuccess(t *testing.T) {
@@ -1113,6 +1192,146 @@ func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "--block-id is required") {
 		t.Fatalf("expected block-id required error, got: %v", err)
+	}
+}
+
+func TestFileCommentExecuteSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"metas": []interface{}{
+					map[string]interface{}{"title": "README.txt"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/fileToken/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "fileComment123", "created_at": 1700000000},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"请补充 README 示例"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "fileComment123") {
+		t.Fatalf("stdout missing comment_id: %s", stdout.String())
+	}
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "file" {
+		t.Fatalf("stdout file_type = %q, want file\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "file_name", "data.file_name"); got != "README.txt" {
+		t.Fatalf("stdout file_name = %q, want README.txt\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "file_extension", "data.file_extension"); got != ".txt" {
+		t.Fatalf("stdout file_extension = %q, want .txt\nstdout:\n%s", got, stdout.String())
+	}
+}
+
+func TestFileCommentExecuteRejectsUnsupportedFileType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"metas": []interface{}{
+					map[string]interface{}{"title": "notes.pdf"},
+				},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "does not support comments for this Drive file type yet") {
+		t.Fatalf("expected unsupported file comment type error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "notes.pdf") {
+		t.Fatalf("expected error to mention unsupported title, got: %v", err)
+	}
+}
+
+func TestFileCommentExecuteRejectsUnexpectedMetadataFormat(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"metas": []interface{}{"unexpected"},
+			},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "unexpected metadata format") {
+		t.Fatalf("expected unexpected metadata format error, got: %v", err)
+	}
+}
+
+func TestFileCommentSupportedExtensions(t *testing.T) {
+	t.Parallel()
+
+	supported := []string{
+		"README.md",
+		"notes.TXT",
+		"data.json",
+		"table.csv",
+		"main.go",
+		"app.js",
+		"script.py",
+		"slides.pptx",
+		"image.png",
+		"photo.jpg",
+		"photo.jpeg",
+		".md",
+		"archive.zip",
+		"audio.mp3",
+		"video.mp4",
+	}
+	for _, title := range supported {
+		extension := fileCommentExtension(title)
+		if !isSupportedFileCommentExtension(extension) {
+			t.Fatalf("%s extension %q should be supported", title, extension)
+		}
+	}
+
+	unsupported := []string{
+		"report.pdf",
+		"word.docx",
+		"sheet.xlsx",
+		"unknown.bin",
+		"no-extension",
+		".gitignore",
+	}
+	for _, title := range unsupported {
+		extension := fileCommentExtension(title)
+		if isSupportedFileCommentExtension(extension) {
+			t.Fatalf("%s extension %q should not be supported", title, extension)
+		}
+	}
+	if extension := fileCommentExtension(".gitignore"); extension != "" {
+		t.Fatalf("dotfile extension = %q, want empty", extension)
 	}
 }
 
@@ -1346,6 +1565,43 @@ func TestDryRunDocxFullComment(t *testing.T) {
 	}
 }
 
+func TestDryRunFileDirectURL(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/file/fileToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "verify supported file metadata") {
+		t.Fatalf("dry-run output missing supported file metadata verification step: %s", stdout.String())
+	}
+	out := decodeJSONMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "api")
+	if len(api) != 2 {
+		t.Fatalf("expected 2 dry-run api calls, got %d\nstdout:\n%s", len(api), stdout.String())
+	}
+	verifyCall := mustMapValue(t, api[0], "api[0]")
+	createCall := mustMapValue(t, api[1], "api[1]")
+	verifyBody := mustMapValue(t, verifyCall["body"], "api[0].body")
+	createBody := mustMapValue(t, createCall["body"], "api[1].body")
+	requestDocs := mustSliceValue(t, verifyBody["request_docs"], "api[0].body.request_docs")
+	requestDoc := mustMapValue(t, requestDocs[0], "api[0].body.request_docs[0]")
+	if got := mustStringField(t, requestDoc, "doc_type", "api[0].body.request_docs[0].doc_type"); got != "file" {
+		t.Fatalf("metadata query doc_type = %q, want file\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, createBody, "file_type", "api[1].body.file_type"); got != "file" {
+		t.Fatalf("comment create file_type = %q, want file\nstdout:\n%s", got, stdout.String())
+	}
+	anchor := mustMapValue(t, createBody["anchor"], "api[1].body.anchor")
+	if got := mustStringField(t, anchor, "block_id", "api[1].body.anchor.block_id"); got != fileFullCommentAnchorBlockID {
+		t.Fatalf("comment create anchor.block_id = %q, want %q\nstdout:\n%s", got, fileFullCommentAnchorBlockID, stdout.String())
+	}
+}
+
 // ── resolveCommentTarget coverage ───────────────────────────────────────────
 
 func TestResolveWikiToDocxFullComment(t *testing.T) {
@@ -1397,7 +1653,7 @@ func TestResolveWikiToUnsupportedType(t *testing.T) {
 		"--content", `[{"type":"text","text":"test"}]`,
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/sheet/slides") {
+	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/file/sheet/slides") {
 		t.Fatalf("expected unsupported type error, got: %v", err)
 	}
 }

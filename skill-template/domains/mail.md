@@ -322,6 +322,57 @@ lark-cli mail +send --to alice@example.com --subject '周报' \
 lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 ```
 
+**HTML 写法、风格指引、场景模板请参考两份配套文档：**
+
+- [邮件 HTML 写法指南](references/lark-mail-html.md) — 标签 / class / inline style 速查、飞书原生写法（含风格指引）、完整场景模板（通知 / 周报 / 决策请求）；表格 / 列表 / 字号 / 引用 / 链接 / 内嵌图片标准写法都在这里
+- [`+lint-html` 用法](references/lark-mail-lint-html.md) — 创建草稿前自检 / 修复 AI 输出
+
+### 邮件风格规范
+
+写信时必须遵守的文风底线（详见 [邮件 HTML 写法指南](references/lark-mail-html.md)）：
+
+- **禁机械编号**：用 `<ul>` / `<ol>` 表达列表，不要用 "一、二、三" / "①②③" / "1) 2) 3)"
+- **emoji 克制**：emoji 仅作状态标签（⏰紧急 / ✅完成 / ⚠️风险），不要在正文段落里堆 emoji 装饰
+- **禁冗长 disclaimer**：删除 "希望对您有帮助" / "感谢您的耐心阅读" 等填充语；信息密度优先
+- **标题 ≤ 30 字**：邮件主题 `--subject` 控制在 30 字内，避免被收件箱截断
+- **决策 / 结论前置**：第一段就给结论或决策项，让收件人扫一眼就知道是不是需要他做什么
+- **问候 / 落款不超 1 段**：`Hi 各位 Reviewer，` / `各位同事：` 一句话即可；落款 `[发件人姓名] / [团队] / [日期]` 一行结束
+
+### 严禁手拼 raw EML
+
+> **CRITICAL：严禁手拼 raw EML 直传 `drafts.create`，必须走 compose 5 shortcut（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward`）或 `+draft-edit` 的 body op。**
+
+`emlbuilder` 已内置 RFC 合规处理（base64 / boundary / header folding / 附件 RFC 2231 等），AI **无需自学 RFC**。手拼 raw EML 几乎一定会踩坑（编码错误 / 边界冲突 / 收件端不渲染），且绕开了 lark-cli 的统一安全和兼容性兜底——本仓库的 `+send` / `+draft-create` 等 shortcut 已封装好所有发信细节，AI 只需关注业务字段（收件人 / 主题 / HTML 正文 / 附件路径）即可。
+
+### 写入路径内置 HTML lint
+
+`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op 在调用 `emlbuilder` **之前**会强制对 HTML 正文做 lint：
+
+- 错误（`<script>` / `on*` / `javascript:` URL / `<iframe>` / `<form>` / `<style>` / `<link>` 等）会被**直接删除**
+- 警告（`<font>` / `<center>` / `<marquee>`）会被**自动修复**为飞书原生写法
+- 不允许的 CSS property（`position` / `z-index` / `transform` 等）会从 inline `style` 里删除
+
+默认 envelope 只携带必要字段；加 `--show-lint-details` 后会同时输出两个 Finding 数组（无违规时是空数组），方便调用方调试：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "draft_id": "...",
+    "lint_applied": [
+      {"rule_id": "TAG_FONT_TO_SPAN", "severity": "warning", "tag_or_attr": "font",
+       "excerpt": "<font color=\"red\"...>", "hint": "已替换为 <span style=...>"}
+    ],
+    "original_blocked": [
+      {"rule_id": "TAG_SCRIPT_BLOCKED", "severity": "error", "tag_or_attr": "script",
+       "excerpt": "<script...>", "hint": "已整段删除（XSS 风险）"}
+    ]
+  }
+}
+```
+
+写入路径**没有 `--no-lint` 总开关**——这是本方案的安全契约。如果想预先看 HTML 是否会被改动，先用 [`+lint-html`](references/lark-mail-lint-html.md) 跑一次。
+
 ### 读取邮件：按需控制返回内容
 
 `+message`、`+messages`、`+thread` 默认返回 HTML 正文（`--html=true`）。仅需确认操作结果（如验证标记已读、移动文件夹是否成功）时，用 `--html=false` 跳过 HTML 正文，只返回纯文本，显著减少 token 消耗。

@@ -15,11 +15,6 @@ func TestStaleNotice_Message(t *testing.T) {
 		want string
 	}{
 		{
-			"cold_start",
-			StaleNotice{Current: "", Target: "1.0.21"},
-			"lark-cli skills not installed, run: lark-cli update",
-		},
-		{
 			"drift",
 			StaleNotice{Current: "1.0.20", Target: "1.0.21"},
 			"lark-cli skills 1.0.20 out of sync with binary 1.0.21, run: lark-cli update",

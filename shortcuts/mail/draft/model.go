@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+//nolint:forbidigo // intermediate draft patch model errors; mail command layer wraps into typed ValidationError.
 package draft
 
 import (
@@ -166,6 +167,7 @@ type DraftProjection struct {
 	LargeAttachmentsSummary []LargeAttachmentSummary `json:"large_attachments_summary,omitempty"`
 	InlineSummary           []PartSummary            `json:"inline_summary,omitempty"`
 	Warnings                []string                 `json:"warnings,omitempty"`
+	Priority                string                   `json:"priority"`
 }
 
 type Patch struct {

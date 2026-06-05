@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -118,13 +119,21 @@ func validateUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
 	}
 
 	if needsSelectionV1[mode] && selEllipsis == "" && selTitle == "" {
-		return common.FlagErrorf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
+		return common.FlagErrorf(selectionRequiredMessageV1(mode))
 	}
 	if err := validateSelectionByTitleV1(selTitle); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func selectionRequiredMessageV1(mode string) string {
+	msg := fmt.Sprintf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
+	if mode == "replace_all" {
+		msg += ". If you intended to replace the entire document body, use --mode overwrite instead."
+	}
+	return msg
 }
 
 func validateSelectionByTitleV1(title string) error {
@@ -158,6 +167,16 @@ func executeUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
 	// execution — the update still proceeds.
 	for _, w := range docsUpdateWarnings(runtime.Str("mode"), runtime.Str("markdown")) {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+	}
+
+	// Overwrite replaces the entire document, silently discarding any
+	// whiteboard or file-attachment blocks that cannot be re-created from
+	// Markdown. Pre-fetch the current content and warn when such blocks
+	// are present so the caller can take a backup before proceeding.
+	if runtime.Str("mode") == "overwrite" {
+		if w := warnOverwriteResourceBlocks(runtime); w != "" {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
+		}
 	}
 
 	// Surface callout type= hint so users know to switch to background-color/
@@ -196,4 +215,75 @@ func buildUpdateArgsV1(runtime *common.RuntimeContext) map[string]interface{} {
 		args["new_title"] = v
 	}
 	return args
+}
+
+// resourceBlockRe matches the opening of a <whiteboard …> or <file …> tag
+// (followed by whitespace, > or /) to avoid false positives on tag names like
+// <file-view> or prose that merely mentions the word "whiteboard".
+var resourceBlockRe = regexp.MustCompile(`<(whiteboard|file)[\s/>]`)
+
+// warnOverwriteResourceBlocks pre-fetches the current document and returns a
+// non-empty warning string when the document contains whiteboard or file
+// attachment blocks that would be permanently deleted by an overwrite. Returns
+// an empty string (no warning) when the document is clean or the fetch fails
+// (we never block the overwrite on a best-effort check).
+//
+// This function is not unit-tested because it depends on an external MCP call
+// (fetch-doc). The pure detection logic lives in checkOverwriteResourceBlocks,
+// which has full table-driven coverage.
+//
+// Performance: this adds one extra fetch-doc round-trip to every --mode overwrite
+// call, even when the document has no resource blocks. The cost is intentional:
+// the guard is best-effort and silent on failure, so the latency is bounded and
+// the trade-off is acceptable to avoid silent data loss.
+func warnOverwriteResourceBlocks(runtime *common.RuntimeContext) string {
+	args := map[string]interface{}{
+		"doc_id": runtime.Str("doc"),
+		// skip_task_detail reduces response payload by omitting per-block task
+		// metadata, making the pre-fetch faster and cheaper.
+		"skip_task_detail": true,
+	}
+	result, err := common.CallMCPTool(runtime, "fetch-doc", args)
+	if err != nil {
+		// Fetch failed — silently skip the guard rather than blocking overwrite.
+		return ""
+	}
+	md, _ := result["markdown"].(string)
+	return checkOverwriteResourceBlocks(md)
+}
+
+// checkOverwriteResourceBlocks scans Markdown for resource block tags that
+// cannot survive an overwrite: <whiteboard …> and <file …>. Returns a
+// warning string listing the counts if any are found, empty string otherwise.
+func checkOverwriteResourceBlocks(markdown string) string {
+	matches := resourceBlockRe.FindAllStringSubmatch(markdown, -1)
+	whiteboards, files := 0, 0
+	for _, m := range matches {
+		switch m[1] {
+		case "whiteboard":
+			whiteboards++
+		case "file":
+			files++
+		}
+	}
+	var found []string
+	if whiteboards == 1 {
+		found = append(found, "1 whiteboard block")
+	} else if whiteboards > 1 {
+		found = append(found, fmt.Sprintf("%d whiteboard blocks", whiteboards))
+	}
+	if files == 1 {
+		found = append(found, "1 file attachment block")
+	} else if files > 1 {
+		found = append(found, fmt.Sprintf("%d file attachment blocks", files))
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"the document contains %s that cannot be reconstructed from Markdown; "+
+			"overwrite will permanently delete them. "+
+			"Consider fetching a backup with `docs +fetch` before overwriting.",
+		strings.Join(found, " and "),
+	)
 }

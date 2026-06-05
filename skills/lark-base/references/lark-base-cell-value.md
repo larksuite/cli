@@ -106,7 +106,7 @@
 
 ### 2.8 location
 
-用对象 `{lng, lat}`，两者都是数字；`lng` 是经度，`lat` 是纬度。
+写入对象必须使用 `{lng, lat}`，两者都是数字；`lng` 是经度，`lat` 是纬度。不需要手动传 `full_address`，平台会根据坐标解析地址。
 
 ```json
 {
@@ -117,11 +117,13 @@
 }
 ```
 
+读取、筛选、转文本等场景使用 `full_address` 字符串；只有公式能访问坐标。如果用户只给地址文本，先获取或确认坐标后再写入；不要把仅有地址文本直接当作 location CellValue。
+
 ### 2.9 attachment（不作为普通 CellValue 写入）
 
-用户要把本地文件加到记录里时，必须使用 `lark-cli base +record-upload-attachment --file <path>` 上传到已有记录。不能用普通记录操作接口来上传附件。
-
-`+record-get` 返回的附件字段单元格包含 `file_token` 和文件名，可以把 `file_token` 交给 `lark-cli docs +media-download` 进行附件下载。
+- 追加附件：使用 `lark-cli base +record-upload-attachment --record-id <record_id> --field-id <field_id> --file <path>`；可重复 `--file` 一次追加多个附件，不能用普通记录操作接口写附件值。
+- 删除附件：使用 `lark-cli base +record-remove-attachment --record-id <record_id> --field-id <field_id> --file-token <file_token> --yes`；可重复 `--file-token` 一次删除同一单元格里的多个附件。
+- 下载附件：使用 `lark-cli base +record-download-attachment --record-id <record_id> --file-token <file_token> --output <dir>`；不传 `--file-token` 时下载整行所有附件，也可重复 `--file-token` 只下载指定附件。Base 附件必须用这个命令下载，用其他下载入口可能失败。
 
 ## 3. 只读字段（不要写）
 

@@ -91,7 +91,7 @@ func validateFormulaLookupGuideAck(runtime *common.RuntimeContext, command strin
 		if fieldType == "lookup" {
 			guidePath = "skills/lark-base/references/lookup-field-guide.md"
 		}
-		return common.FlagErrorf("--i-have-read-guide is required for %s when --json.type is %q; read %s first, then retry with --i-have-read-guide", command, fieldType, guidePath)
+		return baseFlagErrorf("--i-have-read-guide is required for %s when --json.type is %q; read %s first, then retry with --i-have-read-guide", command, fieldType, guidePath)
 	}
 	return nil
 }

@@ -98,7 +98,6 @@ POST /open-apis/base/v3/bases/:base_token/tables/:table_id/fields
 
 ## 参考
 
-- [lark-base-field.md](lark-base-field.md) — field 索引页
-- [lark-base-shortcut-field-properties.md](lark-base-shortcut-field-properties.md) — shortcut 字段 JSON 规范（推荐）
+- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
 - [formula-field-guide.md](formula-field-guide.md) — formula 指南（创建公式必读）
 - [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（创建查找引用必读）

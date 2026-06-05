@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -176,7 +177,7 @@ func TestBuildDeleteBlockDataUsesHalfOpenInterval(t *testing.T) {
 func TestBuildBatchUpdateDataForImage(t *testing.T) {
 	t.Parallel()
 
-	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text")
+	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text", 0, 0)
 	want := map[string]interface{}{
 		"requests": []interface{}{
 			map[string]interface{}{
@@ -199,7 +200,7 @@ func TestBuildBatchUpdateDataForImage(t *testing.T) {
 func TestBuildBatchUpdateDataForFile(t *testing.T) {
 	t.Parallel()
 
-	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "")
+	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "", 0, 0)
 	want := map[string]interface{}{
 		"requests": []interface{}{
 			map[string]interface{}{
@@ -212,6 +213,48 @@ func TestBuildBatchUpdateDataForFile(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildBatchUpdateData(file) = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildBatchUpdateDataForImageWithWidthHeight(t *testing.T) {
+	t.Parallel()
+
+	got := buildBatchUpdateData("blk_1", "image", "file_tok", "center", "caption text", 800, 447)
+	want := map[string]interface{}{
+		"requests": []interface{}{
+			map[string]interface{}{
+				"block_id": "blk_1",
+				"replace_image": map[string]interface{}{
+					"token":   "file_tok",
+					"width":   800,
+					"height":  447,
+					"align":   2,
+					"caption": map[string]interface{}{"content": "caption text"},
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildBatchUpdateData(image, 800, 447) = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildBatchUpdateDataForFileIgnoresWidthHeight(t *testing.T) {
+	t.Parallel()
+
+	got := buildBatchUpdateData("blk_2", "file", "file_tok", "", "", 800, 600)
+	want := map[string]interface{}{
+		"requests": []interface{}{
+			map[string]interface{}{
+				"block_id": "blk_2",
+				"replace_file": map[string]interface{}{
+					"token": "file_tok",
+				},
+			},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildBatchUpdateData(file, 800, 600) = %#v, want %#v", got, want)
 	}
 }
 
@@ -669,10 +712,202 @@ func newMediaInsertValidateRuntime(t *testing.T, doc, mediaType, fileView string
 	return common.TestNewRuntimeContext(cmd, nil)
 }
 
-// Validate is the real user-facing contract for --file-view: unknown
-// values must be rejected, and passing the flag alongside --type!=file
-// must also be rejected. buildCreateBlockData tests alone cannot catch
-// regressions here, so lock the guard logic down explicitly.
+func newMediaInsertValidateRuntimeWithSize(t *testing.T, doc, mediaType string, width, height int, setWidth, setHeight bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "docs +media-insert"}
+	cmd.Flags().String("file", "", "")
+	cmd.Flags().Bool("from-clipboard", false, "")
+	cmd.Flags().String("doc", "", "")
+	cmd.Flags().String("type", "", "")
+	cmd.Flags().String("file-view", "", "")
+	cmd.Flags().Int("width", 0, "")
+	cmd.Flags().Int("height", 0, "")
+	cmd.Flags().String("selection-with-ellipsis", "", "")
+	cmd.Flags().Bool("before", false, "")
+	if err := cmd.Flags().Set("file", "dummy.bin"); err != nil {
+		t.Fatalf("set --file: %v", err)
+	}
+	if err := cmd.Flags().Set("doc", doc); err != nil {
+		t.Fatalf("set --doc: %v", err)
+	}
+	if err := cmd.Flags().Set("type", mediaType); err != nil {
+		t.Fatalf("set --type: %v", err)
+	}
+	if setWidth {
+		if err := cmd.Flags().Set("width", fmt.Sprintf("%d", width)); err != nil {
+			t.Fatalf("set --width: %v", err)
+		}
+	}
+	if setHeight {
+		if err := cmd.Flags().Set("height", fmt.Sprintf("%d", height)); err != nil {
+			t.Fatalf("set --height: %v", err)
+		}
+	}
+	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func TestDocMediaInsertValidateWidthHeightOnlyForImage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mediaType string
+		width     int
+		height    int
+		setWidth  bool
+		setHeight bool
+		wantErr   string
+	}{
+		{
+			name:      "width with file type is rejected",
+			mediaType: "file",
+			width:     800,
+			setWidth:  true,
+			wantErr:   "--width/--height only apply when --type=image",
+		},
+		{
+			name:      "height with file type is rejected",
+			mediaType: "file",
+			height:    600,
+			setHeight: true,
+			wantErr:   "--width/--height only apply when --type=image",
+		},
+		{
+			name:      "explicit zero width is rejected",
+			mediaType: "image",
+			width:     0,
+			setWidth:  true,
+			wantErr:   "--width must be a positive integer",
+		},
+		{
+			name:      "negative width is rejected",
+			mediaType: "image",
+			width:     -1,
+			setWidth:  true,
+			wantErr:   "--width must be a positive integer",
+		},
+		{
+			name:      "negative height is rejected",
+			mediaType: "image",
+			height:    -5,
+			setHeight: true,
+			wantErr:   "--height must be a positive integer",
+		},
+		{
+			name:      "valid width with image type is accepted",
+			mediaType: "image",
+			width:     800,
+			setWidth:  true,
+		},
+		{
+			name:      "valid width and height with image type is accepted",
+			mediaType: "image",
+			width:     800,
+			height:    600,
+			setWidth:  true,
+			setHeight: true,
+		},
+	}
+
+	for _, ttTemp := range tests {
+		tt := ttTemp
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rt := newMediaInsertValidateRuntimeWithSize(t, "doxcnValidateSize", tt.mediaType, tt.width, tt.height, tt.setWidth, tt.setHeight)
+			err := DocMediaInsert.Validate(context.Background(), rt)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Validate() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDocMediaInsertValidateNoWidthHeightIsValid(t *testing.T) {
+	t.Parallel()
+
+	rt := newMediaInsertValidateRuntimeWithSize(t, "doxcnNoSize", "image", 0, 0, false, false)
+	err := DocMediaInsert.Validate(context.Background(), rt)
+	if err != nil {
+		t.Fatalf("Validate() unexpected error when neither --width nor --height passed: %v", err)
+	}
+}
+
+func TestAutoAspectRatioFromWidth(t *testing.T) {
+	t.Parallel()
+
+	// Native image: 1200x800 (3:2 ratio)
+	// User provides width=600 → expected height = 600 * 800 / 1200 = 400
+	got := computeMissingDimension(600, 0, 1200, 800)
+	wantWidth, wantHeight := 600, 400
+	if got.width != wantWidth || got.height != wantHeight {
+		t.Fatalf("computeMissingDimension(600, 0, 1200, 800) = (%d, %d), want (%d, %d)", got.width, got.height, wantWidth, wantHeight)
+	}
+}
+
+func TestAutoAspectRatioFromHeight(t *testing.T) {
+	t.Parallel()
+
+	// Native image: 1200x800 (3:2 ratio)
+	// User provides height=400 → expected width = 400 * 1200 / 800 = 600
+	got := computeMissingDimension(0, 400, 1200, 800)
+	wantWidth, wantHeight := 600, 400
+	if got.width != wantWidth || got.height != wantHeight {
+		t.Fatalf("computeMissingDimension(0, 400, 1200, 800) = (%d, %d), want (%d, %d)", got.width, got.height, wantWidth, wantHeight)
+	}
+}
+
+func TestComputeMissingDimensionBothProvided(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(800, 600, 1200, 900)
+	if got.width != 800 || got.height != 600 {
+		t.Fatalf("computeMissingDimension(800, 600, 1200, 900) = (%d, %d), want (800, 600)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionNeitherProvided(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(0, 0, 1200, 900)
+	if got.width != 0 || got.height != 0 {
+		t.Fatalf("computeMissingDimension(0, 0, 1200, 900) = (%d, %d), want (0, 0)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionZeroNativeWidth(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(600, 0, 0, 800)
+	if got.width != 600 || got.height != 0 {
+		t.Fatalf("computeMissingDimension(600, 0, 0, 800) = (%d, %d), want (600, 0)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionZeroNativeHeight(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(0, 400, 1200, 0)
+	if got.width != 0 || got.height != 400 {
+		t.Fatalf("computeMissingDimension(0, 400, 1200, 0) = (%d, %d), want (0, 400)", got.width, got.height)
+	}
+}
+
+func TestComputeMissingDimensionRounding(t *testing.T) {
+	t.Parallel()
+	got := computeMissingDimension(999, 0, 1000, 333)
+	want := (999*333 + 500) / 1000
+	if got.height != want {
+		t.Fatalf("computeMissingDimension(999, 0, 1000, 333).height = %d, want %d (rounded)", got.height, want)
+	}
+}
+
 func TestDocMediaInsertValidateFileView(t *testing.T) {
 	t.Parallel()
 

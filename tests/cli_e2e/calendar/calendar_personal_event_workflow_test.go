@@ -77,7 +77,6 @@ func TestCalendar_PersonalEventWorkflowAsUser(t *testing.T) {
 					"calendar_id": calendarID,
 					"event_id":    eventID,
 				},
-				Yes: true,
 			})
 			clie2e.ReportCleanupFailure(parentT, "delete event "+eventID, deleteResult, deleteErr)
 		})

@@ -5,6 +5,7 @@ package markdown
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -23,10 +25,16 @@ import (
 const markdownSinglePartSizeLimit = common.MaxDriveMediaUploadSinglePartSize
 const markdownEmptyContentError = "empty markdown content is not supported; cannot create or overwrite an empty file"
 
+const (
+	markdownUploadParentTypeExplorer = "explorer"
+	markdownUploadParentTypeWiki     = "wiki"
+)
+
 type markdownUploadSpec struct {
 	FileToken   string
 	FileName    string
 	FolderToken string
+	WikiToken   string
 	FilePath    string
 	Content     string
 	ContentSet  bool
@@ -44,6 +52,25 @@ type markdownMultipartSession struct {
 	BlockNum  int
 }
 
+type markdownUploadTarget struct {
+	ParentType string
+	ParentNode string
+}
+
+func (spec markdownUploadSpec) Target() markdownUploadTarget {
+	if spec.WikiToken != "" {
+		return markdownUploadTarget{
+			ParentType: markdownUploadParentTypeWiki,
+			ParentNode: spec.WikiToken,
+		}
+	}
+	// An empty explorer parent node uploads to the user's Drive root folder.
+	return markdownUploadTarget{
+		ParentType: markdownUploadParentTypeExplorer,
+		ParentNode: spec.FolderToken,
+	}
+}
+
 func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpec, requireName bool) error {
 	switch {
 	case spec.ContentSet && spec.FileSet:
@@ -52,11 +79,29 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 		return common.FlagErrorf("specify exactly one of --content or --file")
 	}
 
-	if runtime.Changed("folder-token") && strings.TrimSpace(spec.FolderToken) == "" {
+	if markdownFlagExplicitlyEmpty(runtime, "folder-token") {
 		return common.FlagErrorf("--folder-token cannot be empty; omit it to upload into Drive root folder")
+	}
+	if markdownFlagExplicitlyEmpty(runtime, "wiki-token") {
+		return common.FlagErrorf("--wiki-token cannot be empty; provide a valid wiki node token or omit the flag entirely")
+	}
+	targets := 0
+	if spec.FolderToken != "" {
+		targets++
+	}
+	if spec.WikiToken != "" {
+		targets++
+	}
+	if targets > 1 {
+		return common.FlagErrorf("--folder-token and --wiki-token are mutually exclusive")
 	}
 	if spec.FolderToken != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
+			return output.ErrValidation("%s", err)
+		}
+	}
+	if spec.WikiToken != "" {
+		if err := validate.ResourceName(spec.WikiToken, "--wiki-token"); err != nil {
 			return output.ErrValidation("%s", err)
 		}
 	}
@@ -91,6 +136,10 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 	return nil
 }
 
+func markdownFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName string) bool {
+	return runtime.Changed(flagName) && strings.TrimSpace(runtime.Str(flagName)) == ""
+}
+
 func validateMarkdownFileName(name, flagName string) error {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
@@ -112,6 +161,55 @@ func finalMarkdownFileName(spec markdownUploadSpec) string {
 	return filepath.Base(spec.FilePath)
 }
 
+func resolveMarkdownOverwriteFileName(runtime *common.RuntimeContext, spec markdownUploadSpec) (string, error) {
+	fileName := strings.TrimSpace(spec.FileName)
+	if fileName == "" && spec.FileSet {
+		fileName = filepath.Base(spec.FilePath)
+	}
+	if fileName == "" {
+		remoteName, err := fetchMarkdownFileName(runtime, spec.FileToken)
+		if err != nil {
+			return "", err
+		}
+		fileName = strings.TrimSpace(remoteName)
+	}
+	if fileName == "" {
+		fileName = spec.FileToken + ".md"
+	}
+	return fileName, nil
+}
+
+func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, fileToken string) (*http.Response, error) {
+	resp, err := runtime.DoAPIStream(ctx, &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+	})
+	if err != nil {
+		return nil, wrapMarkdownDownloadError(err)
+	}
+	return resp, nil
+}
+
+func wrapMarkdownDownloadError(err error) error {
+	// Preserve any already-classified error: legacy *output.ExitError or any
+	// typed errs.* error. Only un-classified errors get wrapped as network.
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) {
+		return err
+	}
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	return output.ErrNetwork("download failed: %s", err)
+}
+
+func validateNonEmptyMarkdownSize(size int64) error {
+	if size == 0 {
+		return output.ErrValidation("%s", markdownEmptyContentError)
+	}
+	return nil
+}
+
 func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec) (int64, error) {
 	var size int64
 	if spec.ContentSet {
@@ -127,10 +225,28 @@ func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec)
 		}
 		size = info.Size()
 	}
-	if size == 0 {
-		return 0, output.ErrValidation("%s", markdownEmptyContentError)
+	if err := validateNonEmptyMarkdownSize(size); err != nil {
+		return 0, err
 	}
 	return size, nil
+}
+
+func openMarkdownDownloadVersion(ctx context.Context, runtime *common.RuntimeContext, fileToken, version string) (*http.Response, string, error) {
+	req := &larkcore.ApiReq{
+		HttpMethod: http.MethodGet,
+		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
+	}
+	if strings.TrimSpace(version) != "" {
+		req.QueryParams = larkcore.QueryParams{
+			"version": []string{strings.TrimSpace(version)},
+		}
+	}
+
+	resp, err := runtime.DoAPIStream(ctx, req)
+	if err != nil {
+		return nil, "", wrapMarkdownDownloadError(err)
+	}
+	return resp, fileNameFromDownloadHeader(resp.Header, fileToken+".md"), nil
 }
 
 func markdownDryRunFileField(spec markdownUploadSpec) string {
@@ -142,12 +258,13 @@ func markdownDryRunFileField(spec markdownUploadSpec) string {
 
 func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart bool) *common.DryRunAPI {
 	fileName := finalMarkdownFileName(spec)
+	target := spec.Target()
 
 	if !multipart {
 		body := map[string]interface{}{
 			"file_name":   fileName,
-			"parent_type": "explorer",
-			"parent_node": spec.FolderToken,
+			"parent_type": target.ParentType,
+			"parent_node": target.ParentNode,
 			"size":        fileSize,
 			"file":        markdownDryRunFileField(spec),
 		}
@@ -168,8 +285,8 @@ func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart boo
 
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
-		"parent_type": "explorer",
-		"parent_node": spec.FolderToken,
+		"parent_type": target.ParentType,
+		"parent_node": target.ParentNode,
 		"size":        fileSize,
 	}
 	if spec.FileToken != "" {
@@ -204,6 +321,7 @@ func markdownUploadDryRun(spec markdownUploadSpec, fileSize int64, multipart boo
 
 func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart bool) *common.DryRunAPI {
 	fileName := strings.TrimSpace(spec.FileName)
+	target := spec.Target()
 	if fileName == "" && spec.FileSet {
 		fileName = finalMarkdownFileName(spec)
 	}
@@ -230,8 +348,8 @@ func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart 
 			Desc("[2] Overwrite file contents with multipart/form-data upload").
 			Body(map[string]interface{}{
 				"file_name":   spec.FileName,
-				"parent_type": "explorer",
-				"parent_node": spec.FolderToken,
+				"parent_type": target.ParentType,
+				"parent_node": target.ParentNode,
 				"size":        fileSize,
 				"file":        markdownDryRunFileField(spec),
 				"file_token":  spec.FileToken,
@@ -243,8 +361,8 @@ func markdownOverwriteDryRun(spec markdownUploadSpec, fileSize int64, multipart 
 		Desc("[2] Initialize multipart overwrite upload").
 		Body(map[string]interface{}{
 			"file_name":   spec.FileName,
-			"parent_type": "explorer",
-			"parent_node": spec.FolderToken,
+			"parent_type": target.ParentType,
+			"parent_node": target.ParentNode,
 			"size":        fileSize,
 			"file_token":  spec.FileToken,
 		}).
@@ -289,10 +407,11 @@ func uploadMarkdownLocalFile(runtime *common.RuntimeContext, spec markdownUpload
 }
 
 func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+	target := spec.Target()
 	fd := larkcore.NewFormdata()
 	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", "explorer")
-	fd.AddField("parent_node", spec.FolderToken)
+	fd.AddField("parent_type", target.ParentType)
+	fd.AddField("parent_node", target.ParentNode)
 	fd.AddField("size", fmt.Sprintf("%d", fileSize))
 	if spec.FileToken != "" {
 		fd.AddField("file_token", spec.FileToken)
@@ -320,10 +439,11 @@ func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSp
 }
 
 func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+	target := spec.Target()
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
-		"parent_type": "explorer",
-		"parent_node": spec.FolderToken,
+		"parent_type": target.ParentType,
+		"parent_node": target.ParentNode,
 		"size":        fileSize,
 	}
 	if spec.FileToken != "" {

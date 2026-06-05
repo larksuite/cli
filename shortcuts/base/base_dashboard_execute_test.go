@@ -268,6 +268,39 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 	})
 }
 
+// TestBaseDashboardBlockExecuteGetData tests the +dashboard-block-get-data command.
+func TestBaseDashboardBlockExecuteGetData(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/dashboards/blocks/blk_chart/data",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"dimensions": []interface{}{
+					map[string]interface{}{"field_name": "文本", "alias": "dim_text"},
+				},
+				"measures": []interface{}{
+					map[string]interface{}{"field_name": "Bitable_Dashboard_Count", "aggregation": "count_all", "alias": "me_count"},
+				},
+				"main_data": []interface{}{
+					map[string]interface{}{
+						"dim_text": map[string]interface{}{"value": "A"},
+						"me_count": map[string]interface{}{"value": 3},
+					},
+				},
+			},
+		},
+	})
+	if err := runShortcut(t, BaseDashboardBlockGetData, []string{"+dashboard-block-get-data", "--base-token", "app_x", "--block-id", "blk_chart"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"dimensions"`) || !strings.Contains(got, `"main_data"`) || !strings.Contains(got, `"dim_text"`) {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
 // TestBaseDashboardBlockExecuteCreate tests the +dashboard-block-create command.
 func TestBaseDashboardBlockExecuteCreate(t *testing.T) {
 	t.Run("with data-config", func(t *testing.T) {
@@ -533,6 +566,19 @@ func TestBaseDashboardBlockDryRun_Get(t *testing.T) {
 	}
 	got := stdout.String()
 	if !strings.Contains(got, "GET /open-apis/base/v3/bases/app_x/dashboards/dsh_1/blocks/blk_a") || !strings.Contains(got, "union_id") || !strings.Contains(got, "blk_a") {
+		t.Fatalf("stdout=%s", got)
+	}
+}
+
+// TestBaseDashboardBlockDryRun_GetData tests the +dashboard-block-get-data --dry-run flag.
+func TestBaseDashboardBlockDryRun_GetData(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	args := []string{"+dashboard-block-get-data", "--base-token", "app_x", "--block-id", "blk_a", "--dry-run", "--format", "pretty"}
+	if err := runShortcut(t, BaseDashboardBlockGetData, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, "GET /open-apis/base/v3/bases/app_x/dashboards/blocks/blk_a/data") || !strings.Contains(got, "blk_a") {
 		t.Fatalf("stdout=%s", got)
 	}
 }

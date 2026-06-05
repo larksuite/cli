@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,9 +14,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -25,6 +26,7 @@ import (
 
 const (
 	drivePushIfExistsOverwrite = "overwrite"
+	drivePushIfExistsSmart     = "smart"
 	drivePushIfExistsSkip      = "skip"
 )
 
@@ -91,14 +93,17 @@ var DrivePush = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "local-dir", Desc: "local root directory (relative to cwd)", Required: true},
 		{Name: "folder-token", Desc: "target Drive folder token", Required: true},
-		{Name: "if-exists", Desc: "policy when a Drive file already exists at the same rel_path (default: skip — safe; opt into overwrite explicitly while the backend version field is rolling out)", Default: drivePushIfExistsSkip, Enum: []string{drivePushIfExistsOverwrite, drivePushIfExistsSkip}},
+		{Name: "if-exists", Desc: "policy when a Drive file already exists at the same rel_path (skip = never touch existing remote files; smart = skip when remote modified_time already matches or is newer, otherwise fall through to overwrite semantics; overwrite = always replace)", Default: drivePushIfExistsSkip, Enum: []string{drivePushIfExistsOverwrite, drivePushIfExistsSmart, drivePushIfExistsSkip}},
+		{Name: "on-duplicate-remote", Desc: "policy when multiple remote Drive entries map to the same rel_path", Default: driveDuplicateRemoteFail, Enum: []string{driveDuplicateRemoteFail, driveDuplicateRemoteNewest, driveDuplicateRemoteOldest}},
 		{Name: "delete-remote", Type: "bool", Desc: "delete Drive files absent locally (file-level mirror; remote-only directories are not removed); requires --yes"},
 		{Name: "yes", Type: "bool", Desc: "confirm --delete-remote before deleting Drive files"},
 	},
 	Tips: []string{
 		"This is a file-level mirror: only type=file entries are uploaded, overwritten or deleted. Online docs (docx, sheet, bitable, mindnote, slides), shortcuts, and remote-only directories are never touched.",
 		"Local directory structure (including empty directories) is mirrored to Drive via create_folder; existing remote folders are reused.",
-		"Default --if-exists=skip is the safe choice while the upload_all overwrite-version field is rolling out. Pass --if-exists=overwrite to replace remote bytes; on tenants without the field it surfaces a structured api_error and the run exits non-zero.",
+		"For repeat syncs, --if-exists=smart is a best-effort incremental mode: it compares local mtime with Drive modified_time and skips uploads when the remote copy is already up to date; otherwise it falls through to the same overwrite path as --if-exists=overwrite.",
+		"Duplicate remote rel_path conflicts fail by default before upload, overwrite, or delete. Use --on-duplicate-remote=newest|oldest only when the conflict is duplicate files and you explicitly want to target one.",
+		"Default --if-exists=skip is the safe choice while the upload_all overwrite-version field is rolling out. Pass --if-exists=overwrite to replace remote bytes; on tenants without the field it surfaces a structured api_error and the run exits non-zero. The same caveat applies when --if-exists=smart decides the remote file is older and falls through to overwrite.",
 		"--delete-remote requires --yes; without --yes the command is rejected upfront so a stray flag never deletes anything.",
 		"--delete-remote --yes also requires the space:document:delete scope. Validate runs a dynamic pre-flight check when the flag is on, so a missing grant fails the run before any upload — preventing a half-synced state where files were uploaded but the cleanup pass cannot delete.",
 		"Item-level failures (upload, overwrite, folder, delete) bump summary.failed and the run exits non-zero. If any upload or folder step fails, the --delete-remote phase is skipped entirely so a partial upload never triggers remote deletion.",
@@ -107,26 +112,26 @@ var DrivePush = common.Shortcut{
 		localDir := strings.TrimSpace(runtime.Str("local-dir"))
 		folderToken := strings.TrimSpace(runtime.Str("folder-token"))
 		if localDir == "" {
-			return common.FlagErrorf("--local-dir is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is required").WithParam("--local-dir")
 		}
 		if folderToken == "" {
-			return common.FlagErrorf("--folder-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--folder-token is required").WithParam("--folder-token")
 		}
 		if err := validate.ResourceName(folderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 		if _, err := validate.SafeLocalFlagPath("--local-dir", localDir); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--local-dir")
 		}
 		info, err := runtime.FileIO().Stat(localDir)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return driveInputStatError(err)
 		}
 		if !info.IsDir() {
-			return output.ErrValidation("--local-dir is not a directory: %s", localDir)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir is not a directory: %s", localDir).WithParam("--local-dir")
 		}
 		if runtime.Bool("delete-remote") && !runtime.Bool("yes") {
-			return output.ErrValidation("--delete-remote requires --yes (high-risk: deletes Drive files absent locally)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--delete-remote requires --yes (high-risk: deletes Drive files absent locally)").WithParam("--yes")
 		}
 		// Conditional scope pre-check: when --delete-remote --yes is set, the
 		// run will issue DELETE /open-apis/drive/v1/files/<token> after the
@@ -149,7 +154,7 @@ var DrivePush = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
-			Desc("Walk --local-dir, recursively list --folder-token, then upload new files, overwrite (when --if-exists=overwrite) or skip existing, and (when --delete-remote --yes is set) delete Drive files absent locally.").
+			Desc("Walk --local-dir, recursively list --folder-token, then upload new files, skip existing, skip up-to-date files when --if-exists=smart, overwrite when --if-exists=overwrite, and (when --delete-remote --yes is set) delete Drive files absent locally.").
 			GET("/open-apis/drive/v1/files").
 			Set("folder_token", runtime.Str("folder-token"))
 	},
@@ -164,6 +169,10 @@ var DrivePush = common.Shortcut{
 			// rolling-out upload_all `file_token`/`version` protocol field.
 			ifExists = drivePushIfExistsSkip
 		}
+		duplicateRemote := strings.TrimSpace(runtime.Str("on-duplicate-remote"))
+		if duplicateRemote == "" {
+			duplicateRemote = driveDuplicateRemoteFail
+		}
 		deleteRemote := runtime.Bool("delete-remote")
 
 		// Resolve --local-dir to its canonical absolute path before walking.
@@ -176,11 +185,11 @@ var DrivePush = common.Shortcut{
 		// FileIO.Open's SafeInputPath check still accepts.
 		safeRoot, err := validate.SafeInputPath(localDir)
 		if err != nil {
-			return output.ErrValidation("--local-dir: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--local-dir: %s", err).WithParam("--local-dir")
 		}
 		cwdCanonical, err := validate.SafeInputPath(".")
 		if err != nil {
-			return output.ErrValidation("could not resolve cwd: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "could not resolve cwd: %s", err)
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Walking local: %s\n", localDir)
@@ -190,9 +199,12 @@ var DrivePush = common.Shortcut{
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Listing Drive folder: %s\n", common.MaskToken(folderToken))
-		entries, err := listRemoteFolder(ctx, runtime, folderToken, "")
+		entries, err := listRemoteFolderEntries(ctx, runtime, folderToken, "")
 		if err != nil {
 			return err
+		}
+		if duplicates := blockingRemotePathConflicts(entries, duplicateRemote); len(duplicates) > 0 {
+			return duplicateRemotePathError(duplicates)
 		}
 		// Two views over the same listing:
 		//   - remoteFiles drives upload / overwrite / orphan-delete
@@ -203,15 +215,9 @@ var DrivePush = common.Shortcut{
 		//     path skip create_folder when an intermediate folder already
 		//     exists, and keeps directory recreation idempotent across
 		//     reruns.
-		remoteFiles := make(map[string]driveRemoteEntry, len(entries))
-		remoteFolders := make(map[string]driveRemoteEntry, len(entries))
-		for rel, entry := range entries {
-			switch entry.Type {
-			case driveTypeFile:
-				remoteFiles[rel] = entry
-			case driveTypeFolder:
-				remoteFolders[rel] = entry
-			}
+		remoteFiles, remoteFolders, remoteFileGroups, err := drivePushRemoteViews(entries, duplicateRemote)
+		if err != nil {
+			return errs.WrapInternal(err)
 		}
 
 		var uploaded, skipped, failed, deletedRemote int
@@ -264,12 +270,19 @@ var DrivePush = common.Shortcut{
 			localFile := localFiles[rel]
 
 			if entry, ok := remoteFiles[rel]; ok {
-				if ifExists == drivePushIfExistsSkip {
+				if drivePushShouldSkipExisting(localFile, entry, ifExists) {
 					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "skipped", SizeBytes: localFile.Size})
 					skipped++
 					continue
 				}
-				token, version, upErr := drivePushUploadFile(ctx, runtime, localFile, entry.FileToken, folderToken)
+				parentToken, parentErr := drivePushEnsureParentToken(ctx, runtime, folderToken, rel, folderCache)
+				if parentErr != nil {
+					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "failed", SizeBytes: localFile.Size, Error: parentErr.Error()})
+					failed++
+					uploadFailed = true
+					continue
+				}
+				token, version, upErr := drivePushUploadFile(ctx, runtime, localFile, entry.FileToken, parentToken)
 				if upErr != nil {
 					// Token contract on overwrite failure: an in-place
 					// overwrite preserves the file's token, so the
@@ -333,28 +346,35 @@ var DrivePush = common.Shortcut{
 		}
 		if deleteRemote && !uploadFailed {
 			// Stable iteration order so failures (and tests) are deterministic.
-			remoteRelPaths := make([]string, 0, len(remoteFiles))
-			for p := range remoteFiles {
+			remoteRelPaths := make([]string, 0, len(remoteFileGroups))
+			for p := range remoteFileGroups {
 				remoteRelPaths = append(remoteRelPaths, p)
 			}
 			sort.Strings(remoteRelPaths)
 
 			for _, rel := range remoteRelPaths {
+				keepToken := ""
 				if _, ok := localFiles[rel]; ok {
-					continue
+					if chosen, ok := remoteFiles[rel]; ok {
+						keepToken = chosen.FileToken
+					}
 				}
-				entry := remoteFiles[rel]
-				if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
-					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "delete_failed", Error: err.Error()})
-					failed++
-					continue
+				for _, entry := range remoteFileGroups[rel] {
+					if entry.FileToken == keepToken {
+						continue
+					}
+					if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
+						items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "delete_failed", Error: err.Error()})
+						failed++
+						continue
+					}
+					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "deleted_remote"})
+					deletedRemote++
 				}
-				items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "deleted_remote"})
-				deletedRemote++
 			}
 		}
 
-		runtime.Out(map[string]interface{}{
+		payload := map[string]interface{}{
 			"summary": map[string]interface{}{
 				"uploaded":       uploaded,
 				"skipped":        skipped,
@@ -362,15 +382,15 @@ var DrivePush = common.Shortcut{
 				"deleted_remote": deletedRemote,
 			},
 			"items": items,
-		}, nil)
-		// Bump the exit code on any item-level failure (upload, overwrite,
-		// folder, or delete) so callers / scripts / agents can react. The
-		// summary + items[] envelope was just written to stdout via Out(),
-		// so ErrBare here only affects the exit code — the structured
-		// per-item context is still in the stdout JSON.
-		if failed > 0 {
-			return output.ErrBare(output.ExitAPI)
 		}
+		// On any item-level failure (upload, overwrite, folder, or delete) the
+		// command reports a partial failure: the summary + per-item items[] stay
+		// machine-readable on stdout (ok:false) and the process exits non-zero,
+		// so callers / scripts / agents can react.
+		if failed > 0 {
+			return runtime.OutPartialFailure(payload, nil)
+		}
+		runtime.Out(payload, nil)
 		return nil
 	},
 }
@@ -384,6 +404,7 @@ type drivePushLocalFile struct {
 	OpenPath string
 	FileName string
 	Size     int64
+	ModTime  time.Time
 }
 
 // drivePushWalkLocal walks the canonical absolute root produced by
@@ -440,11 +461,12 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 			OpenPath: relToCwd,
 			FileName: filepath.Base(rel),
 			Size:     info.Size(),
+			ModTime:  info.ModTime(),
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, nil, output.Errorf(output.ExitInternal, "io", "walk %s: %s", root, err)
+		return nil, nil, errs.NewInternalError(errs.SubtypeFileIO, "walk %s: %s", root, err).WithCause(err)
 	}
 	dirs := make([]string, 0, len(dirsSet))
 	for d := range dirsSet {
@@ -461,6 +483,70 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 		return dirs[i] < dirs[j]
 	})
 	return files, dirs, nil
+}
+
+func drivePushShouldSkipExisting(localFile drivePushLocalFile, remoteFile driveRemoteEntry, ifExists string) bool {
+	switch ifExists {
+	case drivePushIfExistsSkip:
+		return true
+	case drivePushIfExistsSmart:
+		return drivePushShouldSkipSmart(localFile, remoteFile)
+	default:
+		return false
+	}
+}
+
+func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemoteEntry) bool {
+	cmp, ok := compareDriveRemoteModifiedToLocal(remoteFile.ModifiedTime, localFile.ModTime)
+	if !ok {
+		// Smart mode is an optimization. If the timestamp is missing or
+		// malformed, fall back to the safe transfer path instead of silently
+		// skipping an update we could not compare.
+		return false
+	}
+	// Remote is already at least as new as the local file, so another
+	// upload would be redundant.
+	return cmp >= 0
+}
+
+func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {
+	remoteFiles := make(map[string]driveRemoteEntry, len(entries))
+	remoteFolders := make(map[string]driveRemoteEntry, len(entries))
+	fileGroups := make(map[string][]driveRemoteEntry)
+
+	for _, entry := range entries {
+		switch entry.Type {
+		case driveTypeFile:
+			fileGroups[entry.RelPath] = append(fileGroups[entry.RelPath], entry)
+		case driveTypeFolder:
+			remoteFolders[entry.RelPath] = entry
+		}
+	}
+
+	relPaths := make([]string, 0, len(fileGroups))
+	for rel := range fileGroups {
+		relPaths = append(relPaths, rel)
+	}
+	sort.Strings(relPaths)
+
+	for _, rel := range relPaths {
+		files := fileGroups[rel]
+		if len(files) == 1 {
+			remoteFiles[rel] = files[0]
+			continue
+		}
+		switch duplicateRemote {
+		case driveDuplicateRemoteNewest, driveDuplicateRemoteOldest:
+			chosen, err := chooseRemoteFile(files, duplicateRemote)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			remoteFiles[rel] = chosen
+		default:
+			return nil, nil, nil, errs.NewInternalError(errs.SubtypeUnknown, "unsupported duplicate remote strategy %q", duplicateRemote)
+		}
+	}
+	return remoteFiles, remoteFolders, fileGroups, nil
 }
 
 // drivePushEnsureFolder ensures a folder chain (rel_dir relative to the root
@@ -481,7 +567,7 @@ func drivePushEnsureFolder(ctx context.Context, runtime *common.RuntimeContext, 
 		return "", err
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"POST",
 		"/open-apis/drive/v1/files/create_folder",
 		nil,
@@ -495,10 +581,14 @@ func drivePushEnsureFolder(ctx context.Context, runtime *common.RuntimeContext, 
 	}
 	token := common.GetString(data, "token")
 	if token == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "create_folder for %q returned no folder token", relDir)
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "create_folder for %q returned no folder token", relDir)
 	}
 	folderCache[relDir] = token
 	return token, nil
+}
+
+func drivePushEnsureParentToken(ctx context.Context, runtime *common.RuntimeContext, rootFolderToken, relPath string, folderCache map[string]string) (string, error) {
+	return drivePushEnsureFolder(ctx, runtime, rootFolderToken, drivePushParentRel(relPath), folderCache)
 }
 
 // drivePushUploadFile uploads (or overwrites) a single local file. When
@@ -527,7 +617,7 @@ func drivePushUploadFile(ctx context.Context, runtime *common.RuntimeContext, fi
 func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file drivePushLocalFile, existingToken, parentToken string) (string, string, error) {
 	f, err := runtime.FileIO().Open(file.OpenPath)
 	if err != nil {
-		return "", "", common.WrapInputStatError(err)
+		return "", "", driveInputStatError(err)
 	}
 	defer f.Close()
 
@@ -554,27 +644,22 @@ func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file 
 		if errors.As(err, &exitErr) {
 			return "", "", err
 		}
-		return "", "", output.ErrNetwork("upload failed: %v", err)
+		return "", "", wrapDriveNetworkErr(err, "upload failed: %v", err)
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-		return "", "", output.Errorf(output.ExitAPI, "api_error", "upload failed: invalid response JSON: %v", err)
-	}
-	// Extract the token before the larkCode check: the backend can produce
-	// a partial-success response (code != 0 alongside a non-empty
-	// data.file_token) where bytes have already landed under that token.
-	// Returning "" here would force the caller to fall back to
+	// ClassifyAPIResponse returns the data even on a non-zero code, so the
+	// token is available on a partial-success response (code != 0 alongside a
+	// non-empty data.file_token) where bytes have already landed under that
+	// token. Returning "" would force the caller to fall back to
 	// entry.FileToken and silently lose the token Drive actually used,
 	// defeating the overwrite-error token-stability handling in Execute.
-	data, _ := result["data"].(map[string]interface{})
+	data, err := runtime.ClassifyAPIResponse(apiResp)
 	token := common.GetString(data, "file_token")
-	if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
-		msg, _ := result["msg"].(string)
-		return token, "", output.ErrAPI(larkCode, fmt.Sprintf("upload failed: [%d] %s", larkCode, msg), result["error"])
+	if err != nil {
+		return token, "", err
 	}
 	if token == "" {
-		return "", "", output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
+		return "", "", errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned")
 	}
 	version := common.GetString(data, "version")
 	if version == "" {
@@ -587,7 +672,7 @@ func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file 
 		// deployed backend hasn't shipped the field yet we surface the gap
 		// rather than report a phantom success — callers can downgrade to
 		// --if-exists=skip in the meantime.
-		return token, "", output.Errorf(output.ExitAPI, "api_error", "overwrite for %q succeeded but no version was returned by upload_all", file.RelPath)
+		return token, "", errs.NewInternalError(errs.SubtypeInvalidResponse, "overwrite for %q succeeded but no version was returned by upload_all", file.RelPath)
 	}
 	return token, version, nil
 }
@@ -602,7 +687,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 	if existingToken != "" {
 		prepareBody["file_token"] = existingToken
 	}
-	prepareResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
+	prepareResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
 	if err != nil {
 		return "", err
 	}
@@ -611,7 +696,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 	blockSize := int64(common.GetFloat(prepareResult, "block_size"))
 	blockNum := int(common.GetFloat(prepareResult, "block_num"))
 	if uploadID == "" || blockSize <= 0 || blockNum <= 0 {
-		return "", output.Errorf(output.ExitAPI, "api_error",
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			uploadID, blockSize, blockNum)
 	}
@@ -627,7 +712,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 	// one Open + Close + path-validation per block).
 	partFile, err := runtime.FileIO().Open(file.OpenPath)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", driveInputStatError(err)
 	}
 	defer partFile.Close()
 
@@ -654,21 +739,16 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 			if errors.As(doErr, &exitErr) {
 				return "", doErr
 			}
-			return "", output.ErrNetwork("upload part %d/%d failed: %v", seq+1, blockNum, doErr)
+			return "", wrapDriveNetworkErr(doErr, "upload part %d/%d failed: %v", seq+1, blockNum, doErr)
 		}
 
-		var partResult map[string]interface{}
-		if err := json.Unmarshal(apiResp.RawBody, &partResult); err != nil {
-			return "", output.Errorf(output.ExitAPI, "api_error", "upload part %d/%d: invalid response JSON: %v", seq+1, blockNum, err)
-		}
-		if larkCode := int(common.GetFloat(partResult, "code")); larkCode != 0 {
-			msg, _ := partResult["msg"].(string)
-			return "", output.ErrAPI(larkCode, fmt.Sprintf("upload part %d/%d failed: [%d] %s", seq+1, blockNum, larkCode, msg), partResult["error"])
+		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+			return "", err
 		}
 		fmt.Fprintf(runtime.IO().ErrOut, "  Block %d/%d uploaded (%s)\n", seq+1, blockNum, common.FormatSize(partSize))
 	}
 
-	finishResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{
+	finishResult, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{
 		"upload_id": uploadID,
 		"block_num": blockNum,
 	})
@@ -677,7 +757,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 	}
 	token := common.GetString(finishResult, "file_token")
 	if token == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "upload_finish succeeded but no file_token returned")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "upload_finish succeeded but no file_token returned")
 	}
 	return token, nil
 }
@@ -686,7 +766,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 // never reached here because --delete-remote only iterates the type=file
 // subset of the remote listing.
 func drivePushDeleteFile(_ context.Context, runtime *common.RuntimeContext, fileToken string) error {
-	_, err := runtime.CallAPI(
+	_, err := runtime.CallAPITyped(
 		"DELETE",
 		fmt.Sprintf("/open-apis/drive/v1/files/%s", validate.EncodePathSegment(fileToken)),
 		map[string]interface{}{"type": driveTypeFile},

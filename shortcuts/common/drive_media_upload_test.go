@@ -12,6 +12,7 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -461,6 +462,24 @@ func TestParseDriveMediaUploadResponseErrors(t *testing.T) {
 			t.Fatalf("expected API error, got %v", err)
 		}
 	})
+
+	t.Run("api code error includes log_id", func(t *testing.T) {
+		t.Parallel()
+
+		resp := &larkcore.ApiResp{
+			RawBody: []byte(`{"code":999,"msg":"boom","error":{"detail":"x"}}`),
+			Header:  http.Header{"X-Tt-Logid": []string{"202605270002"}},
+		}
+		_, err := ParseDriveMediaUploadResponse(resp, "upload media failed")
+		var exitErr *output.ExitError
+		if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+			t.Fatalf("expected structured error, got %T %v", err, err)
+		}
+		detail, _ := exitErr.Detail.Detail.(map[string]interface{})
+		if detail["log_id"] != "202605270002" {
+			t.Fatalf("detail=%#v, want log_id", exitErr.Detail.Detail)
+		}
+	})
 }
 
 func TestExtractDriveMediaUploadFileTokenRequiresToken(t *testing.T) {
@@ -470,36 +489,6 @@ func TestExtractDriveMediaUploadFileTokenRequiresToken(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "upload media failed: no file_token returned") {
 		t.Fatalf("err = %v, want missing file_token error", err)
 	}
-}
-
-func TestWrapDriveMediaUploadRequestError(t *testing.T) {
-	t.Parallel()
-
-	t.Run("preserves exit error", func(t *testing.T) {
-		t.Parallel()
-
-		original := output.ErrValidation("bad input")
-		got := WrapDriveMediaUploadRequestError(original, "upload media failed")
-		if got != original {
-			t.Fatalf("expected same exit error pointer, got %v", got)
-		}
-	})
-
-	t.Run("wraps generic error as network", func(t *testing.T) {
-		t.Parallel()
-
-		got := WrapDriveMediaUploadRequestError(io.EOF, "upload media failed")
-		var exitErr *output.ExitError
-		if !errors.As(got, &exitErr) {
-			t.Fatalf("expected ExitError, got %T", got)
-		}
-		if exitErr.Code != output.ExitNetwork {
-			t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitNetwork)
-		}
-		if !strings.Contains(got.Error(), "upload media failed") {
-			t.Fatalf("unexpected error: %v", got)
-		}
-	})
 }
 
 type capturedDriveMediaMultipartBody struct {

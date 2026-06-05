@@ -1,14 +1,16 @@
 ---
 name: lark-contact
 version: 1.0.0
-description: "飞书 / Lark 通讯录,用于按姓名 / 邮箱把员工解析成 open_id,以及按 open_id 反查员工的姓名 / 部门 / 邮箱 / 联系方式。当用户说出某人姓名而下一步需要发消息 / 加群 / 排日程时,先用本 skill 把姓名换成 ID;当输出里出现 open_id 需要展示成姓名给用户看,或用户直接询问某人的部门 / 邮箱 / 联系方式时,用本 skill 查。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
+description: "飞书 / Lark 通讯录:按姓名 / 邮箱解析成 open_id,或按 open_id 反查姓名 / 部门 / 邮箱 / 联系方式 / 个人状态 / 签名。当用户提到某人姓名要下一步发消息 / 排日程,或拿到 open_id 想查具体信息时使用。不负责部门树遍历、按部门列员工、组织架构图,这类需求走原生 OpenAPI。"
 metadata:
   requires:
     bins: ["lark-cli"]
   cliHelp: "lark-cli contact --help"
 ---
 
-# lark-contact
+# contact (v2)
+
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
 ## 选哪个命令
 
@@ -19,15 +21,27 @@ metadata:
 | 按姓名 / 邮箱搜员工拿 open_id | [`+search-user`](references/lark-contact-search-user.md) | 不支持 |
 | 已知 open_id 取他人资料 | `+search-user --user-ids <id>` | [`+get-user --user-id <id>`](references/lark-contact-get-user.md) |
 | 查看自己 | `+get-user` 或 `+search-user --user-ids me` | 不支持 |
+| 查同事的个人状态 / 签名 | `user_profiles batch_query` | 不支持 |
 
 已知 open_id 只是想发消息 / 排日程,不必经过 contact —— 直接 [`lark-im`](../lark-im/SKILL.md) / [`lark-calendar`](../lark-calendar/SKILL.md)。
 
 ## 典型场景
 
+找张三给他发消息:先搜,确认 open_id,再发:
+
 ```bash
-# 找张三给他发消息:先搜,确认 open_id,再发
 lark-cli contact +search-user --query "张三" --has-chatted --as user
 lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
+```
+
+批量查同事的个人状态 / 个性签名(先用 schema 看参数)。
+
+```bash
+lark-cli schema contact.user_profiles.batch_query
+lark-cli contact user_profiles batch_query \
+  --params '{"user_id_type":"open_id"}' \
+  --data '{"user_ids":["ou_xxx","ou_yyy"],"query_option":{"include_personal_status":true,"include_description":true}}' \
+  --as user
 ```
 
 搜索命中多条且后续操作有副作用(发消息、邀请会议等),把候选列给用户挑;不要擅自选第一条。
@@ -42,4 +56,4 @@ lark-cli im +messages-send --user-id ou_xxx --text "Hi!"
 
 - 发消息 / 查聊天记录 → [`lark-im`](../lark-im/SKILL.md)
 - 排日程 / 邀请会议 → [`lark-calendar`](../lark-calendar/SKILL.md)
-- 部门树 / 按部门列员工 / 组织架构 ,通过 [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) 查找原生接口
+- 部门树 / 按部门列员工 / 组织架构 → [`lark-openapi-explorer`](../lark-openapi-explorer/SKILL.md) 查找原生接口

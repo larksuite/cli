@@ -22,6 +22,64 @@ var registryFS embed.FS
 // embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
 var embeddedMetaJSON []byte
 
+// EmbeddedMetaJSON returns the raw embedded meta_data.json bytes for callers
+// that need to parse key order or other JSON-level structure not exposed by
+// LoadFromMeta (which loses map insertion order).
+func EmbeddedMetaJSON() []byte {
+	return embeddedMetaJSON
+}
+
+var (
+	embeddedServicesMap  map[string]map[string]interface{} // service name -> spec
+	embeddedServiceNames []string                          // sorted
+	embeddedParseOnce    sync.Once
+)
+
+// parseEmbeddedServices parses embeddedMetaJSON into a service name → spec map
+// without touching mergedServices. Safe to call multiple times (sync.Once).
+func parseEmbeddedServices() {
+	embeddedParseOnce.Do(func() {
+		embeddedServicesMap = make(map[string]map[string]interface{})
+		if len(embeddedMetaJSON) == 0 {
+			return
+		}
+		var wrapper struct {
+			Services []map[string]interface{} `json:"services"`
+		}
+		if err := json.Unmarshal(embeddedMetaJSON, &wrapper); err != nil {
+			return
+		}
+		for _, svc := range wrapper.Services {
+			name, _ := svc["name"].(string)
+			if name == "" {
+				continue
+			}
+			embeddedServicesMap[name] = svc
+		}
+		embeddedServiceNames = make([]string, 0, len(embeddedServicesMap))
+		for name := range embeddedServicesMap {
+			embeddedServiceNames = append(embeddedServiceNames, name)
+		}
+		sort.Strings(embeddedServiceNames)
+	})
+}
+
+// EmbeddedSpec returns the embedded spec for one service, or nil if unknown.
+// Bypasses remote overlay — used for deterministic envelope output.
+func EmbeddedSpec(serviceName string) map[string]interface{} {
+	parseEmbeddedServices()
+	return embeddedServicesMap[serviceName]
+}
+
+// EmbeddedServiceNames returns sorted embedded service names (no overlay).
+// Returns a defensive copy — callers must not mutate the package-level slice.
+func EmbeddedServiceNames() []string {
+	parseEmbeddedServices()
+	out := make([]string, len(embeddedServiceNames))
+	copy(out, embeddedServiceNames)
+	return out
+}
+
 var (
 	mergedServices    = make(map[string]map[string]interface{}) // project name → parsed spec
 	mergedProjectList []string                                  // sorted project names

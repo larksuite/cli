@@ -174,7 +174,7 @@ lark-cli minutes +search --query "预算复盘" --page-size 20 --page-token '<PA
 lark-cli minutes minutes get --params '{"minute_token": "obcn***************"}'
 
 # 查妙记关联的纪要产物：逐字稿、总结、待办、章节等 → 用 lark-cli vc +notes
-lark-cli vc +notes --minute-tokens obcnhijv43vq6bcsl5xasfb2
+lark-cli vc +notes --minute-tokens obcn_EXAMPLE_TOKEN
 ```
 
 ## 常见错误与排查

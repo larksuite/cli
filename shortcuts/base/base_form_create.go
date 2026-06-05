@@ -25,6 +25,9 @@ var BaseFormCreate = common.Shortcut{
 		{Name: "name", Desc: "form name", Required: true},
 		{Name: "description", Desc: `form description (plain text or markdown link like [text](https://example.com))`},
 	},
+	Tips: []string{
+		"Record the returned form_id; form question create/list/update/delete commands need it.",
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms").

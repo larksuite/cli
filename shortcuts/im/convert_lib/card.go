@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -50,11 +51,12 @@ var cardChartTypeNames = map[string]string{
 type interactiveConverter struct{}
 
 func (interactiveConverter) Convert(ctx *ConvertContext) string {
-	return convertCard(ctx.RawContent)
+	return convertCard(ctx.RawContent, ctx.Mentions)
 }
 
 // convertCard converts a raw interactive/card message content JSON to human-readable string.
-func convertCard(raw string) string {
+// mentions is the raw mentions array from the API response; pass nil when not available.
+func convertCard(raw string, mentions []interface{}) string {
 	var parsed cardObj
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
 		return "[interactive card]"
@@ -63,11 +65,19 @@ func convertCard(raw string) string {
 	// raw_card_content format: outer JSON has "json_card" string field
 	if jsonCard, ok := parsed["json_card"].(string); ok {
 		c := &cardConverter{mode: cardModeConcise}
-		if att, ok := parsed["json_attachment"].(string); ok && att != "" {
-			var attObj cardObj
-			if json.Unmarshal([]byte(att), &attObj) == nil {
-				c.attachment = attObj
+		switch att := parsed["json_attachment"].(type) {
+		case string:
+			if att != "" {
+				var attObj cardObj
+				if json.Unmarshal([]byte(att), &attObj) == nil {
+					c.attachment = attObj
+				}
 			}
+		case cardObj:
+			c.attachment = att
+		}
+		if len(mentions) > 0 {
+			c.mentionsByKey = buildMentionsByKey(mentions)
 		}
 		schema := 0
 		if s, ok := parsed["card_schema"].(float64); ok {
@@ -82,6 +92,22 @@ func convertCard(raw string) string {
 
 	// Legacy format
 	return convertLegacyCard(parsed)
+}
+
+// buildMentionsByKey indexes the mentions array by key for O(1) lookup in convertAt.
+func buildMentionsByKey(mentions []interface{}) map[string]map[string]interface{} {
+	m := make(map[string]map[string]interface{}, len(mentions))
+	for _, raw := range mentions {
+		item, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		key, _ := item["key"].(string)
+		if key != "" {
+			m[key] = item
+		}
+	}
+	return m
 }
 
 // ── Legacy converter ──────────────────────────────────────────────────────────
@@ -158,8 +184,9 @@ func legacyExtractTexts(elements []interface{}, out *[]string) {
 // ── CardConverter ─────────────────────────────────────────────────────────────
 
 type cardConverter struct {
-	mode       cardMode
-	attachment cardObj
+	mode          cardMode
+	attachment    cardObj
+	mentionsByKey map[string]map[string]interface{}
 }
 
 func (c *cardConverter) convert(jsonCard string, hintSchema int) string {
@@ -170,8 +197,12 @@ func (c *cardConverter) convert(jsonCard string, hintSchema int) string {
 
 	header, _ := card["header"].(cardObj)
 	title := ""
+	subtitle := ""
+	headerTags := ""
 	if header != nil {
 		title = c.extractHeaderTitle(header)
+		subtitle = c.extractHeaderSubtitle(header)
+		headerTags = c.extractHeaderTags(header)
 	}
 
 	bodyContent := ""
@@ -180,12 +211,18 @@ func (c *cardConverter) convert(jsonCard string, hintSchema int) string {
 	}
 
 	var sb strings.Builder
-	if title != "" {
-		sb.WriteString("<card title=\"")
-		sb.WriteString(cardEscapeAttr(title))
-		sb.WriteString("\">\n")
+	if title != "" && subtitle != "" {
+		sb.WriteString(fmt.Sprintf("<card title=\"%s\" subtitle=\"%s\">\n", cardEscapeAttr(title), cardEscapeAttr(subtitle)))
+	} else if title != "" {
+		sb.WriteString(fmt.Sprintf("<card title=\"%s\">\n", cardEscapeAttr(title)))
+	} else if subtitle != "" {
+		sb.WriteString(fmt.Sprintf("<card subtitle=\"%s\">\n", cardEscapeAttr(subtitle)))
 	} else {
 		sb.WriteString("<card>\n")
+	}
+	if headerTags != "" {
+		sb.WriteString(headerTags)
+		sb.WriteString("\n")
 	}
 	if bodyContent != "" {
 		sb.WriteString(bodyContent)
@@ -205,6 +242,49 @@ func (c *cardConverter) extractHeaderTitle(header cardObj) string {
 		return c.extractTextContent(titleElem)
 	}
 	return ""
+}
+
+// extractHeaderSubtitle returns the subtitle text of a card header, supporting both
+// the property-wrapped and flat element formats.
+func (c *cardConverter) extractHeaderSubtitle(header cardObj) string {
+	if prop, ok := header["property"].(cardObj); ok {
+		if subtitleElem, ok := prop["subtitle"]; ok {
+			return c.extractTextContent(subtitleElem)
+		}
+	}
+	if subtitleElem, ok := header["subtitle"]; ok {
+		return c.extractTextContent(subtitleElem)
+	}
+	return ""
+}
+
+// extractHeaderTags returns a space-joined string of header tag labels from textTagList,
+// supporting both property-wrapped and flat header formats.
+func (c *cardConverter) extractHeaderTags(header cardObj) string {
+	var prop cardObj
+	if p, ok := header["property"].(cardObj); ok {
+		prop = p
+	} else {
+		prop = header
+	}
+	tagList, ok := prop["textTagList"].([]interface{})
+	if !ok || len(tagList) == 0 {
+		return ""
+	}
+	var tags []string
+	for _, tag := range tagList {
+		tm, ok := tag.(cardObj)
+		if !ok {
+			continue
+		}
+		if text := c.convertElement(tm, 0); text != "" {
+			tags = append(tags, text)
+		}
+	}
+	if len(tags) == 0 {
+		return ""
+	}
+	return strings.Join(tags, " ")
 }
 
 func (c *cardConverter) convertBody(body cardObj) string {
@@ -453,8 +533,11 @@ func (c *cardConverter) convertDiv(prop cardObj, _ string) string {
 
 	if textElem, ok := prop["text"].(cardObj); ok {
 		if text := c.convertElement(textElem, 0); text != "" {
-			if textSize, _ := textElem["text_size"].(string); textSize == "notation" {
-				text = "📝 " + text
+			textProp := c.extractProperty(textElem)
+			if textStyle, ok := textProp["textStyle"].(cardObj); ok {
+				if size, _ := textStyle["size"].(string); size == "notation" {
+					text = "📝 " + text
+				}
 			}
 			results = append(results, text)
 		}
@@ -532,7 +615,14 @@ func (c *cardConverter) convertEmoji(prop cardObj) string {
 }
 
 func (c *cardConverter) convertLocalDatetime(prop cardObj) string {
-	if ms, ok := prop["milliseconds"].(string); ok && ms != "" {
+	var ms string
+	switch v := prop["milliseconds"].(type) {
+	case string:
+		ms = v
+	case float64:
+		ms = strconv.FormatInt(int64(v), 10)
+	}
+	if ms != "" {
 		if formatted := cardFormatMillisToISO8601(ms); formatted != "" {
 			return formatted
 		}
@@ -763,22 +853,22 @@ func (c *cardConverter) convertCollapsiblePanel(prop cardObj, _ string) string {
 		}
 	}
 
-	shouldExpand := expanded || c.mode == cardModeDetailed
-	if shouldExpand {
-		var sb strings.Builder
-		sb.WriteString("▼ " + title + "\n")
-		if elements, ok := prop["elements"].([]interface{}); ok {
-			content := c.convertElements(elements, 1)
-			for _, line := range strings.Split(content, "\n") {
-				if line != "" {
-					sb.WriteString("    " + line + "\n")
-				}
+	indicator := "▶"
+	if expanded {
+		indicator = "▼"
+	}
+	var sb strings.Builder
+	sb.WriteString(indicator + " " + title + "\n")
+	if elements, ok := prop["elements"].([]interface{}); ok {
+		content := c.convertElements(elements, 1)
+		for _, line := range strings.Split(content, "\n") {
+			if line != "" {
+				sb.WriteString("    " + line + "\n")
 			}
 		}
-		sb.WriteString("▲")
-		return sb.String()
 	}
-	return "▶ " + title
+	sb.WriteString("▲")
+	return sb.String()
 }
 
 func (c *cardConverter) convertInteractiveContainer(prop cardObj, id string) string {
@@ -826,27 +916,7 @@ func (c *cardConverter) convertButton(prop cardObj, _ string) string {
 	}
 
 	disabled, _ := prop["disabled"].(bool)
-	if disabled && c.mode == cardModeConcise {
-		return fmt.Sprintf("[%s ✗]", buttonText)
-	}
-
-	if actions, ok := prop["actions"].([]interface{}); ok {
-		for _, action := range actions {
-			am, ok := action.(cardObj)
-			if !ok {
-				continue
-			}
-			if am["type"] == "open_url" {
-				if ad, ok := am["action"].(cardObj); ok {
-					if urlStr, ok := ad["url"].(string); ok && urlStr != "" {
-						return fmt.Sprintf("[%s](%s)", escapeMDLinkText(buttonText), urlStr)
-					}
-				}
-			}
-		}
-	}
-
-	if disabled && c.mode == cardModeDetailed {
+	if disabled {
 		result := fmt.Sprintf("[%s ✗]", buttonText)
 		if tips, ok := prop["disabledTips"].(cardObj); ok {
 			if tipsText := c.extractTextContent(tips); tipsText != "" {
@@ -856,7 +926,42 @@ func (c *cardConverter) convertButton(prop cardObj, _ string) string {
 		return result
 	}
 
-	return fmt.Sprintf("[%s]", buttonText)
+	result := fmt.Sprintf("[%s]", buttonText)
+	if actions, ok := prop["actions"].([]interface{}); ok {
+		for _, action := range actions {
+			am, ok := action.(cardObj)
+			if !ok {
+				continue
+			}
+			if am["type"] == "open_url" {
+				if ad, ok := am["action"].(cardObj); ok {
+					if urlStr, ok := ad["url"].(string); ok && urlStr != "" {
+						result = fmt.Sprintf("[%s](%s)", escapeMDLinkText(buttonText), urlStr)
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if confirmObj, ok := prop["confirm"].(cardObj); ok {
+		var parts []string
+		if titleElem, ok := confirmObj["title"]; ok {
+			if t := c.extractTextContent(titleElem); t != "" {
+				parts = append(parts, t)
+			}
+		}
+		if textElem, ok := confirmObj["text"]; ok {
+			if t := c.extractTextContent(textElem); t != "" {
+				parts = append(parts, t)
+			}
+		}
+		if len(parts) > 0 {
+			result += fmt.Sprintf("(confirm:\"%s\")", strings.Join(parts, ": "))
+		}
+	}
+
+	return result
 }
 
 func (c *cardConverter) convertActions(prop cardObj) string {
@@ -888,11 +993,33 @@ func (c *cardConverter) convertOverflow(prop cardObj) string {
 		if !ok {
 			continue
 		}
+		text := ""
 		if textElem, ok := om["text"].(cardObj); ok {
-			if text := c.extractTextContent(textElem); text != "" {
-				optTexts = append(optTexts, text)
+			text = c.extractTextContent(textElem)
+		}
+		if text == "" {
+			continue
+		}
+		urlStr := ""
+		if actions, ok := om["actions"].([]interface{}); ok {
+			for _, a := range actions {
+				am, ok := a.(cardObj)
+				if !ok {
+					continue
+				}
+				if am["type"] == "open_url" {
+					if ad, ok := am["action"].(cardObj); ok {
+						urlStr, _ = ad["url"].(string)
+					}
+				}
 			}
 		}
+		if urlStr != "" {
+			text = fmt.Sprintf("[%s](%s)", escapeMDLinkText(text), urlStr)
+		} else if value, _ := om["value"].(string); value != "" {
+			text += "(" + value + ")"
+		}
+		optTexts = append(optTexts, text)
 	}
 	return "⋮ " + strings.Join(optTexts, ", ")
 }
@@ -932,17 +1059,20 @@ func (c *cardConverter) convertSelect(prop cardObj, id string, isMulti bool) str
 		if !ok {
 			continue
 		}
+		value, _ := om["value"].(string)
 		optText := ""
 		if textElem, ok := om["text"].(cardObj); ok {
 			optText = c.extractTextContent(textElem)
 		}
 		if optText == "" {
-			optText, _ = om["value"].(string)
+			optText = c.lookupOptionUserName(value)
+		}
+		if optText == "" {
+			optText = value
 		}
 		if optText == "" {
 			continue
 		}
-		value, _ := om["value"].(string)
 		if selectedValues[value] {
 			optText = "✓" + optText
 			hasSelected = true
@@ -963,17 +1093,15 @@ func (c *cardConverter) convertSelect(prop cardObj, id string, isMulti bool) str
 	}
 
 	result := "{" + strings.Join(optionTexts, " / ") + "}"
-	if c.mode == cardModeDetailed {
-		var attrs []string
-		if isMulti {
-			attrs = append(attrs, "multi")
-		}
-		if strings.Contains(id, "person") {
-			attrs = append(attrs, "type:person")
-		}
-		if len(attrs) > 0 {
-			result += "(" + strings.Join(attrs, " ") + ")"
-		}
+	var attrs []string
+	if isMulti {
+		attrs = append(attrs, "multi")
+	}
+	if c.mode == cardModeDetailed && strings.Contains(id, "person") {
+		attrs = append(attrs, "type:person")
+	}
+	if len(attrs) > 0 {
+		result += "(" + strings.Join(attrs, " ") + ")"
 	}
 	return result
 }
@@ -999,6 +1127,17 @@ func (c *cardConverter) convertSelectImg(prop cardObj, _ string) string {
 		}
 		value, _ := om["value"].(string)
 		text := fmt.Sprintf("🖼️ Image %d", i+1)
+		if value != "" {
+			text += "(" + value + ")"
+		}
+		if imageID, ok := om["imageID"].(string); ok && imageID != "" {
+			originKey, imgToken := c.getImageKeyAndToken(imageID)
+			if originKey != "" {
+				text += "(img_key:" + originKey + ")"
+			} else if imgToken != "" {
+				text += "(img_token:" + imgToken + ")"
+			}
+		}
 		if selectedValues[value] {
 			text = "✓" + text
 		}
@@ -1101,13 +1240,14 @@ func (c *cardConverter) convertImage(prop cardObj, _ string) string {
 	}
 
 	result := "🖼️ " + alt
-	if c.mode == cardModeDetailed {
-		if imageID, ok := prop["imageID"].(string); ok && imageID != "" {
-			if token := c.getImageToken(imageID); token != "" {
-				result += "(img_token:" + token + ")"
-			} else {
-				result += "(img_key:" + imageID + ")"
-			}
+	if imageID, ok := prop["imageID"].(string); ok && imageID != "" {
+		originKey, imgToken := c.getImageKeyAndToken(imageID)
+		if originKey != "" {
+			result += "(img_key:" + originKey + ")"
+		} else if imgToken != "" {
+			result += "(img_token:" + imgToken + ")"
+		} else {
+			result += "(img_key:" + imageID + ")"
 		}
 	}
 	return result
@@ -1119,20 +1259,25 @@ func (c *cardConverter) convertImgCombination(prop cardObj) string {
 		return ""
 	}
 	result := fmt.Sprintf("🖼️ %d image(s)", len(imgList))
-	if c.mode == cardModeDetailed {
-		var keys []string
-		for _, img := range imgList {
-			im, ok := img.(cardObj)
-			if !ok {
-				continue
-			}
-			if imageID, ok := im["imageID"].(string); ok && imageID != "" {
+	var keys []string
+	for _, img := range imgList {
+		im, ok := img.(cardObj)
+		if !ok {
+			continue
+		}
+		if imageID, ok := im["imageID"].(string); ok && imageID != "" {
+			originKey, imgToken := c.getImageKeyAndToken(imageID)
+			if originKey != "" {
+				keys = append(keys, originKey)
+			} else if imgToken != "" {
+				keys = append(keys, imgToken)
+			} else {
 				keys = append(keys, imageID)
 			}
 		}
-		if len(keys) > 0 {
-			result += "(keys:" + strings.Join(keys, ",") + ")"
-		}
+	}
+	if len(keys) > 0 {
+		result += "(keys:" + strings.Join(keys, ",") + ")"
 	}
 	return result
 }
@@ -1150,7 +1295,11 @@ func (c *cardConverter) convertChart(prop cardObj, _ string) string {
 		if ct, ok := chartSpec["type"].(string); ok && ct != "" {
 			chartType = ct
 			if typeName, ok := cardChartTypeNames[ct]; ok {
-				title += typeName
+				if title != "Chart" {
+					title += " (" + typeName + ")"
+				} else {
+					title = typeName
+				}
 			}
 		}
 	}
@@ -1168,12 +1317,25 @@ func (c *cardConverter) extractChartSummary(prop cardObj, chartType string) stri
 	if !ok {
 		return ""
 	}
-	dataObj, ok := chartSpec["data"].(cardObj)
-	if !ok {
-		return ""
+
+	// VChart spec: data is an array of series objects ([{"id":"...","values":[...]}]).
+	// Older/object format: data is a map with a "values" key directly.
+	var values []interface{}
+	switch d := chartSpec["data"].(type) {
+	case cardObj:
+		if v, ok := d["values"].([]interface{}); ok {
+			values = v
+		}
+	case []interface{}:
+		for _, series := range d {
+			if sm, ok := series.(cardObj); ok {
+				if v, ok := sm["values"].([]interface{}); ok {
+					values = append(values, v...)
+				}
+			}
+		}
 	}
-	values, ok := dataObj["values"].([]interface{})
-	if !ok || len(values) == 0 {
+	if len(values) == 0 {
 		return ""
 	}
 
@@ -1218,28 +1380,24 @@ func (c *cardConverter) extractChartSummary(prop cardObj, chartType string) stri
 
 func (c *cardConverter) convertAudio(prop cardObj, _ string) string {
 	result := "🎵 Audio"
-	if c.mode == cardModeDetailed {
-		fileID, _ := prop["fileID"].(string)
-		if fileID == "" {
-			fileID, _ = prop["audioID"].(string)
-		}
-		if fileID != "" {
-			result += "(key:" + fileID + ")"
-		}
+	fileID, _ := prop["fileID"].(string)
+	if fileID == "" {
+		fileID, _ = prop["audioID"].(string)
+	}
+	if fileID != "" {
+		result += "(key:" + fileID + ")"
 	}
 	return result
 }
 
 func (c *cardConverter) convertVideo(prop cardObj, _ string) string {
 	result := "🎬 Video"
-	if c.mode == cardModeDetailed {
-		fileID, _ := prop["fileID"].(string)
-		if fileID == "" {
-			fileID, _ = prop["videoID"].(string)
-		}
-		if fileID != "" {
-			result += "(key:" + fileID + ")"
-		}
+	fileID, _ := prop["fileID"].(string)
+	if fileID == "" {
+		fileID, _ = prop["videoID"].(string)
+	}
+	if fileID != "" {
+		result += "(key:" + fileID + ")"
 	}
 	return result
 }
@@ -1297,9 +1455,14 @@ func (c *cardConverter) convertTable(prop cardObj) string {
 func (c *cardConverter) extractTableCellValue(data interface{}) string {
 	switch v := data.(type) {
 	case string:
+		// Lark API serialises array-type cell data as a Go-format string like
+		// "[map[text:VIP] map[text:Premium]]". Detect and extract text values.
+		if texts := goMapArrayTexts(v); len(texts) > 0 {
+			return strings.Join(texts, ", ")
+		}
 		return v
 	case float64:
-		return strconv.FormatFloat(v, 'f', 2, 64)
+		return strconv.FormatFloat(v, 'f', -1, 64)
 	case []interface{}:
 		var texts []string
 		for _, item := range v {
@@ -1320,6 +1483,47 @@ func (c *cardConverter) extractTableCellValue(data interface{}) string {
 	}
 }
 
+// goMapNextKey matches the start of the next key in a Go fmt map literal (space + identifier + colon).
+var goMapNextKey = regexp.MustCompile(` [a-zA-Z_][a-zA-Z0-9_]*:`)
+
+// goMapArrayTexts extracts "text" values from a Go-format slice-of-maps string,
+// e.g. "[map[text:VIP] map[text:Premium]]" → ["VIP", "Premium"].
+// Values may contain spaces; they are delimited by the next map key or by "]".
+// Returns nil if the string doesn't look like this format.
+func goMapArrayTexts(s string) []string {
+	if !strings.HasPrefix(s, "[") || !strings.Contains(s, "map[") {
+		return nil
+	}
+	const key = "text:"
+	var texts []string
+	rest := s
+	for {
+		idx := strings.Index(rest, key)
+		if idx < 0 {
+			break
+		}
+		after := rest[idx+len(key):]
+		bracketEnd := strings.Index(after, "]")
+		nextKey := goMapNextKey.FindStringIndex(after)
+		var end int
+		if nextKey != nil && (bracketEnd < 0 || nextKey[0] < bracketEnd) {
+			end = nextKey[0]
+		} else if bracketEnd >= 0 {
+			end = bracketEnd
+		} else {
+			if after != "" {
+				texts = append(texts, after)
+			}
+			break
+		}
+		if val := after[:end]; val != "" {
+			texts = append(texts, val)
+		}
+		rest = after[end:]
+	}
+	return texts
+}
+
 func (c *cardConverter) convertPerson(prop cardObj, _ string) string {
 	userID, _ := prop["userID"].(string)
 	if userID == "" {
@@ -1333,14 +1537,14 @@ func (c *cardConverter) convertPerson(prop cardObj, _ string) string {
 	}
 	if personName != "" {
 		if c.mode == cardModeDetailed {
-			return fmt.Sprintf("@%s(open_id:%s)", personName, userID)
+			return fmt.Sprintf("%s(open_id:%s)", personName, userID)
 		}
-		return "@" + personName
+		return personName
 	}
 	if c.mode == cardModeDetailed {
-		return fmt.Sprintf("@user(open_id:%s)", userID)
+		return fmt.Sprintf("user(open_id:%s)", userID)
 	}
-	return "@" + userID
+	return userID
 }
 
 // convertPersonV1 handles the v1 card schema person element.
@@ -1356,14 +1560,14 @@ func (c *cardConverter) convertPersonV1(prop cardObj, _ string) string {
 	personName := c.lookupPersonName(userID)
 	if personName != "" {
 		if c.mode == cardModeDetailed {
-			return fmt.Sprintf("@%s(open_id:%s)", personName, userID)
+			return fmt.Sprintf("%s(open_id:%s)", personName, userID)
 		}
-		return "@" + personName
+		return personName
 	}
 	if c.mode == cardModeDetailed {
-		return fmt.Sprintf("@user(open_id:%s)", userID)
+		return fmt.Sprintf("user(open_id:%s)", userID)
 	}
-	return "@" + userID
+	return userID
 }
 
 func (c *cardConverter) convertPersonList(prop cardObj) string {
@@ -1378,10 +1582,21 @@ func (c *cardConverter) convertPersonList(prop cardObj) string {
 			continue
 		}
 		personID, _ := pm["id"].(string)
-		if c.mode == cardModeDetailed && personID != "" {
-			names = append(names, fmt.Sprintf("@user(id:%s)", personID))
+		personName := c.lookupPersonName(personID)
+		if personName != "" {
+			if c.mode == cardModeDetailed {
+				names = append(names, fmt.Sprintf("%s(open_id:%s)", personName, personID))
+			} else {
+				names = append(names, personName)
+			}
+		} else if personID != "" {
+			if c.mode == cardModeDetailed {
+				names = append(names, fmt.Sprintf("user(id:%s)", personID))
+			} else {
+				names = append(names, personID)
+			}
 		} else {
-			names = append(names, "@user")
+			names = append(names, "user")
 		}
 	}
 	return strings.Join(names, ", ")
@@ -1389,8 +1604,15 @@ func (c *cardConverter) convertPersonList(prop cardObj) string {
 
 func (c *cardConverter) convertAvatar(prop cardObj, _ string) string {
 	userID, _ := prop["userID"].(string)
+	personName := c.lookupPersonName(userID)
+	if personName != "" {
+		if c.mode == cardModeDetailed {
+			return fmt.Sprintf("👤 %s(open_id:%s)", personName, userID)
+		}
+		return "👤 " + personName
+	}
 	result := "👤"
-	if c.mode == cardModeDetailed && userID != "" {
+	if userID != "" {
 		result += "(id:" + userID + ")"
 	}
 	return result
@@ -1403,26 +1625,52 @@ func (c *cardConverter) convertAt(prop cardObj) string {
 	}
 	userName := ""
 	actualUserID := ""
+	fromMentions := false
 	if c.attachment != nil {
 		if atUsers, ok := c.attachment["at_users"].(cardObj); ok {
 			if userInfo, ok := atUsers[userID].(cardObj); ok {
 				userName, _ = userInfo["content"].(string)
 				actualUserID, _ = userInfo["user_id"].(string)
+				// When the backend populates mention_key (raw_card_content path), use
+				// mentions[] for the canonical name and the reading-app open_id, which is
+				// more accurate than the origKey-stored user_id in at_users.
+				if mentionKey, _ := userInfo["mention_key"].(string); mentionKey != "" {
+					if mention, ok := c.mentionsByKey[mentionKey]; ok {
+						if name, _ := mention["name"].(string); name != "" {
+							userName = name
+						}
+						if id := extractMentionOpenId(mention["id"]); id != "" {
+							actualUserID = id
+							fromMentions = true
+						}
+					}
+				}
 			}
 		}
 	}
 	if userName != "" {
 		if c.mode == cardModeDetailed {
 			if actualUserID != "" {
-				return fmt.Sprintf("@%s(user_id:%s)", userName, actualUserID)
+				label := "user_id"
+				if fromMentions {
+					label = "open_id"
+				}
+				return fmt.Sprintf("@%s(%s:%s)", userName, label, actualUserID)
 			}
 			return fmt.Sprintf("@%s(open_id:%s)", userName, userID)
 		}
-		return "@" + userName
+		if fromMentions && actualUserID != "" {
+			return fmt.Sprintf("@%s(%s)", userName, actualUserID)
+		}
+		return fmt.Sprintf("@%s(%s)", userName, userID)
 	}
 	if c.mode == cardModeDetailed {
 		if actualUserID != "" {
-			return fmt.Sprintf("@user(user_id:%s)", actualUserID)
+			label := "user_id"
+			if fromMentions {
+				label = "open_id"
+			}
+			return fmt.Sprintf("@user(%s:%s)", label, actualUserID)
 		}
 		return fmt.Sprintf("@user(open_id:%s)", userID)
 	}
@@ -1445,18 +1693,35 @@ func (c *cardConverter) lookupPersonName(userID string) string {
 	return ""
 }
 
-func (c *cardConverter) getImageToken(imageID string) string {
+// lookupOptionUserName resolves a user display name from the attachment's option_users map,
+// used for person-selector option labels.
+func (c *cardConverter) lookupOptionUserName(userID string) string {
 	if c.attachment == nil {
 		return ""
 	}
-	if images, ok := c.attachment["images"].(cardObj); ok {
-		if imageInfo, ok := images[imageID].(cardObj); ok {
-			if token, ok := imageInfo["token"].(string); ok {
-				return token
+	if optUsers, ok := c.attachment["option_users"].(cardObj); ok {
+		if userInfo, ok := optUsers[userID].(cardObj); ok {
+			if content, ok := userInfo["content"].(string); ok {
+				return content
 			}
 		}
 	}
 	return ""
+}
+
+// getImageKeyAndToken returns the origin_key and token for an image ID from the attachment map.
+// origin_key takes priority over token as the display-ready image reference.
+func (c *cardConverter) getImageKeyAndToken(imageID string) (originKey, token string) {
+	if c.attachment == nil {
+		return "", ""
+	}
+	if images, ok := c.attachment["images"].(cardObj); ok {
+		if imageInfo, ok := images[imageID].(cardObj); ok {
+			originKey, _ = imageInfo["origin_key"].(string)
+			token, _ = imageInfo["token"].(string)
+		}
+	}
+	return originKey, token
 }
 
 type cardTextStyle struct {

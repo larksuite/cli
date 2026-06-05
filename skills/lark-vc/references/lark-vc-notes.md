@@ -63,9 +63,9 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 | 输入 | 所需权限 |
 |------|---------|
-| `--meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read` |
+| `--meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read`、`vc:record:readonly` |
 | `--minute-tokens` | `vc:note:read`、`minutes:minutes:readonly`、`minutes:minutes.artifacts:read`、`minutes:minutes.transcript:export` |
-| `--calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read` |
+| `--calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read`、`vc:record:readonly` |
 
 ## 输出结果
 
@@ -75,6 +75,8 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 
 | 字段 | 说明 |
 |------|------|
+| `meeting_id` | 会议 ID（`--meeting-ids` / `--calendar-event-ids` 路径） |
+| `minute_token` | **会议对应的妙记 Token**（`--meeting-ids` / `--calendar-event-ids` 路径自动通过录制 API 反查并附加）|
 | `note_doc_token` | **AI 智能纪要**文档 Token — AI 生成的总结、待办、章节 |
 | `meeting_notes` | **用户绑定的会议纪要**文档 Token 列表 — 用户主动关联到会议的文档（仅 `--calendar-event-ids` 路径返回） |
 | `verbatim_doc_token` | **逐字稿**文档 Token — 完整的逐句文字记录，含说话人和时间戳 |
@@ -83,6 +85,8 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 | `create_time` | 创建时间（格式化） |
 
 > **选择哪个 token？** 用户说"会议纪要""总结""待办""纪要内容" → 返回 `note_doc_token` 和 `meeting_notes`（如有）。用户说"逐字稿""完整记录""谁说了什么" → 用 `verbatim_doc_token`。意图不明确时，展示所有文档链接让用户选择。
+>
+> 📌 不确定该返回哪个 token？参见 [`vc-domain-boundaries.md`](vc-domain-boundaries.md) 的产物链路对比表，了解 AI 总结链路 vs 录制链路的区别。
 
 ### minute-tokens 路径的 AI 产物
 
@@ -93,6 +97,7 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 | `artifacts.summary` | AI 总结（JSON 内联） |
 | `artifacts.todos` | 待办事项（JSON 内联） |
 | `artifacts.chapters` | 章节纪要（JSON 内联） |
+| `artifacts.keywords` | 妙记推荐关键词（JSON 内联） |
 | `artifacts.transcript_file` | 逐字稿本地文件路径。默认落到 `./minutes/{minute_token}/transcript.txt`（与 `minutes +download` 聚合）；显式 `--output-dir` 时走旧布局 `./{output-dir}/artifact-{title}-{token}/transcript.txt` |
 
 ## 如何获取输入参数

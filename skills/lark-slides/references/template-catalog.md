@@ -17,7 +17,6 @@
 5. 优先运行 `template_tool.py summarize` 查看 `<theme>` / 页型摘要；只有需要具体布局骨架时，再运行 `template_tool.py extract`
 6. 从模板中提取并复用：`<theme>` 配色、页面流、shape 排列布局、装饰元素风格
 7. 将用户的实际内容填充到模板的结构框架中，**不要照搬模板的占位文字**
-8. 创建前运行 `layout_lint.py --input <file>`；它检查 XML well-formed 和布局风险，不等价于完整 XSD schema 校验
 
 ### 脚本快捷命令
 

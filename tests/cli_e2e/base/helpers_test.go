@@ -11,6 +11,7 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	"github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -83,9 +84,11 @@ func isCleanupSuppressedResult(result *clie2e.Result) bool {
 func createBaseWithRetry(t *testing.T, ctx context.Context, name string) string {
 	t.Helper()
 
+	const defaultAs = "bot"
+
 	result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 		Args:      []string{"base", "+base-create", "--name", name, "--time-zone", "Asia/Shanghai"},
-		DefaultAs: "bot",
+		DefaultAs: defaultAs,
 	}, clie2e.RetryOptions{})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
@@ -96,6 +99,13 @@ func createBaseWithRetry(t *testing.T, ctx context.Context, name string) string 
 		baseToken = gjson.Get(result.Stdout, "data.base.base_token").String()
 	}
 	require.NotEmpty(t, baseToken, "stdout:\n%s", result.Stdout)
+	t.Cleanup(func() {
+		cleanupCtx, cancel := clie2e.CleanupContext()
+		defer cancel()
+
+		deleteResult, deleteErr := drive.DeleteDriveResourceAndVerify(cleanupCtx, baseToken, "bitable", defaultAs)
+		clie2e.ReportCleanupFailure(t, "delete base "+baseToken, deleteResult, deleteErr)
+	})
 	return baseToken
 }
 

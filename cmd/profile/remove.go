@@ -28,6 +28,7 @@ func NewCmdProfileRemove(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetTips(cmd, []string{
 		"AI agents: Do NOT remove profiles unless the user explicitly asks. This is destructive and clears all associated credentials.",
 	})
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 

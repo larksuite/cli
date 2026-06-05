@@ -41,6 +41,7 @@ func wrapError(op string, err error) error {
 	if errors.Is(err, errNotInitialized) {
 		hint = "The keychain master key may have been cleaned up or deleted. If running inside a sandbox or CI environment, please ensure the process has the necessary permissions to access the keychain, you can try running this outside the sandbox. Otherwise, please reconfigure the CLI by running lark-cli config init."
 	}
+	hint += extraHint(err)
 
 	func() {
 		defer func() { recover() }()

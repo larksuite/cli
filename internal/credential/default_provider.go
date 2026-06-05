@@ -4,20 +4,49 @@
 package credential
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sync"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 )
+
+// classifyTATResponseCode wraps a non-zero TAT endpoint response code into the
+// canonical typed error. The TAT mint endpoint reports invalid credentials
+// with two distinct codes:
+//
+//   - 10003: bad app_id format or non-existent app_id ("invalid param")
+//   - 10014: invalid app_secret ("app secret invalid")
+//
+// Both surface as CategoryConfig/InvalidClient from the user's perspective —
+// the configured credentials cannot mint a tenant access token. 10014 is
+// globally mapped in codemeta (TAT-mint-specific variant of OAuth 99991543).
+// 10003 is NOT globally mapped because in other Lark endpoints it carries
+// unrelated semantics (e.g. task API uses 10003 for permission denied), so
+// the override stays local to this TAT call site instead of leaking into the
+// shared codemeta table.
+func classifyTATResponseCode(code int, msg, brand, appID string) error {
+	if code == 10003 {
+		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
+			WithCode(code).
+			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
+	}
+	return errclass.BuildAPIError(map[string]any{
+		"code": code,
+		"msg":  msg,
+	}, errclass.ClassifyContext{
+		Brand: brand,
+		AppID: appID,
+	})
+}
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
@@ -135,42 +164,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, err
 	}
-	ep := core.ResolveEndpoints(acct.Brand)
-	url := ep.Open + "/open-apis/auth/v3/tenant_access_token/internal"
-
-	body, err := json.Marshal(map[string]string{
-		"app_id":     acct.AppID,
-		"app_secret": acct.AppSecret,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal TAT request: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("TAT API returned HTTP %d", resp.StatusCode)
-	}
-
-	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse TAT response: %w", err)
-	}
-	if result.Code != 0 {
-		return nil, fmt.Errorf("TAT API error: [%d] %s", result.Code, result.Msg)
-	}
-	return &TokenResult{Token: result.TenantAccessToken}, nil
+	return &TokenResult{Token: token}, nil
 }

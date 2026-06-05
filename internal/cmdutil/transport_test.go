@@ -332,7 +332,7 @@ func TestBuildHeaderTransport_OverridesEvenWithoutTamper(t *testing.T) {
 
 // TestBuildHeaderTransport_NilBase_UsesFallback verifies that when Base is nil,
 // the transport still sets X-Cli-Build and routes the request through
-// util.FallbackTransport rather than panicking. This covers the fallback
+// transport.Fallback rather than panicking. This covers the fallback
 // branch in RoundTrip that is otherwise unreachable with a non-nil Base.
 func TestBuildHeaderTransport_NilBase_UsesFallback(t *testing.T) {
 	var receivedBuild string

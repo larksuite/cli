@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -47,15 +47,15 @@ func (s driveMoveSpec) RequestBody() map[string]interface{} {
 
 func validateDriveMoveSpec(spec driveMoveSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 	if strings.TrimSpace(spec.FolderToken) != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--folder-token")
 		}
 	}
 	if !driveMoveAllowedTypes[spec.FileType] {
-		return output.ErrValidation("unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, slides", spec.FileType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported file type: %s. Supported types: file, docx, bitable, doc, sheet, mindnote, folder, slides", spec.FileType).WithParam("--type")
 	}
 	return nil
 }
@@ -109,10 +109,10 @@ func driveTaskCheckParams(taskID string) map[string]interface{} {
 // folder move or delete task.
 func getDriveTaskCheckStatus(runtime *common.RuntimeContext, taskID string) (driveTaskCheckStatus, error) {
 	if err := validate.ResourceName(taskID, "--task-id"); err != nil {
-		return driveTaskCheckStatus{}, output.ErrValidation("%s", err)
+		return driveTaskCheckStatus{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--task-id")
 	}
 
-	data, err := runtime.CallAPI("GET", "/open-apis/drive/v1/files/task_check", driveTaskCheckParams(taskID), nil)
+	data, err := runtime.CallAPITyped("GET", "/open-apis/drive/v1/files/task_check", driveTaskCheckParams(taskID), nil)
 	if err != nil {
 		return driveTaskCheckStatus{}, err
 	}
@@ -163,7 +163,7 @@ func pollDriveTaskCheck(runtime *common.RuntimeContext, taskID string) (driveTas
 			return status, true, nil
 		}
 		if status.Failed() {
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "folder task failed")
+			return status, false, errs.NewAPIError(errs.SubtypeServerError, "folder task failed")
 		}
 	}
 

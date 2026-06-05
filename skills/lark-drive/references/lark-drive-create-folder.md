@@ -1,8 +1,8 @@
-# drive +create-folder（创建云空间文件夹）
+# drive +create-folder（创建云空间/云盘/云存储文件夹）
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-在飞书云空间中创建一个新文件夹。该 shortcut 对原生 `drive files create_folder` 做了一层更适合日常使用的封装：`--folder-token` 可省略，此时会在调用者根目录创建；如果使用 `--as bot`，创建成功后 CLI 会尝试把新文件夹的可管理权限自动授予当前 CLI 用户。
+在飞书云空间（云盘/云存储）中创建一个新文件夹。该 shortcut 对原生 `drive files create_folder` 做了一层更适合日常使用的封装：`--folder-token` 可省略，此时会在调用者根目录创建；如果使用 `--as bot`，创建成功后 CLI 会尝试把新文件夹的可管理权限自动授予当前 CLI 用户。
 
 ## 命令
 
@@ -60,7 +60,7 @@ lark-cli drive +create-folder \
 
 ## 推荐场景
 
-- 用户说“在云空间新建一个文件夹 / 目录”时，优先使用 `drive +create-folder`
+- 用户说“在云空间（云盘/云存储）新建一个文件夹 / 目录”时，优先使用 `drive +create-folder`
 - 用户给了父文件夹链接或 token，需要在其下继续分层建目录时，传 `--folder-token`
 - 如果后续还要上传文件、移动文件、建子目录，优先复用返回值里的 `folder_token`
 
@@ -69,5 +69,5 @@ lark-cli drive +create-folder \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

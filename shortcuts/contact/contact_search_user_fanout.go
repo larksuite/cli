@@ -176,7 +176,11 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 		if firstErrCode != 0 {
 			return nil, output.ErrAPI(firstErrCode, msg, "")
 		}
-		return nil, output.ErrWithHint(output.ExitInternal, "fanout", msg, "")
+		// No structured API code — the failure was transport, parse, panic, or
+		// cancellation. Suggest the actionable next step rather than shipping
+		// an empty hint that would leave the calling agent with nothing to do.
+		return nil, output.ErrWithHint(output.ExitInternal, "fanout", msg,
+			"retry the command; if it persists, narrow --queries to a single term to isolate the failing input")
 	}
 	return out, nil
 }

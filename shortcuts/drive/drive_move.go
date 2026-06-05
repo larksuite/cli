@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -74,14 +74,14 @@ var DriveMove = common.Shortcut{
 				return err
 			}
 			if rootToken == "" {
-				return output.Errorf(output.ExitAPI, "api_error", "get root folder token failed, root folder is empty")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "get root folder token failed, root folder is empty")
 			}
 			spec.FolderToken = rootToken
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Moving %s %s to folder %s...\n", spec.FileType, common.MaskToken(spec.FileToken), common.MaskToken(spec.FolderToken))
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"POST",
 			fmt.Sprintf("/open-apis/drive/v1/files/%s/move", validate.EncodePathSegment(spec.FileToken)),
 			nil,
@@ -95,7 +95,7 @@ var DriveMove = common.Shortcut{
 		if spec.FileType == "folder" {
 			taskID := common.GetString(data, "task_id")
 			if taskID == "" {
-				return output.Errorf(output.ExitAPI, "api_error", "move folder returned no task_id")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "move folder returned no task_id")
 			}
 
 			fmt.Fprintf(runtime.IO().ErrOut, "Folder move is async, polling task %s...\n", taskID)
@@ -139,14 +139,14 @@ var DriveMove = common.Shortcut{
 // getRootFolderToken resolves the caller's Drive root folder token so other
 // commands can safely use it as a default destination.
 func getRootFolderToken(ctx context.Context, runtime *common.RuntimeContext) (string, error) {
-	data, err := runtime.CallAPI("GET", "/open-apis/drive/explorer/v2/root_folder/meta", nil, nil)
+	data, err := runtime.CallAPITyped("GET", "/open-apis/drive/explorer/v2/root_folder/meta", nil, nil)
 	if err != nil {
 		return "", err
 	}
 
 	token := common.GetString(data, "token")
 	if token == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "root_folder/meta returned no token")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "root_folder/meta returned no token")
 	}
 
 	return token, nil

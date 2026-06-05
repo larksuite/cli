@@ -25,6 +25,9 @@ var BaseFormQuestionsList = common.Shortcut{
 		{Name: "table-id", Desc: "table ID", Required: true},
 		{Name: "form-id", Desc: "form ID", Required: true},
 	},
+	Tips: []string{
+		"Use returned question id values for +form-questions-update and +form-questions-delete.",
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").

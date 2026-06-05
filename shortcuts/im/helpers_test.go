@@ -6,7 +6,6 @@ package im
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,36 +15,6 @@ import (
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
-
-func decodePostContentForTest(t *testing.T, raw string) []interface{} {
-	t.Helper()
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v, raw=%s", err, raw)
-	}
-	locale, _ := payload["zh_cn"].(map[string]interface{})
-	content, _ := locale["content"].([]interface{})
-	if content == nil {
-		t.Fatalf("post content missing: %#v", payload)
-	}
-	return content
-}
-
-func decodePostParagraphForTest(t *testing.T, raw string, idx int) map[string]interface{} {
-	t.Helper()
-
-	content := decodePostContentForTest(t, raw)
-	if idx >= len(content) {
-		t.Fatalf("paragraph index %d out of range, len=%d, raw=%s", idx, len(content), raw)
-	}
-	paragraph, _ := content[idx].([]interface{})
-	if len(paragraph) != 1 {
-		t.Fatalf("paragraph %d = %#v, want single node", idx, paragraph)
-	}
-	node, _ := paragraph[0].(map[string]interface{})
-	return node
-}
 
 func TestNormalizeAtMentions(t *testing.T) {
 	input := `<at id=ou_alpha/> hi <at open_id="ou_beta"> and <at user_id=ou_gamma /> and <at email="x@example.com"/>`
@@ -168,16 +137,6 @@ func TestWrapMarkdownAsPostForDryRun(t *testing.T) {
 	}
 	if !strings.Contains(desc, "placeholder image keys") {
 		t.Fatalf("wrapMarkdownAsPostForDryRun() desc = %q, want placeholder note", desc)
-	}
-}
-
-func TestWrapMarkdownAsPostForDryRun_SegmentedBlankLines(t *testing.T) {
-	content, _ := wrapMarkdownAsPostForDryRun("hello\n\n![alt](https://example.com/a.png)")
-	if !strings.Contains(content, `![alt](img_dryrun_1)`) {
-		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want placeholder img key", content)
-	}
-	if !strings.Contains(content, `"tag":"text"`) {
-		t.Fatalf("wrapMarkdownAsPostForDryRun(segmented) content = %q, want blank-line text paragraph", content)
 	}
 }
 
@@ -373,242 +332,17 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 	}
 }
 
-func TestMarshalStringNoEscape(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{name: "ampersand not escaped", input: "a=1&b=2", want: `"a=1&b=2"`},
-		{name: "angle brackets not escaped", input: "<tag>", want: `"<tag>"`},
-		{name: "regular string", input: "hello world", want: `"hello world"`},
-		{name: "url with ampersand", input: "https://example.com?a=1&b=2", want: `"https://example.com?a=1&b=2"`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := marshalStringNoEscape(tt.input)
-			if got != tt.want {
-				t.Errorf("marshalStringNoEscape(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestBuildPostElements(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		wantSubs  []string // substrings that must appear
-		wantNsubs []string // substrings that must NOT appear
-	}{
-		{
-			name:     "plain text no URL",
-			input:    "hello **world**",
-			wantSubs: []string{`"tag":"md"`, `hello **world**`},
-		},
-		{
-			name:     "bare URL only",
-			input:    "https://example.com/path",
-			wantSubs: []string{`"tag":"a"`, `"text":"https://example.com/path"`, `"href":"https://example.com/path"`},
-		},
-		{
-			name:     "bare URL with underscores",
-			input:    "https://example.com/flow_id=abc_def",
-			wantSubs: []string{`"tag":"a"`, `flow_id=abc_def`},
-		},
-		{
-			name:     "bare URL with ampersand not escaped",
-			input:    "https://example.com?a=1&b=2",
-			wantSubs: []string{`"tag":"a"`, `a=1&b=2`},
-		},
-		{
-			name:     "text before and after URL",
-			input:    "click here: https://example.com/path ok?",
-			wantSubs: []string{`"tag":"md"`, `click here: `, `"tag":"a"`, `https://example.com/path`, ` ok?`},
-		},
-		{
-			name:     "markdown link kept in md segment",
-			input:    "[click here](https://example.com/path_with_underscore)",
-			wantSubs: []string{`"tag":"md"`, `[click here](https://example.com/path_with_underscore)`},
-		},
-		{
-			name:      "markdown link not promoted to a tag",
-			input:     "[text](https://example.com)",
-			wantSubs:  []string{`"tag":"md"`},
-			wantNsubs: []string{`"tag":"a"`},
-		},
-		{
-			name:  "multiple bare URLs",
-			input: "https://a.com/x_y and https://b.com/p_q",
-			wantSubs: []string{
-				`"tag":"a"`, `https://a.com/x_y`,
-				`https://b.com/p_q`,
-				`"tag":"md"`, ` and `,
-			},
-		},
-		{
-			name:     "mixed markdown and bare URL",
-			input:    "**bold** https://example.com/foo_bar [link](https://example.com) end",
-			wantSubs: []string{`"tag":"md"`, `**bold**`, `"tag":"a"`, `foo_bar`, `[link](https://example.com)`},
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			wantSubs: []string{`"tag":"md"`, `"text":""`},
-		},
-		{
-			name:      "URL followed by comma",
-			input:     "visit https://example.com/path, then click",
-			wantSubs:  []string{`"tag":"a"`, `"href":"https://example.com/path"`},
-			wantNsubs: []string{`https://example.com/path,`},
-		},
-		{
-			name:      "URL followed by period",
-			input:     "see https://example.com/foo.",
-			wantSubs:  []string{`"tag":"a"`, `https://example.com/foo`},
-			wantNsubs: []string{`https://example.com/foo."`},
-		},
-		{
-			name:     "URL with no trailing punctuation unchanged",
-			input:    "https://example.com/foo_bar",
-			wantSubs: []string{`"href":"https://example.com/foo_bar"`},
-		},
-		{
-			name:      "URL with balanced parentheses preserved",
-			input:     "https://en.wikipedia.org/wiki/Foo_(bar)",
-			wantSubs:  []string{`"href":"https://en.wikipedia.org/wiki/Foo_(bar)"`},
-			wantNsubs: []string{`"href":"https://en.wikipedia.org/wiki/Foo_"`},
-		},
-		{
-			name:      "code block URL stays markdown",
-			input:     "```bash\ncurl https://example.com/foo_bar\n```",
-			wantSubs:  []string{`"tag":"md"`, "```bash\\ncurl https://example.com/foo_bar\\n```"},
-			wantNsubs: []string{`"tag":"a"`},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := buildPostElements(tt.input)
-			for _, sub := range tt.wantSubs {
-				if !strings.Contains(got, sub) {
-					t.Errorf("buildPostElements(%q)\n got: %s\n missing: %q", tt.input, got, sub)
-				}
-			}
-			for _, sub := range tt.wantNsubs {
-				if strings.Contains(got, sub) {
-					t.Errorf("buildPostElements(%q)\n got: %s\n should not contain: %q", tt.input, got, sub)
-				}
-			}
-		})
-	}
-}
-
 func TestWrapMarkdownAsPost(t *testing.T) {
-	t.Run("plain markdown", func(t *testing.T) {
-		got := wrapMarkdownAsPost("hello **world**")
-		content := decodePostContentForTest(t, got)
-		if len(content) != 1 {
-			t.Fatalf("wrapMarkdownAsPost() content len = %d, want 1", len(content))
-		}
-		node := decodePostParagraphForTest(t, got, 0)
-		if node["tag"] != "md" {
-			t.Fatalf("wrapMarkdownAsPost() tag = %#v, want md", node["tag"])
-		}
-		if node["text"] != "hello **world**" {
-			t.Fatalf("wrapMarkdownAsPost() text = %#v, want %q", node["text"], "hello **world**")
-		}
-	})
-
-	t.Run("bare URL becomes a tag", func(t *testing.T) {
-		got := wrapMarkdownAsPost("see https://example.com/flow_id=abc_def done")
-		if !strings.Contains(got, `"tag":"a"`) {
-			t.Fatalf("wrapMarkdownAsPost() bare URL should produce a tag: %s", got)
-		}
-		if !strings.Contains(got, `flow_id=abc_def`) {
-			t.Fatalf("wrapMarkdownAsPost() URL content missing: %s", got)
-		}
-	})
-
-	t.Run("code block URL stays md", func(t *testing.T) {
-		got := wrapMarkdownAsPost("```bash\ncurl https://example.com/foo_bar\n```")
-		if strings.Contains(got, `"tag":"a"`) {
-			t.Fatalf("wrapMarkdownAsPost() code block URL should stay markdown: %s", got)
-		}
-		if !strings.Contains(got, "```bash\\ncurl https://example.com/foo_bar\\n```") {
-			t.Fatalf("wrapMarkdownAsPost() code block content missing: %s", got)
-		}
-	})
-}
-
-func TestShouldUseSegmentedPost(t *testing.T) {
-	tests := []struct {
-		name     string
-		markdown string
-		want     bool
-	}{
-		{name: "single newline", markdown: "a\nb", want: false},
-		{name: "blank line", markdown: "a\n\nb", want: true},
-		{name: "blank line with spaces", markdown: "a\n  \nb", want: true},
-		{name: "multiple blank lines", markdown: "a\n \n \n b", want: true},
-		{name: "blank lines inside code block only", markdown: "```go\n\n\nfmt.Println(1)\n```\nnext", want: false},
+	got := wrapMarkdownAsPost("hello **world**")
+	// Should produce valid JSON with post structure
+	if !strings.Contains(got, `"tag":"md"`) {
+		t.Fatalf("wrapMarkdownAsPost() missing md tag: %s", got)
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := shouldUseSegmentedPost(tt.markdown); got != tt.want {
-				t.Fatalf("shouldUseSegmentedPost(%q) = %v, want %v", tt.markdown, got, tt.want)
-			}
-		})
+	if !strings.Contains(got, `"zh_cn"`) {
+		t.Fatalf("wrapMarkdownAsPost() missing zh_cn: %s", got)
 	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedBlankLines(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n\nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 3 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n\\nb) content len = %d, want 3", len(content))
-	}
-
-	first := decodePostParagraphForTest(t, got, 0)
-	if first["tag"] != "md" || first["text"] != "a" {
-		t.Fatalf("first paragraph = %#v, want md/a", first)
-	}
-
-	second := decodePostParagraphForTest(t, got, 1)
-	if second["tag"] != "text" || second["text"] != postBlankLinePlaceholder {
-		t.Fatalf("second paragraph = %#v, want blank text placeholder", second)
-	}
-
-	third := decodePostParagraphForTest(t, got, 2)
-	if third["tag"] != "md" || third["text"] != "b" {
-		t.Fatalf("third paragraph = %#v, want md/b", third)
-	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedMultipleBlankLines(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n\n\nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 4 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n\\n\\nb) content len = %d, want 4", len(content))
-	}
-
-	for i := 1; i <= 2; i++ {
-		node := decodePostParagraphForTest(t, got, i)
-		if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
-			t.Fatalf("blank paragraph %d = %#v, want blank text placeholder", i, node)
-		}
-	}
-}
-
-func TestWrapMarkdownAsPost_SegmentedBlankLinesWithSpaces(t *testing.T) {
-	got := wrapMarkdownAsPost("a\n  \nb")
-	content := decodePostContentForTest(t, got)
-	if len(content) != 3 {
-		t.Fatalf("wrapMarkdownAsPost(a\\n  \\nb) content len = %d, want 3", len(content))
-	}
-	node := decodePostParagraphForTest(t, got, 1)
-	if node["tag"] != "text" || node["text"] != postBlankLinePlaceholder {
-		t.Fatalf("middle paragraph = %#v, want blank text placeholder", node)
+	if !strings.Contains(got, "hello **world**") {
+		t.Fatalf("wrapMarkdownAsPost() missing content: %s", got)
 	}
 }
 
@@ -859,6 +593,7 @@ func TestShortcuts(t *testing.T) {
 
 	want := []string{
 		"+chat-create",
+		"+chat-list",
 		"+chat-messages-list",
 		"+chat-search",
 		"+chat-update",
@@ -868,6 +603,9 @@ func TestShortcuts(t *testing.T) {
 		"+messages-search",
 		"+messages-send",
 		"+threads-messages-list",
+		"+flag-create",
+		"+flag-cancel",
+		"+flag-list",
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)

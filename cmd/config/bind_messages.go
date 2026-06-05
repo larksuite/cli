@@ -3,6 +3,8 @@
 
 package config
 
+import "github.com/larksuite/cli/internal/i18n"
+
 // bindMsg holds all TUI text for config bind, supporting zh/en via --lang.
 //
 // Brand-aware strings use a %s slot where the UI-friendly product name
@@ -84,6 +86,11 @@ type bindMsg struct {
 	// require in-flow human confirmation.
 	IdentityEscalationMessage string
 	IdentityEscalationHint    string
+
+	// LangPreferenceSet is printed to stderr after a successful bind when the
+	// user explicitly passed --lang. Format: language code. Not printed when
+	// --lang was not explicit (i.e., the cobra default zh stayed in effect).
+	LangPreferenceSet string
 }
 
 var bindMsgZh = &bindMsg{
@@ -116,6 +123,8 @@ var bindMsgZh = &bindMsg{
 
 	IdentityEscalationMessage: "你正在从应用身份切换到用户身份 —— 切换后 AI 将以你的名义在飞书中执行所有操作（读写文档、搜索消息、修改日程等）。⚠️ 请勿将此机器人分享给他人或拉入群聊中使用，以免泄露你的飞书数据。",
 	IdentityEscalationHint:    "若用户确认切换，附加 --force 重新运行：`lark-cli config bind --identity user-default --force`",
+
+	LangPreferenceSet: "语言偏好已设置：%s",
 }
 
 var bindMsgEn = &bindMsg{
@@ -150,10 +159,13 @@ var bindMsgEn = &bindMsg{
 
 	IdentityEscalationMessage: "you are switching from bot-only to user-default — the AI will then act under your Feishu identity for all operations (docs, messages, calendar, etc.). ⚠️ Don't share this bot with others or add it to group chats. It has access to your personal Feishu data.",
 	IdentityEscalationHint:    "if the user confirms the switch, re-run with --force: `lark-cli config bind --identity user-default --force`",
+
+	LangPreferenceSet: "Language preference set to: %s",
 }
 
-func getBindMsg(lang string) *bindMsg {
-	if lang == "en" {
+// getBindMsg picks the zh/en TUI bundle; non-English falls back to zh.
+func getBindMsg(lang i18n.Lang) *bindMsg {
+	if lang.IsEnglish() {
 		return bindMsgEn
 	}
 	return bindMsgZh
@@ -164,11 +176,11 @@ func getBindMsg(lang string) *bindMsg {
 // "feishu" (or empty / unknown) maps to "飞书" in zh and "Feishu" in en —
 // this is the safe default when the brand hasn't been resolved yet (for
 // example, on the pre-binding source-selection screen).
-func brandDisplay(brand, lang string) string {
+func brandDisplay(brand string, lang i18n.Lang) string {
 	if brand == "lark" || brand == "Lark" || brand == "LARK" {
 		return "Lark"
 	}
-	if lang == "en" {
+	if lang.IsEnglish() {
 		return "Feishu"
 	}
 	return "飞书"

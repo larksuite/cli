@@ -33,11 +33,11 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "text", Desc: "plain text message (auto-wrapped as JSON)"},
 		{Name: "markdown", Desc: "markdown text (auto-wrapped as post format with style optimization; image URLs auto-resolved)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
-		{Name: "image", Desc: "image_key, local file path"},
-		{Name: "file", Desc: "file_key, local file path"},
-		{Name: "video", Desc: "video file_key, local file path; must be used together with --video-cover"},
-		{Name: "video-cover", Desc: "video cover image_key, local file path; required when using --video"},
-		{Name: "audio", Desc: "audio file_key, local file path"},
+		{Name: "image", Desc: "image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
+		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
+		{Name: "audio", Desc: "audio file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
@@ -81,10 +81,14 @@ var ImMessagesSend = common.Shortcut{
 		if desc != "" {
 			d.Desc(desc)
 		}
-		return d.
+		d.
 			POST("/open-apis/im/v1/messages").
 			Params(map[string]interface{}{"receive_id_type": receiveIdType}).
 			Body(body)
+		if chatFlag != "" {
+			d.Desc("NOTE: dry-run validates request shape only. Bot/user membership in the target chat is not verified; the real send may fail with `Bot/User can NOT be out of the chat`.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		chatFlag := runtime.Str("chat-id")

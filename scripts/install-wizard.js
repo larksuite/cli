@@ -44,6 +44,7 @@ const messages = {
     step4Fail:      "授权失败。运行以下命令重试: lark-cli auth login",
     done:           "安装完成！\n可以和你的 AI 工具（如 Claude Code、Trae等）说：\"飞书/Lark CLI 能帮我做什么？结合我的情况推荐一下从哪里开始\"",
     cancelled:      "安装已取消",
+    nonTtyHint:     "要完成配置，请在终端中运行：\n  lark-cli config init --new\n  lark-cli auth login",
   },
   en: {
     setup:          "Setting up Feishu/Lark CLI...",
@@ -72,6 +73,7 @@ const messages = {
     step4Fail:      "Failed to authorize. Run lark-cli auth login to retry",
     done:           "You are all set!\nNow try asking your AI tool (Claude Code, Trae, etc.): \"What can Feishu/Lark CLI help me with, and where should I start?\"",
     cancelled:      "Installation cancelled",
+    nonTtyHint:     "To complete setup, run interactively:\n  lark-cli config init --new\n  lark-cli auth login",
   },
 };
 
@@ -353,17 +355,23 @@ async function stepAuthLogin(msg) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const lang = await stepSelectLang();
+  const isInteractive = !!process.stdin.isTTY;
+  const lang = isInteractive ? await stepSelectLang() : (parseLangArg() || "en");
   const msg = messages[lang];
 
-  p.intro(msg.setup);
-
-  await stepInstallGlobally(msg);
-  await stepInstallSkills(msg);
-  await stepConfigInit(msg, lang);
-  await stepAuthLogin(msg);
-
-  p.outro(msg.done);
+  if (isInteractive) {
+    p.intro(msg.setup);
+    await stepInstallGlobally(msg);
+    await stepInstallSkills(msg);
+    await stepConfigInit(msg, lang);
+    await stepAuthLogin(msg);
+    p.outro(msg.done);
+  } else {
+    console.log(msg.setup);
+    await stepInstallGlobally(msg);
+    await stepInstallSkills(msg);
+    console.log(msg.nonTtyHint);
+  }
 }
 
 main().catch((err) => {

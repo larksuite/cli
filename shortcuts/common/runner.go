@@ -19,14 +19,18 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // RuntimeContext provides helpers for shortcut execution.
@@ -69,8 +73,25 @@ func (ctx *RuntimeContext) IsBot() bool {
 	return ctx.As().IsBot()
 }
 
+// Command returns the shortcut command name as cobra knows it (e.g.
+// "+pivot-create"). Used by per-service helpers (e.g. sheets schema
+// validation) that key off the shortcut identity.
+func (ctx *RuntimeContext) Command() string {
+	if ctx.Cmd == nil {
+		return ""
+	}
+	return ctx.Cmd.Name()
+}
+
 // UserOpenId returns the current user's open_id from config.
 func (ctx *RuntimeContext) UserOpenId() string { return ctx.Config.UserOpenId }
+
+// Lang returns the user's preference as a canonical locale, or "" if unset or
+// unrecognized; callers choose their own fallback.
+func (ctx *RuntimeContext) Lang() i18n.Lang {
+	lang, _ := i18n.Parse(string(ctx.Config.Lang))
+	return lang
+}
 
 // BotInfo holds bot identity metadata fetched lazily from /bot/v3/info.
 type BotInfo struct {
@@ -103,13 +124,15 @@ func (ctx *RuntimeContext) fetchBotInfo() (*BotInfo, error) {
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("fetch bot info: HTTP %d", resp.StatusCode)
 	}
+	// /open-apis/bot/v3/info returns `{code, msg, bot: {...}}` — the bot
+	// payload is under "bot", not "data" as the newer Lark API convention.
 	var envelope struct {
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 		Data struct {
 			OpenID  string `json:"open_id"`
 			AppName string `json:"app_name"`
-		} `json:"data"`
+		} `json:"bot"`
 	}
 	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
 		return nil, fmt.Errorf("fetch bot info: unmarshal: %w", err)
@@ -188,6 +211,12 @@ func (ctx *RuntimeContext) Int(name string) int {
 	return v
 }
 
+// Float64 returns a float64 flag value (non-integer numbers).
+func (ctx *RuntimeContext) Float64(name string) float64 {
+	v, _ := ctx.Cmd.Flags().GetFloat64(name)
+	return v
+}
+
 // StrArray returns a string-array flag value (repeated flag, no CSV splitting).
 func (ctx *RuntimeContext) StrArray(name string) []string {
 	v, _ := ctx.Cmd.Flags().GetStringArray(name)
@@ -220,6 +249,133 @@ func (ctx *RuntimeContext) Changed(name string) bool {
 func (ctx *RuntimeContext) CallAPI(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
 	result, err := ctx.callRaw(method, url, params, data)
 	return HandleApiResult(result, err, "API call failed")
+}
+
+// CallAPITyped is the typed-only replacement for CallAPI: it performs the same
+// SDK request (buildRequest → APIClient.DoAPI → DoSDKRequest, identical
+// transport and query model to CallAPI) and returns the "data" object, but
+// classifies failures into typed errs.* errors via errclass.BuildAPIError.
+//
+// A transport / auth error from the client boundary is already typed and passes
+// through unchanged; a non-zero API response code is classified into a typed
+// error carrying subtype / code / log_id. Unlike CallAPI it never emits a legacy
+// output.ExitError envelope, and never downgrades a typed network/auth error.
+//
+// It lifts x-tt-logid from the response header (which the body-only parse drops)
+// so log_id surfaces on the typed error even when the server returns it only in
+// the header.
+func (ctx *RuntimeContext) CallAPITyped(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	ac, err := ctx.getAPIClient()
+	if err != nil {
+		return nil, typedOrInternal(err)
+	}
+	resp, err := ac.DoAPI(ctx.ctx, ctx.buildRequest(method, url, params, data))
+	if err != nil {
+		return nil, typedOrInternal(err)
+	}
+	return ctx.ClassifyAPIResponse(resp)
+}
+
+// ClassifyAPIResponse turns a raw *larkcore.ApiResp into the "data" object or a
+// typed errs.* error. It is the shared response classifier for typed API paths
+// — used by CallAPITyped and by callers that drive the request themselves
+// (e.g. file upload via DoAPI). It:
+//
+//  1. parses the JSON body; an unparseable body on an HTTP error status (a
+//     gateway 5xx text/html page, an empty body, a missing Content-Type) is
+//     classified by status — 5xx → retryable network/server_error, 404 →
+//     not_found, other 4xx → api error — not a misleading invalid-response
+//     internal error;
+//  2. rejects a top-level non-object JSON ([], null, scalar) as an
+//     invalid-response internal error — never a silent success ack;
+//  3. lifts x-tt-logid from the response header onto the typed error so log_id
+//     surfaces even when the body omits it;
+//  4. classifies a non-zero API code via errclass.BuildAPIError, and treats any
+//     HTTP error status that parsed to code==0 as a status error.
+//
+// The success "data" object is returned untouched. On a non-zero API code the
+// data is returned alongside the typed error, since the response can still
+// carry fields a caller needs on failure (e.g. the file_token an overwrite
+// returned, for token-stability handling).
+func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[string]interface{}, error) {
+	logID, _ := logIDFromHeader(resp)["log_id"].(string)
+
+	result, parseErr := client.ParseJSONResponse(resp)
+	if parseErr != nil {
+		if resp.StatusCode >= 400 {
+			return nil, httpStatusError(resp.StatusCode, resp.RawBody, logID)
+		}
+		return nil, client.WrapJSONResponseParseError(parseErr, resp.RawBody)
+	}
+	resultMap, ok := result.(map[string]interface{})
+	if !ok {
+		e := errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a non-object JSON response")
+		if logID != "" {
+			e = e.WithLogID(logID)
+		}
+		return nil, e
+	}
+	if logID != "" {
+		if _, present := resultMap["log_id"]; !present {
+			resultMap["log_id"] = logID
+		}
+	}
+	out, _ := resultMap["data"].(map[string]interface{})
+	if apiErr := errclass.BuildAPIError(resultMap, ctx.APIClassifyContext()); apiErr != nil {
+		return out, apiErr
+	}
+	if resp.StatusCode >= 400 {
+		return out, httpStatusError(resp.StatusCode, resp.RawBody, logID)
+	}
+	return out, nil
+}
+
+// httpStatusError classifies an HTTP error status whose body is not a usable
+// API envelope: 5xx → retryable network/server_error, 404 → not_found, other
+// 4xx → api error. The x-tt-logid (when present) is attached for diagnosis.
+func httpStatusError(status int, rawBody []byte, logID string) error {
+	body := TruncateStr(strings.TrimSpace(string(rawBody)), 500)
+	if status >= 500 {
+		e := errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP %d: %s", status, body).WithCode(status).WithRetryable()
+		if logID != "" {
+			e = e.WithLogID(logID)
+		}
+		return e
+	}
+	subtype := errs.SubtypeUnknown
+	if status == http.StatusNotFound {
+		subtype = errs.SubtypeNotFound
+	}
+	e := errs.NewAPIError(subtype, "HTTP %d: %s", status, body).WithCode(status)
+	if logID != "" {
+		e = e.WithLogID(logID)
+	}
+	return e
+}
+
+// typedOrInternal passes an already-typed errs.* error through unchanged and
+// lifts a still-untyped one to a typed internal error, so CallAPITyped never
+// returns a bare/legacy error.
+func typedOrInternal(err error) error {
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	return errs.WrapInternal(err)
+}
+
+// APIClassifyContext builds the errclass.ClassifyContext for the running command
+// from the runtime config and resolved identity.
+func (ctx *RuntimeContext) APIClassifyContext() errclass.ClassifyContext {
+	larkCmd := ""
+	if ctx.Cmd != nil {
+		larkCmd = strings.TrimPrefix(ctx.Cmd.CommandPath(), "lark ")
+	}
+	return errclass.ClassifyContext{
+		Brand:    string(ctx.Config.Brand),
+		AppID:    ctx.Config.AppID,
+		Identity: string(ctx.As()),
+		LarkCmd:  larkCmd,
+	}
 }
 
 // Deprecated: RawAPI uses an internal HTTP wrapper with limited control over request/response.
@@ -486,6 +642,8 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 //   - Other errors → readMsg prefix (default "cannot read file")
 //
 // Pass an optional readMsg to override the non-path-validation message prefix.
+//
+// Deprecated: use WrapInputStatErrorTyped for typed error envelopes.
 func WrapInputStatError(err error, readMsg ...string) error {
 	if err == nil {
 		return nil
@@ -500,9 +658,28 @@ func WrapInputStatError(err error, readMsg ...string) error {
 	return output.ErrValidation("%s: %s", msg, err)
 }
 
+// WrapInputStatErrorTyped wraps a FileIO.Stat/Open error for input file validation.
+func WrapInputStatErrorTyped(err error, readMsg ...string) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, fileio.ErrPathValidation) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe file path: %s", err).
+			WithCause(err)
+	}
+	msg := "cannot read file"
+	if len(readMsg) > 0 && readMsg[0] != "" {
+		msg = readMsg[0]
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s: %s", msg, err).
+		WithCause(err)
+}
+
 // WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
 // using standardized messages and the given error category (e.g. "api_error", "io").
 // Path validation errors always use ErrValidation (exit code 2).
+//
+// Deprecated: use WrapSaveErrorTyped for typed error envelopes.
 func WrapSaveErrorByCategory(err error, category string) error {
 	if err == nil {
 		return nil
@@ -515,6 +692,28 @@ func WrapSaveErrorByCategory(err error, category string) error {
 		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
 	default:
 		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
+	}
+}
+
+// WrapSaveErrorTyped maps a FileIO.Save error to typed validation/internal errors.
+// Unlike WrapSaveErrorByCategory, non-path failures always emit the canonical
+// "internal" wire type: call sites migrating from a custom category
+// (e.g. "io", "api_error") change their envelope's type field.
+func WrapSaveErrorTyped(err error) error {
+	if err == nil {
+		return nil
+	}
+	var me *fileio.MkdirError
+	switch {
+	case errors.Is(err, fileio.ErrPathValidation):
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).
+			WithCause(err)
+	case errors.As(err, &me):
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create parent directory: %s", err).
+			WithCause(err)
+	default:
+		return errs.NewInternalError(errs.SubtypeFileIO, "cannot create file: %s", err).
+			WithCause(err)
 	}
 }
 
@@ -541,28 +740,47 @@ func (ctx *RuntimeContext) ValidatePath(path string) error {
 
 // Out prints a success JSON envelope to stdout.
 func (ctx *RuntimeContext) Out(data interface{}, meta *output.Meta) {
-	ctx.emit(data, meta, false)
+	ctx.emit(data, meta, false, true)
 }
 
 // OutRaw prints a success JSON envelope to stdout with HTML escaping disabled.
 // Use this instead of Out when the data contains XML/HTML content (e.g. document bodies)
 // that should be preserved as-is in JSON output.
 func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
-	ctx.emit(data, meta, true)
+	ctx.emit(data, meta, true, true)
 }
 
-// emit is the shared success-path emitter. raw=true disables JSON HTML escaping so
-// XML/HTML payloads (e.g. DocxXML bodies) are preserved verbatim; otherwise behavior
+// OutPartialFailure writes an ok:false multi-status result envelope to stdout
+// and returns the partial-failure exit signal. Use it for batch operations
+// where some items failed but the per-item outcomes are the primary output:
+// the full result (summary + per-item statuses) stays machine-readable on
+// stdout, the process exits non-zero, and nothing is written to stderr.
+//
+// It is the typed alternative to `Out(...)` + `output.ErrBare(...)` — the
+// envelope's ok field honestly reports failure instead of a misleading
+// ok:true, and the exit signal is distinct from the predicate-only ErrBare.
+func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta) error {
+	ctx.emit(data, meta, false, false)
+	if ctx.outputErr != nil {
+		return ctx.outputErr
+	}
+	return output.PartialFailure(output.ExitAPI)
+}
+
+// emit is the shared stdout envelope emitter; ok sets the envelope's ok field
+// (true for success, false for a partial-failure result). raw=true disables JSON
+// HTML escaping so XML/HTML payloads (e.g. DocxXML bodies) are preserved
+// verbatim; otherwise behavior
 // is identical — content-safety scanning and race-safe first-error capture via
 // outputErrOnce apply in both modes.
-func (ctx *RuntimeContext) emit(data interface{}, meta *output.Meta, raw bool) {
+func (ctx *RuntimeContext) emit(data interface{}, meta *output.Meta, raw, ok bool) {
 	scanResult := output.ScanForSafety(ctx.Cmd.CommandPath(), data, ctx.IO().ErrOut)
 	if scanResult.Blocked {
 		ctx.outputErrOnce.Do(func() { ctx.outputErr = scanResult.BlockErr })
 		return
 	}
 
-	env := output.Envelope{OK: true, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
+	env := output.Envelope{OK: ok, Identity: string(ctx.As()), Data: data, Meta: meta, Notice: output.GetNotice()}
 	if scanResult.Alert != nil {
 		env.ContentSafetyAlert = scanResult.Alert
 	}
@@ -671,24 +889,31 @@ func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, id
 
 // enhancePermissionError enriches a permission / auth error with the
 // shortcut's declared required scopes so the user knows exactly what to do.
+//
+// Detection is typed: an error qualifies when it (or any error in its
+// Unwrap chain) is *errs.PermissionError, or — for legacy bridge paths —
+// when it is an *output.ExitError carrying Detail.Type "permission" or
+// "missing_scope". The previous implementation scanned the upstream
+// message text for keywords like "permission" / "scope" / "unauthorized",
+// which was brittle to canonical-message rewrites; routing on the typed
+// shape decouples this helper from the wording.
 func enhancePermissionError(err error, requiredScopes []string) error {
+	var permErr *errs.PermissionError
+	if errors.As(err, &permErr) {
+		scopeDisplay := strings.Join(requiredScopes, ", ")
+		scopeArg := strings.Join(requiredScopes, " ")
+		hint := fmt.Sprintf(
+			"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
+			scopeDisplay, scopeArg)
+		permErr.Hint = hint
+		return err
+	}
+
 	var exitErr *output.ExitError
 	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
 		return err
 	}
-
-	// Detect permission-related errors by type or message keywords.
-	isPermErr := exitErr.Detail.Type == "permission" || exitErr.Detail.Type == "missing_scope"
-	if !isPermErr {
-		lower := strings.ToLower(exitErr.Detail.Message)
-		for _, kw := range []string{"permission", "scope", "authorization", "unauthorized"} {
-			if strings.Contains(lower, kw) {
-				isPermErr = true
-				break
-			}
-		}
-	}
-	if !isPermErr {
+	if exitErr.Detail.Type != "permission" && exitErr.Detail.Type != "missing_scope" {
 		return err
 	}
 
@@ -730,6 +955,29 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			return runShortcut(cmd, f, &shortcut, botOnly)
 		},
 	}
+	if shortcut.PrintFlagSchema != nil || shortcut.OnInvoke != nil {
+		onInvoke := shortcut.OnInvoke
+		relaxRequiredForSchema := shortcut.PrintFlagSchema != nil
+		// PreRunE runs before cobra's ValidateRequiredFlags. Two opt-in uses:
+		//   - OnInvoke: fire a side effect (e.g. a deprecation notice) that must
+		//     surface even when the call later fails on a missing required flag.
+		//   - --print-schema: pure local introspection; relax the required-flag
+		//     gate so callers don't fill in unrelated flags just to ask for a
+		//     schema (clearing the annotation here is the supported opt-out).
+		cmd.PreRunE = func(c *cobra.Command, _ []string) error {
+			if onInvoke != nil {
+				onInvoke()
+			}
+			if relaxRequiredForSchema {
+				if want, _ := c.Flags().GetBool("print-schema"); want {
+					c.Flags().VisitAll(func(fl *pflag.Flag) {
+						delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
+					})
+				}
+			}
+			return nil
+		}
+	}
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -743,6 +991,31 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 // runShortcut is the execution pipeline for a declarative shortcut.
 // Each step is a clear phase: identity → config → scopes → context → validate → execute.
 func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bool) error {
+	// --print-schema short-circuits everything below: it's pure local
+	// introspection, no identity / scope / network needed. The flag is
+	// only registered when the shortcut opts in via PrintFlagSchema.
+	if s.PrintFlagSchema != nil {
+		if want, _ := cmd.Flags().GetBool("print-schema"); want {
+			flagName, _ := cmd.Flags().GetString("flag-name")
+			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
+			if err != nil {
+				// PrintFlagSchema implementations return bare errors; wrap as a
+				// structured ExitError so --print-schema (an agent-facing
+				// introspection path) yields a parseable envelope, not a plain
+				// string.
+				if _, ok := err.(*output.ExitError); !ok {
+					err = output.Errorf(output.ExitValidation, "print_schema_error", "%s", err.Error())
+				}
+				return err
+			}
+			if len(out) == 0 {
+				return nil
+			}
+			fmt.Fprintln(f.IOStreams.Out, string(out))
+			return nil
+		}
+	}
+
 	as, err := resolveShortcutIdentity(cmd, f, s)
 	if err != nil {
 		return err
@@ -820,9 +1093,11 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 	if len(missing) == 0 {
 		return nil
 	}
-	return output.ErrWithHint(output.ExitAuth, "missing_scope",
-		fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-		fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+	return errs.NewPermissionError(errs.SubtypeMissingScope,
+		"missing required scope(s): %s", strings.Join(missing, ", ")).
+		WithIdentity(string(as)).
+		WithMissingScopes(missing...).
+		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
 }
 
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
@@ -840,11 +1115,19 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	}
 	rctx.larkSDK = sdk
 
-	if s.HasFormat {
-		rctx.Format = rctx.Str("format")
-	}
+	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
+}
+
+// stripUTF8BOM removes a leading UTF-8 byte-order mark from content read from a
+// file or stdin. A BOM that survives into a CSV cell corrupts the first value
+// (e.g. "\ufeffNorth", which then makes a MAXIFS/lookup miss it), and a BOM at the
+// head of a JSON payload makes json.Unmarshal fail with "invalid character 'ï'".
+// Some editors and exporters add it silently. Only a leading BOM is removed; interior
+// occurrences are left untouched.
+func stripUTF8BOM(s string) string {
+	return strings.TrimPrefix(s, "\uFEFF")
 }
 
 // resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
@@ -857,7 +1140,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		}
 		raw, err := rctx.Cmd.Flags().GetString(fl.Name)
 		if err != nil {
-			return FlagErrorf("--%s: Input is only supported for string flags", fl.Name)
+			return ValidationErrorf("--%s: Input is only supported for string flags", fl.Name).
+				WithParam("--" + fl.Name)
 		}
 		if raw == "" {
 			continue
@@ -866,17 +1150,23 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// stdin: -
 		if raw == "-" {
 			if !slices.Contains(fl.Input, Stdin) {
-				return FlagErrorf("--%s does not support stdin (-)", fl.Name)
+				return ValidationErrorf("--%s does not support stdin (-)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			if stdinUsed {
-				return FlagErrorf("--%s: stdin (-) can only be used by one flag", fl.Name)
+				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			stdinUsed = true
 			data, err := io.ReadAll(rctx.IO().In)
 			if err != nil {
-				return FlagErrorf("--%s: failed to read from stdin: %v", fl.Name, err)
+				return ValidationErrorf("--%s: failed to read from stdin: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			// strip a leading UTF-8 BOM so it can't corrupt the first CSV
+			// cell or break JSON parsing downstream.
+			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
 			continue
 		}
 
@@ -889,17 +1179,23 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 		// file: @path
 		if strings.HasPrefix(raw, "@") {
 			if !slices.Contains(fl.Input, File) {
-				return FlagErrorf("--%s does not support file input (@path)", fl.Name)
+				return ValidationErrorf("--%s does not support file input (@path)", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			path := strings.TrimSpace(raw[1:])
 			if path == "" {
-				return FlagErrorf("--%s: file path cannot be empty after @", fl.Name)
+				return ValidationErrorf("--%s: file path cannot be empty after @", fl.Name).
+					WithParam("--" + fl.Name)
 			}
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), path)
 			if err != nil {
-				return FlagErrorf("--%s: %v", fl.Name, err)
+				return ValidationErrorf("--%s: %v", fl.Name, err).
+					WithParam("--" + fl.Name).
+					WithCause(err)
 			}
-			rctx.Cmd.Flags().Set(fl.Name, string(data))
+			// strip a leading UTF-8 BOM so it
+			// can't corrupt the first CSV cell or break JSON parsing downstream.
+			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
 			continue
 		}
 	}
@@ -923,7 +1219,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 			}
 		}
 		if !valid {
-			return FlagErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", "))
+			return ValidationErrorf("invalid value %q for --%s, allowed: %s", val, fl.Name, strings.Join(fl.Enum, ", ")).
+				WithParam("--" + fl.Name)
 		}
 	}
 	return nil
@@ -931,7 +1228,8 @@ func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {
 
 func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut) error {
 	if s.DryRun == nil {
-		return FlagErrorf("--dry-run is not supported for %s %s", s.Service, s.Command)
+		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
+			WithParam("--dry-run")
 	}
 	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
@@ -984,6 +1282,10 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			var d int
 			fmt.Sscanf(fl.Default, "%d", &d)
 			cmd.Flags().Int(fl.Name, d, desc)
+		case "float64":
+			var d float64
+			fmt.Sscanf(fl.Default, "%g", &d)
+			cmd.Flags().Float64(fl.Name, d, desc)
 		case "string_array":
 			cmd.Flags().StringArray(fl.Name, nil, desc)
 		case "string_slice":
@@ -1006,17 +1308,29 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 	}
 
 	cmd.Flags().Bool("dry-run", false, "print request without executing")
-	if s.HasFormat {
+	if cmd.Flags().Lookup("format") == nil {
 		cmd.Flags().String("format", "json", "output format: json (default) | pretty | table | ndjson | csv")
+		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
+		})
+		if cmd.Flags().Lookup("json") == nil {
+			cmd.Flags().Bool("json", false, "shorthand for --format json")
+		}
 	}
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}
+	if s.PrintFlagSchema != nil {
+		// Guard against a shortcut that already declares these reserved
+		// introspection flags: pflag panics on a duplicate registration.
+		// Mirrors the Lookup guard on --format above.
+		if cmd.Flags().Lookup("print-schema") == nil {
+			cmd.Flags().Bool("print-schema", false, "print JSON Schema for a composite flag instead of executing")
+		}
+		if cmd.Flags().Lookup("flag-name") == nil {
+			cmd.Flags().String("flag-name", "", "flag whose schema to print (omit to list introspectable flags); used with --print-schema")
+		}
+	}
 	cmd.Flags().StringP("jq", "q", "", "jq expression to filter JSON output")
 	cmdutil.AddShortcutIdentityFlag(ctx, cmd, f, s.AuthTypes)
-	if s.HasFormat {
-		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
-		})
-	}
 }

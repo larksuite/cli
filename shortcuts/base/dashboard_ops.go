@@ -104,6 +104,14 @@ func dryRunDashboardBlockGet(_ context.Context, runtime *common.RuntimeContext) 
 		Params(params)
 }
 
+// dryRunDashboardBlockGetData returns a DryRunAPI for getting computed data for a dashboard block.
+func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	return common.NewDryRunAPI().
+		GET("/open-apis/base/v3/bases/:base_token/dashboards/blocks/:block_id/data").
+		Set("base_token", runtime.Str("base-token")).
+		Set("block_id", runtime.Str("block-id"))
+}
+
 // dryRunDashboardBlockCreate returns a DryRunAPI for creating a dashboard block.
 func dryRunDashboardBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
@@ -258,6 +266,16 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 		return err
 	}
 	runtime.Out(map[string]interface{}{"block": data}, nil)
+	return nil
+}
+
+// executeDashboardBlockGetData retrieves computed data for a dashboard chart block.
+func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", "blocks", runtime.Str("block-id"), "data"), nil, nil)
+	if err != nil {
+		return err
+	}
+	runtime.Out(data, nil)
 	return nil
 }
 

@@ -4,17 +4,23 @@
 package drive
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/shortcuts/common"
+	"github.com/spf13/cobra"
 )
 
 // TestDrivePullDownloadsAndCreatesParents verifies the happy path: a remote
@@ -151,14 +157,330 @@ func TestDrivePullSkipsExistingWhenSkipPolicy(t *testing.T) {
 	mustReadFile(t, filepath.Join("local", "keep.txt"), "local-original")
 }
 
+// TestDrivePullSkipsExistingWhenSmartPolicyAndLocalIsUpToDate verifies the
+// smart fast path for Drive → local mirrors: when the local copy is already
+// at least as new as the remote file, +pull skips the download.
+func TestDrivePullSkipsExistingWhenSmartPolicyAndLocalIsUpToDate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Intentionally NO download stub: smart mode should skip the transfer.
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"downloaded": 0`) {
+		t.Errorf("expected downloaded=0, got: %s", out)
+	}
+	mustReadFile(t, localPath, "hello")
+}
+
+// TestDrivePullDownloadsWhenSmartPolicyAndRemoteIsNewer verifies the smart
+// policy still downloads when the remote file is newer than the local copy.
+func TestDrivePullDownloadsWhenSmartPolicyAndRemoteIsNewer(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("WORLD"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"downloaded": 1`) {
+		t.Errorf("expected downloaded=1, got: %s", out)
+	}
+	mustReadFile(t, localPath, "WORLD")
+	info, err := os.Stat(localPath)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got, want := info.ModTime(), time.Unix(200, 0); !got.Equal(want) {
+		t.Fatalf("local mtime = %v, want %v", got, want)
+	}
+}
+
+// TestDrivePullTreatsModifiedTimePreservationFailureAsNotice verifies a local
+// write that succeeds but cannot preserve remote modified_time still reports a
+// successful download and only emits an operator-facing notice on stderr.
+func TestDrivePullTreatsModifiedTimePreservationFailureAsNotice(t *testing.T) {
+	f, stdout, stderrBuf, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	prevChtimes := drivePullChtimes
+	drivePullChtimes = func(string, time.Time, time.Time) error {
+		return fmt.Errorf("mtime mutation unsupported")
+	}
+	t.Cleanup(func() {
+		drivePullChtimes = prevChtimes
+	})
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_keep/download",
+		Status:  200,
+		Body:    []byte("WORLD"),
+		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-local",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderrBuf.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"downloaded": 1`) {
+		t.Errorf("expected downloaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"failed": 0`) {
+		t.Errorf("expected failed=0, got: %s", out)
+	}
+	mustReadFile(t, filepath.Join("local", "keep.txt"), "WORLD")
+	if !strings.Contains(stderrBuf.String(), "could not preserve remote modified_time") {
+		t.Errorf("expected stderr notice about modified_time preservation failure, got: %s", stderrBuf.String())
+	}
+
+	reg.Verify(t)
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenMetadataCannotBeTrusted(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	for _, tt := range []struct {
+		name       string
+		ifExists   string
+		remoteFile drivePullTarget
+	}{
+		{
+			name:       "non-smart policy",
+			ifExists:   drivePullIfExistsOverwrite,
+			remoteFile: drivePullTarget{ModifiedTime: "100"},
+		},
+		{
+			name:       "missing remote timestamp",
+			ifExists:   drivePullIfExistsSmart,
+			remoteFile: drivePullTarget{ModifiedTime: ""},
+		},
+		{
+			name:       "invalid remote timestamp",
+			ifExists:   drivePullIfExistsSmart,
+			remoteFile: drivePullTarget{ModifiedTime: "not-a-time"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := drivePullShouldSkipSmart(localPath, tt.remoteFile, tt.ifExists, runtime); got {
+				t.Fatalf("drivePullShouldSkipSmart() = true, want false for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenPathCannotBeResolved(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	if got := drivePullShouldSkipSmart("../escape.txt", drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
+		t.Fatal("drivePullShouldSkipSmart() = true, want false when ResolvePath rejects the target")
+	}
+}
+
+func TestDrivePullShouldSkipSmartFallsBackWhenLocalFileDisappeared(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, driveTestConfig(), f, core.AsBot)
+
+	if got := drivePullShouldSkipSmart(filepath.Join("local", "missing.txt"), drivePullTarget{ModifiedTime: "100"}, drivePullIfExistsSmart, runtime); got {
+		t.Fatal("drivePullShouldSkipSmart() = true, want false when os.Stat cannot find the local file")
+	}
+}
+
+func TestDrivePullSkipsWhenSmartIgnoresRemoteSize(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 999, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"downloaded": 0`) {
+		t.Errorf("expected downloaded=0, got: %s", out)
+	}
+	mustReadFile(t, localPath, "hello")
+}
+
 // TestDrivePullSurfacesDirectoryFileMirrorConflict pins the contract
 // for the case where Drive ships a regular file at a rel_path that is
 // already a directory locally. SafeOutputPath would refuse to overwrite
 // the directory at write time, but if --if-exists=skip silently swallows
 // the collision the caller sees "skipped" and assumes the mirror is
-// in sync. The fix surfaces it as a structured `partial_failure`
-// ExitError (non-zero exit + items[] in error.detail) under both skip
-// and overwrite policies so callers can react via exit code.
+// in sync. The fix surfaces it as a partial-failure (ok:false items[] payload
+// on stdout + non-zero exit) under both skip and overwrite policies so callers
+// can react via exit code.
 func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
 	for _, policy := range []string{"overwrite", "skip"} {
 		t.Run(policy, func(t *testing.T) {
@@ -193,8 +515,8 @@ func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
 				"--if-exists", policy,
 				"--as", "bot",
 			}, f, stdout)
-			detail := assertDrivePullPartialFailure(t, err)
-			summary, items := splitDrivePullDetail(t, detail)
+			assertDrivePullPartialFailure(t, err)
+			summary, items := splitDrivePullStdout(t, stdout.Bytes())
 			if got := summary["failed"]; got != float64(1) {
 				t.Errorf("[%s] summary.failed = %v, want 1", policy, got)
 			}
@@ -206,9 +528,6 @@ func TestDrivePullSurfacesDirectoryFileMirrorConflict(t *testing.T) {
 			}
 			if msg, _ := items[0]["error"].(string); !strings.Contains(msg, "is a directory") {
 				t.Errorf("[%s] error message should mention the directory conflict, got: %q", policy, msg)
-			}
-			if stdout.Len() != 0 {
-				t.Errorf("[%s] stdout should be empty on partial_failure, got: %s", policy, stdout.String())
 			}
 		})
 	}
@@ -290,6 +609,49 @@ func TestDrivePullPaginationHandlesPageTokenField(t *testing.T) {
 	}
 	mustReadFile(t, filepath.Join("local", "a.txt"), "AAA")
 	mustReadFile(t, filepath.Join("local", "b.txt"), "BBB")
+	reg.Verify(t)
+}
+
+func TestDrivePullRenameSummarizesDuplicateDownloadsAndAvoidsRawTokenInRelPath(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	registerDownload(reg, duplicateRemoteFileIDFirst, "FIRST")
+	registerDownload(reg, duplicateRemoteFileIDSecond, "SECOND")
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--on-duplicate-remote", "rename",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	renamedRelPath := expectedRenamedRelPath("dup.txt", duplicateRemoteFileIDSecond, 12, 0)
+	payload := decodeDrivePullStdout(t, stdout.Bytes())
+	if got := payload.Data.Summary.Downloaded; got != 2 {
+		t.Fatalf("summary.downloaded = %d, want 2", got)
+	}
+	if out := stdout.String(); strings.Contains(out, duplicateRemoteFileIDSecond) {
+		t.Fatalf("stdout should not expose the raw duplicate file token in rename mode, got: %s", out)
+	}
+	if item := findPullItem(payload.Data.Items, renamedRelPath); item.SourceID == "" || item.FileToken != "" {
+		t.Fatalf("rename item should emit source_id without file_token, got: %#v", item)
+	}
+	mustReadFile(t, filepath.Join("local", "dup.txt"), "FIRST")
+	mustReadFile(t, filepath.Join("local", renamedRelPath), "SECOND")
+	assertPullItemAction(t, stdout.Bytes(), "dup.txt", "downloaded")
+	assertPullItemAction(t, stdout.Bytes(), renamedRelPath, "downloaded")
+
 	reg.Verify(t)
 }
 
@@ -535,8 +897,8 @@ func TestDrivePullDeleteLocalPreservesLocalFileShadowedByRemoteFolder(t *testing
 
 // TestDrivePullDeleteLocalCountsFailureInSummary pins the contract that
 // a failed delete shows up in summary.failed (not just in items[]) AND
-// surfaces as a partial_failure ExitError so callers can detect the
-// half-synced state via exit code. Before the fix, the delete_failed
+// surfaces as a non-zero exit (partial-failure signal) so callers can detect
+// the half-synced state via exit code. Before the fix, the delete_failed
 // branches appended an item but left `failed` at zero AND returned nil,
 // so the JSON envelope reported `ok=true`+`exit=0` even when the mirror
 // was incomplete. Setup forces os.Remove to fail by making the file's
@@ -582,8 +944,8 @@ func TestDrivePullDeleteLocalCountsFailureInSummary(t *testing.T) {
 		"--yes",
 		"--as", "bot",
 	}, f, stdout)
-	detail := assertDrivePullPartialFailure(t, err)
-	summary, items := splitDrivePullDetail(t, detail)
+	assertDrivePullPartialFailure(t, err)
+	summary, items := splitDrivePullStdout(t, stdout.Bytes())
 	if got := summary["failed"]; got != float64(1) {
 		t.Errorf("summary.failed = %v, want 1 (delete_failed must increment failed)", got)
 	}
@@ -593,15 +955,12 @@ func TestDrivePullDeleteLocalCountsFailureInSummary(t *testing.T) {
 	if len(items) != 1 || items[0]["action"] != "delete_failed" {
 		t.Errorf("expected one items[] entry with action=delete_failed, got: %#v", items)
 	}
-	if stdout.Len() != 0 {
-		t.Errorf("stdout should be empty on partial_failure, got: %s", stdout.String())
-	}
 }
 
 // TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero pins the
 // gating contract for --delete-local: when the download pass produced
 // any failure, the delete walk MUST be skipped entirely and the command
-// MUST exit non-zero with type=partial_failure. The half-synced state
+// MUST exit non-zero via the partial-failure signal. The half-synced state
 // where some Drive files are missing locally AND some local-only files
 // have been removed is never observable.
 func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
@@ -649,12 +1008,12 @@ func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
 		"--yes",
 		"--as", "bot",
 	}, f, stdout)
-	exitErr := assertDrivePullPartialFailure(t, err)
-	if !strings.Contains(exitErr.Detail.Message, "--delete-local was skipped") {
-		t.Errorf("expected message to mention --delete-local skip, got: %q", exitErr.Detail.Message)
+	assertDrivePullPartialFailure(t, err)
+	if note := drivePullStdoutNote(t, stdout.Bytes()); !strings.Contains(note, "--delete-local was skipped") {
+		t.Errorf("expected note to mention --delete-local skip, got: %q", note)
 	}
 
-	summary, items := splitDrivePullDetail(t, exitErr)
+	summary, items := splitDrivePullStdout(t, stdout.Bytes())
 	if got := summary["failed"]; got != float64(1) {
 		t.Errorf("summary.failed = %v, want 1", got)
 	}
@@ -670,9 +1029,6 @@ func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
 	// stale.txt MUST still exist on disk.
 	if _, statErr := os.Stat(stale); statErr != nil {
 		t.Fatalf("stale.txt must survive when --delete-local is skipped after a download failure; stat err=%v", statErr)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("stdout should be empty on partial_failure, got: %s", stdout.String())
 	}
 }
 
@@ -978,49 +1334,60 @@ func mustReadFile(t *testing.T, path, want string) {
 	}
 }
 
-// assertDrivePullPartialFailure asserts that err is the structured
-// partial_failure ExitError +pull returns when any item-level failure
-// happens, and returns the unwrapped *ExitError so the caller can drill
-// into Detail.Detail without re-doing the type assertion.
-func assertDrivePullPartialFailure(t *testing.T, err error) *output.ExitError {
+// assertDrivePullPartialFailure asserts that err is the typed partial-failure
+// exit signal +pull returns on any item-level failure. The structured
+// {summary, items, note} payload rides on stdout as an ok:false envelope via
+// runtime.OutPartialFailure (in alignment with +push/+sync), so this helper
+// only checks the exit-code signal; callers read the payload from stdout via
+// splitDrivePullStdout.
+func assertDrivePullPartialFailure(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
-		t.Fatal("expected partial_failure ExitError, got nil")
+		t.Fatal("expected partial-failure exit signal, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("exit code = %d, want %d (ExitAPI)", exitErr.Code, output.ExitAPI)
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("ExitError.Detail must be set on partial_failure")
-	}
-	if exitErr.Detail.Type != "partial_failure" {
-		t.Errorf("error.type = %q, want partial_failure", exitErr.Detail.Type)
-	}
-	return exitErr
 }
 
-// splitDrivePullDetail extracts the {summary, items[]} payload from the
-// ExitError detail. We round-trip through JSON so test assertions don't
-// depend on the concrete map types the production code happens to use.
-func splitDrivePullDetail(t *testing.T, exitErr *output.ExitError) (map[string]interface{}, []map[string]interface{}) {
+// splitDrivePullStdout extracts the {summary, items[]} payload from the
+// stdout envelope written by runtime.Out. We round-trip through JSON so test
+// assertions don't depend on the concrete map types the production code
+// happens to use.
+func splitDrivePullStdout(t *testing.T, stdout []byte) (map[string]interface{}, []map[string]interface{}) {
 	t.Helper()
-	raw, err := json.Marshal(exitErr.Detail.Detail)
-	if err != nil {
-		t.Fatalf("marshal detail: %v", err)
+	var envelope struct {
+		Data struct {
+			Summary map[string]interface{}   `json:"summary"`
+			Items   []map[string]interface{} `json:"items"`
+		} `json:"data"`
 	}
-	var got struct {
-		Summary map[string]interface{}   `json:"summary"`
-		Items   []map[string]interface{} `json:"items"`
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
 	}
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("unmarshal detail: %v\nraw=%s", err, string(raw))
+	if envelope.Data.Summary == nil {
+		t.Fatalf("stdout missing data.summary; raw=%s", string(stdout))
 	}
-	if got.Summary == nil {
-		t.Fatalf("error.detail missing summary; raw=%s", string(raw))
+	return envelope.Data.Summary, envelope.Data.Items
+}
+
+// drivePullStdoutNote extracts the partial-failure "note" guidance from the
+// stdout envelope. The human-readable note that used to live in the
+// partial_failure ExitError message now rides on stdout alongside the
+// summary + items payload.
+func drivePullStdoutNote(t *testing.T, stdout []byte) string {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			Note string `json:"note"`
+		} `json:"data"`
 	}
-	return got.Summary, got.Items
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
+	}
+	return envelope.Data.Note
 }

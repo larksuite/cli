@@ -26,6 +26,7 @@ func NewCmdList(f *cmdutil.Factory) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Emit the full EventKey list as JSON (for AI / scripts)")
+	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
 

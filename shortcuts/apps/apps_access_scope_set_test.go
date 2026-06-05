@@ -1,0 +1,203 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package apps
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/larksuite/cli/internal/httpmock"
+)
+
+func TestAppsAccessScopeSet_Specific(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	stub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	}
+	reg.Register(stub)
+
+	if err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set",
+		"--app-id", "app_x",
+		"--scope", "specific",
+		"--targets", `[{"type":"user","id":"ou_xxx"},{"type":"chat","id":"oc_xxx"}]`,
+		"--apply-enabled",
+		"--approver", "ou_yyy",
+		"--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+
+	var sent map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &sent); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	// 新协议：scope 是 string 枚举 (specific=Range)，targets 拆成 users/departments/chats
+	if got, _ := sent["scope"].(string); got != "Range" {
+		t.Fatalf("scope = %v, want %q", sent["scope"], "Range")
+	}
+	if _, present := sent["targets"]; present {
+		t.Fatalf("legacy 'targets' field should not be sent: %v", sent)
+	}
+	users, _ := sent["users"].([]interface{})
+	if len(users) != 1 || users[0] != "ou_xxx" {
+		t.Fatalf("users = %v, want [ou_xxx]", sent["users"])
+	}
+	chats, _ := sent["chats"].([]interface{})
+	if len(chats) != 1 || chats[0] != "oc_xxx" {
+		t.Fatalf("chats = %v, want [oc_xxx]", sent["chats"])
+	}
+	if _, present := sent["departments"]; present {
+		t.Fatalf("departments should be omitted when empty: %v", sent)
+	}
+}
+
+func TestAppsAccessScopeSet_Public(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+
+	if err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set",
+		"--app-id", "app_x",
+		"--scope", "public",
+		"--require-login=false",
+		"--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_Tenant(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+
+	if err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set",
+		"--app-id", "app_x",
+		"--scope", "tenant",
+		"--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_SpecificRequiresTargets(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x", "--scope", "specific", "--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "targets") {
+		t.Fatalf("expected targets required error, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_TenantRejectsExtraFlags(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x", "--scope", "tenant",
+		"--targets", `[]`, "--as", "user",
+	}, factory, stdout)
+	if err == nil {
+		t.Fatalf("expected error when --targets passed with scope=tenant")
+	}
+}
+
+func TestAppsAccessScopeSet_RejectsBadTargetType(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "specific",
+		"--targets", `[{"type":"group","id":"oc_xxx"}]`,
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "type") {
+		t.Fatalf("expected bad target type rejected, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_ApproverRequiresApplyEnabled(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "specific",
+		"--targets", `[{"type":"user","id":"ou_x"}]`,
+		"--approver", "ou_y",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "apply-enabled") {
+		t.Fatalf("expected --approver requires --apply-enabled, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_PublicRejectsApprover(t *testing.T) {
+	// --approver 只在 specific + apply 流程下有意义；public 模式带它当前会被静默丢弃，
+	// 是真实用户语义 bug。这条测试钉死 Validate 阶段拦截。
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "public",
+		"--require-login=false",
+		"--approver", "ou_y",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--approver is not allowed when --scope=public") {
+		t.Fatalf("expected --approver rejected for scope=public, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_PublicRequiresExplicitRequireLogin(t *testing.T) {
+	// bare --scope public without --require-login defaults silently to
+	// require_login=false (Internet-public + no auth). Reject so the caller
+	// has to make an explicit choice; matches SKILL.md "public 必传 --require-login".
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "public",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--require-login is required when --scope=public") {
+		t.Fatalf("expected --require-login required for public, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_SpecificRejectsEmptyTargets(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "app_x",
+		"--scope", "specific",
+		"--targets", "[]",
+		"--as", "user",
+	}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--targets must contain at least one entry") {
+		t.Fatalf("expected empty --targets rejected, got %v", err)
+	}
+}
+
+func TestAppsAccessScopeSet_TrimsAppIDInPath(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/spark/v1/apps/app_x/access-scope",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+
+	if err := runAppsShortcut(t, AppsAccessScopeSet, []string{
+		"+access-scope-set", "--app-id", "  app_x  ",
+		"--scope", "tenant",
+		"--as", "user",
+	}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+}

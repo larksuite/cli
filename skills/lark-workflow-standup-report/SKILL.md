@@ -30,8 +30,8 @@ lark-cli auth login --domain calendar,task
 ## 工作流
 
 ```
-{date} ─┬─► calendar +agenda [--start/--end] ──► 日程列表（会议/事件）
-        └─► task +get-my-tasks [--due-end]    ──► 未完成待办列表
+{date} ─┬─► calendar +agenda [--start/--end]              ──► 日程列表（会议/事件）
+        └─► task +get-my-tasks --complete=false [--due-end] ──► 未完成待办列表
                     │
                     ▼
               AI 汇总（时间转换 + 冲突检测 + 排序）──► 摘要
@@ -54,19 +54,21 @@ lark-cli calendar +agenda --start "2026-03-26T00:00:00+08:00" --end "2026-03-26T
 ### Step 2: 获取未完成待办
 
 ```bash
-# 默认：返回分配给当前用户的未完成任务（最多 20 条）
-lark-cli task +get-my-tasks
+# 默认 pending 摘要：必须显式过滤未完成任务（最多 20 条）
+lark-cli task +get-my-tasks --complete=false
 
-# 只看指定日期前到期的（推荐用于摘要场景，减少数据量）
-lark-cli task +get-my-tasks --due-end "2026-03-27T23:59:59+08:00"
+# 只看指定日期前到期的未完成任务（推荐用于摘要场景，减少数据量）
+lark-cli task +get-my-tasks --complete=false --due-end "2026-03-27T23:59:59+08:00"
 
-# 获取全部（超过 20 条时）
-lark-cli task +get-my-tasks --page-all
+# 获取全部未完成任务（超过 20 条时）
+lark-cli task +get-my-tasks --complete=false --page-all
 ```
 
-> **注意**：不带过滤条件时可能返回大量历史待办（实测 30+ 条、100KB+），容易超出上下文限制。摘要场景建议：
+> **注意**：`+get-my-tasks` 不带 `--complete` 时会**同时返回已完成和未完成任务**，会把已完成任务当成"待办"展示进摘要里。站会/日报这种 pending 汇总场景**必须**显式带上 `--complete=false`，不要省略。
+>
+> 数据量层面也建议加过滤：
 > - 用 `--due-end` 过滤出目标日期前到期的任务
-> - 如果也需要无截止日期的任务，可不加过滤，但 AI 汇总时只展示**近 30 天内创建的**，其余折叠为"其他 N 项历史待办"
+> - 如果也需要无截止日期的任务，可不加 `--due-end`，但 AI 汇总时只展示**近 30 天内创建的**，其余折叠为"其他 N 项历史待办"
 
 ### Step 3: AI 汇总
 

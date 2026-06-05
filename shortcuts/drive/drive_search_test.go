@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -257,6 +259,19 @@ func TestValidateDriveSearchIDs(t *testing.T) {
 		err := validateDriveSearchIDs(driveSearchSpec{CreatorIDs: []string{"u_bad"}})
 		if err == nil || !strings.Contains(err.Error(), "--creator-ids") {
 			t.Fatalf("expected --creator-ids error, got: %v", err)
+		}
+		var vErr *errs.ValidationError
+		if !errors.As(err, &vErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T", err)
+		}
+		if vErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if vErr.Param != "--creator-ids" {
+			t.Fatalf("Param = %q, want --creator-ids", vErr.Param)
+		}
+		if got := output.ExitCodeOf(err); got != output.ExitValidation {
+			t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
 		}
 	})
 
@@ -625,51 +640,39 @@ func TestEnrichDriveSearchError(t *testing.T) {
 		}
 	})
 
-	t.Run("ExitError without Detail passes through", func(t *testing.T) {
+	t.Run("typed error with non-matching code passes through", func(t *testing.T) {
 		t.Parallel()
-		orig := &output.ExitError{Code: 1}
-		if got := enrichDriveSearchError(orig); got != orig {
-			t.Fatalf("ExitError without Detail should pass through unchanged")
-		}
-	})
-
-	t.Run("ExitError with non-matching code passes through", func(t *testing.T) {
-		t.Parallel()
-		orig := &output.ExitError{
-			Code:   1,
-			Detail: &output.ErrDetail{Code: 12345, Message: "other"},
-		}
+		orig := errclass.BuildAPIError(
+			map[string]any{"code": float64(12345), "msg": "other"},
+			errclass.ClassifyContext{},
+		)
 		if got := enrichDriveSearchError(orig); got != orig {
 			t.Fatalf("non-matching code should pass through unchanged")
 		}
 	})
 
-	t.Run("matching code rewrites Hint without mutating original", func(t *testing.T) {
+	t.Run("matching code decorates the typed error's hint in place", func(t *testing.T) {
 		t.Parallel()
-		orig := &output.ExitError{
-			Code: 1,
-			Detail: &output.ErrDetail{
-				Code:    driveSearchErrUserNotVisible,
-				Message: "[99992351] user not visible",
-				Hint:    "",
-			},
-		}
+		orig := errclass.BuildAPIError(
+			map[string]any{"code": float64(driveSearchErrUserNotVisible), "msg": "[99992351] user not visible"},
+			errclass.ClassifyContext{},
+		)
+		// Terminal decoration of an upstream error: the hint is set in place on
+		// the existing typed Problem and that same error is returned (no new
+		// error is constructed).
 		enriched := enrichDriveSearchError(orig)
-		eErr, ok := enriched.(*output.ExitError)
+		if enriched != orig {
+			t.Fatal("should decorate and return the upstream error, not construct a new one")
+		}
+		p, ok := errs.ProblemOf(enriched)
 		if !ok {
-			t.Fatalf("expected *output.ExitError, got %T", enriched)
+			t.Fatalf("expected a typed errs.* error, got %T", enriched)
 		}
-		if eErr == orig {
-			t.Fatal("should return a new ExitError, not mutate the original")
+		if !strings.Contains(p.Hint, "--creator-ids") {
+			t.Fatalf("hint should mention --creator-ids, got %q", p.Hint)
 		}
-		if orig.Detail.Hint != "" {
-			t.Fatal("original Detail.Hint must remain unchanged")
-		}
-		if !strings.Contains(eErr.Detail.Hint, "--creator-ids") {
-			t.Fatalf("hint should mention --creator-ids, got %q", eErr.Detail.Hint)
-		}
-		if eErr.Detail.Message != orig.Detail.Message {
-			t.Fatalf("Message should be preserved, got %q", eErr.Detail.Message)
+		if p.Message != "[99992351] user not visible" {
+			t.Fatalf("Message should be preserved, got %q", p.Message)
 		}
 	})
 }
@@ -738,6 +741,18 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		_, _, err := buildDriveSearchRequest(spec, userOpenID, now)
 		if err == nil || !strings.Contains(err.Error(), "--mine") {
 			t.Fatalf("expected exclusion error, got: %v", err)
+		}
+		// Mutual-exclusion error: typed validation, but no single attributable
+		// flag, so Param stays empty.
+		var vErr *errs.ValidationError
+		if !errors.As(err, &vErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T", err)
+		}
+		if vErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if vErr.Param != "" {
+			t.Fatalf("Param = %q, want empty for mutual-exclusion error", vErr.Param)
 		}
 	})
 

@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-给文档、电子表格或飞书幻灯片添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、sheet URL、slides URL，也支持传最终可解析为 doc/docx/sheet/slides 的 wiki URL。
+给文档、受支持的 Drive 普通文件、电子表格或飞书幻灯片添加评论。底层统一走 `/open-apis/drive/v1/files/:file_token/new_comments`（`create_v2`）接口；未指定位置时省略 `anchor` 创建全文评论，指定 `--block-id` 时传入 `anchor.block_id` 创建局部评论。支持直接传 docx URL/token、旧版 doc URL（仅全文评论）、Drive file URL/token（**仅支持白名单扩展名，且只支持全文评论**）、sheet URL、slides URL，也支持传最终可解析为 doc/docx/file/sheet/slides 的 wiki URL。
 
 ## 命令
 
@@ -24,13 +24,24 @@ lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
   --content '[{"type":"text","text":"这里需要一段全文评论"}]'
 
+# 给受支持的 Drive 普通文件添加全文评论
+# 注意：CLI 会先查询 drive metas，只有白名单扩展名才允许评论
+lark-cli drive +add-comment \
+  --doc "https://example.larksuite.com/file/<FILE_TOKEN>" \
+  --content '[{"type":"text","text":"请补充文件说明"}]'
+
+# 裸 token 也支持，但必须显式声明 --type file
+lark-cli drive +add-comment \
+  --doc "<FILE_TOKEN>" --type file \
+  --content '[{"type":"text","text":"请补充目录说明"}]'
+
 # 给 docx 文档的指定 block 添加局部评论（block_id 可通过 docs +fetch --api-version v2 --detail with-ids 获取）
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
   --block-id "<BLOCK_ID>" \
   --content '[{"type":"text","text":"请补充流程说明"}]'
 
-# wiki 链接也支持局部评论，但解析结果必须是 docx
+# wiki 链接也支持局部评论；解析结果可以是 docx/sheet/slides，block-id 格式按目标类型传
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/wiki/<WIKI_TOKEN>" \
   --block-id "<BLOCK_ID>" \
@@ -128,8 +139,8 @@ lark-cli drive +add-comment \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--doc` | 是 | 文档 URL / token、sheet / slides URL，或可解析到 `doc`/`docx`/`sheet`/`slides` 的 wiki URL |
-| `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`sheet`、`slides`。URL 输入时自动识别，无需传 |
+| `--doc` | 是 | 文档 URL / token、file / sheet / slides URL，或可解析到 `doc`/`docx`/`file`/`sheet`/`slides` 的 wiki URL |
+| `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`。URL 输入时自动识别，无需传 |
 | `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
 | `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（不适用于 sheet） |
 | `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --api-version v2 --detail with-ids` 获取。**Sheet 评论**：格式为 `<sheetId>!<cell>`（如 `a281f9!D6`） |
@@ -137,8 +148,12 @@ lark-cli drive +add-comment \
 ## 行为说明
 
 - **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
-- 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL，以及最终可解析为 `doc`/`docx` 的 wiki URL。
-- 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`slides`，以及最终可解析为这些类型的 wiki URL。
+- **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
+- 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
+- **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。
+- **Drive file 暂不支持**：`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件会被 CLI 拒绝，并提示“当前还不支持这种类型的评论”。这些类型虽然可能接受 OpenAPI 请求，但在页面评论展示上存在问题。
+- **Drive file 只支持全文评论**：file 目标不支持局部评论，不允许传 `--block-id` 或 `--selection-with-ellipsis`。由于当前 OpenAPI 要求 file 评论传入非空 `anchor.block_id`，CLI 会固定传占位值 `test`，UI 上仍表现为文件全文评论。
+- 传 `--block-id` 时，shortcut 创建**局部评论（划词评论）**；该模式支持 `docx`、`sheet`、`slides`，以及最终可解析为这些类型的 wiki URL。
 - **Sheet 评论**：当 `--doc` 为 sheet URL 或 wiki 解析为 sheet 时，使用 `--block-id "<sheetId>!<cell>"` 指定单元格（如 `a281f9!D6`）；sheet 没有全文评论，`--full-comment` 不可用。
 - **Slide 评论**：当 `--doc` 为 slides URL、`--type slides`，或 wiki 解析为 slides 时，必须传 `--block-id "<SLIDE_BLOCK_TYPE>!<XML_ELEMENT_ID>"`。CLI 会将其拆分映射到 `anchor.block_id` / `anchor.slide_block_type`。此时 `--full-comment` 和 `--selection-with-ellipsis` 不可用。
 - **Slide 参数映射示例**：`--block-id` 由 PPT XML 元素类型和元素 `id` 组成。例如：
@@ -150,8 +165,6 @@ lark-cli drive +add-comment \
 - `type=text` 的评论文本不能直接包含 `<`、`>`；应优先传 `&lt;`、`&gt;`。shortcut 在发送前也会自动将 `<`、`>` 转义为 `&lt;`、`&gt;` 作为兜底。
 - **所有 `type=text` 元素的字符总和 ≤ 10000**（按字符算，中英文 / 符号一视同仁）。超过会被 shortcut 在发送前拒绝，并指出累计超长的元素。**拆成多个 text element 不能绕过这个上限**——上限是总额，不是每元素。需要更长内容就缩短或拆成多条评论。
 - 长度限制只对 `type=text` 生效，`mention_user` / `link` 不计入。
-- 局部评论走 `locate-doc` 时，内部固定使用 `limit=10`。
-- 当 `locate-doc` 命中多处时，shortcut 会中止并提示用户继续收窄 `--selection-with-ellipsis`，不支持手动指定匹配序号。
 - 写入评论前会自动生成符合 OpenAPI 定义的请求体：
   - 统一接口：`POST /new_comments`
   - 统一字段：`file_type` + `reply_elements`
@@ -165,5 +178,5 @@ lark-cli drive +add-comment \
 
 ## 参考
 
-- [lark-drive](../SKILL.md) -- 云空间全部命令
+- [lark-drive](../SKILL.md) -- 云空间（云盘/云存储）全部命令
 - [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

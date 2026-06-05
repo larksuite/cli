@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// mustMarshalDryRun marshals v to a JSON string, calling t.Fatalf on error.
 func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	t.Helper()
 
@@ -25,6 +26,9 @@ func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	return string(b)
 }
 
+// newTestRuntimeContext builds a *common.RuntimeContext backed by a cobra
+// command whose flags are populated from the provided string and bool maps,
+// for unit-testing shortcut bodies, validators, and dry-run shapes.
 func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -55,6 +59,9 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// newMessagesSearchTestRuntimeContext is the messages-search variant of
+// newTestRuntimeContext: registers the search-specific --page-size flag
+// before applying caller-provided values.
 func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -86,6 +93,8 @@ func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]st
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// TestBuildCreateChatBody verifies the request body assembled when every
+// flag is populated, including the default chat_mode="group".
 func TestBuildCreateChatBody(t *testing.T) {
 	runtime := newTestRuntimeContext(t, map[string]string{
 		"type":        "public",
@@ -94,11 +103,13 @@ func TestBuildCreateChatBody(t *testing.T) {
 		"users":       "ou_1, ou_2",
 		"bots":        "cli_1, cli_2",
 		"owner":       "ou_owner",
+		"chat-mode":   "group",
 	}, nil)
 
 	got := buildCreateChatBody(runtime)
 	want := map[string]interface{}{
 		"chat_type":   "public",
+		"chat_mode":   "group",
 		"name":        "Team Chat",
 		"description": "daily sync",
 		"user_id_list": []string{
@@ -113,6 +124,43 @@ func TestBuildCreateChatBody(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("buildCreateChatBody() = %#v, want %#v", got, want)
+	}
+}
+
+// TestBuildCreateChatBody_TopicMode verifies that --chat-mode topic produces
+// chat_mode="topic" in the request body, the topic-chat creation path.
+func TestBuildCreateChatBody_TopicMode(t *testing.T) {
+	runtime := newTestRuntimeContext(t, map[string]string{
+		"type":      "public",
+		"name":      "Topic Group",
+		"chat-mode": "topic",
+	}, nil)
+
+	got := buildCreateChatBody(runtime)
+	want := map[string]interface{}{
+		"chat_type": "public",
+		"chat_mode": "topic",
+		"name":      "Topic Group",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildCreateChatBody() = %#v, want %#v", got, want)
+	}
+}
+
+// TestBuildCreateChatBody_EmptyChatModeFallsBack pins the defensive fallback:
+// explicit `--chat-mode ""` slips past validateEnumFlags (which skips empty
+// values), but buildCreateChatBody must still emit chat_mode="group" rather
+// than an empty string with unspecified server semantics.
+func TestBuildCreateChatBody_EmptyChatModeFallsBack(t *testing.T) {
+	runtime := newTestRuntimeContext(t, map[string]string{
+		"type":      "public",
+		"name":      "Fallback Test",
+		"chat-mode": "",
+	}, nil)
+
+	got := buildCreateChatBody(runtime)
+	if got["chat_mode"] != "group" {
+		t.Fatalf("buildCreateChatBody() chat_mode = %#v, want \"group\"", got["chat_mode"])
 	}
 }
 
@@ -591,10 +639,12 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 }
 
+// TestShortcutDryRunShapes verifies that each shortcut's DryRun function
+// produces the expected API path, query parameters, and request body.
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
-		for _, name := range []string{"type", "name", "users", "owner"} {
+		for _, name := range []string{"type", "name", "users", "owner", "chat-mode"} {
 			cmd.Flags().String(name, "", "")
 		}
 		cmd.Flags().Bool("set-bot-manager", false, "")
@@ -604,9 +654,10 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		_ = cmd.Flags().Set("users", "ou_1,ou_2")
 		_ = cmd.Flags().Set("owner", "ou_owner")
 		_ = cmd.Flags().Set("set-bot-manager", "true")
+		_ = cmd.Flags().Set("chat-mode", "group")
 		runtime := common.TestNewRuntimeContextWithIdentity(cmd, nil, "bot")
 		got := mustMarshalDryRun(t, ImChatCreate.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) {
+		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) || !strings.Contains(got, `"set_bot_manager":true`) || !strings.Contains(got, `"chat_type":"public"`) || !strings.Contains(got, `"chat_mode":"group"`) {
 			t.Fatalf("ImChatCreate.DryRun() = %s", got)
 		}
 	})
@@ -620,6 +671,25 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) || !strings.Contains(got, `"page_size":20`) || !strings.Contains(got, `"query":"\"team-alpha\""`) {
 			t.Fatalf("ImChatSearch.DryRun() = %s", got)
+		}
+	})
+
+	t.Run("ImChatSearch dry run still works with --exclude-muted set", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query": "team-alpha",
+		}, map[string]bool{
+			"exclude-muted": true,
+		})
+		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
+		// Filter is client-side; --exclude-muted must NOT mutate request body or auto-inject search_types.
+		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) {
+			t.Fatalf("ImChatSearch.DryRun() missing endpoint: %s", got)
+		}
+		if strings.Contains(got, `"exclude_muted"`) || strings.Contains(got, `"exclude-muted"`) {
+			t.Fatalf("--exclude-muted leaked into request: %s", got)
+		}
+		if strings.Contains(got, `"search_types"`) {
+			t.Fatalf("search_types must not be auto-injected by --exclude-muted: %s", got)
 		}
 	})
 
@@ -659,6 +729,18 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSend dry run warns chat membership is not verified", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+			"text":    "hello",
+		}, nil)
+		got := mustMarshalDryRun(t, ImMessagesSend.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, "Bot/user membership in the target chat is not verified") ||
+			!strings.Contains(got, "Bot/User can NOT be out of the chat") {
+			t.Fatalf("ImMessagesSend.DryRun() missing membership warning: %s", got)
+		}
+	})
+
 	t.Run("ImMessagesSend dry run uses placeholder media key for url input", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"chat-id": "oc_123",
@@ -669,6 +751,19 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			!strings.Contains(got, `"msg_type":"image"`) ||
 			!strings.Contains(got, `\"image_key\":\"img_dryrun_upload\"`) {
 			t.Fatalf("ImMessagesSend.DryRun() = %s", got)
+		}
+	})
+
+	t.Run("ImMessagesSend dry run preserves media and membership descriptions", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+			"image":   "https://example.com/a.png",
+		}, nil)
+		mediaDesc := `"description":"dry-run uses placeholder media keys for --image URL input; execution uploads it before sending"`
+		membershipDesc := `"desc":"NOTE: dry-run validates request shape only. Bot/user membership in the target chat is not verified; the real send may fail with ` + "`Bot/User can NOT be out of the chat`" + `."`
+		got := mustMarshalDryRun(t, ImMessagesSend.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, mediaDesc) || !strings.Contains(got, membershipDesc) {
+			t.Fatalf("ImMessagesSend.DryRun() should preserve both descriptions: %s", got)
 		}
 	})
 
@@ -758,6 +853,20 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
 		}
 	})
+
+	t.Run("ImChatList dry run includes endpoint and params", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"user-id-type": "open_id",
+			"sort-type":    "ByCreateTimeAsc",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) {
+			t.Fatalf("ImChatList.DryRun() = %s", got)
+		}
+		if !strings.Contains(got, `"sort_type":"ByCreateTimeAsc"`) {
+			t.Fatalf("ImChatList.DryRun() missing sort_type: %s", got)
+		}
+	})
 }
 
 func TestChatMessageListOnlyThreadRootMessagesDryRun(t *testing.T) {
@@ -770,5 +879,28 @@ func TestChatMessageListOnlyThreadRootMessagesDryRun(t *testing.T) {
 	formatted := ImChatMessageList.DryRun(context.Background(), runtime).Format()
 	if !strings.Contains(formatted, "only_thread_root_messages=true") {
 		t.Fatalf("ImChatMessageList.DryRun().Format() = %s, want only_thread_root_messages=true", formatted)
+	}
+}
+
+func TestDetectAllNonMemberPreSkip(t *testing.T) {
+	cases := []struct {
+		name        string
+		searchTypes string
+		want        string
+	}{
+		{"empty", "", ""},
+		{"only public_not_joined", "public_not_joined", SkipReasonAllNonMember},
+		{"public_not_joined with whitespace", "  public_not_joined  ", SkipReasonAllNonMember},
+		{"private only", "private", ""},
+		{"mixed includes public_not_joined", "public_not_joined,private", ""},
+		{"all four types", "private,public_joined,external,public_not_joined", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := detectAllNonMemberPreSkip(c.searchTypes)
+			if got != c.want {
+				t.Fatalf("detectAllNonMemberPreSkip(%q) = %q, want %q", c.searchTypes, got, c.want)
+			}
+		})
 	}
 }

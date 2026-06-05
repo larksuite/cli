@@ -19,11 +19,13 @@ var BaseViewCreate = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		{Name: "json", Desc: "view JSON object/array", Required: true},
+		{Name: "json", Desc: "view JSON object/array; type defaults to grid; type range: grid, kanban, gallery, calendar, gantt", Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"name":"Main","type":"grid"}'`,
-		"Agent hint: use the lark-base skill's view-create guide for usage and limits.",
+		`Example: lark-cli base +view-create --base-token <base_token> --table-id <table_id> --json '{"name":"Main","type":"grid"}'`,
+		`Minimal: --json '{"name":"Main"}' creates a grid view.`,
+		"Do not pass form as a view type; form views are managed through form commands.",
+		`Use +view-set-visible-fields after creation when the user needs a specific field order or visibility.`,
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewCreate(runtime)

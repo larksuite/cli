@@ -22,22 +22,28 @@ When using `--as user`, the message is sent as the authorized end user and requi
 
 ## Choose The Right Content Flag
 
+### Default Selection Rule For Agents
+
+- Prefer `--markdown` for headings, lists, links, summaries, reports, or Markdown-looking content.
+- Use `--text` for exact plain text: logs, code, indentation-sensitive text, or literal Markdown.
+- Use `--content` for exact `post` JSON, titles, multiple locales, cards, or unsupported structures.
+
 | Need | Recommended flag | Why |
 |------|------|------|
-| Send plain text exactly as written | `--text` | Wrapped directly to `{"text":"..."}`; no Markdown conversion |
-| Send simple Markdown and accept Feishu-style rendering | `--markdown` | Automatically converted to `post` JSON |
+| Send headings, lists, links, summaries, or reports | `--markdown` | Best default for lightweight formatting; converted to Feishu `post` JSON |
+| Send plain text exactly as written | `--text` | Preserves literal text; no Markdown conversion |
 | Precisely control the final payload | `--content` | You provide the exact JSON for `text` / `post` / `interactive` / `share_*` / media payloads |
-| Send image / file / video / audio | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads local files automatically |
+| Send image / file / video / audio | `--image` / `--file` / `--video` / `--audio` | Shortcut uploads URLs, or cwd-relative local files automatically |
 
 ### `--text` vs `--markdown`
 
-- Use `--text` when the content should stay as plain text, including exact line breaks, indentation, code samples, shell snippets, or Markdown characters that should **not** be reinterpreted.
-- Use `--markdown` when you want basic Markdown-style rendering and you accept that the shortcut will normalize and rewrite parts of the content before sending.
+- Use `--markdown` for lightweight formatted messages.
+- Use `--text` for exact plain text, especially logs, code, indentation, or Markdown characters that should **not** render.
 - Use `--content` when `--markdown` is not enough, especially if you need exact `post` JSON, a title, multiple locales, cards, or unsupported rich structures.
 
 ## What `--markdown` Really Does
 
-`--markdown` is **not** sent as raw Markdown API content.
+`--markdown` accepts Markdown-like input and converts it to the Feishu `post` payload required by the message API.
 
 The shortcut does all of the following before sending:
 
@@ -50,9 +56,9 @@ The shortcut does all of the following before sending:
 {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
 ```
 
-This means `--markdown` is convenient, but it is not a full-fidelity Markdown transport.
+This makes `--markdown` the simplest path for lightweight formatted messages.
 
-### Current Markdown Caveats
+### Markdown Boundaries
 
 - It does **not** promise full CommonMark / GitHub Flavored Markdown support.
 - It always becomes a `post` payload with a single `zh_cn` locale.
@@ -64,15 +70,30 @@ This means `--markdown` is convenient, but it is not a full-fidelity Markdown tr
 - Block spacing and line breaks may be normalized during conversion.
 - Code blocks are preserved as code blocks.
 - Excess blank lines are compressed.
-- Only `http://...`, `https://...`, or already-uploaded `img_xxx` Markdown images are kept reliably.
-- Local paths in Markdown image syntax like `![x](./a.png)` are **not** auto-uploaded by `--markdown`; they may be stripped during optimization.
-- If remote Markdown image download/upload fails, that image is removed with a warning.
+- Already-uploaded `img_xxx` image keys are the most reliable Markdown image input.
+- Local paths in Markdown image syntax like `![x](./a.png)` are **not** supported and will not be auto-uploaded.
+- Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
 
-If any of the above is unacceptable, do **not** use `--markdown`; use `--content` and provide the final JSON yourself.
+If you need a title, multiple locales, cards, unsupported rich structures, or byte-for-byte post JSON control, use `--content` and provide the final JSON yourself.
+
+### Image Constraint for `--markdown`
+
+When using `--markdown` with images, prefer pre-uploading via `images.create` and referencing `![alt](img_xxx)` for predictable results. Remote URLs may work but are not guaranteed.
+
+**Steps:**
+
+```bash
+# 1. Upload image to get image_key
+lark-cli im images create --data '{"image_type":"message"}' --file ./diagram.png
+# Returns: {"image_key":"img_v3_xxxx"}
+
+# 2. Use image_key in --markdown
+lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Report\n\n![diagram](img_v3_xxxx)\n\nSee above for details.'
+```
 
 ## Preserving Formatting
 
-If the message has multiple lines, indentation, code blocks, tabs, or many quotes/backslashes, prefer shell ANSI-C quoting with `$'...'`.
+If the message has multiple lines, indentation, code blocks, tabs, or many quotes/backslashes, prefer shell ANSI-C quoting with `$'...'` for either `--markdown` or `--text`.
 
 This is especially useful in `zsh` / `bash` because it lets you write `\n` explicitly instead of relying on the shell to preserve literal newlines.
 
@@ -90,20 +111,13 @@ lark-cli im +messages-send --chat-id oc_xxx --text $'```bash\nmake test\nmake li
 
 Use this path when you want the receiver to see the text exactly as entered, not a converted Markdown post.
 
-### When formatting does not need exact preservation
-
-Use `--markdown`:
-
-```bash
-lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Release Notes\n\n- Added send shortcut\n- Added reply shortcut'
-```
-
-This is better for lightweight readable formatting, but the final content may not match the source text byte-for-byte because the shortcut normalizes headings and spacing before sending.
-
 ## Commands
 
 ```bash
-# Send plain text (--text is recommended for normal messages)
+# Send a formatted update
+lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Update\n\n- item 1\n- item 2'
+
+# Send a plain one-line message
 lark-cli im +messages-send --chat-id oc_xxx --text "Hello"
 
 # Equivalent manual JSON
@@ -115,8 +129,10 @@ lark-cli im +messages-send --user-id ou_xxx --text "Hello"
 # Send multi-line text while preserving formatting
 lark-cli im +messages-send --chat-id oc_xxx --text $'Line 1\nLine 2\n  indented line'
 
-# Send basic Markdown (will be converted to post JSON)
-lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Update\n\n- item 1\n- item 2'
+# Send Markdown with an image (must pre-upload via images.create)
+lark-cli im images create --data '{"image_type":"message"}' --file ./screenshot.png
+# Use the returned image_key in the markdown content
+lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Status\n\n![screenshot](img_v3_xxxx)\n\nDone.'
 
 # If you need exact post structure, send JSON directly
 lark-cli im +messages-send --chat-id oc_xxx --msg-type post --content '{"zh_cn":{"title":"Title","content":[[{"tag":"text","text":"Body"}]]}}'
@@ -144,24 +160,30 @@ lark-cli im +messages-send --chat-id oc_xxx --text "Hello" --idempotency-key my-
 lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry-run
 ```
 
+## Media Input Rules
+
+- Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
+- Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
+- Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+
 ## Parameters
 
-| Parameter | Required | Description |
-|------|------|------|
-| `--chat-id <id>` | One of two | Group chat ID (`oc_xxx`) |
-| `--user-id <id>` | One of two | User open_id (`ou_xxx`) for direct messages |
-| `--text <string>` | One content option | Plain text message. Best default for exact text and preserved formatting. Automatically wrapped as `{"text":"..."}` |
-| `--markdown <string>` | One content option | Convenience Markdown input. Internally converted to `post` JSON with Feishu-specific normalization; not full Markdown passthrough |
-| `--content <json>` | One content option | Exact message content JSON string; use this when you need full control over `msg_type` and payload. The JSON must match the effective `--msg-type` |
-| `--image <path\|key>` | One content option | Local image path or `image_key` (`img_xxx`). Local paths are uploaded automatically |
-| `--file <path\|key>` | One content option | Local file path or `file_key` (`file_xxx`). Local paths are uploaded automatically |
-| `--video <path\|key>` | One content option | Local video path or `file_key`. Local paths are uploaded automatically. **Must be paired with `--video-cover`** |
-| `--video-cover <path\|key>` | **Required with `--video`** | Video cover image path or `image_key` (`img_xxx`). Local paths are uploaded automatically |
-| `--audio <path\|key>` | One content option | Local audio path or `file_key`. Local paths are uploaded automatically |
+| Parameter | Required | Description                                                                                                                                                                                   |
+|------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--chat-id <id>` | One of two | Group chat ID (`oc_xxx`)                                                                                                                                                                      |
+| `--user-id <id>` | One of two | User open_id (`ou_xxx`) for direct messages                                                                                                                                                   |
+| `--text <string>` | One content option | Plain text message. Use when exact text and formatting preservation matter. Automatically wrapped as `{"text":"..."}`                                                                         |
+| `--markdown <string>` | One content option | Best default for lightweight formatted messages such as headings, lists, links, summaries, and reports. Internally converted to `post` JSON with Feishu-specific normalization               |
+| `--content <json>` | One content option | Exact message content JSON string; use this when you need full control over `msg_type` and payload. The JSON must match the effective `--msg-type`                                            |
+| `--image <path\|url\|key>` | One content option | Cwd-relative local image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically                                                                               |
+| `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically                                                                                |
+| `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically. **Must be paired with `--video-cover`**                                      |
+| `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically                                                                         |
+| `--audio <path\|url\|key>` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically                                                                                           |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
-| `--idempotency-key <key>` | No | Idempotency key; the same key sends only one message within 1 hour |
-| `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`) |
-| `--dry-run` | No | Print the request only, do not execute it |
+| `--idempotency-key <key>` | No | Idempotency key; the same key sends only one message within 1 hour                                                                                                                            |
+| `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
+| `--dry-run` | No | Print the request only, do not execute it                                                                                                                                                     |
 
 > **Mutual exclusivity rule:** `--text`, `--markdown`, `--content`, and `--image`/`--file`/`--video`/`--audio` cannot be used together. Media flags are also mutually exclusive with each other.
 >
@@ -169,9 +191,11 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 
 ## Common Mistakes
 
-- Choosing `--markdown` when you actually need exact plain text. If exact line breaks and spacing matter, use `--text`, usually with `$'...'`.
-- Assuming `--markdown` supports all Markdown features. It does not; it is converted into a Feishu `post` payload and rewritten first.
+- Choosing `--text` for headings, lists, links, summaries, or reports. Use `--markdown`.
+- Choosing `--markdown` when you actually need exact plain text. If exact line breaks, spacing, logs, code, or literal Markdown characters matter, use `--text`, usually with `$'...'`.
+- Assuming `--markdown` supports every Markdown feature. It is converted into a Feishu `post` payload and normalized first.
 - Putting local image paths inside Markdown like `![x](./a.png)`. `--markdown` does not auto-upload those paths.
+- **Using local file paths inside Markdown image syntax** (e.g. `![x](./a.png)`) with `--markdown`. Local paths are not auto-uploaded and will not render as an image. Pre-upload via `images.create` to get an `image_key` instead.
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
@@ -211,7 +235,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - `--chat-id` and `--user-id` are mutually exclusive; you must provide exactly one
 - `--content` must be valid JSON
 - When using `--content`, you are responsible for making the JSON structure match the effective `msg_type`
-- `--image`/`--file`/`--video`/`--audio` support local file paths; the shortcut uploads first and then sends the message; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
+- `--image`/`--file`/`--video`/`--audio` support existing keys, URLs, and cwd-relative local file paths; the shortcut uploads local paths and URLs first, then sends the message; both the upload and send steps use the same identity (UAT when `--as user`, TAT when `--as bot`)
 - If the provided media value starts with `img_` or `file_`, it is treated as an existing key and used directly
 - `--markdown` always sends `msg_type=post`, even if you do not explicitly set `--msg-type post`
 - If you explicitly set `--msg-type` and it conflicts with the chosen content flag, validation fails
@@ -221,3 +245,4 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the message is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user
+- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported

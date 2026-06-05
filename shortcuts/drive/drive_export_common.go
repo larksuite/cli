@@ -15,9 +15,9 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -127,40 +127,48 @@ func (s driveExportStatus) StatusLabel() string {
 // backend request is sent.
 func validateDriveExportSpec(spec driveExportSpec) error {
 	if err := validate.ResourceName(spec.Token, "--token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
 	}
 
 	switch spec.DocType {
-	case "doc", "docx", "sheet", "bitable":
+	case "doc", "docx", "sheet", "bitable", "slides":
 	default:
-		return output.ErrValidation("invalid --doc-type %q: allowed values are doc, docx, sheet, bitable", spec.DocType)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc-type %q: allowed values are doc, docx, sheet, bitable, slides", spec.DocType).WithParam("--doc-type")
 	}
 
 	switch spec.FileExtension {
-	case "docx", "pdf", "xlsx", "csv", "markdown", "base":
+	case "docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx":
 	default:
-		return output.ErrValidation("invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base", spec.FileExtension)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --file-extension %q: allowed values are docx, pdf, xlsx, csv, markdown, base, pptx", spec.FileExtension).WithParam("--file-extension")
 	}
 
 	if spec.FileExtension == "markdown" && spec.DocType != "docx" {
-		return output.ErrValidation("--file-extension markdown only supports --doc-type docx")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension markdown only supports --doc-type docx")
 	}
 
 	if spec.FileExtension == "base" && spec.DocType != "bitable" {
-		return output.ErrValidation("--file-extension base only supports --doc-type bitable")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension base only supports --doc-type bitable")
+	}
+
+	if spec.FileExtension == "pptx" && spec.DocType != "slides" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension pptx only supports --doc-type slides")
+	}
+
+	if spec.DocType == "slides" && spec.FileExtension != "pptx" && spec.FileExtension != "pdf" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc-type slides only supports --file-extension pptx or pdf")
 	}
 
 	if strings.TrimSpace(spec.SubID) != "" {
 		if spec.FileExtension != "csv" || (spec.DocType != "sheet" && spec.DocType != "bitable") {
-			return output.ErrValidation("--sub-id is only used when exporting sheet/bitable as csv")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is only used when exporting sheet/bitable as csv").WithParam("--sub-id")
 		}
 		if err := validate.ResourceName(spec.SubID, "--sub-id"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--sub-id")
 		}
 	}
 
 	if spec.FileExtension == "csv" && (spec.DocType == "sheet" || spec.DocType == "bitable") && strings.TrimSpace(spec.SubID) == "" {
-		return output.ErrValidation("--sub-id is required when exporting sheet/bitable as csv")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sub-id is required when exporting sheet/bitable as csv").WithParam("--sub-id")
 	}
 
 	return nil
@@ -178,14 +186,14 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 		body["sub_id"] = spec.SubID
 	}
 
-	data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/export_tasks", nil, body)
+	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, body)
 	if err != nil {
 		return "", err
 	}
 
 	ticket := common.GetString(data, "ticket")
 	if ticket == "" {
-		return "", output.Errorf(output.ExitAPI, "api_error", "export task created but ticket is missing")
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "export task created but ticket is missing")
 	}
 	return ticket, nil
 }
@@ -193,7 +201,7 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 // getDriveExportStatus fetches the current backend state for a previously
 // created export task.
 func getDriveExportStatus(runtime *common.RuntimeContext, token, ticket string) (driveExportStatus, error) {
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/drive/v1/export_tasks/%s", validate.EncodePathSegment(ticket)),
 		map[string]interface{}{"token": token},
@@ -228,34 +236,6 @@ func parseDriveExportStatus(ticket string, data map[string]interface{}) driveExp
 	return status
 }
 
-// fetchDriveMetaTitle looks up the document title so exported files can use a
-// human-readable default name when possible.
-func fetchDriveMetaTitle(runtime *common.RuntimeContext, token, docType string) (string, error) {
-	data, err := runtime.CallAPI(
-		"POST",
-		"/open-apis/drive/v1/metas/batch_query",
-		nil,
-		map[string]interface{}{
-			"request_docs": []map[string]interface{}{
-				{
-					"doc_token": token,
-					"doc_type":  docType,
-				},
-			},
-		},
-	)
-	if err != nil {
-		return "", err
-	}
-
-	metas := common.GetSlice(data, "metas")
-	if len(metas) == 0 {
-		return "", nil
-	}
-	meta, _ := metas[0].(map[string]interface{})
-	return common.GetString(meta, "title"), nil
-}
-
 // saveContentToOutputDir validates the target path, enforces overwrite policy,
 // and writes the payload atomically via FileIO.Save.
 func saveContentToOutputDir(fio fileio.FileIO, outputDir, fileName string, payload []byte, overwrite bool) (string, error) {
@@ -271,12 +251,12 @@ func saveContentToOutputDir(fio fileio.FileIO, outputDir, fileName string, paylo
 	// Overwrite check via FileIO.Stat
 	if !overwrite {
 		if _, statErr := fio.Stat(target); statErr == nil {
-			return "", output.ErrValidation("output file already exists: %s (use --overwrite to replace)", target)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "output file already exists: %s (use --overwrite to replace)", target)
 		}
 	}
 
 	if _, err := fio.Save(target, fileio.SaveOptions{}, bytes.NewReader(payload)); err != nil {
-		return "", common.WrapSaveErrorByCategory(err, "io")
+		return "", driveSaveError(err)
 	}
 	resolvedPath, _ := fio.ResolvePath(target)
 	if resolvedPath == "" {
@@ -289,7 +269,7 @@ func saveContentToOutputDir(fio fileio.FileIO, outputDir, fileName string, paylo
 // file name, and returns metadata about the saved file.
 func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext, fileToken, outputDir, preferredName string, overwrite bool) (map[string]interface{}, error) {
 	if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-		return nil, output.ErrValidation("%s", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 	}
 
 	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
@@ -297,10 +277,24 @@ func downloadDriveExportFile(ctx context.Context, runtime *common.RuntimeContext
 		ApiPath:    fmt.Sprintf("/open-apis/drive/v1/export_tasks/file/%s/download", validate.EncodePathSegment(fileToken)),
 	}, larkcore.WithFileDownload())
 	if err != nil {
-		return nil, output.ErrNetwork("download failed: %s", err)
+		return nil, wrapDriveNetworkErr(err, "download failed: %s", err)
 	}
 	if apiResp.StatusCode >= 400 {
-		return nil, output.ErrNetwork("download failed: HTTP %d: %s", apiResp.StatusCode, string(apiResp.RawBody))
+		subtype := errs.SubtypeNetworkTransport
+		if apiResp.StatusCode >= 500 {
+			subtype = errs.SubtypeNetworkServer
+		}
+		e := errs.NewNetworkError(subtype, "download failed: HTTP %d: %s", apiResp.StatusCode, string(apiResp.RawBody)).WithCode(apiResp.StatusCode)
+		// Mirror internal/client streamLogID: fall back to the request-id header
+		// when log-id is absent so the diagnostic ID is still populated.
+		logID := strings.TrimSpace(apiResp.Header.Get(larkcore.HttpHeaderKeyLogId))
+		if logID == "" {
+			logID = strings.TrimSpace(apiResp.Header.Get(larkcore.HttpHeaderKeyRequestId))
+		}
+		if logID != "" {
+			e = e.WithLogID(logID)
+		}
+		return nil, e
 	}
 
 	fileName := strings.TrimSpace(preferredName)
@@ -373,6 +367,8 @@ func exportFileSuffix(fileExtension string) string {
 		return ".csv"
 	case "base":
 		return ".base"
+	case "pptx":
+		return ".pptx"
 	default:
 		return ""
 	}

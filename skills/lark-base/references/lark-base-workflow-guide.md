@@ -1,11 +1,10 @@
-# Workflow 构造指南
+# Workflow guide
 
-本文档提供 Workflow 的完整构造示例、常见模式和错误避免指南。
+本文档是 Workflow 的入口指南，帮助选择步骤组合、理解创建/更新边界，并引导到 steps JSON SSOT。
 
 > **配套文档**:
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
-> - 创建命令：[lark-base-workflow-create.md](lark-base-workflow-create.md)
-> - 更新命令：[lark-base-workflow-update.md](lark-base-workflow-update.md)
+> - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
 
 ---
 
@@ -56,6 +55,7 @@
 | 场景 | 步骤组合 | 示例 |
 |------|---------|------|
 | 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
+| 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
 | 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
 | 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
 | 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支-switchbranch) |
@@ -628,6 +628,119 @@
 
 ---
 
+### 示例 6: 按钮触发 + 调用外部接口 + 写入同步日志
+
+**场景**: 在「客户线索表」里给每条记录配置一个“同步到 CRM”按钮。销售点击按钮后，Workflow 调用外部 CRM 接口同步当前线索，再在「同步日志表」新增一条记录，方便后续审计和排查。
+
+```json
+{
+  "client_token": "1704067206",
+  "title": "线索一键同步到 CRM",
+  "steps": [
+    {
+      "id": "step_button_trigger",
+      "type": "ButtonTrigger",
+      "title": "点击同步到 CRM 按钮时触发",
+      "next": "step_call_crm_api",
+      "data": {
+        "button_type": "buttonField",
+        "table_name": "客户线索表"
+      }
+    },
+    {
+      "id": "step_call_crm_api",
+      "type": "HTTPClientAction",
+      "title": "调用 CRM 同步接口",
+      "next": "step_add_sync_log",
+      "data": {
+        "method": "POST",
+        "url": [
+          { "value_type": "text", "value": "https://api.example-crm.com/v1/leads/sync" }
+        ],
+        "headers": [
+          { "key": "Content-Type", "value": [{ "value_type": "text", "value": "application/json" }] },
+          { "key": "X-System", "value": [{ "value_type": "text", "value": "lark_base_workflow" }] }
+        ],
+        "body_type": "raw",
+        "raw_body": [
+          { "value_type": "text", "value": "{\"lead_name\":\"" },
+          { "value_type": "ref", "value": "$.step_button_trigger.fldLeadName" },
+          { "value_type": "text", "value": "\",\"mobile\":\"" },
+          { "value_type": "ref", "value": "$.step_button_trigger.fldMobile" },
+          { "value_type": "text", "value": "\",\"company\":\"" },
+          { "value_type": "ref", "value": "$.step_button_trigger.fldCompany" },
+          { "value_type": "text", "value": "\",\"owner\":\"" },
+          { "value_type": "ref", "value": "$.step_button_trigger.fldOwner" },
+          { "value_type": "text", "value": "\",\"source_record_id\":\"" },
+          { "value_type": "ref", "value": "$.step_button_trigger.recordId" },
+          { "value_type": "text", "value": "\"}" }
+        ],
+        "response_type": "json",
+        "response_value": "{\"success\":true,\"message\":\"lead synced successfully\"}"
+      }
+    },
+    {
+      "id": "step_add_sync_log",
+      "type": "AddRecordAction",
+      "title": "写入同步日志",
+      "next": null,
+      "data": {
+        "table_name": "同步日志表",
+        "field_values": [
+          {
+            "field_name": "线索名称",
+            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldLeadName" }]
+          },
+          {
+            "field_name": "手机号",
+            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldMobile" }]
+          },
+          {
+            "field_name": "公司名称",
+            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldCompany" }]
+          },
+          {
+            "field_name": "负责人",
+            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldOwner" }]
+          },
+          {
+            "field_name": "来源记录ID",
+            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.recordId" }]
+          },
+          {
+            "field_name": "同步状态",
+            "value": [{ "value_type": "text", "value": "已提交 CRM 同步" }]
+          },
+          {
+            "field_name": "同步是否成功",
+            "value": [{ "value_type": "ref", "value": "$.step_call_crm_api.body.success" }]
+          },
+          {
+            "field_name": "同步结果说明",
+            "value": [{ "value_type": "ref", "value": "$.step_call_crm_api.body.message" }]
+          },
+          {
+            "field_name": "备注",
+            "value": [{ "value_type": "text", "value": "由按钮触发自动发起同步请求" }]
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+**关键点**:
+- `ButtonTrigger` 适合“人工确认后再执行”的场景，比如同步 CRM、推送 ERP、发起审批等
+- `button_type: "buttonField"` 表示按钮挂在记录上，因此可以直接引用当前记录的字段和值
+- `HTTPClientAction.raw_body` 可以通过 `text + ref + text` 的方式动态拼接 JSON 请求体
+- `HTTPClientAction` 的输出引用规则是：`response_type=none` 时不可引用；`response_type=text` 时只能用 `$.stepId` 引整个文本；`response_type=json` 时用 `$.stepId.body` 引整个 body、用 `$.stepId.body.字段名` 引 body 中字段，同时 `$.stepId.status_code` 表示 HTTP 返回状态码
+- `HTTPClientAction.response_value` 中声明了哪些字段，后续节点就只能引用这些字段；例如 `$.step_call_crm_api.body.success`、`$.step_call_crm_api.body.message`
+- `AddRecordAction` 常用于写日志表、操作审计表、同步结果表，便于追踪谁在什么时候触发了外部调用
+- 示例里的 `fldLeadName` / `fldMobile` / `fldCompany` / `fldOwner` 只是占位的 fieldId，请以实际表字段 ID 为准
+
+---
+
 ## 构造技巧
 
 ### Loop 构造要点
@@ -714,5 +827,4 @@
 ## 参考
 
 - [lark-base-workflow-schema.md](lark-base-workflow-schema.md) — 字段定义参考
-- [lark-base-workflow-create.md](lark-base-workflow-create.md) — 创建命令
-- [lark-base-workflow-update.md](lark-base-workflow-update.md) — 更新命令
+- 创建/更新前先确认真实表名、字段名和目标 workflow ID；`steps` 结构按 schema 构造，不凭自然语言猜 `type`

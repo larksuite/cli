@@ -5,9 +5,7 @@ package mail
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -66,14 +64,22 @@ var MailShareToChat = common.Shortcut{
 		msgID := runtime.Str("message-id")
 		threadID := runtime.Str("thread-id")
 		if msgID == "" && threadID == "" {
-			return output.ErrValidation("either --message-id or --thread-id is required")
+			return mailValidationError("either --message-id or --thread-id is required").
+				WithParams(
+					mailInvalidParam("--message-id", "required when --thread-id is empty"),
+					mailInvalidParam("--thread-id", "required when --message-id is empty"),
+				)
 		}
 		if msgID != "" && threadID != "" {
-			return output.ErrValidation("--message-id and --thread-id are mutually exclusive")
+			return mailValidationError("--message-id and --thread-id are mutually exclusive").
+				WithParams(
+					mailInvalidParam("--message-id", "mutually exclusive with --thread-id"),
+					mailInvalidParam("--thread-id", "mutually exclusive with --message-id"),
+				)
 		}
 		idType := runtime.Str("receive-id-type")
 		if !validReceiveIDTypes[idType] {
-			return output.ErrValidation("--receive-id-type must be one of: chat_id, open_id, user_id, union_id, email")
+			return mailValidationParamError("--receive-id-type", "--receive-id-type must be one of: chat_id, open_id, user_id, union_id, email")
 		}
 		return nil
 	},
@@ -90,23 +96,23 @@ var MailShareToChat = common.Shortcut{
 		} else {
 			createBody = map[string]interface{}{"message_id": msgID}
 		}
-		createResp, err := runtime.CallAPI("POST",
+		createResp, err := runtime.CallAPITyped("POST",
 			mailboxPath(mailboxID, "messages", "share_token"),
 			nil, createBody)
 		if err != nil {
-			return fmt.Errorf("create share token: %w", err)
+			return mailDecorateProblemMessage(err, "create share token")
 		}
 		cardID, _ := createResp["card_id"].(string)
 		if cardID == "" {
-			return fmt.Errorf("create share token: response missing card_id")
+			return mailInvalidResponseError("create share token: response missing card_id")
 		}
 
-		sendResp, err := runtime.CallAPI("POST",
+		sendResp, err := runtime.CallAPITyped("POST",
 			mailboxPath(mailboxID, "share_tokens", cardID, "send"),
 			map[string]interface{}{"receive_id_type": receiveIDType},
 			map[string]interface{}{"receive_id": receiveID})
 		if err != nil {
-			return fmt.Errorf("share token created (card_id=%s) but send failed: %w", cardID, err)
+			return mailDecorateProblemMessage(err, "share token created (card_id=%s) but send failed", cardID)
 		}
 
 		runtime.Out(map[string]interface{}{

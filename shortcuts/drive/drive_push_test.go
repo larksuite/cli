@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -324,6 +325,203 @@ func TestDrivePushSkipsWhenIfExistsSkip(t *testing.T) {
 	// would 404 against the registry and the run would have errored above.
 }
 
+// TestDrivePushSkipsWhenIfExistsSmartAndRemoteIsUpToDate verifies the smart
+// fast path for local → Drive mirrors: when the remote copy is already at
+// least as new as the local file, +push skips the upload.
+func TestDrivePushSkipsWhenIfExistsSmartAndRemoteIsUpToDate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	// Intentionally NO upload_all stub: smart mode should skip the transfer.
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Errorf("expected uploaded=0, got: %s", out)
+	}
+}
+
+// TestDrivePushOverwritesWhenIfExistsSmartAndLocalIsNewer verifies the smart
+// path still uploads when the local file is newer than the remote one.
+func TestDrivePushOverwritesWhenIfExistsSmartAndLocalIsNewer(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(200, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_old", "name": "keep.txt", "type": "file", "size": 5, "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"file_token": "tok_keep_new", "version": "v43"},
+		},
+	}
+	reg.Register(uploadStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 1`) {
+		t.Errorf("expected uploaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"action": "overwritten"`) {
+		t.Errorf("expected overwritten action, got: %s", out)
+	}
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != "tok_keep_old" {
+		t.Fatalf("upload_all form file_token = %q, want tok_keep_old", got)
+	}
+}
+
+func TestDrivePushShouldSkipSmartFallsBackWhenMetadataCannotBeTrusted(t *testing.T) {
+	t.Parallel()
+
+	localFile := drivePushLocalFile{
+		Size:    5,
+		ModTime: time.Unix(100, 500*int64(time.Millisecond)),
+	}
+
+	for _, tt := range []struct {
+		name       string
+		remoteFile driveRemoteEntry
+	}{
+		{
+			name:       "invalid remote timestamp",
+			remoteFile: driveRemoteEntry{ModifiedTime: "not-a-time"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := drivePushShouldSkipSmart(localFile, tt.remoteFile); got {
+				t.Fatalf("drivePushShouldSkipSmart() = true, want false for %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestDrivePushSkipsWhenSmartIgnoresRemoteSize(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "keep.txt")
+	if err := os.WriteFile(localPath, []byte("hello"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	localMTime := time.Unix(100, 500*int64(time.Millisecond))
+	if err := os.Chtimes(localPath, localMTime, localMTime); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep", "name": "keep.txt", "type": "file", "size": 999, "modified_time": "200"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "smart",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"skipped": 1`) {
+		t.Errorf("expected skipped=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Errorf("expected uploaded=0, got: %s", out)
+	}
+}
+
 // TestDrivePushDeleteRemoteRequiresYes locks in the upfront safety guard:
 // --delete-remote without --yes must be refused before any list / upload
 // happens, so a stray flag never silently deletes anything.
@@ -454,6 +652,124 @@ func TestDrivePushDeleteRemoteSkipsOnlineDocs(t *testing.T) {
 	}
 }
 
+func TestDrivePushNewestOverwritesChosenDuplicateAndDeletesSibling(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "dup.txt"), []byte("LOCAL"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "dup-new-token",
+				"version":    "v99",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+	deleteStub := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDFirst,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(deleteStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--on-duplicate-remote", "newest",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != duplicateRemoteFileIDSecond {
+		t.Fatalf("upload_all form file_token = %q, want %q", got, duplicateRemoteFileIDSecond)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 1`) {
+		t.Fatalf("expected uploaded=1, got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_remote": 1`) {
+		t.Fatalf("expected deleted_remote=1, got: %s", out)
+	}
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDFirst)
+	if deleteStub.CapturedHeaders == nil {
+		t.Fatal("DELETE for the unchosen duplicate sibling was never issued")
+	}
+
+	reg.Verify(t)
+}
+
+func TestDrivePushDeleteRemoteDeletesEntireDuplicateGroupWithoutLocalCounterpart(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	registerDuplicateRemoteFiles(reg)
+	deleteFirst := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDFirst,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	deleteSecond := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/" + duplicateRemoteFileIDSecond,
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	}
+	reg.Register(deleteFirst)
+	reg.Register(deleteSecond)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "skip",
+		"--on-duplicate-remote", "newest",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"uploaded": 0`) {
+		t.Fatalf("expected uploaded=0, got: %s", out)
+	}
+	if !strings.Contains(out, `"deleted_remote": 2`) {
+		t.Fatalf("expected deleted_remote=2, got: %s", out)
+	}
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDFirst)
+	assertPushItemAction(t, stdout.Bytes(), "dup.txt", "deleted_remote", duplicateRemoteFileIDSecond)
+	if deleteFirst.CapturedHeaders == nil || deleteSecond.CapturedHeaders == nil {
+		t.Fatal("expected both duplicate remote DELETE requests to be issued")
+	}
+
+	reg.Verify(t)
+}
+
 // TestDrivePushRejectsAbsoluteLocalDir confirms SafeLocalFlagPath surfaces
 // the proper flag name in the error message.
 func TestDrivePushRejectsAbsoluteLocalDir(t *testing.T) {
@@ -555,21 +871,19 @@ func TestDrivePushOverwriteWithoutVersionFails(t *testing.T) {
 		"--if-exists", "overwrite",
 		"--as", "bot",
 	}, f, stdout)
-	// Item-level failures bump the exit code via output.ErrBare(ExitAPI),
-	// preserving the structured items[] envelope on stdout. Older behavior
-	// was to silently return nil; the assertion below pins the new contract.
+	// Item-level failures report a partial failure: an ok:false items[]
+	// envelope on stdout + a non-zero exit via the partial-failure signal.
+	// Older behavior was to silently return nil; the assertion below pins
+	// the new contract.
 	if err == nil {
 		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("expected ExitAPI (%d), got code=%d", output.ExitAPI, exitErr.Code)
-	}
-	if exitErr.Detail != nil {
-		t.Errorf("ErrBare should carry no Detail (the items[] envelope already covered the per-item error), got: %#v", exitErr.Detail)
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got code=%d", output.ExitAPI, pfErr.Code)
 	}
 
 	out := stdout.String()
@@ -643,12 +957,19 @@ func TestDrivePushOverwritePartialSuccessSurfacesReturnedToken(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit on item-level failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI from output.ExitError, got %T %v", err, err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) || pfErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI from *output.PartialFailureError, got %T %v", err, err)
 	}
 
 	out := stdout.String()
+	// Partial failure reports an ok:false result envelope on stdout (not a
+	// misleading ok:true) while still carrying BOTH the succeeded and failed
+	// items — consistent with the pre-change payload. The failed side is
+	// asserted via "failed": 1 and the succeeded side via tok_keep_partial.
+	if !strings.Contains(out, `"ok": false`) {
+		t.Errorf("partial failure must emit an ok:false result envelope, got: %s", out)
+	}
 	if !strings.Contains(out, `"failed": 1`) {
 		t.Errorf("expected failed=1, got: %s", out)
 	}
@@ -726,9 +1047,9 @@ func TestDrivePushSkipsDeleteAfterUploadFailure(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit on overwrite failure, got nil\nstdout: %s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI ExitError, got %v", err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) || pfErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI *output.PartialFailureError, got %v", err)
 	}
 
 	out := stdout.String()
@@ -749,7 +1070,7 @@ func TestDrivePushSkipsDeleteAfterUploadFailure(t *testing.T) {
 
 // TestDrivePushExitsZeroOnCleanRun pins the inverse: a successful run
 // with no failures must NOT bump the exit code. Without this the
-// ErrBare-on-failure path could regress to "always non-zero" silently.
+// partial-failure path could regress to "always non-zero" silently.
 func TestDrivePushExitsZeroOnCleanRun(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -977,6 +1298,130 @@ func TestDrivePushReusesExistingRemoteFolder(t *testing.T) {
 	body := decodeDriveMultipartBody(t, uploadStub)
 	if got := body.Fields["parent_node"]; got != "fld_existing_sub" {
 		t.Fatalf("upload parent_node = %q, want fld_existing_sub (folderCache miss?)", got)
+	}
+}
+
+// TestDrivePushOverwriteNestedFileUsesParentFolderToken verifies that
+// overwriting an existing nested remote file keeps parent_node aligned with
+// the file's actual parent folder instead of the root folder token.
+func TestDrivePushOverwriteNestedFileUsesParentFolderToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "fld_existing_sub", "name": "sub", "type": "folder"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=fld_existing_sub",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_nested", "name": "keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+
+	uploadStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"file_token": "tok_keep_nested",
+				"version":    "v2",
+			},
+		},
+	}
+	reg.Register(uploadStub)
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v\nstdout: %s", err, stdout.String())
+	}
+
+	body := decodeDriveMultipartBody(t, uploadStub)
+	if got := body.Fields["file_token"]; got != "tok_keep_nested" {
+		t.Fatalf("upload_all file_token = %q, want tok_keep_nested", got)
+	}
+	if got := body.Fields["parent_node"]; got != "fld_existing_sub" {
+		t.Fatalf("upload_all parent_node = %q, want fld_existing_sub", got)
+	}
+}
+
+func TestDrivePushOverwriteNestedFileReportsParentEnsureFailure(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "sub"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "sub", "keep.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_keep_nested", "name": "sub/keep.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 9999,
+			"msg":  "create parent failed",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--if-exists", "overwrite",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected parent ensure failure\nstdout: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"action": "failed"`) || !strings.Contains(stdout.String(), "create parent failed") {
+		t.Fatalf("expected failed item with create_folder error, got: %s", stdout.String())
 	}
 }
 

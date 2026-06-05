@@ -1,0 +1,256 @@
+<!--
+=============================================================================
+SUBJECT 模板（lark-cli mail --subject 用）：
+  [调研主题] 市场调研报告 ([YYYY-MM-DD])
+字段说明：
+  · [调研主题]：调研对象赛道，例 "AI Mail Agent" / "向量数据库" / "前端构建工具"
+  · [YYYY-MM-DD]：调研完成日期（ISO 格式）
+=============================================================================
+-->
+<style>
+.research-root { font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width:800px; margin:0 auto; color:#1a1a1a; line-height:1.6; background-color:#f8f9fa; padding:20px; }
+.gradient-header { background:linear-gradient(135deg, #1a73e8, #4285f4); border-radius:12px; padding:32px; color:white; text-align:center; }
+.card { background-color:white; border-radius:8px; padding:20px; margin:16px 0; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+.stat-row { display:flex; gap:10px; margin:16px 0; }
+.stat-card { flex:1; background-color:white; border-radius:8px; padding:14px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+.player-row { display:flex; gap:12px; margin:0 0 12px; flex-wrap:wrap; }
+.player-card { flex:1; min-width:200px; background-color:#f1f3f4; border-radius:6px; padding:14px; }
+.callout-error { background-color:#fce8e6; border-left:4px solid #ea4335; padding:10px 14px; margin-top:12px; border-radius:0 4px 4px 0; font-size:12px; }
+.tbl { width:100%; border-collapse:collapse; font-size:13px; }
+.tbl th { padding:8px; text-align:left; border-bottom:2px solid #ddd; background-color:#f1f3f4; }
+.tbl td { padding:8px; border-bottom:1px solid #eee; }
+.tbl tr.alt td { background-color:#fafafa; }
+.tbl-bug { width:100%; border-collapse:collapse; font-size:13px; }
+.tbl-bug th { padding:10px; border-bottom:2px solid #ddd; background-color:#f1f3f4; text-align:left; }
+.tbl-bug td { padding:10px; border-bottom:1px solid #eee; }
+.tbl-bug tr.alt td { background-color:#fafafa; }
+.badge-info { background-color:#e8f0fe; color:#1a73e8; padding:2px 8px; border-radius:4px; font-size:12px; white-space:nowrap; display:inline-block; }
+.badge-success { background-color:#e6f4ea; color:#137333; padding:2px 8px; border-radius:4px; font-size:12px; white-space:nowrap; display:inline-block; }
+.badge-warn { background-color:#fff3e0; color:#e65100; padding:2px 8px; border-radius:4px; font-size:12px; white-space:nowrap; display:inline-block; }
+.badge-error { background-color:#fce8e6; color:#ea4335; padding:2px 8px; border-radius:4px; font-size:12px; white-space:nowrap; display:inline-block; }
+.pri-p0 { background-color:#fce8e6; color:#c5221f; padding:2px 10px; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; display:inline-block; }
+.pri-p1 { background-color:#fff3e0; color:#b06000; padding:2px 10px; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; display:inline-block; }
+.pri-p2 { background-color:#e8f0fe; color:#185abc; padding:2px 10px; border-radius:4px; font-size:11px; font-weight:600; white-space:nowrap; display:inline-block; }
+</style>
+
+<div class="research-root">
+
+<div class="gradient-header">
+  <h1 style="margin:0;font-size:24px;font-weight:600">[调研主题] 市场调研报告</h1>
+  <div style="margin:8px 0 0;font-size:14px">[YYYY-MM-DD] | 调研者：[姓名] · [团队] | [关联系统 / 版本]</div>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 12px;font-size:16px;color:#555">调研背景</h2>
+  <div style="font-size:13px;margin:0">[一段话描述：本轮调研聚焦的赛道 / 行业背景 / 触发动机]。本轮调研覆盖 <b>[N] 类玩家</b>（[类别 1] / [类别 2] / [类别 3] / [类别 4]），重点评估 [自家产品 / 团队] 在 [赛道名] 的位置、对外摩擦点，以及结合 [关联工作 / PR / 本期目标] 的待补能力。所有结论基于 [数据来源 1：公开资料 / 厂商文档 / 行业报告] + [数据来源 2：自有实测 / 内部调研笔记] + [数据来源 3：访谈 / 体验]。</div>
+</div>
+
+<div class="stat-row">
+  <div class="stat-card">
+    <div style="font-size:26px;font-weight:700;color:#1a73e8">[N]</div>
+    <div style="font-size:11px;color:#666">调研对象</div>
+  </div>
+  <div class="stat-card">
+    <div style="font-size:26px;font-weight:700;color:#137333">[N]</div>
+    <div style="font-size:11px;color:#666">已就绪能力</div>
+  </div>
+  <div class="stat-card">
+    <div style="font-size:26px;font-weight:700;color:#fbbc04">[N]</div>
+    <div style="font-size:11px;color:#666">明确缺口</div>
+  </div>
+  <div class="stat-card">
+    <div style="font-size:26px;font-weight:700;color:#ea4335">[N]</div>
+    <div style="font-size:11px;color:#666">高优待办</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;font-size:16px">1. [章节标题：例 "全球市场态势"]</h2>
+  <div style="font-size:12px;color:#888;margin:0 0 12px">[一句话描述本节切分维度，例 "把市场按 '为谁设计' 切四象限"]</div>
+  <table class="tbl">
+    <thead><tr>
+      <th>玩家 / 对象</th>
+      <th>定位 / 类型</th>
+      <th style="text-align:center">[关键评分维度]</th>
+      <th>关键观察</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>[玩家 1]</td>
+        <td>[类别]</td>
+        <td style="text-align:center"><span class="badge-info">[标签]</span></td>
+        <td>[一句话观察]</td>
+      </tr>
+      <tr class="alt">
+        <td>[玩家 2]</td>
+        <td>[类别]</td>
+        <td style="text-align:center"><span class="badge-success">[标签]</span></td>
+        <td>[一句话观察]</td>
+      </tr>
+      <tr>
+        <td>[玩家 3]</td>
+        <td>[类别]</td>
+        <td style="text-align:center"><span class="badge-warn">[标签]</span></td>
+        <td>[一句话观察]</td>
+      </tr>
+      <tr class="alt">
+        <td>[玩家 4]</td>
+        <td>[类别]</td>
+        <td style="text-align:center"><span class="badge-error">[标签]</span></td>
+        <td>[一句话观察]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;font-size:16px">2. [章节标题：例 "接入摩擦点"] <span class="badge-warn" style="vertical-align:middle;margin-left:8px">⚠️ 风险</span></h2>
+  <div style="font-size:12px;color:#888;margin:0 0 12px">[一句话描述：从哪里观察 / 案例 / 数据来源]</div>
+  <table class="tbl">
+    <thead><tr>
+      <th>摩擦类型 / 维度</th>
+      <th>具体表现</th>
+      <th>业务影响</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>[摩擦 1]</b></td>
+        <td>[具体表现 / 案例]</td>
+        <td>[对业务 / 团队的影响]</td>
+      </tr>
+      <tr class="alt">
+        <td><b>[摩擦 2]</b></td>
+        <td>[具体表现]</td>
+        <td>[影响]</td>
+      </tr>
+      <tr>
+        <td><b>[摩擦 3]</b></td>
+        <td>[具体表现]</td>
+        <td>[影响]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 12px;font-size:16px">3. [章节标题：例 "新势力玩家详情" / "重点对象详细比较"]</h2>
+  <div class="player-row">
+    <div class="player-card">
+      <div style="font-size:13px;font-weight:700;color:#1a73e8;margin-bottom:6px">[玩家 / 对象 1]</div>
+      <div style="font-size:12px;color:#444">[一句话产品定位 / 核心能力 / 差异化]</div>
+      <div style="font-size:11px;color:#888;margin-top:6px">关键差异：[一句话提炼]</div>
+    </div>
+    <div class="player-card">
+      <div style="font-size:13px;font-weight:700;color:#1a73e8;margin-bottom:6px">[玩家 / 对象 2]</div>
+      <div style="font-size:12px;color:#444">[产品定位]</div>
+      <div style="font-size:11px;color:#888;margin-top:6px">关键差异：[一句话]</div>
+    </div>
+    <div class="player-card">
+      <div style="font-size:13px;font-weight:700;color:#1a73e8;margin-bottom:6px">[玩家 / 对象 3]</div>
+      <div style="font-size:12px;color:#444">[产品定位]</div>
+      <div style="font-size:11px;color:#888;margin-top:6px">关键差异：[一句话]</div>
+    </div>
+  </div>
+  <div style="font-size:12px;color:#666;margin:8px 0 0">[小结一句话：玩家共性 / 自家路线对比]</div>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;font-size:16px">4. [章节标题：例 "安全风险全景" / "潜在隐患"] <span class="badge-error" style="vertical-align:middle;margin-left:8px">⚠️ 高危</span></h2>
+  <div style="font-size:12px;color:#888;margin:0 0 12px">[一句话描述：风险来源 / 关联前期工作]</div>
+  <table class="tbl">
+    <thead><tr>
+      <th>威胁 / 风险</th>
+      <th>案例 / 来源</th>
+      <th style="text-align:center">自家现状</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>[风险 1]</td>
+        <td>[案例 / 来源链接 / 引用前期报告]</td>
+        <td style="text-align:center"><span class="badge-error">[标签]</span></td>
+      </tr>
+      <tr class="alt">
+        <td>[风险 2]</td>
+        <td>[案例 / 来源]</td>
+        <td style="text-align:center"><span class="badge-success">[标签]</span></td>
+      </tr>
+      <tr>
+        <td><b>[风险 3]（重点）</b></td>
+        <td>[案例 / 来源]</td>
+        <td style="text-align:center"><span class="badge-error">[标签]</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout-error">
+    <b>结论：</b>[一段话，提炼本章节最关键的判断 / 行动建议]
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;font-size:16px">5. [章节标题：例 "自家已就绪能力"] <span class="badge-success" style="vertical-align:middle;margin-left:8px">✓ 优势</span></h2>
+  <div style="font-size:12px;color:#888;margin:0 0 12px">[一句话描述：基于哪些 PR / 已交付的工作得出]</div>
+  <ul style="font-size:13px;padding-left:20px;margin:0;list-style-position:inside" data-list-bullet="true"><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[能力 1]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [简述 + 关联 PR / 文档链接]</span></span></li><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[能力 2]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [简述]</span></span></li><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[能力 3]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [简述]</span></span></li><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[能力 4]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [简述]</span></span></li></ul>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 4px;font-size:16px">6. [章节标题：例 "待补能力 / 机会清单"]</h2>
+  <div style="font-size:12px;color:#888;margin:0 0 12px">[一句话描述：清单口径 / 优先级判定依据]</div>
+  <table class="tbl-bug">
+    <thead><tr>
+      <th style="text-align:center;width:30px">#</th>
+      <th style="text-align:center;width:50px">优先级</th>
+      <th>能力 / 缺口</th>
+      <th>建议落地</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center">1</td>
+        <td style="text-align:center"><span class="pri-p0">P0</span></td>
+        <td>[能力 / 缺口 1]</td>
+        <td style="font-size:12px">[具体落地路径 / Owner / 估算]</td>
+      </tr>
+      <tr class="alt">
+        <td style="text-align:center">2</td>
+        <td style="text-align:center"><span class="pri-p0">P0</span></td>
+        <td>[能力 / 缺口 2]</td>
+        <td style="font-size:12px">[具体落地路径]</td>
+      </tr>
+      <tr>
+        <td style="text-align:center">3</td>
+        <td style="text-align:center"><span class="pri-p1">P1</span></td>
+        <td>[能力 / 缺口 3]</td>
+        <td style="font-size:12px">[具体落地路径]</td>
+      </tr>
+      <tr class="alt">
+        <td style="text-align:center">4</td>
+        <td style="text-align:center"><span class="pri-p1">P1</span></td>
+        <td>[能力 / 缺口 4]</td>
+        <td style="font-size:12px">[具体落地路径]</td>
+      </tr>
+      <tr>
+        <td style="text-align:center">5</td>
+        <td style="text-align:center"><span class="pri-p2">P2</span></td>
+        <td>[能力 / 缺口 5]</td>
+        <td style="font-size:12px">[具体落地路径]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 12px;font-size:16px;border-bottom:2px solid #137333;padding-bottom:8px">关联工作产出佐证</h2>
+  <div style="font-size:12px;color:#666;margin:0 0 10px">本调研报告中部分章节的依据来自下列在执行中的工作：</div>
+  <ul style="font-size:13px;padding-left:20px;margin:0;list-style-position:inside" data-list-bullet="true"><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:6px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><a class="not-doclink" href="https://[pr-1-url]" style="cursor:pointer;text-decoration:none;color:rgb(20,86,240)" rel="nofollow noopener noreferrer">[PR / Issue 1 标题]</a><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [一句话描述跟本调研的关联]</span></span></li><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:6px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><a class="not-doclink" href="https://[pr-2-url]" style="cursor:pointer;text-decoration:none;color:rgb(20,86,240)" rel="nofollow noopener noreferrer">[PR / Issue 2 标题]</a><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [一句话描述]</span></span></li><li class="temp-li bullet1" data-li-line="true" data-list="bullet1" style="margin-bottom:6px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:disc;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><a class="not-doclink" href="https://[pr-3-url]" style="cursor:pointer;text-decoration:none;color:rgb(20,86,240)" rel="nofollow noopener noreferrer">[PR / Issue 3 标题]</a><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [一句话描述]</span></span></li></ul>
+</div>
+
+<div class="card">
+  <h2 style="margin:0 0 12px;font-size:16px">建议与下一步</h2>
+  <ol start="1" style="font-size:13px;padding-left:20px;margin:0;list-style-position:inside" data-list-number="true"><li class="temp-li number1" data-li-line="true" data-list="number1" data-ol-id="a1b2c3d4" data-start="1" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:decimal;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[行动 1]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [具体路径 + 时间窗 + Owner]</span></span></li><li class="temp-li number1" data-li-line="true" data-list="number1" data-ol-id="a1b2c3d4" data-start="2" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:decimal;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[行动 2]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [具体路径 + 时间窗]</span></span></li><li class="temp-li number1" data-li-line="true" data-list="number1" data-ol-id="a1b2c3d4" data-start="3" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:decimal;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[行动 3]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [具体路径]</span></span></li><li class="temp-li number1" data-li-line="true" data-list="number1" data-ol-id="a1b2c3d4" data-start="4" style="margin-bottom:8px;line-height:1.6;margin-top:0px;padding-left:0px;display:list-item;list-style-type:decimal;font-family:inherit;font-size:14px;margin-left:0px;list-style-position:inside" dir="auto"><b>[行动 4]</b><span style="font-family:inherit"><span style="color:rgb(0,0,0)"> — [具体路径]</span></span></li></ol>
+</div>
+
+<div style="text-align:center;padding:16px;color:#999;font-size:11px">
+  <div style="margin:4px 0">调研者：<a class="not-doclink" href="mailto:[your@email]" style="cursor:pointer;color:rgb(20,86,240);padding:2px;text-decoration:none;border-radius:999em;margin:0px 2px" rel="nofollow noopener noreferrer">[your@email]</a> · [团队]｜整合于 [YYYY-MM-DD]</div>
+  <div style="margin:4px 0">关联材料：[文档 / 笔记路径 / 前期报告]</div>
+</div>
+
+</div>

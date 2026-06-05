@@ -59,14 +59,12 @@ lark-cli calendar +create --summary "..." --start "..." --end "..." \
 ## 查看完整参数定义
 lark-cli schema calendar.events.create
 ## 创建日程
-lark-cli calendar events create --calendar-id primary --data '{
-  "summary": "产品评审",
-  "description": "本周分享主题：CLI 架构设计",
+lark-cli calendar events create \
+  --params '{"calendar_id":"<CALENDAR_ID>"}' \
+  --data '{
+  "summary": "技术分享：CLI 架构设计",
   "start_time": { "timestamp": "1741586400" },
-  "end_time": { "timestamp": "1741593600" },
-  "location": { "name": "5F-大会议室" },
-  "attendee_ability": "can_modify_event",
-  "reminders": [{ "minutes": 15 }]
+  "end_time": { "timestamp": "1741593600" }
 }'
 
 # 第二步：添加参会人（使用第一步返回的 calendar_id 和 event_id）
@@ -74,7 +72,7 @@ lark-cli calendar events create --calendar-id primary --data '{
 lark-cli schema calendar.event.attendees.create
 ## 添加参会人
 lark-cli calendar event.attendees create \
-  --calendar-id <CALENDAR_ID> --event-id <EVENT_ID> \
+  --params '{"calendar_id":"<CALENDAR_ID>","event_id":"<EVENT_ID>"}' \
   --data '{"attendees": [{"type": "user", "user_id": "ou_xxx"}]}'
 
 # 可选第三步（推荐）：若第二步失败，回滚删除空日程
@@ -82,8 +80,7 @@ lark-cli calendar event.attendees create \
 lark-cli schema calendar.events.delete
 ## 删除空日程
 lark-cli calendar events delete \
-  --calendar-id <CALENDAR_ID> --event-id <EVENT_ID> \
-  --params '{"need_notification":false}'
+  --params '{"calendar_id":"<CALENDAR_ID>","event_id":"<EVENT_ID>","need_notification":false}'
 
 ```
 

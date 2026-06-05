@@ -10,11 +10,13 @@
 - `--set-cc`
 - `--set-bcc`
 
-**正文编辑和其他高级操作必须通过 `--patch-file`**。没有 `--set-body` flag。
+**正文整体替换的快捷方式：** `--body <text>` / `--body-file <path>`（二选一互斥）会自动展开为 `set_body` op。如果只想做整段正文替换且不需要保留引用区，用这两个 flag 即可，无需写 patch-file。要保留引用区或做更精细的 op 组合，仍走 `--patch-file`。两个入口与 `--patch-file` 内的 `set_body` / `set_reply_body` 互斥。
 
-### 正文编辑：两个 op 的选择
+**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
 
-正文编辑通过 `--patch-file` 传入，有两个 op 可选：
+## 正文编辑：快捷 flag 与 typed op 的选择
+
+整段替换正文且不需要保留引用区时，可直接使用 `--body` / `--body-file`。需要保留引用区、修改引用区或组合高级正文编辑时，通过 `--patch-file` 传入 typed body op，有两个 op 可选：
 
 | 情况 | op | 行为 |
 |------|-----|------|
@@ -49,7 +51,10 @@
 # 编辑草稿元数据（主题、收件人）
 lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '更新后的主题' --set-to alice@example.com,bob@example.com
 
-# 编辑草稿正文（必须通过 patch-file）
+# 快速完整替换正文
+lark-cli mail +draft-edit --draft-id <draft-id> --body '<p>更新后的正文</p>'
+
+# 高级正文编辑（如保留回复/转发引用区）
 lark-cli mail +draft-edit --draft-id <draft-id> --patch-file ./patch.json
 
 # 查看草稿（只读）— 返回包含 has_quoted_content、attachments_summary 和 inline_summary 的投影
@@ -72,13 +77,15 @@ lark-cli mail +draft-edit --draft-id <draft-id> --set-subject '测试' --dry-run
 | `--set-to <emails>` | 否 | 用此处提供的地址替换整个 To 收件人列表 |
 | `--set-cc <emails>` | 否 | 用此处提供的地址替换整个 Cc 抄送列表 |
 | `--set-bcc <emails>` | 否 | 用此处提供的地址替换整个 Bcc 密送列表 |
+| `--body <text>` | 否 | 整段替换正文（自动展开为 `set_body` op）。与 `--body-file` 互斥；与 `--patch-file` 内的 `set_body` / `set_reply_body` op 互斥 |
+| `--body-file <path>` | 否 | 从文件读取正文 HTML（相对路径，仅限 cwd 子树）。与 `--body` 互斥。文件大小上限 32 MB |
 | `--set-priority <level>` | 否 | 设置邮件优先级：`high`、`normal`、`low`。设为 `normal` 会清除已有优先级 |
 | `--set-event-summary <text>` | 否 | 设置日程标题。需同时设置 `--set-event-start` 和 `--set-event-end` |
 | `--set-event-start <time>` | 条件必填 | 设置日程开始时间（ISO 8601） |
 | `--set-event-end <time>` | 条件必填 | 设置日程结束时间（ISO 8601） |
 | `--set-event-location <text>` | 否 | 设置日程地点 |
 | `--remove-event` | 否 | 移除草稿中的日程邀请。与 `--set-event-*` 互斥 |
-| `--patch-file <path>` | 否 | 所有正文编辑、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
+| `--patch-file <path>` | 否 | typed body op（`set_body` / `set_reply_body`）、增量收件人编辑、邮件头编辑、附件变更和内嵌图片变更的入口。相对路径。先运行 `--print-patch-template` 查看 JSON 结构 |
 | `--print-patch-template` | 否 | 打印 `--patch-file` 的 JSON 模板和支持的操作。建议在生成补丁文件前先运行此命令。不会读取或写入草稿 |
 | `--inspect` | 否 | 查看草稿但不修改。返回包含 `has_quoted_content`（是否有引用区）、`attachments_summary`（普通附件，含 `part_id`/`cid`/`filename`）、`large_attachments_summary`（超大附件，含 `token`/`filename`/`size_bytes`）和 `inline_summary` 的草稿投影 |
 | `--request-receipt` | 否 | 在草稿上追加 `Disposition-Notification-To: <草稿的 From 地址>` 头，请求已读回执（RFC 3798）。本质上是在 patch 中注入一个 `set_header` op；已有的 DNT 值会被覆盖。可以与其他 `--set-*` / `--patch-file` 编辑组合，也可以单独使用 |
@@ -251,8 +258,8 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 
 - `ops` 按顺序执行
 - `target` 接受 `part_id` 或 `cid`；优先级：`part_id` > `cid`
-- **所有文件路径（`--patch-file` 及 ops 中的 `path`）必须为相对路径**
-- **正文编辑没有 flag，必须通过 `--patch-file`**
+- **所有文件路径（`--body-file`、`--patch-file` 及 ops 中的 `path`）必须为相对路径**
+- **快速完整正文替换可用 `--body` / `--body-file`；高级正文编辑使用 `--patch-file`**
 - **`set_body` 替换用户撰写内容** — 不保留旧的引用区（用户要保留需在 value 里带上，或改用 `set_reply_body`）；自动保留签名、超大附件卡片、普通附件
 - **`set_reply_body` 替换用户撰写内容** — 自动保留引用区、签名、超大附件卡片、普通附件；value 只传用户撰写的部分，不要包含引用区/签名/附件卡片；如果用户要修改引用区内容，用 `set_body` 并在 value 里带上修改后的引用区
 - **删除签名 / 附件**不能通过 `set_body` 清空实现 — 必须用对应的专用 op：`remove_signature`、`remove_attachment`（按 `part_id` / `cid` / `token` 定位）
@@ -287,11 +294,8 @@ lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 # 1. 查看草稿当前状态
 lark-cli mail +draft-edit --draft-id <draft_id> --inspect
 
-# 2. 编辑草稿（元数据用 flag，正文用 patch-file）
-cat > ./patch.json << 'EOF'
-{ "ops": [{ "op": "set_body", "value": "<p>更新后的内容</p>" }] }
-EOF
-lark-cli mail +draft-edit --draft-id <draft_id> --set-subject '最终版本' --patch-file ./patch.json
+# 2. 编辑草稿（元数据和快速正文替换）
+lark-cli mail +draft-edit --draft-id <draft_id> --set-subject '最终版本' --body '<p>更新后的内容</p>'
 
 # 3. 发送草稿
 lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}'

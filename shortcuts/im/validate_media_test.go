@@ -6,9 +6,11 @@ package im
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/vfs/localfileio"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestValidateMediaFlagPath(t *testing.T) {
@@ -48,4 +50,38 @@ func TestValidateMediaFlagPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIMMediaFlagDescriptionsDocumentPathRestrictions(t *testing.T) {
+	shortcuts := []struct {
+		name  string
+		flags []common.Flag
+	}{
+		{name: "messages-send", flags: ImMessagesSend.Flags},
+		{name: "messages-reply", flags: ImMessagesReply.Flags},
+	}
+	mediaFlags := []string{"image", "file", "video", "video-cover", "audio"}
+	for _, sc := range shortcuts {
+		for _, flagName := range mediaFlags {
+			t.Run(sc.name+"/"+flagName, func(t *testing.T) {
+				desc := findFlagDesc(t, sc.flags, flagName)
+				for _, want := range []string{"URL", "cwd-relative local path", "absolute paths", ".. are rejected"} {
+					if !strings.Contains(desc, want) {
+						t.Fatalf("%s --%s description = %q, want it to mention %q", sc.name, flagName, desc, want)
+					}
+				}
+			})
+		}
+	}
+}
+
+func findFlagDesc(t *testing.T, flags []common.Flag, name string) string {
+	t.Helper()
+	for _, flag := range flags {
+		if flag.Name == name {
+			return flag.Desc
+		}
+	}
+	t.Fatalf("flag %q not found", name)
+	return ""
 }

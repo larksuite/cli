@@ -65,7 +65,11 @@ func AssertSecurePath(params AuditParams) (string, error) {
 }
 
 // requireAbsolutePath rejects relative paths; relative paths would depend on
-// the process cwd and defeat the point of a static audit.
+// the process cwd and defeat the point of a static audit. Shell-style
+// shortcuts like `~` are home-relative, not cwd-relative — they are an
+// orthogonal concern and the audit is intentionally Go-stdlib strict here.
+// Callers that accept user-authored config (e.g. resolveFileRef) must
+// pre-resolve any such shortcuts before passing the path in.
 func requireAbsolutePath(target, label string) error {
 	if !filepath.IsAbs(target) {
 		return fmt.Errorf("%s: path must be absolute, got %q", label, target)

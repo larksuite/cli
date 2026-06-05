@@ -22,6 +22,10 @@ var BaseBaseCreate = common.Shortcut{
 		{Name: "folder-token", Desc: "folder token for destination"},
 		{Name: "time-zone", Desc: "time zone, e.g. Asia/Shanghai"},
 	},
+	Tips: []string{
+		`Example: lark-cli base +base-create --name "Project Tracker" --time-zone Asia/Shanghai`,
+		"If created as bot, output may include permission_grant; report it so the user knows whether they can open the new Base.",
+	},
 	DryRun: dryRunBaseCreate,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeBaseCreate(runtime)

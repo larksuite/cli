@@ -34,6 +34,7 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 			return authListRun(opts)
 		},
 	}
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }

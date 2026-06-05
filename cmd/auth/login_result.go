@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -171,20 +172,12 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 			fmt.Fprintln(f.IOStreams.Out, string(b))
 			return output.ErrBare(output.ExitAuth)
 		}
-		detail := map[string]interface{}{
-			"requested": issue.Summary.Requested,
-			"granted":   issue.Summary.Granted,
-			"missing":   issue.Summary.Missing,
-		}
-		return &output.ExitError{
-			Code: output.ExitAuth,
-			Detail: &output.ErrDetail{
-				Type:    "missing_scope",
-				Message: issue.Message,
-				Hint:    issue.Hint,
-				Detail:  detail,
-			},
-		}
+		return errs.NewPermissionError(errs.SubtypeMissingScope, "%s", issue.Message).
+			WithHint("%s", issue.Hint).
+			WithIdentity("user").
+			WithRequestedScopes(issue.Summary.Requested...).
+			WithGrantedScopes(issue.Summary.Granted...).
+			WithMissingScopes(issue.Summary.Missing...)
 	}
 
 	fmt.Fprintln(f.IOStreams.ErrOut)

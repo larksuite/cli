@@ -60,3 +60,42 @@ func TestDriveExportDryRun_FileNameMetadata(t *testing.T) {
 		t.Fatalf("output_dir=%q, want ./exports\nstdout:\n%s", got, out)
 	}
 }
+
+func TestDriveExportDryRun_MarkdownFetchAPI(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+export",
+			"--token", "docxMdDryRun",
+			"--doc-type", "docx",
+			"--file-extension", "markdown",
+			"--file-name", "my-notes",
+			"--output-dir", "./md-exports",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/docs_ai/v1/documents/docxMdDryRun/fetch" {
+		t.Fatalf("url=%q, want docs_ai fetch\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.body.format").String(); got != "markdown" {
+		t.Fatalf("body.format=%q, want markdown\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "file_name").String(); got != "my-notes.md" {
+		t.Fatalf("file_name=%q, want my-notes.md\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "output_dir").String(); got != "./md-exports" {
+		t.Fatalf("output_dir=%q, want ./md-exports\nstdout:\n%s", got, out)
+	}
+}

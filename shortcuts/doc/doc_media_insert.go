@@ -7,6 +7,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -55,6 +60,8 @@ var DocMediaInsert = common.Shortcut{
 		{Name: "selection-with-ellipsis", Desc: "plain text (or 'start...end' to disambiguate) matching the target block's content. Media is inserted at the top-level ancestor of the matched block — i.e., when the selection is inside a callout, table cell, or nested list, media lands outside that container, not inside it. Pass 'start...end' (a unique prefix and suffix separated by '...') when the plain text appears in more than one block"},
 		{Name: "before", Type: "bool", Desc: "insert before the matched block instead of after (requires --selection-with-ellipsis)"},
 		{Name: "file-view", Desc: "file block rendering: card (default) | preview | inline; only applies when --type=file. preview renders audio/video as an inline player"},
+		{Name: "width", Type: "int", Desc: "image display width in pixels (only for --type=image); if --height is omitted it is auto-computed from the source image aspect ratio"},
+		{Name: "height", Type: "int", Desc: "image display height in pixels (only for --type=image); if --width is omitted it is auto-computed from the source image aspect ratio"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
@@ -93,6 +100,24 @@ var DocMediaInsert = common.Shortcut{
 				return output.ErrValidation("--file-view only applies when --type=file")
 			}
 		}
+		widthChanged := runtime.Changed("width")
+		heightChanged := runtime.Changed("height")
+		if (widthChanged || heightChanged) && runtime.Str("type") != "image" {
+			return output.ErrValidation("--width/--height only apply when --type=image")
+		}
+		if widthChanged && runtime.Int("width") <= 0 {
+			return output.ErrValidation("--width must be a positive integer")
+		}
+		if heightChanged && runtime.Int("height") <= 0 {
+			return output.ErrValidation("--height must be a positive integer")
+		}
+		const maxDimension = 10000
+		if widthChanged && runtime.Int("width") > maxDimension {
+			return output.ErrValidation("--width must not exceed %d pixels", maxDimension)
+		}
+		if heightChanged && runtime.Int("height") > maxDimension {
+			return output.ErrValidation("--height must not exceed %d pixels", maxDimension)
+		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -120,7 +145,25 @@ var DocMediaInsert = common.Shortcut{
 		} else {
 			createBlockData["index"] = "<children_len>"
 		}
-		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption)
+		// Best-effort dimension computation for dry-run.
+		dryWidth := runtime.Int("width")
+		dryHeight := runtime.Int("height")
+		widthChanged := runtime.Changed("width")
+		heightChanged := runtime.Changed("height")
+
+		if (widthChanged || heightChanged) && !(widthChanged && heightChanged) {
+			if filePath == "<clipboard image>" {
+				fmt.Fprintf(runtime.IO().ErrOut, "Note: cannot detect clipboard image dimensions in dry-run; provide both --width and --height for accurate preview\n")
+			} else if nativeW, nativeH, err := detectImageDimensionsFromPath(runtime.FileIO(), filePath); err == nil {
+				dims := computeMissingDimension(dryWidth, dryHeight, nativeW, nativeH)
+				dryWidth = dims.width
+				dryHeight = dims.height
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut, "Note: unable to detect image dimensions from %s; provide both --width and --height to avoid failure at execution time\n", filePath)
+			}
+		}
+
+		batchUpdateData := buildBatchUpdateData("<new_block_id>", mediaType, "<file_token>", runtime.Str("align"), caption, dryWidth, dryHeight)
 
 		d := common.NewDryRunAPI()
 		totalSteps := 4
@@ -187,6 +230,9 @@ var DocMediaInsert = common.Shortcut{
 		// real decision once it reads the bytes.
 		if runtime.Bool("from-clipboard") {
 			d.Set("upload_size_note", "clipboard size unknown; single-part vs multipart decision deferred to runtime")
+		}
+		if runtime.Bool("from-clipboard") && (widthChanged || heightChanged) && !(widthChanged && heightChanged) {
+			d.Set("dimension_note", "clipboard dimensions unknown; aspect-ratio calculation deferred to runtime")
 		}
 		return d
 	},
@@ -314,6 +360,42 @@ var DocMediaInsert = common.Shortcut{
 		// interface stays a true nil for the --file path. Passing a typed-nil
 		// *bytes.Reader here would make the downstream `if cfg.Content != nil`
 		// check incorrectly take the clipboard branch and crash on Read.
+		// Resolve display dimensions before upload to fail fast on unreadable images.
+		var finalWidth, finalHeight int
+		if mediaType == "image" {
+			userWidth := runtime.Int("width")
+			userHeight := runtime.Int("height")
+			widthChanged := runtime.Changed("width")
+			heightChanged := runtime.Changed("height")
+
+			if widthChanged && heightChanged {
+				finalWidth = userWidth
+				finalHeight = userHeight
+			} else if widthChanged || heightChanged {
+				var nativeW, nativeH int
+				var dimErr error
+				if clipboardContent != nil {
+					nativeW, nativeH, dimErr = detectImageDimensions(bytes.NewReader(clipboardContent))
+				} else {
+					f, openErr := runtime.FileIO().Open(filePath)
+					if openErr != nil {
+						return withRollbackWarning(output.ErrValidation(
+							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+					}
+					nativeW, nativeH, dimErr = detectImageDimensions(f)
+					f.Close()
+				}
+				if dimErr != nil {
+					return withRollbackWarning(output.ErrValidation(
+						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+				}
+				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
+				finalWidth = dims.width
+				finalHeight = dims.height
+				fmt.Fprintf(runtime.IO().ErrOut, "Image dimensions: %dx%d (native: %dx%d)\n", finalWidth, finalHeight, nativeW, nativeH)
+			}
+		}
+
 		uploadCfg := UploadDocMediaFileConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
@@ -337,16 +419,23 @@ var DocMediaInsert = common.Shortcut{
 
 		if _, err := runtime.CallAPI("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
-			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption)); err != nil {
+			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, finalWidth, finalHeight)); err != nil {
 			return withRollbackWarning(err)
 		}
 
-		runtime.Out(map[string]interface{}{
+		outData := map[string]interface{}{
 			"document_id": documentID,
 			"block_id":    blockId,
 			"file_token":  fileToken,
 			"type":        mediaType,
-		}, nil)
+		}
+		if finalWidth > 0 {
+			outData["width"] = finalWidth
+		}
+		if finalHeight > 0 {
+			outData["height"] = finalHeight
+		}
+		runtime.Out(outData, nil)
 		return nil
 	},
 }
@@ -453,7 +542,51 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	}
 }
 
-func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string) map[string]interface{} {
+type imageDimensions struct {
+	width  int
+	height int
+}
+
+func computeMissingDimension(userWidth, userHeight, nativeWidth, nativeHeight int) imageDimensions {
+	if nativeWidth <= 0 || nativeHeight <= 0 {
+		return imageDimensions{width: userWidth, height: userHeight}
+	}
+	if userWidth > 0 && userHeight == 0 {
+		return imageDimensions{
+			width:  userWidth,
+			height: (userWidth*nativeHeight + nativeWidth/2) / nativeWidth,
+		}
+	}
+	if userHeight > 0 && userWidth == 0 {
+		return imageDimensions{
+			width:  (userHeight*nativeWidth + nativeHeight/2) / nativeHeight,
+			height: userHeight,
+		}
+	}
+	return imageDimensions{width: userWidth, height: userHeight}
+}
+
+func detectImageDimensions(r io.Reader) (width, height int, err error) {
+	cfg, _, err := image.DecodeConfig(r)
+	if err != nil {
+		return 0, 0, err
+	}
+	return cfg.Width, cfg.Height, nil
+}
+
+func detectImageDimensionsFromPath(fio fileio.FileIO, filePath string) (int, int, error) {
+	if _, err := validate.SafeInputPath(filePath); err != nil {
+		return 0, 0, err
+	}
+	f, err := fio.Open(filePath)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer f.Close()
+	return detectImageDimensions(f)
+}
+
+func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption string, width, height int) map[string]interface{} {
 	request := map[string]interface{}{
 		"block_id": blockID,
 	}
@@ -464,6 +597,12 @@ func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption strin
 	} else {
 		replaceImage := map[string]interface{}{
 			"token": fileToken,
+		}
+		if width > 0 {
+			replaceImage["width"] = width
+		}
+		if height > 0 {
+			replaceImage["height"] = height
 		}
 		if alignVal, ok := alignMap[alignStr]; ok {
 			replaceImage["align"] = alignVal

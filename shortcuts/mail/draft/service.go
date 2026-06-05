@@ -4,10 +4,10 @@
 package draft
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -31,13 +31,13 @@ func mailboxPath(mailboxID string, segments ...string) string {
 // draft_id, the input draftID is echoed back so callers always have a
 // non-empty identifier to round-trip.
 func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw, error) {
-	data, err := runtime.CallAPI("GET", mailboxPath(mailboxID, "drafts", draftID), map[string]interface{}{"format": "raw"}, nil)
+	data, err := runtime.CallAPITyped("GET", mailboxPath(mailboxID, "drafts", draftID), map[string]interface{}{"format": "raw"}, nil)
 	if err != nil {
 		return DraftRaw{}, err
 	}
 	raw := extractRawEML(data)
 	if raw == "" {
-		return DraftRaw{}, fmt.Errorf("API response missing draft raw EML; the backend returned an empty raw body for this draft")
+		return DraftRaw{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "API response missing draft raw EML; the backend returned an empty raw body for this draft")
 	}
 	gotDraftID := extractDraftID(data)
 	if gotDraftID == "" {
@@ -55,13 +55,13 @@ func GetRaw(runtime *common.RuntimeContext, mailboxID, draftID string) (DraftRaw
 // assembled the EML with emlbuilder; for high-level compose paths use the
 // MailDraftCreate shortcut instead.
 func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (DraftResult, error) {
-	data, err := runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
+	data, err := runtime.CallAPITyped("POST", mailboxPath(mailboxID, "drafts"), nil, map[string]interface{}{"raw": rawEML})
 	if err != nil {
 		return DraftResult{}, err
 	}
 	draftID := extractDraftID(data)
 	if draftID == "" {
-		return DraftResult{}, fmt.Errorf("API response missing draft_id")
+		return DraftResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "API response missing draft_id")
 	}
 	return DraftResult{
 		DraftID:   draftID,
@@ -76,7 +76,7 @@ func CreateWithRaw(runtime *common.RuntimeContext, mailboxID, rawEML string) (Dr
 // carries the (possibly re-issued) draft ID and the preview reference URL
 // when the backend provides one.
 func UpdateWithRaw(runtime *common.RuntimeContext, mailboxID, draftID, rawEML string) (DraftResult, error) {
-	data, err := runtime.CallAPI("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
+	data, err := runtime.CallAPITyped("PUT", mailboxPath(mailboxID, "drafts", draftID), nil, map[string]interface{}{"raw": rawEML})
 	if err != nil {
 		return DraftResult{}, err
 	}
@@ -99,7 +99,7 @@ func Send(runtime *common.RuntimeContext, mailboxID, draftID, sendTime string) (
 	if sendTime != "" {
 		bodyParams = map[string]interface{}{"send_time": sendTime}
 	}
-	return runtime.CallAPI("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, bodyParams)
+	return runtime.CallAPITyped("POST", mailboxPath(mailboxID, "drafts", draftID, "send"), nil, bodyParams)
 }
 
 // extractDraftID returns the first non-empty draft identifier found in the

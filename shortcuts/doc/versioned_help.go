@@ -6,6 +6,7 @@ package doc
 import (
 	"fmt"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -29,6 +30,7 @@ func installVersionedHelp(cmd *cobra.Command, defaultVersion string, flagVersion
 				f.Hidden = fv != ver
 			}
 		})
+		cmdutil.SetTips(cmd, docsTipsForVersion(ver))
 		origHelp(cmd, args)
 	})
 }
@@ -37,6 +39,6 @@ func installVersionedHelp(cmd *cobra.Command, defaultVersion string, flagVersion
 // path is used.
 func warnDeprecatedV1(runtime *common.RuntimeContext, shortcut string) {
 	fmt.Fprintf(runtime.IO().ErrOut,
-		"[deprecated] docs %s with v1 API is deprecated and will be removed in a future release.\n",
-		shortcut)
+		"[deprecated] docs %s is using the v1 API. %s\n",
+		shortcut, docsV2VersionSelectionTips[0])
 }

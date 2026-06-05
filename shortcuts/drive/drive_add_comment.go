@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -46,6 +46,34 @@ const defaultLocateDocLimit = 10
 // If this constant ever needs to track a server-side change, re-probe
 // with `drive file.comments create_v2` against a fresh docx.
 const maxCommentTotalRunes = 10000
+
+// The file comment API treats supported Drive file comments as full-file
+// comments in the UI, but currently rejects an empty anchor.block_id for file
+// targets. TODO: remove this placeholder after the API accepts omitting
+// anchor.block_id for file full comments.
+const fileFullCommentAnchorBlockID = "test"
+
+// File comments are enabled only for extensions verified to render correctly in
+// the Lark file preview comment UI. Keep this list conservative: PDF, docx, and
+// xlsx currently accept the API request but display poorly in the page.
+var supportedFileCommentExtensions = []string{
+	".md",
+	".txt",
+	".json",
+	".csv",
+	".go",
+	".js",
+	".py",
+	".pptx",
+	".png",
+	".jpg",
+	".jpeg",
+	".zip",
+	".mp3",
+	".mp4",
+}
+
+var supportedFileCommentExtensionSet = newSupportedFileCommentExtensionSet(supportedFileCommentExtensions)
 
 type commentDocRef struct {
 	Kind  string
@@ -93,17 +121,18 @@ const (
 var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
-	Description: "Add a comment to doc/docx/sheet/slides, also supports wiki URL resolving to doc/docx/sheet/slides",
+	Description: "Add a comment to doc/docx/file/sheet/slides; file targets support selected extensions and full comments only",
 	Risk:        "write",
 	Scopes: []string{
+		"drive:drive.metadata:readonly",
 		"docx:document:readonly",
 		"docs:document.comment:create",
 		"docs:document.comment:write_only",
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "doc", Desc: "document URL/token, sheet/slides URL, or wiki URL that resolves to doc/docx/sheet/slides", Required: true},
-		{Name: "type", Desc: "document type: doc, docx, sheet, slides (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "sheet", "slides"}},
+		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides URL, or wiki URL that resolves to doc/docx/file/sheet/slides", Required: true},
+		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "file", "sheet", "slides"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
 		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
@@ -123,13 +152,13 @@ var DriveAddComment = common.Shortcut{
 		if docRef.Kind == "sheet" {
 			blockID := strings.TrimSpace(runtime.Str("block-id"))
 			if blockID == "" {
-				return output.ErrValidation("--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)").WithParam("--block-id")
 			}
 			if _, err := parseSheetCellRef(blockID); err != nil {
 				return err
 			}
 			if runtime.Bool("full-comment") || strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-				return output.ErrValidation("--full-comment and --selection-with-ellipsis are not applicable for sheet comments; use --block-id with <sheetId>!<cell> format")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment and --selection-with-ellipsis are not applicable for sheet comments; use --block-id with <sheetId>!<cell> format")
 			}
 			return nil
 		}
@@ -138,26 +167,28 @@ var DriveAddComment = common.Shortcut{
 				return err
 			}
 			if runtime.Bool("full-comment") {
-				return output.ErrValidation("--full-comment is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
 			}
 			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-				return output.ErrValidation("--selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>")
 			}
 			return nil
 		}
-
 		selection := runtime.Str("selection-with-ellipsis")
 		blockID := strings.TrimSpace(runtime.Str("block-id"))
 		if strings.TrimSpace(selection) != "" && blockID != "" {
-			return output.ErrValidation("--selection-with-ellipsis and --block-id are mutually exclusive")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis and --block-id are mutually exclusive")
 		}
 		if runtime.Bool("full-comment") && (strings.TrimSpace(selection) != "" || blockID != "") {
-			return output.ErrValidation("--full-comment cannot be used with --selection-with-ellipsis or --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment cannot be used with --selection-with-ellipsis or --block-id")
 		}
 
 		mode := resolveCommentMode(runtime.Bool("full-comment"), selection, blockID)
+		if docRef.Kind == "file" {
+			return validateFileCommentMode(mode, "")
+		}
 		if mode == commentModeLocal && docRef.Kind == "doc" {
-			return output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
 		}
 
 		return nil
@@ -214,6 +245,33 @@ var DriveAddComment = common.Shortcut{
 			return common.NewDryRunAPI().
 				Desc(desc).
 				POST("/open-apis/drive/v1/files/:file_token/new_comments").
+				Body(commentBody).
+				Set("file_token", resolvedToken)
+		}
+		if resolvedKind == "file" {
+			commentBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
+			desc := "2-step orchestration: verify supported file metadata -> create file comment"
+			verifyStep := "[1]"
+			createStep := "[2]"
+			if isWiki {
+				desc = "3-step orchestration: resolve wiki -> verify supported file metadata -> create file comment"
+				verifyStep = "[2]"
+				createStep = "[3]"
+			}
+			return common.NewDryRunAPI().
+				Desc(desc).
+				POST("/open-apis/drive/v1/metas/batch_query").
+				Desc(verifyStep+" Read file metadata and verify the title extension is supported").
+				Body(map[string]interface{}{
+					"request_docs": []map[string]interface{}{
+						{
+							"doc_token": resolvedToken,
+							"doc_type":  "file",
+						},
+					},
+				}).
+				POST("/open-apis/drive/v1/files/:file_token/new_comments").
+				Desc(createStep+" Create file full comment").
 				Body(commentBody).
 				Set("file_token", resolvedToken)
 		}
@@ -317,6 +375,9 @@ var DriveAddComment = common.Shortcut{
 		if target.FileType == "slides" {
 			return executeSlidesComment(runtime, commentDocRef{Kind: "slides", Token: target.FileToken})
 		}
+		if target.FileType == "file" {
+			return executeFileComment(runtime, target)
+		}
 
 		replyElements, err := parseCommentReplyElements(runtime.Str("content"))
 		if err != nil {
@@ -337,7 +398,7 @@ var DriveAddComment = common.Shortcut{
 			}
 			blockID = match.AnchorBlockID
 			if strings.TrimSpace(blockID) == "" {
-				return output.Errorf(output.ExitAPI, "api_error", "locate-doc response missing anchor_block_id")
+				return errs.NewInternalError(errs.SubtypeInvalidResponse, "locate-doc response missing anchor_block_id")
 			}
 			selectedMatch = idx
 			fmt.Fprintf(runtime.IO().ErrOut, "Locate-doc matched %d block(s); using match #%d (%s)\n", len(locateResult.Matches), idx, blockID)
@@ -357,7 +418,7 @@ var DriveAddComment = common.Shortcut{
 			fmt.Fprintf(runtime.IO().ErrOut, "Creating full comment in %s\n", common.MaskToken(target.FileToken))
 		}
 
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"POST",
 			requestPath,
 			nil,
@@ -412,7 +473,7 @@ func resolveCommentMode(explicitFullComment bool, selection, blockID string) com
 func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
-		return commentDocRef{}, output.ErrValidation("--doc cannot be empty")
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc cannot be empty").WithParam("--doc")
 	}
 
 	if token, ok := extractURLToken(raw, "/wiki/"); ok {
@@ -420,6 +481,9 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	}
 	if token, ok := extractURLToken(raw, "/sheets/"); ok {
 		return commentDocRef{Kind: "sheet", Token: token}, nil
+	}
+	if token, ok := extractURLToken(raw, "/file/"); ok {
+		return commentDocRef{Kind: "file", Token: token}, nil
 	}
 	if token, ok := extractURLToken(raw, "/slides/"); ok {
 		return commentDocRef{Kind: "slides", Token: token}, nil
@@ -431,16 +495,16 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 		return commentDocRef{Kind: "doc", Token: token}, nil
 	}
 	if strings.Contains(raw, "://") {
-		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a doc/docx/sheet/slides URL, a token with --type, or a wiki URL that resolves to doc/docx/sheet/slides", raw)
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides", raw).WithParam("--doc")
 	}
 	if strings.ContainsAny(raw, "/?#") {
-		return commentDocRef{}, output.ErrValidation("unsupported --doc input %q: use a token with --type, or a wiki URL", raw)
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a token with --type, or a wiki URL", raw).WithParam("--doc")
 	}
 
 	// Bare token: --type is required.
 	docType = strings.TrimSpace(docType)
 	if docType == "" {
-		return commentDocRef{}, output.ErrValidation("--type is required when --doc is a bare token (allowed values: doc, docx, sheet, slides)")
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --doc is a bare token (allowed values: doc, docx, file, sheet, slides)").WithParam("--type")
 	}
 	return commentDocRef{Kind: docType, Token: raw}, nil
 }
@@ -451,9 +515,16 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, err
 	}
 
-	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "sheet" || docRef.Kind == "slides" {
-		if mode == commentModeLocal && docRef.Kind != "docx" && docRef.Kind != "sheet" && docRef.Kind != "slides" {
-			return resolvedCommentTarget{}, output.ErrValidation("local comments only support docx, sheet, and slides; old doc format only supports full comments")
+	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "file" || docRef.Kind == "sheet" || docRef.Kind == "slides" {
+		if mode == commentModeLocal {
+			switch docRef.Kind {
+			case "doc":
+				return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
+			case "file":
+				if err := validateFileCommentMode(mode, ""); err != nil {
+					return resolvedCommentTarget{}, err
+				}
+			}
 		}
 		return resolvedCommentTarget{
 			DocID:      docRef.Token,
@@ -464,7 +535,7 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
 		map[string]interface{}{"token": docRef.Token},
@@ -478,13 +549,13 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	objType := common.GetString(node, "obj_type")
 	objToken := common.GetString(node, "obj_token")
 	if objType == "" || objToken == "" {
-		return resolvedCommentTarget{}, output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
+		return resolvedCommentTarget{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
 	}
 	if objType == "slides" && mode == commentModeFull {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slide comments require --block-id <slide-block-type>!<xml-id>; --full-comment is not applicable", objType)
 	}
 	if objType == "slides" && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
 	}
 	if objType == "sheet" {
 		// Sheet comments are handled via the sheet fast path in Execute.
@@ -507,11 +578,24 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 			WikiToken:  docRef.Token,
 		}, nil
 	}
+	if objType == "file" {
+		if err := validateFileCommentMode(mode, objType); err != nil {
+			return resolvedCommentTarget{}, err
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
+		return resolvedCommentTarget{
+			DocID:      objToken,
+			FileToken:  objToken,
+			FileType:   "file",
+			ResolvedBy: "wiki",
+			WikiToken:  docRef.Token,
+		}, nil
+	}
 	if mode == commentModeLocal && objType != "docx" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, output.ErrValidation("wiki resolved to %q, but comments only support doc/docx/sheet/slides", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -579,16 +663,14 @@ func parseLocateDocResult(result map[string]interface{}) locateDocResult {
 
 func selectLocateMatch(result locateDocResult) (locateDocMatch, int, error) {
 	if len(result.Matches) == 0 {
-		return locateDocMatch{}, 0, output.ErrValidation("locate-doc did not find any matching block")
+		return locateDocMatch{}, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "locate-doc did not find any matching block").WithParam("--selection-with-ellipsis")
 	}
 
 	if len(result.Matches) > 1 {
-		return locateDocMatch{}, 0, output.ErrWithHint(
-			output.ExitValidation,
-			"ambiguous_match",
-			fmt.Sprintf("locate-doc matched %d blocks:\n%s", len(result.Matches), formatLocateCandidates(result.Matches)),
-			"narrow --selection-with-ellipsis until only one block matches",
-		)
+		return locateDocMatch{}, 0, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"locate-doc matched %d blocks:\n%s", len(result.Matches), formatLocateCandidates(result.Matches)).
+			WithHint("narrow --selection-with-ellipsis until only one block matches").
+			WithParam("--selection-with-ellipsis")
 	}
 
 	return result.Matches[0], 1, nil
@@ -621,15 +703,15 @@ func summarizeLocateMatch(match locateDocMatch) string {
 
 func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, output.ErrValidation("--content cannot be empty")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content cannot be empty").WithParam("--content")
 	}
 
 	var inputs []commentReplyElementInput
 	if err := json.Unmarshal([]byte(raw), &inputs); err != nil {
-		return nil, output.ErrValidation("--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"文本信息\"}]'", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '[{\"type\":\"text\",\"text\":\"文本信息\"}]'", err).WithParam("--content")
 	}
 	if len(inputs) == 0 {
-		return nil, output.ErrValidation("--content must contain at least one reply element")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must contain at least one reply element").WithParam("--content")
 	}
 
 	replyElements := make([]map[string]interface{}, 0, len(inputs))
@@ -640,7 +722,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 		switch elementType {
 		case "text":
 			if strings.TrimSpace(input.Text) == "" {
-				return nil, output.ErrValidation("--content element #%d type=text requires non-empty text", index)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content element #%d type=text requires non-empty text", index).WithParam("--content")
 			}
 			// Measure the raw rune count of the user input — that is what
 			// the server actually counts. byte width and post-escape form
@@ -650,13 +732,11 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 			runes := utf8.RuneCountInString(input.Text)
 			totalRunes += runes
 			if totalRunes > maxCommentTotalRunes {
-				return nil, output.ErrWithHint(
-					output.ExitValidation,
-					"text_too_long",
-					fmt.Sprintf("--content reply_elements text totals %d characters at element #%d (this element: %d); the server caps the combined length at %d characters across ALL reply_elements",
-						totalRunes, index, runes, maxCommentTotalRunes),
-					fmt.Sprintf("shorten the comment so the combined text across all reply_elements fits within %d characters. The server enforces this cap on the TOTAL — splitting one long element into multiple smaller text elements does NOT help (they all add up against the same %d-rune budget). Server returns an opaque [1069302] on overflow, so this check is pre-flight; no escape transform changes the count (server reads raw runes).", maxCommentTotalRunes, maxCommentTotalRunes),
-				)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--content reply_elements text totals %d characters at element #%d (this element: %d); the server caps the combined length at %d characters across ALL reply_elements",
+					totalRunes, index, runes, maxCommentTotalRunes).
+					WithHint("shorten the comment so the combined text across all reply_elements fits within %d characters. The server enforces this cap on the TOTAL — splitting one long element into multiple smaller text elements does NOT help (they all add up against the same %d-rune budget). Server returns an opaque [1069302] on overflow, so this check is pre-flight; no escape transform changes the count (server reads raw runes).", maxCommentTotalRunes, maxCommentTotalRunes).
+					WithParam("--content")
 			}
 			// Escape '<' and '>' so the rendered comment displays them as
 			// literal characters instead of being interpreted as markup
@@ -670,7 +750,7 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 		case "mention_user":
 			mentionUser := firstNonEmptyString(input.MentionUser, input.Text)
 			if mentionUser == "" {
-				return nil, output.ErrValidation("--content element #%d type=mention_user requires text or mention_user", index)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content element #%d type=mention_user requires text or mention_user", index).WithParam("--content")
 			}
 			replyElements = append(replyElements, map[string]interface{}{
 				"type":         "mention_user",
@@ -679,14 +759,14 @@ func parseCommentReplyElements(raw string) ([]map[string]interface{}, error) {
 		case "link":
 			link := firstNonEmptyString(input.Link, input.Text)
 			if link == "" {
-				return nil, output.ErrValidation("--content element #%d type=link requires text or link", index)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content element #%d type=link requires text or link", index).WithParam("--content")
 			}
 			replyElements = append(replyElements, map[string]interface{}{
 				"type": "link",
 				"link": link,
 			})
 		default:
-			return nil, output.ErrValidation("--content element #%d has unsupported type %q; allowed values: text, mention_user, link", index, input.Type)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content element #%d has unsupported type %q; allowed values: text, mention_user, link", index, input.Type).WithParam("--content")
 		}
 	}
 
@@ -718,6 +798,10 @@ func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, reply
 			"sheet_col": sheet.Col,
 			"sheet_row": sheet.Row,
 		}
+	} else if fileType == "file" {
+		body["anchor"] = map[string]interface{}{
+			"block_id": fileFullCommentAnchorBlockID,
+		}
 	} else if strings.TrimSpace(blockID) != "" {
 		body["anchor"] = map[string]interface{}{
 			"block_id": blockID,
@@ -739,17 +823,17 @@ func anchorBlockIDForDryRun(blockID string) string {
 func parseSlidesBlockRef(blockID string) (string, string, error) {
 	blockID = strings.TrimSpace(blockID)
 	if blockID == "" {
-		return "", "", output.ErrValidation("slide comments require --block-id in <slide-block-type>!<xml-id> format")
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "slide comments require --block-id in <slide-block-type>!<xml-id> format").WithParam("--block-id")
 	}
 
 	parts := strings.SplitN(blockID, "!", 2)
 	if len(parts) != 2 {
-		return "", "", output.ErrValidation("slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID).WithParam("--block-id")
 	}
 	parsedType := strings.TrimSpace(parts[0])
 	parsedID := strings.TrimSpace(parts[1])
 	if parsedType == "" || parsedID == "" {
-		return "", "", output.ErrValidation("slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID)
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "slide --block-id must be <slide-block-type>!<xml-id> (e.g. shape!bPq), got %q", blockID).WithParam("--block-id")
 	}
 	return parsedID, parsedType, nil
 }
@@ -777,7 +861,7 @@ func firstPresentValue(m map[string]interface{}, keys ...string) interface{} {
 func parseSheetCellRef(input string) (*sheetAnchor, error) {
 	parts := strings.SplitN(input, "!", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return nil, output.ErrValidation("--block-id for sheet must be <sheetId>!<cell> (e.g. a281f9!D6), got %q", input)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id for sheet must be <sheetId>!<cell> (e.g. a281f9!D6), got %q", input).WithParam("--block-id")
 	}
 	sheetID := parts[0]
 	cell := strings.TrimSpace(parts[1])
@@ -788,7 +872,7 @@ func parseSheetCellRef(input string) (*sheetAnchor, error) {
 		i++
 	}
 	if i == 0 || i >= len(cell) {
-		return nil, output.ErrValidation("--block-id cell reference %q is invalid (expected e.g. D6)", cell)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id cell reference %q is invalid (expected e.g. D6)", cell).WithParam("--block-id")
 	}
 	colStr := strings.ToUpper(cell[:i])
 	rowStr := cell[i:]
@@ -802,11 +886,108 @@ func parseSheetCellRef(input string) (*sheetAnchor, error) {
 
 	row, err := strconv.Atoi(rowStr)
 	if err != nil || row < 1 {
-		return nil, output.ErrValidation("--block-id row %q is invalid (must be >= 1)", rowStr)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id row %q is invalid (must be >= 1)", rowStr).WithParam("--block-id")
 	}
 	row-- // convert to 0-based
 
 	return &sheetAnchor{SheetID: sheetID, Col: col, Row: row}, nil
+}
+
+func fetchCommentTargetFileTitle(runtime *common.RuntimeContext, fileToken string) (string, error) {
+	data, err := runtime.CallAPITyped(
+		"POST",
+		"/open-apis/drive/v1/metas/batch_query",
+		nil,
+		map[string]interface{}{
+			"request_docs": []map[string]interface{}{
+				{
+					"doc_token": fileToken,
+					"doc_type":  "file",
+				},
+			},
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	metas := common.GetSlice(data, "metas")
+	if len(metas) == 0 {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "drive metas.batch_query returned no metadata for file %s", common.MaskToken(fileToken))
+	}
+	meta, ok := metas[0].(map[string]interface{})
+	if !ok {
+		return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "drive metas.batch_query returned unexpected metadata format for file %s", common.MaskToken(fileToken))
+	}
+	return common.GetString(meta, "title"), nil
+}
+
+func ensureSupportedFileCommentTarget(runtime *common.RuntimeContext, fileToken string) (string, string, error) {
+	title, err := fetchCommentTargetFileTitle(runtime, fileToken)
+	if err != nil {
+		return "", "", err
+	}
+	extension := fileCommentExtension(title)
+	if isSupportedFileCommentExtension(extension) {
+		return title, extension, nil
+	}
+	if strings.TrimSpace(title) == "" {
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"drive +add-comment does not support comments for this Drive file type yet; the file metadata did not return a title").
+			WithHint("file comments currently support full comments only for these extensions: " + supportedFileCommentExtensionsText()).
+			WithParam("--doc")
+	}
+	extensionLabel := extension
+	if extensionLabel == "" {
+		extensionLabel = "no extension"
+	}
+	return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"drive +add-comment does not support comments for this Drive file type yet; got %q (%s)", title, extensionLabel).
+		WithHint("file comments currently support full comments only for these extensions: " + supportedFileCommentExtensionsText()).
+		WithParam("--doc")
+}
+
+func fileCommentExtension(title string) string {
+	title = strings.TrimSpace(title)
+	idx := strings.LastIndex(title, ".")
+	if idx == 0 {
+		extension := strings.ToLower(title)
+		if isSupportedFileCommentExtension(extension) {
+			return extension
+		}
+		return ""
+	}
+	if idx < 0 || idx == len(title)-1 {
+		return ""
+	}
+	return strings.ToLower(title[idx:])
+}
+
+func isSupportedFileCommentExtension(extension string) bool {
+	_, ok := supportedFileCommentExtensionSet[strings.TrimSpace(extension)]
+	return ok
+}
+
+func supportedFileCommentExtensionsText() string {
+	return strings.Join(supportedFileCommentExtensions, ", ")
+}
+
+func newSupportedFileCommentExtensionSet(extensions []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(extensions))
+	for _, extension := range extensions {
+		set[extension] = struct{}{}
+	}
+	return set
+}
+
+func validateFileCommentMode(mode commentMode, resolvedObjType string) error {
+	if mode != commentModeLocal {
+		return nil
+	}
+	if resolvedObjType != "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but file comments only support full comments; omit --block-id and --selection-with-ellipsis", resolvedObjType)
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "file comments only support full comments; omit --block-id and --selection-with-ellipsis")
 }
 
 func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) error {
@@ -817,7 +998,7 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 
 	blockID := strings.TrimSpace(runtime.Str("block-id"))
 	if blockID == "" {
-		return output.ErrValidation("--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id is required for sheet comments (format: <sheetId>!<cell>, e.g. a281f9!D6)").WithParam("--block-id")
 	}
 	anchor, err := parseSheetCellRef(blockID)
 	if err != nil {
@@ -830,7 +1011,7 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	fmt.Fprintf(runtime.IO().ErrOut, "Creating sheet comment in %s (sheet=%s, col=%d, row=%d)\n",
 		common.MaskToken(docRef.Token), anchor.SheetID, anchor.Col, anchor.Row)
 
-	data, err := runtime.CallAPI("POST", requestPath, nil, requestBody)
+	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
 		return err
 	}
@@ -845,6 +1026,48 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
 		out["created_at"] = createdAt
 	}
+	runtime.Out(out, nil)
+	return nil
+}
+
+func executeFileComment(runtime *common.RuntimeContext, target resolvedCommentTarget) error {
+	replyElements, err := parseCommentReplyElements(runtime.Str("content"))
+	if err != nil {
+		return err
+	}
+
+	title, extension, err := ensureSupportedFileCommentTarget(runtime, target.FileToken)
+	if err != nil {
+		return err
+	}
+
+	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
+	requestBody := buildCommentCreateV2Request("file", "", "", replyElements, nil)
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating file comment in %s (%s)\n", common.MaskToken(target.FileToken), extension)
+
+	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
+	if err != nil {
+		return err
+	}
+
+	out := map[string]interface{}{
+		"comment_id":     data["comment_id"],
+		"doc_id":         target.DocID,
+		"file_token":     target.FileToken,
+		"file_type":      "file",
+		"file_name":      title,
+		"file_extension": extension,
+		"resolved_by":    target.ResolvedBy,
+		"comment_mode":   string(commentModeFull),
+	}
+	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
+		out["created_at"] = createdAt
+	}
+	if target.WikiToken != "" {
+		out["wiki_token"] = target.WikiToken
+	}
+
 	runtime.Out(out, nil)
 	return nil
 }
@@ -866,7 +1089,7 @@ func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) 
 	fmt.Fprintf(runtime.IO().ErrOut, "Creating slide block comment in %s (block_id=%s, slide_block_type=%s)\n",
 		common.MaskToken(docRef.Token), blockID, slideBlockType)
 
-	data, err := runtime.CallAPI("POST", requestPath, nil, requestBody)
+	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
 	if err != nil {
 		return err
 	}

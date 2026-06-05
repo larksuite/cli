@@ -5,7 +5,6 @@ package mail
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -26,6 +25,9 @@ var MailMessage = common.Shortcut{
 		{Name: "html", Type: "bool", Default: "true", Desc: "Whether to return HTML body (false returns plain text only to save bandwidth)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateBotMailboxNotMe(runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		mailboxID := resolveMailboxID(runtime)
 		messageID := runtime.Str("message-id")
@@ -45,7 +47,7 @@ var MailMessage = common.Shortcut{
 
 		msg, err := fetchFullMessage(runtime, mailboxID, messageID, html)
 		if err != nil {
-			return fmt.Errorf("failed to fetch email: %w", err)
+			return mailDecorateProblemMessage(err, "failed to fetch email")
 		}
 
 		out := buildMessageOutput(msg, html)

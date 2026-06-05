@@ -4,6 +4,8 @@
 
 Fetch message details in batch. Given a list of message IDs, this returns the full content for multiple messages in one call and automatically resolves sender names.
 
+By default the response also carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Replies inside `thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+
 > **Supports both `--as user` (default) and `--as bot`.**
 
 This skill maps to the shortcut: `lark-cli im +messages-mget` (internally calls `GET /open-apis/im/v1/messages/mget`).

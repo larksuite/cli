@@ -140,7 +140,51 @@ func Project(snapshot *DraftSnapshot) DraftProjection {
 
 	proj.LargeAttachmentsSummary = projectLargeAttachments(snapshot.Headers, htmlBody)
 
+	proj.Priority = parsePriorityFromHeaders(snapshot.Headers)
+
 	return proj
+}
+
+// parsePriorityFromHeaders derives the read-side priority projection from
+// EML headers. It mirrors the write-side helper helpers.go:parsePriority
+// (which translates --set-priority high|normal|low into set_header /
+// remove_header X-Cli-Priority ops). Lookup order is case-insensitive
+// via headerValue:
+//  1. X-Cli-Priority (CLI/OAPI-specific header recognised by
+//     mail-data-access headersToPbBodyExtra)
+//  2. X-Priority (RFC standard, fallback for IMAP-回灌 historical drafts)
+//
+// When neither header is present (including after the write-side translates
+// --set-priority normal into remove_header X-Cli-Priority), this returns
+// "normal" — absence of a priority header is the standard email convention
+// for normal priority. Agents cannot distinguish "explicitly normal" from
+// "never set" — known limitation.
+func parsePriorityFromHeaders(headers []Header) string {
+	if v := headerValue(headers, "X-Cli-Priority"); v != "" {
+		return mapPriorityValue(v)
+	}
+	if v := headerValue(headers, "X-Priority"); v != "" {
+		return mapPriorityValue(v)
+	}
+	return "normal"
+}
+
+// mapPriorityValue normalises a raw priority header value to the projection
+// vocabulary {"high","normal","low","unknown"}. The accepted input table is
+// kept in sync with backend gopkg/mail_priority.PriorityValueToType so that
+// CLI read-side projection observes the same set of values the server
+// recognises on write.
+func mapPriorityValue(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "high", "1 (highest)":
+		return "high"
+	case "3", "normal", "3 (normal)":
+		return "normal"
+	case "5", "low", "5 (lowest)":
+		return "low"
+	default:
+		return "unknown"
+	}
 }
 
 // projectLargeAttachments extracts large attachment info from the draft.

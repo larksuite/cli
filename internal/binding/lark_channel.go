@@ -15,6 +15,11 @@ import (
 // Unknown fields are ignored — forward-compatible with future bridge versions.
 type LarkChannelRoot struct {
 	Accounts LarkChannelAccounts `json:"accounts"`
+	// Secrets is an optional registry of secret providers — same shape as
+	// openclaw's `secrets` block. Lets bridge declare `exec` provider scripts
+	// (for AES-encrypted secret backends), `env` allowlists, or `file`
+	// indirection rules. Resolved by binding.ResolveSecretInput.
+	Secrets *SecretsConfig `json:"secrets,omitempty"`
 }
 
 // LarkChannelAccounts is the namespace for credential entries.
@@ -26,13 +31,17 @@ type LarkChannelAccounts struct {
 }
 
 // LarkChannelApp is the bot app credential entry.
-// Bridge stores the secret as plain text — secret-resolve indirection
-// (${VAR} / file: / exec:) is intentionally not supported here, matching
-// the bridge's on-disk format.
+//
+// `Secret` accepts the full SecretInput protocol (string / "${VAR}" template /
+// SecretRef object with source env|file|exec) so users can keep secrets out
+// of config.json — either by referencing an env var the bridge inherits, a
+// chmod-0400 file outside the bridge dir, or an exec script that decrypts a
+// local AES-encrypted secret store. Aligns lark-channel with the same secret
+// protocol openclaw already uses.
 type LarkChannelApp struct {
-	ID     string `json:"id"`
-	Secret string `json:"secret"`
-	Tenant string `json:"tenant"` // "feishu" | "lark"
+	ID     string      `json:"id"`
+	Secret SecretInput `json:"secret"`
+	Tenant string      `json:"tenant"` // "feishu" | "lark"
 }
 
 // ReadLarkChannelConfig reads and parses ~/.lark-channel/config.json.

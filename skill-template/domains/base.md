@@ -8,7 +8,7 @@
    - `lark-cli base records create` ❌
 2. **优先使用 Shortcut** — 有 Shortcut 的操作不要手拼原生 API
 3. **写记录前** — 先调用 `table.fields list` 获取字段 `type/ui_type`，再读 [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md)；该文档是 CellValue 的 source of truth
-4. **写字段前** — 先读 [lark-base-shortcut-field-properties.md](../../skills/lark-base/references/lark-base-shortcut-field-properties.md) 确认字段类型 JSON 结构
+4. **写字段前** — 先读 [lark-base-field-json.md](../../skills/lark-base/references/lark-base-field-json.md) 确认字段类型 JSON 结构
 5. **筛选查询前** — 先读 [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md)，当前 `base/v3` 通过 `view.filter update + table.records list` 组合完成筛选读取
 6. **批量上限 200 条/次** — 同一表建议串行写入，并在批次间延迟 0.5–1 秒
 7. **改名和删除按明确意图执行** — 视图重命名这类低风险改名操作，目标和新名称明确时可直接执行；删除记录 / 字段 / 表时，只要用户已经明确要求删除且目标明确，也可直接执行，不需要再补一次确认
@@ -34,6 +34,7 @@
 
 - **Base token 口径统一**：无论 Shortcut 还是原生 API，都统一使用 `base_token`
 - **附件字段**：上传本地文件时只能走 `lark-cli base +record-upload-attachment`
+- **地理位置字段**：写入必须使用 `{lng,lat}`；读取、筛选和转文本等场景使用 `full_address` 字符串，筛选优先用包含匹配；只有公式能访问坐标
 - **能力边界**：当前 `base/v3` 原生 spec 以单表 / 单记录 / 视图筛选配置为主，批量写入和旧 `search` 场景优先走 unified Shortcut 组合能力
 - **视图重命名确认规则**：用户已经明确“把哪个视图改成什么名字”时，执行 `table.views patch` / 对应 shortcut 直接改名即可，不需要再补一句确认
 - **删除确认规则（记录 / 字段 / 表）**：执行 `table.records delete / table.fields delete / tables delete` 或对应 shortcut 时，如果用户已经明确要求删除且目标明确，可以直接执行；只有目标不明确时才先追问
@@ -112,7 +113,7 @@ lark-cli wiki spaces.get_node --params '{"token":"Pgrrwvr***********UnRb"}'
 
 ## 参考文档
 
-- [lark-base-shortcut-field-properties.md](../../skills/lark-base/references/lark-base-shortcut-field-properties.md) — 字段类型 JSON 配置
+- [lark-base-field-json.md](../../skills/lark-base/references/lark-base-field-json.md) — 字段类型 JSON 配置
 - [lark-base-cell-value.md](../../skills/lark-base/references/lark-base-cell-value.md) — CellValue source of truth
 - [lark-base-view-set-filter.md](../../skills/lark-base/references/lark-base-view-set-filter.md) — 查询筛选指南（filter / operator / sort / 分页）
-- [examples.md](../../skills/lark-base/references/examples.md) — 完整操作示例（建表、筛选、更新）
+- 具体命令示例由命令 --help 内置 tips 承接；复杂 JSON 只读上方保留 reference

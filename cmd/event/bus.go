@@ -64,6 +64,7 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 
 	cmd.Flags().StringVar(&domain, "domain", "", "API domain")
 	_ = cmd.Flags().MarkHidden("domain")
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }

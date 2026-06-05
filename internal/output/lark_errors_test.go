@@ -30,7 +30,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "cross tenant unit",
 			code:         LarkErrDriveCrossTenantUnit,
 			wantExitCode: ExitAPI,
-			wantType:     "cross_tenant_unit",
+			wantType:     "cross_tenant",
 			wantHint:     "same tenant and region/unit",
 		},
 		{
@@ -44,7 +44,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "sheets float image invalid dims",
 			code:         LarkErrSheetsFloatImageInvalidDims,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "--width / --height / --offset-x / --offset-y",
 		},
 		{
@@ -58,7 +58,7 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 			name:         "drive permission apply not applicable",
 			code:         LarkErrDrivePermApplyNotApplicable,
 			wantExitCode: ExitAPI,
-			wantType:     "invalid_params",
+			wantType:     "invalid_parameters",
 			wantHint:     "does not accept a permission-apply request",
 		},
 		{
@@ -88,5 +88,52 @@ func TestClassifyLarkError_DriveCreateShortcutConstraints(t *testing.T) {
 				t.Fatalf("hint=%q, want substring %q", gotHint, tt.wantHint)
 			}
 		})
+	}
+}
+
+func TestMailSendErrorConstantsUseServiceScopedCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		got  int
+		want int
+	}{
+		{name: "mailbox not found", got: LarkErrMailboxNotFound, want: 1234013},
+		{name: "user daily send quota", got: LarkErrMailSendQuotaUser, want: 1236007},
+		{name: "user external recipient quota", got: LarkErrMailSendQuotaUserExt, want: 1236008},
+		{name: "tenant external recipient quota", got: LarkErrMailSendQuotaTenantExt, want: 1236009},
+		{name: "mail quota", got: LarkErrMailQuota, want: 1236010},
+		{name: "tenant storage limit", got: LarkErrTenantStorageLimit, want: 1236013},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.got != tt.want {
+				t.Fatalf("code=%d, want %d", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestClassifyLarkError_WikiLockContention verifies the wiki write-lock
+// contention error (131009) maps to an actionable retry hint instead of
+// a generic "api_error". Surfaces during concurrent wiki +node-create
+// against the same parent (see larksuite/cli#1012).
+func TestClassifyLarkError_WikiLockContention(t *testing.T) {
+	t.Parallel()
+	gotExitCode, gotType, gotHint := ClassifyLarkError(LarkErrWikiLockContention, "raw msg")
+	if gotExitCode != ExitAPI {
+		t.Fatalf("exitCode=%d, want %d", gotExitCode, ExitAPI)
+	}
+	if gotType != "conflict" {
+		t.Fatalf("type=%q, want %q", gotType, "conflict")
+	}
+	if !strings.Contains(gotHint, "wiki write lock") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "wiki write lock")
+	}
+	if !strings.Contains(gotHint, "backoff") {
+		t.Fatalf("hint=%q, want substring %q", gotHint, "backoff")
 	}
 }

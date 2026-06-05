@@ -17,6 +17,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -41,10 +42,10 @@ func parseJSONObject(pc *parseCtx, raw string, flagName string) (map[string]inte
 		if errors.As(err, &syntaxErr) {
 			return nil, formatJSONError(flagName, "object", err)
 		}
-		return nil, common.FlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
+		return nil, baseFlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
 	}
 	if result == nil {
-		return nil, common.FlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
+		return nil, baseFlagErrorf("--%s must be a JSON object; %s", flagName, jsonInputTip(flagName))
 	}
 	return result, nil
 }
@@ -152,7 +153,7 @@ func cloneValue(value interface{}) interface{} {
 func resolveFieldTypeSpec(typeName string) (fieldTypeSpec, error) {
 	trimmed := strings.TrimSpace(typeName)
 	if trimmed == "" {
-		return fieldTypeSpec{}, fmt.Errorf("field type cannot be empty")
+		return fieldTypeSpec{}, baseValidationErrorf("field type cannot be empty")
 	}
 	switch strings.ToLower(trimmed) {
 	case "text", "phone", "url", "email", "barcode":
@@ -192,7 +193,7 @@ func resolveFieldTypeSpec(typeName string) (fieldTypeSpec, error) {
 	case "modifiedtime", "modified_time", "modified-time":
 		return fieldTypeSpec{Type: "updated_at", Extra: map[string]interface{}{"style": map[string]interface{}{"format": "yyyy/MM/dd"}}}, nil
 	default:
-		return fieldTypeSpec{}, fmt.Errorf("unsupported field type %q in base/v3", typeName)
+		return fieldTypeSpec{}, baseValidationErrorf("unsupported field type %q in base/v3", typeName)
 	}
 }
 
@@ -252,10 +253,10 @@ func normalizeSelectOptions(raw interface{}) []interface{} {
 
 func buildFieldBody(fieldName string, typeName string, property map[string]interface{}, uiType string, description string, isPrimary bool, isHidden bool) (map[string]interface{}, error) {
 	if isPrimary {
-		return nil, fmt.Errorf("base/v3 does not support setting primary field in field body")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "base/v3 does not support setting primary field in field body")
 	}
 	if isHidden {
-		return nil, fmt.Errorf("base/v3 does not support hidden field creation in field body")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "base/v3 does not support hidden field creation in field body")
 	}
 	spec, err := resolveFieldTypeSpec(typeName)
 	if err != nil {
@@ -354,7 +355,7 @@ func buildTableFieldBodies(rawFields string, rawFieldSpecs string) ([]interface{
 	if rawFields != "" {
 		var fields []interface{}
 		if err := common.ParseJSON([]byte(rawFields), &fields); err != nil {
-			return nil, fmt.Errorf("--fields invalid JSON, must be a field definition array")
+			return nil, baseValidationErrorf("--fields invalid JSON, must be a field definition array")
 		}
 		return fields, nil
 	}
@@ -366,7 +367,7 @@ func buildTableFieldBodies(rawFields string, rawFieldSpecs string) ([]interface{
 	for _, spec := range specs {
 		body, err := buildFieldBody(spec.Name, normalizeFieldTypeName(spec.Type), nil, "", "", false, false)
 		if err != nil {
-			return nil, fmt.Errorf("field %q: %w", spec.Name, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "field %q: %s", spec.Name, err).WithCause(err)
 		}
 		fields = append(fields, body)
 	}
@@ -410,20 +411,15 @@ func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[s
 	h.Set("X-App-Id", runtime.Config.AppID)
 	resp, err := runtime.DoAPI(req, larkcore.WithHeaders(h))
 	if err != nil {
-		return nil, err
+		return nil, baseAPIBoundaryError(err, "API call failed")
+	}
+	if _, err := runtime.ClassifyAPIResponse(resp); err != nil {
+		if statusErr := baseHTTPStatusErrorFromInvalidResponse(resp, err); statusErr != nil {
+			return nil, statusErr
+		}
+		return nil, enrichBaseAPIErrorFromBody(err, resp.RawBody, runtime.APIClassifyContext())
 	}
 	result, parseErr := decodeBaseV3Response(resp.RawBody)
-	if parseErr == nil && baseV3ResultCode(result) != 0 {
-		attachBaseErrorLogID(result, baseResponseLogID(resp))
-		return result, nil
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		body := strings.TrimSpace(string(resp.RawBody))
-		if body == "" {
-			return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-		}
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
-	}
 	if parseErr != nil {
 		return nil, parseErr
 	}
@@ -435,16 +431,12 @@ func decodeBaseV3Response(body []byte) (map[string]interface{}, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&result); err != nil {
-		return nil, fmt.Errorf("response parse error: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned an invalid JSON response: %v", err).WithCause(err)
+	}
+	if result == nil {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "API returned a non-object JSON response")
 	}
 	return result, nil
-}
-
-func baseV3ResultCode(result map[string]interface{}) int {
-	if result == nil {
-		return 0
-	}
-	return toInt(result["code"])
 }
 
 func attachBaseErrorLogID(result map[string]interface{}, logID string) {
@@ -478,6 +470,33 @@ func baseResponseLogID(resp *larkcore.ApiResp) string {
 		return ""
 	}
 	return strings.TrimSpace(resp.Header.Get("x-tt-logid"))
+}
+
+func baseHTTPStatusErrorFromInvalidResponse(resp *larkcore.ApiResp, classified error) error {
+	if resp == nil || resp.StatusCode < http.StatusBadRequest {
+		return nil
+	}
+	p, ok := errs.ProblemOf(classified)
+	if !ok || p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+		return nil
+	}
+	body := strings.TrimSpace(string(resp.RawBody))
+	if resp.StatusCode >= http.StatusInternalServerError {
+		err := errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP %d: %s", resp.StatusCode, body).WithCode(resp.StatusCode).WithRetryable()
+		if logID := baseResponseLogID(resp); logID != "" {
+			err = err.WithLogID(logID)
+		}
+		return err
+	}
+	subtype := errs.SubtypeUnknown
+	if resp.StatusCode == http.StatusNotFound {
+		subtype = errs.SubtypeNotFound
+	}
+	err := errs.NewAPIError(subtype, "HTTP %d: %s", resp.StatusCode, body).WithCode(resp.StatusCode)
+	if logID := baseResponseLogID(resp); logID != "" {
+		err = err.WithLogID(logID)
+	}
+	return err
 }
 
 func baseV3Call(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
@@ -525,7 +544,7 @@ func toStringSlice(v interface{}) []string {
 
 func listAllTables(runtime *common.RuntimeContext, baseToken string, offset, limit int) ([]map[string]interface{}, int, error) {
 	if limit <= 0 {
-		return nil, 0, fmt.Errorf("limit must be greater than 0")
+		return nil, 0, errs.NewInternalError(errs.SubtypeSDKError, "limit must be greater than 0")
 	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables"), map[string]interface{}{"offset": offset, "limit": limit}, nil)
 	if err != nil {
@@ -555,7 +574,7 @@ func listAllTables(runtime *common.RuntimeContext, baseToken string, offset, lim
 
 func listAllFields(runtime *common.RuntimeContext, baseToken, tableID string, offset, limit int) ([]map[string]interface{}, int, error) {
 	if limit <= 0 {
-		return nil, 0, fmt.Errorf("limit must be greater than 0")
+		return nil, 0, errs.NewInternalError(errs.SubtypeSDKError, "limit must be greater than 0")
 	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableID, "fields"), map[string]interface{}{"offset": offset, "limit": limit}, nil)
 	if err != nil {
@@ -577,7 +596,7 @@ func listAllFields(runtime *common.RuntimeContext, baseToken, tableID string, of
 
 func listAllViews(runtime *common.RuntimeContext, baseToken, tableID string, offset, limit int) ([]map[string]interface{}, int, error) {
 	if limit <= 0 {
-		return nil, 0, fmt.Errorf("limit must be greater than 0")
+		return nil, 0, errs.NewInternalError(errs.SubtypeSDKError, "limit must be greater than 0")
 	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableID, "views"), map[string]interface{}{"offset": offset, "limit": limit}, nil)
 	if err != nil {
@@ -603,7 +622,7 @@ func resolveFieldRef(fields []map[string]interface{}, ref string) (map[string]in
 			return field, nil
 		}
 	}
-	return nil, fmt.Errorf("field %q not found", ref)
+	return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "field %q not found", ref)
 }
 
 func resolveTableRef(tables []map[string]interface{}, ref string) (map[string]interface{}, error) {
@@ -612,7 +631,7 @@ func resolveTableRef(tables []map[string]interface{}, ref string) (map[string]in
 			return table, nil
 		}
 	}
-	return nil, fmt.Errorf("table %q not found", ref)
+	return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "table %q not found", ref)
 }
 
 func resolveViewRef(views []map[string]interface{}, ref string) (map[string]interface{}, error) {
@@ -621,7 +640,7 @@ func resolveViewRef(views []map[string]interface{}, ref string) (map[string]inte
 			return view, nil
 		}
 	}
-	return nil, fmt.Errorf("view %q not found", ref)
+	return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "view %q not found", ref)
 }
 
 func chunkRecords(records []map[string]interface{}, size int) [][]map[string]interface{} {
@@ -738,18 +757,18 @@ func canonicalValue(v interface{}) string {
 func parseNamedTypeSpecs(raw string, flagName string) ([]namedTypeSpec, error) {
 	var tuples []interface{}
 	if err := common.ParseJSON([]byte(raw), &tuples); err != nil {
-		return nil, fmt.Errorf("--%s invalid JSON array", flagName)
+		return nil, baseValidationErrorf("--%s invalid JSON array", flagName)
 	}
 	result := make([]namedTypeSpec, 0, len(tuples))
 	for idx, item := range tuples {
 		pair, ok := item.([]interface{})
 		if !ok || len(pair) != 2 {
-			return nil, fmt.Errorf("--%s item %d must be [name, type]", flagName, idx+1)
+			return nil, baseValidationErrorf("--%s item %d must be [name, type]", flagName, idx+1)
 		}
 		name, ok1 := pair[0].(string)
 		typeName, ok2 := pair[1].(string)
 		if !ok1 || !ok2 {
-			return nil, fmt.Errorf("--%s item %d must be [string, string]", flagName, idx+1)
+			return nil, baseValidationErrorf("--%s item %d must be [string, string]", flagName, idx+1)
 		}
 		result = append(result, namedTypeSpec{Name: name, Type: typeName})
 	}
@@ -1155,9 +1174,9 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 	return errs
 }
 
-func formatDataConfigErrors(errs []string) error {
-	if len(errs) == 0 {
+func formatDataConfigErrors(problems []string) error {
+	if len(problems) == 0 {
 		return nil
 	}
-	return fmt.Errorf("data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(errs, "\n- "))
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- "))
 }

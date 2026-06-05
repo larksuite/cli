@@ -4,23 +4,27 @@ go 1.23.0
 
 require (
 	github.com/Microsoft/go-winio v0.6.2
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.17
 	github.com/larksuite/oapi-sdk-go/v3 v3.5.4
+	github.com/sergi/go-diff v1.4.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/smartystreets/goconvey v1.8.1
-	github.com/spf13/cobra v1.10.2
+	github.com/spf13/cobra v1.10.2 // flag-error-text contract: see cmd/root.go unknownFlagName
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.11.1
 	github.com/tidwall/gjson v1.18.0
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/net v0.33.0
+	golang.org/x/sync v0.15.0
 	golang.org/x/sys v0.33.0
 	golang.org/x/term v0.27.0
 	golang.org/x/text v0.23.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -59,6 +63,4 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/sync v0.15.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

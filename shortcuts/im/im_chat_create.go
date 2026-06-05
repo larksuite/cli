@@ -16,10 +16,14 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
+// ImChatCreate is the +chat-create shortcut: creates a group chat or topic
+// chat via POST /open-apis/im/v1/chats. Supports user and bot identities;
+// --chat-mode selects group (default) or topic; --type selects private
+// (default) or public; --users/--bots invite members at creation.
 var ImChatCreate = common.Shortcut{
 	Service:     "im",
 	Command:     "+chat-create",
-	Description: "Create a group chat; user/bot; creates private/public chats, invites users/bots, optionally sets bot manager",
+	Description: "Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager",
 	Risk:        "write",
 	UserScopes:  []string{"im:chat:create_by_user"},
 	BotScopes:   []string{"im:chat:create"},
@@ -32,6 +36,7 @@ var ImChatCreate = common.Shortcut{
 		{Name: "bots", Desc: "comma-separated bot app IDs (cli_xxx) to invite, max 5"},
 		{Name: "owner", Desc: "owner open_id (ou_xxx); defaults to bot (--as bot) or authorized user (--as user)"},
 		{Name: "type", Default: "private", Desc: "chat type", Enum: []string{"private", "public"}},
+		{Name: "chat-mode", Default: "group", Desc: "group mode (\"topic\" creates a topic chat; differs from a normal group in topic-message mode)", Enum: []string{"group", "topic"}},
 		{Name: "set-bot-manager", Type: "bool", Desc: "set the bot that creates this chat as manager (bot identity only)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -141,9 +146,18 @@ var ImChatCreate = common.Shortcut{
 	},
 }
 
+// buildCreateChatBody assembles the POST /open-apis/im/v1/chats request
+// body. chat_mode is always emitted; an empty value (which can slip past
+// validateEnumFlags, since that helper skips empty strings) is pinned to
+// "group" so the wire never carries an unspecified chat_mode value.
 func buildCreateChatBody(runtime *common.RuntimeContext) map[string]interface{} {
+	chatMode := runtime.Str("chat-mode")
+	if chatMode == "" {
+		chatMode = "group"
+	}
 	body := map[string]interface{}{
 		"chat_type": runtime.Str("type"),
+		"chat_mode": chatMode,
 	}
 	if name := runtime.Str("name"); name != "" {
 		body["name"] = name

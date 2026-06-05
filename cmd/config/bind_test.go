@@ -13,30 +13,59 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// assertExitError checks the full structured error in one assertion.
+// assertExitError checks the full structured error in one assertion. It
+// accepts both *output.ExitError (used by output.ErrWithHint) and the
+// typed errors (ValidationError, ConfigError) — they normalize to the same
+// wantDetail fields. The wantDetail.Type is matched against the typed error's
+// Category string ("validation", "config", etc.).
 func assertExitError(t *testing.T, err error, wantCode int, wantDetail output.ErrDetail) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+	if errors.As(err, &exitErr) {
+		if exitErr.Code != wantCode {
+			t.Errorf("exit code = %d, want %d", exitErr.Code, wantCode)
+		}
+		if exitErr.Detail == nil {
+			t.Fatal("expected non-nil error detail")
+		}
+		if !reflect.DeepEqual(*exitErr.Detail, wantDetail) {
+			t.Errorf("error detail mismatch:\n  got:  %+v\n  want: %+v", *exitErr.Detail, wantDetail)
+		}
+		return
 	}
-	if exitErr.Code != wantCode {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, wantCode)
+	var ve *errs.ValidationError
+	if errors.As(err, &ve) {
+		if got := output.ExitCodeOf(err); got != wantCode {
+			t.Errorf("exit code = %d, want %d", got, wantCode)
+		}
+		gotDetail := output.ErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
+		if !reflect.DeepEqual(gotDetail, wantDetail) {
+			t.Errorf("validation error mismatch:\n  got:  %+v\n  want: %+v", gotDetail, wantDetail)
+		}
+		return
 	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected non-nil error detail")
+	var ce *errs.ConfigError
+	if errors.As(err, &ce) {
+		if got := output.ExitCodeOf(err); got != wantCode {
+			t.Errorf("exit code = %d, want %d", got, wantCode)
+		}
+		gotDetail := output.ErrDetail{Type: string(ce.Category), Message: ce.Message, Hint: ce.Hint}
+		if !reflect.DeepEqual(gotDetail, wantDetail) {
+			t.Errorf("config error mismatch:\n  got:  %+v\n  want: %+v", gotDetail, wantDetail)
+		}
+		return
 	}
-	if !reflect.DeepEqual(*exitErr.Detail, wantDetail) {
-		t.Errorf("error detail mismatch:\n  got:  %+v\n  want: %+v", *exitErr.Detail, wantDetail)
-	}
+	t.Fatalf("error type = %T, want *output.ExitError or *errs.ValidationError / *errs.ConfigError; error = %v", err, err)
 }
 
 // assertEnvelope decodes stdout and checks it matches want exactly — every key
@@ -105,11 +134,226 @@ func TestConfigBindCmd_LangDefault(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotOpts.Lang != "zh" {
-		t.Errorf("Lang = %q, want default %q", gotOpts.Lang, "zh")
+	if gotOpts.Lang != "" {
+		t.Errorf("Lang = %q, want default %q (unset)", gotOpts.Lang, "")
 	}
 	if gotOpts.langExplicit {
 		t.Error("expected langExplicit=false when --lang not passed")
+	}
+}
+
+// TestConfigBindRun_InvalidLang verifies a non-empty --lang is strictly
+// validated: wrong case, typos, and removed codes all exit with
+// ExitValidation (code 2) and a message identifying the offending value.
+// (Empty is not invalid — see TestConfigBindRun_EmptyLangIsNoOp.)
+func TestConfigBindRun_InvalidLang(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		lang string
+	}{
+		{"wrong case ZH", "ZH"},
+		{"typo frr", "frr"},
+		{"removed code ar", "ar"},
+		{"unknown xx", "xx"},
+		{"hyphen form zh-CN", "zh-CN"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			err := configBindRun(&BindOptions{
+				Factory:      f,
+				Source:       "hermes",
+				Lang:         tc.lang,
+				langExplicit: true,
+			})
+			if err == nil {
+				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
+			}
+			exitErr, ok := err.(*output.ExitError)
+			if !ok {
+				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			}
+			if exitErr.Code != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", exitErr.Code, output.ExitValidation)
+			}
+			if !strings.Contains(exitErr.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			}
+		})
+	}
+}
+
+// TestConfigBindRun_EmptyLangIsNoOp verifies that an empty --lang (omitted or
+// explicit "") is unset: it neither errors nor persists a language, while a
+// non-empty short code or Feishu locale both canonicalize to the same locale.
+func TestConfigBindRun_EmptyLangIsNoOp(t *testing.T) {
+	cases := []struct {
+		name     string
+		lang     string
+		explicit bool
+		wantLang i18n.Lang
+	}{
+		{"omitted", "", false, ""},
+		{"explicit empty", "", true, ""},
+		{"short code", "ja", true, i18n.LangJaJP},
+		{"feishu locale", "ja_jp", true, i18n.LangJaJP},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			saveWorkspace(t)
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			hermesHome := t.TempDir()
+			t.Setenv("HERMES_HOME", hermesHome)
+			if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+				t.Fatalf("write .env: %v", err)
+			}
+
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			if err := configBindRun(&BindOptions{
+				Factory:      f,
+				Source:       "hermes",
+				Lang:         tc.lang,
+				langExplicit: tc.explicit,
+			}); err != nil {
+				t.Fatalf("configBindRun(--lang %q) = %v, want nil", tc.lang, err)
+			}
+
+			multi, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatalf("LoadMultiAppConfig: %v", err)
+			}
+			app := multi.CurrentAppConfig("")
+			if app == nil {
+				t.Fatal("no app persisted")
+			}
+			if app.Lang != tc.wantLang {
+				t.Errorf("persisted Lang = %q, want %q", app.Lang, tc.wantLang)
+			}
+		})
+	}
+}
+
+// TestConfigBindRun_OmitLangPreservesPrior guards against a re-bind without
+// --lang silently dropping a previously stored preference (appConfig is rebuilt
+// fresh, so commitBinding must inherit the prior Lang).
+func TestConfigBindRun_OmitLangPreservesPrior(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f1, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f1, Source: "hermes", Lang: "ja", langExplicit: true}); err != nil {
+		t.Fatalf("first bind (--lang ja): %v", err)
+	}
+	f2, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Lang: "", langExplicit: false}); err != nil {
+		t.Fatalf("re-bind (no --lang): %v", err)
+	}
+
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if app := multi.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
+		t.Errorf("Lang after re-bind = %v, want %q (preserved)", app, i18n.LangJaJP)
+	}
+}
+
+// TestPriorLang_RespectsCurrentApp guards against priorLang scanning all apps
+// and silently returning a non-current profile's Lang. In a multi-profile
+// workspace (set up via `profile add` before a re-bind), the active profile's
+// Lang must win over a sibling profile that happens to sit earlier in the slice.
+func TestPriorLang_RespectsCurrentApp(t *testing.T) {
+	multi := core.MultiAppConfig{
+		CurrentApp: "active",
+		Apps: []core.AppConfig{
+			{Name: "stale", AppId: "cli_stale", Lang: i18n.LangJaJP},
+			{Name: "active", AppId: "cli_active", Lang: i18n.LangEnUS},
+		},
+	}
+	bytes, err := json.Marshal(multi)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := priorLang(bytes); got != i18n.LangEnUS {
+		t.Errorf("priorLang = %q, want %q (must follow CurrentApp, not Apps[0])", got, i18n.LangEnUS)
+	}
+}
+
+// TestPriorLang_FallsBackToFirstAppWhenCurrentUnset covers the legacy
+// single-app shape (no CurrentApp): CurrentAppConfig falls back to Apps[0],
+// so a bind-written config (which always has exactly one app and no
+// CurrentApp field) still inherits its Lang.
+func TestPriorLang_FallsBackToFirstAppWhenCurrentUnset(t *testing.T) {
+	multi := core.MultiAppConfig{
+		Apps: []core.AppConfig{
+			{AppId: "cli_only", Lang: i18n.LangJaJP},
+		},
+	}
+	bytes, err := json.Marshal(multi)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := priorLang(bytes); got != i18n.LangJaJP {
+		t.Errorf("priorLang = %q, want %q", got, i18n.LangJaJP)
+	}
+}
+
+// TestPriorLang_MalformedReturnsEmpty exercises the unparseable-bytes branch.
+func TestPriorLang_MalformedReturnsEmpty(t *testing.T) {
+	if got := priorLang([]byte("not json")); got != "" {
+		t.Errorf("priorLang(malformed) = %q, want \"\"", got)
+	}
+}
+
+// TestConfigBindRun_EnvelopeMessageFollowsInheritedLang guards the JSON envelope
+// "message" field against regressing to opts.Lang: when --lang is omitted on
+// re-bind, the inherited preference (appConfig.Lang) must drive the message
+// language and the embedded brand display — otherwise an AI agent that set
+// English on first bind sees Chinese in every subsequent re-bind envelope.
+func TestConfigBindRun_EnvelopeMessageFollowsInheritedLang(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f1, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f1, Source: "hermes", Lang: "en", langExplicit: true}); err != nil {
+		t.Fatalf("first bind (--lang en): %v", err)
+	}
+
+	f2, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f2, Source: "hermes", Lang: "", langExplicit: false}); err != nil {
+		t.Fatalf("re-bind (no --lang): %v", err)
+	}
+
+	envelope := map[string]any{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("invalid JSON output: %v", err)
+	}
+	msg, _ := envelope["message"].(string)
+	enMsg := getBindMsg(i18n.LangEnUS)
+	wantMsg := fmt.Sprintf(enMsg.MessageBotOnly, "cli_abc", "Hermes", brandDisplay("feishu", i18n.LangEnUS))
+	if msg != wantMsg {
+		t.Errorf("envelope.message = %q,\nwant %q (must follow inherited appConfig.Lang=en_us, not raw opts.Lang)", msg, wantMsg)
 	}
 }
 
@@ -139,7 +383,7 @@ func TestConfigBindRun_MissingSourceNonTTY(t *testing.T) {
 	// TestFactory has IsTerminal=false by default
 	err := configBindRun(&BindOptions{Factory: f, Source: ""})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "bind",
+		Type:    "validation",
 		Message: "cannot determine Agent source: no --source flag and no Agent environment detected",
 		Hint:    "pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context",
 	})
@@ -178,7 +422,7 @@ func TestConfigBindRun_SourceEnvMismatch_OpenClawFlagInHermesEnv(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "bind",
+		Type:    "validation",
 		Message: `--source "openclaw" does not match detected Agent environment (hermes)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
 	})
@@ -194,7 +438,7 @@ func TestConfigBindRun_SourceEnvMismatch_HermesFlagInOpenClawEnv(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "bind",
+		Type:    "validation",
 		Message: `--source "hermes" does not match detected Agent environment (openclaw)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
 	})
@@ -322,8 +566,8 @@ func TestConfigBindRun_HermesMissingEnvFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "hermes",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "failed to read Hermes config: open " + envPath + ": no such file or directory",
 		Hint:    "verify Hermes is installed and configured at " + envPath,
 	})
@@ -340,8 +584,8 @@ func TestConfigBindRun_OpenClawMissingFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
 	configPath := filepath.Join(openclawHome, ".openclaw", "openclaw.json")
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
 		Hint:    "verify OpenClaw is installed and configured",
 	})
@@ -408,6 +652,26 @@ func TestConfigBindRun_LarkChannel_Success(t *testing.T) {
 	}
 }
 
+// Env template form: secret = "${VAR}" should resolve via the SecretInput
+// pipeline (same path openclaw uses), so the keychain receives the env value
+// not the literal template string.
+func TestConfigBindRun_LarkChannel_EnvTemplate(t *testing.T) {
+	saveWorkspace(t)
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	clearAgentEnv(t)
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("LARK_APP_SECRET", "resolved_via_env")
+	writeLarkChannelFixture(t, fakeHome,
+		`{"accounts":{"app":{"id":"cli_lc_env","secret":"${LARK_APP_SECRET}","tenant":"feishu"}}}`)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"}); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+}
+
 // tenant: "lark" should land as Brand("lark"), not normalized to "feishu".
 func TestConfigBindRun_LarkChannel_LarkTenant(t *testing.T) {
 	saveWorkspace(t)
@@ -468,7 +732,7 @@ func TestConfigBindRun_SourceEnvMismatch_LarkChannelFlagInOpenClawEnv(t *testing
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "bind",
+		Type:    "validation",
 		Message: `--source "lark-channel" does not match detected Agent environment (openclaw)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
 	})
@@ -486,8 +750,8 @@ func TestConfigBindRun_LarkChannelMissingFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
 	configPath := filepath.Join(fakeHome, ".lark-channel", "config.json")
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "lark-channel",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
 		Hint:    "verify lark-channel-bridge is installed and configured",
 	})
@@ -506,8 +770,8 @@ func TestConfigBindRun_LarkChannelEmptyAppID(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "lark-channel",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "accounts.app.id missing in " + configPath,
 		Hint:    "run lark-channel-bridge's setup to populate the app credential",
 	})
@@ -525,8 +789,8 @@ func TestConfigBindRun_LarkChannelEmptySecret(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "lark-channel",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "accounts.app.secret is empty in " + configPath,
 		Hint:    "run lark-channel-bridge's setup to populate the app credential",
 	})
@@ -575,8 +839,10 @@ func TestConfigShowRun_AgentWorkspaceNotBound(t *testing.T) {
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("error type = %T, want *core.ConfigError", err)
 	}
-	if cfgErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", cfgErr.Code, output.ExitValidation)
+	// Config errors share ExitAuth (3); the workspace is detected but no
+	// binding exists yet, which is a config error.
+	if cfgErr.Code != output.ExitAuth {
+		t.Errorf("exit code = %d, want %d (config category → ExitAuth)", cfgErr.Code, output.ExitAuth)
 	}
 	if cfgErr.Type != "openclaw" {
 		t.Errorf("type = %q, want %q", cfgErr.Type, "openclaw")
@@ -875,12 +1141,8 @@ func TestConfigBindRun_OpenClawMultiAccount_MissingAppID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for multi-account without --app-id, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError", err)
-	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
 }
 
@@ -926,7 +1188,7 @@ func TestConfigBindRun_OpenClawMultiAccount_TTYFlagMode(t *testing.T) {
 	// each accepted variant so every ErrDetail field (Type, Code, Message,
 	// Hint, ConsoleURL, Detail, and any future addition) is still compared.
 	base := output.ErrDetail{
-		Type:    "openclaw",
+		Type:    "validation",
 		Message: "multiple accounts in openclaw.json; pass --app-id <id>",
 	}
 	wantWorkFirst := base
@@ -934,20 +1196,17 @@ func TestConfigBindRun_OpenClawMultiAccount_TTYFlagMode(t *testing.T) {
 	wantPersonalFirst := base
 	wantPersonalFirst.Hint = "available app IDs:\n  cli_personal_222 (personal)\n  cli_work_111 (work)"
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError; err = %v", err, err)
+	if gotCode := output.ExitCodeOf(err); gotCode != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", gotCode, output.ExitValidation)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; err = %v", err, err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected non-nil error detail")
-	}
-	if !reflect.DeepEqual(*exitErr.Detail, wantWorkFirst) &&
-		!reflect.DeepEqual(*exitErr.Detail, wantPersonalFirst) {
+	got := output.ErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
+	if !reflect.DeepEqual(got, wantWorkFirst) && !reflect.DeepEqual(got, wantPersonalFirst) {
 		t.Errorf("error detail did not match any accepted variant:\n  got:  %+v\n  want: %+v OR %+v",
-			*exitErr.Detail, wantWorkFirst, wantPersonalFirst)
+			got, wantWorkFirst, wantPersonalFirst)
 	}
 }
 
@@ -972,7 +1231,7 @@ func TestConfigBindRun_OpenClawMultiAccount_WrongAppID(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw", AppID: "nonexistent"})
 	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
+		Type:    "validation",
 		Message: `--app-id "nonexistent" not found in openclaw.json`,
 		Hint:    "available app IDs:\n  cli_only_one",
 	})
@@ -1104,11 +1363,19 @@ func TestConfigBindRun_WarnsOnIdentityEscalationWithoutForce(t *testing.T) {
 		Identity: "user-default",
 	})
 	msg := getBindMsg("zh") // flag mode leaves Lang empty → zh default
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "bind",
-		Message: msg.IdentityEscalationMessage,
-		Hint:    msg.IdentityEscalationHint,
-	})
+	var ce *errs.ConfirmationRequiredError
+	if !errors.As(err, &ce) {
+		t.Fatalf("error type = %T, want *errs.ConfirmationRequiredError; error = %v", err, err)
+	}
+	if ce.Risk != errs.RiskHighRiskWrite {
+		t.Errorf("Risk = %q, want %q", ce.Risk, errs.RiskHighRiskWrite)
+	}
+	if ce.Message != msg.IdentityEscalationMessage {
+		t.Errorf("Message mismatch:\ngot:  %q\nwant: %q", ce.Message, msg.IdentityEscalationMessage)
+	}
+	if ce.Hint != msg.IdentityEscalationHint {
+		t.Errorf("Hint mismatch:\ngot:  %q\nwant: %q", ce.Hint, msg.IdentityEscalationHint)
+	}
 
 	// Config on disk must remain untouched — the gate runs before
 	// commitBinding writes anything.
@@ -1269,8 +1536,8 @@ func TestConfigBindRun_HermesMissingAppID(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "hermes",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "FEISHU_APP_ID not found in " + envPath,
 		Hint:    "run 'hermes setup' to configure Feishu credentials",
 	})
@@ -1289,8 +1556,8 @@ func TestConfigBindRun_HermesMissingAppSecret(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "hermes",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "FEISHU_APP_SECRET not found in " + envPath,
 		Hint:    "run 'hermes setup' to configure Feishu credentials",
 	})
@@ -1315,8 +1582,8 @@ func TestConfigBindRun_OpenClawMissingFeishu(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "openclaw.json missing channels.feishu section",
 		Hint:    "configure Feishu in OpenClaw first",
 	})
@@ -1343,8 +1610,8 @@ func TestConfigBindRun_OpenClawEmptyAppSecret(t *testing.T) {
 	openclawPath := filepath.Join(openclawDir, "openclaw.json")
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "appSecret is empty for app cli_no_secret in " + openclawPath,
 		Hint:    "configure channels.feishu.appSecret in openclaw.json",
 	})
@@ -1405,8 +1672,8 @@ func TestConfigBindRun_OpenClawDisabledAccount(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
-		Type:    "openclaw",
+	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+		Type:    "config",
 		Message: "no Feishu app configured in openclaw.json",
 		Hint:    "configure channels.feishu.appId in openclaw.json",
 	})
@@ -1437,10 +1704,14 @@ func TestGetBindMsg_En(t *testing.T) {
 	}
 }
 
-func TestGetBindMsg_UnknownLang_DefaultsToZh(t *testing.T) {
-	msg := getBindMsg("fr")
-	if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
-		t.Errorf("fr (default) SelectSource = %q, want %q", msg.SelectSource, want)
+func TestGetBindMsg_NonEnLang_FallsBackToZh(t *testing.T) {
+	// Only zh and en TUI bundles exist; any non-English language (canonical
+	// locale, short code, or unrecognized value) falls back to zh.
+	for _, lang := range []i18n.Lang{"fr_fr", "ja_jp", "ko", "unknown", ""} {
+		msg := getBindMsg(lang)
+		if want := "你想在哪个 Agent 中使用 lark-cli?"; msg.SelectSource != want {
+			t.Errorf("getBindMsg(%q) SelectSource = %q, want %q (zh fallback)", lang, msg.SelectSource, want)
+		}
 	}
 }
 
@@ -1601,5 +1872,38 @@ func TestHasStrictBotLock(t *testing.T) {
 				t.Errorf("hasStrictBotLock(%q) = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// TestConfigBindRun_LangExplicit_PrintsConfirmation covers the flag-mode
+// confirmation line: when --lang is explicit, bind prints "language preference
+// set" to stderr (rendered in the TUI language, embedding the preference value).
+func TestConfigBindRun_LangExplicit_PrintsConfirmation(t *testing.T) {
+	saveWorkspace(t)
+	configDir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", configDir)
+
+	hermesHome := t.TempDir()
+	t.Setenv("HERMES_HOME", hermesHome)
+	if err := os.WriteFile(filepath.Join(hermesHome, ".env"), []byte("FEISHU_APP_ID=cli_abc\nFEISHU_APP_SECRET=secret\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	f, _, stderr, _ := cmdutil.TestFactory(t, nil)
+	err := configBindRun(&BindOptions{
+		Factory:      f,
+		Source:       "hermes",
+		Identity:     "bot-only",
+		Lang:         "en",
+		langExplicit: true,
+	})
+	if err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+	// The short --lang en is canonicalized to en_us before the confirmation
+	// echoes it back; the TUI language stays zh (flag mode, no picker).
+	want := fmt.Sprintf(getBindMsg(i18n.LangZhCN).LangPreferenceSet, "en_us")
+	if got := stderr.String(); !strings.Contains(got, want) {
+		t.Errorf("stderr = %q, want it to contain confirmation %q", got, want)
 	}
 }

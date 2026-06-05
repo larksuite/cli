@@ -1,6 +1,6 @@
-# dashboard block data_config 参考
+# dashboard block data_config SSOT
 
-Block 的 `data_config` 字段因 `type` 不同而变化。本文档描述所有共享结构。
+Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 dashboard block `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。
 
 ## 支持的组件类型（`type` 枚举）
 

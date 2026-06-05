@@ -27,6 +27,7 @@ func NewCmdProfileUse(f *cmdutil.Factory) *cobra.Command {
 	cmdutil.SetTips(cmd, []string{
 		"AI agents: Do NOT switch profiles unless the user explicitly asks.",
 	})
+	cmdutil.SetRisk(cmd, "write")
 	return cmd
 }
 

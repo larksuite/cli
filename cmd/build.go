@@ -19,7 +19,9 @@ import (
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	_ "github.com/larksuite/cli/events"
 	"github.com/larksuite/cli/internal/build"
+	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/shortcuts"
 	"github.com/spf13/cobra"
@@ -59,18 +61,28 @@ func HideProfile(hide bool) BuildOption {
 	}
 }
 
-// Build constructs the full command tree without executing.
-// Returns only the cobra.Command; Factory is internal.
+// Build constructs the full command tree. It also installs registered
+// plugins and emits the Startup lifecycle event during assembly --
+// so Plugin.On(Startup) handlers run even if the returned command is
+// never dispatched. The matching Shutdown event is only emitted by
+// Execute; callers that bypass Execute will not see Shutdown fire.
+//
+// Returns only the cobra.Command; Factory and hook Registry are internal.
 // Use Execute for the standard production entry point.
 func Build(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) *cobra.Command {
-	_, rootCmd := buildInternal(ctx, inv, opts...)
+	_, rootCmd, _ := buildInternal(ctx, inv, opts...)
 	return rootCmd
 }
 
 // buildInternal is a pure assembly function: it wires the command tree from
 // inv and BuildOptions alone. Any state-dependent decision (disk, network,
 // env) belongs in the caller and must be threaded in via BuildOption.
-func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command) {
+//
+// Returns (factory, rootCmd, registry). The registry is nil when plugin
+// install failed (FailClosed guard installed) or when no plugin produced
+// hooks; callers that wire Shutdown emit must nil-check before calling
+// hook.Emit.
+func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...BuildOption) (*cmdutil.Factory, *cobra.Command, *hook.Registry) {
 	// cfg.globals.Profile is left zero here; it's bound to the --profile
 	// flag in RegisterGlobalFlags and filled by cobra's parse step.
 	cfg := &buildConfig{}
@@ -105,6 +117,13 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
+	// SilenceUsage as a static field (not only in PersistentPreRun) so it also
+	// covers flag-parse errors, which fail before PreRun runs — otherwise cobra
+	// dumps usage instead of our structured error. SetFlagErrorFunc on root is
+	// inherited by every subcommand, turning unknown-flag errors into a
+	// structured "did you mean" envelope.
+	rootCmd.SilenceUsage = true
+	rootCmd.SetFlagErrorFunc(flagDidYouMean)
 
 	RegisterGlobalFlags(rootCmd.PersistentFlags(), &cfg.globals)
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
@@ -124,10 +143,42 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 
-	// Prune commands incompatible with strict mode.
+	installUnknownSubcommandGuard(rootCmd)
+
 	if mode := f.ResolveStrictMode(ctx); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
 
-	return f, rootCmd
+	installResult, installErr := installPluginsAndHooks(cfg.streams.ErrOut)
+	if installErr != nil {
+		installPluginInstallErrorGuard(rootCmd, installErr)
+		return f, rootCmd, nil
+	}
+	var pluginRules []cmdpolicy.PluginRule
+	var registry *hook.Registry
+	if installResult != nil {
+		pluginRules = installResult.PluginRules
+		registry = installResult.Registry
+	}
+
+	// Policy errors fail-CLOSED when a plugin contributed (security
+	// intent must not be silently dropped); yaml-only errors fail-OPEN
+	// with a warning so a typo can't lock the user out.
+	if err := applyUserPolicyPruning(rootCmd, pluginRules); err != nil {
+		if len(pluginRules) > 0 {
+			installPluginConflictGuard(rootCmd, err)
+			return f, rootCmd, nil
+		}
+		warnPolicyError(cfg.streams.ErrOut, err)
+	}
+
+	if registry != nil {
+		if err := wireHooks(ctx, rootCmd, registry); err != nil {
+			installPluginLifecycleErrorGuard(rootCmd, err)
+			return f, rootCmd, nil
+		}
+	}
+
+	recordInventory(installResult)
+	return f, rootCmd, registry
 }

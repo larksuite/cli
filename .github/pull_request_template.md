@@ -9,7 +9,7 @@
 ## Test Plan
 <!-- Describe how this change was verified. -->
 - [ ] Unit tests pass
-- [ ] Manual local verification confirms the `lark xxx` command works as expected
+- [ ] Manual local verification confirms the `lark-cli <domain> <command>` flow works as expected
 
 ## Related Issues
 <!-- Link related issues. Use Closes/Fixes to close them automatically. -->

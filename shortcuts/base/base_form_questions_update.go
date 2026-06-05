@@ -42,7 +42,7 @@ var BaseFormQuestionsUpdate = common.Shortcut{
 
 		var questions []interface{}
 		if err := json.Unmarshal([]byte(questionsJSON), &questions); err != nil {
-			return output.Errorf(output.ExitValidation, "invalid_json", "--questions must be a valid JSON array: %s", err)
+			return baseValidationErrorf("--questions must be a valid JSON array: %s", err)
 		}
 
 		data, err := baseV3Call(runtime, "PATCH",

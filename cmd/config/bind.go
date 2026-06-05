@@ -12,8 +12,10 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -37,8 +39,10 @@ type BindOptions struct {
 	// this flag because its own prompts already require human confirmation.
 	Force bool
 
-	Lang         string
-	langExplicit bool // true when --lang was explicitly passed
+	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateBindFlags
+	langExplicit bool   // true when --lang was explicitly passed
+
+	UILang i18n.Lang // TUI display language (picker-only); intentionally separate from --lang
 
 	// Brand holds the resolved Lark product brand ("feishu" | "lark") for
 	// the account being bound. Populated after resolveAccount; TUI stages
@@ -55,7 +59,7 @@ type BindOptions struct {
 
 // NewCmdConfigBind creates the config bind subcommand.
 func NewCmdConfigBind(f *cmdutil.Factory, runF func(*BindOptions) error) *cobra.Command {
-	opts := &BindOptions{Factory: f}
+	opts := &BindOptions{Factory: f, UILang: i18n.LangZhCN}
 
 	cmd := &cobra.Command{
 		Use:   "bind",
@@ -102,7 +106,8 @@ Interactive terminal use: run with no flags to enter the TUI form.`,
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID to bind (required for OpenClaw multi-account)")
 	cmd.Flags().StringVar(&opts.Identity, "identity", "", "identity preset (bot-only|user-default); defaults to bot-only in flag mode (safer: no impersonation)")
 	cmd.Flags().BoolVar(&opts.Force, "force", false, "confirm a risky transition (currently: bot-only → user-default identity change in flag mode)")
-	cmd.Flags().StringVar(&opts.Lang, "lang", "zh", "language for interactive prompts (zh|en)")
+	cmd.Flags().StringVar(&opts.Lang, "lang", "", "language preference (e.g. zh or zh_cn)")
+	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
 }
@@ -146,7 +151,7 @@ func configBindRun(opts *BindOptions) error {
 	if err := warnIdentityEscalation(opts, existing.ConfigBytes); err != nil {
 		return err
 	}
-	applyPreferences(appConfig, opts)
+	applyPreferences(appConfig, opts, priorLang(existing.ConfigBytes))
 	noticeUserDefaultRisk(opts)
 
 	return commitBinding(opts, appConfig, existing.ConfigBytes, source, targetConfigPath)
@@ -177,7 +182,7 @@ type existingBinding struct {
 func finalizeSource(opts *BindOptions) (string, error) {
 	explicit := strings.TrimSpace(strings.ToLower(opts.Source))
 	if explicit != "" && explicit != "openclaw" && explicit != "hermes" && explicit != "lark-channel" {
-		return "", output.ErrValidation("invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --source %q; valid values: openclaw, hermes, lark-channel", explicit).WithParam("--source")
 	}
 
 	var detected string
@@ -194,23 +199,26 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	// before any interactive prompts — running inside Hermes with
 	// --source openclaw (or vice versa) is almost always a mistake.
 	if explicit != "" && detected != "" && explicit != detected {
-		return "", output.ErrWithHint(output.ExitValidation, "bind",
-			fmt.Sprintf("--source %q does not match detected Agent environment (%s)", explicit, detected),
-			"remove --source to auto-detect, or run this command in the correct Agent context")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--source %q does not match detected Agent environment (%s)", explicit, detected).
+			WithHint("remove --source to auto-detect, or run this command in the correct Agent context").
+			WithParam("--source")
 	}
 
 	// TUI: prompt for language before any downstream prompts. The source
 	// selection itself may still be skipped entirely if --source or the
-	// env already pinned it.
+	// env already pinned it. Picker offers 2 options (中文 / English) and
+	// drives BOTH opts.Lang (preference) and opts.UILang (TUI rendering).
 	if opts.IsTUI && !opts.langExplicit {
-		lang, err := promptLangSelection("")
+		lang, err := promptLangSelection()
 		if err != nil {
 			if err == huh.ErrUserAborted {
 				return "", output.ErrBare(1)
 			}
-			return "", err
+			return "", output.Errorf(output.ExitInternal, "internal", "language selection failed: %v", err)
 		}
-		opts.Lang = lang
+		opts.Lang = string(lang)
+		opts.UILang = lang
 	}
 
 	if explicit != "" {
@@ -222,9 +230,10 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	if opts.IsTUI {
 		return tuiSelectSource(opts)
 	}
-	return "", output.ErrWithHint(output.ExitValidation, "bind",
-		"cannot determine Agent source: no --source flag and no Agent environment detected",
-		"pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context")
+	return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"cannot determine Agent source: no --source flag and no Agent environment detected").
+		WithHint("pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context").
+		WithParam("--source")
 }
 
 // reconcileExistingBinding reads any existing config at configPath and decides
@@ -244,7 +253,7 @@ func reconcileExistingBinding(opts *BindOptions, source, configPath string) (exi
 			return existingBinding{}, err
 		}
 		if action == "cancel" {
-			msg := getBindMsg(opts.Lang)
+			msg := getBindMsg(opts.UILang)
 			fmt.Fprintln(opts.Factory.IOStreams.ErrOut, msg.ConflictCancelled)
 			return existingBinding{Cancelled: true}, nil
 		}
@@ -328,9 +337,10 @@ func warnIdentityEscalation(opts *BindOptions, previousConfigBytes []byte) error
 	if !hasStrictBotLock(previousConfigBytes) {
 		return nil
 	}
-	msg := getBindMsg(opts.Lang)
-	return output.ErrWithHint(output.ExitValidation, "bind",
-		msg.IdentityEscalationMessage, msg.IdentityEscalationHint)
+	msg := getBindMsg(opts.UILang)
+	return errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite,
+		"config bind --force", "%s", msg.IdentityEscalationMessage).
+		WithHint("%s", msg.IdentityEscalationHint)
 }
 
 // noticeUserDefaultRisk surfaces the user-identity impersonation risk on every
@@ -346,14 +356,23 @@ func noticeUserDefaultRisk(opts *BindOptions) {
 	if opts.IsTUI || opts.Identity != "user-default" {
 		return
 	}
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut, "⚠️ "+msg.IdentityEscalationMessage)
 }
 
 // applyPreferences expands the chosen identity preset into the underlying
 // StrictMode + DefaultAs on the AppConfig. Always writes both fields so the
 // profile's intent survives later changes to global strict-mode settings.
-func applyPreferences(appConfig *core.AppConfig, opts *BindOptions) {
+// preferredLang resolves the language to persist: the requested value when set,
+// otherwise the prior one — so an unset --lang never clears a stored preference.
+func preferredLang(requested, prior i18n.Lang) i18n.Lang {
+	if requested != "" {
+		return requested
+	}
+	return prior
+}
+
+func applyPreferences(appConfig *core.AppConfig, opts *BindOptions, prior i18n.Lang) {
 	switch opts.Identity {
 	case "bot-only":
 		sm := core.StrictModeBot
@@ -364,9 +383,23 @@ func applyPreferences(appConfig *core.AppConfig, opts *BindOptions) {
 		appConfig.StrictMode = &sm
 		appConfig.DefaultAs = core.AsUser
 	}
-	if opts.Lang != "" {
-		appConfig.Lang = opts.Lang
+	appConfig.Lang = preferredLang(i18n.Lang(opts.Lang), prior)
+}
+
+// priorLang returns the language preference recorded in a previous config, or
+// "" if there is none / the bytes don't parse. Reads from CurrentApp (or Apps[0]
+// fallback) — scanning all apps for the first non-empty Lang would leak the
+// wrong profile's preference into a re-bind when the workspace holds multiple
+// named profiles and the active one disagrees with Apps[0].
+func priorLang(previousConfigBytes []byte) i18n.Lang {
+	var multi core.MultiAppConfig
+	if json.Unmarshal(previousConfigBytes, &multi) != nil {
+		return ""
 	}
+	if app := multi.CurrentAppConfig(""); app != nil {
+		return app.Lang
+	}
+	return ""
 }
 
 // commitBinding finalizes the bind: atomic write of the new workspace config,
@@ -378,21 +411,21 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	multi := &core.MultiAppConfig{Apps: []core.AppConfig{*appConfig}}
 
 	if err := vfs.MkdirAll(core.GetConfigDir(), 0700); err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to create workspace directory: %v", err)
+		return errs.NewInternalError(errs.SubtypeFileIO, "failed to create workspace directory: %v", err).WithCause(err)
 	}
 	data, err := json.MarshalIndent(multi, "", "  ")
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to marshal config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to marshal config: %v", err).WithCause(err)
 	}
 	if err := validate.AtomicWrite(configPath, append(data, '\n'), 0600); err != nil {
-		return output.Errorf(output.ExitInternal, "bind",
-			"failed to write config %s: %v", configPath, err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to write config %s: %v", configPath, err).WithCause(err)
 	}
 
 	replaced := previousConfigBytes != nil
-	msg := getBindMsg(opts.Lang)
+	// uiMsg renders human-facing TUI text (stderr success banner). Follows
+	// opts.UILang — zh by default; picker can flip it to en. --lang does
+	// not influence the TUI language.
+	uiMsg := getBindMsg(opts.UILang)
 	display := sourceDisplayName(source)
 
 	if replaced {
@@ -400,7 +433,11 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 	}
 
 	fmt.Fprintln(opts.Factory.IOStreams.ErrOut,
-		fmt.Sprintf(msg.BindSuccessHeader, display)+"\n"+msg.BindSuccessNotice)
+		fmt.Sprintf(uiMsg.BindSuccessHeader, display)+"\n"+uiMsg.BindSuccessNotice)
+
+	if opts.langExplicit && opts.Lang != "" {
+		fmt.Fprintln(opts.Factory.IOStreams.ErrOut, fmt.Sprintf(uiMsg.LangPreferenceSet, opts.Lang))
+	}
 
 	// TUI mode is a human sitting at a terminal; the BindSuccess notice on
 	// stderr is enough and a machine-readable JSON dump on stdout is just
@@ -418,12 +455,17 @@ func commitBinding(opts *BindOptions, appConfig *core.AppConfig, previousConfigB
 		"replaced":    replaced,
 		"identity":    opts.Identity,
 	}
-	brand := brandDisplay(string(appConfig.Brand), opts.Lang)
+	// JSON "message" follows the effective preference on disk (appConfig.Lang),
+	// not the raw --lang value: when --lang is omitted on re-bind, preferredLang
+	// has already inherited the prior preference into appConfig.Lang, and the
+	// message should respect that inherited choice. stderr above follows UILang.
+	prefMsg := getBindMsg(appConfig.Lang)
+	brand := brandDisplay(string(appConfig.Brand), appConfig.Lang)
 	switch opts.Identity {
 	case "bot-only":
-		envelope["message"] = fmt.Sprintf(msg.MessageBotOnly, appConfig.AppId, display, brand)
+		envelope["message"] = fmt.Sprintf(prefMsg.MessageBotOnly, appConfig.AppId, display, brand)
 	case "user-default":
-		envelope["message"] = fmt.Sprintf(msg.MessageUserDefault, appConfig.AppId, display, display)
+		envelope["message"] = fmt.Sprintf(prefMsg.MessageUserDefault, appConfig.AppId, display, display)
 	}
 
 	resultJSON, _ := json.Marshal(envelope)
@@ -460,7 +502,7 @@ func cleanupKeychainFromData(kc keychain.KeychainAccess, data []byte, keep *core
 
 // tuiSelectSource prompts user to choose bind source.
 func tuiSelectSource(opts *BindOptions) (string, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	var source string
 
 	// Pre-select based on detected env signals
@@ -485,7 +527,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title(msg.SelectSource).
-				Description(fmt.Sprintf(msg.SelectSourceDesc, brandDisplay(opts.Brand, opts.Lang))).
+				Description(fmt.Sprintf(msg.SelectSourceDesc, brandDisplay(opts.Brand, opts.UILang))).
 				Options(
 					huh.NewOption(fmt.Sprintf(msg.SourceOpenClaw, openclawPath), "openclaw"),
 					huh.NewOption(fmt.Sprintf(msg.SourceHermes, hermesEnvPath), "hermes"),
@@ -507,7 +549,7 @@ func tuiSelectSource(opts *BindOptions) (string, error) {
 // tuiSelectApp prompts the user to choose from multiple account candidates.
 // Invoked only via selectCandidate's tuiPrompt callback, and only in TUI mode.
 func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Candidate, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 	options := make([]huh.Option[int], 0, len(candidates))
 	for i, c := range candidates {
 		label := c.AppID
@@ -521,7 +563,7 @@ func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Ca
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[int]().
-				Title(fmt.Sprintf(msg.SelectAccount, sourceDisplayName(source), brandDisplay(opts.Brand, opts.Lang))).
+				Title(fmt.Sprintf(msg.SelectAccount, sourceDisplayName(source), brandDisplay(opts.Brand, opts.UILang))).
 				Options(options...).
 				Value(&selected),
 		),
@@ -538,7 +580,7 @@ func tuiSelectApp(opts *BindOptions, source string, candidates []Candidate) (*Ca
 
 // tuiConflictPrompt shows existing binding and asks user to Force or Cancel.
 func tuiConflictPrompt(opts *BindOptions, source, configPath string) (string, error) {
-	msg := getBindMsg(opts.Lang)
+	msg := getBindMsg(opts.UILang)
 
 	// Build existing binding summary
 	existingSummary := fmt.Sprintf(msg.ConflictDesc, source, "?", "?", configPath)
@@ -587,9 +629,14 @@ func validateBindFlags(opts *BindOptions) error {
 		switch opts.Identity {
 		case "bot-only", "user-default":
 		default:
-			return output.ErrValidation("invalid --identity %q; valid values: bot-only, user-default", opts.Identity)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --identity %q; valid values: bot-only, user-default", opts.Identity).WithParam("--identity")
 		}
 	}
+	lang, err := cmdutil.ParseLangFlag(opts.Lang)
+	if err != nil {
+		return err
+	}
+	opts.Lang = string(lang)
 	return nil
 }
 
@@ -605,8 +652,8 @@ func validateBindFlags(opts *BindOptions) error {
 // DescriptionFunc approach breaks here because a longer description on
 // hover pushes options out of the field's initial viewport.
 func tuiSelectIdentity(opts *BindOptions) (string, error) {
-	msg := getBindMsg(opts.Lang)
-	brand := brandDisplay(opts.Brand, opts.Lang)
+	msg := getBindMsg(opts.UILang)
+	brand := brandDisplay(opts.Brand, opts.UILang)
 	botLabel := msg.IdentityBotOnly + "\n" + indent(fmt.Sprintf(msg.IdentityBotOnlyDesc, brand))
 	userLabel := msg.IdentityUserDefault + "\n" + indent(fmt.Sprintf(msg.IdentityUserDefaultDesc, brand, brand))
 	var value string

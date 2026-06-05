@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -51,9 +52,32 @@ func TestValidateDriveExportSpec(t *testing.T) {
 			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base"},
 		},
 		{
+			name: "slides pptx ok",
+			spec: driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "pptx"},
+		},
+		{
+			name: "slides pdf ok",
+			spec: driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "pdf"},
+		},
+		{
 			name:    "base non bitable rejected",
 			spec:    driveExportSpec{Token: "sheet123", DocType: "sheet", FileExtension: "base"},
 			wantErr: "only supports --doc-type bitable",
+		},
+		{
+			name:    "pptx non slides rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "docx", FileExtension: "pptx"},
+			wantErr: "only supports --doc-type slides",
+		},
+		{
+			name:    "slides csv rejected",
+			spec:    driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "csv"},
+			wantErr: "slides only supports",
+		},
+		{
+			name:    "unknown doc type rejected",
+			spec:    driveExportSpec{Token: "docx123", DocType: "unknown", FileExtension: "pdf"},
+			wantErr: "invalid --doc-type",
 		},
 		{
 			name:    "unknown file extension rejected",
@@ -81,16 +105,19 @@ func TestValidateDriveExportSpec(t *testing.T) {
 
 func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# hello\n",
+				"document": map[string]interface{}{
+					"content": "# hello\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -118,6 +145,14 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+
 	data, err := os.ReadFile(filepath.Join(tmpDir, "Weekly Notes.md"))
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
@@ -132,16 +167,19 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 
 func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# custom\n",
+				"document": map[string]interface{}{
+					"content": "# custom\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 
 	tmpDir := t.TempDir()
 	withDriveWorkingDir(t, tmpDir)
@@ -156,6 +194,14 @@ func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-notes.md"))
@@ -179,7 +225,7 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 	}{
 		{
 			name:         "markdown",
-			wantURL:      "/open-apis/docs/v1/content",
+			wantURL:      "/open-apis/docs_ai/v1/documents/docx123/fetch",
 			wantFileName: `"file_name": "notes.md"`,
 			args: []string{
 				"+export",
@@ -233,16 +279,19 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 
 func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/docs/v1/content",
+	fetchStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
-				"content": "# fallback\n",
+				"document": map[string]interface{}{
+					"content": "# fallback\n",
+				},
 			},
 		},
-	})
+	}
+	reg.Register(fetchStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/metas/batch_query",
@@ -267,6 +316,14 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	var reqBody map[string]interface{}
+	if err := json.Unmarshal(fetchStub.CapturedBody, &reqBody); err != nil {
+		t.Fatalf("unmarshal docs_ai fetch body: %v", err)
+	}
+	if reqBody["format"] != "markdown" {
+		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+
 	data, err := os.ReadFile(filepath.Join(tmpDir, "docx123.md"))
 	if err != nil {
 		t.Fatalf("ReadFile() error: %v", err)
@@ -276,6 +333,88 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"file_name": "docx123.md"`) {
 		t.Fatalf("stdout missing fallback file name: %s", stdout.String())
+	}
+}
+
+func TestDriveExportMarkdownRejectsMissingDocumentObject(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for missing document object, got nil")
+	}
+
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
+	}
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(intErr.Message, "missing document object") {
+		t.Fatalf("error message = %q, want mention of missing document object", intErr.Message)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitInternal)
+	}
+}
+
+func TestDriveExportMarkdownRejectsMissingDocumentContent(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/docx123/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{},
+			},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "markdown",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for missing document.content, got nil")
+	}
+
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
+	}
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(intErr.Message, "missing document.content") {
+		t.Fatalf("error message = %q, want mention of missing document.content", intErr.Message)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitInternal)
 	}
 }
 
@@ -562,21 +701,25 @@ func TestDriveExportReadyDownloadFailureIncludesRecoveryHint(t *testing.T) {
 		t.Fatal("expected download recovery error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	// The download itself succeeds; the local "file already exists" failure is a
+	// validation error. The recovery-hint wrapper must preserve that typed class
+	// (exit 2) instead of downgrading it to api/server_error (exit 1), per
+	// ERROR_CONTRACT.md "propagate typed errors unchanged".
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError (preserved class), got %T", err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "already exists") {
-		t.Fatalf("message missing overwrite guidance: %q", exitErr.Detail.Message)
+	if !strings.Contains(valErr.Message, "already exists") {
+		t.Fatalf("message missing overwrite guidance: %q", valErr.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "ticket=tk_ready") {
-		t.Fatalf("hint missing ticket: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, "ticket=tk_ready") {
+		t.Fatalf("hint missing ticket: %q", valErr.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "file_token=box_ready") {
-		t.Fatalf("hint missing file token: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, "file_token=box_ready") {
+		t.Fatalf("hint missing file token: %q", valErr.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, `lark-cli drive +export-download --file-token "box_ready" --file-name "report.pdf"`) {
-		t.Fatalf("hint missing recovery command: %q", exitErr.Detail.Hint)
+	if !strings.Contains(valErr.Hint, `lark-cli drive +export-download --file-token "box_ready" --file-name "report.pdf"`) {
+		t.Fatalf("hint missing recovery command: %q", valErr.Hint)
 	}
 }
 
@@ -730,18 +873,26 @@ func TestDriveExportPollErrorsReturnLastErrorWithRecoveryHint(t *testing.T) {
 		t.Fatalf("stdout should stay empty on persistent poll error: %s", stdout.String())
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %v", err)
+	// The poll error is now a typed *errs.APIError (runtime.CallAPITyped).
+	// The recovery-hint wrapper must preserve that error's class and exit code
+	// (NOT downgrade it) and only append the recovery hint to the Problem in place.
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T (%v)", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "temporary backend failure") {
-		t.Fatalf("message missing last poll error: %q", exitErr.Detail.Message)
+	// Lark code 999 is unknown to the classifier, so it maps to CategoryAPI →
+	// ExitAPI — the wrapper must keep that, not force a different exit code.
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Fatalf("exit code = %d, want preserved %d (ExitAPI)", output.ExitCodeOf(err), output.ExitAPI)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "ticket=tk_poll_fail") {
-		t.Fatalf("hint missing ticket: %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Message, "temporary backend failure") {
+		t.Fatalf("message missing last poll error: %q", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "lark-cli drive +task_result --scenario export --ticket tk_poll_fail --file-token docx123") {
-		t.Fatalf("hint missing recovery command: %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "ticket=tk_poll_fail") {
+		t.Fatalf("hint missing ticket: %q", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "lark-cli drive +task_result --scenario export --ticket tk_poll_fail --file-token docx123") {
+		t.Fatalf("hint missing recovery command: %q", p.Hint)
 	}
 }
 

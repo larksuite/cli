@@ -5,6 +5,9 @@ package base
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"io"
 	"io/fs"
 	"os"
@@ -79,6 +82,42 @@ func TestDetectAttachmentMIMETypeFallsBackToContent(t *testing.T) {
 	}
 	if got != "text/plain" {
 		t.Fatalf("detectAttachmentMIMEType() = %q, want %q", got, "text/plain")
+	}
+}
+
+func TestDetectAttachmentImageDimensions(t *testing.T) {
+	var buf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 4, 3))
+	img.Set(0, 0, color.RGBA{G: 255, A: 255})
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("png.Encode() error = %v", err)
+	}
+	fio := attachmentTestFileIO{openFile: newAttachmentTestFile(buf.Bytes())}
+
+	width, height, ok := detectAttachmentImageDimensions(fio, "image.png", "image/png")
+	if !ok || width != 4 || height != 3 {
+		t.Fatalf("detectAttachmentImageDimensions() = (%d,%d,%v), want (4,3,true)", width, height, ok)
+	}
+}
+
+func TestAttachmentImageDimensionsWarningEnabled(t *testing.T) {
+	tests := []struct {
+		mimeType string
+		want     bool
+	}{
+		{mimeType: "image/gif", want: true},
+		{mimeType: "image/jpeg", want: true},
+		{mimeType: "image/png", want: true},
+		{mimeType: "image/webp", want: false},
+		{mimeType: "application/pdf", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.mimeType, func(t *testing.T) {
+			if got := attachmentImageDimensionsWarningEnabled(tt.mimeType); got != tt.want {
+				t.Fatalf("attachmentImageDimensionsWarningEnabled(%q) = %v, want %v", tt.mimeType, got, tt.want)
+			}
+		})
 	}
 }
 

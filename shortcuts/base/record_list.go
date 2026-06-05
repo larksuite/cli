@@ -22,6 +22,8 @@ var BaseRecordList = common.Shortcut{
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
 		recordListViewRefFlag(),
+		recordFilterFlag(),
+		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 		recordReadFormatFlag(),
@@ -29,10 +31,21 @@ var BaseRecordList = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --limit 50",
 		"Example with projection: lark-cli base +record-list --base-token <base_token> --table-id <table_id> --field-id Name --field-id Status --limit 50",
+		`Text equality filter: --filter-json '{"logic":"and","conditions":[["Title","==","Launch plan"]]}'`,
+		`Text contains/like filter: --filter-json '{"logic":"and","conditions":[["Title","intersects","urgent"]]}'`,
+		`Number equality filter: --filter-json '{"logic":"and","conditions":[["Score","==",95]]}'`,
+		`Date equality filter: --filter-json '{"logic":"and","conditions":[["Due Date","==","ExactDate(2026-06-02)"]]}'`,
+		`Option intersection filter: --filter-json '{"logic":"and","conditions":[["Tags","intersects",["P0","Blocked"]]]}'`,
+		`Sort priority follows --sort-json array order: --sort-json '[{"field":"Updated","desc":true},{"field":"Title","desc":false}]'`,
+		formatRecordQueryPriorityTip(),
 		"Default output is markdown; pass --format json to get the raw JSON envelope.",
 		"Use --field-id repeatedly to keep output small and aligned with the task.",
-		"Use --view-id when the user asks for a specific view or after creating a temporary filtered/sorted view.",
-		"For structured filters, sorting, Top/Bottom N, and link fields, follow the lark-base record read SOP.",
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := validateRecordReadFormat(runtime); err != nil {
+			return err
+		}
+		return validateRecordQueryOptions(runtime)
 	},
 	DryRun: dryRunRecordList,
 	PostMount: func(cmd *cobra.Command) {

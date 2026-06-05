@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -19,7 +19,7 @@ import (
 var DriveImport = common.Shortcut{
 	Service:     "drive",
 	Command:     "+import",
-	Description: "Import a local file to Drive as a cloud document (docx, sheet, bitable)",
+	Description: "Import a local file to Drive as a cloud document (docx, sheet, bitable, slides)",
 	Risk:        "write",
 	Scopes: []string{
 		"docs:document.media:upload",
@@ -27,10 +27,11 @@ var DriveImport = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md, .base; large files auto use multipart upload; .base is capped at 20MB)", Required: true},
-		{Name: "type", Desc: "target document type (docx, sheet, bitable)", Required: true},
+		{Name: "file", Desc: "local file path (e.g. .docx, .xlsx, .md, .base, .pptx; large files auto use multipart upload; .base is capped at 20MB, .pptx at 500MB)", Required: true},
+		{Name: "type", Desc: "target document type (docx, sheet, bitable, slides)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
+		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateDriveImportSpec(driveImportSpec{
@@ -38,6 +39,7 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		})
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -46,10 +48,14 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		}
 		fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
+		}
+		if valErr := validateDriveImportSpec(spec); valErr != nil {
+			return common.NewDryRunAPI().Set("error", valErr.Error())
 		}
 
 		dry := common.NewDryRunAPI()
@@ -76,6 +82,7 @@ var DriveImport = common.Shortcut{
 			DocType:     strings.ToLower(runtime.Str("type")),
 			FolderToken: runtime.Str("folder-token"),
 			Name:        runtime.Str("name"),
+			TargetToken: runtime.Str("target-token"),
 		}
 		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
 			return err
@@ -154,10 +161,10 @@ func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, 
 	// and format-specific size limits before planning the upload path.
 	info, err := fio.Stat(spec.FilePath)
 	if err != nil {
-		return 0, common.WrapInputStatError(err)
+		return 0, driveInputStatError(err)
 	}
 	if !info.Mode().IsRegular() {
-		return 0, output.ErrValidation("file must be a regular file: %s", spec.FilePath)
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", spec.FilePath).WithParam("--file")
 	}
 	if err = validateDriveImportFileSize(spec.FilePath, spec.DocType, info.Size()); err != nil {
 		return 0, err
@@ -214,10 +221,10 @@ func appendDriveImportUploadDryRun(dry *common.DryRunAPI, spec driveImportSpec, 
 // from the API and isn't normalized; if it ever returns aliases like "sheets"
 // or "sheet_v2" the URL construction would silently fall through. Fall back
 // to the user-supplied --type, which is already validated to docx/sheet/
-// bitable, so out.url stays populated whenever status.Token is set.
+// bitable/slides, so out.url stays populated whenever status.Token is set.
 func normalizeDriveImportKindForURL(serverType, fallback string) string {
 	switch strings.ToLower(strings.TrimSpace(serverType)) {
-	case "docx", "sheet", "bitable":
+	case "docx", "sheet", "bitable", "slides":
 		return strings.ToLower(strings.TrimSpace(serverType))
 	}
 	return fallback

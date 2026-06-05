@@ -23,7 +23,7 @@ var BaseFormsList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
-		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request (max 100)"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, max 100"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().

@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/i18n"
 )
 
 type initMsg struct {
@@ -26,6 +27,10 @@ type initMsg struct {
 	DetectedLarkTenant   string
 	AppCreated           string
 	ConfigSaved          string
+
+	// LangPreferenceSet is printed to stderr after a successful init when the
+	// user explicitly passed --lang. Format: language code.
+	LangPreferenceSet string
 }
 
 var initMsgZh = &initMsg{
@@ -43,6 +48,7 @@ var initMsgZh = &initMsg{
 	DetectedLarkTenant:   "[lark-cli] 检测到 Lark 租户，切换端点重试...",
 	AppCreated:           "应用配置成功! App ID: %s",
 	ConfigSaved:          "应用配置成功! App ID: %s",
+	LangPreferenceSet:    "语言偏好已设置：%s",
 }
 
 var initMsgEn = &initMsg{
@@ -60,29 +66,27 @@ var initMsgEn = &initMsg{
 	DetectedLarkTenant:   "[lark-cli] Detected Lark tenant, switching endpoint...",
 	AppCreated:           "App configured! App ID: %s",
 	ConfigSaved:          "App configured! App ID: %s",
+	LangPreferenceSet:    "Language preference set to: %s",
 }
 
-func getInitMsg(lang string) *initMsg {
-	if lang == "en" {
+// getInitMsg picks the zh/en TUI bundle; non-English falls back to zh.
+func getInitMsg(lang i18n.Lang) *initMsg {
+	if lang.IsEnglish() {
 		return initMsgEn
 	}
 	return initMsgZh
 }
 
-// promptLangSelection shows an interactive language picker and returns the chosen lang code.
-// savedLang is used as the pre-selected default (from existing config).
-func promptLangSelection(savedLang string) (string, error) {
-	lang := savedLang
-	if lang != "en" {
-		lang = "zh"
-	}
+// promptLangSelection shows the 中文/English picker and returns the chosen locale.
+func promptLangSelection() (i18n.Lang, error) {
+	lang := i18n.LangZhCN
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewSelect[string]().
+			huh.NewSelect[i18n.Lang]().
 				Title("Language / 语言").
 				Options(
-					huh.NewOption("中文", "zh"),
-					huh.NewOption("English", "en"),
+					huh.NewOption("中文", i18n.LangZhCN),
+					huh.NewOption("English", i18n.LangEnUS),
 				).
 				Value(&lang),
 		),

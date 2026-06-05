@@ -49,7 +49,7 @@ func encodeTextCharset(body []byte, label string) ([]byte, error) {
 	}
 	enc, _ := htmlcharset.Lookup(label)
 	if enc == nil {
-		return nil, fmt.Errorf("unsupported charset %q", label)
+		return nil, fmt.Errorf("unsupported charset %q", label) //nolint:forbidigo // intermediate draft charset error; mail command layer wraps into typed ValidationError.
 	}
 	var buf bytes.Buffer
 	writer := transform.NewWriter(&buf, enc.NewEncoder())

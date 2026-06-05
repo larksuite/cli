@@ -9,7 +9,7 @@ import (
 	"time"
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
-	drivee2e "github.com/larksuite/cli/tests/cli_e2e/drive"
+	"github.com/larksuite/cli/tests/cli_e2e/drive"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -26,11 +26,12 @@ func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
 	docTitle := "lark-cli-e2e-docs-" + suffix
 	docContent := "# Test Document\n\nThis document was created by lark-cli e2e test."
 
-	folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, folderName, "bot", "")
+	const defaultAs = "bot"
+	folderToken := drive.CreateDriveFolder(t, parentT, ctx, folderName, defaultAs, "")
 	var docToken string
 
 	t.Run("create", func(t *testing.T) {
-		docToken = createDocWithRetry(t, parentT, ctx, folderToken, docTitle, docContent, "bot")
+		docToken = createDocWithRetry(t, parentT, ctx, folderToken, docTitle, docContent, defaultAs)
 	})
 
 	t.Run("fetch", func(t *testing.T) {
@@ -61,10 +62,11 @@ func TestDocs_CreateAndFetchWorkflowAsUser(t *testing.T) {
 	docTitle := "lark-cli-e2e-user-docs-" + suffix
 	docContent := "# User Test Document\n\nCreated with user access token."
 	var docToken string
-	folderToken := drivee2e.CreateDriveFolder(t, parentT, ctx, folderName, "user", "")
+	const defaultAs = "user"
+	folderToken := drive.CreateDriveFolder(t, parentT, ctx, folderName, defaultAs, "")
 
 	t.Run("create as user", func(t *testing.T) {
-		docToken = createDocWithRetry(t, parentT, ctx, folderToken, docTitle, docContent, "user")
+		docToken = createDocWithRetry(t, parentT, ctx, folderToken, docTitle, docContent, defaultAs)
 	})
 
 	t.Run("fetch as user", func(t *testing.T) {
@@ -72,7 +74,7 @@ func TestDocs_CreateAndFetchWorkflowAsUser(t *testing.T) {
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args:      []string{"docs", "+fetch", "--doc", docToken},
-			DefaultAs: "user",
+			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)

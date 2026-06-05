@@ -30,7 +30,7 @@ var ImMessagesSearch = common.Shortcut{
 	Command:     "+messages-search",
 	Description: "Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
-	Scopes:      []string{"search:message", "contact:user.basic_profile:readonly"},
+	Scopes:      []string{"search:message", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -49,6 +49,7 @@ var ImMessagesSearch = common.Shortcut{
 		{Name: "page-token", Desc: "page token"},
 		{Name: "page-all", Type: "bool", Desc: "automatically paginate search results"},
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max search pages when auto-pagination is enabled (default 20, max 40)"},
+		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		req, err := buildMessagesSearchRequest(runtime)
@@ -68,12 +69,17 @@ var ImMessagesSearch = common.Shortcut{
 		} else {
 			d = d.Desc("Step 1: search messages")
 		}
-		return d.
+		d = d.
 			POST("/open-apis/im/v1/messages/search").
 			Params(dryParams).
 			Body(req.body).
 			Desc("Step 2 (if results): GET /open-apis/im/v1/messages/mget?message_ids=...  — batch fetch message details (max 50)").
 			Desc("Step 3 (if results): POST /open-apis/im/v1/chats/batch_query  — fetch chat names for context")
+		if !runtime.Bool("no-reactions") {
+			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
+				Desc("Step 4 (if results): reaction enrichment in batches of up to 20 messages. Pass --no-reactions to skip.")
+		}
+		return d
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := buildMessagesSearchRequest(runtime)
@@ -153,13 +159,19 @@ var ImMessagesSearch = common.Shortcut{
 
 		// ── Step 4: Format message content + attach chat context ──
 		nameCache := make(map[string]string)
+		// Pre-fetch merge_forward sub-messages concurrently before the per-item
+		// conversion loop, so N merge_forwards in the search hits don't
+		// serialize into N × ~1s of stall inside FormatMessageItem. Passing
+		// nameCache also pre-resolves every sub-item's sender open_id in one
+		// batched contact API call.
+		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, msgItems, nameCache)
 		enriched := make([]map[string]interface{}, 0, len(msgItems))
 		for _, item := range msgItems {
 			m, _ := item.(map[string]interface{})
 			chatId, _ := m["chat_id"].(string)
 
 			// Reuse unified content converter
-			msg := convertlib.FormatMessageItem(m, runtime, nameCache)
+			msg := convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch)
 			if chatId != "" {
 				msg["chat_id"] = chatId
 			}
@@ -184,6 +196,9 @@ var ImMessagesSearch = common.Shortcut{
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
 		convertlib.ResolveSenderNames(runtime, enriched, nameCache)
 		convertlib.AttachSenderNames(enriched, nameCache)
+		if !runtime.Bool("no-reactions") {
+			convertlib.EnrichReactions(runtime, enriched)
+		}
 
 		outData := map[string]interface{}{
 			"messages":   enriched,

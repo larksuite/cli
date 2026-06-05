@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -212,9 +213,12 @@ func TestOutputRecordMarkdownContentSafetyBlockDoesNotWriteStdout(t *testing.T) 
 		"record_id_list": []interface{}{"rec_1"},
 		"data":           []interface{}{[]interface{}{"Alice"}},
 	})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Code != output.ExitContentSafety {
-		t.Fatalf("err=%v, want content safety exit error", err)
+	var csErr *errs.ContentSafetyError
+	if !errors.As(err, &csErr) {
+		t.Fatalf("err=%v, want typed content safety error", err)
+	}
+	if len(csErr.Rules) != 1 || csErr.Rules[0] != "r1" {
+		t.Fatalf("rules=%v", csErr.Rules)
 	}
 	if stdout.Len() > 0 {
 		t.Fatalf("block mode should not write stdout, got:\n%s", stdout.String())

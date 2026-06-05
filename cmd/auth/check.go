@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -37,6 +38,7 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to check (space-separated)")
 	cmd.MarkFlagRequired("scope")
+	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
 }
@@ -46,8 +48,7 @@ func authCheckRun(opts *CheckOptions) error {
 
 	required := strings.Fields(opts.Scope)
 	if len(required) == 0 {
-		output.PrintJson(f.IOStreams.Out, map[string]interface{}{"ok": true, "granted": []string{}, "missing": []string{}})
-		return nil
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope cannot be empty").WithParam("--scope")
 	}
 
 	config, err := f.Config()

@@ -23,9 +23,19 @@ func resolveFileRef(ref *SecretRef, pc *ProviderConfig) (string, error) {
 		return "", fmt.Errorf("file provider path is empty")
 	}
 
+	// OpenClaw preserves user-authored `~/...` paths verbatim on disk for
+	// portability and resolves them at read time. lark-cli reads the file
+	// raw, so we mirror that resolution here before the audit — otherwise
+	// an unambiguous home-relative path would be rejected by
+	// requireAbsolutePath, which is meant to guard against cwd-relative
+	// paths (a different concern). expandTildePath honours OPENCLAW_HOME so
+	// a tilde inside an OPENCLAW_HOME-overridden config resolves to the
+	// same absolute path OpenClaw itself would have used.
+	targetPath := expandTildePath(pc.Path)
+
 	// Security audit on file path
 	securePath, err := AssertSecurePath(AuditParams{
-		TargetPath:            pc.Path,
+		TargetPath:            targetPath,
 		Label:                 "secrets.providers file path",
 		TrustedDirs:           pc.TrustedDirs,
 		AllowInsecurePath:     pc.AllowInsecurePath,

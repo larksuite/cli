@@ -20,6 +20,8 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
+	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -31,6 +33,18 @@ import (
 var mentionFixRe = regexp.MustCompile(`<at\s+(id|open_id|user_id)=("?)([^"\s/>]+)"?\s*/?>`)
 var threadIDRe = regexp.MustCompile(`^omt_`)
 var messageIDRe = regexp.MustCompile(`^om_`)
+
+func flagMessageID(rt *common.RuntimeContext) (string, error) {
+	id := strings.TrimSpace(rt.Str("message-id"))
+	if id == "" {
+		return "", output.ErrValidation("--message-id is required")
+	}
+	if strings.HasPrefix(id, "omt_") {
+		return "", output.ErrValidation(
+			"invalid message ID %q: omt_ prefix is a thread ID, not a message ID; flag operations require om_ message IDs", id)
+	}
+	return validateMessageID(id)
+}
 
 func normalizeAtMentions(content string) string {
 	return mentionFixRe.ReplaceAllString(content, `<at user_id="$3">`)
@@ -529,7 +543,17 @@ func findMP4Box(data []byte, start, end int, boxType string) (int, int) {
 			if offset+16 > end {
 				return -1, -1
 			}
-			boxEnd = int(binary.BigEndian.Uint64(data[offset+8:]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring the
+			// offset+size used for 32-bit boxes below). Reject sizes that do not
+			// fit the search window; this also rejects values that would
+			// overflow int and drive boxEnd negative (CWE-190), which would
+			// otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8:])
+			if largesize < 16 || largesize > uint64(end-offset) {
+				return -1, -1
+			}
+			boxEnd = offset + int(largesize)
 			dataStart = offset + 16
 		default:
 			if size < 8 {
@@ -674,7 +698,16 @@ func readMp4DurationBytes(data []byte) int64 {
 			if offset+16 > fileSize {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(data[offset+8 : offset+16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190), which would otherwise index data out of range and panic.
+			largesize := binary.BigEndian.Uint64(data[offset+8 : offset+16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
@@ -735,7 +768,16 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 			if _, err := f.ReadAt(hdr[8:16], offset+8); err != nil {
 				return 0
 			}
-			boxEnd = int64(binary.BigEndian.Uint64(hdr[8:16]))
+			// 64-bit "largesize" is the whole box length including its 16-byte
+			// header, so the box ends at offset+largesize (mirroring offset+size
+			// for 32-bit boxes). Reject sizes that do not fit the file; this also
+			// rejects values that would overflow int64 and drive boxEnd negative
+			// (CWE-190).
+			largesize := binary.BigEndian.Uint64(hdr[8:16])
+			if largesize < 16 || largesize > uint64(fileSize-offset) {
+				return 0
+			}
+			boxEnd = offset + int64(largesize)
 			dataStart = offset + 16
 		case size < 8:
 			return 0
@@ -775,49 +817,25 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 //  5. Compress excess blank lines
 //  6. Strip invalid image references (keep only img_xxx keys)
 var (
-	reH2toH6             = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1                 = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3          = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH            = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap         = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableAfter         = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
-	reExcessNL           = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg         = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock          = regexp.MustCompile("```[\\s\\S]*?```")
-	reBlankLineSeparator = regexp.MustCompile(`\n(?:[ \t]*\n)+`)
+	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
+	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reExcessNL   = regexp.MustCompile(`\n{3,}`)
+	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
+	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
 )
-
-const (
-	markdownCodeBlockPlaceholder = "___CB_"
-	postBlankLinePlaceholder     = "\u200B"
-)
-
-type markdownPart struct {
-	text         string
-	newlineCount int
-	isSeparator  bool
-}
-
-func protectMarkdownCodeBlocks(text string) (string, []string) {
-	var codeBlocks []string
-	protected := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
-		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, idx)
-	})
-	return protected, codeBlocks
-}
-
-func restoreMarkdownCodeBlocks(text string, codeBlocks []string) string {
-	restored := text
-	for i, block := range codeBlocks {
-		restored = strings.Replace(restored, fmt.Sprintf("%s%d___", markdownCodeBlockPlaceholder, i), block, 1)
-	}
-	return restored
-}
 
 func optimizeMarkdownStyle(text string) string {
-	r, codeBlocks := protectMarkdownCodeBlocks(text)
+	const mark = "___CB_"
+	var codeBlocks []string
+	r := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
+		idx := len(codeBlocks)
+		codeBlocks = append(codeBlocks, m)
+		return fmt.Sprintf("%s%d___", mark, idx)
+	})
 
 	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
 	if reHasH1toH3.MatchString(text) {
@@ -830,7 +848,9 @@ func optimizeMarkdownStyle(text string) string {
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
 	r = reTableAfter.ReplaceAllString(r, "$1\n")
 
-	r = restoreMarkdownCodeBlocks(r, codeBlocks)
+	for i, block := range codeBlocks {
+		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), block, 1)
+	}
 
 	r = reExcessNL.ReplaceAllString(r, "\n\n")
 
@@ -849,280 +869,12 @@ func optimizeMarkdownStyle(text string) string {
 	return r
 }
 
-func shouldUseSegmentedPost(markdown string) bool {
-	protected, _ := protectMarkdownCodeBlocks(markdown)
-	return reBlankLineSeparator.MatchString(protected)
-}
-
-func splitMarkdownByBlankLines(markdown string) []markdownPart {
-	protected, codeBlocks := protectMarkdownCodeBlocks(markdown)
-	locs := reBlankLineSeparator.FindAllStringIndex(protected, -1)
-	if len(locs) == 0 {
-		return []markdownPart{{text: markdown}}
-	}
-
-	parts := make([]markdownPart, 0, len(locs)*2+1)
-	last := 0
-	for _, loc := range locs {
-		if loc[0] > last {
-			content := restoreMarkdownCodeBlocks(protected[last:loc[0]], codeBlocks)
-			if content != "" {
-				parts = append(parts, markdownPart{text: content})
-			}
-		}
-		separator := protected[loc[0]:loc[1]]
-		parts = append(parts, markdownPart{
-			isSeparator:  true,
-			newlineCount: strings.Count(separator, "\n"),
-		})
-		last = loc[1]
-	}
-
-	if last < len(protected) {
-		content := restoreMarkdownCodeBlocks(protected[last:], codeBlocks)
-		if content != "" {
-			parts = append(parts, markdownPart{text: content})
-		}
-	}
-
-	if len(parts) == 0 {
-		return []markdownPart{{text: markdown}}
-	}
-	return parts
-}
-
-func marshalMarkdownPostContent(content [][]map[string]interface{}) string {
-	payload := map[string]interface{}{
-		"zh_cn": map[string]interface{}{
-			"content": content,
-		},
-	}
-	return marshalJSONNoEscape(payload)
-}
-
-func buildSingleMDPost(markdown string) string {
-	return marshalMarkdownPostContent([][]map[string]interface{}{
-		buildPostElementNodes(optimizeMarkdownStyle(markdown)),
-	})
-}
-
-func buildSegmentedPost(markdown string) string {
-	parts := splitMarkdownByBlankLines(markdown)
-	content := make([][]map[string]interface{}, 0, len(parts))
-	for _, part := range parts {
-		if part.isSeparator {
-			for i := 1; i < part.newlineCount; i++ {
-				content = append(content, []map[string]interface{}{{
-					"tag":  "text",
-					"text": postBlankLinePlaceholder,
-				}})
-			}
-			continue
-		}
-		if part.text == "" {
-			continue
-		}
-		optimized := strings.Trim(optimizeMarkdownStyle(part.text), "\n")
-		if optimized == "" {
-			continue
-		}
-		content = append(content, buildPostElementNodes(optimized))
-	}
-	if len(content) == 0 {
-		return buildSingleMDPost(markdown)
-	}
-	return marshalMarkdownPostContent(content)
-}
-
-func buildMarkdownPostContent(markdown string) string {
-	if shouldUseSegmentedPost(markdown) {
-		return buildSegmentedPost(markdown)
-	}
-	return buildSingleMDPost(markdown)
-}
-
-// buildPostElementNodes splits optimized markdown text into Feishu post inline
-// elements. It tokenizes markdown links/images and bare http(s) URLs:
-//   - markdown links are kept verbatim inside a {"tag":"md"} segment
-//   - bare URLs become {"tag":"a"} elements rendered natively by Feishu,
-//     avoiding the md renderer misinterpreting underscores as italic markers
-//
-// Fenced code blocks are protected before tokenization so their content remains
-// a single md segment, and bare URLs support balanced parentheses in the path.
-func buildPostElementNodes(text string) []map[string]interface{} {
-	protected, codeBlocks := protectMarkdownCodeBlocks(text)
-	if protected == "" {
-		return []map[string]interface{}{{
-			"tag":  "md",
-			"text": text,
-		}}
-	}
-	elems := make([]map[string]interface{}, 0, 4)
-	prev := 0
-	for i := 0; i < len(protected); {
-		end, kind, ok := scanPostToken(protected, i)
-		if !ok {
-			i++
-			continue
-		}
-		if i > prev {
-			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(protected[prev:i], codeBlocks))
-		}
-
-		token := protected[i:end]
-		if kind == postTokenMarkdown {
-			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(token, codeBlocks))
-		} else {
-			url := trimBareURLToken(token)
-			if url == "" {
-				url = token
-			}
-			elems = append(elems, map[string]interface{}{
-				"tag":  "a",
-				"text": url,
-				"href": url,
-			})
-			elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(token[len(url):], codeBlocks))
-		}
-		prev = end
-		i = end
-	}
-	if prev < len(protected) {
-		elems = appendMDPostNode(elems, restoreMarkdownCodeBlocks(protected[prev:], codeBlocks))
-	}
-	if len(elems) == 0 {
-		return []map[string]interface{}{{
-			"tag":  "md",
-			"text": text,
-		}}
-	}
-	return elems
-}
-
-func trimBareURLToken(token string) string {
-	trimmed := strings.TrimRight(token, ".,;:!?")
-	for strings.HasSuffix(trimmed, ")") && strings.Count(trimmed, "(") < strings.Count(trimmed, ")") {
-		trimmed = strings.TrimSuffix(trimmed, ")")
-	}
-	return trimmed
-}
-
-type postTokenKind int
-
-const (
-	postTokenMarkdown postTokenKind = iota
-	postTokenURL
-)
-
-func appendMDPostNode(elems []map[string]interface{}, text string) []map[string]interface{} {
-	if text == "" {
-		return elems
-	}
-	return append(elems, map[string]interface{}{
-		"tag":  "md",
-		"text": text,
-	})
-}
-
-func scanPostToken(text string, start int) (end int, kind postTokenKind, ok bool) {
-	if end, ok = scanMarkdownLinkToken(text, start); ok {
-		return end, postTokenMarkdown, true
-	}
-	if end, ok = scanBareURLToken(text, start); ok {
-		return end, postTokenURL, true
-	}
-	return 0, 0, false
-}
-
-func scanMarkdownLinkToken(text string, start int) (int, bool) {
-	openBracket := start
-	if text[start] == '!' {
-		if start+1 >= len(text) || text[start+1] != '[' {
-			return 0, false
-		}
-		openBracket = start + 1
-	} else if text[start] != '[' {
-		return 0, false
-	}
-
-	closeBracket := strings.IndexByte(text[openBracket+1:], ']')
-	if closeBracket < 0 {
-		return 0, false
-	}
-	closeBracket += openBracket + 1
-	if closeBracket+1 >= len(text) || text[closeBracket+1] != '(' {
-		return 0, false
-	}
-	return scanBalancedParenToken(text, closeBracket+1)
-}
-
-func scanBareURLToken(text string, start int) (int, bool) {
-	if !strings.HasPrefix(text[start:], "http://") && !strings.HasPrefix(text[start:], "https://") {
-		return 0, false
-	}
-
-	depth := 0
-	for i := start; i < len(text); i++ {
-		switch text[i] {
-		case ' ', '\t', '\n', '\r', '<', '>', '"', '[', ']':
-			return i, i > start
-		case '(':
-			depth++
-		case ')':
-			if depth == 0 {
-				return i, i > start
-			}
-			depth--
-		}
-	}
-	return len(text), true
-}
-
-func scanBalancedParenToken(text string, openParen int) (int, bool) {
-	if openParen >= len(text) || text[openParen] != '(' {
-		return 0, false
-	}
-
-	depth := 0
-	for i := openParen; i < len(text); i++ {
-		switch text[i] {
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 {
-				return i + 1, true
-			}
-		}
-	}
-	return 0, false
-}
-
-func buildPostElements(text string) string {
-	return marshalJSONNoEscape(buildPostElementNodes(text))
-}
-
-func marshalJSONNoEscape(v interface{}) string {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	_ = enc.Encode(v)
-	return strings.TrimSuffix(buf.String(), "\n")
-}
-
-// marshalStringNoEscape serializes a string to JSON without HTML-escaping
-// special characters like &, <, >. Go's json.Marshal escapes them to \u0026
-// etc. by default, which breaks URLs containing & in Feishu's md renderer.
-func marshalStringNoEscape(s string) string {
-	return marshalJSONNoEscape(s)
-}
-
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
-// Used by DryRun. Output may include md/text paragraphs when blank-line separators are present.
-// Bare URLs are emitted as {"tag":"a"} elements to avoid Feishu's md renderer
-// misinterpreting underscores in URLs as italic markers.
+// Used by DryRun. Output: {"zh_cn":{"content":[[{"tag":"md","text":"..."}]]}}
 func wrapMarkdownAsPost(markdown string) string {
-	return buildMarkdownPostContent(markdown)
+	optimized := optimizeMarkdownStyle(markdown)
+	inner, _ := json.Marshal(optimized)
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
 }
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
@@ -1157,7 +909,9 @@ func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
 // and wraps as post format JSON. Used by Execute (makes network calls).
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
-	return buildMarkdownPostContent(resolved)
+	optimized := optimizeMarkdownStyle(resolved)
+	inner, _ := json.Marshal(optimized)
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
@@ -1431,4 +1185,223 @@ func uploadFileFromReader(ctx context.Context, runtime *common.RuntimeContext, r
 		return "", fmt.Errorf("file_key not found in response (code: %v, msg: %v)", result["code"], result["msg"])
 	}
 	return fileKey, nil
+}
+
+// FlagType enumerates the kind of bookmark.
+// Aligned with server-side constants: Unknown=0, Feed=1, Message=2.
+type FlagType int
+
+const (
+	FlagTypeUnknown FlagType = 0
+	FlagTypeFeed    FlagType = 1
+	FlagTypeMessage FlagType = 2
+)
+
+// ItemType enumerates the kind of thing being bookmarked.
+// Server-side constants (only the types used by IM flags):
+//
+//	default=0, thread=4, msg_thread=11.
+//
+// Note on the two thread-shaped item types:
+//   - ItemTypeThread (4)     — thread inside a topic-style chat
+//   - ItemTypeMsgThread (11) — thread inside a regular chat
+type ItemType int
+
+const (
+	ItemTypeDefault   ItemType = 0
+	ItemTypeThread    ItemType = 4  // thread in a topic-style chat
+	ItemTypeMsgThread ItemType = 11 // thread in a regular chat
+)
+
+const (
+	flagWriteScope = "im:feed.flag:write"
+	flagReadScope  = "im:feed.flag:read"
+)
+
+var (
+	flagWriteLookupScopes = append([]string{flagWriteScope}, flagLookupScopes...)
+	flagMessageReadScopes = []string{
+		"im:message.group_msg:get_as_user",
+		"im:message.p2p_msg:get_as_user",
+	}
+	flagLookupScopes = []string{
+		"im:message.group_msg:get_as_user",
+		"im:message.p2p_msg:get_as_user",
+		"im:chat:read",
+	}
+)
+
+func checkFlagRequiredScopes(ctx context.Context, rt *common.RuntimeContext, required []string) error {
+	if len(required) == 0 {
+		return nil
+	}
+	result, err := rt.Factory.Credential.ResolveToken(ctx, credential.NewTokenSpec(rt.As(), rt.Config.AppID))
+	if err != nil {
+		return output.ErrWithHint(output.ExitAuth, "auth",
+			fmt.Sprintf("cannot verify required scope(s): %v", err),
+			flagScopeLoginHint(required))
+	}
+	if result == nil || result.Scopes == "" {
+		fmt.Fprintf(rt.IO().ErrOut,
+			"warning: cannot verify required scope(s) because token scope metadata is unavailable; API may fail if missing: %s\n",
+			strings.Join(required, " "))
+		return nil
+	}
+	if missing := auth.MissingScopes(result.Scopes, required); len(missing) > 0 {
+		return output.ErrWithHint(output.ExitAuth, "missing_scope",
+			fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
+			flagScopeLoginHint(missing))
+	}
+	return nil
+}
+
+func flagScopeLoginHint(scopes []string) string {
+	return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(scopes, " "))
+}
+
+// flagItem is one entry in the flags API body. The server expects numeric
+// enums serialized as strings.
+type flagItem struct {
+	ItemID   string `json:"item_id"`
+	ItemType string `json:"item_type"`
+	FlagType string `json:"flag_type"`
+}
+
+// parseItemID inspects an om_ prefix and returns a best-guess
+// (itemType, flagType) pair. Used when the user omits the explicit enums.
+//   - om_xxx  → (default, message)
+func parseItemID(id string) (ItemType, FlagType, error) {
+	id = strings.TrimSpace(id)
+	switch {
+	case strings.HasPrefix(id, "om_"):
+		return ItemTypeDefault, FlagTypeMessage, nil
+	case id == "":
+		return 0, 0, output.ErrValidation("--message-id cannot be empty")
+	default:
+		return 0, 0, output.ErrValidation(
+			"cannot infer item type from id %q: expected om_ (message) prefix; "+
+				"pass --item-type and --flag-type explicitly if you are using a different id format", id)
+	}
+}
+
+// parseItemType converts a user-facing string to the server enum.
+func parseItemType(s string) (ItemType, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "default":
+		return ItemTypeDefault, nil
+	case "thread":
+		return ItemTypeThread, nil
+	case "msg_thread":
+		return ItemTypeMsgThread, nil
+	}
+	return 0, output.ErrValidation("invalid --item-type %q: expected one of default|thread|msg_thread", s)
+}
+
+// parseFlagType converts a user-facing string to the server enum.
+func parseFlagType(s string) (FlagType, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "", "message":
+		return FlagTypeMessage, nil
+	case "feed":
+		return FlagTypeFeed, nil
+	}
+	return 0, output.ErrValidation("invalid --flag-type %q: expected one of message|feed", s)
+}
+
+// isValidCombo checks if the (ItemType, FlagType) pair is accepted by the server.
+// Note: (ItemType, FlagType) is shorthand for (item_type, flag_type) — the two
+// enum fields that determine which layer the flag operates on.
+//
+// Valid combinations are:
+//   - (default, message)  — regular chat message (message-layer flag)
+//   - (thread, feed)      — thread as feed-layer flag (topic-style chat)
+//   - (msg_thread, feed)  — message-thread as feed-layer flag (regular chat)
+func isValidCombo(it ItemType, ft FlagType) bool {
+	return (it == ItemTypeDefault && ft == FlagTypeMessage) ||
+		(it == ItemTypeThread && ft == FlagTypeFeed) ||
+		(it == ItemTypeMsgThread && ft == FlagTypeFeed)
+}
+
+// parseItemTypeFromRaw parses a stringified numeric item_type back to ItemType.
+// Used when re-parsing the serialized enum for combo-validity checks.
+// Note: Unknown values return ItemTypeDefault (0). This is safe because:
+//  1. This function only parses values we serialized ourselves via newFlagItem
+//  2. Unknown server values would fail combo validation or be rejected by the server
+func parseItemTypeFromRaw(s string) ItemType {
+	switch s {
+	case "0":
+		return ItemTypeDefault
+	case "4":
+		return ItemTypeThread
+	case "11":
+		return ItemTypeMsgThread
+	}
+	return ItemTypeDefault
+}
+
+// parseFlagTypeFromRaw parses a stringified numeric flag_type back to FlagType.
+// Used when re-parsing the serialized enum for combo-validity checks.
+func parseFlagTypeFromRaw(s string) FlagType {
+	switch s {
+	case "1":
+		return FlagTypeFeed
+	case "2":
+		return FlagTypeMessage
+	}
+	return FlagTypeUnknown
+}
+
+// newFlagItem builds a payload entry with numeric-stringified enums.
+func newFlagItem(itemID string, it ItemType, ft FlagType) flagItem {
+	return flagItem{
+		ItemID:   itemID,
+		ItemType: fmt.Sprintf("%d", int(it)),
+		FlagType: fmt.Sprintf("%d", int(ft)),
+	}
+}
+
+// getMessageChatID queries the message API to get the chat_id.
+// Used by flag-create to determine the chat type for feed-layer flags.
+func getMessageChatID(rt *common.RuntimeContext, messageID string) (string, error) {
+	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/messages/"+validate.EncodePathSegment(messageID), nil, nil)
+	if err != nil {
+		return "", err
+	}
+
+	items, ok := data["items"].([]any)
+	if !ok || len(items) == 0 {
+		return "", output.ErrValidation("message not found or unexpected API response format")
+	}
+
+	msg, ok := items[0].(map[string]any)
+	if !ok {
+		return "", output.ErrValidation("unexpected message format in API response")
+	}
+
+	chatID, ok := msg["chat_id"].(string)
+	if !ok {
+		return "", output.ErrValidation("message response missing chat_id field")
+	}
+	return chatID, nil
+}
+
+// resolveThreadFeedItemType determines the correct feed-layer ItemType for a thread
+// by querying the chat API for chat_mode.
+//   - topic-style chat → ItemTypeThread
+//   - regular chat    → ItemTypeMsgThread
+//
+// Returns an error if the chat query fails, since guessing the wrong item_type
+// can cause silent failures in flag operations.
+func resolveThreadFeedItemType(rt *common.RuntimeContext, chatID string) (ItemType, error) {
+	data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/chats/"+validate.EncodePathSegment(chatID), nil, nil)
+	if err != nil {
+		return ItemTypeDefault, fmt.Errorf("failed to query chat_mode for chat %s: %w", chatID, err)
+	}
+
+	// DoAPIJSON returns envelope.Data, so chat_mode is at the top level
+	chatMode, _ := data["chat_mode"].(string)
+	if chatMode == "topic" {
+		return ItemTypeThread, nil
+	}
+	return ItemTypeMsgThread, nil
 }

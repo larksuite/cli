@@ -178,6 +178,170 @@ func TestSplitAtQuoteFalsePositivePlainText(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Priority projection (X-Cli-Priority primary, X-Priority fallback)
+// ---------------------------------------------------------------------------
+
+func TestProjectPriorityXCliPriorityHigh(t *testing.T) {
+	snapshot := mustParseFixtureDraft(t, `Subject: priority high
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Cli-Priority: 1
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "high" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "high")
+	}
+}
+
+func TestProjectPriorityFallbackXPriorityLow(t *testing.T) {
+	// Only the standard X-Priority header is present (e.g. an IMAP-回灌
+	// historical draft). The fallback path should kick in.
+	snapshot := mustParseFixtureDraft(t, `Subject: priority low (fallback)
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Priority: 5
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "low" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "low")
+	}
+}
+
+func TestProjectPriorityBothAbsentNormal(t *testing.T) {
+	// Neither header is present — default priority is normal.
+	snapshot := mustParseFixtureDraft(t, `Subject: no priority
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "normal" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "normal")
+	}
+}
+
+func TestProjectPriorityXCliPriorityOutlookStyleHigh(t *testing.T) {
+	// X-Cli-Priority set to the Outlook-style string "high" (any case).
+	snapshot := mustParseFixtureDraft(t, `Subject: priority high (string)
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Cli-Priority: High
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "high" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "high")
+	}
+}
+
+func TestProjectPriorityUnmappedValueUnknown(t *testing.T) {
+	// Value outside the recognised mapping table (e.g. "urgent") falls
+	// back to "unknown".
+	snapshot := mustParseFixtureDraft(t, `Subject: priority urgent
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Cli-Priority: urgent
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "unknown" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "unknown")
+	}
+}
+
+func TestProjectPriorityXCliPriorityWinsOverXPriority(t *testing.T) {
+	// X-Cli-Priority must take precedence over X-Priority when both are
+	// set (defensive: agent or upstream may write both).
+	snapshot := mustParseFixtureDraft(t, `Subject: both headers
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Cli-Priority: 1
+X-Priority: 5
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "high" {
+		t.Fatalf("Priority = %q, want %q (X-Cli-Priority must win)", proj.Priority, "high")
+	}
+}
+
+func TestProjectPriorityNormalThree(t *testing.T) {
+	// X-Cli-Priority=3 → "normal" (rare in CLI write path since
+	// `--set-priority normal` actually removes the header, but this case
+	// covers e.g. a draft set by another OAPI client that wrote 3).
+	snapshot := mustParseFixtureDraft(t, `Subject: priority three
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Cli-Priority: 3
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "normal" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "normal")
+	}
+}
+
+func TestProjectPriorityFallbackXPriorityNormalString(t *testing.T) {
+	// IMAP-回灌 / external client writes the RFC-standard `X-Priority: Normal`
+	// string. The fallback path must project this as "normal" — symmetric with
+	// how `X-Priority: High` / `Low` are already handled.
+	snapshot := mustParseFixtureDraft(t, `Subject: priority normal (fallback)
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Priority: Normal
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "normal" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "normal")
+	}
+}
+
+func TestProjectPriorityOutlookStyleThreeNormal(t *testing.T) {
+	// Outlook-style `3 (Normal)` parenthesised form — symmetric with the
+	// already-supported `1 (Highest)` / `5 (Lowest)`.
+	snapshot := mustParseFixtureDraft(t, `Subject: priority three (normal)
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+X-Priority: 3 (Normal)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+hello
+`)
+	proj := Project(snapshot)
+	if proj.Priority != "normal" {
+		t.Fatalf("Priority = %q, want %q", proj.Priority, "normal")
+	}
+}
+
 func TestParseMissingInlineCIDReportedAsProjectionWarning(t *testing.T) {
 	// Missing CID references should NOT prevent parsing; they are reported
 	// as warnings in Project() instead.

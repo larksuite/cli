@@ -1,24 +1,31 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 29 leaf commands
-- Covered: 2
-- Coverage: 6.9%
+- Denominator: 31 leaf commands
+- Covered: 10
+- Coverage: 32.3%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
 - TestDrive_StatusWorkflow: proves `drive +status` against a real Drive folder. Seeds the remote side via `drive +upload` (`unchanged.txt`, `modified.txt`, `remote-only.txt`), seeds local files with the matching/diverging contents, and asserts every output bucket (`unchanged`, `modified`, `new_local`, `new_remote`) holds exactly the expected `rel_path` and `file_token`. Cleans up uploaded files and the parent folder via best-effort cleanup hooks.
+- TestDrive_UploadWorkflow: proves `drive +upload` against the real backend in both create and overwrite modes. First uploads a fresh file into a temporary Drive folder, then re-uploads new bytes with `--file-token` against the returned token, asserts the overwrite keeps the token stable, and finally downloads the file to confirm the remote content changed.
+- TestDrive_DuplicateRemoteWorkflow: proves the duplicate-remote workflows against the real backend. One subtest uploads two same-name files into the same Drive folder and asserts `drive +status` and default `drive +pull` both fail with `duplicate_remote_path`, while `drive +pull --on-duplicate-remote=rename` succeeds, downloads both files, and writes a hashed renamed sibling locally. The other subtest uploads duplicate remote files, runs `drive +push --on-duplicate-remote=newest --if-exists=overwrite --delete-remote --yes`, and then re-runs `drive +status` to prove the mirror converged to a single unchanged `dup.txt`.
 - TestDrive_ApplyPermissionDryRun / TestDrive_ApplyPermissionDryRunRejectsFullAccess: dry-run coverage for `drive +apply-permission`; asserts URL→type inference for docx/sheet/slides, explicit `--type` overriding URL inference when both a recognized URL and `--type` are supplied, bare-token + explicit `--type` path, request method/URL/type-query/perm/remark body shape, optional `remark` omission when unset, and client-side rejection of `--perm full_access`. Runs without hitting the live API.
+- TestDriveAddCommentDryRun_File: dry-run coverage for `drive +add-comment` on supported Drive file targets; pins the `metas.batch_query -> files/:token/new_comments` request chain, `file_type=file`, and the required placeholder `anchor.block_id`.
+- TestDriveAddCommentMarkdownFileWorkflow: opt-in live workflow skeleton for the same path, gated by `LARK_DRIVE_MD_COMMENT_E2E=1`.
+- TestDrive_SecureLabelDryRun: dry-run coverage for `drive +secure-label-list` and `drive +secure-label-update`; asserts label-list query params and update URL→type inference, request method/URL/type query, and `label-id` body shape. Runs without hitting live APIs because update can trigger document-level security approval flows.
 - TestDriveExportDryRun_FileNameMetadata: dry-run coverage for `drive +export`; asserts export task request shape and local `--file-name` / `--output-dir` metadata without calling live APIs.
+- TestDrive_PullDryRun / TestDrive_PullDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +pull`; asserts the list-files request shape, Validate-stage safety guards, and acceptance of `--on-duplicate-remote=rename|newest|oldest` by the real CLI binary.
+- TestDrive_PushDryRun / TestDrive_PushDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +push`; asserts the list-files request shape, Validate-stage safety guards, conditional delete preflight, and acceptance of `--on-duplicate-remote=newest|oldest` by the real CLI binary.
 - Cleanup note: `drive files delete` is only exercised in cleanup and is intentionally left uncovered.
-- Blocked area: live upload, live export, comment, permission, subscription, and reply flows still need deterministic remote fixtures and filesystem setup.
-- Dry-run note: `drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget` covers the wiki-target request shape for `drive +upload`, but there is still no live upload workflow coverage.
+- Blocked area: live export, permission, subscription, reply, and file comment API flows still need deterministic remote fixtures and filesystem setup.
+- Dry-run note: `drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget` and `TestDriveUploadDryRun_WithFileToken` cover the wiki-target and overwrite request shapes for `drive +upload`; live upload/status/duplicate workflows also use real `+upload` against the backend.
 
 ## Command Table
 
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
-| ✕ | drive +add-comment | shortcut |  | none | no comment workflow yet |
+| ✓ | drive +add-comment | shortcut | drive_add_comment_dryrun_test.go::TestDriveAddCommentDryRun_File | `--doc` file URL vs bare token + `--type file`; supported-extension metadata gate; placeholder `anchor.block_id` | dry-run coverage in place; opt-in live workflow exists behind `LARK_DRIVE_MD_COMMENT_E2E=1` |
 | ✓ | drive +apply-permission | shortcut | drive_apply_permission_dryrun_test.go::TestDrive_ApplyPermissionDryRun | `--token` URL vs bare; `--type` (enum) with URL inference; `--perm view\|edit`; `--remark` optional | dry-run only; no live-apply E2E because a real request pushes a card to the owner |
 | ✕ | drive +delete | shortcut |  | none | no primary delete workflow yet |
 | ✕ | drive +download | shortcut |  | none | no file fixture workflow yet |
@@ -26,9 +33,14 @@
 | ✕ | drive +export-download | shortcut |  | none | no export-download workflow yet |
 | ✕ | drive +import | shortcut |  | none | no import workflow yet |
 | ✕ | drive +move | shortcut |  | none | no move workflow yet |
-| ✓ | drive +status | shortcut | drive_status_workflow_test.go::TestDrive_StatusWorkflow + drive_status_dryrun_test.go::TestDrive_StatusDryRun | `--local-dir`; `--folder-token`; bucketed `new_local` / `new_remote` / `modified` / `unchanged` outputs | dry-run pins request shape; live workflow seeds via `+upload` and asserts all four buckets |
+| ✓ | drive +pull | shortcut | drive_pull_dryrun_test.go::TestDrive_PullDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--on-duplicate-remote=rename\|newest\|oldest`; `--delete-local --yes` guard | dry-run locks flag/validate shape; live workflow proves duplicate fail-fast and rename recovery |
+| ✓ | drive +push | shortcut | drive_push_dryrun_test.go::TestDrive_PushDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--if-exists`; `--on-duplicate-remote=newest\|oldest`; `--delete-remote --yes` | dry-run locks flag/validate shape; live workflow proves overwrite + duplicate cleanup converges status |
+| ✓ | drive +secure-label-list | shortcut | drive_secure_label_dryrun_test.go::TestDrive_SecureLabelDryRun | `--page-size`; `--page-token`; `--lang` | dry-run only; live label availability depends on tenant security-label configuration |
+| ✓ | drive +secure-label-update | shortcut | drive_secure_label_dryrun_test.go::TestDrive_SecureLabelDryRun | `--token` URL inference; `--type`; `--label-id` body | dry-run only; live update can require document-level approval or mutate a fixture document's security level |
+| ✓ | drive +status | shortcut | drive_status_workflow_test.go::TestDrive_StatusWorkflow + drive_status_dryrun_test.go::TestDrive_StatusDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; bucketed `new_local` / `new_remote` / `modified` / `unchanged` outputs | dry-run pins request shape; live workflows cover both normal hashing buckets and duplicate-remote failure |
+| ✓ | drive +sync | shortcut | drive_sync_dryrun_test.go::TestDrive_SyncDryRun + drive_sync_workflow_test.go::TestDrive_SyncWorkflow + drive_sync_workflow_test.go::TestDrive_SyncEmptyDirWorkflow | `--local-dir`; `--folder-token`; `--on-conflict=remote-wins\|local-wins\|keep-both\|ask`; `--on-duplicate-remote=fail\|newest\|oldest`; `--quick` | dry-run validates request shape, flag acceptance, and path safety guards; live workflow proves new_remote→pull, new_local→push, remote-wins/local-wins/keep-both conflict resolution, empty directory creation, and post-sync convergence |
 | ✕ | drive +task_result | shortcut |  | none | no async task-result workflow yet |
-| ✕ | drive +upload | shortcut | drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget (dry-run only) | `--wiki-token`; `parent_type=wiki`; `parent_node` | no live upload workflow yet |
+| ✓ | drive +upload | shortcut | drive_upload_dryrun_test.go::TestDriveUploadDryRun_WikiTarget + drive_upload_dryrun_test.go::TestDriveUploadDryRun_WithFileToken + drive_upload_workflow_test.go::TestDrive_UploadWorkflow + drive_status_workflow_test.go::TestDrive_StatusWorkflow + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--wiki-token`; `--file-token`; `parent_type=wiki`; `parent_node`; named uploads into Drive folders; in-place overwrite uploads | dry-run covers wiki-target and overwrite request shapes; live workflows assert returned file tokens, token-stable overwrite behavior, and that uploaded fixtures are consumable by downstream commands |
 | ✕ | drive file.comment.replys create | api |  | none | no reply workflow yet |
 | ✕ | drive file.comment.replys delete | api |  | none | no reply workflow yet |
 | ✕ | drive file.comment.replys list | api |  | none | no reply workflow yet |

@@ -13,6 +13,7 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -49,6 +50,56 @@ func TestProfileAddRun_InvalidExistingConfigReturnsError(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to load config") {
 		t.Fatalf("error = %v, want failed to load config", err)
 	}
+}
+
+// TestProfileAddRun_Lang covers the unified --lang contract on profile add:
+// short codes and Feishu locales both canonicalize to the same stored locale,
+// empty stores no preference, and an unrecognized value errors.
+func TestProfileAddRun_Lang(t *testing.T) {
+	t.Run("short and locale canonicalize and persist alike", func(t *testing.T) {
+		for _, in := range []string{"ja", "ja_jp"} {
+			setupProfileConfigDir(t)
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+			f.IOStreams.In = strings.NewReader("secret\n")
+			if err := profileAddRun(f, "p", "app-p", true, "feishu", in, false); err != nil {
+				t.Fatalf("--lang %q: profileAddRun() error = %v", in, err)
+			}
+			saved, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatalf("LoadMultiAppConfig() error = %v", err)
+			}
+			if app := saved.FindApp("p"); app == nil || app.Lang != i18n.LangJaJP {
+				t.Errorf("--lang %q: stored Lang = %v, want %q", in, app, i18n.LangJaJP)
+			}
+		}
+	})
+
+	t.Run("empty stores no preference", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("secret\n")
+		if err := profileAddRun(f, "p", "app-p", true, "feishu", "", false); err != nil {
+			t.Fatalf("profileAddRun() error = %v", err)
+		}
+		saved, _ := core.LoadMultiAppConfig()
+		if app := saved.FindApp("p"); app == nil || app.Lang != "" {
+			t.Errorf("stored Lang = %v, want \"\" (unset)", app)
+		}
+	})
+
+	t.Run("invalid lang errors", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("secret\n")
+		err := profileAddRun(f, "p", "app-p", true, "feishu", "ZH", false)
+		if err == nil {
+			t.Fatal("expected validation error for --lang ZH, got nil")
+		}
+		exitErr, ok := err.(*output.ExitError)
+		if !ok || exitErr.Code != output.ExitValidation {
+			t.Fatalf("expected ExitValidation, got %T: %v", err, err)
+		}
+	})
 }
 
 func TestProfileAddRun_UseAfterUpdatesCurrentAndPrevious(t *testing.T) {
