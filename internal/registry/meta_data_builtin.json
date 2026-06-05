@@ -3034,6 +3034,326 @@
             }
           }
         },
+        "referral": {
+          "methods": {
+            "get_by_application": {
+              "path": "v1/referrals/get_by_application",
+              "httpMethod": "GET",
+              "description": "获取内推信息",
+              "parameters": {
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递的 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral.get_by_application",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/referral/get_by_application",
+              "scopes": [
+                "hire:referral:readonly",
+                "hire:referral"
+              ]
+            },
+            "search": {
+              "path": "v1/referrals/search",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=search&project=hire&resource=referral&version=v1",
+              "scopes": [
+                "hire:referral:readonly",
+                "hire:referral"
+              ]
+            }
+          }
+        },
+        "referral_account": {
+          "methods": {
+            "create": {
+              "path": "v1/referral_account",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=create&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account"
+              ]
+            },
+            "deactivate": {
+              "path": "v1/referral_account/{referral_account_id}/deactivate",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "referral_account_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "账户ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.deactivate",
+              "parameterOrder": [
+                "referral_account_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=deactivate&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account"
+              ]
+            },
+            "enable": {
+              "path": "v1/referral_account/enable",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.enable",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=enable&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account"
+              ]
+            },
+            "get_account_assets": {
+              "path": "v1/referral_account/get_account_assets",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "referral_account_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "账户 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.get_account_assets",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_account_assets&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account",
+                "hire:referral_account:readonly"
+              ]
+            },
+            "reconciliation": {
+              "path": "v1/referral_account/reconciliation",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.reconciliation",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=reconciliation&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account"
+              ]
+            },
+            "withdraw": {
+              "path": "v1/referral_account/{referral_account_id}/withdraw",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "referral_account_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "账户ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_account.withdraw",
+              "parameterOrder": [
+                "referral_account_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=withdraw&project=hire&resource=referral_account&version=v1",
+              "scopes": [
+                "hire:referral_account"
+              ]
+            }
+          }
+        },
+        "referral_website_job_post": {
+          "methods": {
+            "get": {
+              "path": "v1/referral_websites/job_posts/{job_post_id}",
+              "httpMethod": "GET",
+              "description": "获取内推官网下职位广告详情",
+              "parameters": {
+                "job_post_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位广告 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_website_job_post.get",
+              "parameterOrder": [
+                "job_post_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=referral_website.job_post&version=v1",
+              "scopes": [
+                "hire:referral_website:readonly"
+              ]
+            },
+            "list": {
+              "path": "v1/referral_websites/job_posts",
+              "httpMethod": "GET",
+              "description": "获取内推官网下的职位列表。自定义数据暂不支持列表获取，请从「获取内推官网下职位广告详情」接口获取",
+              "parameters": {
+                "process_type": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "招聘流程类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "referral_website_job_post.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=referral_website.job_post&version=v1",
+              "scopes": [
+                "hire:referral_website:readonly"
+              ]
+            }
+          }
+        },
         "talent": {
           "methods": {
             "add_to_folder": {
