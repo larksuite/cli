@@ -12,7 +12,7 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-> **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常都指向飞书的云端文件存储与管理能力。
+> **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常指的是同一个产品，是飞书官方的云端文件存储与管理中心。
 
 > **导入分流规则：** 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
 
@@ -37,11 +37,78 @@ metadata:
 - 用户给的是 wiki URL / token，且后续还没明确底层资源类型时，先用 `lark-cli drive +inspect` 解包；`+inspect` 失败后不要自动切到别的写接口继续尝试，先按错误提示处理权限、scope 或链接问题。
 - `drive +inspect` / `drive +upload` 遇到 `not found`、`permission denied`、`missing scope` 时，默认停止重试；只有 `rate limit` 或临时网络错误才适合有限重试。
 
+## 修改标题
+- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
+
+## 核心概念
+
+### 文档类型与 Token
+
+飞书开放平台中，不同类型的文档有不同的 URL 格式和 Token 处理方式。在进行文档操作（如添加评论、下载文件等）时，必须先获取正确的 `file_token`。
+
+### 文档 URL 格式与 Token 处理
+
+| URL 格式 | 示例                                                      | Token 类型 | 处理方式 |
+|----------|---------------------------------------------------------|-----------|----------|
+| `/docx/` | `https://example.larksuite.com/docx/doxcnxxxxxxxxx`    | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
+| `/doc/` | `https://example.larksuite.com/doc/doccnxxxxxxxxx`     | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
+| `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | 不能直接当底层 `file_token`；优先用 `drive +inspect` 解包获取 `obj_token` |
+| `/sheets/` | `https://example.larksuite.com/sheets/shtcnxxxxxxxxx`  | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
+| `/drive/folder/` | `https://example.larksuite.com/drive/folder/fldcnxxxx` | `folder_token` | URL 路径中的 token 作为文件夹 token 使用 |
+
+### Wiki 链接特殊处理
+
+```bash
+lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
+```
+
+知识库链接背后可能是 docx、sheet、bitable、slides、file 等不同对象。后续要做评论、下载、导出或内容读取时，优先用 `drive +inspect` 拿到 `type`、`token`、`title`、`url`；完整手动解析和跨 skill 路由见共享文档 [`lark-wiki-token-routing.md`](../lark-shared/references/lark-wiki-token-routing.md)。不要只根据 `/wiki/<token>` 猜底层类型。
+
+### 常见操作 Token 需求
+
+| 操作 | 需要的 Token | 说明 |
+|------|-------------|------|
+| 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch --api-version v2` 支持直接传入 URL |
+| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`，且都支持最终解析到对应类型的 wiki URL；Drive file 不支持局部评论 |
+| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
+| 下载文件 | `file_token` | 从文件 URL 中直接提取 |
+| 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
+| 列出文档评论 | `file_token` | 同添加评论 |
+
+### 评论能力入口
+
+- 添加评论优先使用 [`+add-comment`](references/lark-drive-add-comment.md)：review / 审阅 / 校对场景默认尽量创建局部评论，不要把多个可定位问题合并为一条全文评论。
+- 评论查询、统计、排序、回复限制，先读 [`lark-drive-comments-guide.md`](references/lark-drive-comments-guide.md)。
+- 需要根据评论定位正文位置时，先确认目标是 `file_type=docx`，再读 [`lark-drive-comment-location.md`](references/lark-drive-comment-location.md)；其他文档类型暂不支持返回定位字段。
+- reaction / 表情相关操作先读 [`lark-drive-reactions.md`](references/lark-drive-reactions.md)；只有用户明确需要 reaction 信息时才带 `need_reaction=true`。
+
+### 典型错误与解决方案
+
+| 错误信息 | 原因 | 解决方案 |
+|----------|------|----------|
+| `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
+| `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
+| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides） |
+
+### 权限能力入口
+
+- 用户要管理 Drive 文档/文件协作者、公开权限、授权当前应用访问文档，或处理 `permission.public.patch` 的 `91009` / `91010` / `91011` / `91012` 错误时，先读 [`lark-drive-permission-guide.md`](references/lark-drive-permission-guide.md)。
+- 用户只是没有访问权限并希望向 owner 申请访问，优先使用 [`+apply-permission`](references/lark-drive-apply-permission.md)。
+- 普通 scope、身份或登录问题仍按 [`lark-shared`](../lark-shared/SKILL.md) 处理；不要把租户安全策略、对外分享、密级拦截简单归类为缺 scope。
+
+## 不在本 skill 范围
+
+- 文档正文读取、总结、创建、编辑、图片/附件插入或下载：使用 [`lark-doc`](../lark-doc/SKILL.md)。
+- 电子表格单元格、筛选、公式、样式等表内操作：使用 [`lark-sheets`](../lark-sheets/SKILL.md)。
+- Base / 多维表格内部的表、字段、记录、视图、仪表盘等操作：使用 [`lark-base`](../lark-base/SKILL.md)。
+- 知识空间、Wiki 节点层级、空间成员管理：使用 [`lark-wiki`](../lark-wiki/SKILL.md)；上传本地文件到 wiki 节点仍用 `drive +upload --wiki-token`。
+- 原生 Markdown 文件读取、写入、patch、diff：使用 [`lark-markdown`](../lark-markdown/SKILL.md)；把 Markdown 导入成在线 docx 才用 `drive +import --type docx`。
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
-| Shortcut | 何时使用 |
+| Shortcut | 说明 |
 |----------|----------|
 | [`+search`](references/lark-drive-search.md) | 搜索文档、Wiki、表格、文件夹等云空间对象；支持 `--edited-since`、`--mine`、`--doc-types` 等扁平 flag。 |
 | [`+upload`](references/lark-drive-upload.md) | 上传本地文件到 Drive 文件夹或 wiki 节点。 |
@@ -70,68 +137,16 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+secure-label-list`](references/lark-drive-secure-label.md) | 列出当前用户可用的密级标签。 |
 | [`+secure-label-update`](references/lark-drive-secure-label.md) | 更新 Drive 文件或文档的密级标签。 |
 
-## 修改标题
-- 使用 `drive files patch` 命令，通过new_title字段可以修改标题，支持 docx、sheet、bitable、file、wiki、folder 类型
-
-## 核心概念
-
-### URL / Token 处理
-
-| URL 格式 | 示例                                                      | Token 类型 | 处理方式 |
-|----------|---------------------------------------------------------|-----------|----------|
-| `/docx/` | `https://example.larksuite.com/docx/doxcnxxxxxxxxx`    | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
-| `/doc/` | `https://example.larksuite.com/doc/doccnxxxxxxxxx`     | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
-| `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | 不能直接当底层文件 token；优先用 `drive +inspect` 解包 |
-| `/sheets/` | `https://example.larksuite.com/sheets/shtcnxxxxxxxxx`  | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
-| `/drive/folder/` | `https://example.larksuite.com/drive/folder/fldcnxxxx` | `folder_token` | URL 路径中的 token 作为文件夹 token 使用 |
-
-### Wiki 链接处理
-
-```bash
-lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
-```
-
-知识库链接背后可能是 docx、sheet、bitable、slides、file 等不同对象。后续要做评论、下载、导出或内容读取时，优先用 `drive +inspect` 拿到 `type`、`token`、`title`、`url`；完整手动解析和跨 skill 路由见共享文档 [`lark-wiki-token-routing.md`](../lark-shared/references/lark-wiki-token-routing.md)。不要只根据 `/wiki/<token>` 猜底层类型。
-
-### 常见操作 Token 需求
-
-| 操作 | 需要的 Token | 说明 |
-|------|-------------|------|
-| 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch --api-version v2` 支持直接传入 URL |
-| 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`，且都支持最终解析到对应类型的 wiki URL；Drive file 不支持局部评论 |
-| 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
-| 下载文件 | `file_token` | 从文件 URL 中直接提取 |
-| 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
-| 列出文档评论 | `file_token` | 同添加评论 |
-
-### 评论能力入口
-
-- 添加评论优先使用 [`+add-comment`](references/lark-drive-add-comment.md)：review / 审阅 / 校对场景默认尽量创建局部评论，不要把多个可定位问题合并为一条全文评论。
-- 查询、统计、排序、回复限制、`is_solved:false` 默认口径、`items` 与 `reply_list.replies` 的计数关系，先读 [`lark-drive-comments-guide.md`](references/lark-drive-comments-guide.md)。
-- 需要根据评论定位正文位置时，先确认目标是 `file_type=docx`，再读 [`lark-drive-comment-location.md`](references/lark-drive-comment-location.md)；其他文档类型暂不支持返回定位字段。
-- reaction / 表情相关操作先读 [`lark-drive-reactions.md`](references/lark-drive-reactions.md)；只有用户明确需要 reaction 信息时才带 `need_reaction=true`。
-
-### 典型错误与解决方案
-
-| 错误信息 | 原因 | 解决方案 |
-|----------|------|----------|
-| `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
-| `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
-| `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides） |
-
-权限公开设置错误码、bot 自授权、常见权限恢复路径见 [`lark-drive-permission-guide.md`](references/lark-drive-permission-guide.md)。
-
-## 不在本 skill 范围
-
-- 文档正文读取、总结、创建、编辑、图片/附件插入或下载：使用 [`lark-doc`](../lark-doc/SKILL.md)。
-- 电子表格单元格、筛选、公式、样式等表内操作：使用 [`lark-sheets`](../lark-sheets/SKILL.md)。
-- Base / 多维表格内部的表、字段、记录、视图、仪表盘等操作：使用 [`lark-base`](../lark-base/SKILL.md)。
-- 知识空间、Wiki 节点层级、空间成员管理：使用 [`lark-wiki`](../lark-wiki/SKILL.md)；上传本地文件到 wiki 节点仍用 `drive +upload --wiki-token`。
-- 原生 Markdown 文件读取、写入、patch、diff：使用 [`lark-markdown`](../lark-markdown/SKILL.md)；把 Markdown 导入成在线 docx 才用 `drive +import --type docx`。
-
 ## API Resources
 
-优先使用上方 Shortcuts。只有 shortcut 不覆盖需求时，再调用原生 API。读取 Drive 文件夹清单时使用 `drive files list`，必须按 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md) 的模板通过 `--params` 传 `folder_token` / `page_token`，并手动处理分页；不要把 `--page-all` 输出直接交给 JSON 解析脚本。
+```bash
+lark-cli schema drive.<resource>.<method>   # 调用 API 前必须先查看参数结构
+lark-cli drive <resource> <method> [flags] # 调用 API
+```
+
+> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+>
+> **高频原生命令：** 读取 Drive 文件夹清单时使用 `drive files list`，必须按 [`references/lark-drive-files-list.md`](references/lark-drive-files-list.md) 的模板通过 `--params` 传 `folder_token` / `page_token`，并手动处理分页；不要把 `--page-all` 输出直接交给 JSON 解析脚本。
 
 ### files
 
