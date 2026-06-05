@@ -24,6 +24,11 @@ var registryFS embed.FS
 // embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
 var embeddedMetaJSON []byte
 
+// embeddedBuiltinJSON is set by loader_embedded.go from meta_data_builtin.json.
+// It holds services the remote api_definition endpoint does not serve (hire),
+// and is always merged into the registry.
+var embeddedBuiltinJSON []byte
+
 var (
 	embeddedServices       []meta.Service          // parsed once, sorted by name (no overlay)
 	embeddedServicesByName map[string]meta.Service // same, keyed by name
@@ -106,9 +111,26 @@ func InitWithBrand(brand core.LarkBrand) {
 				triggerBackgroundRefresh()
 			}
 		}
+		// 2.5 Built-in services (hire) — always merged, after the remote
+		// decision so first-run sync-fetch logic is unaffected. The remote
+		// endpoint does not serve these, so they will not be overwritten.
+		loadBuiltinIntoMerged()
 		// 3. Build sorted project list
 		rebuildProjectList()
 	})
+}
+
+// loadBuiltinIntoMerged parses the embedded meta_data_builtin.json and overlays
+// its services (e.g. hire) into mergedServices. No-op if not compiled in.
+func loadBuiltinIntoMerged() {
+	if len(embeddedBuiltinJSON) == 0 {
+		return
+	}
+	var reg MergedRegistry
+	if err := json.Unmarshal(embeddedBuiltinJSON, &reg); err != nil {
+		return
+	}
+	overlayMergedServices(&reg)
 }
 
 // loadEmbeddedIntoMerged seeds mergedServices from the embedded typed services
