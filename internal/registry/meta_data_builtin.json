@@ -1459,6 +1459,430 @@
             }
           }
         },
+        "offer": {
+          "methods": {
+            "create": {
+              "path": "v1/offers",
+              "httpMethod": "POST",
+              "description": "创建 Offer",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer/create",
+              "scopes": [
+                "hire:offer"
+              ]
+            },
+            "get": {
+              "path": "v1/offers/{offer_id}",
+              "httpMethod": "GET",
+              "description": "获取 Offer 详情",
+              "parameters": {
+                "offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "Offer ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.get",
+              "parameterOrder": [
+                "offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer/get",
+              "scopes": [
+                "hire:offer:low_sensitive_info:readonly",
+                "hire:offer:readonly",
+                "hire:offer"
+              ]
+            },
+            "intern_offer_status": {
+              "path": "v1/offers/{offer_id}/intern_offer_status",
+              "httpMethod": "POST",
+              "description": "更新实习 Offer 入/离职状态",
+              "parameters": {
+                "offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "Offer ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.intern_offer_status",
+              "parameterOrder": [
+                "offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer/intern_offer_status",
+              "scopes": [
+                "hire:offer"
+              ]
+            },
+            "list": {
+              "path": "v1/offers",
+              "httpMethod": "GET",
+              "description": "获取 Offer 列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "talent_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "人才 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer/list",
+              "scopes": [
+                "hire:offer:readonly",
+                "hire:offer"
+              ]
+            },
+            "offer_status": {
+              "path": "v1/offers/{offer_id}/offer_status",
+              "httpMethod": "PATCH",
+              "description": "-",
+              "parameters": {
+                "offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "offer ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.offer_status",
+              "parameterOrder": [
+                "offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=offer_status&project=hire&resource=offer&version=v1",
+              "scopes": [
+                "hire:offer"
+              ]
+            },
+            "update": {
+              "path": "v1/offers/{offer_id}",
+              "httpMethod": "PUT",
+              "description": "更新 Offer 信息",
+              "parameters": {
+                "offer_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "Offer ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer.update",
+              "parameterOrder": [
+                "offer_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer/update",
+              "scopes": [
+                "hire:offer"
+              ]
+            }
+          }
+        },
+        "offer_application_form": {
+          "methods": {
+            "get": {
+              "path": "v1/offer_application_forms/{offer_application_form_id}",
+              "httpMethod": "GET",
+              "description": "获取Offer申请表模板信息",
+              "parameters": {
+                "offer_application_form_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "offer申请表 ID"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer_application_form.get",
+              "parameterOrder": [
+                "offer_application_form_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer_application_form/get",
+              "scopes": [
+                "hire:offer_schema:readonly"
+              ]
+            },
+            "list": {
+              "path": "v1/offer_application_forms",
+              "httpMethod": "GET",
+              "description": "获取 Offer 申请表列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer_application_form.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer_application_form/list",
+              "scopes": [
+                "hire:offer_schema:readonly"
+              ]
+            }
+          }
+        },
+        "offer_approval_template": {
+          "methods": {
+            "list": {
+              "path": "v1/offer_approval_templates",
+              "httpMethod": "GET",
+              "description": "获取 Offer 审批流配置列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer_approval_template.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer_approval_template/list",
+              "scopes": [
+                "hire:offer_approval_template:readonly"
+              ]
+            }
+          }
+        },
+        "offer_custom_field": {
+          "methods": {
+            "update": {
+              "path": "v1/offer_custom_fields/{offer_custom_field_id}",
+              "httpMethod": "PUT",
+              "description": "更新 Offer 申请表自定义字段",
+              "parameters": {
+                "offer_custom_field_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "Offer 申请表自定义字段 ID，可通过接口「获取 Offer 申请表模板信息」获取"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer_custom_field.update",
+              "parameterOrder": [
+                "offer_custom_field_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/offer_custom_field/update",
+              "scopes": [
+                "hire:offer_selection_object"
+              ]
+            }
+          }
+        },
+        "offer_schema": {
+          "methods": {
+            "get": {
+              "path": "v1/offer_schemas/{offer_schema_id}",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "offer_schema_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "offer申请表的ID *必需属性"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "offer_schema.get",
+              "parameterOrder": [
+                "offer_schema_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get&project=hire&resource=offer_schema&version=v1"
+            }
+          }
+        },
         "talent": {
           "methods": {
             "add_to_folder": {
