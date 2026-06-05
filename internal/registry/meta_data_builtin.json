@@ -1,1 +1,1006 @@
-{"version":"0.0.0","services":[]}
+{
+  "version": "0.0.0",
+  "services": [
+    {
+      "name": "hire",
+      "version": "v1",
+      "title": "Hire",
+      "description": "Feishu/Lark Hire (招聘): jobs, talents, applications, offers, interviews, onboarding, referrals, agencies, websites and ecosystem integrations",
+      "servicePath": "/open-apis/hire",
+      "resources": {
+        "job": {
+          "methods": {
+            "close": {
+              "path": "v1/jobs/{job_id}/close",
+              "httpMethod": "POST",
+              "description": "关闭职位",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.close",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/close",
+              "scopes": [
+                "hire:job"
+              ]
+            },
+            "combined_create": {
+              "path": "v1/jobs/combined_create",
+              "httpMethod": "POST",
+              "description": "新建职位",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.combined_create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/combined_create",
+              "scopes": [
+                "hire:job"
+              ]
+            },
+            "combined_update": {
+              "path": "v1/jobs/{job_id}/combined_update",
+              "httpMethod": "POST",
+              "description": "更新职位",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.combined_update",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/combined_update",
+              "scopes": [
+                "hire:job"
+              ]
+            },
+            "config": {
+              "path": "v1/jobs/{job_id}/config",
+              "httpMethod": "GET",
+              "description": "获取职位设置",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.config",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/config",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            },
+            "get": {
+              "path": "v1/jobs/{job_id}",
+              "httpMethod": "GET",
+              "description": "获取职位信息",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID，请求Path中"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.get",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/get",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            },
+            "get_detail": {
+              "path": "v1/jobs/{job_id}/get_detail",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID，请求Path中"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.get_detail",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_detail&project=hire&resource=job&version=v1",
+              "scopes": [
+                "hire:job.composite_info:readonly"
+              ]
+            },
+            "list": {
+              "path": "v1/jobs",
+              "httpMethod": "GET",
+              "description": "获取职位列表",
+              "parameters": {
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 不能超过 20"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/list",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            },
+            "open": {
+              "path": "v1/jobs/{job_id}/open",
+              "httpMethod": "POST",
+              "description": "重启职位",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.open",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/open",
+              "scopes": [
+                "hire:job"
+              ]
+            },
+            "recruiter": {
+              "path": "v1/jobs/{job_id}/recruiter",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.recruiter",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=recruiter&project=hire&resource=job&version=v1",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            },
+            "update_config": {
+              "path": "v1/jobs/{job_id}/update_config",
+              "httpMethod": "POST",
+              "description": "更新职位设置",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job.update_config",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job/update_config",
+              "scopes": [
+                "hire:job"
+              ]
+            }
+          }
+        },
+        "job_function": {
+          "methods": {
+            "list": {
+              "path": "v1/job_functions",
+              "httpMethod": "GET",
+              "description": "获取职能分类列表",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 不能超过 50"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_function.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_function/list",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            }
+          }
+        },
+        "job_manager": {
+          "methods": {
+            "batch_update": {
+              "path": "v1/jobs/{job_id}/managers/batch_update",
+              "httpMethod": "POST",
+              "description": "更新职位相关人员",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_manager.batch_update",
+              "parameterOrder": [
+                "job_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job-manager/batch_update",
+              "scopes": [
+                "hire:job"
+              ]
+            },
+            "get": {
+              "path": "v1/jobs/{job_id}/managers/{manager_id}",
+              "httpMethod": "GET",
+              "description": "获取职位上的招聘人员信息",
+              "parameters": {
+                "job_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位 ID"
+                },
+                "manager_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "此处传入职位 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_manager.get",
+              "parameterOrder": [
+                "job_id",
+                "manager_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job-manager/get"
+            }
+          }
+        },
+        "job_process": {
+          "methods": {
+            "list": {
+              "path": "v1/job_processes",
+              "httpMethod": "GET",
+              "description": "获取招聘流程信息",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小, 不能超过 100"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_process.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_process/list",
+              "scopes": [
+                "hire:job_process:readonly"
+              ]
+            }
+          }
+        },
+        "job_publish_record": {
+          "methods": {
+            "search": {
+              "path": "v1/job_publish_records/search",
+              "httpMethod": "POST",
+              "description": "获取职位广告发布记录",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_publish_record.search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_publish_record/search",
+              "scopes": [
+                "hire:job:readonly",
+                "hire:job"
+              ]
+            }
+          }
+        },
+        "job_requirement": {
+          "methods": {
+            "create": {
+              "path": "v1/job_requirements",
+              "httpMethod": "POST",
+              "description": "创建招聘需求",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement.create",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_requirement/create",
+              "scopes": [
+                "hire:job_requirement"
+              ]
+            },
+            "delete": {
+              "path": "v1/job_requirements/{job_requirement_id}",
+              "httpMethod": "DELETE",
+              "description": "删除招聘需求",
+              "parameters": {
+                "job_requirement_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "招聘需求 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement.delete",
+              "parameterOrder": [
+                "job_requirement_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_requirement/delete",
+              "scopes": [
+                "hire:job_requirement"
+              ]
+            },
+            "list": {
+              "path": "v1/job_requirements",
+              "httpMethod": "GET",
+              "description": "获取招聘需求列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "job_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "职位ID"
+                },
+                "create_time_begin": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "起始创建时间，传入毫秒级时间戳"
+                },
+                "create_time_end": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "截止创建时间，传入毫秒级时间戳"
+                },
+                "update_time_begin": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "起始更新时间，传入毫秒级时间戳"
+                },
+                "update_time_end": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "截止更新时间，传入毫秒级时间戳"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_requirement/list",
+              "scopes": [
+                "hire:job_requirement:readonly",
+                "hire:job_requirement"
+              ]
+            },
+            "list_by_id": {
+              "path": "v1/job_requirements/search",
+              "httpMethod": "POST",
+              "description": "获取招聘需求信息",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement.list_by_id",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list_by_id&project=hire&resource=job_requirement&version=v1",
+              "scopes": [
+                "hire:job_requirement:readonly",
+                "hire:job_requirement"
+              ]
+            },
+            "update": {
+              "path": "v1/job_requirements/{job_requirement_id}",
+              "httpMethod": "PUT",
+              "description": "更新招聘需求",
+              "parameters": {
+                "job_requirement_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "招聘需求ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "job_family_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「序列 ID」的类型"
+                },
+                "employee_type_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「人员类型 ID」的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement.update",
+              "parameterOrder": [
+                "job_requirement_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_requirement/update",
+              "scopes": [
+                "hire:job_requirement"
+              ]
+            }
+          }
+        },
+        "job_requirement_schema": {
+          "methods": {
+            "list": {
+              "path": "v1/job_requirement_schemas",
+              "httpMethod": "GET",
+              "description": "获取招聘需求模板",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_requirement_schema.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_requirement_schema/list",
+              "scopes": [
+                "hire:job_requirement:readonly",
+                "hire:job_requirement"
+              ]
+            }
+          }
+        },
+        "job_schema": {
+          "methods": {
+            "list": {
+              "path": "v1/job_schemas",
+              "httpMethod": "GET",
+              "description": "获取职位模板",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "scenario": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "职位模板类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_schema.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/job_schema/list",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            }
+          }
+        },
+        "job_type": {
+          "methods": {
+            "list": {
+              "path": "v1/job_types",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "job_type.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=job_type&version=v1",
+              "scopes": [
+                "hire:job:readonly"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}
