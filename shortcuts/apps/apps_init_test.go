@@ -267,6 +267,9 @@ func TestRunScaffold_EmptyRepo(t *testing.T) {
 			if c == nil || !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", "nestjs-react-fullstack", "--app-id", "app_x") {
 				t.Errorf("app init not invoked with expected args: %v", f.calls)
 			}
+			if c != nil && containsAll(c, "--local") {
+				t.Errorf("app init must NOT carry --local: %v", c)
+			}
 		})
 	}
 }
@@ -281,9 +284,11 @@ func TestRunScaffold_NonEmpty_SyncsWhenNoSteering(t *testing.T) {
 	}
 	if c := findCallArg(f.calls, "npx", "app", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online") {
 		t.Error("app sync not invoked with --prefer-online")
+	} else if containsAll(c, "--local") {
+		t.Errorf("app sync must NOT carry --local: %v", c)
 	}
-	if c := findCallArg(f.calls, "npx", "skills", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online") {
-		t.Error("skills sync should run with --prefer-online when steering dir absent")
+	if c := findCallArg(f.calls, "npx", "skills", "sync"); c == nil || !containsAll(c, "-y", "--prefer-online", "--local") {
+		t.Error("skills sync should run with --prefer-online and --local when steering dir absent")
 	}
 }
 
@@ -342,6 +347,8 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 		t.Error("npx scaffold not invoked")
 	} else if !containsAll(c, "-y", "--prefer-online", miaodaCLIPkg, "app", "init", "--template", defaultTemplate, "--app-id", "app_x") {
 		t.Errorf("app init missing expected --template fallback args: %v", c)
+	} else if containsAll(c, "--local") {
+		t.Errorf("app init must NOT carry --local: %v", c)
 	}
 }
 
@@ -722,8 +729,14 @@ func TestAppsInit_Req1_Wording(t *testing.T) {
 	if strings.Contains(strings.ToLower(desc), "scaffold") {
 		t.Errorf("dry-run description still mentions scaffold: %q", desc)
 	}
-	if _, ok := data["scaffold"]; !ok {
+	scaffold, ok := data["scaffold"].(string)
+	if !ok {
 		t.Error("dry-run must keep machine-contract key `scaffold`")
+	} else if !strings.Contains(scaffold, "skills sync --local") {
+		t.Errorf("dry-run scaffold string must show --local on skills sync: %q", scaffold)
+	} else if strings.Contains(scaffold, "app init --template nestjs-react-fullstack --app-id app_x --local") ||
+		strings.Contains(scaffold, "app sync --local") {
+		t.Errorf("dry-run scaffold string must NOT show --local on app init / app sync: %q", scaffold)
 	}
 
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{

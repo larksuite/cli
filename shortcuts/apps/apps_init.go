@@ -86,7 +86,7 @@ var AppsInit = common.Shortcut{
 			Desc("Initialize Miaoda app repository (credential-init, clone, checkout, npx code-init, optional commit/push)").
 			Set("credential_init", fmt.Sprintf("apps +git-credential-init --app-id %s --format json", appID)).
 			Set("checkout", "git checkout "+defaultInitBranch).
-			Set("scaffold", fmt.Sprintf("empty repo: npx -y --prefer-online %s app init --template %s --app-id %s; non-empty: npx -y --prefer-online %s app sync + .spark/meta.json app_id patch + conditional skills sync", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
+			Set("scaffold", fmt.Sprintf("empty repo: npx -y --prefer-online %s app init --template %s --app-id %s; non-empty: npx -y --prefer-online %s app sync + .spark/meta.json app_id patch + conditional skills sync --local", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
 			Set("commit_push", "conditional: git add -A + commit + push origin "+defaultInitBranch+" when the working tree has changes").
 			Set("template", template)
 		dir, err := resolveTargetPath(rctx, appID)
@@ -280,7 +280,7 @@ func runScaffold(ctx context.Context, dir, appID, template string) (string, erro
 		return "", err
 	}
 	if !hasSteeringSkills(dir) {
-		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "skills", "sync"); err != nil {
+		if _, stderr, err := initRunner.Run(ctx, dir, "npx", "-y", "--prefer-online", miaodaCLIPkg, "skills", "sync", "--local"); err != nil {
 			return "", output.Errorf(output.ExitAPI, "npx_skills_sync", "npx skills sync failed: %s", gitErr(stderr, err))
 		}
 	}
