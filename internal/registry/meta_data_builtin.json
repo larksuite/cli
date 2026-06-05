@@ -8,6 +8,36 @@
       "description": "Feishu/Lark Hire (招聘): jobs, talents, applications, offers, interviews, onboarding, referrals, agencies, websites and ecosystem integrations",
       "servicePath": "/open-apis/hire",
       "resources": {
+        "advertisement": {
+          "methods": {
+            "publish": {
+              "path": "v1/advertisements/{advertisement_id}/publish",
+              "httpMethod": "POST",
+              "description": "职位发布至官网",
+              "parameters": {
+                "advertisement_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位广告 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "advertisement.publish",
+              "parameterOrder": [
+                "advertisement_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/advertisement/publish",
+              "scopes": [
+                "hire:advertisement"
+              ]
+            }
+          }
+        },
         "agency": {
           "methods": {
             "batch_query": {
@@ -3331,6 +3361,42 @@
             }
           }
         },
+        "portal_apply_schema": {
+          "methods": {
+            "list": {
+              "path": "v1/portal_apply_schemas",
+              "httpMethod": "GET",
+              "description": "-",
+              "parameters": {
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页大小"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "分页标记，第一次请求不填，表示从头开始遍历；分页查询结果还有更多项时会同时返回新的 page_token，下次遍历可采用该 page_token 获取查询结果"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant",
+                "user"
+              ],
+              "id": "portal_apply_schema.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=list&project=hire&resource=portal_apply_schema&version=v1",
+              "scopes": [
+                "hire:site:readonly",
+                "hire:site"
+              ]
+            }
+          }
+        },
         "referral": {
           "methods": {
             "get_by_application": {
@@ -4228,6 +4294,497 @@
               "scopes": [
                 "hire:talent_tag",
                 "hire:talent_tag:readonly"
+              ]
+            }
+          }
+        },
+        "website": {
+          "methods": {
+            "list": {
+              "path": "v1/websites",
+              "httpMethod": "GET",
+              "description": "获取自定义官网列表",
+              "parameters": {
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website/list",
+              "scopes": [
+                "hire:site:readonly",
+                "hire:site"
+              ]
+            }
+          }
+        },
+        "website_channel": {
+          "methods": {
+            "create": {
+              "path": "v1/websites/{website_id}/channels",
+              "httpMethod": "POST",
+              "description": "创建官网推广渠道",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_channel.create",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-channel/create",
+              "scopes": [
+                "hire:site"
+              ]
+            },
+            "delete": {
+              "path": "v1/websites/{website_id}/channels/{channel_id}",
+              "httpMethod": "DELETE",
+              "description": "删除官网推广渠道",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "channel_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "推广渠道 ID"
+                }
+              },
+              "risk": "high-risk-write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_channel.delete",
+              "parameterOrder": [
+                "website_id",
+                "channel_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-channel/delete",
+              "scopes": [
+                "hire:site"
+              ]
+            },
+            "list": {
+              "path": "v1/websites/{website_id}/channels",
+              "httpMethod": "GET",
+              "description": "获取官网推广渠道列表",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "page_size": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录最大数量，最大100"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的 page_token"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_channel.list",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-channel/list",
+              "scopes": [
+                "hire:site:readonly",
+                "hire:site"
+              ]
+            },
+            "update": {
+              "path": "v1/websites/{website_id}/channels/{channel_id}",
+              "httpMethod": "PUT",
+              "description": "更新官网推广渠道",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "channel_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "推广渠道 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_channel.update",
+              "parameterOrder": [
+                "website_id",
+                "channel_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-channel/update",
+              "scopes": [
+                "hire:site"
+              ]
+            }
+          }
+        },
+        "website_delivery": {
+          "methods": {
+            "create_by_attachment": {
+              "path": "v1/websites/{website_id}/deliveries/create_by_attachment",
+              "httpMethod": "POST",
+              "description": "根据简历附件解析创建官网投递",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_delivery.create_by_attachment",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-delivery/create_by_attachment",
+              "scopes": [
+                "hire:site_application"
+              ]
+            },
+            "create_by_resume": {
+              "path": "v1/websites/{website_id}/deliveries/create_by_resume",
+              "httpMethod": "POST",
+              "description": "创建官网投递",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_delivery.create_by_resume",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-delivery/create_by_resume",
+              "scopes": [
+                "hire:site_application"
+              ]
+            }
+          }
+        },
+        "website_delivery_task": {
+          "methods": {
+            "get": {
+              "path": "v1/websites/{website_id}/delivery_tasks/{delivery_task_id}",
+              "httpMethod": "GET",
+              "description": "获取简历解析创建官网投递任务结果",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "delivery_task_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "投递任务 ID"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_delivery_task.get",
+              "parameterOrder": [
+                "website_id",
+                "delivery_task_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-delivery_task/get",
+              "scopes": [
+                "hire:site_application:readonly",
+                "hire:site_application"
+              ]
+            }
+          }
+        },
+        "website_job_post": {
+          "methods": {
+            "get": {
+              "path": "v1/websites/{website_id}/job_posts/{job_post_id}",
+              "httpMethod": "GET",
+              "description": "获取自定义官网下职位广告详情",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "job_post_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "职位广告 ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_job_post.get",
+              "parameterOrder": [
+                "website_id",
+                "job_post_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-job_post/get",
+              "scopes": [
+                "hire:site_job_post:readonly"
+              ]
+            },
+            "list": {
+              "path": "v1/websites/{website_id}/job_posts",
+              "httpMethod": "GET",
+              "description": "获取自定义官网下的职位列表",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间,毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间,毫秒级时间戳"
+                },
+                "create_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早创建时间,毫秒级时间戳"
+                },
+                "create_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚创建时间,毫秒级时间戳"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_job_post.list",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-job_post/list",
+              "scopes": [
+                "hire:site_job_post:readonly"
+              ]
+            },
+            "search": {
+              "path": "v1/websites/{website_id}/job_posts/search",
+              "httpMethod": "POST",
+              "description": "搜索自定义官网下的职位列表",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "下一页页码"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大10"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "department_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的部门 ID 的类型"
+                },
+                "job_level_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的「职级 ID」的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_job_post.search",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-job_post/search",
+              "scopes": [
+                "hire:site_job_post:readonly"
+              ]
+            }
+          }
+        },
+        "website_site_user": {
+          "methods": {
+            "create": {
+              "path": "v1/websites/{website_id}/site_users",
+              "httpMethod": "POST",
+              "description": "创建官网用户",
+              "parameters": {
+                "website_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "官网 ID，可从「获取官网自定义列表」获取"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "website_site_user.create",
+              "parameterOrder": [
+                "website_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/website-site_user/create",
+              "scopes": [
+                "hire:site"
               ]
             }
           }
