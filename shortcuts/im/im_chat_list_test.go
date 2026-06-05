@@ -611,3 +611,85 @@ func TestImChatList_Execute_UserMuteFiltersP2p(t *testing.T) {
 		t.Fatalf("remaining chat = %v; want oc_g", parsed.Data.Chats[0]["chat_id"])
 	}
 }
+
+func TestChatList_SortMapping(t *testing.T) {
+	cases := []struct{ sort, want string }{
+		{"create_time", "ByCreateTimeAsc"},
+		{"active_time", "ByActiveTimeDesc"},
+	}
+	for _, c := range cases {
+		t.Run(c.sort, func(t *testing.T) {
+			rt := newChatListTestRuntimeContext(t, map[string]string{"sort": c.sort}, nil)
+			got := buildChatListParams(rt, "")
+			if got["sort_type"] != c.want {
+				t.Fatalf("sort=%s -> sort_type=%v, want %s", c.sort, got["sort_type"], c.want)
+			}
+		})
+	}
+}
+
+// TestChatList_SortAliasParity proves the hidden --sort-type alias maps to the
+// exact same upstream request as the equivalent new --sort value (byte-equal).
+func TestChatList_SortAliasParity(t *testing.T) {
+	pairs := []struct{ newVal, oldVal string }{
+		{"create_time", "ByCreateTimeAsc"},
+		{"active_time", "ByActiveTimeDesc"},
+	}
+	for _, p := range pairs {
+		t.Run(p.newVal, func(t *testing.T) {
+			newRT := newChatListTestRuntimeContext(t, map[string]string{"sort": p.newVal}, nil)
+			oldRT := newChatListTestRuntimeContext(t, map[string]string{"sort-type": p.oldVal}, nil)
+			a := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), newRT))
+			b := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), oldRT))
+			if a != b {
+				t.Fatalf("alias parity broken:\n new=%s\n old=%s", a, b)
+			}
+		})
+	}
+}
+
+// TestChatList_SortNewWins: both flags set -> new wins, old ignored, no error.
+func TestChatList_SortNewWins(t *testing.T) {
+	rt := newChatListTestRuntimeContext(t, map[string]string{
+		"sort":      "active_time",
+		"sort-type": "ByCreateTimeAsc",
+	}, nil)
+	got := buildChatListParams(rt, "")
+	if got["sort_type"] != "ByActiveTimeDesc" {
+		t.Fatalf("new should win: sort_type=%v, want ByActiveTimeDesc", got["sort_type"])
+	}
+}
+
+// TestChatList_SortFlagSurface asserts the declared flag structure.
+func TestChatList_SortFlagSurface(t *testing.T) {
+	var sortFlag, aliasFlag *common.Flag
+	for i := range ImChatList.Flags {
+		switch ImChatList.Flags[i].Name {
+		case "sort":
+			sortFlag = &ImChatList.Flags[i]
+		case "sort-type":
+			aliasFlag = &ImChatList.Flags[i]
+		}
+	}
+	if sortFlag == nil || aliasFlag == nil {
+		t.Fatalf("expected both --sort and --sort-type flags declared")
+	}
+	if sortFlag.Default != "create_time" {
+		t.Errorf("--sort Default = %q, want create_time", sortFlag.Default)
+	}
+	if got := strings.Join(sortFlag.Enum, ","); got != "create_time,active_time" {
+		t.Errorf("--sort Enum = %q, want create_time,active_time", got)
+	}
+	if !strings.Contains(sortFlag.Desc, "create_time") || !strings.Contains(sortFlag.Desc, "active_time") {
+		t.Errorf("--sort Desc must document both fields/directions: %q", sortFlag.Desc)
+	}
+	if !aliasFlag.Hidden {
+		t.Errorf("--sort-type must be Hidden")
+	}
+	if got := strings.Join(aliasFlag.Enum, ","); got != "ByCreateTimeAsc,ByActiveTimeDesc" {
+		t.Errorf("--sort-type Enum = %q, want ByCreateTimeAsc,ByActiveTimeDesc", got)
+	}
+	if aliasFlag.Default != "" {
+		t.Errorf("--sort-type (hidden alias) must not carry a Default, got %q", aliasFlag.Default)
+	}
+}

@@ -48,7 +48,8 @@ var ImChatList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "user-id-type", Default: "open_id", Desc: "ID type for owner_id in response", Enum: []string{"open_id", "union_id", "user_id"}},
-		{Name: "sort-type", Default: "ByCreateTimeAsc", Desc: "sort order", Enum: []string{"ByCreateTimeAsc", "ByActiveTimeDesc"}},
+		{Name: "sort", Default: "create_time", Desc: "sort field: create_time (ascending) | active_time (descending)", Enum: []string{"create_time", "active_time"}},
+		{Name: "sort-type", Hidden: true, Desc: "alias of --sort (hidden)", Enum: []string{"ByCreateTimeAsc", "ByActiveTimeDesc"}},
 		{Name: "types", Type: "string_slice", Desc: "chat types to include (group, p2p); omit = groups only (backward compatible); p2p requires user identity"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
@@ -266,9 +267,16 @@ func resolveTypes(runtime *common.RuntimeContext) (string, bool, error) {
 // CSV string already normalized + bot-stripped by resolveTypes; pass "" to
 // omit the types query param entirely (backward compatible default).
 func buildChatListParams(runtime *common.RuntimeContext, effectiveTypes string) map[string]interface{} {
+	sortType := map[string]string{
+		"create_time": "ByCreateTimeAsc",
+		"active_time": "ByActiveTimeDesc",
+	}[runtime.Str("sort")]
+	if old, ok := aliasFlagValue(runtime, "sort-type", "sort"); ok {
+		sortType = old // old value is already the upstream enum -> pass through
+	}
 	params := map[string]interface{}{
 		"user_id_type": runtime.Str("user-id-type"),
-		"sort_type":    runtime.Str("sort-type"),
+		"sort_type":    sortType,
 	}
 	if n := runtime.Int("page-size"); n > 0 {
 		params["page_size"] = n
