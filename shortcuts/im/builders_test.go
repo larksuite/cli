@@ -797,7 +797,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"page-size": "10",
 		}, nil)
 		got := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":10`) {
+		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":"10"`) {
 			t.Fatalf("ImThreadsMessagesList.DryRun() = %s", got)
 		}
 	})
