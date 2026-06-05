@@ -5,8 +5,6 @@ package common
 
 import (
 	"strings"
-
-	"github.com/larksuite/cli/internal/output"
 )
 
 // ValidateChatIDTyped checks if a chat ID has valid format (oc_ prefix).
@@ -40,17 +38,6 @@ func normalizeChatID(input string) (string, string) {
 		return "", "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)"
 	}
 	return input, ""
-}
-
-// ValidateUserID checks if a user ID has valid format (ou_ prefix).
-//
-// Deprecated: use ValidateUserIDTyped for typed error envelopes.
-func ValidateUserID(input string) (string, error) {
-	userID, msg := normalizeUserID(input)
-	if msg != "" {
-		return "", output.ErrValidation("%s", msg)
-	}
-	return userID, nil
 }
 
 // ValidateUserIDTyped checks if a user ID has valid format (ou_ prefix).

@@ -691,7 +691,7 @@ func boom() error {
 	return &output.ExitError{Code: 1}
 }
 `
-	v := CheckNoLegacyEnvelopeLiteral("shortcuts/contact/foo.go", src)
+	v := CheckNoLegacyEnvelopeLiteral("shortcuts/unmigrated/foo.go", src)
 	if len(v) != 0 {
 		t.Errorf("non-migrated path should pass, got: %+v", v)
 	}
@@ -907,7 +907,7 @@ func boom(runtime *common.RuntimeContext) error {
 	return err
 }
 `
-	v := CheckNoLegacyRuntimeAPICall("shortcuts/contact/contact_get.go", src)
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/unmigrated/sample.go", src)
 	if len(v) != 0 {
 		t.Errorf("non-migrated path must not fire, got: %+v", v)
 	}
@@ -1006,7 +1006,7 @@ func boom() {
 	common.FlagErrorf("legacy allowed until domain migrates")
 }
 `
-	v := CheckNoLegacyCommonHelperCall("shortcuts/contact/contact_get.go", src)
+	v := CheckNoLegacyCommonHelperCall("shortcuts/unmigrated/sample.go", src)
 	if len(v) != 0 {
 		t.Errorf("non-migrated path must pass, got: %+v", v)
 	}

@@ -5,7 +5,6 @@ package contact
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -47,7 +46,7 @@ type fanoutResult struct {
 	Users   []searchUser
 	HasMore bool
 	ErrMsg  string // empty = success
-	ErrCode int    // 0 = success or unknown; otherwise an HTTP status or Lark API code corresponding to the first error
+	Err     error  // original failure, kept for typed all-failed propagation
 }
 
 // isFanoutSummaryFormat gates the per-fanout stderr summary line. Includes csv
@@ -67,7 +66,7 @@ func runOneQuery(ctx context.Context, runtime *common.RuntimeContext, index int,
 	// Pre-check ctx so queued workers see cancellation before issuing a
 	// request; in-flight workers continue until DoAPI returns.
 	if err := ctx.Err(); err != nil {
-		return fanoutResult{Index: index, Query: query, ErrMsg: err.Error()}
+		return fanoutErrorResult(index, query, err)
 	}
 
 	body := &searchUserAPIRequest{Query: query}
@@ -82,36 +81,27 @@ func runOneQuery(ctx context.Context, runtime *common.RuntimeContext, index int,
 		QueryParams: larkcore.QueryParams{"page_size": []string{strconv.Itoa(runtime.Int("page-size"))}},
 	})
 	if err != nil {
-		return fanoutResult{Index: index, Query: query, ErrMsg: err.Error()}
-	}
-	if apiResp.StatusCode != http.StatusOK {
-		body := strings.TrimSpace(string(apiResp.RawBody))
-		const maxBody = 200
-		if len(body) > maxBody {
-			body = body[:maxBody] + "..."
-		}
-		msg := fmt.Sprintf("HTTP %d %s", apiResp.StatusCode, http.StatusText(apiResp.StatusCode))
-		if body != "" {
-			msg = fmt.Sprintf("%s: %s", msg, body)
-		}
-		return fanoutResult{Index: index, Query: query,
-			ErrMsg:  msg,
-			ErrCode: apiResp.StatusCode}
+		return fanoutErrorResult(index, query, err)
 	}
 
-	var resp searchUserAPIEnvelope
-	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return fanoutResult{Index: index, Query: query,
-			ErrMsg: fmt.Sprintf("parse response failed: %v", err)}
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return fanoutErrorResult(index, query, err)
 	}
-	if resp.Code != 0 {
-		return fanoutResult{Index: index, Query: query,
-			ErrMsg:  fmt.Sprintf("API %d: %s", resp.Code, resp.Msg),
-			ErrCode: resp.Code}
+	respData, err := decodeSearchUserAPIData(data)
+	if err != nil {
+		return fanoutErrorResult(index, query, err)
 	}
 
-	users, hasMore := projectUsers(resp.Data, runtime.Str("lang"), runtime.Config.Brand)
+	users, hasMore := projectUsers(respData, runtime.Str("lang"), runtime.Config.Brand)
 	return fanoutResult{Index: index, Query: query, Users: users, HasMore: hasMore}
+}
+
+func fanoutErrorResult(index int, query string, err error) fanoutResult {
+	if err == nil {
+		return fanoutResult{Index: index, Query: query}
+	}
+	return fanoutResult{Index: index, Query: query, ErrMsg: contactFanoutErrorSummary(err), Err: err}
 }
 
 type fanoutUser struct {
@@ -146,7 +136,7 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 	}
 	failed := 0
 	var firstErrMsg, firstErrQuery string
-	var firstErrCode int
+	var firstErr error
 	for i, r := range indexed {
 		out.Queries = append(out.Queries, querySummary{
 			Query:   queries[i],
@@ -158,7 +148,7 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 			if firstErrMsg == "" {
 				firstErrMsg = r.ErrMsg
 				firstErrQuery = queries[i]
-				firstErrCode = r.ErrCode
+				firstErr = r.Err
 			}
 			continue
 		}
@@ -169,18 +159,7 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 	if failed == len(queries) && len(queries) > 0 {
 		msg := fmt.Sprintf("all %d queries failed; first: %s (query=%q)",
 			len(queries), firstErrMsg, firstErrQuery)
-		// Only the HTTP-status / Lark-API-code branches in runOneQuery populate
-		// ErrCode; transport, parse, panic, and ctx-canceled stay at 0. Code 0
-		// means success in the Lark protocol, so don't pretend it's an API error
-		// when we have nothing structured to report.
-		if firstErrCode != 0 {
-			return nil, output.ErrAPI(firstErrCode, msg, "")
-		}
-		// No structured API code — the failure was transport, parse, panic, or
-		// cancellation. Suggest the actionable next step rather than shipping
-		// an empty hint that would leave the calling agent with nothing to do.
-		return nil, output.ErrWithHint(output.ExitInternal, "fanout", msg,
-			"retry the command; if it persists, narrow --queries to a single term to isolate the failing input")
+		return nil, contactFanoutAllFailedError(firstErr, msg)
 	}
 	return out, nil
 }

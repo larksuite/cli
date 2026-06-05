@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -16,10 +15,10 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -254,6 +253,16 @@ func TestRowFromItem_CrossTenantEmptyEmailNoPanic(t *testing.T) {
 	}
 }
 
+func TestProjectUsers_NilData(t *testing.T) {
+	users, hasMore := projectUsers(nil, "", core.BrandFeishu)
+	if users == nil {
+		t.Fatalf("users should be an empty slice, not nil")
+	}
+	if len(users) != 0 || hasMore {
+		t.Fatalf("projectUsers(nil): got users=%v hasMore=%v", users, hasMore)
+	}
+}
+
 func TestValidateSearchUser_AllEmpty_Errors(t *testing.T) {
 	cmd := newSearchUserTestCommand()
 	rt := common.TestNewRuntimeContext(cmd, searchUserDefaultConfig())
@@ -479,6 +488,26 @@ func TestBuildBody_UserIDsResolveAndDedup(t *testing.T) {
 	}
 }
 
+func TestBuildBody_UserIDsMeWithoutLoginReturnsTypedError(t *testing.T) {
+	cmd := newSearchUserTestCommand()
+	_ = cmd.Flags().Set("user-ids", "me")
+	cfg := searchUserDefaultConfig()
+	cfg.UserOpenId = ""
+	rt := common.TestNewRuntimeContext(cmd, cfg)
+
+	body, err := buildSearchUserBody(rt)
+	if err == nil {
+		t.Fatalf("expected error, got body %+v", body)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category: got %q, want %q", p.Category, errs.CategoryValidation)
+	}
+}
+
 func TestValidateSearchUser_PageSizeOutOfRange_Errors(t *testing.T) {
 	for _, n := range []int{0, 31} {
 		cmd := newSearchUserTestCommand()
@@ -501,6 +530,20 @@ func TestValidateSearchUser_PageSizeBoundaries_OK(t *testing.T) {
 		if err := validateSearchUser(rt); err != nil {
 			t.Errorf("page-size=%d: unexpected error %v", n, err)
 		}
+	}
+}
+
+func TestDecodeSearchUserAPIData_MarshalFailureTyped(t *testing.T) {
+	_, err := decodeSearchUserAPIData(map[string]interface{}{"bad": func() {}})
+	if err == nil {
+		t.Fatalf("expected marshal failure")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("problem type: got %s/%s", p.Category, p.Subtype)
 	}
 }
 
@@ -1011,6 +1054,13 @@ func TestRunOneQuery_APINonZeroCode(t *testing.T) {
 	if got.ErrMsg != "API 99991663: rate limited" {
 		t.Errorf("ErrMsg = %q, want 'API 99991663: rate limited'", got.ErrMsg)
 	}
+	p, ok := errs.ProblemOf(got.Err)
+	if !ok {
+		t.Fatalf("expected typed problem on fanout result, got %T", got.Err)
+	}
+	if p.Code != 99991663 {
+		t.Errorf("problem code: got %d, want 99991663", p.Code)
+	}
 	if got.Users != nil || got.HasMore {
 		t.Errorf("on error, Users/HasMore must be zero values; got %+v", got)
 	}
@@ -1032,8 +1082,15 @@ func TestRunOneQuery_HTTPNon200(t *testing.T) {
 	if !strings.Contains(got.ErrMsg, "upstream_unavailable") {
 		t.Errorf("ErrMsg should include response body for diagnosis; got %q", got.ErrMsg)
 	}
-	if got.ErrCode != 503 {
-		t.Errorf("ErrCode = %d, want 503", got.ErrCode)
+	p, ok := errs.ProblemOf(got.Err)
+	if !ok {
+		t.Fatalf("expected typed problem on fanout result, got %T", got.Err)
+	}
+	if p.Code != 503 {
+		t.Errorf("problem code: got %d, want 503", p.Code)
+	}
+	if p.Category != errs.CategoryNetwork {
+		t.Errorf("problem category: got %q, want %q", p.Category, errs.CategoryNetwork)
 	}
 }
 
@@ -1077,6 +1134,16 @@ func TestRunOneQuery_TransportError(t *testing.T) {
 	}
 	if got.Users != nil || got.HasMore {
 		t.Errorf("on error, Users/HasMore must be zero values; got %+v", got)
+	}
+}
+
+func TestFanoutErrorResult_NilErrorIsSuccess(t *testing.T) {
+	got := fanoutErrorResult(4, "alice", nil)
+	if got.Index != 4 || got.Query != "alice" {
+		t.Fatalf("Index/Query mismatch: %+v", got)
+	}
+	if got.ErrMsg != "" || got.Err != nil {
+		t.Fatalf("nil error should produce a success result, got %+v", got)
 	}
 }
 
@@ -1136,7 +1203,7 @@ func TestFanoutAssemble_AllFailed_ReturnsError(t *testing.T) {
 }
 
 // When all queries fail with no structured Lark API code (transport, parse,
-// panic, ctx-canceled), the returned ExitError must carry an actionable
+// panic, ctx-canceled), the returned typed error must carry an actionable
 // hint so the calling agent has a next step to try instead of giving up.
 func TestFanoutAssemble_AllFailed_NoCode_HasActionableHint(t *testing.T) {
 	results := []fanoutResult{
@@ -1147,28 +1214,38 @@ func TestFanoutAssemble_AllFailed_NoCode_HasActionableHint(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when all queries failed")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("expected Detail, got nil")
+	if p.Category != errs.CategoryInternal {
+		t.Fatalf("category: got %q, want %q", p.Category, errs.CategoryInternal)
 	}
-	if exitErr.Detail.Hint == "" {
+	if p.Hint == "" {
 		t.Errorf("expected non-empty Hint so agents have a next step; got empty")
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "retry") {
-		t.Errorf("hint should suggest retry as the first action; got %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "retry") {
+		t.Errorf("hint should suggest retry as the first action; got %q", p.Hint)
 	}
 }
 
-// Codes from the first failure must propagate through output.ErrAPI so the
-// CLI's exit-code classifier sees the real signal (e.g., 99991663 rate limit)
+// Codes from the first failure must propagate through typed problem fields so
+// the CLI's exit-code classifier sees the real signal (e.g., 99991663 rate limit)
 // instead of 0, which would mean "success" in the Lark protocol.
 func TestFanoutAssemble_AllFailed_PropagatesFirstCode(t *testing.T) {
 	results := []fanoutResult{
-		{Index: 0, Query: "alice", ErrMsg: "API 99991663: rate limit", ErrCode: 99991663},
-		{Index: 1, Query: "bob", ErrMsg: "HTTP 500", ErrCode: 500},
+		{
+			Index:  0,
+			Query:  "alice",
+			ErrMsg: "API 99991663: rate limit",
+			Err:    errs.NewAPIError(errs.SubtypeRateLimit, "rate limit").WithCode(99991663),
+		},
+		{
+			Index:  1,
+			Query:  "bob",
+			ErrMsg: "HTTP 500",
+			Err:    errs.NewNetworkError(errs.SubtypeNetworkServer, "HTTP 500").WithCode(500),
+		},
 	}
 	_, err := buildFanoutResponse([]string{"alice", "bob"}, results)
 	if err == nil {
@@ -1176,6 +1253,16 @@ func TestFanoutAssemble_AllFailed_PropagatesFirstCode(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rate limit") {
 		t.Errorf("error should contain first ErrMsg; got %v", err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Code != 99991663 {
+		t.Errorf("problem code: got %d, want 99991663", p.Code)
+	}
+	if p.Subtype != errs.SubtypeRateLimit {
+		t.Errorf("problem subtype: got %q, want %q", p.Subtype, errs.SubtypeRateLimit)
 	}
 }
 
@@ -1217,6 +1304,37 @@ func TestFanoutAssemble_NoTopLevelHasMore(t *testing.T) {
 	}
 	if _, ok := asMap["queries"]; !ok {
 		t.Errorf("fanoutResponse missing queries")
+	}
+}
+
+func TestPrettyFanoutUserRows(t *testing.T) {
+	rows := prettyFanoutUserRows([]fanoutUser{
+		{
+			searchUser: searchUser{
+				OpenID:          "ou_a",
+				LocalizedName:   "Alice",
+				Department:      strings.Repeat("d", 80),
+				EnterpriseEmail: "alice@example.com",
+				HasChatted:      true,
+				ChatRecencyHint: "Contacted yesterday",
+			},
+			MatchedQuery: "alice",
+		},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("rows: got %d, want 1", len(rows))
+	}
+	row := rows[0]
+	for _, key := range []string{"matched_query", "localized_name", "department", "enterprise_email", "has_chatted", "chat_recency_hint", "open_id"} {
+		if _, ok := row[key]; !ok {
+			t.Fatalf("row missing key %q: %+v", key, row)
+		}
+	}
+	if row["matched_query"] != "alice" || row["open_id"] != "ou_a" {
+		t.Fatalf("row identity fields: %+v", row)
+	}
+	if len(row["department"].(string)) >= 80 {
+		t.Fatalf("department should be truncated for table display, got %q", row["department"])
 	}
 }
 

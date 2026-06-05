@@ -17,6 +17,7 @@ import (
 var migratedCommonHelperPaths = []string{
 	"shortcuts/base/",
 	"shortcuts/calendar/",
+	"shortcuts/contact/",
 	"shortcuts/drive/",
 	"shortcuts/mail/",
 	"shortcuts/minutes/",

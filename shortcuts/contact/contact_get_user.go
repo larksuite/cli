@@ -28,7 +28,8 @@ var ContactGetUser = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Str("user-id") == "" && runtime.IsBot() {
-			return common.FlagErrorf("bot identity cannot get current user info, specify --user-id")
+			return common.ValidationErrorf("bot identity cannot get current user info, specify --user-id").
+				WithParam("--user-id")
 		}
 		return nil
 	},
@@ -63,7 +64,7 @@ var ContactGetUser = common.Shortcut{
 
 		if userId == "" {
 			// Current user
-			data, err := runtime.CallAPI("GET", "/open-apis/authen/v1/user_info", nil, nil)
+			data, err := runtime.CallAPITyped("GET", "/open-apis/authen/v1/user_info", nil, nil)
 			if err != nil {
 				return err
 			}
@@ -87,7 +88,7 @@ var ContactGetUser = common.Shortcut{
 
 		if runtime.IsBot() {
 			// Bot identity: GET /contact/v3/users/:user_id (full profile)
-			data, err := runtime.CallAPI("GET", "/open-apis/contact/v3/users/"+url.PathEscape(userId),
+			data, err := runtime.CallAPITyped("GET", "/open-apis/contact/v3/users/"+url.PathEscape(userId),
 				map[string]interface{}{"user_id_type": userIdType}, nil)
 			if err != nil {
 				return err
@@ -110,7 +111,7 @@ var ContactGetUser = common.Shortcut{
 		}
 
 		// User identity: POST /contact/v3/users/basic_batch (lightweight)
-		data, err := runtime.CallAPI("POST", "/open-apis/contact/v3/users/basic_batch",
+		data, err := runtime.CallAPITyped("POST", "/open-apis/contact/v3/users/basic_batch",
 			map[string]interface{}{"user_id_type": userIdType},
 			map[string]interface{}{"user_ids": []string{userId}})
 		if err != nil {
