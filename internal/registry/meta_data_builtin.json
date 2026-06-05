@@ -8,6 +8,207 @@
       "description": "Feishu/Lark Hire (招聘): jobs, talents, applications, offers, interviews, onboarding, referrals, agencies, websites and ecosystem integrations",
       "servicePath": "/open-apis/hire",
       "resources": {
+        "agency": {
+          "methods": {
+            "batch_query": {
+              "path": "v1/agencies/batch_query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.batch_query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=hire&resource=agency&version=v1",
+              "scopes": [
+                "hire:agency:readonly",
+                "hire:agency"
+              ]
+            },
+            "get": {
+              "path": "v1/agencies/{agency_id}",
+              "httpMethod": "GET",
+              "description": "获取猎头供应商信息",
+              "parameters": {
+                "agency_id": {
+                  "type": "string",
+                  "location": "path",
+                  "required": true,
+                  "description": "猎头供应商ID"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.get",
+              "parameterOrder": [
+                "agency_id"
+              ],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/agency/get",
+              "scopes": [
+                "hire:agency:readonly",
+                "hire:agency"
+              ]
+            },
+            "get_agency_account": {
+              "path": "v1/agencies/get_agency_account",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.get_agency_account",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=get_agency_account&project=hire&resource=agency&version=v1",
+              "scopes": [
+                "hire:agency_account",
+                "hire:agency_account:readonly"
+              ]
+            },
+            "operate_agency_account": {
+              "path": "v1/agencies/operate_agency_account",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.operate_agency_account",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=operate_agency_account&project=hire&resource=agency&version=v1",
+              "scopes": [
+                "hire:agency_account"
+              ]
+            },
+            "protect": {
+              "path": "v1/agencies/protect",
+              "httpMethod": "POST",
+              "description": "设置猎头保护期",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "write",
+              "danger": true,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.protect",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/agency/protect",
+              "scopes": [
+                "hire:agency"
+              ]
+            },
+            "protect_search": {
+              "path": "v1/agencies/protection_period/search",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {},
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.protect_search",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=protect_search&project=hire&resource=agency&version=v1",
+              "scopes": [
+                "hire:agency:readonly",
+                "hire:agency"
+              ]
+            },
+            "query": {
+              "path": "v1/agencies/query",
+              "httpMethod": "GET",
+              "description": "查询猎头供应商信息",
+              "parameters": {
+                "name": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "猎头供应商名称"
+                },
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "此次调用中使用的用户ID的类型"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "agency.query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/agency/query",
+              "scopes": [
+                "hire:agency:readonly",
+                "hire:agency"
+              ]
+            }
+          }
+        },
         "application": {
           "methods": {
             "cancel_onboard": {
@@ -526,6 +727,102 @@
               "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/attachment/preview",
               "scopes": [
                 "hire:attachment"
+              ]
+            }
+          }
+        },
+        "background_check_order": {
+          "methods": {
+            "batch_query": {
+              "path": "v1/background_check_orders/batch_query",
+              "httpMethod": "POST",
+              "description": "-",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "background_check_order.batch_query",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/api-explorer?from=op_doc_tab&apiName=batch_query&project=hire&resource=background_check_order&version=v1",
+              "scopes": [
+                "hire:background_check_order",
+                "hire:background_check_order:readonly"
+              ]
+            },
+            "list": {
+              "path": "v1/background_check_orders",
+              "httpMethod": "GET",
+              "description": "获取背调信息",
+              "parameters": {
+                "user_id_type": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "用户 ID 类型"
+                },
+                "page_token": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "页码标识，获取第一页传空，每次查询会返回下一页的page_token"
+                },
+                "page_size": {
+                  "type": "integer",
+                  "location": "query",
+                  "required": false,
+                  "description": "每页获取记录数量，最大100"
+                },
+                "application_id": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "投递 ID"
+                },
+                "update_start_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最早更新时间，毫秒级时间戳"
+                },
+                "update_end_time": {
+                  "type": "string",
+                  "location": "query",
+                  "required": false,
+                  "description": "最晚更新时间，毫秒级时间戳"
+                }
+              },
+              "risk": "read",
+              "danger": false,
+              "accessTokens": [
+                "tenant"
+              ],
+              "id": "background_check_order.list",
+              "parameterOrder": [],
+              "docUrl": "https://open.feishu.cn/document/ukTMukTMukTM/uMzM1YjLzMTN24yMzUjN/hire-v1/background_check_order/list",
+              "scopes": [
+                "hire:background_check_order",
+                "hire:background_check_order:readonly"
               ]
             }
           }
