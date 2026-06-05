@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/signature"
 )
 
 // MailSend is the `+send` shortcut: compose a new email and save it as a
@@ -23,10 +23,12 @@ var MailSend = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"mail:user_mailbox.message:send", "mail:user_mailbox.message:modify", "mail:user_mailbox:readonly"},
 	AuthTypes:   []string{"user"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "to", Desc: "Recipient email address(es), comma-separated"},
 		{Name: "subject", Desc: "Email subject. Required unless --template-id supplies a non-empty subject."},
-		{Name: "body", Desc: "Email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Required unless --template-id supplies a non-empty body."},
+		{Name: "body", Desc: "Email body. Prefer HTML for rich formatting (bold, lists, links); plain text is also supported. Body type is auto-detected. Use --plain-text to force plain-text mode. Mutually exclusive with --body-file. Required unless --template-id supplies a non-empty body."},
+		bodyFileFlag,
 		{Name: "from", Desc: "Sender email address for the From header. When using an alias (send_as) address, set this to the alias and use --mailbox for the owning mailbox. Defaults to the mailbox's primary address."},
 		{Name: "mailbox", Desc: "Mailbox email address that owns the draft (default: falls back to --from, then me). Use this when the sender (--from) differs from the mailbox, e.g. sending via an alias or send_as address."},
 		{Name: "cc", Desc: "CC email address(es), comma-separated"},
@@ -39,8 +41,10 @@ var MailSend = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
-		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag},
+		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
+		showLintDetailsFlag},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
@@ -74,11 +78,13 @@ var MailSend = common.Shortcut{
 			return err
 		}
 		hasTemplate := runtime.Str("template-id") != ""
-		if !hasTemplate && strings.TrimSpace(runtime.Str("subject")) == "" {
-			return output.ErrValidation("--subject is required; pass the final email subject (or use --template-id)")
+		bodyFlag := runtime.Str("body")
+		bodyFile := strings.TrimSpace(runtime.Str("body-file"))
+		if err := validateBodyFileMutex(bodyFlag, bodyFile, runtime.ValidatePath); err != nil {
+			return err
 		}
-		if !hasTemplate && strings.TrimSpace(runtime.Str("body")) == "" {
-			return output.ErrValidation("--body is required; pass the full email body (or use --template-id)")
+		if !hasTemplate && strings.TrimSpace(runtime.Str("subject")) == "" {
+			return mailValidationParamError("--subject", "--subject is required; pass the final email subject (or use --template-id)")
 		}
 		// With --template-id, tos/ccs/bccs may come from the template, so
 		// defer the at-least-one-recipient check to Execute (after
@@ -97,7 +103,19 @@ var MailSend = common.Shortcut{
 		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
-		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), runtime.Str("body")); err != nil {
+		// Resolve the body content first (reading --body-file if set) so
+		// inline / HTML checks see the actual body. This makes the
+		// `--body-file plain.txt --inline …` combination fail validation
+		// the same way `--body 'plain' --inline …` already does, instead
+		// of silently dropping the inline images at Execute (Major #4).
+		body, bErr := resolveBodyFromFlags(runtime)
+		if bErr != nil {
+			return bErr
+		}
+		if err := validateRequiredResolvedBody(body, hasTemplate, "--body or --body-file is required; pass the full email body (or use --template-id)"); err != nil {
+			return err
+		}
+		if err := validateComposeInlineAndAttachments(runtime.FileIO(), runtime.Str("attach"), runtime.Str("inline"), runtime.Bool("plain-text"), body); err != nil {
 			return err
 		}
 		if err := validateEventFlags(runtime); err != nil {
@@ -108,7 +126,10 @@ var MailSend = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		to := runtime.Str("to")
 		subject := runtime.Str("subject")
-		body := runtime.Str("body")
+		body, err := resolveBodyFromFlags(runtime)
+		if err != nil {
+			return err
+		}
 		ccFlag := runtime.Str("cc")
 		bccFlag := runtime.Str("bcc")
 		plainText := runtime.Bool("plain-text")
@@ -176,6 +197,21 @@ var MailSend = common.Shortcut{
 			}
 		}
 
+		noSignature := runtime.Bool("no-signature")
+		if noSignature {
+			if signatureID != "" {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: --signature-id ignored because --no-signature is set\n")
+			}
+			signatureID = ""
+		} else if signatureID == "" && !plainText {
+			if resp, lErr := signature.ListAll(runtime, mailboxID); lErr == nil {
+				signatureID = signature.DefaultSendID(resp.Usages, senderEmail)
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: failed to fetch default signature: %v\n", lErr)
+			}
+		}
 		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
 		if err != nil {
 			return err
@@ -206,6 +242,10 @@ var MailSend = common.Shortcut{
 		var autoResolvedPaths []string
 		var composedHTMLBody string
 		var composedTextBody string
+		// Lint findings flowing into the writing-path stdout envelope.
+		// Initialised as empty (non-nil) slices so the envelope always carries
+		// `lint_applied[]` / `original_blocked[]` even on the plain-text path.
+		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if plainText {
 			composedTextBody = body
 			bld = bld.TextBody([]byte(composedTextBody))
@@ -217,9 +257,17 @@ var MailSend = common.Shortcut{
 			}
 			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
 			if resolveErr != nil {
-				return resolveErr
+				return mailValidationError("failed to resolve local image paths: %v", resolveErr).WithCause(resolveErr)
 			}
 			resolved = injectSignatureIntoBody(resolved, sigResult)
+			// Writing-path lint: AutoFix=true / Strict=false — the writing-path
+			// safety contract has no `--no-lint` opt-out. Runs AFTER
+			// applyTemplate (above) + ResolveLocalImagePaths +
+			// injectSignatureIntoBody so the lint sees the final HTML the
+			// recipient renderer will see.
+			cleanedHTML, rep := runWritePathLint(resolved)
+			resolved = cleanedHTML
+			lintApplied, lintBlocked = rep.Applied, rep.Blocked
 			composedHTMLBody = resolved
 			bld = bld.HTMLBody([]byte(composedHTMLBody))
 			bld = addSignatureImagesToBuilder(bld, sigResult)
@@ -276,23 +324,30 @@ var MailSend = common.Shortcut{
 
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {
-			return fmt.Errorf("failed to build EML: %w", err)
+			return mailValidationError("failed to build EML: %v", err).WithCause(err)
 		}
 
 		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
-			return fmt.Errorf("failed to create draft: %w", err)
+			return mailDecorateProblemMessage(err, "failed to create draft")
 		}
+		showLintDetails := runtime.Bool("show-lint-details")
 		if !confirmSend {
-			runtime.Out(buildDraftSavedOutput(draftResult, mailboxID), nil)
+			out := buildDraftSavedOutput(draftResult, mailboxID)
+			applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+			addComposeHint(out)
+			runtime.Out(out, nil)
 			hintSendDraft(runtime, mailboxID, draftResult.DraftID)
 			return nil
 		}
 		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID, sendTime)
 		if err != nil {
-			return fmt.Errorf("failed to send email (draft %s created but not sent): %w", draftResult.DraftID, err)
+			return mailDecorateProblemMessage(err, "failed to send email (draft %s created but not sent)", draftResult.DraftID)
 		}
-		runtime.Out(buildDraftSendOutput(resData, mailboxID), nil)
+		out := buildDraftSendOutput(resData, mailboxID)
+		applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)
+		addComposeHint(out)
+		runtime.Out(out, nil)
 		return nil
 	},
 }

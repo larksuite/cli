@@ -5,9 +5,10 @@ package signature
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
+	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -27,19 +28,19 @@ func ListAll(runtime *common.RuntimeContext, mailboxID string) (*GetSignaturesRe
 		return cached, nil
 	}
 
-	data, err := runtime.CallAPI("GET", signaturesPath(mailboxID), nil, nil)
+	data, err := runtime.CallAPITyped("GET", signaturesPath(mailboxID), nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("get signatures: %w", err)
+		return nil, err
 	}
 
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return nil, fmt.Errorf("get signatures: marshal response: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "get signatures: marshal response: %v", err).WithCause(err)
 	}
 
 	var resp GetSignaturesResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, fmt.Errorf("get signatures: unmarshal response: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "get signatures: unmarshal response: %v", err).WithCause(err)
 	}
 
 	processCache[mailboxID] = &resp
@@ -66,5 +67,41 @@ func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signat
 			return &resp.Signatures[i], nil
 		}
 	}
-	return nil, fmt.Errorf("signature not found: %s", signatureID)
+	return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "signature not found: %s", signatureID)
+}
+
+// DefaultSendID returns the send_mail_signature_id for the given addr.
+// Falls back to usages[0] if no entry matches, but returns "" when
+// no default is configured (id empty or "0").
+// Returns "" if usages is empty.
+func DefaultSendID(usages []SignatureUsage, addr string) string {
+	return pickSignatureID(usages, addr, func(u SignatureUsage) string {
+		return u.SendMailSignatureID
+	})
+}
+
+// DefaultReplyID returns the reply_signature_id for the given addr.
+// Used by reply/reply-all/forward shortcuts.
+// Returns "" if usages is empty or no default is configured.
+func DefaultReplyID(usages []SignatureUsage, addr string) string {
+	return pickSignatureID(usages, addr, func(u SignatureUsage) string {
+		return u.ReplySignatureID
+	})
+}
+
+func pickSignatureID(usages []SignatureUsage, addr string, pick func(SignatureUsage) string) string {
+	if len(usages) == 0 {
+		return ""
+	}
+	laddr := strings.ToLower(strings.TrimSpace(addr))
+	for _, u := range usages {
+		if strings.ToLower(strings.TrimSpace(u.EmailAddress)) == laddr {
+			id := pick(u)
+			if id == "" || id == "0" {
+				return ""
+			}
+			return id
+		}
+	}
+	return ""
 }
