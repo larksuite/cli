@@ -10,7 +10,7 @@ A message can have flags on both layers simultaneously:
 - Message layer: `(default, message)`
 - Feed layer: `(thread, feed)` or `(msg_thread, feed)` depending on chat type
 
-**When no `--flag-type` is specified, the shortcut performs double-cancel**: removes both message layer and feed layer flags. The server handles cancel requests for non-existent flags idempotently, so this is safe.
+**When no `--flag-type` is specified, the shortcut performs best-effort double-cancel**: the message-layer flag is always removed; the feed-layer flag is also removed when the chat type can be determined (otherwise a warning is printed on stderr and the feed layer is skipped). The server handles cancel requests for non-existent flags idempotently, so this is safe.
 
 **Feed layer item_type is determined by chat_mode**:
 - Topic-style chat (`chat_mode=topic`) → `item_type=thread`
@@ -37,7 +37,7 @@ lark-cli im +flag-cancel --as user --message-id om_xxx --dry-run
 | Parameter | Required | Description |
 |------|------|------|
 | `--message-id <om_xxx>` | Required | Message ID |
-| `--flag-type <name>` | No | `message` or `feed`; **when omitted, double-cancels both layers** |
+| `--flag-type <name>` | No | `message` or `feed`; **when omitted, best-effort double-cancel of both layers** |
 | `--item-type <name>` | No | `default\|thread\|msg_thread`; required when `--flag-type feed` |
 | `--as user` | Required | Currently only supports user identity |
 

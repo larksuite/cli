@@ -25,5 +25,8 @@ func Shortcuts() []common.Shortcut {
 		ImFeedShortcutCreate,
 		ImFeedShortcutRemove,
 		ImFeedShortcutList,
+		ImFeedGroupList,
+		ImFeedGroupListItem,
+		ImFeedGroupQueryItem,
 	}
 }
