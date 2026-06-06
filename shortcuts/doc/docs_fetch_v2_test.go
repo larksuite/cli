@@ -7,6 +7,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -58,11 +60,69 @@ func TestBuildFetchBodyOmitsEmptyScene(t *testing.T) {
 	}
 }
 
+func TestBuildFetchBodyIncludesExplicitLang(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	if err := runtime.Cmd.Flags().Set("lang", "en-US"); err != nil {
+		t.Fatalf("set lang: %v", err)
+	}
+
+	body := buildFetchBody(runtime)
+	if got := body["lang"]; got != "en-US" {
+		t.Fatalf("lang = %#v, want %q", got, "en-US")
+	}
+}
+
+func TestBuildFetchBodyUsesRuntimeLangWhenFlagEmpty(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	runtime.Config = &core.CliConfig{Lang: i18n.LangJaJP}
+
+	body := buildFetchBody(runtime)
+	if got := body["lang"]; got != string(i18n.LangJaJP) {
+		t.Fatalf("lang = %#v, want %q", got, i18n.LangJaJP)
+	}
+}
+
+func TestBuildFetchBodyExplicitLangOverridesRuntimeLang(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	runtime.Config = &core.CliConfig{Lang: i18n.LangJaJP}
+	if err := runtime.Cmd.Flags().Set("lang", "en-US"); err != nil {
+		t.Fatalf("set lang: %v", err)
+	}
+
+	body := buildFetchBody(runtime)
+	if got := body["lang"]; got != "en-US" {
+		t.Fatalf("lang = %#v, want explicit flag", got)
+	}
+}
+
+func TestUseV2FetchDetectsLangFlag(t *testing.T) {
+	t.Parallel()
+
+	cmd := &cobra.Command{Use: "+fetch"}
+	cmd.Flags().String("api-version", "v1", "")
+	cmd.Flags().String("lang", "", "")
+	if err := cmd.Flags().Set("lang", "en-US"); err != nil {
+		t.Fatalf("set lang: %v", err)
+	}
+	runtime := common.TestNewRuntimeContext(cmd, nil)
+
+	if !useV2Fetch(runtime) {
+		t.Fatal("expected --lang to route to v2 fetch")
+	}
+}
+
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
 	cmd.Flags().String("doc-format", "xml", "")
 	cmd.Flags().String("detail", "simple", "")
 	cmd.Flags().Int("revision-id", -1, "")
+	cmd.Flags().String("lang", "", "")
 	cmd.Flags().String("scope", "full", "")
 	cmd.Flags().String("start-block-id", "", "")
 	cmd.Flags().String("end-block-id", "", "")

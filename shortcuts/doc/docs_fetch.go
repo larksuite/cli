@@ -33,7 +33,7 @@ func useV2Fetch(runtime *common.RuntimeContext) bool {
 	if runtime.Str("api-version") == "v2" {
 		return true
 	}
-	for _, name := range []string{"detail", "doc-format", "scope", "revision-id", "start-block-id", "end-block-id", "keyword", "context-before", "context-after", "max-depth"} {
+	for _, name := range []string{"detail", "doc-format", "lang", "scope", "revision-id", "start-block-id", "end-block-id", "keyword", "context-before", "context-after", "max-depth"} {
 		if runtime.Changed(name) {
 			return true
 		}

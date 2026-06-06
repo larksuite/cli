@@ -19,6 +19,7 @@ func v2FetchFlags() []common.Flag {
 		{Name: "doc-format", Desc: "content format", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "detail", Desc: "export detail level: simple (read-only) | with-ids (block IDs for cross-referencing) | full (all attrs for editing)", Hidden: true, Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
 		{Name: "revision-id", Desc: "document revision (-1 = latest)", Hidden: true, Type: "int", Default: "-1"},
+		{Name: "lang", Desc: "language for user cite names, e.g. zh_cn, en_us, ja_jp"},
 		{Name: "scope", Desc: "partial read scope: outline | range | keyword | section (omit to read whole doc)", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
 		{Name: "start-block-id", Desc: "range/section mode: start (anchor) block id"},
 		{Name: "end-block-id", Desc: "range mode: end block id; \"-1\" = to end of document"},
@@ -85,6 +86,9 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
 	}
+	if v := fetchLang(runtime); v != "" {
+		body["lang"] = v
+	}
 
 	detail := runtime.Str("detail")
 	switch detail {
@@ -112,6 +116,16 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	injectDocsScene(runtime, body)
 
 	return body
+}
+
+func fetchLang(runtime *common.RuntimeContext) string {
+	if v := strings.TrimSpace(runtime.Str("lang")); v != "" {
+		return v
+	}
+	if runtime.Config == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(runtime.Lang()))
 }
 
 // buildReadOption 拼装 read_option JSON；full/空模式返回 nil，让服务端走默认全文路径。

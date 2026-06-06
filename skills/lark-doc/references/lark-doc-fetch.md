@@ -12,6 +12,9 @@ lark-cli docs +fetch --api-version v2 --doc "https://xxx.feishu.cn/docx/Z1Fj...t
 # Markdown 格式
 lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc --doc-format markdown
 
+# 指定 <cite type="user"> 的 user-name 语言
+lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc --lang en_us
+
 # 带 block ID（用于后续 block 级更新）
 lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc --detail with-ids
 
@@ -104,6 +107,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 | `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `text` |
 | `--detail` | 否 | `simple`（默认）\| `with-ids` \| `full` |
 | `--revision-id` | 否 | 文档版本号，`-1` = 最新（默认） |
+| `--lang` | 否 | `<cite type="user">` 的 `user-name` 语言偏好，如 `zh_cn` / `en_us` / `ja_jp`；不传时使用当前 profile 语言，仍为空则服务端默认 |
 | `--scope` | 否 | `outline` \| `range` \| `keyword` \| `section`（省略 = 读整篇） |
 | `--start-block-id` | 否 | `range`/`section` 起始/锚点 id（`section` 必填） |
 | `--end-block-id` | 否 | `range` 结束 id；`-1` 表示读到末尾 |
