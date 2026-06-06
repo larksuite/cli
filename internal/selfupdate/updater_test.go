@@ -4,12 +4,18 @@
 package selfupdate
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -229,6 +235,113 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 				t.Fatalf("args = %q, want %q", strings.TrimSpace(string(raw)), tt.want)
 			}
 		})
+	}
+}
+
+func TestListOfficialSkillsIndexSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"skills":[{"name":"lark-calendar"}]}`)
+	}))
+	defer server.Close()
+
+	oldURL := officialSkillsIndexURL
+	officialSkillsIndexURL = server.URL
+	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
+
+	result := New().ListOfficialSkillsIndex()
+	if result.Err != nil {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want nil", result.Err)
+	}
+	if got := result.Stdout.String(); !strings.Contains(got, "lark-calendar") {
+		t.Fatalf("ListOfficialSkillsIndex() stdout = %q, want skill JSON", got)
+	}
+}
+
+func TestListOfficialSkillsIndexHTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "not found", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	oldURL := officialSkillsIndexURL
+	officialSkillsIndexURL = server.URL
+	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
+
+	result := New().ListOfficialSkillsIndex()
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "HTTP 404") {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want HTTP 404", result.Err)
+	}
+}
+
+func TestListOfficialSkillsIndexBodyTooLarge(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, strings.Repeat("x", skillsIndexMaxBodySize+1))
+	}))
+	defer server.Close()
+
+	oldURL := officialSkillsIndexURL
+	officialSkillsIndexURL = server.URL
+	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
+
+	result := New().ListOfficialSkillsIndex()
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "exceeds") {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want exceeds", result.Err)
+	}
+	if result.Stdout.Len() != 0 {
+		t.Fatalf("ListOfficialSkillsIndex() stdout len = %d, want 0", result.Stdout.Len())
+	}
+}
+
+func TestListOfficialSkillsIndexTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		fmt.Fprint(w, `{"skills":[{"name":"lark-calendar"}]}`)
+	}))
+	defer server.Close()
+
+	oldURL := officialSkillsIndexURL
+	oldTimeout := skillsIndexFetchTimeout
+	officialSkillsIndexURL = server.URL
+	skillsIndexFetchTimeout = 50 * time.Millisecond
+	t.Cleanup(func() {
+		officialSkillsIndexURL = oldURL
+		skillsIndexFetchTimeout = oldTimeout
+	})
+
+	result := New().ListOfficialSkillsIndex()
+	var netErr net.Error
+	if result.Err == nil || (!errors.Is(result.Err, context.DeadlineExceeded) && !(errors.As(result.Err, &netErr) && netErr.Timeout())) {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want timeout error", result.Err)
+	}
+}
+
+func TestListOfficialSkillsIndexRejectsNonHTTPSRedirect(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://example.com/skills.json", http.StatusFound)
+	}))
+	defer server.Close()
+
+	oldURL := officialSkillsIndexURL
+	officialSkillsIndexURL = server.URL
+	t.Cleanup(func() { officialSkillsIndexURL = oldURL })
+
+	result := New().ListOfficialSkillsIndex()
+	if result.Err == nil || !strings.Contains(result.Err.Error(), "non-HTTPS") {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want non-HTTPS redirect", result.Err)
+	}
+}
+
+func TestListOfficialSkillsIndexUsesOverride(t *testing.T) {
+	result := (&Updater{SkillsIndexFetchOverride: func() *NpmResult {
+		r := &NpmResult{}
+		r.Stdout.WriteString(`{"skills":[{"name":"override-skill"}]}`)
+		return r
+	}}).ListOfficialSkillsIndex()
+	if result.Err != nil {
+		t.Fatalf("ListOfficialSkillsIndex() err = %v, want nil", result.Err)
+	}
+	if !strings.Contains(result.Stdout.String(), "override-skill") {
+		t.Fatalf("ListOfficialSkillsIndex() stdout = %q, want override result", result.Stdout.String())
 	}
 }
 

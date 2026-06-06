@@ -6,7 +6,6 @@
 - **Reaction**: An emoji reaction on a message.
 - **Flag**: A bookmark on a message or thread.
 - **Feed Shortcut**: A chat pinned to the current user's feed sidebar, identified by `feed_card_id` (an `oc_xxx` open_chat_id for CHAT type).
-- **Feed Group**: A tag that groups feed cards in the feed list, identified by `feed_group_id` (ofg_xxx). Members are feed cards, each identified by `feed_id` + `feed_type`. Two types: `normal` (members managed explicitly) and `rule` (members auto-derived from rules).
 
 ## Resource Relationships
 

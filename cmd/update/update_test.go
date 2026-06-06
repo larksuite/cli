@@ -49,10 +49,19 @@ func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult, npmFn func(s
 		u.DetectOverride = func() selfupdate.DetectResult { return result }
 		u.NpmInstallOverride = npmFn
 		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
 		u.SkillsCommandOverride = successfulSkillsCommand()
 		return u
 	}
 	t.Cleanup(func() { newUpdater = origNew })
+}
+
+func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
+	return func() *selfupdate.NpmResult {
+		r := &selfupdate.NpmResult{}
+		r.Stdout.WriteString(`{"skills":[{"name":"lark-calendar"},{"name":"lark-mail"}]}`)
+		return r
+	}
 }
 
 func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
@@ -478,6 +487,10 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return errors.New("bad binary") }
 		u.RestoreAvailableOverride = func() bool { return false }
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			t.Fatal("skills sync should not run when binary verification fails")
+			return nil
+		}
 		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
 			t.Fatal("skills sync should not run when binary verification fails")
 			return nil
@@ -810,6 +823,11 @@ func TestUpdateNpm_SkillsFail_JSON(t *testing.T) {
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("index unavailable")
+			return r
+		}
 		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Stderr.WriteString("npx: command not found")
@@ -862,6 +880,11 @@ func TestUpdateNpm_SkillsFail_Human(t *testing.T) {
 		}
 		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} }
 		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = func() *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("index unavailable")
+			return r
+		}
 		u.SkillsCommandOverride = func(args ...string) *selfupdate.NpmResult {
 			r := &selfupdate.NpmResult{}
 			r.Stderr.WriteString("npx: command not found")
@@ -1006,6 +1029,7 @@ func TestUpdateRun_AlreadyLatest_RunsSkillsSync(t *testing.T) {
 	t.Cleanup(func() { newUpdater = origNew })
 	newUpdater = func() *selfupdate.Updater {
 		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
 				skillsCalled = true
 				return successfulSkillsCommand()(args...)
@@ -1044,6 +1068,7 @@ func TestUpdateRun_Manual_RunsSkillsSync(t *testing.T) {
 	t.Cleanup(func() { newUpdater = origNew })
 	newUpdater = func() *selfupdate.Updater {
 		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 			DetectOverride: func() selfupdate.DetectResult {
 				return selfupdate.DetectResult{
 					Method:       selfupdate.InstallManual,
@@ -1088,6 +1113,7 @@ func TestUpdateRun_Npm_RunsSkillsSync_WritesLatestState(t *testing.T) {
 	t.Cleanup(func() { newUpdater = origNew })
 	newUpdater = func() *selfupdate.Updater {
 		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: successfulSkillsIndexFetch(),
 			DetectOverride: func() selfupdate.DetectResult {
 				return selfupdate.DetectResult{
 					Method: selfupdate.InstallNpm, NpmAvailable: true,
@@ -1147,6 +1173,10 @@ func TestUpdateRun_CheckIncludesSkillsStatus(t *testing.T) {
 			DetectOverride: func() selfupdate.DetectResult {
 				return selfupdate.DetectResult{Method: selfupdate.InstallNpm, NpmAvailable: true}
 			},
+			SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsIndexFetch()()
+			},
 			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
 				skillsCalled = true
 				return successfulSkillsCommand()(args...)
@@ -1196,6 +1226,10 @@ func TestUpdateRun_CheckAlreadyLatest_NoSideEffect(t *testing.T) {
 	t.Cleanup(func() { newUpdater = origNew })
 	newUpdater = func() *selfupdate.Updater {
 		return &selfupdate.Updater{
+			SkillsIndexFetchOverride: func() *selfupdate.NpmResult {
+				skillsCalled = true
+				return successfulSkillsIndexFetch()()
+			},
 			SkillsCommandOverride: func(args ...string) *selfupdate.NpmResult {
 				skillsCalled = true
 				return successfulSkillsCommand()(args...)

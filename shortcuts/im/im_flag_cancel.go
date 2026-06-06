@@ -15,13 +15,14 @@ import (
 // ImFlagCancel provides the +flag-cancel shortcut for removing a bookmark.
 // When no --flag-type is given, it performs double-cancel: removes both message and feed layers.
 var ImFlagCancel = common.Shortcut{
-	Service:     "im",
-	Command:     "+flag-cancel",
-	Description: "Cancel (remove) a bookmark. When no --flag-type is given, best-effort double-cancel: removes message layer and (when chat_type is determinable) feed layer",
-	Risk:        "write",
-	UserScopes:  flagWriteLookupScopes,
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Service: "im",
+	Command: "+flag-cancel",
+	Description: "Cancel (remove) a bookmark. When no --flag-type is given, " +
+		"performs double-cancel: removes both message and feed layers",
+	Risk:       "write",
+	UserScopes: flagWriteLookupScopes,
+	AuthTypes:  []string{"user"},
+	HasFormat:  true,
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)"},
 		{Name: "item-type", Desc: "item type override: default|thread|msg_thread"},

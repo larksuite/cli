@@ -10,10 +10,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -37,9 +40,15 @@ const (
 )
 
 const (
-	npmInstallTimeout   = 10 * time.Minute
-	skillsUpdateTimeout = 2 * time.Minute
-	verifyTimeout       = 10 * time.Second
+	npmInstallTimeout      = 10 * time.Minute
+	skillsUpdateTimeout    = 2 * time.Minute
+	skillsIndexMaxBodySize = 1 << 20
+	verifyTimeout          = 10 * time.Second
+)
+
+var (
+	skillsIndexFetchTimeout = 10 * time.Second
+	officialSkillsIndexURL  = "https://open.feishu.cn/.well-known/skills/index.json"
 )
 
 // DetectResult holds installation detection results.
@@ -83,6 +92,7 @@ func (r *NpmResult) CombinedOutput() string {
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
+	SkillsIndexFetchOverride func() *NpmResult
 	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
 	RestoreAvailableOverride func() bool
@@ -149,6 +159,53 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	r.Err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		r.Err = fmt.Errorf("npm install timed out after %s", npmInstallTimeout)
+	}
+	return r
+}
+
+func (u *Updater) ListOfficialSkillsIndex() *NpmResult {
+	if u.SkillsIndexFetchOverride != nil {
+		return u.SkillsIndexFetchOverride()
+	}
+
+	r := &NpmResult{}
+	ctx, cancel := context.WithTimeout(context.Background(), skillsIndexFetchTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, officialSkillsIndexURL, nil)
+	if err != nil {
+		r.Err = err
+		return r
+	}
+
+	client := transport.NewHTTPClient(0)
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if req.URL.Scheme != "https" {
+			return fmt.Errorf("official skills index redirected to non-HTTPS URL: %s", req.URL.Redacted())
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		r.Err = err
+		return r
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		r.Err = fmt.Errorf("official skills index returned HTTP %d", resp.StatusCode)
+		return r
+	}
+
+	limited := io.LimitReader(resp.Body, skillsIndexMaxBodySize+1)
+	if _, err := io.Copy(&r.Stdout, limited); err != nil {
+		r.Err = err
+		return r
+	}
+	if r.Stdout.Len() > skillsIndexMaxBodySize {
+		r.Stdout.Reset()
+		r.Err = fmt.Errorf("official skills index exceeds %d bytes", skillsIndexMaxBodySize)
+		return r
 	}
 	return r
 }
