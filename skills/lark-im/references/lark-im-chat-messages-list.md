@@ -49,6 +49,8 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
+> **CAUTION:** `--order` is the only sort axis — messages are always ordered by creation time, `asc` or `desc`. There is no field axis: the command cannot sort by sender or any other field, so do **not** attempt `--sort sender` or similar (it is rejected). If the user asks to group or sort by sender, fetch with `--order` and aggregate client-side, and tell them this is local post-processing, not a CLI/API sort capability.
+
 ## Resource Rendering
 
 Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `[Image: img_xxx]`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
