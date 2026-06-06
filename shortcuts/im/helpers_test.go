@@ -609,9 +609,6 @@ func TestShortcuts(t *testing.T) {
 		"+feed-shortcut-create",
 		"+feed-shortcut-remove",
 		"+feed-shortcut-list",
-		"+feed-group-list",
-		"+feed-group-list-item",
-		"+feed-group-query-item",
 	}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("Shortcuts() commands = %#v, want %#v", commands, want)
