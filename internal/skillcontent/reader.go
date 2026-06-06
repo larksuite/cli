@@ -29,6 +29,7 @@ func New(fsys fs.FS) *Reader { return &Reader{fsys: fsys} }
 type SkillInfo struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
+	Version     string         `json:"version,omitempty"`
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
@@ -39,8 +40,8 @@ type DirEntry struct {
 	IsDir bool   `json:"is_dir"`
 }
 
-// List returns every skill (top-level dir) with its description and metadata
-// (from SKILL.md frontmatter). Skills are sorted by name.
+// List returns every skill (top-level dir) with its description, version, and
+// metadata (from SKILL.md frontmatter). Skills are sorted by name.
 func (r *Reader) List() ([]SkillInfo, error) {
 	entries, err := fs.ReadDir(r.fsys, ".")
 	if err != nil {
@@ -51,20 +52,27 @@ func (r *Reader) List() ([]SkillInfo, error) {
 		if !e.IsDir() {
 			continue
 		}
-		out = append(out, r.skillInfo(e.Name()))
+		// Skip directories without a SKILL.md: they are not real skills, and a
+		// blank entry in the catalog would be worse than an omission. Full
+		// validation (name==dir, etc.) is enforced at build time, not here.
+		if info, ok := r.skillInfo(e.Name()); ok {
+			out = append(out, info)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
-// skillInfo builds the SkillInfo for an existing skill directory: description
-// and metadata from SKILL.md frontmatter (zero values on any parse failure).
-func (r *Reader) skillInfo(name string) SkillInfo {
-	info := SkillInfo{Name: name}
-	if data, err := fs.ReadFile(r.fsys, name+"/SKILL.md"); err == nil {
-		info.Description, info.Metadata = parseFrontmatter(data)
+// skillInfo builds the SkillInfo for a skill directory from its SKILL.md
+// frontmatter (description/version/metadata). The bool is false when the
+// directory has no readable SKILL.md, so callers can skip non-skill dirs.
+func (r *Reader) skillInfo(name string) (SkillInfo, bool) {
+	data, err := fs.ReadFile(r.fsys, name+"/SKILL.md")
+	if err != nil {
+		return SkillInfo{}, false
 	}
-	return info
+	desc, version, metadata := parseFrontmatter(data)
+	return SkillInfo{Name: name, Description: desc, Version: version, Metadata: metadata}, true
 }
 
 // ListPath lists the direct children (one layer, no recursion) of the directory
@@ -73,7 +81,7 @@ func (r *Reader) skillInfo(name string) SkillInfo {
 // error. Unknown skill, traversal, or a non-directory target → typed validation
 // error.
 func (r *Reader) ListPath(arg string) ([]DirEntry, string, error) {
-	name, sub := splitSkillPath(arg)
+	name, sub := SplitArg(arg)
 	if err := r.ensureSkill(name); err != nil {
 		return nil, "", err
 	}
@@ -108,23 +116,21 @@ func (r *Reader) ListPath(arg string) ([]DirEntry, string, error) {
 	return out, dir, nil
 }
 
-// splitSkillPath splits "<name>/<rest>" into (name, rest); a path with no
-// separator yields (path, ""). Only the first '/' splits — rest may itself
-// contain separators.
-func splitSkillPath(arg string) (name, rest string) {
-	if i := strings.IndexByte(arg, '/'); i >= 0 {
-		return arg[:i], arg[i+1:]
-	}
-	return arg, ""
+// SplitArg splits "<name>/<rest>" at the first separator; an argument with no
+// separator is a bare skill name (rest ""). It is the single splitter shared by
+// `read <name>/<path>` and `list <name>/<sub>`.
+func SplitArg(arg string) (name, rest string) {
+	name, rest, _ = strings.Cut(arg, "/")
+	return name, rest
 }
 
-// parseFrontmatter extracts the `description` and `metadata` fields from a
-// SKILL.md YAML frontmatter block. Both are best-effort: missing or unparseable
-// frontmatter yields ("", nil) — never an error.
-func parseFrontmatter(skillMD []byte) (description string, metadata map[string]any) {
+// parseFrontmatter extracts the `description`, `version`, and `metadata` fields
+// from a SKILL.md YAML frontmatter block. All are best-effort: missing or
+// unparseable frontmatter yields ("", "", nil) — never an error.
+func parseFrontmatter(skillMD []byte) (description, version string, metadata map[string]any) {
 	lines := strings.Split(string(skillMD), "\n")
 	if strings.TrimRight(lines[0], "\r") != "---" {
-		return "", nil
+		return "", "", nil
 	}
 	block := make([]string, 0, len(lines))
 	closed := false
@@ -136,16 +142,17 @@ func parseFrontmatter(skillMD []byte) (description string, metadata map[string]a
 		block = append(block, ln)
 	}
 	if !closed {
-		return "", nil
+		return "", "", nil
 	}
 	var fm struct {
 		Description string         `yaml:"description"`
+		Version     string         `yaml:"version"`
 		Metadata    map[string]any `yaml:"metadata"`
 	}
 	if err := yaml.Unmarshal([]byte(strings.Join(block, "\n")), &fm); err != nil {
-		return "", nil
+		return "", "", nil
 	}
-	return fm.Description, fm.Metadata
+	return fm.Description, fm.Version, fm.Metadata
 }
 
 // ReadSkill returns the raw bytes of <name>/SKILL.md.
