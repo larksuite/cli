@@ -5,32 +5,56 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
+	"os"
 
-	"github.com/larksuite/cli/cmd/skill"
+	"github.com/larksuite/cli/cmd"
 )
 
-// skillsEmbedFS embeds the entire skills/ tree at build time so the CLI can
-// serve skill content that is guaranteed to match the binary version.
+// skillsEmbedFS embeds skill content at build time so the CLI can serve content
+// guaranteed to match the binary version.
 //
-// We use `//go:embed skills` (not `all:skills`) deliberately: the default form
-// excludes files/dirs whose names begin with "." or "_" at any depth, which
-// keeps editor/OS junk (e.g. .DS_Store) out of the binary. The trade-off is
-// that any future skills/ file intentionally named with a "." or "_" prefix
-// would be silently omitted from `skill list` / `skill read` / `skill reference`.
+// The patterns whitelist the agent-readable content — each skill's SKILL.md and
+// its references/ (plus lark-whiteboard's routes/ and scenes/) — and deliberately
+// EXCLUDE machine-resource directories: assets/ (e.g. lark-slides' ~3.4 MB of
+// .xml slide templates, which SKILL.md marks as machine resources not to be read
+// in full) and scripts/. That keeps ~3.4 MB of never-read bytes out of every
+// release binary (≈34.1 → 30.8 MB) while preserving everything `skills read` /
+// `skills list` actually serves.
 //
-//go:embed skills
+// Trade-offs: (1) this is a whitelist, so content placed in a NEW subdirectory
+// type (not SKILL.md / references / routes / scenes) would be silently omitted —
+// add a pattern here when introducing one; (2) a pattern that matches zero files
+// is a build error, so removing routes/ or scenes/ fails loudly rather than
+// silently. ("." / "_"-prefixed files are auto-excluded, as with the plain form.)
+//
+//go:embed skills/*/SKILL.md skills/*/references skills/*/routes skills/*/scenes
 var skillsEmbedFS embed.FS
 
+// init registers the embedded skills/ tree as the default skill content
+// (rooted at the skill list so paths are "lark-calendar/..."). It runs in the
+// standard package build (`go build .`) but NOT the single-file preview build
+// (`go build ./main.go`, used by scripts/build-pkg-pr-new.sh) — matching the
+// main_*sidecar.go convention of wiring optional features through init side
+// effects so main.go stays self-contained and the minimal preview build still
+// compiles (it then ships without embedded skills, the pre-existing behavior).
+//
+// On assembly failure it degrades with a stderr warning rather than panicking:
+// the optional skills subsystem must not hold the CLI hostage. The branch is
+// effectively unreachable (the compiler rejects a missing skills/ dir; fs.Sub
+// only validates path syntax for the literal "skills"), but the trace separates
+// that diagnosis from the opaque "not embedded in this build" the commands
+// would otherwise report.
+//
+// Wrapper mains that build their own entrypoint inject content explicitly via
+// cmd.Execute(cmd.WithSkillContent(...)) instead; that option overrides this
+// default.
 func init() {
-	// Strip the "skills/" prefix so paths are "lark-calendar/SKILL.md".
 	sub, err := fs.Sub(skillsEmbedFS, "skills")
 	if err != nil {
-		// Unreachable for the literal, valid path "skills"; fs.Sub only errors
-		// on a malformed sub-path. If a refactor ever breaks the embed root,
-		// fail loud at startup rather than ship a binary whose every `skill`
-		// command returns an opaque "not embedded in this build" error.
-		panic("skills_embed: fs.Sub(\"skills\") failed: " + err.Error())
+		fmt.Fprintln(os.Stderr, "warning: skills embed assembly failed, skills commands disabled:", err)
+		return
 	}
-	skill.ContentFS = sub
+	cmd.SetEmbeddedSkillContent(sub)
 }

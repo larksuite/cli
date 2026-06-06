@@ -14,7 +14,7 @@ import (
 
 func testFS() fstest.MapFS {
 	return fstest.MapFS{
-		"lark-calendar/SKILL.md":             {Data: []byte("---\nname: lark-calendar\ndescription: \"Calendar skill\"\nmetadata:\n  requires:\n    bins: [\"lark-cli\"]\n  cliHelp: \"lark-cli calendar --help\"\n---\nbody\n")},
+		"lark-calendar/SKILL.md":             {Data: []byte("---\nname: lark-calendar\nversion: 1.0.0\ndescription: \"Calendar skill\"\nmetadata:\n  requires:\n    bins: [\"lark-cli\"]\n  cliHelp: \"lark-cli calendar --help\"\n---\nbody\n")},
 		"lark-calendar/references/agenda.md": {Data: []byte("# Agenda")},
 		"lark-calendar/references/create.md": {Data: []byte("# Create")},
 		"lark-calendar/assets/tpl.html":      {Data: []byte("<html></html>")},
@@ -38,6 +38,10 @@ func TestList(t *testing.T) {
 	if skills[0].Description != "Calendar skill" {
 		t.Errorf("description: got %q, want %q", skills[0].Description, "Calendar skill")
 	}
+	// version is the frontmatter `version:` field, passed through for drift checks.
+	if skills[0].Version != "1.0.0" {
+		t.Errorf("version: got %q, want %q", skills[0].Version, "1.0.0")
+	}
 	// metadata is the frontmatter `metadata:` block, passed through verbatim.
 	if skills[0].Metadata == nil {
 		t.Fatal("expected metadata for lark-calendar")
@@ -51,6 +55,9 @@ func TestList(t *testing.T) {
 	}
 	if skills[1].Metadata != nil {
 		t.Errorf("lark-im metadata: got %v, want nil", skills[1].Metadata)
+	}
+	if skills[1].Version != "" {
+		t.Errorf("lark-im version: got %q, want empty", skills[1].Version)
 	}
 }
 
@@ -212,12 +219,14 @@ func TestParseFrontmatter(t *testing.T) {
 		name        string
 		input       string
 		wantDesc    string
+		wantVer     string
 		wantHasMeta bool
 	}{
 		{
-			name:        "description and metadata",
-			input:       "---\ndescription: My skill\nmetadata:\n  cliHelp: \"x\"\n---\nbody\n",
+			name:        "description, version and metadata",
+			input:       "---\ndescription: My skill\nversion: 2.1.0\nmetadata:\n  cliHelp: \"x\"\n---\nbody\n",
 			wantDesc:    "My skill",
+			wantVer:     "2.1.0",
 			wantHasMeta: true,
 		},
 		{
@@ -250,9 +259,12 @@ func TestParseFrontmatter(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			desc, meta := parseFrontmatter([]byte(tc.input))
+			desc, ver, meta := parseFrontmatter([]byte(tc.input))
 			if desc != tc.wantDesc {
 				t.Errorf("description = %q, want %q", desc, tc.wantDesc)
+			}
+			if ver != tc.wantVer {
+				t.Errorf("version = %q, want %q", ver, tc.wantVer)
 			}
 			if (meta != nil) != tc.wantHasMeta {
 				t.Errorf("metadata = %v, wantHasMeta %v", meta, tc.wantHasMeta)
