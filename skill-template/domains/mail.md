@@ -6,6 +6,7 @@
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
+- **签名（Signature）**：个人或企业邮箱签名。个人 USER 签名可通过 CLI 创建、更新、删除；企业 TENANT 签名由管理员模板控制。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -72,9 +73,9 @@
 邮箱是用户的个人资源，**策略上应优先显式使用 `--as user`（用户身份）请求**（CLI 的 `--as` 默认值为 `auto`）。
 
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
-- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：bot 身份仅适用于读取类操作，所有写操作（发送、回复、转发、草稿编辑等）仅支持 user 身份。**
+- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：发送、回复、转发、草稿编辑等邮件内容写入操作仅支持 user 身份；签名管理等明确声明支持 bot 的 shortcut 必须传显式 `--mailbox`，不能使用默认 `me`。**
 
-1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
+1. 邮件内容写入操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
 2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
 
 ## 典型工作流
@@ -412,6 +413,13 @@ lark-cli mail +message --message-id <id>
 | Q5 cid 冲突 | inline 图片 | cid 由 UUID v4 生成（碰撞概率 ~ 2^-122），不显式检测 |
 
 **Warning**：`+reply` / `+reply-all` + 模板且模板自带 tos/ccs/bccs 时，CLI 在 stderr 打印：`warning: template to/cc/bcc are appended without de-duplication; you may see repeated recipients. Use --to/--cc/--bcc to override, or run +template-update to clear template addresses.`
+
+### 邮件签名（`+signature` / `+signature-create` / `+signature-update` / `+signature-delete`）
+
+- [`+signature`](references/lark-mail-signature.md) — 查看签名列表或详情，获取 `signature_id`。
+- [`+signature-create`](references/lark-mail-signature-create.md) — 创建个人 USER 签名。`--name` 必填；正文通过 `--content` 或 `--content-file` 提供；HTML 本地图片会自动上传到 Drive 并改写为 `cid:`。
+- [`+signature-update`](references/lark-mail-signature-update.md) — 全量替换个人 USER 签名。`--signature-id` 与 `--name` 必填；未提供字段会被清空，执行时会输出 warning。
+- [`+signature-delete`](references/lark-mail-signature-delete.md) — 删除个人 USER 签名。删除前先用 `+signature` 确认真实 ID。
 
 **size 约束**：单模板 `template_content` ≤ 3 MB；`body + inline + SMALL` 累计 ≤ 25 MB（超过则该批次剩余非 inline 附件切换为 LARGE；inline 不能切换）。
 

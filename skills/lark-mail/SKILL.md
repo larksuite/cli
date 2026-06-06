@@ -22,6 +22,7 @@ metadata:
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
+- **签名（Signature）**：个人或企业邮箱签名。个人 USER 签名可通过 CLI 创建、更新、删除；企业 TENANT 签名由管理员模板控制。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -88,9 +89,9 @@ metadata:
 邮箱是用户的个人资源，**策略上应优先显式使用 `--as user`（用户身份）请求**（CLI 的 `--as` 默认值为 `auto`）。
 
 - **`--as user`（推荐）**：以当前登录用户的身份访问其邮箱。需要先通过 `lark-cli auth login --domain mail` 完成用户授权。
-- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：bot 身份仅适用于读取类操作，所有写操作（发送、回复、转发、草稿编辑等）仅支持 user 身份。**
+- **`--as bot`**：以应用身份访问邮箱。需要在飞书开发者后台为应用开通相应权限，否则请求会被拒绝。**注意：发送、回复、转发、草稿编辑等邮件内容写入操作仅支持 user 身份；签名管理等明确声明支持 bot 的 shortcut 必须传显式 `--mailbox`，不能使用默认 `me`。**
 
-1. 所有邮件写操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
+1. 邮件内容写入操作（发送、回复、转发、草稿编辑） → 必须使用 `--as user`，未登录时先使用 `lark-cli auth login --domain mail` 进行登录
 2. 读取类操作（查看邮件、会话、收件箱列表等） → 推荐使用 `--as user`；如需应用级批量读取（如管理员代操作），可使用 `--as bot`，确保应用已开通对应权限
 
 ## 典型工作流
@@ -389,6 +390,13 @@ lark-cli mail +message --message-id <id>
 
 **size 约束**：单模板 `template_content` ≤ 3 MB；`body + inline + SMALL` 累计 ≤ 25 MB（超过则该批次剩余非 inline 附件切换为 LARGE；inline 不能切换）。
 
+### 邮件签名（`+signature` / `+signature-create` / `+signature-update` / `+signature-delete`）
+
+- [`+signature`](references/lark-mail-signature.md) — 查看签名列表或详情，获取 `signature_id`。
+- [`+signature-create`](references/lark-mail-signature-create.md) — 创建个人 USER 签名。`--name` 必填；正文通过 `--content` 或 `--content-file` 提供；HTML 本地图片会自动上传到 Drive 并改写为 `cid:`。
+- [`+signature-update`](references/lark-mail-signature-update.md) — 全量替换个人 USER 签名。`--signature-id` 与 `--name` 必填；未提供字段会被清空，执行时会输出 warning。
+- [`+signature-delete`](references/lark-mail-signature-delete.md) — 删除个人 USER 签名。删除前先用 `+signature` 确认真实 ID。
+
 ## 原生 API 调用规则
 
 没有 Shortcut 覆盖的操作才使用原生 API。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
@@ -480,6 +488,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+send-receipt`](references/lark-mail-send-receipt.md) | Send a read-receipt reply for an incoming message that requested one (i.e. carries the READ_RECEIPT_REQUEST label). Body is auto-generated (subject / recipient / send time / read time) to match the Lark client's receipt format — callers cannot customize it, matching the industry norm that read-receipt bodies are system-generated templates, not free-form replies. Intended for agent use after the user confirms. |
 | [`+decline-receipt`](references/lark-mail-decline-receipt.md) | Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
+| [`+signature-create`](references/lark-mail-signature-create.md) | Create a personal (USER) mail signature. Scans HTML <img src> local paths, uploads inline images to Drive, rewrites them to cid: references, and POSTs to settings/signatures. |
+| [`+signature-update`](references/lark-mail-signature-update.md) | Update an existing personal (USER) mail signature with full-replace semantics. Omitted fields are cleared; local HTML images are uploaded and rewritten to cid: references before PUT. |
+| [`+signature-delete`](references/lark-mail-signature-delete.md) | Delete a personal (USER) mail signature by ID. |
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
@@ -657,4 +668,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
