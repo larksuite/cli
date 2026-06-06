@@ -46,7 +46,7 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--member-ids <ids>` | No (at least one of `--query` / `--member-ids` required) | Up to 50, format `ou_xxx` | Filter by member open_ids; can be used alone or combined with `--query` |
 | `--is-manager` | No | - | Only show chats you created or manage |
 | `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |
-| `--sort-by <field>` | No | `create_time_desc`, `update_time_desc`, `member_count_desc` | Sort field in descending order |
+| `--sort <field>` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
