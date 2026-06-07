@@ -790,6 +790,19 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesCardUpdate dry run uses PATCH card body", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id": "om_123",
+			"content":    `{"config":{"update_multi":true},"elements":[{"tag":"div","text":{"tag":"plain_text","content":"updated"}}]}`,
+		}, nil)
+		got := mustMarshalDryRun(t, ImMessagesCardUpdate.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"/open-apis/im/v1/messages/om_123"`) ||
+			!strings.Contains(got, `"method":"PATCH"`) ||
+			!strings.Contains(got, `update_multi`) {
+			t.Fatalf("ImMessagesCardUpdate.DryRun() = %s", got)
+		}
+	})
+
 	t.Run("ImThreadsMessagesList dry run keeps requested thread params", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"thread":    "omt_123",
@@ -826,6 +839,33 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			!strings.Contains(got, `"msg_type":"post"`) ||
 			!strings.Contains(got, `img_dryrun_1`) {
 			t.Fatalf("ImMessagesReply.DryRun() = %s", got)
+		}
+	})
+
+	t.Run("ImMessagesUpdate dry run resolves message path and body", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id": "om_123",
+			"text":       "hi <at id=ou_1/>",
+		}, nil)
+		got := mustMarshalDryRun(t, ImMessagesUpdate.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"/open-apis/im/v1/messages/om_123"`) ||
+			!strings.Contains(got, `"method":"PUT"`) ||
+			!strings.Contains(got, `"msg_type":"text"`) ||
+			!strings.Contains(got, `user_id=\\\"ou_1\\\"`) {
+			t.Fatalf("ImMessagesUpdate.DryRun() = %s", got)
+		}
+	})
+
+	t.Run("ImMessagesUpdate dry run uses markdown image placeholders", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id": "om_123",
+			"markdown":   "![alt](https://example.com/a.png)",
+		}, nil)
+		got := mustMarshalDryRun(t, ImMessagesUpdate.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"description":"dry-run uses placeholder image keys for markdown image URLs; execution downloads and uploads them before sending"`) ||
+			!strings.Contains(got, `"msg_type":"post"`) ||
+			!strings.Contains(got, `img_dryrun_1`) {
+			t.Fatalf("ImMessagesUpdate.DryRun() = %s", got)
 		}
 	})
 
