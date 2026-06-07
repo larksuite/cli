@@ -269,11 +269,38 @@ func mailSendSignatureImagePlaceholder(lang string) string {
 func mailSendSignatureLooksLikeHTMLFragment(raw string) bool {
 	lower := strings.ToLower(raw)
 	for _, tag := range mailSendSignatureHTMLFragmentTags {
-		if strings.Contains(lower, "<"+tag) || strings.Contains(lower, "</"+tag+">") {
+		if mailSendSignatureContainsHTMLTag(lower, tag) {
 			return true
 		}
 	}
 	return false
+}
+
+func mailSendSignatureContainsHTMLTag(lower, tag string) bool {
+	for _, prefix := range []string{"<" + tag, "</" + tag} {
+		start := 0
+		for {
+			idx := strings.Index(lower[start:], prefix)
+			if idx < 0 {
+				break
+			}
+			end := start + idx + len(prefix)
+			if end >= len(lower) || mailSendSignatureTagBoundary(lower[end]) {
+				return true
+			}
+			start += idx + 1
+		}
+	}
+	return false
+}
+
+func mailSendSignatureTagBoundary(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\n', '\r', '>', '/', ':':
+		return true
+	default:
+		return false
+	}
 }
 
 var mailSendSignatureHTMLFragmentTags = []string{
