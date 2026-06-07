@@ -86,6 +86,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | Shortcut | 说明 |
 |----------|------|
 | [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager |
+| [`+chat-disband`](references/lark-im-chat-disband.md) | Disband a group chat; user/bot; high-risk operation, requires `--yes` |
 | [`+chat-list`](references/lark-im-chat-list.md) | List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, pagination, --exclude-muted (user-only) |
 | [`+chat-messages-list`](references/lark-im-chat-messages-list.md) | List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination |
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, pagination, and --exclude-muted (user identity only) |
@@ -115,6 +116,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 ### chats
 
   - `create` — 创建群。Identity: `bot` only (`tenant_access_token`).
+  - Chat disband is exposed through shortcut `+chat-disband`; the current OpenAPI registry does not expose native `chats.delete` yet.
   - `get` — 获取群信息。Identity: supports `user` and `bot`; the caller must be in the target chat to get full details, and must belong to the same tenant for internal chats.
   - `link` — 获取群分享链接。Identity: supports `user` and `bot`; the caller must be in the target chat, must be an owner or admin when chat sharing is restricted to owners/admins, and must belong to the same tenant for internal chats.
   - `update` — 更新群信息。Identity: supports `user` and `bot`.
@@ -162,6 +164,7 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | 方法 | 所需 scope |
 |------|-----------|
 | `chats.create` | `im:chat:create` |
+| `+chat-disband` | `im:chat:delete` |
 | `chats.get` | `im:chat:read` |
 | `chats.link` | `im:chat:read` |
 | `chats.update` | `im:chat:update` |

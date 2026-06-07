@@ -593,6 +593,7 @@ func TestShortcuts(t *testing.T) {
 
 	want := []string{
 		"+chat-create",
+		"+chat-disband",
 		"+chat-list",
 		"+chat-messages-list",
 		"+chat-search",

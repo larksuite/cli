@@ -338,6 +338,16 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("ImChatDisband invalid chat id", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "bad_chat",
+		}, nil)
+		err := ImChatDisband.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "invalid chat ID format") {
+			t.Fatalf("ImChatDisband.Validate() error = %v", err)
+		}
+	})
+
 	t.Run("ImChatUpdate description too long", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"chat-id":     "oc_123",
@@ -714,6 +724,18 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		got := mustMarshalDryRun(t, ImChatUpdate.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v1/chats/oc_123"`) || !strings.Contains(got, `"user_id_type":"open_id"`) || !strings.Contains(got, `"name":"New Name"`) {
 			t.Fatalf("ImChatUpdate.DryRun() = %s", got)
+		}
+	})
+
+	t.Run("ImChatDisband dry run resolves path", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatDisband.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"/open-apis/im/v1/chats/oc_123"`) ||
+			!strings.Contains(got, `"method":"DELETE"`) ||
+			!strings.Contains(got, "high-risk") {
+			t.Fatalf("ImChatDisband.DryRun() = %s", got)
 		}
 	})
 

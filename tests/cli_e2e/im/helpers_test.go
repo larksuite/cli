@@ -14,7 +14,8 @@ import (
 
 // createChat creates a private chat with the given name and returns the chatID.
 // The chat will be automatically cleaned up via parentT.Cleanup().
-// Note: Chat deletion is not available via lark-cli im command.
+// Note: +chat-disband requires im:chat:delete, which is not guaranteed for all
+// IM E2E credentials, so shared helpers avoid global chat cleanup side effects.
 func createChat(t *testing.T, parentT *testing.T, ctx context.Context, name string) string {
 	t.Helper()
 	return createChatAs(t, parentT, ctx, name, "bot")
@@ -38,8 +39,8 @@ func createChatAs(t *testing.T, parentT *testing.T, ctx context.Context, name st
 	require.NotEmpty(t, chatID, "chat_id should not be empty")
 
 	parentT.Cleanup(func() {
-		// No IM chat delete command is currently available in lark-cli,
-		// so created chats are intentionally left in the test account.
+		// Intentionally left blank. Tests that specifically cover chat disband
+		// own their cleanup path and required scope.
 	})
 
 	return chatID
