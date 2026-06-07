@@ -68,6 +68,7 @@ metadata:
 - `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
 - 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
 - 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
+- 写入文本、描述、URL 或富文本相关字段时，如果值是飞书 / Lark Drive-native 资源 URL，遵循 [`lark-shared`](../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写原始 URL 字符串；只有用户明确要求自定义显示文本，或字段/API 明确要求结构化 rich link 值时，才构造链接对象。
 - 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
 - `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
 - 写入、分析、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。

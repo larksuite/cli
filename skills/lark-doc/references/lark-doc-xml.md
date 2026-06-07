@@ -32,6 +32,10 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 | `<button>` | 操作按钮 | `background-color`、`src`，必须包含 `action=OpenLink\|DuplicatePage\|FollowPage` |
 | `<time>` | 提醒 | 必包含 `expire-time`、`notify-time`（毫秒时间戳）、`should-notify=true\|false` |
 
+## 资源 URL 写入
+
+写入飞书 / Lark Drive-native 资源 URL（Docx、Sheets、Base、Wiki、Drive 文件/文件夹、Slides、Minutes 等）时，遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写原始 URL 文本，不要默认包装成 `<a>`、`<bookmark>` 或 Markdown `[title](url)`。只有用户明确要求自定义显示文本、目标是外部 URL，或需要特定预览/书签结构时，才使用 `<a>` / `<bookmark>` 等结构化链接标签。
+
 ## 文本块通用属性
 - `align` — `"left"`|`"center"`|`"right"`（适用于 p / h1-h9 / li / checkbox）
 - 有序列表项用 `seq="auto"` 自动编号

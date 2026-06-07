@@ -27,6 +27,8 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 
 **未读完以上文件就执行相应操作会导致参数选择错误、格式错误或样式不达标。**
 
+> **资源 URL 写入规则：** 文档内容中写入飞书 / Lark Drive-native 资源 URL 时，遵循 [`lark-shared`](../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认保留原始 URL 字符串，不要默认改成 `[title](url)`，除非用户需要自定义显示文本或目标 API 明确要求结构化链接。
+
 > **格式选择规则（全局）：**
 > - **创建 / 导入场景**（`docs +create`，或 `docs +update --command append/overwrite` 的整段写入）：XML 和 Markdown 都可以。用户提供 `.md` 本地文件、或明确说"导入 Markdown"时，直接用 Markdown；否则默认 XML（可用 callout、grid、checkbox 等富 block）。
 > - **精准编辑场景**（`docs +update` 的 `str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after` 等局部精修指令）：优先使用 XML（`--doc-format xml`，即默认值）。XML 能稳定表达 block 结构和样式，局部精修更可控；不要因为 Markdown 更简单就自行切换。

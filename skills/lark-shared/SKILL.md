@@ -21,6 +21,19 @@ description: "Use when first setting up lark-cli, running auth login, switching 
 lark-cli config init --new
 ```
 
+## 资源 URL 写入规则
+
+当你把链接写入飞书 / Lark 富编辑内容（Docx XML/Markdown、Wiki 文档、Sheets 单元格、Base 文本/描述字段等）时，**Drive-native 资源 URL 默认写成原始 URL 字符串，不要默认改写成 `[title](url)`**。这样编辑器仍有机会识别为原生卡片、预览、引用或 mention。
+
+Drive-native 资源包括：`/doc/`、`/docx/`、`/sheets/`、`/base/`、`/bitable/`、`/wiki/`、`/drive/file/`、`/drive/folder/`、`/slides/`、`/minutes/`、`/mindnote/` 等飞书 / Lark 云空间资源。
+
+例外场景：
+- 用户明确要求自定义显示文本时，可以使用 Markdown 链接、XML `<a>` / `<bookmark>`，或 Sheets/Base 的结构化 rich link 值。
+- 外部 URL、下载 URL、回调 URL、临时分享 URL等非 Drive-native 链接，按目标格式正常处理。
+- API 字段明确要求 `rich_text`、link object、cell link object 或其他结构化链接对象时，按 API schema 构造，不要强行传纯字符串。
+
+无论采用哪种形式，URL 都是 opaque string：不要自行 URL 编码/解码、截断 query、拼接标题或改写域名。
+
 ## 认证
 
 ### 身份类型

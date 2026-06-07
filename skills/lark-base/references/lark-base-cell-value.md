@@ -20,6 +20,8 @@
 
 用字符串。URL 字段也传 URL 字符串；普通文本里可以保留 Markdown 风格链接文本，平台会按字段类型处理。
 
+写入飞书 / Lark Drive-native 资源 URL 时，遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认保留原始 URL 字符串，不要默认改成 `[title](url)` 或富链接对象。只有用户明确要求自定义显示文本，或目标字段/API 明确要求结构化 rich link 值时，才使用对应结构。
+
 ```json
 {
     "标题": "Hello",

@@ -128,6 +128,8 @@ Step 2: `+cells-set` — range="A2", cells 含 value + cell_styles + border_styl
 
 带显示文本的超链接、@人、@文档这类富内容**必须**走 `+cells-set` 的 `rich_text` 字段（`cells[].rich_text` 数组，每段一个对象、带 `type`），**不能**直接传普通字符串——纯字符串只会被当作纯文本存进单元格。完整字段跑 `lark-cli sheets +cells-set --print-schema --flag-name cells`，常用段类型：
 
+写入飞书 / Lark Drive-native 资源 URL 时，遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写 `value` 原始 URL 字符串，不要为了标题展示主动改成 `rich_text` link object。只有用户明确要求自定义显示文本，或 API 字段明确要求富文本链接时，才使用 `rich_text`。
+
 - **超链接（带显示文本）**：`{"type":"link","text":"飞书","link":"https://www.feishu.cn"}`。纯 URL 不需要 `rich_text`，直接写普通字符串即可。
 - **@人**：`{"type":"mention","mention_token":"<userId>","notify":false}`。**仅支持同租户用户，单次写入最多 50 人。** `notify` **默认 `true`**（会给被 @ 的人发通知），不想发务必显式传 `false`。
 - **@文档**：同样 `"type":"mention"`，`mention_token` 传文档 token（如 `shtXXX`）。

@@ -154,3 +154,5 @@ lark-cli sheets +cells-set --url "..." --sheet-name "Sheet1" --range "A1:B2" --c
 ```
 
 **`@file` 接绝对路径会被拒，且被拒后不要照报错提示做。** `@file` 出于安全只接受 cwd 下的相对路径，传 cwd 之外的绝对路径会被拒。此时报错会建议"先 cd 到目标目录，或改用相对路径"——**两条都不要照做**：cd 过去、或把临时文件写进用户项目目录，都会污染工作目录。正解是改用 stdin（`--<flag> - < 文件`）。
+
+写入飞书 / Lark Drive-native 资源 URL 时，遵循 [`lark-shared`](../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写原始 URL 字符串；只有用户明确要求自定义显示文本或目标 API 明确要求富文本链接时，才使用 `rich_text` link object。

@@ -55,6 +55,7 @@ metadata:
 - 处理这类目标时，先解析 `my_library` 对应的真实 `space_id`，再执行 `wiki +move`、`wiki +node-create` 或其他 Wiki 写操作
 - 不要因为缺少显式 `space_id` 就退化成 `drive +move`
 - 如果用户明确说的是 Drive 文件夹、云空间（云盘/云存储）根目录、`我的空间`，才进入 Drive 域处理
+- 在 Wiki 节点或其背后的 Docx 内容中写入飞书 / Lark Drive-native 资源 URL 时，遵循 [`lark-shared`](../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写原始 URL 字符串；只有用户明确要求自定义显示文本或目标 API 明确要求结构化链接时才改写成链接对象。
 
 ## Shortcuts（推荐优先使用）
 

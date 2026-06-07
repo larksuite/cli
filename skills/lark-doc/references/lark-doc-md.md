@@ -47,6 +47,10 @@
 
 自行构造 Markdown 内容写入时同理：如字面文本 `a]b` 应写为 `a\]b`，`C:\Users` 应写为 `C:\\Users`。
 
+## 资源 URL 写入
+
+写入飞书 / Lark Drive-native 资源 URL（Docx、Sheets、Base、Wiki、Drive 文件/文件夹、Slides、Minutes 等）时，遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「资源 URL 写入规则」：默认写原始 URL 字符串，不要默认包装成 `[title](url)`。只有用户明确要求自定义显示文本、目标是外部 URL，或目标字段/API 明确要求结构化链接时，才使用 Markdown 链接或其他 link object。
+
 ## Shell 传参
 - **首选文件传参**：`--content` 支持 `@path/to/file.md`（读文件）和 `-`（读 stdin），彻底绕开 shell 转义；多行、含特殊字符、长文本强烈推荐。字面量以 `@` 开头时用 `@@` 转义（`--pattern` 不支持 `@file`）
 - **默认用单引号 `'...'`**：完全字面量，`$`、`` ` ``、`\`、`>`、`\<b>` 等全部原样保留
