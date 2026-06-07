@@ -46,6 +46,21 @@ func TestAppendMailSendPlainTextSignatureRendersHTML(t *testing.T) {
 	}
 }
 
+func TestAppendMailSendPlainTextSignatureRendersEscapedHTML(t *testing.T) {
+	got := appendMailSendPlainTextSignature("Hello", &signatureResult{
+		ID:              "sig_plain_escaped",
+		RenderedContent: `<div>Owner&lt;div style=&#34;white-space: nowrap;&#34;&gt;Kind&lt;br&gt;&lt;img src=&#34;cid:logo&#34;&gt;&lt;/div&gt;</div>`,
+	}, "zh_cn")
+
+	want := "Hello\n\nOwner\nKind\n[图片]"
+	if got != want {
+		t.Fatalf("escaped plain-text signature body = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "<div") || strings.Contains(got, "<img") {
+		t.Fatalf("escaped HTML tags must not leak into plain-text body: %q", got)
+	}
+}
+
 func TestValidateMailSendSignatureFlagsRejectsNoSignatureConflict(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)
 	err := runMountedMailShortcut(t, MailSend, []string{

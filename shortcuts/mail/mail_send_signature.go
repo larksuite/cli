@@ -178,11 +178,38 @@ func renderMailSendSignatureText(buf *bytes.Buffer, root *xhtml.Node, imagePlace
 			}
 		}
 		if node.Type == xhtml.TextNode {
-			appendMailSendSignatureText(buf, node.Data)
+			appendMailSendSignatureTextNode(buf, node.Data, imagePlaceholder)
 		}
 		if node.FirstChild != nil {
 			stack = append(stack, pendingEntry{node: node, child: node.FirstChild})
 		}
+	}
+}
+
+func appendMailSendSignatureTextNode(buf *bytes.Buffer, raw, imagePlaceholder string) {
+	unescaped := stdhtml.UnescapeString(raw)
+	if !mailSendSignatureLooksLikeHTMLFragment(unescaped) {
+		appendMailSendSignatureText(buf, unescaped)
+		return
+	}
+
+	doc, err := xhtml.Parse(strings.NewReader(unescaped))
+	if err != nil {
+		appendMailSendSignatureText(buf, unescaped)
+		return
+	}
+
+	var nested bytes.Buffer
+	renderMailSendSignatureText(&nested, doc, imagePlaceholder)
+	text := compactMailSendSignaturePlainText(nested.String())
+	if text == "" {
+		return
+	}
+	for i, line := range strings.Split(text, "\n") {
+		if i > 0 {
+			writeMailSendSignatureBreak(buf)
+		}
+		appendMailSendSignatureText(buf, line)
 	}
 }
 
@@ -237,6 +264,20 @@ func mailSendSignatureImagePlaceholder(lang string) string {
 		return "[图片]"
 	}
 	return "[image]"
+}
+
+func mailSendSignatureLooksLikeHTMLFragment(raw string) bool {
+	lower := strings.ToLower(raw)
+	for _, tag := range mailSendSignatureHTMLFragmentTags {
+		if strings.Contains(lower, "<"+tag) || strings.Contains(lower, "</"+tag+">") {
+			return true
+		}
+	}
+	return false
+}
+
+var mailSendSignatureHTMLFragmentTags = []string{
+	"a", "address", "article", "aside", "b", "blockquote", "body", "br", "div", "em", "font", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "html", "i", "img", "li", "ol", "p", "section", "span", "strong", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul",
 }
 
 func mailSendSignatureSkipsText(tag string) bool {
