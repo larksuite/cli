@@ -39,7 +39,8 @@ var MailSend = common.Shortcut{
 		{Name: "send-time", Desc: "Scheduled send time as a Unix timestamp in seconds. Must be at least 5 minutes in the future. Use with --confirm-send to schedule the email."},
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
-		signatureFlag,
+		mailSendSignatureFlag,
+		mailSendNoSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -52,12 +53,21 @@ var MailSend = common.Shortcut{
 		if confirmSend {
 			desc = "Compose email → save as draft → send draft"
 		}
+		noSignature := runtime.Bool("no-signature")
 		api := common.NewDryRunAPI().Desc(desc)
 		if tid := runtime.Str("template-id"); tid != "" {
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
 		api = api.GET(mailboxPath(mailboxID, "profile")).
+			Desc("Resolve mailbox profile and sender address.")
+		if !noSignature {
+			api = api.GET(mailboxPath(mailboxID, "settings", "signatures")).
+				Desc("Resolve explicit signature or default send signature.")
+			api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
+				Desc("Conditionally resolve sender identity for signature template variables.")
+		}
+		api = api.
 			POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
@@ -98,7 +108,7 @@ var MailSend = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+		if err := validateMailSendSignatureFlags(runtime); err != nil {
 			return err
 		}
 		// Resolve the body content first (reading --body-file if set) so
@@ -135,6 +145,7 @@ var MailSend = common.Shortcut{
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
 		sendTime := runtime.Str("send-time")
+		noSignature := runtime.Bool("no-signature")
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		signatureID := runtime.Str("signature-id")
@@ -195,7 +206,10 @@ var MailSend = common.Shortcut{
 			}
 		}
 
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		sigResult, err := resolveMailSendComposeSignature(ctx, runtime, mailboxID, senderEmail, mailSendSignatureOptions{
+			SignatureID: signatureID,
+			NoSignature: noSignature,
+		})
 		if err != nil {
 			return err
 		}
@@ -230,10 +244,10 @@ var MailSend = common.Shortcut{
 		// `lint_applied[]` / `original_blocked[]` even on the plain-text path.
 		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if plainText {
-			composedTextBody = body
+			composedTextBody = appendMailSendPlainTextSignature(body, sigResult, resolveLang(runtime))
 			bld = bld.TextBody([]byte(composedTextBody))
 		} else if bodyIsHTML(body) || sigResult != nil {
-			// If signature is requested on plain-text body, auto-upgrade to HTML.
+			// Non-plain-text sends can use HTML so signatures keep their rich layout.
 			htmlBody := body
 			if !bodyIsHTML(body) {
 				htmlBody = buildBodyDiv(body, false)

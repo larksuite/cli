@@ -486,6 +486,7 @@ func TestMailSend_WritePathLintAutofixesFontInEML(t *testing.T) {
 		"--to", "alice@example.com",
 		"--subject", "Send",
 		"--body", `<font color="red">payload</font>`,
+		"--no-signature",
 		"--show-lint-details",
 	}, f, stdout)
 	if err != nil {
