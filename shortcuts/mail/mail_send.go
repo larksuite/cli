@@ -66,6 +66,12 @@ var MailSend = common.Shortcut{
 				Desc("Resolve explicit signature or default send signature.")
 			api = api.GET(mailboxPath(mailboxID, "settings", "send_as")).
 				Desc("Conditionally resolve sender identity for signature template variables.")
+			if aliasMailboxID := mailSendSignatureAliasMailboxID(mailboxID, runtime.Str("from")); aliasMailboxID != "" {
+				api = api.GET(mailboxPath(aliasMailboxID, "settings", "signatures")).
+					Desc("Fallback: resolve default send signature for the alias sender when the owning mailbox usage is absent.")
+				api = api.GET(mailboxPath(aliasMailboxID, "settings", "send_as")).
+					Desc("Fallback: resolve alias sender identity for signature template variables.")
+			}
 		}
 		api = api.
 			POST(mailboxPath(mailboxID, "drafts")).

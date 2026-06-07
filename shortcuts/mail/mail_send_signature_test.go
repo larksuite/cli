@@ -5,6 +5,7 @@ package mail
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -111,6 +112,96 @@ func TestMailSendDefaultSignatureUsesAliasSender(t *testing.T) {
 	}
 	if strings.Contains(raw, "Owner Signature") {
 		t.Fatalf("default owner signature should not be used for alias sender:\n%s", raw)
+	}
+}
+
+func TestMailSendDefaultSignatureFallsBackToAliasMailbox(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	ownerMailbox := "ttt@13.wybanjia.work"
+	aliasEmail := "unsubscribe_test@13.wybanjia.work"
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailSendSignatureMockPath(ownerMailbox, "settings", "signatures"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"signatures": []interface{}{
+					map[string]interface{}{
+						"id":               "sig_owner",
+						"name":             "Owner",
+						"signature_type":   string(signature.SignatureTypeUser),
+						"signature_device": string(signature.DevicePC),
+						"content":          `<p>Owner Signature</p>`,
+					},
+				},
+				"usages": []interface{}{
+					map[string]interface{}{
+						"email_address":          ownerMailbox,
+						"send_mail_signature_id": "sig_owner",
+						"reply_signature_id":     "0",
+					},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailSendSignatureMockPath(aliasEmail, "settings", "signatures"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"signatures": []interface{}{
+					map[string]interface{}{
+						"id":                 "sig_alias",
+						"name":               "Alias",
+						"signature_type":     string(signature.SignatureTypeTenant),
+						"signature_device":   string(signature.DevicePC),
+						"content":            `<p>Alias sender <span data-variable-meta-props='{"id":"B-ENTERPRISE-EMAIL","type":"text"}'>placeholder</span></p>`,
+						"template_json_keys": []interface{}{"B-ENTERPRISE-EMAIL"},
+					},
+				},
+				"usages": []interface{}{
+					map[string]interface{}{
+						"email_address":          aliasEmail,
+						"send_mail_signature_id": "sig_alias",
+						"reply_signature_id":     "0",
+					},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailSendSignatureMockPath(aliasEmail, "settings", "send_as"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": []interface{}{
+					map[string]interface{}{"name": "Alias", "email_address": aliasEmail},
+				},
+			},
+		},
+	})
+	createStub := registerMailSendDraftCreate(reg, ownerMailbox)
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", ownerMailbox,
+		"--from", aliasEmail,
+		"--to", ownerMailbox,
+		"--subject", "hello",
+		"--body", "<p>alias body</p>",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("send failed: %v", err)
+	}
+
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, "Alias sender") || !strings.Contains(raw, aliasEmail) {
+		t.Fatalf("expected alias signature with alias send_as interpolation in EML:\n%s", raw)
+	}
+	if strings.Contains(raw, "Owner Signature") {
+		t.Fatalf("owner default signature should not be used for alias sender:\n%s", raw)
 	}
 }
 
@@ -412,7 +503,7 @@ func registerMailSendSignatureScenario(t *testing.T, reg *httpmock.Registry, sce
 	}
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/user_mailboxes/" + scenario.MailboxID + "/settings/signatures",
+		URL:    mailSendSignatureMockPath(scenario.MailboxID, "settings", "signatures"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -436,7 +527,7 @@ func registerMailSendSignatureSendAs(reg *httpmock.Registry, mailboxID, defaultE
 	}
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/user_mailboxes/" + mailboxID + "/settings/send_as",
+		URL:    mailSendSignatureMockPath(mailboxID, "settings", "send_as"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -449,7 +540,7 @@ func registerMailSendSignatureSendAs(reg *httpmock.Registry, mailboxID, defaultE
 func registerMailSendDraftCreate(reg *httpmock.Registry, mailboxID string) *httpmock.Stub {
 	stub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/" + mailboxID + "/drafts",
+		URL:    mailSendSignatureMockPath(mailboxID, "drafts"),
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -459,4 +550,12 @@ func registerMailSendDraftCreate(reg *httpmock.Registry, mailboxID string) *http
 	}
 	reg.Register(stub)
 	return stub
+}
+
+func mailSendSignatureMockPath(mailboxID string, segments ...string) string {
+	parts := []string{"/user_mailboxes/" + url.PathEscape(mailboxID)}
+	for _, segment := range segments {
+		parts = append(parts, url.PathEscape(segment))
+	}
+	return strings.Join(parts, "/")
 }

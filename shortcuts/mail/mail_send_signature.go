@@ -51,9 +51,20 @@ func resolveMailSendComposeSignature(ctx context.Context, runtime *common.Runtim
 		return resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
 	}
 
+	signatureMailboxID, defaultID, err := selectMailSendDefaultSignature(runtime, mailboxID, senderEmail)
+	if err != nil {
+		return nil, err
+	}
+	if mailSendSignatureIDIsEmpty(defaultID) {
+		return nil, nil
+	}
+	return resolveSignature(ctx, runtime, signatureMailboxID, defaultID, senderEmail)
+}
+
+func selectMailSendDefaultSignature(runtime *common.RuntimeContext, mailboxID, senderEmail string) (string, string, error) {
 	resp, err := signature.ListAll(runtime, mailboxID)
 	if err != nil {
-		return nil, mailAppendProblemHint(
+		return "", "", mailAppendProblemHint(
 			mailDecorateProblemMessage(err, "failed to look up default send signature"),
 			"pass --no-signature to send without a signature",
 		)
@@ -61,13 +72,41 @@ func resolveMailSendComposeSignature(ctx context.Context, runtime *common.Runtim
 
 	defaultID := selectMailSendDefaultSignatureID(resp.Usages, senderEmail)
 	if mailSendSignatureIDIsEmpty(defaultID) {
-		return nil, nil
+		return selectMailSendAliasDefaultSignature(runtime, mailboxID, senderEmail)
 	}
 	if !mailSendSignatureExists(resp.Signatures, defaultID) {
-		return nil, mailValidationError("default send signature %q was configured for %q but was not returned by settings/signatures", defaultID, mailSendSignatureSenderLabel(senderEmail)).
+		return "", "", mailValidationError("default send signature %q was configured for %q but was not returned by settings/signatures", defaultID, mailSendSignatureSenderLabel(senderEmail)).
 			WithHint("run `lark-cli mail +signature` to inspect signatures, or pass --no-signature to send without a signature")
 	}
-	return resolveSignature(ctx, runtime, mailboxID, defaultID, senderEmail)
+	return mailboxID, defaultID, nil
+}
+
+func selectMailSendAliasDefaultSignature(runtime *common.RuntimeContext, mailboxID, senderEmail string) (string, string, error) {
+	aliasMailboxID := mailSendSignatureAliasMailboxID(mailboxID, senderEmail)
+	if aliasMailboxID == "" {
+		return "", "", nil
+	}
+	resp, err := signature.ListAll(runtime, aliasMailboxID)
+	if err != nil {
+		return "", "", nil
+	}
+	defaultID := selectMailSendDefaultSignatureID(resp.Usages, senderEmail)
+	if mailSendSignatureIDIsEmpty(defaultID) {
+		return "", "", nil
+	}
+	if !mailSendSignatureExists(resp.Signatures, defaultID) {
+		return "", "", mailValidationError("default send signature %q was configured for %q but was not returned by settings/signatures", defaultID, mailSendSignatureSenderLabel(senderEmail)).
+			WithHint("run `lark-cli mail +signature` to inspect signatures, or pass --no-signature to send without a signature")
+	}
+	return aliasMailboxID, defaultID, nil
+}
+
+func mailSendSignatureAliasMailboxID(mailboxID, senderEmail string) string {
+	senderEmail = strings.TrimSpace(senderEmail)
+	if senderEmail == "" || strings.EqualFold(strings.TrimSpace(mailboxID), senderEmail) {
+		return ""
+	}
+	return senderEmail
 }
 
 func selectMailSendDefaultSignatureID(usages []signature.SignatureUsage, senderEmail string) string {
