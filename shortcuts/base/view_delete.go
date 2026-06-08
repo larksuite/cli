@@ -17,7 +17,11 @@ var BaseViewDelete = common.Shortcut{
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
 	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
-	DryRun:      dryRunViewDelete,
+	Tips: []string{
+		baseHighRiskYesTip,
+		`Example: lark-cli base +view-delete --base-token <base_token> --table-id <table_id> --view-id "Old View" --yes`,
+	},
+	DryRun: dryRunViewDelete,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewDelete(runtime)
 	},

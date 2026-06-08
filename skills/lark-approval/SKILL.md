@@ -1,56 +1,35 @@
 ---
 name: lark-approval
-version: 1.0.0
-description: "飞书审批 API：审批实例、审批任务管理。"
+version: 1.1.0
+description: "飞书审批：当前用户审批的查询与全部处理操作，覆盖待本人审批的任务与本人发起的实例。审批待办不是飞书任务（任务类待办走 lark-task）；不负责创建审批定义和发起新审批。"
 metadata:
   requires:
     bins: ["lark-cli"]
   cliHelp: "lark-cli approval --help"
 ---
 
-# approval (v4)
-
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-## API Resources
+所有命令默认 `--as user`（审批是人的动作）。调用前先 `lark-cli schema approval.<resource>.<method>` 查参数结构，不要猜字段。
+
+## 选哪个命令
+
+| 想做什么 | 命令 |
+|---|---|
+| 查待办/已办 | `tasks query`（`topic`：1待办 2已办 17未读 18已读）|
+| 看表单/进度/当前节点 | `instances get` |
+| 同意/拒绝 | `tasks approve` / `tasks reject` |
+| 转交/加签/退回 | `tasks transfer` / `tasks add_sign` / `tasks rollback` |
+| 催办 | `tasks remind` |
+| 撤回/抄送/按定义查已发起 | `instances cancel` / `instances cc` / `instances initiated` |
+
+处理链：`tasks query` 拿 `instance_code` + `task_id`（操作必须成对带上）→ 需要细节再 `instances get` → 执行操作。
 
 ```bash
-lark-cli schema approval.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli approval <resource> <method> [flags] # 调用 API
+lark-cli approval tasks query --params '{"topic":"1"}' --as user
+lark-cli approval tasks approve --data '{"instance_code":"<ic>","task_id":"<tid>","comment":"同意"}' --as user
 ```
 
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
+## 不在本 skill 范围
 
-### instances
-
-  - `get` — 获取单个审批实例详情
-  - `cancel` — 撤回审批实例
-  - `cc` — 抄送审批实例
-  - `initiated` — 查询用户的已发起列表
-
-### tasks
-
-  - `remind` — 催办审批人
-  - `approve` — 同意审批任务
-  - `reject` — 拒绝审批任务
-  - `transfer` — 转交审批任务
-  - `query` — 查询用户的任务列表
-  - `add_sign` — 审批任务加签
-  - `rollback` — 退回审批任务
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `instances.get` | `approval:instance:read` |
-| `instances.cancel` | `approval:instance:write` |
-| `instances.cc` | `approval:instance:write` |
-| `instances.initiated` | `approval:instance:read` |
-| `tasks.remind` | `approval:instance:write` |
-| `tasks.approve` | `approval:task:write` |
-| `tasks.reject` | `approval:task:write` |
-| `tasks.transfer` | `approval:task:write` |
-| `tasks.query` | `approval:task:read` |
-| `tasks.add_sign` | `approval:task:write` |
-| `tasks.rollback` | `approval:task:write` |
-
+创建审批定义/发起新审批（走飞书客户端或审批管理后台）；非审批类待办 → [`lark-task`](../lark-task/SKILL.md)

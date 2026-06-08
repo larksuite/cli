@@ -4,6 +4,7 @@
 package mail
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -89,6 +91,32 @@ func stubDraftSend(reg *httpmock.Registry, draftID string, body map[string]inter
 	}
 	reg.Register(stub)
 	return stub
+}
+
+func decodeDraftSendPartialEnvelopeData(t *testing.T, stdout *bytes.Buffer) map[string]interface{} {
+	t.Helper()
+	var envelope struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("Unmarshal(stdout) error = %v, stdout=%s", err, stdout.String())
+	}
+	if envelope.OK {
+		t.Fatalf("expected ok:false partial-failure output, stdout=%s", stdout.String())
+	}
+	return envelope.Data
+}
+
+func assertPartialFailureSignal(t *testing.T, err error) {
+	t.Helper()
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("PartialFailureError.Code = %d, want ExitAPI=%d", pfErr.Code, output.ExitAPI)
+	}
 }
 
 // TestMailDraftSend_AllSuccess verifies the happy path: every draft sends
@@ -190,7 +218,8 @@ func TestMailDraftSend_ProgressWritesToStderr(t *testing.T) {
 	if strings.Contains(stdout.String(), "mail +draft-send:") {
 		t.Errorf("stdout must not contain progress lines; got %s", stdout.String())
 	}
-	data := decodeShortcutEnvelopeData(t, stdout)
+	assertPartialFailureSignal(t, err)
+	data := decodeDraftSendPartialEnvelopeData(t, stdout)
 	if data["success_count"].(float64) != 2 || data["failure_count"].(float64) != 1 {
 		t.Errorf("unexpected aggregate counts: %#v", data)
 	}
@@ -198,7 +227,7 @@ func TestMailDraftSend_ProgressWritesToStderr(t *testing.T) {
 
 // TestMailDraftSend_PartialFailure verifies that one recoverable per-draft
 // failure does not abort the batch; the remaining drafts are attempted; both
-// arrays are populated; and the call returns ExitAPI/"partial_failure".
+// arrays are populated; and the call returns the multi-status partial-failure signal.
 func TestMailDraftSend_PartialFailure(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubDraftSend(reg, "d1", map[string]interface{}{
@@ -225,18 +254,9 @@ func TestMailDraftSend_PartialFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected partial_failure error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
-	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("Code = %d, want ExitAPI=%d", exitErr.Code, output.ExitAPI)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "partial_failure" {
-		t.Errorf("Detail.Type = %v, want partial_failure", exitErr.Detail)
-	}
+	assertPartialFailureSignal(t, err)
 
-	data := decodeShortcutEnvelopeData(t, stdout)
+	data := decodeDraftSendPartialEnvelopeData(t, stdout)
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
 	}
@@ -284,7 +304,8 @@ func TestMailDraftSend_StopOnError(t *testing.T) {
 		t.Fatal("expected partial_failure error, got nil")
 	}
 
-	data := decodeShortcutEnvelopeData(t, stdout)
+	assertPartialFailureSignal(t, err)
+	data := decodeDraftSendPartialEnvelopeData(t, stdout)
 	if data["success_count"].(float64) != 1 {
 		t.Errorf("success_count = %v, want 1", data["success_count"])
 	}
@@ -293,6 +314,14 @@ func TestMailDraftSend_StopOnError(t *testing.T) {
 	}
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
+	}
+	// A --stop-on-error stop is a caller choice over a draft-level failure,
+	// not an account-level abort: the aborted/abort_error fields stay unset.
+	if _, present := data["aborted"]; present {
+		t.Errorf("aborted should be unset for --stop-on-error, got %v", data["aborted"])
+	}
+	if _, present := data["abort_error"]; present {
+		t.Errorf("abort_error should be unset for --stop-on-error, got %v", data["abort_error"])
 	}
 }
 
@@ -315,12 +344,12 @@ func TestMailDraftSend_FatalAborts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected fatal abort error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Code != output.LarkErrMailboxNotFound {
-		t.Errorf("expected Detail.Code = %d, got %#v", output.LarkErrMailboxNotFound, exitErr.Detail)
+	if p.Code != output.LarkErrMailboxNotFound {
+		t.Errorf("expected code = %d, got %#v", output.LarkErrMailboxNotFound, p)
 	}
 	// No JSON envelope on stdout because Execute returned early before rt.Out.
 	if stdout.Len() != 0 {
@@ -329,9 +358,10 @@ func TestMailDraftSend_FatalAborts(t *testing.T) {
 }
 
 // TestMailDraftSend_FatalAfterSuccessEmitsLedger verifies that a fatal error
-// after earlier side effects still emits the aggregate stdout ledger before
-// returning the fatal stderr error. This lets callers avoid blindly retrying a
-// draft that was already sent.
+// after earlier side effects emits the aborted stdout ledger as the single
+// failure result: the returned partial-failure signal sets the exit code
+// without a second error envelope, and abort_error carries the typed cause so
+// callers can avoid blindly retrying a draft that was already sent.
 func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubDraftSend(reg, "d1", map[string]interface{}{
@@ -349,17 +379,17 @@ func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 		"--yes",
 	}, f, stdout)
 	if err == nil {
-		t.Fatal("expected fatal abort error, got nil")
+		t.Fatal("expected partial-failure abort signal, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Code != output.LarkErrMailSendQuotaUser {
-		t.Errorf("expected Detail.Code = %d, got %#v", output.LarkErrMailSendQuotaUser, exitErr.Detail)
+	// The ledger is the single failure result: the returned error must be the
+	// envelope-less partial-failure signal, not a typed error that the root
+	// dispatcher would render as a second failure envelope on stderr.
+	assertPartialFailureSignal(t, err)
+	if _, ok := errs.ProblemOf(err); ok {
+		t.Fatalf("abort signal must not carry a typed problem, got %v", err)
 	}
 
-	data := decodeShortcutEnvelopeData(t, stdout)
+	data := decodeDraftSendPartialEnvelopeData(t, stdout)
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
 	}
@@ -374,6 +404,19 @@ func TestMailDraftSend_FatalAfterSuccessEmitsLedger(t *testing.T) {
 	}
 	if got := gjsonLikeString(t, data, "failed", 0, "draft_id"); got != "d2" {
 		t.Errorf("failed[0].draft_id = %q, want d2", got)
+	}
+	if data["aborted"] != true {
+		t.Errorf("aborted = %v, want true", data["aborted"])
+	}
+	abortErr, ok := data["abort_error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("abort_error = %v, want object", data["abort_error"])
+	}
+	if abortErr["type"] != "api" {
+		t.Errorf("abort_error.type = %v, want api", abortErr["type"])
+	}
+	if abortErr["code"].(float64) != float64(output.LarkErrMailSendQuotaUser) {
+		t.Errorf("abort_error.code = %v, want %d", abortErr["code"], output.LarkErrMailSendQuotaUser)
 	}
 }
 
@@ -402,24 +445,22 @@ func TestMailDraftSend_AutomationDisabled(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected automation_send_disabled error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Errorf("Code = %d, want ExitAPI=%d", exitErr.Code, output.ExitAPI)
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("problem = %#v, want validation/failed_precondition", p)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "automation_send_disabled" {
-		t.Errorf("Detail.Type = %v, want automation_send_disabled", exitErr.Detail)
-	}
-	if !strings.Contains(exitErr.Error(), "outbound automation disabled") {
-		t.Errorf("error message should propagate reason, got %q", exitErr.Error())
+	if !strings.Contains(p.Message, "outbound automation disabled") {
+		t.Errorf("error message should propagate reason, got %q", p.Message)
 	}
 }
 
 // TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger verifies that an
-// automation-send policy stop after earlier successful sends still writes the
-// batch ledger to stdout before returning the structured fatal error.
+// automation-send policy stop after earlier successful sends emits the aborted
+// batch ledger as the single failure result, with the failed-precondition
+// cause carried in abort_error.
 func TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	stubDraftSend(reg, "d1", map[string]interface{}{
@@ -442,17 +483,27 @@ func TestMailDraftSend_AutomationDisabledAfterSuccessEmitsLedger(t *testing.T) {
 		"--yes",
 	}, f, stdout)
 	if err == nil {
-		t.Fatal("expected automation_send_disabled error, got nil")
+		t.Fatal("expected partial-failure abort signal, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "automation_send_disabled" {
-		t.Errorf("Detail.Type = %v, want automation_send_disabled", exitErr.Detail)
+	assertPartialFailureSignal(t, err)
+	if _, ok := errs.ProblemOf(err); ok {
+		t.Fatalf("abort signal must not carry a typed problem, got %v", err)
 	}
 
-	data := decodeShortcutEnvelopeData(t, stdout)
+	data := decodeDraftSendPartialEnvelopeData(t, stdout)
+	if data["aborted"] != true {
+		t.Errorf("aborted = %v, want true", data["aborted"])
+	}
+	abortErr, ok := data["abort_error"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("abort_error = %v, want object", data["abort_error"])
+	}
+	if abortErr["type"] != "validation" || abortErr["subtype"] != "failed_precondition" {
+		t.Errorf("abort_error type/subtype = %v/%v, want validation/failed_precondition", abortErr["type"], abortErr["subtype"])
+	}
+	if msg, _ := abortErr["message"].(string); !strings.Contains(msg, "outbound automation disabled") {
+		t.Errorf("abort_error.message should carry the reason, got %q", msg)
+	}
 	if data["total"].(float64) != 3 {
 		t.Errorf("total = %v, want 3", data["total"])
 	}
@@ -600,12 +651,8 @@ func TestMailDraftSend_MissingYes(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected ExitConfirmationRequired, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
-	}
-	if exitErr.Code != output.ExitConfirmationRequired {
-		t.Errorf("Code = %d, want ExitConfirmationRequired=%d", exitErr.Code, output.ExitConfirmationRequired)
+	if code := output.ExitCodeOf(err); code != output.ExitConfirmationRequired {
+		t.Errorf("Code = %d, want ExitConfirmationRequired=%d", code, output.ExitConfirmationRequired)
 	}
 }
 
@@ -788,93 +835,58 @@ func TestIsFatalSendErr(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "ExitError without Detail → fatal",
-			err:  &output.ExitError{Code: output.ExitInternal},
+			name: "internal typed fallback → fatal",
+			err:  errs.NewInternalError(errs.SubtypeSDKError, "unexpected shape"),
 			want: true,
 		},
 		{
-			name: "auth → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAuth,
-				Detail: &output.ErrDetail{Type: "auth", Message: "token expired"},
-			},
+			name: "authentication → fatal",
+			err:  errs.NewAuthenticationError(errs.SubtypeTokenExpired, "token expired"),
 			want: true,
 		},
 		{
-			name: "app_status → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAuth,
-				Detail: &output.ErrDetail{Type: "app_status", Message: "app disabled"},
-			},
+			name: "authorization → fatal",
+			err:  errs.NewPermissionError(errs.SubtypePermissionDenied, "denied"),
 			want: true,
 		},
 		{
 			name: "config → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAuth,
-				Detail: &output.ErrDetail{Type: "config", Message: "bad app_id"},
-			},
+			err:  errs.NewConfigError(errs.SubtypeInvalidConfig, "bad app_id"),
 			want: true,
 		},
 		{
-			name: "permission → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "permission", Message: "denied"},
-			},
+			name: "network → fatal",
+			err:  errs.NewNetworkError(errs.SubtypeNetworkTransport, "DNS timeout"),
 			want: true,
 		},
 		{
 			name: "rate_limit → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "rate_limit", Code: output.LarkErrRateLimit},
-			},
-			want: true,
-		},
-		{
-			name: "ExitNetwork → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitNetwork,
-				Detail: &output.ErrDetail{Type: "network", Message: "DNS timeout"},
-			},
-			want: true,
-		},
-		{
-			name: "wrapped ExitNetwork → fatal",
-			err:  output.Errorf(output.ExitAPI, "api_error", "API call failed: %s", output.ErrNetwork("DNS timeout")),
+			err:  errs.NewAPIError(errs.SubtypeRateLimit, "rate limited").WithCode(output.LarkErrRateLimit),
 			want: true,
 		},
 		{
 			name: "LarkErrMailboxNotFound → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "api_error", Code: output.LarkErrMailboxNotFound},
-			},
+			err:  errs.NewAPIError(errs.SubtypeNotFound, "mailbox not found").WithCode(output.LarkErrMailboxNotFound),
 			want: true,
 		},
 		{
 			name: "LarkErrMailSendQuotaUser → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "api_error", Code: output.LarkErrMailSendQuotaUser},
-			},
+			err:  errs.NewAPIError(errs.SubtypeQuotaExceeded, "user daily send count exceeded").WithCode(output.LarkErrMailSendQuotaUser),
 			want: true,
 		},
 		{
 			name: "LarkErrTenantStorageLimit → fatal",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "api_error", Code: output.LarkErrTenantStorageLimit},
-			},
+			err:  errs.NewAPIError(errs.SubtypeQuotaExceeded, "tenant storage limit").WithCode(output.LarkErrTenantStorageLimit),
 			want: true,
 		},
 		{
-			name: "generic api_error → recoverable",
-			err: &output.ExitError{
-				Code:   output.ExitAPI,
-				Detail: &output.ErrDetail{Type: "api_error", Code: 230001},
-			},
+			name: "generic api unknown → recoverable",
+			err:  errs.NewAPIError(errs.SubtypeUnknown, "draft not found").WithCode(230001),
+			want: false,
+		},
+		{
+			name: "not_found without account-level code → recoverable",
+			err:  errs.NewAPIError(errs.SubtypeNotFound, "draft not found").WithCode(230002),
 			want: false,
 		},
 	}

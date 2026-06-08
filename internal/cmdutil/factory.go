@@ -6,6 +6,7 @@ package cmdutil
 import (
 	"context"
 	"io"
+	"io/fs"
 	"net/http"
 	"strings"
 
@@ -43,6 +44,8 @@ type Factory struct {
 	Credential *credential.CredentialProvider
 
 	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
+
+	SkillContent fs.FS // embedded skill tree (rooted at the skill list); nil when the build embeds no skills
 }
 
 // ResolveFileIO resolves a FileIO instance using the current execution context.

@@ -5,6 +5,7 @@ package okr
 
 import (
 	"bytes"
+	"errors"
 	"mime"
 	"mime/multipart"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -360,6 +362,15 @@ func TestUploadImageExecute_APIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for API failure")
 	}
+	// The upload boundary now classifies the Lark error code into a typed
+	// envelope carrying the numeric code, instead of a flat legacy error.
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not a typed errs.* envelope: %T (%v)", err, err)
+	}
+	if p.Code != 1001001 {
+		t.Errorf("Problem.Code = %d, want 1001001", p.Code)
+	}
 }
 
 func TestUploadImageExecute_FileNotFound(t *testing.T) {
@@ -406,6 +417,15 @@ func TestUploadImageExecute_NoFileTokenInResponse(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for missing file_token in response")
+	}
+	// A 2xx response that omits the expected file_token is a malformed response,
+	// surfaced as a typed internal/invalid_response error.
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("error is not *errs.InternalError: %T (%v)", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("Subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
 	}
 	if !strings.Contains(err.Error(), "no file_token returned") {
 		t.Fatalf("unexpected error: %v", err)

@@ -61,8 +61,22 @@ type TypedError interface {
 // it is intentionally not serialized.
 type ValidationError struct {
 	Problem
-	Param string `json:"param,omitempty"`
-	Cause error  `json:"-"`
+	Param  string         `json:"param,omitempty"`
+	Params []InvalidParam `json:"params,omitempty"`
+	Cause  error          `json:"-"`
+}
+
+// InvalidParam is one structured validation diagnostic: the parameter that
+// failed (Name) and why (Reason). It mirrors an RFC 7807 "invalid-params"
+// item (RFC 7807 §3.1 extension members).
+//
+// The wire key on ValidationError is "params" rather than "invalid_params"
+// because the enclosing envelope already carries type:"validation", so the
+// "invalid" qualifier would be redundant on the wire. The Go type keeps the
+// InvalidParam prefix because, at package level, the name must self-describe.
+type InvalidParam struct {
+	Name   string `json:"name"`
+	Reason string `json:"reason"`
 }
 
 // Unwrap exposes the wrapped cause so errors.Unwrap / errors.Is can traverse
@@ -119,6 +133,11 @@ func (e *ValidationError) WithRetryable() *ValidationError {
 
 func (e *ValidationError) WithParam(param string) *ValidationError {
 	e.Param = param
+	return e
+}
+
+func (e *ValidationError) WithParams(params ...InvalidParam) *ValidationError {
+	e.Params = append(e.Params, params...)
 	return e
 }
 

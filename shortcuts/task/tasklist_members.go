@@ -5,15 +5,13 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -39,7 +37,7 @@ var MembersTasklist = common.Shortcut{
 		hasRemove := runtime.Str("remove") != ""
 
 		if hasSet && (hasAdd || hasRemove) {
-			return WrapTaskError(ErrCodeTaskInvalidParams, "cannot combine --set with --add or --remove", "validate tasklist members")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot combine --set with --add or --remove")
 		}
 		return nil
 	},
@@ -74,8 +72,7 @@ var MembersTasklist = common.Shortcut{
 
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tlId := url.PathEscape(extractTasklistGuid(runtime.Str("tasklist-id")))
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
 		setStr := runtime.Str("set")
 		addStr := runtime.Str("add")
@@ -83,20 +80,7 @@ var MembersTasklist = common.Shortcut{
 
 		// If no modifications, just list
 		if setStr == "" && addStr == "" && removeStr == "" {
-			getResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodGet,
-				ApiPath:     "/open-apis/task/v2/tasklists/" + tlId,
-				QueryParams: queryParams,
-			})
-
-			var getResult map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(getResp.RawBody, &getResult); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse tasklist details")
-				}
-			}
-
-			data, err := HandleTaskApiResult(getResult, err, "get tasklist members")
+			data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasklists/"+tlId, params, nil)
 			if err != nil {
 				return err
 			}
@@ -142,20 +126,7 @@ var MembersTasklist = common.Shortcut{
 		var lastTasklist map[string]interface{}
 		if setStr != "" {
 			// Query existing to diff for "set" behavior
-			getResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodGet,
-				ApiPath:     "/open-apis/task/v2/tasklists/" + tlId,
-				QueryParams: queryParams,
-			})
-
-			var getResult map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(getResp.RawBody, &getResult); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse tasklist details")
-				}
-			}
-
-			data, err := HandleTaskApiResult(getResult, err, "get tasklist details for set")
+			data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasklists/"+tlId, params, nil)
 			if err != nil {
 				return err
 			}
@@ -198,21 +169,7 @@ var MembersTasklist = common.Shortcut{
 
 			if len(toAdd) > 0 {
 				body := buildTlMembersBody(strings.Join(toAdd, ","))
-				apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-					HttpMethod:  http.MethodPost,
-					ApiPath:     "/open-apis/task/v2/tasklists/" + tlId + "/add_members",
-					QueryParams: queryParams,
-					Body:        body,
-				})
-
-				var addResult map[string]interface{}
-				if err == nil {
-					if parseErr := json.Unmarshal(apiResp.RawBody, &addResult); parseErr != nil {
-						return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse add members")
-					}
-				}
-
-				data, err := HandleTaskApiResult(addResult, err, "add tasklist members")
+				data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists/"+tlId+"/add_members", params, body)
 				if err != nil {
 					return err
 				}
@@ -221,21 +178,7 @@ var MembersTasklist = common.Shortcut{
 
 			if len(toRemove) > 0 {
 				body := buildTlMembersBody(strings.Join(toRemove, ","))
-				apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-					HttpMethod:  http.MethodPost,
-					ApiPath:     "/open-apis/task/v2/tasklists/" + tlId + "/remove_members",
-					QueryParams: queryParams,
-					Body:        body,
-				})
-
-				var removeResult map[string]interface{}
-				if err == nil {
-					if parseErr := json.Unmarshal(apiResp.RawBody, &removeResult); parseErr != nil {
-						return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse remove members")
-					}
-				}
-
-				data, err := HandleTaskApiResult(removeResult, err, "remove tasklist members")
+				data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists/"+tlId+"/remove_members", params, body)
 				if err != nil {
 					return err
 				}
@@ -246,21 +189,7 @@ var MembersTasklist = common.Shortcut{
 			// Add / Remove mode
 			if addStr != "" {
 				body := buildTlMembersBody(addStr)
-				apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-					HttpMethod:  http.MethodPost,
-					ApiPath:     "/open-apis/task/v2/tasklists/" + tlId + "/add_members",
-					QueryParams: queryParams,
-					Body:        body,
-				})
-
-				var addResult map[string]interface{}
-				if err == nil {
-					if parseErr := json.Unmarshal(apiResp.RawBody, &addResult); parseErr != nil {
-						return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse add members")
-					}
-				}
-
-				data, err := HandleTaskApiResult(addResult, err, "add tasklist members")
+				data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists/"+tlId+"/add_members", params, body)
 				if err != nil {
 					return err
 				}
@@ -269,21 +198,7 @@ var MembersTasklist = common.Shortcut{
 
 			if removeStr != "" {
 				body := buildTlMembersBody(removeStr)
-				apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-					HttpMethod:  http.MethodPost,
-					ApiPath:     "/open-apis/task/v2/tasklists/" + tlId + "/remove_members",
-					QueryParams: queryParams,
-					Body:        body,
-				})
-
-				var removeResult map[string]interface{}
-				if err == nil {
-					if parseErr := json.Unmarshal(apiResp.RawBody, &removeResult); parseErr != nil {
-						return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse remove members")
-					}
-				}
-
-				data, err := HandleTaskApiResult(removeResult, err, "remove tasklist members")
+				data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists/"+tlId+"/remove_members", params, body)
 				if err != nil {
 					return err
 				}

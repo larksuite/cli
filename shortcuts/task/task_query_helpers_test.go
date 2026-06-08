@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 )
 
@@ -88,6 +89,7 @@ func TestParseTimeRangeMillisAndRequireSearchFilter(t *testing.T) {
 	}{
 		{name: "empty input", input: "", wantStart: "", wantEnd: ""},
 		{name: "invalid input", input: "bad-time", wantErr: true},
+		{name: "invalid end input", input: "-1d,bad-time", wantErr: true},
 		{name: "range input", input: "-1d,+1d", wantStart: "non-empty", wantEnd: "non-empty"},
 		{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
 	}
@@ -99,15 +101,16 @@ func TestParseTimeRangeMillisAndRequireSearchFilter(t *testing.T) {
 					t.Fatalf("parseTimeRangeMillis(%q) expected error, got nil", tt.input)
 				}
 				if tt.name == "reversed range fails fast" {
-					var exitErr *output.ExitError
-					if !errors.As(err, &exitErr) {
-						t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+					var ve *errs.ValidationError
+					if !errors.As(err, &ve) {
+						t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
 					}
-					if exitErr.Code != output.ExitValidation {
-						t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+					p, ok := errs.ProblemOf(err)
+					if !ok || p.Subtype != errs.SubtypeInvalidArgument {
+						t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
 					}
-					if exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
-						t.Errorf("error detail type = %q, want %q", exitErr.Detail.Type, "validation")
+					if got := output.ExitCodeOf(err); got != output.ExitValidation {
+						t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
 					}
 				}
 				return
@@ -264,6 +267,7 @@ func TestRenderRelatedTasksPretty(t *testing.T) {
 			}{
 				{name: "empty input", input: "", wantStart: "", wantEnd: ""},
 				{name: "invalid input", input: "bad-time", wantErr: true},
+				{name: "invalid end input", input: "-1d,bad-time", wantErr: true},
 				{name: "range input", input: "-1d,+1d", wantStart: "rfc3339", wantEnd: "rfc3339"},
 				{name: "reversed range fails fast", input: "+1d,-1d", wantErr: true},
 			}
@@ -276,12 +280,16 @@ func TestRenderRelatedTasksPretty(t *testing.T) {
 							t.Fatal("expected error, got nil")
 						}
 						if tt.name == "reversed range fails fast" {
-							var exitErr *output.ExitError
-							if !errors.As(err, &exitErr) {
-								t.Fatalf("error type = %T, want *output.ExitError; error = %v", err, err)
+							var ve *errs.ValidationError
+							if !errors.As(err, &ve) {
+								t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
 							}
-							if exitErr.Code != output.ExitValidation {
-								t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+							p, ok := errs.ProblemOf(err)
+							if !ok || p.Subtype != errs.SubtypeInvalidArgument {
+								t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+							}
+							if got := output.ExitCodeOf(err); got != output.ExitValidation {
+								t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
 							}
 						}
 						return

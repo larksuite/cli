@@ -4,12 +4,17 @@
 package task
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -294,6 +299,132 @@ func TestSearchTask_Execute(t *testing.T) {
 				if !strings.Contains(out, want) && !strings.Contains(outNorm, want) {
 					t.Fatalf("output missing %q: %s", want, out)
 				}
+			}
+		})
+	}
+}
+
+// TestSearchTask_InvalidDue_Validation drives the --due validation arm through
+// the mounted command. buildTaskSearchBody runs before any API call, so a
+// malformed range deterministically surfaces a typed *errs.ValidationError
+// (invalid_argument, exit 2) carrying the --due param.
+func TestSearchTask_InvalidDue_Validation(t *testing.T) {
+	f, stdout, _, _ := taskShortcutTestFactory(t)
+
+	s := SearchTask
+	s.AuthTypes = []string{"bot", "user"}
+
+	args := []string{"+search", "--query", "release", "--due", "not-a-time", "--as", "user"}
+	err := runMountedTaskShortcut(t, s, args, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error for malformed --due, got nil")
+	}
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+	if ve.Param != "--due" {
+		t.Errorf("param = %q, want %q", ve.Param, "--due")
+	}
+}
+
+// TestSearchTask_MalformedSearchResponse covers the search raw-body parse arm:
+// the SDK returns a 200 with a non-JSON body and nil error, so the shortcut's
+// own json.Unmarshal fails and must surface a typed *errs.InternalError
+// (invalid_response, exit 5).
+func TestSearchTask_MalformedSearchResponse(t *testing.T) {
+	f, stdout, _, reg := taskShortcutTestFactory(t)
+	warmTenantToken(t, f, reg)
+
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/task/v2/tasks/search",
+		RawBody: []byte("{not-json"),
+	})
+
+	s := SearchTask
+	s.AuthTypes = []string{"bot", "user"}
+
+	args := []string{"+search", "--query", "release", "--as", "bot", "--format", "json"}
+	err := runMountedTaskShortcut(t, s, args, f, stdout)
+	if err == nil {
+		t.Fatal("expected internal error for malformed response, got nil")
+	}
+
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("error type = %T, want *errs.InternalError; error = %v", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d", got, output.ExitInternal)
+	}
+}
+
+// TestGetTaskDetail_MalformedResponse exercises getTaskDetail directly. In the
+// +search Execute loop a detail-fetch error is intentionally swallowed (the hit
+// falls back to its app_link), so the only way to lock the helper's two
+// internal arms — a non-JSON body and a code-0 response missing the task object
+// — is to call it directly. Both must surface a typed *errs.InternalError
+// (invalid_response, exit 5).
+func TestGetTaskDetail_MalformedResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		stub *httpmock.Stub
+	}{
+		{
+			name: "body not json",
+			stub: &httpmock.Stub{
+				Method:  "GET",
+				URL:     "/open-apis/task/v2/tasks/task-123",
+				RawBody: []byte("{not-json"),
+			},
+		},
+		{
+			name: "missing task object",
+			stub: &httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/task/v2/tasks/task-123",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "success",
+					"data": map[string]interface{}{},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, _, _, reg := taskShortcutTestFactory(t)
+			warmTenantToken(t, f, reg)
+			reg.Register(tt.stub)
+
+			runtime := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "test"}, taskTestConfig(t), f, core.AsBot)
+
+			_, err := getTaskDetail(runtime, "task-123")
+			if err == nil {
+				t.Fatal("expected internal error, got nil")
+			}
+
+			var ie *errs.InternalError
+			if !errors.As(err, &ie) {
+				t.Fatalf("error type = %T, want *errs.InternalError; error = %v", err, err)
+			}
+			if ie.Subtype != errs.SubtypeInvalidResponse {
+				t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitInternal {
+				t.Errorf("exit code = %d, want %d", got, output.ExitInternal)
 			}
 		})
 	}

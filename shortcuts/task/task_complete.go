@@ -5,14 +5,11 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"time"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -47,28 +44,14 @@ var CompleteTask = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		taskId := url.PathEscape(runtime.Str("task-id"))
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
 		var data map[string]interface{}
 
 		// 1. Get current task status
-		getResp, getErr := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodGet,
-			ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
-			QueryParams: queryParams,
-		})
-
-		var getResult map[string]interface{}
-		if getErr == nil {
-			if parseErr := json.Unmarshal(getResp.RawBody, &getResult); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse get response: %v", parseErr), "parse get response")
-			}
-		}
-
-		getData, getErr := HandleTaskApiResult(getResult, getErr, "get task")
-		if getErr != nil {
-			return getErr
+		getData, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasks/"+taskId, params, nil)
+		if err != nil {
+			return err
 		}
 
 		taskData, _ := getData["task"].(map[string]interface{})
@@ -80,21 +63,7 @@ var CompleteTask = common.Shortcut{
 		} else {
 			// 3. Complete the task
 			body := buildCompleteBody()
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodPatch,
-				ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
-				QueryParams: queryParams,
-				Body:        body,
-			})
-
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse complete response")
-				}
-			}
-
-			data, err = HandleTaskApiResult(result, err, "complete task")
+			data, err = callTaskAPITyped(runtime, http.MethodPatch, "/open-apis/task/v2/tasks/"+taskId, params, body)
 			if err != nil {
 				return err
 			}

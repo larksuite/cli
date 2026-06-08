@@ -16,6 +16,9 @@ lark-cli vc +meeting-join --meeting-number 123456789
 # 指定会议号 + 密码
 lark-cli vc +meeting-join --meeting-number 123456789 --password 8888
 
+# 从邀请事件透传 call_id（参见「如何获取输入参数」）
+lark-cli vc +meeting-join --meeting-number 123456789 --call-id a08e06bf-9a41-44e4-a89c-a7871899e783
+
 # 输出格式
 lark-cli vc +meeting-join --meeting-number 123456789 --format json
 
@@ -29,6 +32,7 @@ lark-cli vc +meeting-join --meeting-number 123456789 --dry-run
 |------|------|------|
 | `--meeting-number <no>` | 是 | 会议号，必须为 **9 位纯数字** |
 | `--password <pw>` | 否 | 会议密码，仅在该会议设置了入会密码时传入 |
+| `--call-id <id>` | 否 | 从 `vc.bot.meeting_invited_v1` 邀请事件透传的 `call_id`，原样回传即可。Agent 主动入会或无邀请事件来源时不传 |
 | `--format <fmt>` | 否 | 输出格式：json (默认) / pretty / table / ndjson / csv |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
@@ -76,17 +80,18 @@ lark-cli vc +meeting-join --meeting-number 123456789 --dry-run
 |---------|---------|
 | `meeting-number` | 会议号由主持人分享；也可从会议链接尾部解析 9 位数字 |
 | `password` | 若会议设置了入会密码，由主持人提供 |
+| `call-id` | 由 `vc.bot.meeting_invited_v1` 邀请事件的 `call_id` 字段携带，Agent 收到事件时透传过来；无邀请事件场景（如 Agent 主动入会）不传 |
 
 ## Agent 组合场景
 
-### 场景 1：加入会议 → 离开会议（最小闭环）
+### 场景 1：加入会议 → 监听会中事件
 
 ```bash
 # 第 1 步：加入会议，记录返回的 meeting.id
 lark-cli vc +meeting-join --meeting-number 123456789
 
-# 第 2 步：完成任务后，使用上一步返回的 meeting.id 离开会议
-lark-cli vc +meeting-leave --meeting-id <meeting.id>
+# 第 2 步：使用返回的 meeting.id 查询会中事件
+lark-cli vc +meeting-events --meeting-id <meeting.id> --page-all --format pretty
 ```
 
 ### 场景 2：加入会议 → 会后拉取纪要 / 录制
@@ -95,13 +100,10 @@ lark-cli vc +meeting-leave --meeting-id <meeting.id>
 # 第 1 步：加入并参会
 lark-cli vc +meeting-join --meeting-number 123456789
 
-# 第 2 步：离会
-lark-cli vc +meeting-leave --meeting-id <meeting.id>
-
-# 第 3 步：会议结束后，查询录制（拿到 minute_token）
+# 第 2 步：会议结束后，查询录制（拿到 minute_token）
 lark-cli vc +recording --meeting-ids <meeting.id>
 
-# 第 4 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
+# 第 3 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
 lark-cli vc +notes --meeting-ids <meeting.id>
 ```
 
@@ -118,7 +120,7 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 ## 提示
 
 - 仅在 Agent 需要**真实加入**会议（例如参会机器人、会中助手）时使用；只拉取会议数据不需要入会。
-- 入会会让机器人立即出现在参会列表；若要回退，直接 `+meeting-leave` 即可。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
+- 入会会让机器人立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，直接 `+meeting-leave` 即可。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`。
 
 ## 参考

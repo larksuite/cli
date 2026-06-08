@@ -25,9 +25,12 @@ var BaseAdvpermEnable = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
+	Tips: []string{
+		"Caller must be a Base admin; enable advanced permissions before creating or updating roles.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
 	},
@@ -51,6 +54,6 @@ var BaseAdvpermEnable = common.Shortcut{
 			return err
 		}
 
-		return handleRoleResponse(runtime, apiResp.RawBody, "enable advanced permissions failed")
+		return handleRoleAPIResponse(runtime, apiResp, "enable advanced permissions failed")
 	},
 }

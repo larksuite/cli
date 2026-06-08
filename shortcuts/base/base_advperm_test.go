@@ -196,9 +196,7 @@ func TestBaseAdvpermEnableExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+advperm-enable", "--base-token", "app_x"}
-	if err := runShortcut(t, BaseAdvpermEnable, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190001") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseAdvpermEnable, args, factory, stdout), 190001, "bad request")
 }
 
 func TestBaseAdvpermDisableExecuteTransportError(t *testing.T) {
@@ -226,7 +224,5 @@ func TestBaseAdvpermDisableExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+advperm-disable", "--base-token", "app_x", "--yes"}
-	if err := runShortcut(t, BaseAdvpermDisable, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190002") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseAdvpermDisable, args, factory, stdout), 190002, "permission denied")
 }

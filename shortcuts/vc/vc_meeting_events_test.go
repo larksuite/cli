@@ -5,6 +5,7 @@ package vc
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 func newMeetingEventsRuntime() *common.RuntimeContext {
@@ -323,19 +324,19 @@ func TestBuildMeetingEventsParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildMeetingEventsParams() error = %v", err)
 	}
-	if got := params["meeting_id"][0]; got != "7628568141510692381" {
+	if got := params["meeting_id"]; got != "7628568141510692381" {
 		t.Fatalf("meeting_id = %q, want %q", got, "7628568141510692381")
 	}
-	if got := params["page_size"][0]; got != "40" {
+	if got := params["page_size"]; got != "40" {
 		t.Fatalf("page_size = %q, want %q", got, "40")
 	}
-	if got := params["page_token"][0]; got != "1710000000000000000" {
+	if got := params["page_token"]; got != "1710000000000000000" {
 		t.Fatalf("page_token = %q, want %q", got, "1710000000000000000")
 	}
-	if got := params["start_time"][0]; got != "1710000000" {
+	if got := params["start_time"]; got != "1710000000" {
 		t.Fatalf("start_time = %q, want %q", got, "1710000000")
 	}
-	if got := params["end_time"][0]; got != "1710003600" {
+	if got := params["end_time"]; got != "1710003600" {
 		t.Fatalf("end_time = %q, want %q", got, "1710003600")
 	}
 }
@@ -349,7 +350,7 @@ func TestBuildMeetingEventsParams_PageSizeBelowMinClampsToMin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildMeetingEventsParams() error = %v", err)
 	}
-	if got := params["page_size"][0]; got != "20" {
+	if got := params["page_size"]; got != "20" {
 		t.Fatalf("page_size = %q, want %q when below min", got, "20")
 	}
 }
@@ -363,7 +364,7 @@ func TestBuildMeetingEventsParams_PageSizeAboveMaxClampsToMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildMeetingEventsParams() error = %v", err)
 	}
-	if got := params["page_size"][0]; got != "100" {
+	if got := params["page_size"]; got != "100" {
 		t.Fatalf("page_size = %q, want %q when above max", got, "100")
 	}
 }
@@ -378,7 +379,7 @@ func TestBuildMeetingEventsParams_PageAllUsesMaxPageSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildMeetingEventsParams() error = %v", err)
 	}
-	if got := params["page_size"][0]; got != "100" {
+	if got := params["page_size"]; got != "100" {
 		t.Fatalf("page_size = %q, want %q when page-all is set", got, "100")
 	}
 }
@@ -746,19 +747,27 @@ func TestFormatTimelineOffset(t *testing.T) {
 }
 
 func TestFlattenQueryParams(t *testing.T) {
-	params := larkcore.QueryParams{
-		"one":   []string{"1"},
-		"many":  []string{"2", "3"},
-		"empty": []string{},
+	params := map[string]interface{}{
+		"one":  "1",
+		"many": "2",
 	}
 
 	got := flattenQueryParams(params)
 	want := map[string]interface{}{
 		"one":  "1",
-		"many": []string{"2", "3"},
+		"many": "2",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("flattenQueryParams() = %#v, want %#v", got, want)
+	}
+}
+
+func TestFlattenQueryParams_NilOnEmpty(t *testing.T) {
+	if got := flattenQueryParams(nil); got != nil {
+		t.Fatalf("flattenQueryParams(nil) = %#v, want nil", got)
+	}
+	if got := flattenQueryParams(map[string]interface{}{}); got != nil {
+		t.Fatalf("flattenQueryParams(empty) = %#v, want nil", got)
 	}
 }
 
@@ -927,5 +936,81 @@ func TestNeedsColon(t *testing.T) {
 		if got := needsColon(tt.description); got != tt.want {
 			t.Fatalf("needsColon(%q) = %v, want %v", tt.description, got, tt.want)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed error lock assertions
+// ---------------------------------------------------------------------------
+
+func TestMeetingEvents_Validation_InvalidMeetingID_TypedError(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	mustSetMeetingEventsFlag(t, runtime, "meeting-id", "not-a-number")
+
+	err := VCMeetingEvents.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "positive integer") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--meeting-id" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--meeting-id")
+	}
+}
+
+func TestMeetingEvents_Validation_InvalidPageSize_TypedError(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	mustSetMeetingEventsFlag(t, runtime, "meeting-id", "7628568141510692381")
+	mustSetMeetingEventsFlag(t, runtime, "page-size", "foo")
+
+	err := VCMeetingEvents.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "invalid --page-size") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--page-size" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--page-size")
+	}
+}
+
+func TestMeetingEvents_Validation_StartAfterEnd_TypedError(t *testing.T) {
+	runtime := newMeetingEventsRuntime()
+	mustSetMeetingEventsFlag(t, runtime, "meeting-id", "7628568141510692381")
+	mustSetMeetingEventsFlag(t, runtime, "start", "200")
+	mustSetMeetingEventsFlag(t, runtime, "end", "100")
+
+	err := VCMeetingEvents.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "after --end") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--start")
 	}
 }

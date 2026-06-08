@@ -10,9 +10,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // OKRListProgress lists progress for an objective or key result.
@@ -33,28 +32,28 @@ var OKRListProgress = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		targetID := runtime.Str("target-id")
 		if targetID == "" {
-			return common.FlagErrorf("--target-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id is required").WithParam("--target-id")
 		}
-		if err := validate.RejectControlChars(targetID, "target-id"); err != nil {
+		if err := common.RejectDangerousCharsTyped("--target-id", targetID); err != nil {
 			return err
 		}
 		if id, err := strconv.ParseInt(targetID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--target-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id must be a positive int64").WithParam("--target-id")
 		}
 
 		targetType := runtime.Str("target-type")
 		if _, ok := targetTypeAllowed[targetType]; !ok {
-			return common.FlagErrorf("--target-type must be one of: objective | key_result")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-type must be one of: objective | key_result").WithParam("--target-type")
 		}
 
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
-			return common.FlagErrorf("--user-id-type must be one of: open_id | union_id | user_id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id-type must be one of: open_id | union_id | user_id").WithParam("--user-id-type")
 		}
 
 		deptIDType := runtime.Str("department-id-type")
 		if deptIDType != "department_id" && deptIDType != "open_department_id" {
-			return common.FlagErrorf("--department-id-type must be one of: department_id | open_department_id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--department-id-type must be one of: department_id | open_department_id").WithParam("--department-id-type")
 		}
 		return nil
 	},
@@ -89,10 +88,11 @@ var OKRListProgress = common.Shortcut{
 		userIDType := runtime.Str("user-id-type")
 		deptIDType := runtime.Str("department-id-type")
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", userIDType)
-		queryParams.Set("department_id_type", deptIDType)
-		queryParams.Set("page_size", "100")
+		queryParams := map[string]interface{}{
+			"user_id_type":       userIDType,
+			"department_id_type": deptIDType,
+			"page_size":          "100",
+		}
 
 		var apiPath string
 		switch targetType {
@@ -108,7 +108,7 @@ var OKRListProgress = common.Shortcut{
 				return err
 			}
 
-			data, err := runtime.DoAPIJSON("GET", apiPath, queryParams, nil)
+			data, err := runtime.CallAPITyped("GET", apiPath, queryParams, nil)
 			if err != nil {
 				return err
 			}
@@ -130,7 +130,7 @@ var OKRListProgress = common.Shortcut{
 			if !hasMore || pageToken == "" {
 				break
 			}
-			queryParams.Set("page_token", pageToken)
+			queryParams["page_token"] = pageToken
 		}
 
 		// Convert to response format

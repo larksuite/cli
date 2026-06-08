@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -135,10 +135,10 @@ var MailForward = common.Shortcut{
 		}
 		sourceMsg, err := fetchComposeSourceMessage(runtime, mailboxID, messageId)
 		if err != nil {
-			return fmt.Errorf("failed to fetch original message: %w", err)
+			return mailDecorateProblemMessage(err, "failed to fetch original message")
 		}
 		if err := validateForwardAttachmentURLs(sourceMsg); err != nil {
-			return fmt.Errorf("forward blocked: %w", err)
+			return mailDecorateProblemMessage(err, "forward blocked")
 		}
 		orig := sourceMsg.Original
 
@@ -243,7 +243,7 @@ var MailForward = common.Shortcut{
 		}
 		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw) || sigResult != nil)
 		if strings.TrimSpace(inlineFlag) != "" && !useHTML {
-			return fmt.Errorf("--inline requires HTML mode, but neither the new body nor the original message contains HTML")
+			return mailValidationParamError("--inline", "--inline requires HTML mode, but neither the new body nor the original message contains HTML")
 		}
 		inlineSpecs, err := parseInlineSpecs(inlineFlag)
 		if err != nil {
@@ -257,7 +257,7 @@ var MailForward = common.Shortcut{
 		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if useHTML {
 			if err := validateInlineImageURLs(sourceMsg); err != nil {
-				return fmt.Errorf("forward blocked: %w", err)
+				return mailDecorateProblemMessage(err, "forward blocked")
 			}
 			processedBody := buildBodyDiv(body, bodyIsHTML(body))
 			origLargeAttCard := stripLargeAttachmentCard(&orig)
@@ -274,7 +274,7 @@ var MailForward = common.Shortcut{
 			}
 			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(processedBody)
 			if resolveErr != nil {
-				return resolveErr
+				return mailValidationError("failed to resolve local image paths: %v", resolveErr).WithCause(resolveErr)
 			}
 			bodyWithSig := resolved
 			if sigResult != nil {
@@ -347,7 +347,7 @@ var MailForward = common.Shortcut{
 			}
 			content, err := downloadAttachmentContent(runtime, att.DownloadURL)
 			if err != nil {
-				return fmt.Errorf("failed to download original attachment %s: %w", att.Filename, err)
+				return mailDecorateProblemMessage(err, "failed to download original attachment %s", att.Filename)
 			}
 			contentType := att.ContentType
 			if contentType == "" {
@@ -381,13 +381,13 @@ var MailForward = common.Shortcut{
 		}
 		for _, f := range userFiles {
 			if f.Size > MaxLargeAttachmentSize {
-				return output.ErrValidation("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+				return mailFailedPreconditionError("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
 					f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 			}
 		}
 		totalCount := len(origAtts) + len(largeAttIDs) + len(userFiles)
 		if totalCount > MaxAttachmentCount {
-			return output.ErrValidation("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
+			return mailFailedPreconditionError("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
 		}
 		allFiles = append(allFiles, userFiles...)
 		classified := classifyAttachments(allFiles, emlBase)
@@ -413,7 +413,7 @@ var MailForward = common.Shortcut{
 		// Upload oversized attachments as large attachments.
 		if len(classified.Oversized) > 0 {
 			if composedHTMLBody == "" && composedTextBody == "" {
-				return output.ErrValidation("large attachments require a body; " +
+				return mailFailedPreconditionError("large attachments require a body; " +
 					"empty messages cannot include the download link")
 			}
 			if runtime.Config == nil || runtime.UserOpenId() == "" {
@@ -421,7 +421,7 @@ var MailForward = common.Shortcut{
 				for _, f := range classified.Oversized {
 					totalBytes += f.Size
 				}
-				return output.ErrValidation("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+				return mailFailedPreconditionError("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
 					"large attachment upload requires user identity (--as user)",
 					float64(totalBytes)/1024/1024)
 			}
@@ -486,18 +486,18 @@ var MailForward = common.Shortcut{
 		if len(mergedLargeAttIDs) > 0 {
 			idsJSON, err := json.Marshal(mergedLargeAttIDs)
 			if err != nil {
-				return fmt.Errorf("failed to encode large attachment IDs: %w", err)
+				return errs.NewInternalError(errs.SubtypeSDKError, "failed to encode large attachment IDs: %v", err).WithCause(err)
 			}
 			bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 		}
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {
-			return fmt.Errorf("failed to build EML: %w", err)
+			return mailValidationError("failed to build EML: %v", err).WithCause(err)
 		}
 
 		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
-			return fmt.Errorf("failed to create draft: %w", err)
+			return mailDecorateProblemMessage(err, "failed to create draft")
 		}
 		showLintDetails := runtime.Bool("show-lint-details")
 		if !confirmSend {
@@ -510,7 +510,7 @@ var MailForward = common.Shortcut{
 		}
 		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID, sendTime)
 		if err != nil {
-			return fmt.Errorf("failed to send forward (draft %s created but not sent): %w", draftResult.DraftID, err)
+			return mailDecorateProblemMessage(err, "failed to send forward (draft %s created but not sent)", draftResult.DraftID)
 		}
 		out := buildDraftSendOutput(resData, mailboxID)
 		applyLintToEnvelope(out, lintApplied, lintBlocked, showLintDetails)

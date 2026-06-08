@@ -20,19 +20,24 @@ var BaseDataQuery = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "dsl", Desc: "query JSON DSL (LiteQuery Protocol)", Required: true},
+		{Name: "dsl", Desc: "query JSON DSL; read lark-base-data-query-guide.md first, then lark-base-data-query.md for the full DSL SSOT", Required: true},
+	},
+	Tips: []string{
+		"Use +data-query for server-side aggregation, grouping, filtering, sorting, and Top N queries.",
+		"Read lark-base-data-query-guide.md for common fewshots; use lark-base-data-query.md only when the full DSL reference is needed.",
+		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		var dsl map[string]interface{}
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))
 		dec.UseNumber()
 		if err := dec.Decode(&dsl); err != nil {
-			return common.FlagErrorf("--dsl invalid JSON: %v", err)
+			return baseFlagErrorf("--dsl invalid JSON: %v", err)
 		}
 		_, hasDim := dsl["dimensions"]
 		_, hasMeas := dsl["measures"]
 		if !hasDim && !hasMeas {
-			return common.FlagErrorf("--dsl must contain at least one of 'dimensions' or 'measures'")
+			return baseFlagErrorf("--dsl must contain at least one of 'dimensions' or 'measures'")
 		}
 		return nil
 	},

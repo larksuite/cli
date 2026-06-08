@@ -5,12 +5,11 @@ package minutes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -37,27 +36,27 @@ var MinutesSpeakerReplace = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
 		if minuteToken == "" {
-			return output.ErrValidation("--minute-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--minute-token is required").WithParam("--minute-token")
 		}
 		if err := validate.ResourceName(minuteToken, "--minute-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--minute-token")
 		}
 		fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
 		if fromUserID == "" {
-			return output.ErrValidation("--from-user-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-user-id is required").WithParam("--from-user-id")
 		}
-		if _, err := common.ValidateUserID(fromUserID); err != nil {
-			return output.ErrValidation("--from-user-id: %s", err)
+		if _, err := common.ValidateUserIDTyped("--from-user-id", fromUserID); err != nil {
+			return err
 		}
 		toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
 		if toUserID == "" {
-			return output.ErrValidation("--to-user-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--to-user-id is required").WithParam("--to-user-id")
 		}
-		if _, err := common.ValidateUserID(toUserID); err != nil {
-			return output.ErrValidation("--to-user-id: %s", err)
+		if _, err := common.ValidateUserIDTyped("--to-user-id", toUserID); err != nil {
+			return err
 		}
 		if fromUserID == toUserID {
-			return output.ErrValidation("--from-user-id and --to-user-id must be different")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-user-id and --to-user-id must be different").WithParam("--to-user-id")
 		}
 		return nil
 	},
@@ -84,7 +83,7 @@ var MinutesSpeakerReplace = common.Shortcut{
 			"to_user_id":   toUserID,
 		}
 
-		_, err := runtime.CallAPI(http.MethodPut,
+		_, err := runtime.CallAPITyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken)),
 			nil, body)
 		if err != nil {
@@ -103,37 +102,18 @@ var MinutesSpeakerReplace = common.Shortcut{
 }
 
 func minutesSpeakerReplaceError(err error, minuteToken, fromUserID string) error {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
 		return err
 	}
-
-	switch exitErr.Detail.Code {
+	switch p.Code {
 	case minutesSpeakerReplaceNoEditPermission:
-		return &output.ExitError{
-			Code: output.ExitAPI,
-			Detail: &output.ErrDetail{
-				Type:    "no_edit_permission",
-				Code:    minutesSpeakerReplaceNoEditPermission,
-				Message: fmt.Sprintf("No edit permission for minute %q: cannot replace the transcript speaker.", minuteToken),
-				Hint:    "Ask the minute owner for minute edit permission",
-				Detail:  exitErr.Detail.Detail,
-			},
-			Err: err,
-		}
+		p.Message = fmt.Sprintf("No edit permission for minute %q: cannot replace the transcript speaker.", minuteToken)
+		p.Hint = "Ask the minute owner for minute edit permission"
 	case minutesSpeakerReplaceSpeakerNotFoundCode:
-		return &output.ExitError{
-			Code: output.ExitAPI,
-			Detail: &output.ErrDetail{
-				Type:    "speaker_not_found",
-				Code:    minutesSpeakerReplaceSpeakerNotFoundCode,
-				Message: fmt.Sprintf("Speaker not found in minute %q: --from-user-id %q does not match an existing speaker in the transcript.", minuteToken, fromUserID),
-				Hint:    "Check --minute-token and --from-user-id. Use an open_id for a speaker that appears in the minute transcript, then retry.",
-				Detail:  exitErr.Detail.Detail,
-			},
-			Err: err,
-		}
+		p.Subtype = errs.SubtypeNotFound
+		p.Message = fmt.Sprintf("Speaker not found in minute %q: --from-user-id %q does not match an existing speaker in the transcript.", minuteToken, fromUserID)
+		p.Hint = "Check --minute-token and --from-user-id. Use an open_id for a speaker that appears in the minute transcript, then retry."
 	}
-
 	return err
 }

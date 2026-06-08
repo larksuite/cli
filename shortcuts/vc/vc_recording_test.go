@@ -5,14 +5,21 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
+	keyring "github.com/zalando/go-keyring"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -61,11 +68,25 @@ func TestRecording_Validation_ExactlyOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for no flags")
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
 
 	// 两个 flag 都传了
 	err = mountAndRun(t, VCRecording, []string{"+recording", "--meeting-ids", "m1", "--calendar-event-ids", "e1", "--as", "user"}, f, nil)
 	if err == nil {
 		t.Fatal("expected validation error for two flags")
+	}
+	ve = nil
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
 	}
 }
 
@@ -82,6 +103,16 @@ func TestRecording_BatchLimit_MeetingIDs(t *testing.T) {
 	if !strings.Contains(err.Error(), "too many IDs") {
 		t.Errorf("expected 'too many IDs' error, got: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("expected subtype %q, got %q", errs.SubtypeInvalidArgument, ve.Subtype)
+	}
+	if !strings.HasPrefix(ve.Param, "--") {
+		t.Errorf("expected Param to start with '--', got %q", ve.Param)
+	}
 }
 
 func TestRecording_BatchLimit_CalendarEventIDs(t *testing.T) {
@@ -96,6 +127,65 @@ func TestRecording_BatchLimit_CalendarEventIDs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "too many IDs") {
 		t.Errorf("expected 'too many IDs' error, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("expected subtype %q, got %q", errs.SubtypeInvalidArgument, ve.Subtype)
+	}
+	if !strings.HasPrefix(ve.Param, "--") {
+		t.Errorf("expected Param to start with '--', got %q", ve.Param)
+	}
+}
+
+func TestRecording_Validate_MissingScope(t *testing.T) {
+	keyring.MockInit() // use in-memory keyring to avoid macOS keychain popups
+	t.Setenv("HOME", t.TempDir())
+
+	cfg := defaultConfig()
+	// Store a token that intentionally lacks the vc:record:readonly scope.
+	token := &auth.StoredUAToken{
+		UserOpenId:       cfg.UserOpenId,
+		AppId:            cfg.AppID,
+		AccessToken:      "test-user-access-token",
+		RefreshToken:     "test-refresh-token",
+		ExpiresAt:        time.Now().Add(1 * time.Hour).UnixMilli(),
+		RefreshExpiresAt: time.Now().Add(24 * time.Hour).UnixMilli(),
+		Scope:            "calendar:calendar:read",
+		GrantedAt:        time.Now().Add(-1 * time.Hour).UnixMilli(),
+	}
+	if err := auth.SetStoredToken(token); err != nil {
+		t.Fatalf("SetStoredToken() error = %v", err)
+	}
+	t.Cleanup(func() { _ = auth.RemoveStoredToken(cfg.AppID, cfg.UserOpenId) })
+
+	f, _, _, _ := cmdutil.TestFactory(t, cfg)
+	err := mountAndRun(t, VCRecording, []string{"+recording", "--meeting-ids", "m001", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected missing_scope error, got nil")
+	}
+
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if pe.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("expected subtype %q, got %q", errs.SubtypeMissingScope, pe.Subtype)
+	}
+	if !strings.Contains(err.Error(), "missing required scope") {
+		t.Errorf("expected 'missing required scope' in message, got: %v", err)
+	}
+	found := false
+	for _, s := range pe.MissingScopes {
+		if s == "vc:record:readonly" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected MissingScopes to contain 'vc:record:readonly', got %v", pe.MissingScopes)
 	}
 }
 
@@ -698,8 +788,10 @@ func TestRecording_Execute_AllFailed_ErrorMessage(t *testing.T) {
 		if !strings.Contains(e1, "data not found") {
 			t.Errorf("m001 error should contain API message, got: %s", e1)
 		}
-		if !strings.Contains(e2, "no permission") {
-			t.Errorf("m002 error should contain API message, got: %s", e2)
+		// code 121005 classifies to a typed permission error; the embedded
+		// result string surfaces the permission cause.
+		if !strings.Contains(e2, "permission") {
+			t.Errorf("m002 error should surface the permission failure, got: %s", e2)
 		}
 		if r1["meeting_id"] != "m001" {
 			t.Errorf("error result should preserve meeting_id, got: %v", r1["meeting_id"])
@@ -771,5 +863,61 @@ func TestRecording_Execute_RecordingGenerating(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestRecording_Execute_AllFailed_OutPartialFailure exercises the full
+// VCRecording.Execute path via mountAndRun when every query fails.
+// The batch should surface as an ok:false envelope on stdout (OutPartialFailure)
+// carrying the per-item failures under data.recordings, and return a typed
+// *output.PartialFailureError (ExitAPI) — no legacy ErrAPI / "all N queries failed".
+func TestRecording_Execute_AllFailed_OutPartialFailure(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m001/recording",
+		Body:   map[string]interface{}{"code": 121004, "msg": "data not found"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/m002/recording",
+		Body:   map[string]interface{}{"code": 121005, "msg": "no permission"},
+	})
+
+	err := mountAndRun(t, VCRecording,
+		[]string{"+recording", "--meeting-ids", "m001,m002", "--format", "json", "--as", "user"},
+		f, stdout)
+
+	// 1. typed partial-failure exit signal — not a legacy ErrAPI string
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
+	}
+
+	// 2. stdout envelope: ok:false, data.recordings carries both failed items
+	raw := stdout.Bytes()
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Recordings []map[string]interface{} `json:"recordings"`
+		} `json:"data"`
+	}
+	if jsonErr := json.Unmarshal(raw, &env); jsonErr != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", jsonErr, string(raw))
+	}
+	if env.OK {
+		t.Errorf("envelope ok must be false on all-failed batch, got ok:true\nstdout: %s", string(raw))
+	}
+	if len(env.Data.Recordings) != 2 {
+		t.Fatalf("expected 2 failed items in data.recordings, got %d\nstdout: %s", len(env.Data.Recordings), string(raw))
+	}
+	for _, rec := range env.Data.Recordings {
+		if rec["error"] == nil {
+			t.Errorf("each failed item must carry an error field; item: %v", rec)
+		}
 	}
 }

@@ -4,12 +4,15 @@
 package task
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -127,5 +130,34 @@ func TestSubscribeTaskEvent(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSubscribeTaskEvent_MalformedResponse covers the parse-response arm: a 200
+// with an unparseable body surfaces a typed internal invalid_response error
+// (exit 5).
+func TestSubscribeTaskEvent_MalformedResponse(t *testing.T) {
+	f, stdout, _, reg := taskShortcutTestFactory(t)
+	warmTenantToken(t, f, reg)
+
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/task/v2/task_v2/task_subscription",
+		Status:  200,
+		RawBody: []byte("{not-json"),
+	})
+
+	args := []string{"+subscribe-event", "--as", "bot", "--format", "json"}
+	err := runMountedTaskShortcut(t, SubscribeTaskEvent, args, f, stdout)
+
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("err = %T, want *errs.InternalError; err = %v", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("exit code = %d, want %d", got, output.ExitInternal)
 	}
 }

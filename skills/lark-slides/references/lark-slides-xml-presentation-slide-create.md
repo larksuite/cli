@@ -162,7 +162,7 @@ lark-cli slides xml_presentation.slide create --as user \
 | 元素 | 说明 |
 |------|------|
 | `<style>` | 页面样式（背景填充） |
-| `<data>` | 图形元素容器（shape、img、table、chart 等） |
+| `<data>` | 图形元素容器（shape、img、table、chart、whiteboard 等） |
 | `<note>` | 演讲者备注 |
 
 > [!IMPORTANT]

@@ -24,6 +24,11 @@ var BaseBaseCopy = common.Shortcut{
 		{Name: "without-content", Type: "bool", Desc: "copy structure only"},
 		{Name: "time-zone", Desc: "time zone, e.g. Asia/Shanghai"},
 	},
+	Tips: []string{
+		`Example: lark-cli base +base-copy --base-token <base_token> --name "Copy of Project Tracker"`,
+		"Use --without-content when the user wants only structure.",
+		"If copied as bot, output may include permission_grant; report it so the user knows whether they can open the new Base.",
+	},
 	DryRun: dryRunBaseCopy,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeBaseCopy(runtime)

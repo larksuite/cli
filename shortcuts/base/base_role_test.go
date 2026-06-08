@@ -375,9 +375,7 @@ func TestBaseRoleCreateExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+role-create", "--base-token", "app_x", "--json", `{"role_name":"Bad"}`}
-	if err := runShortcut(t, BaseRoleCreate, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190001") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseRoleCreate, args, factory, stdout), 190001, "create role failed", "bad request")
 }
 
 func TestBaseRoleListExecuteTransportError(t *testing.T) {
@@ -405,9 +403,7 @@ func TestBaseRoleListExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+role-list", "--base-token", "app_x"}
-	if err := runShortcut(t, BaseRoleList, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190002") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseRoleList, args, factory, stdout), 190002, "not found")
 }
 
 func TestBaseRoleDeleteExecuteAPIError(t *testing.T) {
@@ -421,9 +417,7 @@ func TestBaseRoleDeleteExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+role-delete", "--base-token", "app_x", "--role-id", "rol_1", "--yes"}
-	if err := runShortcut(t, BaseRoleDelete, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190003") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseRoleDelete, args, factory, stdout), 190003, "forbidden")
 }
 
 func TestBaseRoleUpdateExecuteAPIError(t *testing.T) {
@@ -437,9 +431,7 @@ func TestBaseRoleUpdateExecuteAPIError(t *testing.T) {
 		},
 	})
 	args := []string{"+role-update", "--base-token", "app_x", "--role-id", "rol_1", "--json", `{"role_name":"X"}`, "--yes"}
-	if err := runShortcut(t, BaseRoleUpdate, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "190004") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseRoleUpdate, args, factory, stdout), 190004, "invalid params")
 }
 
 func TestBaseRoleGetExecuteBusinessError(t *testing.T) {
@@ -457,9 +449,7 @@ func TestBaseRoleGetExecuteBusinessError(t *testing.T) {
 		},
 	})
 	args := []string{"+role-get", "--base-token", "app_x", "--role-id", "rol_bad"}
-	if err := runShortcut(t, BaseRoleGet, args, factory, stdout); err == nil || !strings.Contains(err.Error(), "100001") || !strings.Contains(err.Error(), "role not found") {
-		t.Fatalf("err=%v", err)
-	}
+	assertProblemCode(t, runShortcut(t, BaseRoleGet, args, factory, stdout), 100001, "role not found")
 }
 
 // ---------------------------------------------------------------------------
@@ -487,9 +477,7 @@ func TestHandleRoleResponse(t *testing.T) {
 
 	t.Run("outer error code", func(t *testing.T) {
 		rt := newRoleResponseRuntime(t)
-		if err := handleRoleResponse(rt, []byte(`{"code":999,"msg":"outer error"}`), "test"); err == nil || !strings.Contains(err.Error(), "999") {
-			t.Fatalf("err=%v", err)
-		}
+		assertProblemCode(t, handleRoleResponse(rt, []byte(`{"code":999,"msg":"outer error"}`), "test"), 999, "outer error")
 	})
 
 	t.Run("outer error code with empty msg and data.error.message", func(t *testing.T) {
@@ -574,9 +562,7 @@ func TestHandleRoleResponse(t *testing.T) {
 	t.Run("business code non-zero", func(t *testing.T) {
 		rt := newRoleResponseRuntime(t)
 		body := `{"code":0,"msg":"ok","data":{"code":50001,"message":"permission denied"}}`
-		if err := handleRoleResponse(rt, []byte(body), "test"); err == nil || !strings.Contains(err.Error(), "50001") {
-			t.Fatalf("err=%v", err)
-		}
+		assertProblemCode(t, handleRoleResponse(rt, []byte(body), "test"), 50001, "permission denied")
 	})
 
 	t.Run("data is array", func(t *testing.T) {

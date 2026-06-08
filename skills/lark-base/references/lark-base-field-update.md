@@ -165,8 +165,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 ## 参考
 
-- [lark-base-field.md](lark-base-field.md) — field 索引页
-- [lark-base-field-get.md](lark-base-field-get.md) — 查字段
-- [lark-base-shortcut-field-properties.md](lark-base-shortcut-field-properties.md) — shortcut 字段 JSON 规范（推荐）
+- 更新前读取当前字段，确认现有 `type` 和具体配置细节，再决定是原地更新还是新建字段迁移。
+- [lark-base-field-json.md](lark-base-field-json.md) — 字段 JSON 规范（推荐）
 - [formula-field-guide.md](formula-field-guide.md) — formula 指南（更新公式前必读）
 - [lookup-field-guide.md](lookup-field-guide.md) — lookup 指南（更新查找引用前必读）

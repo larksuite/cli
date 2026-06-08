@@ -41,12 +41,15 @@ func TestDocs_CreateAndFetchWorkflowAsBot(t *testing.T) {
 			Args: []string{
 				"docs", "+fetch",
 				"--doc", docToken,
+				"--doc-format", "markdown",
 			},
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.Equal(t, docTitle, gjson.Get(result.Stdout, "data.title").String())
+		content := gjson.Get(result.Stdout, "data.document.content").String()
+		assert.Contains(t, content, docTitle)
+		assert.Contains(t, content, "This document was created by lark-cli e2e test.")
 	})
 }
 
@@ -73,12 +76,14 @@ func TestDocs_CreateAndFetchWorkflowAsUser(t *testing.T) {
 		require.NotEmpty(t, docToken, "document token should be created before fetch")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"docs", "+fetch", "--doc", docToken},
+			Args:      []string{"docs", "+fetch", "--doc", docToken, "--doc-format", "markdown"},
 			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.Equal(t, docTitle, gjson.Get(result.Stdout, "data.title").String())
+		content := gjson.Get(result.Stdout, "data.document.content").String()
+		assert.Contains(t, content, docTitle)
+		assert.Contains(t, content, "Created with user access token.")
 	})
 }

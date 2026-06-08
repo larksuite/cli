@@ -59,7 +59,7 @@ var MailDeclineReceipt = common.Shortcut{
 
 		msg, err := fetchFullMessage(runtime, mailboxID, messageID, false)
 		if err != nil {
-			return fmt.Errorf("failed to fetch original message: %w", err)
+			return mailDecorateProblemMessage(err, "failed to fetch original message")
 		}
 
 		out := map[string]interface{}{
@@ -77,14 +77,14 @@ var MailDeclineReceipt = common.Shortcut{
 			return nil
 		}
 
-		if _, err := runtime.CallAPI("PUT",
+		if _, err := runtime.CallAPITyped("PUT",
 			mailboxPath(mailboxID, "messages", messageID, "modify"),
 			nil,
 			map[string]interface{}{
 				"remove_label_ids": []string{readReceiptRequestLabel},
 			},
 		); err != nil {
-			return fmt.Errorf("failed to clear READ_RECEIPT_REQUEST label: %w", err)
+			return mailDecorateProblemMessage(err, "failed to clear READ_RECEIPT_REQUEST label")
 		}
 
 		out["declined"] = true

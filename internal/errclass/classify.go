@@ -92,6 +92,18 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			base.Troubleshooter = ts
 		}
 	}
+	// Upstream-provided field-level reasons (resp.error.details[].value). Lark
+	// returns these as free-text reason strings with no machine-readable field
+	// name (verified for code 190014:
+	// {"error":{"details":[{"value":"end_time should be later than start_time"}]}}),
+	// so they are lifted into Problem.Hint — the sanctioned free-text recovery
+	// prompt — rather than fabricated structured params. Lifted before the
+	// category switch so any classified arm inherits it; the CategoryAPI arm
+	// below prefers this server detail over the context-free APIHint default.
+	detailHint := liftErrorDetailValues(resp)
+	if detailHint != "" {
+		base.Hint = detailHint
+	}
 
 	switch meta.Category {
 	case errs.CategoryAuthorization:
@@ -129,6 +141,11 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 			Action:  action,
 		}
 	case errs.CategoryAPI:
+		// A server-supplied detail (lifted into base.Hint above) wins over the
+		// context-free APIHint default; only fall back to APIHint when absent.
+		if base.Hint == "" {
+			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
+		}
 		return &errs.APIError{Problem: base}
 	default:
 		// Fail closed: an unrecognized Category routes to InternalError
@@ -213,6 +230,10 @@ func stringFromAny(v any) string {
 // per-subtype recovery hint before returning it, so the wire envelope
 // emitted via BuildAPIError always carries a hint for known config subtypes.
 func buildConfigError(p errs.Problem) *errs.ConfigError {
+	// Config categories have authoritative recovery guidance, so the curated
+	// ConfigHint deliberately overrides any server detail lifted into p.Hint
+	// (the opposite precedence from the CategoryAPI arm, where the lifted
+	// detail wins).
 	p.Hint = ConfigHint(p.Subtype)
 	return &errs.ConfigError{Problem: p}
 }
@@ -231,6 +252,24 @@ func ConfigHint(subtype errs.Subtype) string {
 	return ""
 }
 
+// APIHint returns the canonical per-subtype recovery hint for a typed APIError
+// emitted via BuildAPIError, for API subtypes whose recovery is context-free.
+// Context-specific guidance (e.g. a command's flags, an API's own quota) is
+// layered on by the caller after BuildAPIError returns and overrides this.
+func APIHint(subtype errs.Subtype) string {
+	switch subtype {
+	case errs.SubtypeConflict:
+		return "retry later and avoid concurrent duplicate requests on the same resource"
+	case errs.SubtypeCrossTenant:
+		return "operate on source and target within the same tenant and region/unit"
+	case errs.SubtypeCrossBrand:
+		return "operate on source and target within the same brand environment"
+	case errs.SubtypeQuotaExceeded:
+		return "reduce the request volume or free quota, then retry after the relevant quota resets"
+	}
+	return ""
+}
+
 func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContext) *errs.PermissionError {
 	missing := extractMissingScopes(resp)
 	identity := cc.Identity
@@ -239,6 +278,10 @@ func buildPermissionError(p errs.Problem, resp map[string]any, cc ClassifyContex
 	}
 	consoleURL := ConsoleURL(cc.Brand, cc.AppID, missing)
 	p.Message = CanonicalPermissionMessage(p.Subtype, cc.AppID, missing, p.Message)
+	// Permission categories have authoritative recovery guidance (scopes to
+	// grant, console URL), so the curated PermissionHint deliberately overrides
+	// any server detail lifted into p.Hint (the opposite precedence from the
+	// CategoryAPI arm, where the lifted detail wins).
 	p.Hint = PermissionHint(missing, identity, p.Subtype, consoleURL)
 	permErr := &errs.PermissionError{
 		Problem:       p,
@@ -345,6 +388,32 @@ func PermissionHint(missing []string, identity string, subtype errs.Subtype, con
 		return fmt.Sprintf("check the resource owner has granted access to %s", who)
 	}
 	return "check the calling identity has the required scope"
+}
+
+// liftErrorDetailValues collects the non-empty resp.error.details[].value reason
+// strings and joins them with "; ". Returns "" when the structure is absent or
+// carries no non-empty value. The shape (verified for code 190014) is
+// {"error":{"details":[{"value":"<reason>"}]}}.
+func liftErrorDetailValues(resp map[string]any) string {
+	errBlock, ok := resp["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	details, ok := errBlock["details"].([]any)
+	if !ok || len(details) == 0 {
+		return ""
+	}
+	var values []string
+	for _, d := range details {
+		m, ok := d.(map[string]any)
+		if !ok {
+			continue
+		}
+		if v, _ := m["value"].(string); v != "" {
+			values = append(values, v)
+		}
+	}
+	return strings.Join(values, "; ")
 }
 
 // extractMissingScopes walks resp["error"]["permission_violations"][].subject.

@@ -20,11 +20,13 @@ var BaseViewSetSort = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "sort_config JSON object", Required: true},
+		{Name: "json", Desc: `sort_config JSON object, e.g. {"sort_config":[{"field":"Priority","desc":true}]}; use {"sort_config":[]} to clear; max 10 items`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"sort_config":[{"field":"fldPriority","desc":true}]}'`,
-		"Agent hint: use the lark-base skill's view-set-sort guide for usage and limits.",
+		"Supported view types: grid, kanban, gallery, gantt.",
+		"Use a JSON object, not a bare array; sorting fields must be supported by the current view.",
+		"sort_config supports max 10 sort items.",
+		"Use +view-get-sort first when modifying an existing sort configuration.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

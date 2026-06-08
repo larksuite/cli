@@ -25,6 +25,9 @@ type ContentConverter interface {
 type ConvertContext struct {
 	RawContent string
 	MentionMap map[string]string
+	// Mentions is the raw mentions array from the API response.
+	// Used by interactive card converter to resolve @user references via mention_key.
+	Mentions []interface{}
 	// MessageID and Runtime are used by merge_forward to fetch and expand sub-messages via API.
 	// For other message types these can be zero values.
 	MessageID string
@@ -93,6 +96,7 @@ func FormatEventMessage(msgType, rawContent, messageID string, mentions []interf
 	content := ConvertBodyContent(msgType, &ConvertContext{
 		RawContent: rawContent,
 		MentionMap: BuildMentionKeyMap(mentions),
+		Mentions:   mentions,
 		MessageID:  messageID,
 	})
 
@@ -153,6 +157,7 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 		content = ConvertBodyContent(msgType, &ConvertContext{
 			RawContent:           rawContent,
 			MentionMap:           BuildMentionKeyMap(mentions),
+			Mentions:             mentions,
 			MessageID:            messageId,
 			Runtime:              runtime,
 			SenderNames:          nameCache,

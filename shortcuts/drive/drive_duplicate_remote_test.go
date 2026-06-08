@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 const (
@@ -823,64 +823,37 @@ func registerDownload(reg *httpmock.Registry, fileToken, body string) {
 func assertDuplicateRemotePathError(t *testing.T, err error, relPath string, tokens ...string) {
 	t.Helper()
 	if err == nil {
-		t.Fatal("expected duplicate_remote_path error, got nil")
+		t.Fatal("expected duplicate rel_path validation error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAPI)
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeFailedPrecondition)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "duplicate_remote_path" {
-		t.Fatalf("error detail = %#v, want duplicate_remote_path", exitErr.Detail)
+	if validationErr.Hint == "" {
+		t.Fatal("duplicate validation error should carry a recovery hint so AI consumers know the next action")
 	}
-	detailMap, ok := exitErr.Detail.Detail.(map[string]interface{})
-	if !ok {
-		t.Fatalf("duplicate detail type = %T, want map[string]interface{}", exitErr.Detail.Detail)
+	if len(validationErr.Params) == 0 {
+		t.Fatal("duplicate validation error should carry at least one param")
 	}
-	duplicates, ok := detailMap["duplicates_remote"].([]driveDuplicateRemotePath)
-	if !ok {
-		t.Fatalf("duplicate detail duplicates_remote type = %T, want []driveDuplicateRemotePath", detailMap["duplicates_remote"])
-	}
-	if len(duplicates) == 0 {
-		t.Fatal("duplicate detail should include at least one rel_path group")
-	}
-	if _, hasLegacyFilesKey := detailMap["files"]; hasLegacyFilesKey {
-		t.Fatalf("duplicate detail should not expose legacy files key: %#v", detailMap)
-	}
-	var matched bool
-	for _, duplicate := range duplicates {
-		if duplicate.RelPath != relPath {
-			continue
-		}
-		matched = true
-		if len(duplicate.Entries) != len(tokens) {
-			t.Fatalf("duplicate entry count = %d, want %d for rel_path %q", len(duplicate.Entries), len(tokens), relPath)
-		}
-		for i, token := range tokens {
-			if duplicate.Entries[i].FileToken != token {
-				t.Fatalf("duplicate entry %d file_token = %q, want %q", i, duplicate.Entries[i].FileToken, token)
-			}
-			if duplicate.Entries[i].Type == "" {
-				t.Fatalf("duplicate entry %d missing type for rel_path %q", i, relPath)
-			}
+	var matched *errs.InvalidParam
+	for i := range validationErr.Params {
+		if validationErr.Params[i].Name == relPath {
+			matched = &validationErr.Params[i]
+			break
 		}
 	}
-	if !matched {
-		t.Fatalf("duplicate detail missing rel_path group %q: %#v", relPath, duplicates)
+	if matched == nil {
+		t.Fatalf("duplicate params missing rel_path group %q: %#v", relPath, validationErr.Params)
 	}
-	raw, marshalErr := json.Marshal(exitErr.Detail.Detail)
-	if marshalErr != nil {
-		t.Fatalf("marshal detail: %v", marshalErr)
-	}
-	text := string(raw)
-	if !strings.Contains(text, relPath) {
-		t.Fatalf("duplicate detail missing rel_path %q: %s", relPath, text)
+	if matched.Reason == "" {
+		t.Fatalf("duplicate param for rel_path %q missing reason", relPath)
 	}
 	for _, token := range tokens {
-		if !strings.Contains(text, token) {
-			t.Fatalf("duplicate detail missing token %q: %s", token, text)
+		if !strings.Contains(matched.Reason, token) {
+			t.Fatalf("duplicate param reason missing token %q: %s", token, matched.Reason)
 		}
 	}
 }

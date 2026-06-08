@@ -4,10 +4,35 @@
 package task
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/smartystreets/goconvey/convey"
 )
+
+// TestFollowersTask_RequiresAddOrRemove covers the Validate guard: neither
+// --add nor --remove yields a typed validation error (exit 2) before any API
+// call.
+func TestFollowersTask_RequiresAddOrRemove(t *testing.T) {
+	f, stdout, _, _ := taskShortcutTestFactory(t)
+
+	s := FollowersTask
+	args := []string{"+followers", "--task-id", "task-1", "--as", "bot", "--format", "json"}
+	err := runMountedTaskShortcut(t, s, args, f, stdout)
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %T, want *errs.ValidationError; err = %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+}
 
 func TestBuildFollowersBody(t *testing.T) {
 	convey.Convey("Build with ids and token", t, func() {

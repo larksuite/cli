@@ -1,7 +1,7 @@
 ---
 name: lark-vc
 version: 1.0.0
-description: "飞书视频会议：搜索历史会议、查询会议纪要产物（总结、待办、章节、逐字稿）、查询会议参会人快照。1. 查询已经结束的会议数量或详情时使用本技能（如历史日期｜昨天｜上周｜今天已经开过的会议等场景），查询未开始的会议日程使用 lark-calendar 技能。2. 支持通过关键词、时间范围、组织者、参与者、会议室等筛选条件搜索会议。3. 获取或整理会议纪要、逐字稿、录制产物时使用本技能。4. 查询“谁参加过某会议”“参会人列表”等参会人快照信息用 vc meeting get --with-participants（任意时点可查，含已结束会议）。注意：**Agent 真实入会/离会、感知正在进行中会议的实时事件**请使用 lark-vc-agent 技能，本技能不覆盖写操作和会中事件流。"
+description: "飞书视频会议：搜索历史会议记录、查询会议纪要（总结/待办/章节/逐字稿）、查询参会人快照。当用户查询已结束的会议、获取会议产物（纪要/妙记）、查看参会人时使用；查询未来日程走 lark-calendar。不负责：Agent 真实入会/离会、会中实时事件（走 lark-vc-agent）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,14 +12,64 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
+**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`references/vc-domain-boundaries.md`](references/vc-domain-boundaries.md)**，不读将导致命令使用、会议产物决策、领域边界职责判断错误：
+> 1. 了解日历 & VC、会议产物 & 文档的关联关系和职责划分
+> 2. 了解会议产物（妙记和纪要）之间的关联关系，例如：**妙记和纪要产生条件相互独立**
+> 3. 了解不同会议产物的组成部分，以便根据需求决策使用哪种产物的数据
+> 4. 了解会议总结、分析和信息提取的标准流程
+
+## 身份
+
+所有 vc 命令默认使用 `--as user`。`+search` 和 `meeting get` 也支持 `--as bot`。
+
+```bash
+# BAD — 查昨天的会议用 calendar，会漏掉即时会议
+lark-cli calendar events search_event --query "站会" --start-time ...
+
+# GOOD — 查已结束的会议用 vc +search
+lark-cli vc +search --query "站会" --start-time ...
+```
+
+## Shortcuts （推荐优先使用）
+
+| Shortcut | 说明 |
+|----------|------|
+| [`+search`](references/lark-vc-search.md) | 搜索历史会议记录（需至少一个筛选条件） |
+| [`+notes`](references/lark-vc-notes.md) | 查询会议纪要和妙记产物（通过 meeting-ids、minute-tokens 或 calendar-event-ids） |
+| [`+recording`](references/lark-vc-recording.md) | 通过 meeting-ids 或 calendar-event-ids 查询 minute_token |
+
+- 使用任何 Shortcut 前，必须先读其对应 reference 文档。
+
+## 意图路由
+
+| 用户意图 | 路由到 |
+|----------|--------|
+| 查"昨天的会议""上周的会""已结束的会议" | 本 skill（`+search`，含即时会议） |
+| 查日历/日程或未来时间的会议 | [lark-calendar](../lark-calendar/SKILL.md) |
+| 查"今天有哪些会议" | `vc +search`（已结束）+ lark-calendar（未开始），合并展示 |
+| Agent 真实入会/离会、会中实时事件 | [lark-vc-agent](../lark-vc-agent/SKILL.md) |
+| 本地音视频文件转纪要/逐字稿 | 先走 [lark-minutes](../lark-minutes/SKILL.md) 上传，再回 `vc +notes --minute-tokens` |
+
 ## 核心概念
 
-- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting\_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索（见 `+search`）。
-- **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（包含总结、待办、章节）和逐字稿文档。
-- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，支持视频/音频的转写和会议纪要，通过 minute\_token 标识。
+- **视频会议（Meeting）**：飞书视频会议实例，通过 meeting_id 标识。已结束的会议支持通过关键词、时间段、参会人、组织者、会议室等条件搜索。
+- **会议纪要（Note）**：视频会议结束后生成的结构化文档，包含纪要文档（总结+待办）和逐字稿文档。
+- **妙记（Minutes）**：来源于飞书视频会议的录制产物或用户上传的音视频文件，包含总结、待办、章节和文字记录，通过 minute_token 标识。
 - **纪要文档（MainDoc）**：AI 智能纪要的主文档，包含 AI 生成的总结和待办，对应 `note_doc_token`。
 - **用户会议纪要（MeetingNotes）**：用户主动绑定到会议的纪要文档，对应 `meeting_notes`。仅通过 `--calendar-event-ids` 路径返回。
 - **逐字稿（VerbatimDoc）**：会议的逐句文字记录，包含说话人和时间戳。
+
+## 产物选择决策
+
+| 用户意图 | 必须读取的产物 | 禁止 |
+|---------|-------------|------|
+| 提炼/总结/重新总结/整理会议内容/回顾会议 | 逐字稿（`verbatim_doc_token`）或妙记文字记录（Transcript），基于原始对话独立分析 | 禁止直接搬运 AI 纪要（`note_doc_token`）的总结作为最终输出 |
+| 查看待办/章节 | AI 纪要（`note_doc_token`）或妙记产物 — AI 待办更友好（含提出人和负责人），章节按话题划分更结构化 | — |
+| 查看纪要链接/文档地址 | 仅返回文档链接，无需读取内容 | — |
+| 直接看 AI 总结结果 | AI 纪要（`note_doc_token`） | — |
+| 谁说了什么/完整发言记录 | 逐字稿（`verbatim_doc_token`） | — |
+
+> **为什么"提炼/总结"必须从逐字稿出发？** AI 纪要是模型对会议的二次压缩，可能遗漏讨论细节、争论过程和隐含决策。用户要求"提炼"或"重新总结"时，期望的是基于原始对话的独立分析，而非对 AI 产物的重新排版。
 
 ## 核心场景
 
@@ -29,9 +79,13 @@ metadata:
 3. 搜索结果存在多条数据时，务必注意分页数据获取，不要遗漏任何会议记录。
 
 ### 2. 整理会议纪要
-1. 整理纪要文档时默认给出纪要文档和逐字稿链接即可，无需读取纪要文档或逐字稿内容。
-2. 用户明确需要获取纪要文档中的总结、待办、章节产物时，再读取文档获取具体内容。
+
+> 在选择读取哪个产物前，先确认你理解 AI 总结链路 vs 录制链路的区别。如不确定，先读 [`references/vc-domain-boundaries.md`](references/vc-domain-boundaries.md)。
+
+1. 整理纪要文档时默认给出纪要文档、逐字稿、妙记链接即可，无需读取纪要文档或逐字稿内容。
+2. 用户明确需要获取总结、待办、章节产物时，再读取文档获取具体内容。
 3. 读取智能纪要（`note_doc_token`）内容时，纪要文档的**第一个 `<whiteboard>`** 标签是封面图（AI 生成的总结可视化），应同时下载展示给用户：
+
 ```bash
 # 1. 读取纪要内容
 lark-cli docs +fetch --api-version v2 --doc <note_doc_token> --doc-format markdown
@@ -43,7 +97,7 @@ lark-cli docs +media-download --type whiteboard --token <whiteboard_token> --out
 > **产物目录规范**：同一会议的所有下载产物（录像、逐字稿、封面图等）统一放到 `./minutes/{minute_token}/` 目录下。这与 `minutes +download` 和 `vc +notes --minute-tokens` 的默认落点保持一致，便于 Agent 聚合。显式路径（如封面图）需手动对齐到同一目录。
 
 > **纪要相关文档 — 根据用户意图选择：**
-> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办 + 章节）
+> - `note_doc_token` → **AI 智能纪要**（AI 总结 + 待办）
 > - `meeting_notes` → **用户绑定的会议纪要**（用户主动关联到会议的文档，仅 `--calendar-event-ids` 路径返回）
 > - `verbatim_doc_token` → **逐字稿**（完整的逐句文字记录，含说话人和时间戳）— 用户说"逐字稿""完整记录""谁说了什么"时用这个
 > - 用户说"纪要""总结""纪要内容"时，应同时返回 `note_doc_token` 和 `meeting_notes`（如有）
@@ -100,70 +154,31 @@ Meeting (视频会议)
     └── Keywords (推荐关键词)
 ```
 
-> **注意**：`+search` 只能查询已结束的历史会议。查询未来的日程安排请使用 [lark-calendar](../lark-calendar/SKILL.md)。
->
-> **优先级**：当用户搜索历史会议时，应优先使用 `vc +search` 而非 `calendar events search`。calendar 的搜索面向日程，vc 的搜索面向已结束的会议记录，支持按参会人、组织者、会议室等维度过滤。
->
-> **路由规则**：如果用户在问“开过的会”“今天开了哪些会”“最近参加过什么会”“已结束的会议”“历史会议记录”，优先使用 `vc +search`。只有在查询未来日程、待开的会、agenda 时才优先使用 [lark-calendar](../lark-calendar/SKILL.md)。
->
-> **妙记边界**：`+notes` 负责纪要内容、逐字稿和 AI 产物；妙记基础信息请优先看 [`+recording`](references/lark-vc-recording.md) 与 [lark-minutes](../lark-minutes/SKILL.md)。
->
-> **文件转纪要边界**：如果用户给的是本地音视频文件，并希望得到纪要、逐字稿、总结、待办或章节，入口应先走 [lark-minutes](../lark-minutes/SKILL.md) 的上传流程生成 `minute_url` / `minute_token`，再回到 `vc +notes --minute-tokens` 获取内容产物。
->
-> **特殊情况**: 当用户查询“今天有哪些会议”时，通过 `vc +search` 查询今天开过的会议记录，同时使用 lark-calendar 技能查询今天还未开始的会议，统一整理后展示给用户。
-
-## Shortcuts（推荐优先使用）
-
-Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。有 Shortcut 的操作优先使用。
-
-| Shortcut | 说明 |
-|----------|------|
-| [`+search`](references/lark-vc-search.md) | Search meeting records (requires at least one filter) |
-| [`+notes`](references/lark-vc-notes.md) | Query meeting notes (via meeting-ids, minute-tokens, or calendar-event-ids) |
-| [`+recording`](references/lark-vc-recording.md) | Query minute_token from meeting-ids or calendar-event-ids |
-
-- 使用 `+search` 命令时，必须阅读 [references/lark-vc-search.md](references/lark-vc-search.md)，了解搜索参数和返回值结构。
-- 使用 `+notes` 命令时，必须阅读 [references/lark-vc-notes.md](references/lark-vc-notes.md)，了解查询参数、产物类型和返回值结构。
-- 使用 `+recording` 命令时，必须阅读 [references/lark-vc-recording.md](references/lark-vc-recording.md)，了解查询参数和返回值结构。
-
-> **Agent 参会相关命令已独立**：`+meeting-join` / `+meeting-leave` / `+meeting-events` 请使用 [`lark-vc-agent`](../lark-vc-agent/SKILL.md) 技能。
-
 ## API Resources
 
 ```bash
-lark-cli schema vc.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli vc <resource> <method> [flags] # 调用 API
+lark-cli vc <resource> <method> [flags]
 ```
-
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
 
 ### meeting
 
   - `get` — 获取会议详情（主题、时间、参会人、note_id）
 
 ```bash
-# 获取会议基础信息：不包含参会人列表
+# 获取会议基础信息（不含参会人）
 lark-cli vc meeting get --params '{"meeting_id": "<meeting_id>"}'
 
-
-# 获取会议基础信息：包含参会人列表
+# 获取会议基础信息（含参会人）
 lark-cli vc meeting get --params '{"meeting_id": "<meeting_id>", "with_participants": true}'
 ```
 
 ### minutes（跨域，详见 [lark-minutes](../lark-minutes/SKILL.md)）
 
-  - `get` — 获取妙记基础信息（标题、时长、封面）；查询纪要**内容**请用 `+notes --minute-tokens <minute-token>`
+  - `get` — 获取妙记基础信息（标题、时长、封面）；查询妙记**内容**请用 `+notes --minute-tokens <minute-token>`
 
-## 权限表
+## 不在本 skill 范围
 
-| 方法 | 所需 scope |
-|------|-----------|
-| `+notes --meeting-ids` | `vc:meeting.meetingevent:read`、`vc:note:read` |
-| `+notes --minute-tokens` | `vc:note:read`、`minutes:minutes:readonly`、`minutes:minutes.artifacts:read`、`minutes:minutes.transcript:export` |
-| `+notes --calendar-event-ids` | `calendar:calendar:read`、`calendar:calendar.event:read`、`vc:meeting.meetingevent:read`、`vc:note:read` |
-| `+recording --meeting-ids` | `vc:record:readonly` |
-| `+recording --calendar-event-ids` | `vc:record:readonly`、`calendar:calendar:read`、`calendar:calendar.event:read` |
-| `+search` | `vc:meeting.search:read` |
-| `meeting.get` | `vc:meeting.meetingevent:read` |
-
-> Agent 参会相关 scope（`vc:meeting.bot.join:write` / `vc:meeting.meetingevent:read`）见 [`lark-vc-agent`](../lark-vc-agent/SKILL.md)。
+- 查询未来的会议日程 → [lark-calendar](../lark-calendar/SKILL.md)
+- Agent 真实入会/离会、会中实时事件 → [lark-vc-agent](../lark-vc-agent/SKILL.md)
+- 本地音视频文件转纪要/逐字稿 → [lark-minutes](../lark-minutes/SKILL.md)（上传后回 `vc +notes`）
+- 妙记搜索/下载/上传/重命名/替换说话人 → [lark-minutes](../lark-minutes/SKILL.md)

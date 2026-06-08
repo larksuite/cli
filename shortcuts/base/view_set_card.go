@@ -20,11 +20,12 @@ var BaseViewSetCard = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		viewRefFlag(true),
-		{Name: "json", Desc: "card JSON object", Required: true},
+		{Name: "json", Desc: `card JSON object, e.g. {"cover_field":"Cover"} or {"cover_field":null} to clear`, Required: true},
 	},
 	Tips: []string{
-		`Example: --json '{"cover_field":"fldCover"}'`,
-		"Agent hint: use the lark-base skill's view-set-card guide for usage and limits.",
+		"Supported view types: gallery, kanban.",
+		"cover_field should be an attachment field id/name, or null to clear.",
+		"Use +view-get-card first when updating an existing card view configuration.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateViewJSONObject(runtime)

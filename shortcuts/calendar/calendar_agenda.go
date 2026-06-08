@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -29,7 +29,7 @@ const (
 
 func fetchInstanceViewRange(ctx context.Context, runtime *common.RuntimeContext, calendarId string, startTime, endTime int64, depth int) ([]map[string]interface{}, error) {
 	if depth > 10 {
-		return nil, output.Errorf(output.ExitInternal, "recursion_limit", "too many splits for instance_view")
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "too many splits for instance_view")
 	}
 	if startTime > endTime {
 		return nil, nil
@@ -48,68 +48,67 @@ func fetchInstanceViewRange(ctx context.Context, runtime *common.RuntimeContext,
 		return append(left, right...), nil
 	}
 
-	result, err := runtime.RawAPI("GET",
+	data, err := runtime.CallAPITyped("GET",
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/instance_view", validate.EncodePathSegment(calendarId)),
 		map[string]interface{}{
 			"start_time": fmt.Sprintf("%d", startTime),
 			"end_time":   fmt.Sprintf("%d", endTime),
 		}, nil)
-	err = wrapPredefinedError(err)
 	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "API call failed: %s", err)
-	}
-
-	resultMap, _ := result.(map[string]interface{})
-	code, _ := util.ToFloat64(resultMap["code"])
-
-	if code == 0 {
-		data, _ := resultMap["data"].(map[string]interface{})
-		items, _ := data["items"].([]interface{})
-		var events []map[string]interface{}
-		for _, item := range items {
-			if m, ok := item.(map[string]interface{}); ok {
-				events = append(events, m)
+		// CallAPITyped returns a typed error for any non-zero API code. The two
+		// calendar instance_view limits (193103 time-range, 193104 too-many) are
+		// recoverable by narrowing the window, so inspect the typed code and
+		// recurse instead of treating them as fatal. Any other code falls through
+		// to return the typed error unchanged.
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			return nil, err
+		}
+		switch p.Code {
+		case larkErrCalendarTimeRangeExceeded:
+			mid := startTime + span/2
+			if mid <= startTime {
+				return nil, errs.NewAPIError(errs.SubtypeInvalidParameters,
+					"query failed: time range exceeds 40-day limit, please narrow the range").
+					WithCode(larkErrCalendarTimeRangeExceeded)
 			}
+			return fetchInstanceViewSplit(ctx, runtime, calendarId, startTime, mid, endTime, depth)
+		case larkErrCalendarTooManyInstances:
+			if span <= minSplitWindowSeconds {
+				return nil, errs.NewAPIError(errs.SubtypeInvalidParameters,
+					"query failed: more than 1000 instances in the time range, please narrow the range").
+					WithCode(larkErrCalendarTooManyInstances)
+			}
+			mid := startTime + span/2
+			return fetchInstanceViewSplit(ctx, runtime, calendarId, startTime, mid, endTime, depth)
+		default:
+			return nil, err
 		}
-		return events, nil
 	}
 
-	// Error 193103: time range exceeds limit -> split
-	if int(code) == larkErrCalendarTimeRangeExceeded {
-		mid := startTime + span/2
-		if mid <= startTime {
-			return nil, output.Errorf(output.ExitAPI, "api_error", "query failed: time range exceeds 40-day limit, please narrow the range")
+	items, _ := data["items"].([]interface{})
+	var events []map[string]interface{}
+	for _, item := range items {
+		if m, ok := item.(map[string]interface{}); ok {
+			events = append(events, m)
 		}
-		left, err := fetchInstanceViewRange(ctx, runtime, calendarId, startTime, mid, depth+1)
-		if err != nil {
-			return nil, err
-		}
-		right, err := fetchInstanceViewRange(ctx, runtime, calendarId, mid+1, endTime, depth+1)
-		if err != nil {
-			return nil, err
-		}
-		return append(left, right...), nil
 	}
+	return events, nil
+}
 
-	// Error 193104: too many instances -> split
-	if int(code) == larkErrCalendarTooManyInstances {
-		if span <= minSplitWindowSeconds {
-			return nil, output.Errorf(output.ExitAPI, "api_error", "query failed: more than 1000 instances in the time range, please narrow the range")
-		}
-		mid := startTime + span/2
-		left, err := fetchInstanceViewRange(ctx, runtime, calendarId, startTime, mid, depth+1)
-		if err != nil {
-			return nil, err
-		}
-		right, err := fetchInstanceViewRange(ctx, runtime, calendarId, mid+1, endTime, depth+1)
-		if err != nil {
-			return nil, err
-		}
-		return append(left, right...), nil
+// fetchInstanceViewSplit halves [startTime, endTime] at mid and concatenates the
+// results of the two recursive sub-range queries. Shared by the 193103/193104
+// split paths.
+func fetchInstanceViewSplit(ctx context.Context, runtime *common.RuntimeContext, calendarId string, startTime, mid, endTime int64, depth int) ([]map[string]interface{}, error) {
+	left, err := fetchInstanceViewRange(ctx, runtime, calendarId, startTime, mid, depth+1)
+	if err != nil {
+		return nil, err
 	}
-
-	msg, _ := resultMap["msg"].(string)
-	return nil, output.ErrAPI(int(code), msg, resultMap["error"])
+	right, err := fetchInstanceViewRange(ctx, runtime, calendarId, mid+1, endTime, depth+1)
+	if err != nil {
+		return nil, err
+	}
+	return append(left, right...), nil
 }
 
 func dedupeAndSortItems(items []map[string]interface{}) []map[string]interface{} {
@@ -147,20 +146,20 @@ func parseTimeRange(runtime *common.RuntimeContext) (int64, int64, error) {
 
 	startTime, err := common.ParseTime(startInput)
 	if err != nil {
-		return 0, 0, output.ErrValidation("--start: %v", err)
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 	}
 	endTime, err := common.ParseTime(endInput, "end")
 	if err != nil {
-		return 0, 0, output.ErrValidation("--end: %v", err)
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 	}
 
 	startInt, err := strconv.ParseInt(startTime, 10, 64)
 	if err != nil {
-		return 0, 0, output.ErrValidation("invalid start time: %v", err)
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
 	}
 	endInt, err := strconv.ParseInt(endTime, 10, 64)
 	if err != nil {
-		return 0, 0, output.ErrValidation("invalid end time: %v", err)
+		return 0, 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
 	}
 
 	return startInt, endInt, nil

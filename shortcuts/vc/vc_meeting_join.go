@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -32,11 +33,12 @@ var VCMeetingJoin = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "meeting-number", Required: true, Desc: "meeting number to join"},
 		{Name: "password", Desc: "meeting password (if required)"},
+		{Name: "call-id", Desc: "correlation id forwarded from invite event"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mn := strings.TrimSpace(runtime.Str("meeting-number"))
 		if !validMeetingNumber(mn) {
-			return common.FlagErrorf("--meeting-number must be exactly 9 digits, got %q", mn)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-number must be exactly 9 digits, got %q", mn).WithParam("--meeting-number")
 		}
 		return nil
 	},
@@ -48,7 +50,7 @@ var VCMeetingJoin = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildMeetingJoinBody(runtime)
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/vc/v1/bots/join", nil, body)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/vc/v1/bots/join", nil, body)
 		if err != nil {
 			return err
 		}
@@ -89,6 +91,9 @@ func buildMeetingJoinBody(runtime *common.RuntimeContext) map[string]interface{}
 	}
 	if pw := strings.TrimSpace(runtime.Str("password")); pw != "" {
 		body["password"] = pw
+	}
+	if cid := strings.TrimSpace(runtime.Str("call-id")); cid != "" {
+		body["call_id"] = cid
 	}
 	return body
 }

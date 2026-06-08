@@ -9,7 +9,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -38,25 +38,25 @@ var ImChatUpdate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		chat := runtime.Str("chat-id")
-		if _, err := common.ValidateChatID(chat); err != nil {
+		if _, err := common.ValidateChatIDTyped("--chat-id", chat); err != nil {
 			return err
 		}
 
 		// Validate --name length.
 		name := runtime.Str("name")
 		if name != "" && len([]rune(name)) > 60 {
-			return output.ErrValidation("--name exceeds the maximum of 60 characters (got %d)", len([]rune(name)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--name exceeds the maximum of 60 characters (got %d)", len([]rune(name))).WithParam("--name")
 		}
 
 		// Validate --description length.
 		if desc := runtime.Str("description"); desc != "" && len([]rune(desc)) > 100 {
-			return output.ErrValidation("--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc)))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--description exceeds the maximum of 100 characters (got %d)", len([]rune(desc))).WithParam("--description")
 		}
 
 		// At least one field must be provided for update.
 		body := buildUpdateChatBody(runtime)
 		if len(body) == 0 {
-			return output.ErrValidation("at least one field must be specified to update")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "at least one field must be specified to update")
 		}
 
 		return nil
@@ -65,7 +65,7 @@ var ImChatUpdate = common.Shortcut{
 		chatID := runtime.Str("chat-id")
 		body := buildUpdateChatBody(runtime)
 
-		_, err := runtime.DoAPIJSON(http.MethodPut,
+		_, err := runtime.DoAPIJSONTyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/im/v1/chats/%s", validate.EncodePathSegment(chatID)),
 			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
 			body,

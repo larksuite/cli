@@ -20,12 +20,14 @@ var BaseRecordUpsert = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordRefFlag(false),
-		{Name: "json", Desc: "record JSON object: Map<FieldNameOrID, CellValue>", Required: true},
+		{Name: "json", Desc: `record field map JSON object, e.g. {"Name":"Alice","Status":"Todo"}; do not wrap in fields`, Required: true},
 	},
-	Tips: []string{
-		`Example: --json '{"Name":"Alice"}'`,
-		"Agent hint: use the lark-base skill's record-upsert guide for usage and limits.",
-	},
+	Tips: append([]string{
+		"Happy path JSON is a top-level field map: each key is a real field name or field ID, each value is that field's CellValue.",
+		"Without --record-id this creates a record; with --record-id this updates that record. It does not auto-upsert by business key.",
+		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
+		"Use the record-upsert guide for command limits and edge cases.",
+	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateRecordJSON(runtime)
 	},

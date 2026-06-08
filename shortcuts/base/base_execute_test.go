@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -411,6 +412,167 @@ func decodeCapturedJSONBody(t *testing.T, stub *httpmock.Stub) map[string]interf
 	return body
 }
 
+func TestBaseBlockExecuteShortcuts(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	listStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"blocks": []interface{}{
+					map[string]interface{}{"id": "blk_doc", "type": "docx", "name": "Spec"},
+					map[string]interface{}{"id": "blk_folder", "type": "folder", "name": "Folder"},
+				},
+				"total": 2,
+			},
+		},
+	}
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "type": "docx", "name": "Spec"},
+		},
+	}
+	moveStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc/move",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "parent_id": "bfl_1"},
+		},
+	}
+	renameStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc/rename",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc", "name": "Final Spec"},
+		},
+	}
+	deleteStub := &httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/base/v3/bases/app_x/blocks/blk_doc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"block_id": "blk_doc"},
+		},
+	}
+	for _, stub := range []*httpmock.Stub{listStub, createStub, moveStub, renameStub, deleteStub} {
+		reg.Register(stub)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockList, []string{"+base-block-list", "--base-token", "app_x", "--parent-id", "bfl_1", "--type", "docx"}, factory, stdout); err != nil {
+		t.Fatalf("list err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"total": 1`) || !strings.Contains(got, `"blk_doc"`) || strings.Contains(got, `"blk_folder"`) {
+		t.Fatalf("list stdout=%s", got)
+	}
+	if body := decodeCapturedJSONBody(t, listStub); body["parent_id"] != "bfl_1" || body["type"] != nil {
+		t.Fatalf("list body=%#v", body)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockCreate, []string{"+base-block-create", "--base-token", "app_x", "--type", "docx", "--name", " Spec ", "--parent-id", "bfl_1"}, factory, stdout); err != nil {
+		t.Fatalf("create err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"blk_doc"`) {
+		t.Fatalf("create stdout=%s", got)
+	}
+	createBody := decodeCapturedJSONBody(t, createStub)
+	if createBody["type"] != "docx" || createBody["name"] != "Spec" || createBody["parent_id"] != "bfl_1" {
+		t.Fatalf("create body=%#v", createBody)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockMove, []string{"+base-block-move", "--base-token", "app_x", "--block-id", "blk_doc", "--parent-id", "bfl_1", "--after-id", "blk_prev"}, factory, stdout); err != nil {
+		t.Fatalf("move err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"moved": true`) {
+		t.Fatalf("move stdout=%s", got)
+	}
+	moveBody := decodeCapturedJSONBody(t, moveStub)
+	if moveBody["parent_id"] != "bfl_1" || moveBody["after_id"] != "blk_prev" {
+		t.Fatalf("move body=%#v", moveBody)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockRename, []string{"+base-block-rename", "--base-token", "app_x", "--block-id", "blk_doc", "--name", " Final Spec "}, factory, stdout); err != nil {
+		t.Fatalf("rename err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"renamed": true`) || !strings.Contains(got, `"Final Spec"`) {
+		t.Fatalf("rename stdout=%s", got)
+	}
+	if body := decodeCapturedJSONBody(t, renameStub); body["name"] != "Final Spec" {
+		t.Fatalf("rename body=%#v", body)
+	}
+
+	if err := runShortcut(t, BaseBaseBlockDelete, []string{"+base-block-delete", "--base-token", "app_x", "--block-id", "blk_doc", "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("delete err=%v", err)
+	}
+	if got := stdout.String(); !strings.Contains(got, `"deleted": true`) || !strings.Contains(got, `"blk_doc"`) {
+		t.Fatalf("delete stdout=%s", got)
+	}
+}
+
+func TestBaseBlockValidationReturnsTypedErrors(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		params   []string
+	}{
+		{
+			name:     "create blank name",
+			shortcut: BaseBaseBlockCreate,
+			args:     []string{"+base-block-create", "--base-token", "app_x", "--type", "docx", "--name", " "},
+			params:   []string{"--name"},
+		},
+		{
+			name:     "move conflicting sibling anchors",
+			shortcut: BaseBaseBlockMove,
+			args:     []string{"+base-block-move", "--base-token", "app_x", "--block-id", "blk_doc", "--before-id", "blk_a", "--after-id", "blk_b"},
+			params:   []string{"--before-id", "--after-id"},
+		},
+		{
+			name:     "rename blank name",
+			shortcut: BaseBaseBlockRename,
+			args:     []string{"+base-block-rename", "--base-token", "app_x", "--block-id", "blk_doc", "--name", " "},
+			params:   []string{"--name"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runShortcut(t, tt.shortcut, tt.args, factory, stdout)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T %v", err, err)
+			}
+			if validationErr.Param != tt.params[0] {
+				t.Fatalf("param=%q, want %q", validationErr.Param, tt.params[0])
+			}
+			if len(validationErr.Params) != len(tt.params) {
+				t.Fatalf("params=%#v, want %v", validationErr.Params, tt.params)
+			}
+			for i, param := range tt.params {
+				if validationErr.Params[i].Name != param {
+					t.Fatalf("params=%#v, want %v", validationErr.Params, tt.params)
+				}
+				if validationErr.Params[i].Reason == "" {
+					t.Fatalf("params[%d] missing reason: %#v", i, validationErr.Params)
+				}
+			}
+		})
+	}
+}
+
 func TestBaseHistoryExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -515,7 +677,7 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 			if !strings.Contains(err.Error(), "--json must be a JSON object") {
 				t.Fatalf("err=%v", err)
 			}
-			if !strings.Contains(err.Error(), "lark-base skill") {
+			if !strings.Contains(err.Error(), "match the documented shape") {
 				t.Fatalf("err=%v", err)
 			}
 			if strings.Contains(err.Error(), "array") {
@@ -769,10 +931,10 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 	t.Run("list-http-404", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Status: 404,
-			Body:   "404 page not found",
+			Method:  "GET",
+			URL:     "/open-apis/base/v3/bases/app_x/tables",
+			Status:  404,
+			RawBody: []byte("404 page not found"),
 			Headers: map[string][]string{
 				"Content-Type": {"text/plain"},
 			},
@@ -974,7 +1136,7 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 				"+record-search",
 				"--base-token", "app_x",
 				"--table-id", "tbl_x",
-				"--json", `{"view_id":"vew_x","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"offset":0,"limit":2}`,
+				"--json", `{"view_id":"vew_x","keyword":"Created","search_fields":["Title","fld_owner"],"select_fields":["Title","fld_owner"],"filter":{"logic":"and","conditions":[["Status","!=","Done"]]},"sort":{"sort_config":[{"field":"Updated At","desc":true},{"field":"Title","desc":false}]},"offset":0,"limit":2}`,
 				"--format", "json",
 			},
 			factory,
@@ -990,8 +1152,117 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			!strings.Contains(body, `"keyword":"Created"`) ||
 			!strings.Contains(body, `"search_fields":["Title","fld_owner"]`) ||
 			!strings.Contains(body, `"select_fields":["Title","fld_owner"]`) ||
+			!strings.Contains(body, `"filter":{"conditions":[["Status","!=","Done"]],"logic":"and"}`) ||
+			!strings.Contains(body, `"sort":[{"desc":true,"field":"Updated At"},{"desc":false,"field":"Title"}]`) ||
 			!strings.Contains(body, `"offset":0`) ||
 			!strings.Contains(body, `"limit":2`) {
+			t.Fatalf("captured body=%s", body)
+		}
+	})
+
+	t.Run("search with flag filter sort and projection", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title", "Status"},
+					"field_id_list":  []interface{}{"fld_title", "fld_status"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI", "Todo"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--keyword", "Created",
+				"--search-field", "Title",
+				"--field-id", "Title",
+				"--field-id", "Status",
+				"--filter-json", `{"logic":"and","conditions":[["Status","==","Todo"],["Score",">=",80]]}`,
+				"--sort-json", `[{"field":"Updated At","desc":true},{"field":"Title","desc":false}]`,
+				"--limit", "20",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(searchStub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(searchStub.CapturedBody))
+		}
+		if body["keyword"] != "Created" || body["limit"].(float64) != 20 {
+			t.Fatalf("captured body=%#v", body)
+		}
+		filter := body["filter"].(map[string]interface{})
+		if filter["logic"] != "and" {
+			t.Fatalf("filter=%#v", filter)
+		}
+		conditions := filter["conditions"].([]interface{})
+		if len(conditions) != 2 {
+			t.Fatalf("conditions=%#v", conditions)
+		}
+		sortConfig := body["sort"].([]interface{})
+		if len(sortConfig) != 2 {
+			t.Fatalf("sort=%#v", sortConfig)
+		}
+		firstSort := sortConfig[0].(map[string]interface{})
+		if firstSort["field"] != "Updated At" || firstSort["desc"] != true {
+			t.Fatalf("sort=%#v", sortConfig)
+		}
+	})
+
+	t.Run("search with filter json file", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		tmp := t.TempDir()
+		withBaseWorkingDir(t, tmp)
+		if err := os.WriteFile(filepath.Join(tmp, "filter.json"), []byte(`{"logic":"or","conditions":[["Status","==","Todo"]]}`), 0600); err != nil {
+			t.Fatalf("write filter err=%v", err)
+		}
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"A"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--keyword", "A",
+				"--search-field", "Title",
+				"--filter-json", "@filter.json",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := string(searchStub.CapturedBody)
+		if !strings.Contains(body, `"filter":{"conditions":[["Status","==","Todo"]],"logic":"or"}`) {
 			t.Fatalf("captured body=%s", body)
 		}
 	})
@@ -1882,6 +2153,9 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if !strings.Contains(err.Error(), "exceeds 2GB limit") {
 			t.Fatalf("err=%v", err)
 		}
+		if !strings.Contains(err.Error(), filepath.Base(tmpFile.Name())) {
+			t.Fatalf("err=%v should name the offending file", err)
+		}
 	})
 
 	t.Run("upload attachment rejects deprecated name flag", func(t *testing.T) {
@@ -2047,6 +2321,23 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--output", "file.txt",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "--output must be an existing directory") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("download surfaces unsafe output path instead of directory hint", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+
+		err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "../escape",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "unsafe output path") {
 			t.Fatalf("err=%v", err)
 		}
 	})
@@ -2247,21 +2538,37 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--record-id", "rec_x",
 			"--output", "downloads",
 		}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "download failed after 1 attachment(s) succeeded and 1 failed") {
+		if err == nil {
 			t.Fatalf("err=%v", err)
 		}
-		var exitErr *output.ExitError
-		if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-			t.Fatalf("expected structured error, got %T %v", err, err)
+		var partialErr *output.PartialFailureError
+		if !errors.As(err, &partialErr) {
+			t.Fatalf("expected partial failure error, got %T %v", err, err)
 		}
-		detail, _ := exitErr.Detail.Detail.(map[string]interface{})
-		downloaded, _ := detail["downloaded"].([]map[string]interface{})
-		failed, _ := detail["failed"].([]map[string]interface{})
-		if len(downloaded) != 1 || downloaded[0]["file_token"] != "box_a" || len(failed) != 1 || failed[0]["file_token"] != "box_b" {
-			t.Fatalf("detail=%#v", exitErr.Detail.Detail)
+
+		var envelope map[string]interface{}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("failed to decode partial failure output: %v\nraw=%s", err, stdout.String())
 		}
-		if detail["log_id"] != "202605270001" {
-			t.Fatalf("detail=%#v, want log_id", exitErr.Detail.Detail)
+		if envelope["ok"] != false {
+			t.Fatalf("ok=%#v, want false; envelope=%#v", envelope["ok"], envelope)
+		}
+		data, _ := envelope["data"].(map[string]interface{})
+		if msg, _ := data["message"].(string); !strings.Contains(msg, "download failed after 1 attachment(s) succeeded and 1 failed") {
+			t.Fatalf("message=%q", msg)
+		}
+		downloaded, _ := data["downloaded"].([]interface{})
+		failed, _ := data["failed"].([]interface{})
+		if len(downloaded) != 1 || len(failed) != 1 {
+			t.Fatalf("data=%#v", data)
+		}
+		downloadedItem, _ := downloaded[0].(map[string]interface{})
+		failedItem, _ := failed[0].(map[string]interface{})
+		if downloadedItem["file_token"] != "box_a" || failedItem["file_token"] != "box_b" {
+			t.Fatalf("data=%#v", data)
+		}
+		if data["log_id"] != "202605270001" {
+			t.Fatalf("data=%#v, want log_id", data)
 		}
 		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err != nil {
 			t.Fatalf("expected first file to remain: %v", err)

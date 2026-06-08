@@ -5,9 +5,10 @@ package base
 
 import (
 	"encoding/json"
-	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -17,6 +18,14 @@ import (
 //   - Inner: business-level code/message inside the data object
 //
 // The data field may be a JSON object (actual behavior) or a JSON string (per doc).
+func handleRoleAPIResponse(runtime *common.RuntimeContext, apiResp *larkcore.ApiResp, action string) error {
+	if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+		enriched := enrichBaseAPIErrorFromBody(err, apiResp.RawBody, runtime.APIClassifyContext())
+		return prefixRoleActionError(enriched, action)
+	}
+	return handleRoleResponse(runtime, apiResp.RawBody, action)
+}
+
 func handleRoleResponse(runtime *common.RuntimeContext, rawBody []byte, action string) error {
 	var resp struct {
 		Code int             `json:"code"`
@@ -24,23 +33,17 @@ func handleRoleResponse(runtime *common.RuntimeContext, rawBody []byte, action s
 		Data json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(rawBody, &resp); err != nil {
-		return fmt.Errorf("failed to parse response: %v", err)
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "%s: failed to parse response: %v", action, err).WithCause(err)
 	}
 	if resp.Code != 0 {
-		msg := resp.Msg
-		// When outer msg is empty, try to extract error details from data.error.message
-		if msg == "" && len(resp.Data) > 0 {
-			var errData struct {
-				Error struct {
-					Message string `json:"message"`
-					Hint    string `json:"hint"`
-				} `json:"error"`
-			}
-			if json.Unmarshal(resp.Data, &errData) == nil && errData.Error.Message != "" {
-				msg = errData.Error.Message
+		result := map[string]interface{}{"code": resp.Code, "msg": resp.Msg}
+		if len(resp.Data) > 0 {
+			var data interface{}
+			if json.Unmarshal(resp.Data, &data) == nil {
+				result["data"] = data
 			}
 		}
-		return output.ErrAPI(resp.Code, fmt.Sprintf("%s: [%d] %s", action, resp.Code, msg), nil)
+		return baseRoleAPIError(runtime, result, action)
 	}
 
 	if len(resp.Data) == 0 || string(resp.Data) == "null" || string(resp.Data) == `""` {
@@ -75,7 +78,8 @@ func handleRoleResponse(runtime *common.RuntimeContext, rawBody []byte, action s
 			}
 			if codeInt != 0 {
 				msg, _ := m["message"].(string)
-				return output.ErrAPI(codeInt, fmt.Sprintf("%s: [%d] %s", action, codeInt, msg), nil)
+				result := map[string]interface{}{"code": codeInt, "msg": msg, "data": m}
+				return baseRoleAPIError(runtime, result, action)
 			}
 			// code == 0, extract the inner data if present
 			if innerData, hasInner := m["data"]; hasInner {
@@ -97,4 +101,21 @@ func handleRoleResponse(runtime *common.RuntimeContext, rawBody []byte, action s
 
 	runtime.Out(data, nil)
 	return nil
+}
+
+func baseRoleAPIError(runtime *common.RuntimeContext, result map[string]interface{}, action string) error {
+	return prefixRoleActionError(baseAPIErrorFromResult(result, runtime.APIClassifyContext()), action)
+}
+
+// prefixRoleActionError prepends the failed role action ("create role failed",
+// "get role failed", ...) to a typed error's message so both the classified
+// outer-response path and the parsed-body path carry the same context.
+func prefixRoleActionError(err error, action string) error {
+	if err == nil {
+		return nil
+	}
+	if p, ok := errs.ProblemOf(err); ok && action != "" {
+		p.Message = action + ": " + p.Message
+	}
+	return err
 }

@@ -70,6 +70,12 @@ func TestLookupCodeMeta_TaskPermissionDenied_MergedViaInit(t *testing.T) {
 	}
 }
 
+func TestLookupCodeMeta_MinutesEndpointSpecificCode_NotGlobal(t *testing.T) {
+	if got, ok := LookupCodeMeta(2091001); ok {
+		t.Fatalf("LookupCodeMeta(2091001) = %+v, want unregistered; minutes endpoints use this code for different failures", got)
+	}
+}
+
 func TestLookupCodeMeta_RetryableAuthCode(t *testing.T) {
 	got, ok := LookupCodeMeta(20050)
 	if !ok {

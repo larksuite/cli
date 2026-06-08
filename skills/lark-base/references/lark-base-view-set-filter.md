@@ -172,7 +172,7 @@ lark-cli base +view-set-filter \
 
 ## 6. 使用建议
 
-- 建议先用 [lark-base-view-get-filter.md](lark-base-view-get-filter.md) 读取现状，再改。
+- 先读取当前筛选配置，理解现有 `logic` 和 `conditions` 的组合关系；只替换用户要求变更的条件，未提到的条件默认保留。
 - 优先传字段 id，不要依赖字段名。
 - 需要清空全部筛选时，直接传 `{"conditions":[]}`。
 
@@ -186,6 +186,4 @@ lark-cli base +view-set-filter \
 
 ## 8. 参考
 
-- [lark-base-view.md](lark-base-view.md)
-- [lark-base-view-get-filter.md](lark-base-view-get-filter.md)
 - [lookup-field-guide.md](lookup-field-guide.md)

@@ -6,11 +6,13 @@ package whiteboard
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -146,6 +148,110 @@ func TestWhiteboardQuery_Validate(t *testing.T) {
 				t.Errorf("WhiteboardQuery.Validate() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+// TestWhiteboardQuery_Validate_TypedErrors locks the typed-envelope contract:
+// input-validation failures surface as *errs.ValidationError carrying
+// SubtypeInvalidArgument and the offending --flag, readable via errs.ProblemOf
+// and errors.As — the shape downstream consumers (and exit-code mapping) rely on.
+func TestWhiteboardQuery_Validate_TypedErrors(t *testing.T) {
+	ctx := context.Background()
+	chdirTemp(t)
+
+	tests := []struct {
+		name      string
+		flags     map[string]string
+		wantParam string
+	}{
+		{
+			name:      "image without output",
+			flags:     map[string]string{"whiteboard-token": "t", "output_as": "image"},
+			wantParam: "--output",
+		},
+		{
+			name:      "bad output_as value",
+			flags:     map[string]string{"whiteboard-token": "t", "output_as": "invalid"},
+			wantParam: "--output_as",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := WhiteboardQuery.Validate(ctx, newTestRuntime(tt.flags, nil))
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error is not *errs.ValidationError: %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if ve.Param != tt.wantParam {
+				t.Errorf("Param = %q, want %q", ve.Param, tt.wantParam)
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("errs.ProblemOf returned false")
+			}
+			if p.Category != errs.CategoryValidation {
+				t.Errorf("Category = %q, want %q", p.Category, errs.CategoryValidation)
+			}
+		})
+	}
+}
+
+// TestExportWhiteboardPreview_HTTPError locks the download-path failure
+// behavior: a failed preview download surfaces as a typed errs.* envelope, not
+// a flat legacy error.
+func TestExportWhiteboardPreview_HTTPError(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/test-token-preview-5xx/download_as_image",
+		Status:      500,
+		RawBody:     []byte("gateway error"),
+		ContentType: "text/plain",
+	})
+
+	args := []string{"+query", "--whiteboard-token", "test-token-preview-5xx", "--output_as", "image", "--output", "output"}
+	err := runShortcut(t, WhiteboardQuery, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected error for HTTP 500 download")
+	}
+	if _, ok := errs.ProblemOf(err); !ok {
+		t.Fatalf("error is not a typed errs.* envelope: %T (%v)", err, err)
+	}
+	var ne *errs.NetworkError
+	if !errors.As(err, &ne) || ne.Subtype != errs.SubtypeNetworkServer || ne.Code != 500 || !ne.Retryable {
+		t.Fatalf("HTTP 500 should be retryable network/server_error, got %T (%v)", err, err)
+	}
+}
+
+func TestExportWhiteboardPreview_HTTPNotFoundIsAPIError(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	chdirTemp(t)
+
+	reg.Register(&httpmock.Stub{
+		Method:      "GET",
+		URL:         "/open-apis/board/v1/whiteboards/missing-token/download_as_image",
+		Status:      404,
+		RawBody:     []byte("not found"),
+		ContentType: "text/plain",
+	})
+
+	args := []string{"+query", "--whiteboard-token", "missing-token", "--output_as", "image", "--output", "output"}
+	err := runShortcut(t, WhiteboardQuery, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected error for HTTP 404 download")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) || apiErr.Subtype != errs.SubtypeNotFound || apiErr.Code != 404 {
+		t.Fatalf("HTTP 404 should be api/not_found, got %T (%v)", err, err)
 	}
 }
 
@@ -367,6 +473,23 @@ func TestSaveOutputFile(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSaveOutputFile_InvalidFinalPathTypedError(t *testing.T) {
+	chdirTemp(t)
+
+	rt := newTestRuntime(nil, nil)
+	_, _, err := saveOutputFile("../escape", ".png", "token123", rt, strings.NewReader("test content"))
+	if err == nil {
+		t.Fatal("expected error for unsafe final path")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *errs.ValidationError: %T (%v)", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument || ve.Param != "--output" {
+		t.Fatalf("validation details = subtype %q param %q, want %q --output", ve.Subtype, ve.Param, errs.SubtypeInvalidArgument)
 	}
 }
 
@@ -705,9 +828,69 @@ func TestFetchWhiteboardNodes_APIError(t *testing.T) {
 
 	args := []string{"+query", "--whiteboard-token", "test-token-api-error", "--output_as", "raw"}
 	err := runShortcut(t, WhiteboardQuery, args, factory, stdout)
-	// We expect an error here, but don't fail the test because it's testing error path
 	if err == nil {
 		t.Fatalf("Expected API error, but got none")
+	}
+	// The nodes fetch now classifies the Lark error code into a typed envelope
+	// carrying the numeric code.
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not a typed errs.* envelope: %T (%v)", err, err)
+	}
+	if p.Code != 10001 {
+		t.Errorf("Problem.Code = %d, want 10001", p.Code)
+	}
+}
+
+func TestFetchWhiteboardNodes_InvalidResponseTypedError(t *testing.T) {
+	tests := []struct {
+		name  string
+		token string
+		data  map[string]interface{}
+	}{
+		{
+			name:  "missing nodes",
+			token: "test-token-missing-nodes",
+			data:  map[string]interface{}{},
+		},
+		{
+			name:  "nodes not array",
+			token: "test-token-bad-nodes",
+			data:  map[string]interface{}{"nodes": "not-an-array"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			factory, stdout, reg := newExecuteFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "/open-apis/board/v1/whiteboards/" + tt.token + "/nodes",
+				Body: map[string]interface{}{
+					"code": 0,
+					"msg":  "success",
+					"data": tt.data,
+				},
+			})
+
+			args := []string{"+query", "--whiteboard-token", tt.token, "--output_as", "raw"}
+			err := runShortcut(t, WhiteboardQuery, args, factory, stdout)
+			assertInvalidResponse(t, err)
+		})
+	}
+}
+
+func assertInvalidResponse(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected invalid response error")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("error is not *errs.InternalError: %T (%v)", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
 	}
 }
 

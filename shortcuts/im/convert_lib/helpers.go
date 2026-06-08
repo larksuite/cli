@@ -162,7 +162,7 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 		}
 		batch := missingIDs[i:end]
 
-		data, err := runtime.DoAPIJSON(http.MethodPost,
+		data, err := runtime.DoAPIJSONTyped(http.MethodPost,
 			"/open-apis/contact/v3/users/basic_batch",
 			larkcore.QueryParams{"user_id_type": []string{"open_id"}},
 			map[string]interface{}{"user_ids": batch},
@@ -198,7 +198,7 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 		}
 		apiURL := "/open-apis/contact/v3/users/batch?" + strings.Join(parts, "&")
 
-		data, err := runtime.DoAPIJSON(http.MethodGet, apiURL, nil, nil)
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, apiURL, nil, nil)
 		if err != nil {
 			break
 		}

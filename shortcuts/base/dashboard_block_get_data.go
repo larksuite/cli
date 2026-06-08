@@ -23,6 +23,7 @@ var BaseDashboardBlockGetData = common.Shortcut{
 	},
 	Tips: []string{
 		"lark-cli base +dashboard-block-get-data --base-token <base_token> --block-id <block_id>",
+		"This command does not need --dashboard-id.",
 		"Use +dashboard-block-get first when you need block metadata like name, type, or data_config.",
 		"This command returns computed chart protocol JSON directly, not wrapped block metadata.",
 		"Text blocks do not have computed chart data; this shortcut is for chart/statistics blocks.",

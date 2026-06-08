@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -46,7 +47,7 @@ var ImThreadsMessagesList = common.Shortcut{
 			sortType = "ByCreateTimeDesc"
 		}
 
-		pageSize, _ := common.ValidatePageSize(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
+		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
 
 		d := common.NewDryRunAPI()
 		containerID := threadFlag
@@ -79,12 +80,12 @@ var ImThreadsMessagesList = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		threadId := runtime.Str("thread")
 		if threadId == "" {
-			return output.ErrValidation("--thread is required (om_xxx or omt_xxx)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--thread is required (om_xxx or omt_xxx)").WithParam("--thread")
 		}
 		if !strings.HasPrefix(threadId, "om_") && !strings.HasPrefix(threadId, "omt_") {
-			return output.ErrValidation("invalid --thread %q: must start with om_ or omt_", threadId)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --thread %q: must start with om_ or omt_", threadId).WithParam("--thread")
 		}
-		_, err := common.ValidatePageSize(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
 		return err
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -100,7 +101,7 @@ var ImThreadsMessagesList = common.Shortcut{
 			sortType = "ByCreateTimeDesc"
 		}
 
-		pageSize, _ := common.ValidatePageSize(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
+		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
 
 		params := map[string][]string{
 			"container_id_type":     []string{"thread"},
@@ -113,7 +114,7 @@ var ImThreadsMessagesList = common.Shortcut{
 			params["page_token"] = []string{pageToken}
 		}
 
-		data, err := runtime.DoAPIJSON(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
 		if err != nil {
 			return err
 		}

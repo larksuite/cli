@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -25,6 +24,9 @@ var BaseFormQuestionsDelete = common.Shortcut{
 		{Name: "form-id", Desc: "form ID", Required: true},
 		{Name: "question-ids", Desc: `JSON array of question IDs to delete, max 10 items, e.g. '["q_001","q_002"]'`, Required: true},
 	},
+	Tips: []string{
+		baseHighRiskYesTip,
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
@@ -40,7 +42,7 @@ var BaseFormQuestionsDelete = common.Shortcut{
 
 		var questionIds []string
 		if err := json.Unmarshal([]byte(questionIdsJSON), &questionIds); err != nil {
-			return output.Errorf(output.ExitValidation, "invalid_json", "--question-ids must be a valid JSON array of strings: %s", err)
+			return baseValidationErrorf("--question-ids must be a valid JSON array of strings: %s", err)
 		}
 
 		_, err := baseV3Call(runtime, "DELETE",

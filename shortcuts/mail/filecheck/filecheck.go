@@ -124,7 +124,7 @@ func CheckBlockedExtension(filename string) error {
 		return nil
 	}
 	if _, ok := blockedExtensions[ext]; ok {
-		return fmt.Errorf("file extension %q is not allowed as a mail attachment", "."+ext)
+		return fmt.Errorf("file extension %q is not allowed as a mail attachment", "."+ext) //nolint:forbidigo // intermediate mail file-format check; mail command layer wraps into typed ValidationError.
 	}
 	return nil
 }
@@ -156,7 +156,7 @@ var allowedInlineMIMETypes = map[string]struct{}{
 func CheckInlineImageFormat(filename string, content []byte) (string, error) {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(filename), "."))
 	if _, ok := allowedInlineExtensions[ext]; !ok {
-		return "", fmt.Errorf("inline image extension %q is not allowed; supported formats: jpg, jpeg, png, gif, webp", ext)
+		return "", fmt.Errorf("inline image extension %q is not allowed; supported formats: jpg, jpeg, png, gif, webp", ext) //nolint:forbidigo // intermediate mail file-format check; mail command layer wraps into typed ValidationError.
 	}
 	detected := http.DetectContentType(content)
 	// DetectContentType may return params (e.g. "text/plain; charset=utf-8"),
@@ -165,7 +165,7 @@ func CheckInlineImageFormat(filename string, content []byte) (string, error) {
 		detected = strings.TrimSpace(detected[:i])
 	}
 	if _, ok := allowedInlineMIMETypes[detected]; !ok {
-		return "", fmt.Errorf("inline image content type %q does not match an allowed image format; supported: image/jpeg, image/png, image/gif, image/webp", detected)
+		return "", fmt.Errorf("inline image content type %q does not match an allowed image format; supported: image/jpeg, image/png, image/gif, image/webp", detected) //nolint:forbidigo // intermediate mail file-format check; mail command layer wraps into typed ValidationError.
 	}
 	return detected, nil
 }

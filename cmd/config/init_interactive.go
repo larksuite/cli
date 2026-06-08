@@ -6,7 +6,6 @@ package config
 import (
 	"context"
 	"fmt"
-	"net/http"
 
 	"github.com/charmbracelet/huh"
 	"github.com/larksuite/cli/internal/build"
@@ -17,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/transport"
 )
 
 // configInitResult holds the result of the interactive config init flow.
@@ -177,7 +177,9 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 1: Request app registration (begin)
-	httpClient := &http.Client{}
+	// Use the shared proxy-plugin-aware transport so registration traffic is not
+	// a bypass of proxy plugin mode.
+	httpClient := transport.NewHTTPClient(0)
 	authResp, err := larkauth.RequestAppRegistration(httpClient, larkBrand, f.IOStreams.ErrOut)
 	if err != nil {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration failed: %v", err).WithCause(err)

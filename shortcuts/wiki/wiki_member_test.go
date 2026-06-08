@@ -83,6 +83,17 @@ func TestWikiMemberShortcutsDeclareRiskAndAuth(t *testing.T) {
 	}
 }
 
+func TestWikiMemberTypesIncludeAppID(t *testing.T) {
+	t.Parallel()
+
+	for _, typ := range wikiMemberTypes {
+		if typ == "appid" {
+			return
+		}
+	}
+	t.Fatalf("wikiMemberTypes = %v, want appid", wikiMemberTypes)
+}
+
 // ── +member-add ──────────────────────────────────────────────────────────────
 
 func TestWikiMemberAddRequestBodyOmitsQueryWhenNotificationFlagUnset(t *testing.T) {
@@ -149,6 +160,24 @@ func TestWikiMemberAddDryRunSingleStep(t *testing.T) {
 	}
 }
 
+func TestWikiMemberAddDryRunSupportsAppID(t *testing.T) {
+	t.Parallel()
+
+	dry := buildWikiMemberAddDryRun(wikiMemberAddSpec{
+		SpaceID:    "space_42",
+		MemberID:   "cli_app_123",
+		MemberType: "appid",
+		MemberRole: "member",
+	})
+	api := dryRunAPIList(t, dry)
+	if len(api) != 1 || api[0].Method != "POST" || api[0].URL != "/open-apis/wiki/v2/spaces/space_42/members" {
+		t.Fatalf("dry-run api = %#v", api)
+	}
+	if api[0].Body["member_id"] != "cli_app_123" || api[0].Body["member_type"] != "appid" {
+		t.Fatalf("dry-run appid body = %#v", api[0].Body)
+	}
+}
+
 func TestWikiMemberAddDryRunMyLibraryIsTwoStep(t *testing.T) {
 	t.Parallel()
 
@@ -201,6 +230,20 @@ func TestWikiMemberAddRejectsBotWithDepartment(t *testing.T) {
 	}, factory, nil)
 	if err == nil || !strings.Contains(err.Error(), "--as bot does not support --member-type opendepartmentid") {
 		t.Fatalf("expected bot+opendepartmentid rejection, got %v", err)
+	}
+}
+
+func TestWikiMemberAddAcceptsAppIDWithoutFormatValidation(t *testing.T) {
+	t.Parallel()
+
+	cmd := newMemberAddCmd("space_1", "app_123", "appid", "member")
+	runtime := common.TestNewRuntimeContext(cmd, nil)
+	spec, err := readWikiMemberAddSpec(runtime)
+	if err != nil {
+		t.Fatalf("readWikiMemberAddSpec() error = %v", err)
+	}
+	if spec.MemberID != "app_123" || spec.MemberType != "appid" {
+		t.Fatalf("spec = %#v", spec)
 	}
 }
 
@@ -703,6 +746,16 @@ func newMemberRemoveCmd(spaceID, memberID, memberType, memberRole string) *cobra
 	cmd.Flags().String("member-id", memberID, "")
 	cmd.Flags().String("member-type", memberType, "")
 	cmd.Flags().String("member-role", memberRole, "")
+	return cmd
+}
+
+func newMemberAddCmd(spaceID, memberID, memberType, memberRole string) *cobra.Command {
+	cmd := &cobra.Command{Use: "wiki +member-add"}
+	cmd.Flags().String("space-id", spaceID, "")
+	cmd.Flags().String("member-id", memberID, "")
+	cmd.Flags().String("member-type", memberType, "")
+	cmd.Flags().String("member-role", memberRole, "")
+	cmd.Flags().Bool("need-notification", false, "")
 	return cmd
 }
 

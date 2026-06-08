@@ -5,67 +5,103 @@ package sheets
 
 import "github.com/larksuite/cli/shortcuts/common"
 
-// Shortcuts returns all sheets shortcuts.
+// Shortcuts returns all lark-sheets shortcuts. The list is grouped by
+// canonical skill to mirror the sheet-skill-spec layout
+// (lark_sheet_workbook → lark_sheet_float_image).
+//
+// Any shortcut whose command is registered in data/flag-schemas.json gets a
+// PrintFlagSchema closure attached, so the framework can serve
+// `--print-schema --flag-name <name>` locally.
 func Shortcuts() []common.Shortcut {
+	all := shortcutList()
+	// Gate on the codegen'd command set (flag_schemas_gen.go) so registration
+	// — which runs on every CLI invocation — does not parse the 256KB
+	// flag-schemas.json. The blob is unmarshaled lazily (printFlagSchemaFor /
+	// the validate fast-path) only when actually needed.
+	for i := range all {
+		if _, ok := commandsWithSchema[all[i].Command]; ok {
+			all[i].PrintFlagSchema = printFlagSchemaFor(all[i].Command)
+		}
+	}
+	return all
+}
+
+func shortcutList() []common.Shortcut {
 	return []common.Shortcut{
-		// Spreadsheet management
+		// lark_sheet_workbook
+		WorkbookInfo,
 		SheetCreate,
+		SheetDelete,
+		SheetRename,
+		SheetMove,
+		SheetCopy,
+		SheetHide,
+		SheetUnhide,
+		SheetSetTabColor,
+		WorkbookCreate,
+		WorkbookExport,
+
+		// lark_sheet_sheet_structure
 		SheetInfo,
-		SheetExport,
+		DimInsert,
+		DimDelete,
+		DimHide,
+		DimUnhide,
+		DimFreeze,
+		DimGroup,
+		DimUngroup,
+		DimMove,
 
-		// Sheet management
-		SheetCreateSheet,
-		SheetCopySheet,
-		SheetDeleteSheet,
-		SheetUpdateSheet,
+		// lark_sheet_read_data
+		CellsGet,
+		CsvGet,
+		DropdownGet,
 
-		// Cell data
-		SheetRead,
-		SheetWrite,
-		SheetAppend,
-		SheetFind,
-		SheetReplace,
+		// lark_sheet_search_replace
+		CellsSearch,
+		CellsReplace,
 
-		// Cell style and merge
-		SheetSetStyle,
-		SheetBatchSetStyle,
-		SheetMergeCells,
-		SheetUnmergeCells,
+		// lark_sheet_write_cells
+		CellsSet,
+		CellsSetStyle,
+		CellsSetImage,
+		CsvPut,
+		DropdownSet,
 
-		// Cell images
-		SheetWriteImage,
+		// lark_sheet_range_operations
+		CellsClear,
+		CellsMerge,
+		CellsUnmerge,
+		RowsResize,
+		ColsResize,
+		RangeMove,
+		RangeCopy,
+		RangeFill,
+		RangeSort,
 
-		// Row/column management
-		SheetAddDimension,
-		SheetInsertDimension,
-		SheetUpdateDimension,
-		SheetMoveDimension,
-		SheetDeleteDimension,
+		// Object list (one read shortcut per object skill)
+		ChartList,
+		PivotList,
+		CondFormatList,
+		FilterList,
+		FilterViewList,
+		SparklineList,
+		FloatImageList,
 
-		// Filter views
-		SheetCreateFilterView,
-		SheetUpdateFilterView,
-		SheetListFilterViews,
-		SheetGetFilterView,
-		SheetDeleteFilterView,
-		SheetCreateFilterViewCondition,
-		SheetUpdateFilterViewCondition,
-		SheetListFilterViewConditions,
-		SheetGetFilterViewCondition,
-		SheetDeleteFilterViewCondition,
+		// Object CRUD (3 per skill)
+		ChartCreate, ChartUpdate, ChartDelete,
+		PivotCreate, PivotUpdate, PivotDelete,
+		CondFormatCreate, CondFormatUpdate, CondFormatDelete,
+		FilterCreate, FilterUpdate, FilterDelete,
+		FilterViewCreate, FilterViewUpdate, FilterViewDelete,
+		SparklineCreate, SparklineUpdate, SparklineDelete,
+		FloatImageCreate, FloatImageUpdate, FloatImageDelete,
 
-		// Dropdown
-		SheetSetDropdown,
-		SheetUpdateDropdown,
-		SheetGetDropdown,
-		SheetDeleteDropdown,
-
-		// Float images
-		SheetMediaUpload,
-		SheetCreateFloatImage,
-		SheetUpdateFloatImage,
-		SheetGetFloatImage,
-		SheetListFloatImages,
-		SheetDeleteFloatImage,
+		// lark_sheet_batch_update
+		BatchUpdate,
+		CellsBatchSetStyle,
+		CellsBatchClear,
+		DropdownUpdate,
+		DropdownDelete,
 	}
 }

@@ -5,11 +5,10 @@ package mail
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -46,11 +45,21 @@ type failedDraft struct {
 //	  "success_count":  2,
 //	  "failure_count":  1,
 //	  "sent":  [{"draft_id":..., "message_id":..., "thread_id":...}, ...],
-//	  "failed":[{"draft_id":..., "error":...}]
+//	  "failed":[{"draft_id":..., "error":...}],
+//	  "aborted":     true,
+//	  "abort_error": {"type":..., "subtype":..., "code":..., "message":..., "hint":...}
 //	}
 //
 // failed is marked omitempty so a fully successful batch returns a clean shape
 // without an empty array.
+//
+// aborted reports an account-level abort: the failure repeats identically for
+// every draft, so the remaining drafts were not attempted and retrying the
+// batch as-is fails the same way. abort_error carries the typed error that
+// triggered the abort (same wire shape as a stderr error envelope's error
+// object) so callers can route recovery from stdout alone. A --stop-on-error
+// stop does NOT set aborted: there the failure is draft-level and the caller
+// chose to stop early.
 type batchSendOutput struct {
 	MailboxID    string        `json:"mailbox_id"`
 	Total        int           `json:"total"`
@@ -58,6 +67,8 @@ type batchSendOutput struct {
 	FailureCount int           `json:"failure_count"`
 	Sent         []sentDraft   `json:"sent"`
 	Failed       []failedDraft `json:"failed,omitempty"`
+	Aborted      bool          `json:"aborted,omitempty"`
+	AbortError   interface{}   `json:"abort_error,omitempty"`
 }
 
 // MailDraftSend is the `+draft-send` shortcut: send N existing drafts
@@ -66,9 +77,9 @@ type batchSendOutput struct {
 // drafts are user-owned resources and bot has no coherent semantics here.
 //
 // Output schema is the batchSendOutput type above. Partial failures (any
-// failed[]) return exit 1 with envelope.error.type="partial_failure" so that
-// agents can distinguish "all sent" from "some sent" without parsing the
-// success_count field.
+// failed[]) emit an ok:false multi-status envelope so that agents can
+// distinguish "all sent" from "some sent" without parsing the success_count
+// field.
 var MailDraftSend = common.Shortcut{
 	Service: "mail",
 	Command: "+draft-send",
@@ -101,14 +112,16 @@ var MailDraftSend = common.Shortcut{
 //  2. Validate the draft-id slice (non-empty, under MaxBatchSendDrafts cap,
 //     no empty elements).
 //  3. Loop over each draft ID, calling POST .../drafts/:id/send directly via
-//     runtime.CallAPI. Per-draft outcomes:
-//     - fatal err (isFatalSendErr) → return immediately (bypasses --stop-on-error).
+//     runtime.CallAPITyped. Per-draft outcomes:
+//     - fatal err (isFatalSendErr) → abort immediately (bypasses
+//     --stop-on-error): with earlier progress, emit the aborted ledger as the
+//     single failure result; with none, return the typed error directly.
 //     - recoverable err → append to failed[]; honor --stop-on-error.
-//     - success + automation_send_disable signal → return immediately with
-//     ExitAPI/"automation_send_disabled".
+//     - success + automation_send_disable signal → abort the same way with a
+//     failed-precondition error.
 //     - success → append to sent[].
 //  4. Emit batchSendOutput via runtime.Out.
-//  5. If any draft failed, return ExitAPI/"partial_failure" so exit code = 1.
+//  5. If any draft failed, emit ok:false via runtime.OutPartialFailure.
 func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 	mailboxID := resolveComposeMailboxID(rt)
 	draftIDs, err := normalizedDraftSendIDs(rt)
@@ -122,9 +135,9 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 		idx := i + 1
 		writeDraftSendProgressf(rt, "[%d/%d] sending draft %s",
 			idx, len(draftIDs), sanitizeForSingleLine(id))
-		// Direct CallAPI rather than draftpkg.Send: this shortcut never sends
+		// Direct CallAPITyped rather than draftpkg.Send: this shortcut never sends
 		// a body, so the helper's send_time-aware envelope would add no value.
-		data, err := rt.CallAPI("POST",
+		data, err := rt.CallAPITyped("POST",
 			mailboxPath(mailboxID, "drafts", id, "send"), nil, nil)
 		if err != nil {
 			if isFatalSendErr(err) {
@@ -132,13 +145,15 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 					idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(err.Error()))
 				hadProgress := out.hasProgress()
 				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
-				if hadProgress {
-					emitDraftSendOutput(rt, &out)
-				}
 				// Account- / mailbox-level failures (auth, permission, network,
 				// quota) will repeat identically for every remaining draft —
 				// abort immediately so the caller sees a single clear error
-				// instead of 100 redundant failed[] entries.
+				// instead of 100 redundant failed[] entries. With earlier
+				// progress the aborted ledger is the single failure result;
+				// with none, stdout stays empty and the typed error envelope is.
+				if hadProgress {
+					return emitDraftSendAborted(rt, &out, err)
+				}
 				return err
 			}
 			writeDraftSendProgressf(rt, "[%d/%d] failed draft %s: %s",
@@ -150,17 +165,19 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 			continue
 		}
 		if reason := extractAutomationDisabledReason(data); reason != "" {
-			err := output.Errorf(output.ExitAPI, "automation_send_disabled",
-				"automation send is disabled for this mailbox: %s", reason)
+			err := mailFailedPreconditionError(
+				"automation send is disabled for this mailbox: %s", reason).
+				WithHint("enable automation send for this mailbox, or send the draft from the Lark client")
 			writeDraftSendProgressf(rt, "[%d/%d] aborting after draft %s: %s",
 				idx, len(draftIDs), sanitizeForSingleLine(id), sanitizeForSingleLine(err.Error()))
-			if out.hasProgress() {
-				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
-				emitDraftSendOutput(rt, &out)
-			}
 			// HTTP success (code: 0) but the backend signaled automation send
 			// is disabled — every subsequent send will fail the same way, so
-			// abort the batch with a single descriptive error.
+			// abort the batch with a single failure result: the aborted ledger
+			// when earlier drafts made progress, the typed error otherwise.
+			if out.hasProgress() {
+				out.Failed = append(out.Failed, failedDraft{DraftID: id, Error: err.Error()})
+				return emitDraftSendAborted(rt, &out, err)
+			}
 			return err
 		}
 		s := sentDraft{DraftID: id}
@@ -179,13 +196,11 @@ func executeDraftSend(ctx context.Context, rt *common.RuntimeContext) error {
 				idx, len(draftIDs), sanitizeForSingleLine(id))
 		}
 	}
-	emitDraftSendOutput(rt, &out)
-
-	if out.FailureCount == 0 {
+	if len(out.Failed) == 0 {
+		emitDraftSendOutput(rt, &out)
 		return nil
 	}
-	return output.Errorf(output.ExitAPI, "partial_failure",
-		"%d of %d drafts failed to send", out.FailureCount, out.Total)
+	return emitDraftSendPartialFailure(rt, &out)
 }
 
 // dryRunDraftSend builds the --dry-run preview: one POST call per draft ID,
@@ -212,7 +227,7 @@ func normalizedDraftSendIDs(rt *common.RuntimeContext) ([]string, error) {
 
 func normalizeDraftSendIDs(draftIDs []string) ([]string, error) {
 	if len(draftIDs) == 0 {
-		return nil, output.ErrValidation("--draft-id is required")
+		return nil, mailValidationParamError("--draft-id", "--draft-id is required")
 	}
 
 	normalized := make([]string, 0, len(draftIDs))
@@ -220,16 +235,16 @@ func normalizeDraftSendIDs(draftIDs []string) ([]string, error) {
 	for _, id := range draftIDs {
 		trimmed := strings.TrimSpace(id)
 		if trimmed == "" {
-			return nil, output.ErrValidation("--draft-id contains empty value")
+			return nil, mailValidationParamError("--draft-id", "--draft-id contains empty value")
 		}
 		if _, ok := seen[trimmed]; ok {
-			return nil, output.ErrValidation("--draft-id contains duplicate value: %s", trimmed)
+			return nil, mailValidationParamError("--draft-id", "--draft-id contains duplicate value: %s", trimmed)
 		}
 		seen[trimmed] = struct{}{}
 		normalized = append(normalized, trimmed)
 	}
 	if len(normalized) > MaxBatchSendDrafts {
-		return nil, output.ErrValidation(
+		return nil, mailValidationParamError("--draft-id",
 			"too many drafts: %d > %d (split into multiple batches)",
 			len(normalized), MaxBatchSendDrafts)
 	}
@@ -246,6 +261,24 @@ func emitDraftSendOutput(rt *common.RuntimeContext, out *batchSendOutput) {
 	rt.Out(*out, nil)
 }
 
+func emitDraftSendPartialFailure(rt *common.RuntimeContext, out *batchSendOutput) error {
+	out.SuccessCount = len(out.Sent)
+	out.FailureCount = len(out.Failed)
+	return rt.OutPartialFailure(*out, nil)
+}
+
+// emitDraftSendAborted emits the batch ledger as the single failure result for
+// an account-level abort: the ledger carries aborted/abort_error and the
+// returned partial-failure signal sets the exit code without a second error
+// envelope on stderr.
+func emitDraftSendAborted(rt *common.RuntimeContext, out *batchSendOutput, cause error) error {
+	out.Aborted = true
+	if typed, ok := errs.UnwrapTypedError(errs.WrapInternal(cause)); ok {
+		out.AbortError = typed
+	}
+	return emitDraftSendPartialFailure(rt, out)
+}
+
 func writeDraftSendProgressf(rt *common.RuntimeContext, format string, args ...interface{}) {
 	if rt == nil || rt.Factory == nil || rt.Factory.IOStreams == nil || rt.Factory.IOStreams.ErrOut == nil {
 		return
@@ -259,48 +292,34 @@ func writeDraftSendProgressf(rt *common.RuntimeContext, format string, args ...i
 //
 // Trigger conditions:
 //
-//   - err does not unwrap to an *output.ExitError, or its Detail is missing:
+//   - err does not expose a typed Problem:
 //     unknown shapes are treated as fatal so they cannot accidentally
 //     accumulate into failed[] for every remaining draft.
-//   - Detail.Type ∈ {"auth", "app_status", "config", "permission",
-//     "rate_limit", "network"}: token, scope, app-installation problems,
-//     throttling, and connectivity are account-level.
-//   - Code == output.ExitNetwork: connectivity loss is account-level.
-//   - Detail.Code ∈ {LarkErrMailboxNotFound, LarkErrMailSendQuotaUser,
-//     LarkErrMailSendQuotaUserExt, LarkErrMailSendQuotaTenantExt,
-//     LarkErrMailQuota, LarkErrTenantStorageLimit}: mailbox / quota
-//     exhaustion is account-level.
+//   - Problem.Category ∈ {authentication, authorization, config, network,
+//     internal}: token, scope, app-installation problems, throttling,
+//     connectivity, SDK, and invalid-response failures are account-level.
+//   - Problem.Subtype ∈ {rate_limit, quota_exceeded}: throttling and quota
+//     exhaustion are account-level.
+//   - Problem.Code ∈ {1234013, 1236007, 1236008, 1236009, 1236010, 1236013}:
+//     mailbox missing / quota exhaustion is account-level. Mailbox-not-found
+//     stays code-scoped (1234013) rather than matching subtype not_found, so
+//     an unrelated not_found — e.g. a single bad draft ID — remains a
+//     per-draft recoverable failure.
 func isFatalSendErr(err error) bool {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
 		return true
 	}
-	switch exitErr.Detail.Type {
-	case "auth", "app_status", "config":
-		return true
-	case "permission", "rate_limit", "network":
+	switch p.Category {
+	case errs.CategoryAuthentication, errs.CategoryAuthorization, errs.CategoryConfig, errs.CategoryNetwork, errs.CategoryInternal:
 		return true
 	}
-	if exitErr.Code == output.ExitNetwork || wrapsExitCode(err, output.ExitNetwork) {
+	if p.Subtype == errs.SubtypeRateLimit || p.Subtype == errs.SubtypeQuotaExceeded {
 		return true
 	}
-	switch exitErr.Detail.Code {
-	case output.LarkErrMailboxNotFound,
-		output.LarkErrMailSendQuotaUser,
-		output.LarkErrMailSendQuotaUserExt,
-		output.LarkErrMailSendQuotaTenantExt,
-		output.LarkErrMailQuota,
-		output.LarkErrTenantStorageLimit:
+	switch p.Code {
+	case 1234013, 1236007, 1236008, 1236009, 1236010, 1236013:
 		return true
-	}
-	return false
-}
-
-func wrapsExitCode(err error, code int) bool {
-	for unwrapped := errors.Unwrap(err); unwrapped != nil; unwrapped = errors.Unwrap(unwrapped) {
-		if exitErr, ok := unwrapped.(*output.ExitError); ok && exitErr.Code == code {
-			return true
-		}
 	}
 	return false
 }

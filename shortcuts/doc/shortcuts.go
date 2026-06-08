@@ -9,28 +9,44 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 const docsServiceHelpDefault = `Document and content operations.`
 
-const docsServiceHelpV2 = `Document and content operations (v2).`
+const docsSkillReadCommand = "lark-cli skills read lark-doc"
+const docsXMLSkillReadCommand = "lark-cli skills read lark-doc references/lark-doc-xml.md"
+const docsMDSkillReadCommand = "lark-cli skills read lark-doc references/lark-doc-md.md"
+const docsContentSkillHelp = "AI agents MUST read " +
+	docsXMLSkillReadCommand + " before writing any --content payload; " +
+	"when using --doc-format markdown, also read " + docsMDSkillReadCommand + ". " +
+	"Follow the latest rules there, and MUST NOT grep/open local SKILL.md files " +
+	"to discover this guidance"
 
-var docsVersionSelectionTips = []string{
-	"Docs v1 is deprecated and will be removed soon. Check the installed lark-doc skill first; if it is not the v2 skill, run `lark-cli update` to upgrade skills.",
-	"After confirming lark-doc is v2, follow that skill's examples and use `--api-version v2` with docs +create, docs +fetch, and docs +update.",
-}
-
-var docsV2VersionSelectionTips = []string{
-	"Check the installed lark-doc skill first; if it is not the v2 skill, run `lark-cli update` to upgrade skills.",
-}
-
-func docsTipsForVersion(apiVersion string) []string {
-	if apiVersion == "v2" {
-		return docsV2VersionSelectionTips
+func docsSkillReadCommandForShortcut(shortcut string) string {
+	switch strings.TrimPrefix(shortcut, "+") {
+	case "create":
+		return docsSkillReadCommand + " references/lark-doc-create.md"
+	case "fetch":
+		return docsSkillReadCommand + " references/lark-doc-fetch.md"
+	case "update":
+		return docsSkillReadCommand + " references/lark-doc-update.md"
+	default:
+		return docsSkillReadCommand
 	}
-	return docsVersionSelectionTips
+}
+
+func docsHelpCommandForShortcut(shortcut string) string {
+	switch strings.TrimPrefix(shortcut, "+") {
+	case "create":
+		return "lark-cli docs +create --help"
+	case "fetch":
+		return "lark-cli docs +fetch --help"
+	case "update":
+		return "lark-cli docs +update --help"
+	default:
+		return "lark-cli docs --help"
+	}
 }
 
 // Shortcuts returns all docs shortcuts.
@@ -48,45 +64,32 @@ func Shortcuts() []common.Shortcut {
 }
 
 // ConfigureServiceHelp adds docs-specific guidance to the parent `docs` command.
-// The shortcut-level help remains compatible with legacy v1 skills; this parent
-// help switches docs guidance to match the selected API version.
 func ConfigureServiceHelp(cmd *cobra.Command) {
 	if cmd == nil {
 		return
 	}
-	serviceCmd := cmd
-	cmd.Long = strings.TrimSpace(docsServiceHelpDefault)
-	if cmd.Flags().Lookup("api-version") == nil {
-		cmd.Flags().String("api-version", "", "show docs help for API version (v1|v2)")
-		cmdutil.RegisterFlagCompletion(cmd, "api-version", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-			return []string{"v1", "v2"}, cobra.ShellCompDirectiveNoFileComp
-		})
+	cmd.Long = docsHelpLong(docsServiceHelpDefault, docsSkillReadCommand)
+}
+
+func installDocsShortcutHelp(command string) func(*cobra.Command) {
+	return func(cmd *cobra.Command) {
+		cmd.Long = docsHelpLong(cmd.Short, docsSkillReadCommandForShortcut(command))
 	}
+}
 
-	defaultHelp := cmd.HelpFunc()
-	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
-		if cmd != serviceCmd {
-			defaultHelp(cmd, args)
-			return
-		}
+func docsHelpLong(summary, skillReadCommand string) string {
+	return strings.TrimSpace(fmt.Sprintf(`%s
 
-		apiVersion, _ := cmd.Flags().GetString("api-version")
-		previousLong := cmd.Long
-		if apiVersion == "v2" {
-			cmd.Long = strings.TrimSpace(docsServiceHelpV2)
-		} else {
-			cmd.Long = strings.TrimSpace(docsServiceHelpDefault)
-		}
-		defer func() {
-			cmd.Long = previousLong
-		}()
+Start here (required for AI agents):
+  %s
 
-		defaultHelp(cmd, args)
-		out := cmd.OutOrStdout()
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Tips:")
-		for _, tip := range docsTipsForVersion(apiVersion) {
-			fmt.Fprintf(out, "    • %s\n", tip)
-		}
-	})
+  AI agents MUST read the matching embedded skill before choosing flags
+  or running docs commands. Do not skip this step, and do not infer
+  workflows from --help alone. MUST NOT grep/open local SKILL.md files
+  to discover this guidance; use %s so content stays version-matched
+  with this CLI. Skills ship with the CLI and include docs workflows,
+  selector/block-id usage, XML/Markdown formats, and copy-paste examples.
+
+  skills read lark-doc                Docs workflow guide
+  skills read lark-doc <path>         Read a referenced docs skill file`, strings.TrimSpace(summary), skillReadCommand, skillReadCommand))
 }

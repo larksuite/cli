@@ -5,6 +5,8 @@
 - **Thread**: A reply thread under a message, identified by `thread_id` (om_xxx or omt_xxx).
 - **Reaction**: An emoji reaction on a message.
 - **Flag**: A bookmark on a message or thread.
+- **Feed Shortcut**: A chat pinned to the current user's feed sidebar, identified by `feed_card_id` (an `oc_xxx` open_chat_id for CHAT type).
+- **Feed Group**: A tag that groups feed cards in the feed list, identified by `feed_group_id` (ofg_xxx). Members are feed cards, each identified by `feed_id` + `feed_type`. Two types: `normal` (members managed explicitly) and `rule` (members auto-derived from rules).
 
 ## Resource Relationships
 
@@ -51,3 +53,15 @@ Flags support two layers:
 Item types for feed-layer flags:
 - **ItemTypeThread** (4) = thread in a topic-style chat
 - **ItemTypeMsgThread** (11) = thread in a regular chat
+
+### Feed Shortcut
+
+Feed shortcuts add chats to the **current user's** feed sidebar. They are distinct from flags:
+
+- **Flag** = bookmark on a message/thread, scoped to the user's bookmark list.
+- **Feed shortcut** = entry in the user's feed sidebar (currently only chats).
+
+Key limits:
+- Only **CHAT-type** (`feed_card_id` is `oc_xxx`) is exposed via OpenAPI; doc/app/subscription shortcuts exist internally but are not yet whitelisted.
+- All three operations (create/remove/list) are **user-identity only** — they sign with `user_access_token`.
+- Batch size is **10 per call** for create/remove; list is a one-page wrapper with opaque `page_token` pagination.

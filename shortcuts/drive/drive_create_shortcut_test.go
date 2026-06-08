@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -312,24 +313,24 @@ func TestDriveCreateShortcutClassifiesKnownAPIConstraints(t *testing.T) {
 				t.Fatal("expected API error, got nil")
 			}
 
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-				t.Fatalf("expected structured exit error, got %v", err)
+			var apiErr *errs.APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("expected *errs.APIError, got %T (%v)", err, err)
 			}
-			if exitErr.Code != output.ExitAPI {
-				t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitAPI)
+			if output.ExitCodeOf(err) != output.ExitAPI {
+				t.Fatalf("exit code = %d, want %d", output.ExitCodeOf(err), output.ExitAPI)
 			}
-			if exitErr.Detail.Type != tt.wantType {
-				t.Fatalf("type = %q, want %q", exitErr.Detail.Type, tt.wantType)
+			if string(apiErr.Subtype) != tt.wantType {
+				t.Fatalf("subtype = %q, want %q", apiErr.Subtype, tt.wantType)
 			}
-			if exitErr.Detail.Code != tt.code {
-				t.Fatalf("detail code = %d, want %d", exitErr.Detail.Code, tt.code)
+			if apiErr.Code != tt.code {
+				t.Fatalf("code = %d, want %d", apiErr.Code, tt.code)
 			}
-			if !strings.Contains(exitErr.Detail.Message, tt.wantMsgPart) {
-				t.Fatalf("message = %q, want substring %q", exitErr.Detail.Message, tt.wantMsgPart)
+			if !strings.Contains(apiErr.Message, tt.wantMsgPart) {
+				t.Fatalf("message = %q, want substring %q", apiErr.Message, tt.wantMsgPart)
 			}
-			if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
-				t.Fatalf("hint = %q, want substring %q", exitErr.Detail.Hint, tt.wantHint)
+			if !strings.Contains(apiErr.Hint, tt.wantHint) {
+				t.Fatalf("hint = %q, want substring %q", apiErr.Hint, tt.wantHint)
 			}
 		})
 	}

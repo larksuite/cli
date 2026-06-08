@@ -13,9 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 func inferTaskMemberType(id string) string {
@@ -107,7 +106,7 @@ func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}
 	// Handle generic JSON payload if provided
 	if dataStr := runtime.Str("data"); dataStr != "" {
 		if err := json.Unmarshal([]byte(dataStr), &body); err != nil {
-			return nil, output.ErrValidation("--data must be a valid JSON object: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a valid JSON object: %v", err).WithParam("--data")
 		}
 	}
 
@@ -143,7 +142,7 @@ func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}
 	if dueStr := runtime.Str("due"); dueStr != "" {
 		dueObj, err := parseTaskTime(dueStr)
 		if err != nil {
-			return nil, output.ErrValidation("failed to parse due time: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "failed to parse due time: %v", err).WithParam("--due")
 		}
 		body["due"] = dueObj
 	}
@@ -154,7 +153,7 @@ func buildTaskCreateBody(runtime *common.RuntimeContext) (map[string]interface{}
 
 	summary, _ := body["summary"].(string)
 	if strings.TrimSpace(summary) == "" {
-		return nil, output.ErrValidation("task summary is required")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "task summary is required").WithParam("--summary")
 	}
 
 	return body, nil
@@ -194,27 +193,11 @@ var CreateTask = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body, err := buildTaskCreateBody(runtime)
 		if err != nil {
-			return WrapTaskError(ErrCodeTaskInvalidParams, err.Error(), "create task")
+			return err
 		}
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
-
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPost,
-			ApiPath:     "/open-apis/task/v2/tasks",
-			QueryParams: queryParams,
-			Body:        body,
-		})
-
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return output.Errorf(output.ExitAPI, "api_error", "failed to parse response: %v", parseErr)
-			}
-		}
-
-		data, err := HandleTaskApiResult(result, err, "create task")
+		params := map[string]interface{}{"user_id_type": "open_id"}
+		data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks", params, body)
 		if err != nil {
 			return err
 		}

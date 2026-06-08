@@ -5,11 +5,13 @@ package vc
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -239,6 +241,16 @@ func TestSearch_Validation_InvalidPageSize(t *testing.T) {
 	if !strings.Contains(err.Error(), "must be between 1 and 30") {
 		t.Fatalf("unexpected error message: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--page-size" {
+		t.Fatalf("Param = %q, want --page-size", ve.Param)
+	}
 }
 
 func TestSearch_DryRun(t *testing.T) {
@@ -258,4 +270,183 @@ func TestSearch_InvalidTimeRange(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid time")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed error envelope assertions (errs migration lock-in)
+// ---------------------------------------------------------------------------
+
+func TestParseTimeRange_InvalidStart_TypedError(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("start", "", "")
+	cmd.Flags().String("end", "", "")
+	_ = cmd.Flags().Set("start", "not-a-date")
+	runtime := common.TestNewRuntimeContext(cmd, cfg)
+
+	_, _, err := parseTimeRange(runtime)
+	if err == nil {
+		t.Fatal("expected error for invalid --start")
+	}
+	if !strings.Contains(err.Error(), "--start:") {
+		t.Errorf("message should contain '--start:', got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("Param = %q, want \"--start\"", ve.Param)
+	}
+}
+
+func TestParseTimeRange_InvalidEnd_TypedError(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("start", "", "")
+	cmd.Flags().String("end", "", "")
+	_ = cmd.Flags().Set("end", "not-a-date")
+	runtime := common.TestNewRuntimeContext(cmd, cfg)
+
+	_, _, err := parseTimeRange(runtime)
+	if err == nil {
+		t.Fatal("expected error for invalid --end")
+	}
+	if !strings.Contains(err.Error(), "--end:") {
+		t.Errorf("message should contain '--end:', got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--end" {
+		t.Errorf("Param = %q, want \"--end\"", ve.Param)
+	}
+}
+
+func TestParseTimeRange_StartAfterEnd_TypedError(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("start", "", "")
+	cmd.Flags().String("end", "", "")
+	_ = cmd.Flags().Set("start", "2026-03-25T00:00+08:00")
+	_ = cmd.Flags().Set("end", "2026-03-24T00:00+08:00")
+	runtime := common.TestNewRuntimeContext(cmd, cfg)
+
+	_, _, err := parseTimeRange(runtime)
+	if err == nil {
+		t.Fatal("expected error for start after end")
+	}
+	if !strings.Contains(err.Error(), "--start") || !strings.Contains(err.Error(), "--end") {
+		t.Errorf("message should mention --start and --end, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("Param = %q, want \"--start\"", ve.Param)
+	}
+}
+
+func TestSearch_Validation_QueryTooLong_TypedError(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("query", "", "")
+	cmd.Flags().String("start", "", "")
+	cmd.Flags().String("end", "", "")
+	cmd.Flags().String("organizer-ids", "", "")
+	cmd.Flags().String("participant-ids", "", "")
+	cmd.Flags().String("room-ids", "", "")
+	cmd.Flags().String("page-size", "", "")
+	_ = cmd.Flags().Set("query", strings.Repeat("x", 51))
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	err := VCSearch.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error for overlong query")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--query" {
+		t.Errorf("Param = %q, want \"--query\"", ve.Param)
+	}
+}
+
+func TestSearch_Validation_NoFilter_TypedError(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCSearch, []string{"+search", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for no filter")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+}
+
+func TestBuildSearchParams(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "test", AppSecret: "s", Brand: core.BrandFeishu}
+
+	t.Run("defaults", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("page-token", "", "")
+		cmd.Flags().String("page-size", "", "")
+		runtime := common.TestNewRuntimeContext(cmd, cfg)
+		params := buildSearchParams(runtime)
+		if params["page_size"] != "15" {
+			t.Errorf("page_size = %v, want \"15\"", params["page_size"])
+		}
+		if _, ok := params["page_token"]; ok {
+			t.Error("page_token should be absent when not set")
+		}
+	})
+
+	t.Run("custom page-size and page-token", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("page-token", "", "")
+		cmd.Flags().String("page-size", "", "")
+		_ = cmd.Flags().Set("page-size", "20")
+		_ = cmd.Flags().Set("page-token", "tok123")
+		runtime := common.TestNewRuntimeContext(cmd, cfg)
+		params := buildSearchParams(runtime)
+		if params["page_size"] != "20" {
+			t.Errorf("page_size = %v, want \"20\"", params["page_size"])
+		}
+		if params["page_token"] != "tok123" {
+			t.Errorf("page_token = %v, want \"tok123\"", params["page_token"])
+		}
+	})
+
+	t.Run("values are scalars not slices", func(t *testing.T) {
+		cmd := &cobra.Command{Use: "test"}
+		cmd.Flags().String("page-token", "", "")
+		cmd.Flags().String("page-size", "", "")
+		_ = cmd.Flags().Set("page-size", "10")
+		_ = cmd.Flags().Set("page-token", "p")
+		runtime := common.TestNewRuntimeContext(cmd, cfg)
+		params := buildSearchParams(runtime)
+		if _, isSlice := params["page_size"].([]string); isSlice {
+			t.Error("page_size must be a scalar string, not []string")
+		}
+		if _, isSlice := params["page_token"].([]string); isSlice {
+			t.Error("page_token must be a scalar string, not []string")
+		}
+	})
 }

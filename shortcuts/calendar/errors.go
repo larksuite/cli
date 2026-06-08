@@ -6,68 +6,39 @@ package calendar
 import (
 	"errors"
 	"fmt"
+	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
-const (
-	errCodeInvalidParamsWithDetail = 190014
-)
-
-// getErrorDetailValue extracts the first detail value from the output.ErrDetail.
-// It assumes Detail is a map containing a "details" array of objects with "value" string fields.
-// For example: {"details": [{"value": "error message 1"}, {"value": "error message 2"}]}
-// Returns an empty string if the structure doesn't match or the array is empty.
-//
-// Deprecated: getErrorDetailValue reads from the legacy *output.ErrDetail
-// that predates the typed error contract introduced by errs/. New code MUST
-// NOT use it — typed errs.* errors expose Message, Hint, and extension
-// fields directly on the typed struct via errors.As / errs.ProblemOf. This
-// helper is retained only while existing call sites are migrated; it will
-// be removed once they have moved to the typed surface.
-func getErrorDetailValue(e *output.ErrDetail) string {
-	if e == nil || e.Detail == nil {
-		return ""
-	}
-
-	errMap, ok := e.Detail.(map[string]interface{})
-	if !ok {
-		return ""
-	}
-
-	details, ok := errMap["details"].([]interface{})
-	if !ok || len(details) == 0 {
-		return ""
-	}
-
-	detailObj, ok := details[0].(map[string]interface{})
-	if !ok {
-		return ""
-	}
-
-	val, _ := detailObj["value"].(string)
-	return val
-}
-
-// wrapPredefinedError wraps an error into *output.ExitError if it matches predefined error codes.
-// Currently handles error code 190014 (invalid params with detail), extracting the detail value into the message.
-// If the error is nil or doesn't match predefined codes, returns the original error.
-func wrapPredefinedError(err error) error {
+// withStepContext annotates err with multi-step context (e.g. which steps
+// already completed, or that a rollback ran) while preserving the underlying
+// failure's classification. An already-typed error keeps its own
+// category/subtype/code/log_id; we only append the formatted context to its
+// Hint so the top-level envelope still tells the truth about what failed.
+// Only an unclassified error falls back to a typed internal wrap.
+func withStepContext(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	extra := fmt.Sprintf(format, args...)
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint = p.Hint + "\n" + extra
+		} else {
+			p.Hint = extra
+		}
 		return err
 	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "%s", err.Error()).WithHint(extra).WithCause(err)
+}
 
-	if exitErr.Detail.Code == errCodeInvalidParamsWithDetail {
-		if val := getErrorDetailValue(exitErr.Detail); val != "" {
-			fullMsg := fmt.Sprintf("%s: %s", exitErr.Detail.Message, val)
-			return output.ErrAPI(exitErr.Detail.Code, fullMsg, exitErr.Detail.Detail)
-		}
+// withParam attaches the offending flag to a typed validation error, preserving
+// the original error instead of re-wrapping it. Non-validation errors pass through.
+func withParam(err error, flag string) error {
+	var ve *errs.ValidationError
+	if errors.As(err, &ve) {
+		return ve.WithParam(flag)
 	}
-
 	return err
 }

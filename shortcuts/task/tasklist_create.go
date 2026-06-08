@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -50,24 +50,18 @@ var CreateTasklist = common.Shortcut{
 
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildTasklistCreateBody(runtime)
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPost,
-			ApiPath:     "/open-apis/task/v2/tasklists",
-			QueryParams: queryParams,
-			Body:        body,
-		})
-
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse create tasklist")
+		// Validate --data (client input) before any remote write, so a malformed
+		// payload fails fast without creating an orphan tasklist.
+		var tasks []map[string]interface{}
+		if dataStr := runtime.Str("data"); dataStr != "" {
+			if err := json.Unmarshal([]byte(dataStr), &tasks); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "failed to parse --data as JSON array: %v", err).WithParam("--data")
 			}
 		}
 
-		data, err := HandleTaskApiResult(result, err, "create tasklist")
+		data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasklists", params, body)
 		if err != nil {
 			return err
 		}
@@ -78,16 +72,10 @@ var CreateTasklist = common.Shortcut{
 		tasklistUrl, _ := tasklist["url"].(string)
 		tasklistUrl = truncateTaskURL(tasklistUrl)
 
-		// Create tasks if data is provided
-		var tasks []map[string]interface{}
 		var createdTasks []map[string]interface{}
-		var failedTasks []string
+		var failedTasks []map[string]interface{}
 
-		if dataStr := runtime.Str("data"); dataStr != "" {
-			if err := json.Unmarshal([]byte(dataStr), &tasks); err != nil {
-				return WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("failed to parse --data as JSON array: %v", err), "parse data")
-			}
-
+		if len(tasks) > 0 {
 			var wg sync.WaitGroup
 			var mu sync.Mutex
 
@@ -120,27 +108,14 @@ var CreateTasklist = common.Shortcut{
 						delete(tDef, "assignee")
 					}
 
-					tResp, tErr := runtime.DoAPI(&larkcore.ApiReq{
-						HttpMethod:  http.MethodPost,
-						ApiPath:     "/open-apis/task/v2/tasks",
-						QueryParams: queryParams,
-						Body:        tDef,
-					})
+					tData, tErr := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks", params, tDef)
 
 					mu.Lock()
 					defer mu.Unlock()
 
-					var tResult map[string]interface{}
-					if tErr == nil {
-						if json.Unmarshal(tResp.RawBody, &tResult) != nil {
-							tErr = WrapTaskError(ErrCodeTaskInternalError, "failed to parse task response", "parse task")
-						}
-					}
-
-					tData, tErr := HandleTaskApiResult(tResult, tErr, "create task in tasklist")
 					if tErr != nil {
 						summary, _ := tDef["summary"].(string)
-						failedTasks = append(failedTasks, fmt.Sprintf("Index %d (%s): %v", idx, summary, tErr))
+						failedTasks = append(failedTasks, buildTaskCreateFailure(idx, summary, tErr))
 						return
 					}
 
@@ -163,9 +138,10 @@ var CreateTasklist = common.Shortcut{
 			"guid":          tasklistGuid,
 			"url":           tasklistUrl,
 			"created_tasks": createdTasks,
+			"failed_tasks":  failedTasks,
 		}
 
-		runtime.OutFormat(outData, nil, func(w io.Writer) {
+		pretty := func(w io.Writer) {
 			fmt.Fprintf(w, "✅ Tasklist created successfully!\n")
 			fmt.Fprintf(w, "Tasklist Name: %s\n", tasklistName)
 			fmt.Fprintf(w, "Tasklist ID: %s\n", tasklistGuid)
@@ -188,13 +164,43 @@ var CreateTasklist = common.Shortcut{
 				if len(failedTasks) > 0 {
 					fmt.Fprintf(w, "\nFailed tasks:\n")
 					for _, f := range failedTasks {
-						fmt.Fprintf(w, "  - %s\n", f)
+						fmt.Fprintf(w, "  - Index %v (%s): %s\n", f["index"], f["summary"], f["message"])
 					}
 				}
 			}
-		})
+		}
+
+		// Sub-task creation failures surface as a non-zero exit. JSON/JQ callers
+		// need an ok:false envelope, while pretty output should preserve the
+		// command-specific human-readable summary.
+		if len(failedTasks) > 0 {
+			if runtime.Format == "pretty" && runtime.JqExpr == "" {
+				runtime.OutFormat(outData, nil, pretty)
+				return output.PartialFailure(output.ExitAPI)
+			}
+			return runtime.OutPartialFailure(outData, nil)
+		}
+
+		runtime.OutFormat(outData, nil, pretty)
 		return nil
 	},
+}
+
+func buildTaskCreateFailure(index int, summary string, err error) map[string]interface{} {
+	failDetail := map[string]interface{}{
+		"index":   index,
+		"summary": summary,
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		failDetail["type"] = string(p.Subtype)
+		failDetail["code"] = p.Code
+		failDetail["message"] = p.Message
+		failDetail["hint"] = p.Hint
+	} else {
+		failDetail["type"] = "api_error"
+		failDetail["message"] = err.Error()
+	}
+	return failDetail
 }
 
 func buildTasklistCreateBody(runtime *common.RuntimeContext) map[string]interface{} {

@@ -6,10 +6,13 @@ package drive
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -80,6 +83,34 @@ func TestDriveInspectValidate_BareTokenWithType(t *testing.T) {
 	err := DriveInspect.Validate(context.Background(), runtime)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestDriveInspectValidate_URLTypeConflict(t *testing.T) {
+	cmd := &cobra.Command{Use: "drive +inspect"}
+	cmd.Flags().String("url", "", "")
+	cmd.Flags().String("type", "", "")
+	_ = cmd.Flags().Set("url", "https://xxx.feishu.cn/docx/doxcnBareToken")
+	_ = cmd.Flags().Set("type", "sheet")
+
+	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	err := DriveInspect.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected error for conflicting --type, got nil")
+	}
+}
+
+func TestDriveInspectValidate_BareTokenWithPathFragment(t *testing.T) {
+	cmd := &cobra.Command{Use: "drive +inspect"}
+	cmd.Flags().String("url", "", "")
+	cmd.Flags().String("type", "", "")
+	_ = cmd.Flags().Set("url", "doxcnBareToken/extra")
+	_ = cmd.Flags().Set("type", "docx")
+
+	runtime := common.TestNewRuntimeContext(cmd, &core.CliConfig{})
+	err := DriveInspect.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected error for bare token with path fragment, got nil")
 	}
 }
 
@@ -539,6 +570,76 @@ func TestDriveInspectExecute_BatchQueryError(t *testing.T) {
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected error for batch_query failure, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T", err)
+	}
+	if !strings.Contains(p.Message, "query document metadata failed") {
+		t.Fatalf("message = %q, want query document metadata prefix", p.Message)
+	}
+}
+
+func TestDriveInspectExecute_RetriesRateLimitOnWikiResolve(t *testing.T) {
+	cfg := driveTestConfig()
+	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request trigger frequency limit",
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":   "docx",
+					"obj_token":  "doxcnUnwrapped",
+					"space_id":   "space123",
+					"node_token": "wikcnNodeToken",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "doxcnUnwrapped", "doc_type": "docx", "title": "Wiki Doc"},
+				},
+			},
+		},
+	})
+
+	origAfter := driveInspectAfter
+	driveInspectAfter = func(time.Duration) <-chan time.Time {
+		ch := make(chan time.Time, 1)
+		ch <- time.Now()
+		return ch
+	}
+	defer func() { driveInspectAfter = origAfter }()
+
+	err := mountAndRunDrive(t, DriveInspect, []string{
+		"+inspect",
+		"--url", "https://xxx.feishu.cn/wiki/wikcnABC",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error after retry: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if data["token"] != "doxcnUnwrapped" {
+		t.Fatalf("token = %v, want doxcnUnwrapped", data["token"])
 	}
 }
 

@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -44,12 +44,12 @@ func TestMinutesSpeakerReplace_Validate(t *testing.T) {
 		{
 			name:    "invalid from prefix",
 			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
-			wantErr: "--from-user-id",
+			wantErr: "invalid user ID format",
 		},
 		{
 			name:    "invalid to prefix",
 			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_a", "--to-user-id", "u_b", "--as", "user"},
-			wantErr: "--to-user-id",
+			wantErr: "invalid user ID format",
 		},
 		{
 			name:    "from equals to",
@@ -71,6 +71,52 @@ func TestMinutesSpeakerReplace_Validate(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error should contain %q, got: %s", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
+func TestMinutesSpeakerReplace_ValidateTyped(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	tests := []struct {
+		name      string
+		args      []string
+		wantParam string
+	}{
+		{
+			name:      "invalid from prefix",
+			args:      []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
+			wantParam: "--from-user-id",
+		},
+		{
+			name:      "from equals to",
+			args:      []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_same", "--to-user-id", "ou_same", "--as", "user"},
+			wantParam: "--to-user-id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "minutes"}
+			MinutesSpeakerReplace.Mount(parent, f)
+			parent.SetArgs(tt.args)
+			parent.SilenceErrors = true
+			parent.SilenceUsage = true
+			err := parent.Execute()
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("want *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype=%q", ve.Subtype)
+			}
+			if ve.Param != tt.wantParam {
+				t.Errorf("param=%q, want %q", ve.Param, tt.wantParam)
 			}
 		})
 	}
@@ -179,24 +225,21 @@ func TestMinutesSpeakerReplace_SpeakerNotFound(t *testing.T) {
 		t.Fatal("expected speaker-not-found error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("expected structured error detail, got nil")
+	if p.Subtype != errs.SubtypeNotFound {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeNotFound)
 	}
-	if exitErr.Detail.Type != "speaker_not_found" {
-		t.Errorf("error type = %q, want speaker_not_found", exitErr.Detail.Type)
+	if !strings.Contains(p.Message, "Speaker not found") {
+		t.Errorf("message should be friendly, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "Speaker not found") {
-		t.Errorf("message should be friendly, got: %s", exitErr.Detail.Message)
+	if !strings.Contains(p.Message, "ou_missing_speaker") {
+		t.Errorf("message should include missing speaker id, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "ou_missing_speaker") {
-		t.Errorf("message should include missing speaker id, got: %s", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "--from-user-id") {
-		t.Errorf("hint should mention --from-user-id, got: %s", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "--from-user-id") {
+		t.Errorf("hint should mention --from-user-id, got: %s", p.Hint)
 	}
 }
 
@@ -225,23 +268,20 @@ func TestMinutesSpeakerReplace_NoEditPermission(t *testing.T) {
 		t.Fatal("expected no-edit-permission error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("expected structured error detail, got nil")
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
 	}
-	if exitErr.Detail.Type != "no_edit_permission" {
-		t.Errorf("error type = %q, want no_edit_permission", exitErr.Detail.Type)
+	if !strings.Contains(p.Message, "No edit permission") {
+		t.Errorf("message should be friendly, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "No edit permission") {
-		t.Errorf("message should be friendly, got: %s", exitErr.Detail.Message)
+	if !strings.Contains(p.Message, minutesSpeakerReplaceTestToken) {
+		t.Errorf("message should include minute token, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, minutesSpeakerReplaceTestToken) {
-		t.Errorf("message should include minute token, got: %s", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "edit permission") {
-		t.Errorf("hint should mention edit permission, got: %s", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "edit permission") {
+		t.Errorf("hint should mention edit permission, got: %s", p.Hint)
 	}
 }

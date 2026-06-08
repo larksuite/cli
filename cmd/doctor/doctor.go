@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/update"
 )
 
@@ -152,7 +153,9 @@ func networkChecks(ctx context.Context, opts *DoctorOptions, ep core.Endpoints) 
 		}
 	}
 
-	httpClient := &http.Client{}
+	// Use the shared proxy-plugin-aware transport so connectivity checks reflect
+	// the real egress path (and are blocked when proxy plugin fails closed).
+	httpClient := transport.NewHTTPClient(0)
 	mcpURL := ep.MCP + "/mcp"
 
 	type probeResult struct {

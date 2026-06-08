@@ -57,6 +57,14 @@ linters:
       - path: internal/vfs/
         linters:
           - forbidigo
+      # internal/gen build-time generators (standalone `package main` run via
+      # go:generate) are not shortcut runtime code — no ctx/runtime/framework —
+      # so the shortcut forbidigo bans don't apply. Going "compliant" is also
+      # impossible here: a structured error return needs os.Exit (also banned),
+      # and the vfs.Xxx() alternative is blocked by depguard shortcuts-no-vfs.
+      - path: shortcuts/.*/internal/gen/
+        linters:
+          - forbidigo
       # shortcuts-no-raw-http is shortcuts-only; internal/ wraps raw HTTP
       # for the client / credential layer.
       - path-except: shortcuts/
@@ -65,8 +73,21 @@ linters:
           - forbidigo
       # errs-typed-only enforced on paths already migrated to errs.NewXxxError.
       # Add a path when its migration is complete.
-      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/calendar/helpers\.go)
+      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/base/|shortcuts/calendar/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/)
         text: errs-typed-only
+        linters:
+          - forbidigo
+      # errs-no-bare-wrap enforced on paths fully migrated to typed final
+      # errors. Scoped separately from errs-typed-only because cmd/auth/,
+      # cmd/config/ still have residual fmt.Errorf and must not be caught.
+      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/common/mcp_client\.go)
+        text: errs-no-bare-wrap
+        linters:
+          - forbidigo
+      # errs-no-legacy-helper enforced on domains whose shared validation/save
+      # helpers have migrated to typed final errors.
+      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/)
+        text: errs-no-legacy-helper
         linters:
           - forbidigo
 
@@ -94,6 +115,21 @@ linters:
           msg: >-
             [errs-typed-only] use errs.NewXxxError(...) builder
             (see errs/types.go).
+        # ── legacy shared error helpers banned on migrated domains ──
+        # These helpers emit legacy output.Err* / bare error shapes or drop
+        # typed metadata such as Param/Cause. Migrated domains must use typed
+        # common replacements or local typed helpers instead.
+        - pattern: (common\.FlagErrorf|common\.RejectDangerousChars|common\.WrapInputStatError|common\.WrapSaveErrorByCategory)\b
+          msg: >-
+            [errs-no-legacy-helper] these shared helpers emit legacy or
+            metadata-poor error shapes. Use typed common replacements, typed
+            errs.NewXxxError builders, or domain-local typed helpers.
+        # ── bare error wraps banned on fully-typed paths ──
+        - pattern: (fmt\.Errorf|errors\.New)\b
+          msg: >-
+            [errs-no-bare-wrap] final errors must be typed (errs.NewXxxError);
+            wrap a cause with .WithCause(err). Genuine intermediate wraps:
+            //nolint:forbidigo with a reason.
         # ── http: shortcuts must not construct raw HTTP requests ──
         # Bans request / client construction; constants (http.MethodPost,
         # http.StatusOK) and pure helpers (http.StatusText, http.Header) are

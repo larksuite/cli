@@ -5,7 +5,6 @@ package base
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -117,7 +116,7 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 		for idx, item := range fieldItems {
 			body, ok := item.(map[string]interface{})
 			if !ok {
-				return fmt.Errorf("--fields item %d must be an object", idx+1)
+				return baseValidationErrorf("--fields item %d must be an object", idx+1)
 			}
 			if idx == 0 && len(defaultFields) > 0 {
 				fieldData, err := baseV3Call(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldID(defaultFields[0])), nil, body)

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 // --- suggest (long-flag) ---
@@ -175,35 +175,41 @@ func newFakeMailCmd() *cobra.Command {
 	return c
 }
 
-func TestFlagSuggestErrorFunc_LongUnknown_ReturnsExitError(t *testing.T) {
+func requireFlagSuggestValidation(t *testing.T, got error) *errs.ValidationError {
+	t.Helper()
+	var validationErr *errs.ValidationError
+	require.True(t, errors.As(got, &validationErr), "expected *errs.ValidationError, got %T", got)
+	p, ok := errs.ProblemOf(got)
+	require.True(t, ok, "expected typed Problem")
+	assert.Equal(t, errs.CategoryValidation, p.Category)
+	assert.Equal(t, errs.SubtypeInvalidArgument, p.Subtype)
+	return validationErr
+}
+
+func paramReason(params []errs.InvalidParam, name string) (string, bool) {
+	for _, p := range params {
+		if p.Name == name {
+			return p.Reason, true
+		}
+	}
+	return "", false
+}
+
+func TestFlagSuggestErrorFunc_LongUnknown_ReturnsTypedValidation(t *testing.T) {
 	cmd := newFakeMailCmd()
 	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --tos"))
 
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr), "expected *output.ExitError, got %T", got)
-	require.NotNil(t, exitErr.Detail)
-	assert.Equal(t, "unknown_flag", exitErr.Detail.Type)
-	assert.Equal(t, "unknown flag: --tos", exitErr.Detail.Message)
-	assert.Contains(t, exitErr.Detail.Hint, "--to")
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.Equal(t, "unknown flag: --tos", validationErr.Message)
+	assert.Equal(t, "--tos", validationErr.Param)
+	assert.Contains(t, validationErr.Hint, "--to")
 
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	require.True(t, ok, "Detail.Detail should be map[string]any")
-	assert.Equal(t, "--tos", detail["unknown"])
-	assert.Equal(t, cmd.CommandPath(), detail["command_path"])
-
-	cands, ok := detail["candidates"].([]Candidate)
-	require.True(t, ok, "candidates should be []Candidate")
-	require.NotEmpty(t, cands)
-
-	var foundTo bool
-	for _, c := range cands {
-		if c.Flag == "--to" {
-			foundTo = true
-			assert.Equal(t, "prefix", c.Reason)
-			break
-		}
-	}
-	assert.True(t, foundTo, "expected --to in candidates")
+	reason, ok := paramReason(validationErr.Params, "--tos")
+	require.True(t, ok, "unknown flag should be included in params")
+	assert.Equal(t, "unknown flag", reason)
+	reason, ok = paramReason(validationErr.Params, "--to")
+	require.True(t, ok, "expected --to in candidate params")
+	assert.Contains(t, reason, "candidate (prefix")
 }
 
 func TestFlagSuggestErrorFunc_NotUnknownFlag_PassesThrough(t *testing.T) {
@@ -214,14 +220,13 @@ func TestFlagSuggestErrorFunc_NotUnknownFlag_PassesThrough(t *testing.T) {
 	assert.Same(t, in, got, "non-unknown-flag errors must be returned unchanged")
 }
 
-func TestFlagSuggestErrorFunc_ExitCodeIsOne(t *testing.T) {
+func TestFlagSuggestErrorFunc_TypedCategoryAndSubtype(t *testing.T) {
 	cmd := newFakeMailCmd()
 	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --tos"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr))
-	// Hard contract — both compile-time and runtime guards:
-	assert.Equal(t, output.ExitAPI, exitErr.Code, "unknown_flag must use ExitAPI, not ExitValidation")
-	assert.Equal(t, 1, output.ExitAPI, "ExitAPI constant must remain 1")
+	p, ok := errs.ProblemOf(got)
+	require.True(t, ok)
+	assert.Equal(t, errs.CategoryValidation, p.Category)
+	assert.Equal(t, errs.SubtypeInvalidArgument, p.Subtype)
 }
 
 // --- edge-case coverage ---
@@ -236,9 +241,8 @@ func TestInstallOnMail_InstallsHook(t *testing.T) {
 	InstallOnMail(c)
 	require.NotNil(t, c.FlagErrorFunc())
 	got := c.FlagErrorFunc()(c, errors.New("unknown flag: --tos"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr), "installed hook must produce *output.ExitError")
-	assert.Equal(t, "unknown_flag", exitErr.Detail.Type)
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.Equal(t, "--tos", validationErr.Param)
 }
 
 func TestFlagSuggestErrorFunc_NilError(t *testing.T) {
@@ -249,50 +253,47 @@ func TestFlagSuggestErrorFunc_NilError(t *testing.T) {
 func TestFlagSuggestErrorFunc_LongUnknown_StripsValueTail(t *testing.T) {
 	cmd := newFakeMailCmd()
 	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --tos=alice@example.com"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr))
-	detail := exitErr.Detail.Detail.(map[string]any)
-	assert.Equal(t, "--tos", detail["unknown"], "value tail must be stripped before echoing")
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.Equal(t, "--tos", validationErr.Param, "value tail must be stripped before echoing")
+	reason, ok := paramReason(validationErr.Params, "--tos")
+	require.True(t, ok)
+	assert.Equal(t, "unknown flag", reason)
 }
 
 func TestFlagSuggestErrorFunc_ShorthandUnknown(t *testing.T) {
 	cmd := newFakeMailCmd()
 	got := flagSuggestErrorFunc(cmd, errors.New("unknown shorthand flag: 'b' in -bXY"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr))
-	detail := exitErr.Detail.Detail.(map[string]any)
-	assert.Equal(t, "-b", detail["unknown"])
-	cands, ok := detail["candidates"].([]Candidate)
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.Equal(t, "-b", validationErr.Param)
+	reason, ok := paramReason(validationErr.Params, "-b")
 	require.True(t, ok)
+	assert.Equal(t, "unknown flag", reason)
 	// newFakeMailCmd has --body/-b; exact shorthand hit expected.
-	require.NotEmpty(t, cands)
-	assert.Equal(t, "--body", cands[0].Flag)
-	assert.Equal(t, "b", cands[0].Shorthand)
+	reason, ok = paramReason(validationErr.Params, "--body")
+	require.True(t, ok)
+	assert.Contains(t, reason, "candidate (prefix")
+	assert.Contains(t, reason, "shorthand=-b")
 }
 
-func TestFlagSuggestErrorFunc_CandidatesAlwaysArray(t *testing.T) {
+func TestFlagSuggestErrorFunc_ParamsAlwaysPresent(t *testing.T) {
 	// A cobra command with no flags forces collectFlags → empty names →
-	// suggest → nil. The envelope must still expose candidates as a
-	// non-nil []Candidate so the JSON wire shape is "candidates: []"
-	// rather than "candidates: null".
+	// suggest → nil. The typed validation error must still expose the unknown
+	// flag in Params so downstream parsers have a stable structured field.
 	bare := &cobra.Command{Use: "mail"}
 	got := flagSuggestErrorFunc(bare, errors.New("unknown flag: --bogus"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr))
-	detail := exitErr.Detail.Detail.(map[string]any)
-	cands, ok := detail["candidates"].([]Candidate)
-	require.True(t, ok, "candidates must be []Candidate even when empty")
-	assert.NotNil(t, cands, "candidates must be non-nil empty slice, not nil")
-	assert.Empty(t, cands)
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.NotNil(t, validationErr.Params)
+	require.Len(t, validationErr.Params, 1)
+	assert.Equal(t, "--bogus", validationErr.Params[0].Name)
+	assert.Equal(t, "unknown flag", validationErr.Params[0].Reason)
 }
 
 func TestFlagSuggestErrorFunc_NoCandidatesUsesHelpHint(t *testing.T) {
 	cmd := newFakeMailCmd()
 	// Token with no plausible neighbor in {to, cc, subject, body}.
 	got := flagSuggestErrorFunc(cmd, errors.New("unknown flag: --zzzzzzz"))
-	var exitErr *output.ExitError
-	require.True(t, errors.As(got, &exitErr))
-	assert.Contains(t, exitErr.Detail.Hint, "--help")
+	validationErr := requireFlagSuggestValidation(t, got)
+	assert.Contains(t, validationErr.Hint, "--help")
 }
 
 func TestParseUnknownToken_EmptyAndMalformed(t *testing.T) {

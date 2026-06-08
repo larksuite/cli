@@ -21,6 +21,7 @@ import (
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/deprecation"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 )
@@ -266,6 +267,54 @@ func (f *failingWriter) Write(p []byte) (int, error) {
 	}
 	f.n += len(p)
 	return len(p), nil
+}
+
+// TestHandleRootError_DeprecatedAliasMissingFlagStructured pins issue #4: a
+// backward-compat alias that fails on a cobra-level required flag (which
+// short-circuits before RunE) still routes through the structured envelope,
+// because OnInvoke records the deprecation in PreRunE and the legacy fallback
+// switches to WriteErrorEnvelope when a deprecation is pending — so the
+// migration notice is no longer dropped on the plain "Error:" line.
+func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Cleanup(func() { deprecation.SetPending(nil) })
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	errOut := &bytes.Buffer{}
+	f.IOStreams.ErrOut = errOut
+
+	deprecation.SetPending(&deprecation.Notice{
+		Command: "+write", Replacement: "+cells-set", Skill: "lark-sheets",
+	})
+	// The bare error shape cobra's ValidateRequiredFlags produces: neither typed
+	// nor an *output.ExitError, so it reaches the legacy fallback.
+	handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+
+	out := errOut.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
+		t.Fatalf("deprecation pending: want a structured envelope, got a plain Error: line:\n%s", out)
+	}
+	if !strings.Contains(out, `"message"`) || !strings.Contains(out, "values") {
+		t.Errorf("expected a JSON error envelope carrying the failure message; got:\n%s", out)
+	}
+}
+
+// TestHandleRootError_NoDeprecationKeepsPlainError pins the other half: with no
+// deprecation pending, the legacy fallback stays a plain "Error:" line, so the
+// fix does not reshape every unrecognized cobra error.
+func TestHandleRootError_NoDeprecationKeepsPlainError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Cleanup(func() { deprecation.SetPending(nil) })
+	deprecation.SetPending(nil)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	errOut := &bytes.Buffer{}
+	f.IOStreams.ErrOut = errOut
+
+	handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	if !strings.HasPrefix(errOut.String(), "Error:") {
+		t.Errorf("no deprecation pending: want a plain 'Error:' line, got:\n%s", errOut.String())
+	}
 }
 
 // TestHandleRootError_PartialWritePreservesExitCode pins that when the

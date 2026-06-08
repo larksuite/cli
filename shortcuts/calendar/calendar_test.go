@@ -8,10 +8,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -19,6 +21,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
+
+// codeInvalidParamsWithDetail is the Lark "invalid params" code (190014) used
+// across the API-error fixtures below. It mirrors the value registered in
+// internal/errclass/codemeta_calendar.go.
+const codeInvalidParamsWithDetail = 190014
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -295,8 +302,17 @@ func TestCreate_WithAttendees_APIError_RollsBack(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid attendees, got nil")
 	}
-	if !strings.Contains(err.Error(), "rolled back successfully") && !strings.Contains(err.Error(), "auto-rolled back") {
-		t.Fatalf("error should mention rollback, got: %v", err)
+	// Enrich-in-place: classification of the add-attendees failure is preserved
+	// (APIError / code 190002) and the rollback context rides on the Hint.
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+	if ae.Code != 190002 {
+		t.Errorf("expected preserved code 190002, got %d", ae.Code)
+	}
+	if !strings.Contains(ae.Hint, "rolled back successfully") {
+		t.Fatalf("hint should mention rollback, got: %q", ae.Hint)
 	}
 }
 
@@ -412,7 +428,7 @@ func TestCreate_CreateEvent_InvalidParamsWithDetail(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"details": []interface{}{
@@ -434,15 +450,18 @@ func TestCreate_CreateEvent_InvalidParamsWithDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want invalid_parameters", ae.Subtype)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "end_time should be later than start_time") {
-		t.Errorf("expected detail value in message, got %q", exitErr.Detail.Message)
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
+	}
+	if !strings.Contains(ae.Hint, "end_time should be later than start_time") {
+		t.Errorf("expected detail value in hint, got %q", ae.Hint)
 	}
 }
 
@@ -453,7 +472,7 @@ func TestCreate_CreateEvent_InvalidParamsWithoutDetailValue(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 		},
 	})
@@ -470,12 +489,15 @@ func TestCreate_CreateEvent_InvalidParamsWithoutDetailValue(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want invalid_parameters", ae.Subtype)
+	}
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
 	}
 }
 
@@ -501,12 +523,12 @@ func TestCreate_CreateEvent_InvalidParams_ErrorNotMap(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
 	}
 }
 
@@ -517,7 +539,7 @@ func TestCreate_CreateEvent_InvalidParams_NoDetailsKey(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"other_key": "no details here",
@@ -537,12 +559,12 @@ func TestCreate_CreateEvent_InvalidParams_NoDetailsKey(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
 	}
 }
 
@@ -553,7 +575,7 @@ func TestCreate_CreateEvent_InvalidParams_DetailItemNotMap(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"details": []interface{}{nil},
@@ -573,12 +595,12 @@ func TestCreate_CreateEvent_InvalidParams_DetailItemNotMap(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
 	}
 }
 
@@ -604,7 +626,7 @@ func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
 		Method: "POST",
 		URL:    "/events/evt_190014/attendees",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"details": []interface{}{
@@ -632,8 +654,90 @@ func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid attendees with 190014, got nil")
 	}
-	if !strings.Contains(err.Error(), "invalid attendee open_id") {
-		t.Errorf("expected detail value in error, got: %v", err)
+	// Enrich-in-place: the underlying typed add-attendees failure is returned
+	// unchanged except that the rollback context is appended to its Hint. Its
+	// classification (APIError / code 190014) and the lifted server detail are
+	// preserved.
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected preserved code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
+	}
+	if !strings.Contains(ae.Hint, "invalid attendee open_id") {
+		t.Errorf("expected lifted server detail preserved in hint, got: %q", ae.Hint)
+	}
+	if !strings.Contains(ae.Hint, "rolled back successfully") {
+		t.Errorf("expected rollback context appended to hint, got: %q", ae.Hint)
+	}
+}
+
+// When the add-attendees call fails AND the rollback DELETE also fails, the
+// primary error stays the add failure (classification preserved) and the Hint
+// must surface BOTH the rollback failure reason and the orphan event_id so the
+// user can clean up manually.
+func TestCreate_WithAttendees_RollbackAlsoFails(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_orphan",
+					"summary":    "Bad Attendees",
+					"start_time": map[string]interface{}{"timestamp": "1742515200"},
+					"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+				},
+			},
+		},
+	})
+	// Add-attendees fails with a business code.
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_orphan/attendees",
+		Body:   map[string]interface{}{"code": 190002, "msg": "invalid user_id"},
+	})
+	// Rollback DELETE also fails with a distinct business code.
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/events/evt_orphan",
+		Body:   map[string]interface{}{"code": 230098, "msg": "delete blocked"},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Bad Attendees",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "ou_invalid",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error when both add and rollback fail, got nil")
+	}
+	// Primary error is the add failure: classification preserved (code 190002).
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+	if ae.Code != 190002 {
+		t.Errorf("expected preserved add-failure code 190002, got %d", ae.Code)
+	}
+	// The Hint must surface the rollback failure (its signal) and the orphan id.
+	if !strings.Contains(ae.Hint, "rollback also failed") {
+		t.Errorf("expected rollback-failure context in hint, got: %q", ae.Hint)
+	}
+	if !strings.Contains(ae.Hint, "delete blocked") {
+		t.Errorf("expected rollbackErr signal in hint, got: %q", ae.Hint)
+	}
+	if !strings.Contains(ae.Hint, "orphan event_id=evt_orphan") {
+		t.Errorf("expected orphan event_id in hint, got: %q", ae.Hint)
 	}
 }
 
@@ -1173,7 +1277,7 @@ func TestAgenda_InvalidParamsWithDetail(t *testing.T) {
 		Method: "GET",
 		URL:    "/events/instance_view",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"details": []interface{}{
@@ -1193,16 +1297,22 @@ func TestAgenda_InvalidParamsWithDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want invalid_parameters", ae.Subtype)
+	}
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
+	}
+	if !strings.Contains(ae.Hint, "start_time is required") {
+		t.Errorf("expected detail value in hint, got %q", ae.Hint)
 	}
 }
 
-func TestAgenda_NonExitError_Passthrough(t *testing.T) {
+func TestAgenda_NonAPIError_Passthrough(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
 	reg.Register(&httpmock.Stub{
@@ -1221,9 +1331,123 @@ func TestAgenda_NonExitError_Passthrough(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-JSON response, got nil")
 	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code != 0 {
-		t.Fatalf("expected non-API error passthrough, got API error code %d", exitErr.Detail.Code)
+	// A non-JSON 200 body is not an API business error: it surfaces as a typed
+	// InternalError{SubtypeInvalidResponse} from WrapJSONResponseParseError.
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("expected *errs.InternalError, got %T", err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype=%q, want invalid_response", ie.Subtype)
+	}
+}
+
+// TestAgenda_TimeRangeExceeded_RecursiveSplit pins that a 193103 ("time range
+// exceeds 40-day limit") response from CallAPITyped is caught, the range is
+// split, and the successful sub-range results are aggregated. The stubs are
+// consumed in registration order: full range → 193103, then the two halves
+// succeed.
+func TestAgenda_TimeRangeExceeded_RecursiveSplit(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// Full range rejected with the time-range-exceeded code.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body:   map[string]interface{}{"code": 193103, "msg": "time range exceeds limit"},
+	})
+	// Left half succeeds with one event.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":   "evt_left",
+						"summary":    "Left",
+						"status":     "confirmed",
+						"start_time": map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		},
+	})
+	// Right half succeeds with one event.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":   "evt_right",
+						"summary":    "Right",
+						"status":     "confirmed",
+						"start_time": map[string]interface{}{"timestamp": "1742519000"},
+						"end_time":   map[string]interface{}{"timestamp": "1742522600"},
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T06:00:00+08:00",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "evt_left") || !strings.Contains(out, "evt_right") {
+		t.Errorf("expected aggregated split results, got: %s", out)
+	}
+}
+
+// TestAgenda_TooManyInstances_SplitExhausted pins that when the range is already
+// at or below the minimum split window and the server still returns 193104, the
+// recursion stops and surfaces a typed APIError carrying code 193104 (exit 1).
+func TestAgenda_TooManyInstances_SplitExhausted(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method:   "GET",
+		URL:      "/events/instance_view",
+		Reusable: true,
+		Body:     map[string]interface{}{"code": 193104, "msg": "too many instances"},
+	})
+
+	// A 1-hour span is below minSplitWindowSeconds (2h), so the 193104 branch
+	// cannot split further and must surface the typed error.
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error when split is exhausted, got nil")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+	if ae.Code != 193104 {
+		t.Errorf("code=%d, want 193104", ae.Code)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit=%d, want ExitAPI", output.ExitCodeOf(err))
+	}
+	if !strings.Contains(ae.Error(), "narrow the range") {
+		t.Errorf("expected narrow-the-range guidance, got: %q", ae.Error())
 	}
 }
 
@@ -1314,7 +1538,7 @@ func TestFreebusy_InvalidParamsWithDetail(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/calendar/v4/freebusy/list",
 		Body: map[string]interface{}{
-			"code": errCodeInvalidParamsWithDetail,
+			"code": codeInvalidParamsWithDetail,
 			"msg":  "invalid params",
 			"error": map[string]interface{}{
 				"details": []interface{}{
@@ -1335,15 +1559,18 @@ func TestFreebusy_InvalidParamsWithDetail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 190014, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
 	}
-	if exitErr.Detail.Code != errCodeInvalidParamsWithDetail {
-		t.Errorf("expected code %d, got %d", errCodeInvalidParamsWithDetail, exitErr.Detail.Code)
+	if ae.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want invalid_parameters", ae.Subtype)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "user_id is invalid") {
-		t.Errorf("expected detail value in message, got %q", exitErr.Detail.Message)
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("expected code %d, got %d", codeInvalidParamsWithDetail, ae.Code)
+	}
+	if !strings.Contains(ae.Hint, "user_id is invalid") {
+		t.Errorf("expected detail value in hint, got %q", ae.Hint)
 	}
 }
 
@@ -1440,6 +1667,13 @@ func TestRsvp_RejectsDangerousChars(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dangerous Unicode") && !strings.Contains(err.Error(), "control character") {
 		t.Errorf("error should mention dangerous input, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--event-id" {
+		t.Errorf("param=%q, want --event-id", ve.Param)
 	}
 }
 
@@ -1644,6 +1878,61 @@ func TestSuggestion_InvalidAttendee_Fails(t *testing.T) {
 	if !strings.Contains(err.Error(), "invalid attendee id format") {
 		t.Errorf("error should mention attendee id format, got: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--attendee-ids" {
+		t.Errorf("param=%q, want --attendee-ids", ve.Param)
+	}
+}
+
+func TestSuggestion_HTTPNon2xx_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: suggestionPath, Status: 500, Body: map[string]interface{}{"code": 500, "msg": "server error"}})
+	err := mountAndRun(t, CalendarSuggestion, []string{"+suggestion", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Code != 500 {
+		t.Errorf("code=%d, want 500", ae.Code)
+	}
+}
+
+func TestSuggestion_UnmarshalFail_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: suggestionPath, Status: 200, RawBody: []byte("not json")})
+	err := mountAndRun(t, CalendarSuggestion, []string{"+suggestion", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("want *errs.InternalError, got %T", err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype=%q, want invalid_response", ie.Subtype)
+	}
+}
+
+func TestRoomFind_UnmarshalFail_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: roomFindPath, Status: 200, RawBody: []byte("not json")})
+	err := mountAndRun(t, CalendarRoomFind, []string{"+room-find", "--slot", "2025-03-21T10:00:00+08:00~2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("want *errs.InternalError, got %T", err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype=%q, want invalid_response", ie.Subtype)
+	}
 }
 
 func TestSuggestion_InvalidExclude_Fails(t *testing.T) {
@@ -1746,6 +2035,13 @@ func TestRoomFind_RejectsDangerousChars(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--room-name") {
 		t.Fatalf("expected dangerous char error for --room-name, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--room-name" {
+		t.Errorf("param=%q, want --room-name", ve.Param)
 	}
 }
 
@@ -1960,5 +2256,855 @@ func TestShortcuts_AllHaveScopes(t *testing.T) {
 		if s.Scopes == nil {
 			t.Errorf("shortcut %s: Scopes is nil", s.Command)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed error shape tests (typed-errs migration pass 1)
+// ---------------------------------------------------------------------------
+
+// Task 1: calendar_agenda.go
+func TestAgenda_ParseTimeRange_InvalidStart_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarAgenda, []string{"+agenda", "--start", "not-a-time", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("param=%q, want --start", ve.Param)
+	}
+}
+
+// Task 2: calendar_create.go
+func TestCreate_InvalidAttendeeID_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--calendar-id", "cal_test123", "--attendee-ids", "bad_id", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+}
+
+func TestCreate_NoEventID_TypedInternal(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: "/open-apis/calendar/v4/calendars/cal_test123/events", Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"event": map[string]interface{}{}}}})
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--calendar-id", "cal_test123", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("want *errs.InternalError, got %T", err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype=%q", ie.Subtype)
+	}
+}
+
+// Task 3: calendar_freebusy.go
+func TestFreebusy_InvalidStart_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarFreebusy, []string{"+freebusy", "--start", "not-a-time", "--user-id", "ou_someone", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("param=%q, want --start", ve.Param)
+	}
+}
+
+// Task 4: calendar_rsvp.go
+func TestRsvp_EmptyEventID_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarRsvp, []string{"+rsvp", "--event-id", "   ", "--rsvp-status", "accept", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--event-id" {
+		t.Errorf("param=%q, want --event-id", ve.Param)
+	}
+}
+
+// Task 5: calendar_room_find.go
+func TestRoomFind_MissingSlot_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarRoomFind, []string{"+room-find", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--slot" {
+		t.Errorf("param=%q, want --slot", ve.Param)
+	}
+}
+
+func TestRoomFind_APICodeError_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: roomFindPath, Body: map[string]interface{}{"code": 99991, "msg": "boom"}})
+	err := mountAndRun(t, CalendarRoomFind, []string{"+room-find", "--slot", "2025-03-21T10:00:00+08:00~2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype=%q, want unknown", ae.Subtype)
+	}
+	if ae.Code != 99991 {
+		t.Errorf("code=%d, want 99991", ae.Code)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit=%d want ExitAPI", output.ExitCodeOf(err))
+	}
+}
+
+func TestRoomFind_APICodeError_PreservesEnvelopeDetails(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    roomFindPath,
+		Headers: http.Header{
+			"Content-Type": []string{"application/json"},
+			"X-Tt-Logid":   []string{"log-room-find"},
+		},
+		Body: map[string]interface{}{
+			"code": codeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "event_start_time is required"},
+				},
+			},
+		},
+	})
+	err := mountAndRun(t, CalendarRoomFind, []string{"+room-find", "--slot", "2025-03-21T10:00:00+08:00~2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("code=%d, want %d", ae.Code, codeInvalidParamsWithDetail)
+	}
+	if !strings.Contains(ae.Hint, "event_start_time is required") {
+		t.Errorf("expected server detail in hint, got %q", ae.Hint)
+	}
+	if ae.LogID != "log-room-find" {
+		t.Errorf("log_id=%q, want log-room-find", ae.LogID)
+	}
+}
+
+func TestRoomFind_HTTPNon2xx_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: roomFindPath, Status: 500, Body: map[string]interface{}{"code": 500, "msg": "server error"}})
+	err := mountAndRun(t, CalendarRoomFind, []string{"+room-find", "--slot", "2025-03-21T10:00:00+08:00~2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype=%q, want unknown", ae.Subtype)
+	}
+	if ae.Code != 500 {
+		t.Errorf("code=%d, want 500", ae.Code)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit=%d want ExitAPI", output.ExitCodeOf(err))
+	}
+}
+
+// Task 6: calendar_suggestion.go
+func TestSuggestion_InvalidExclude_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{"+suggestion", "--exclude", "not-a-range", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--exclude" {
+		t.Errorf("param=%q, want --exclude", ve.Param)
+	}
+}
+
+func TestSuggestion_APICodeError_Typed(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{Method: "POST", URL: suggestionPath, Body: map[string]interface{}{"code": 99991, "msg": "boom"}})
+	err := mountAndRun(t, CalendarSuggestion, []string{"+suggestion", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype=%q, want unknown", ae.Subtype)
+	}
+	if ae.Code != 99991 {
+		t.Errorf("code=%d, want 99991", ae.Code)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit=%d want ExitAPI", output.ExitCodeOf(err))
+	}
+}
+
+func TestSuggestion_APICodeError_PreservesEnvelopeDetails(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    suggestionPath,
+		Headers: http.Header{
+			"Content-Type": []string{"application/json"},
+			"X-Tt-Logid":   []string{"log-suggestion"},
+		},
+		Body: map[string]interface{}{
+			"code": codeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "search_end_time must be after search_start_time"},
+				},
+			},
+		},
+	})
+	err := mountAndRun(t, CalendarSuggestion, []string{"+suggestion", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("want *errs.APIError, got %T", err)
+	}
+	if ae.Code != codeInvalidParamsWithDetail {
+		t.Errorf("code=%d, want %d", ae.Code, codeInvalidParamsWithDetail)
+	}
+	if !strings.Contains(ae.Hint, "search_end_time must be after search_start_time") {
+		t.Errorf("expected server detail in hint, got %q", ae.Hint)
+	}
+	if ae.LogID != "log-suggestion" {
+		t.Errorf("log_id=%q, want log-suggestion", ae.LogID)
+	}
+}
+
+// Task 7: calendar_update.go
+func TestUpdate_AttendeeConflict_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{"+update", "--event-id", "evt_1", "--add-attendee-ids", "ou_dup", "--remove-attendee-ids", "ou_dup", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "" {
+		t.Errorf("param=%q, want empty (cross-flag)", ve.Param)
+	}
+}
+
+// The empty-event-id guard at executeCalendarUpdate is defensive: the Validate
+// hook (validateCalendarUpdate) rejects an empty --event-id before Execute runs,
+// so the :283 guard is unreachable through the normal CLI flow. Exercise it
+// directly to pin the migrated typed shape (ValidationError / invalid_argument /
+// --event-id).
+func TestUpdate_EmptyEventID_Typed(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("calendar-id", "", "")
+	cmd.Flags().String("event-id", "", "")
+	runtime := common.TestNewRuntimeContextWithCtx(context.Background(), cmd, defaultConfig())
+	err := executeCalendarUpdate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q, want invalid_argument", ve.Subtype)
+	}
+	if ve.Param != "--event-id" {
+		t.Errorf("param=%q, want --event-id", ve.Param)
+	}
+}
+
+// Round-1 completeness: FlagErrorf call sites migrated to typed errs.
+
+// calendar_create.go start/end validation block.
+func TestCreate_MissingStart_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	// --start is a Required flag; pass it empty to satisfy cobra's required-flag
+	// check and reach the in-builder empty-value guard.
+	err := mountAndRun(t, CalendarCreate, []string{"+create", "--summary", "x", "--calendar-id", "cal_test123", "--start", "", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q, want invalid_argument", ve.Subtype)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("param=%q, want --start", ve.Param)
+	}
+}
+
+// calendar_freebusy.go bot-identity guard.
+func TestFreebusy_BotMissingUserID_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarFreebusy, []string{"+freebusy", "--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q, want invalid_argument", ve.Subtype)
+	}
+	if ve.Param != "--user-id" {
+		t.Errorf("param=%q, want --user-id", ve.Param)
+	}
+}
+
+// calendar_update.go buildCalendarUpdateEventData time-pairing guard.
+func TestUpdate_StartWithoutEnd_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{"+update", "--event-id", "evt_1", "--start", "2025-03-21T10:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q, want invalid_argument", ve.Subtype)
+	}
+}
+
+// calendar_update.go invalid start-time guard carries the offending flag.
+func TestUpdate_InvalidStartTime_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{"+update", "--event-id", "evt_1", "--start", "not-a-time", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("param=%q, want --start", ve.Param)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Additional success / branch coverage for the migrated command paths.
+// ---------------------------------------------------------------------------
+
+// TestAgenda_TooManyInstances_SplitSucceeds pins the 193104 recovery path: the
+// full range trips the too-many-instances limit, the window is halved via
+// fetchInstanceViewSplit, and both sub-ranges succeed and aggregate.
+func TestAgenda_TooManyInstances_SplitSucceeds(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body:   map[string]interface{}{"code": 193104, "msg": "too many instances"},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":   "evt_left",
+						"summary":    "Left",
+						"status":     "confirmed",
+						"start_time": map[string]interface{}{"timestamp": "1742515200"},
+						"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+					},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/events/instance_view",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"event_id":   "evt_right",
+						"summary":    "Right",
+						"status":     "confirmed",
+						"start_time": map[string]interface{}{"timestamp": "1745193600"},
+						"end_time":   map[string]interface{}{"timestamp": "1745197200"},
+					},
+				},
+			},
+		},
+	})
+
+	// A 30-day span is above minSplitWindowSeconds (2h), so the 193104 branch
+	// halves the window and aggregates the two successful sub-ranges.
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-04-20T00:00:00+08:00",
+		"--as", "bot",
+	}, f, stdout)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "evt_left") || !strings.Contains(out, "evt_right") {
+		t.Errorf("expected aggregated events from both halves, got: %s", out)
+	}
+}
+
+// TestAgenda_TimeRangeExceeded_CannotSplit pins the 193103 guard where the
+// window is a single point (mid <= startTime), so the range cannot be narrowed
+// further and the typed error surfaces.
+func TestAgenda_TimeRangeExceeded_CannotSplit(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method:   "GET",
+		URL:      "/events/instance_view",
+		Reusable: true,
+		Body:     map[string]interface{}{"code": 193103, "msg": "time range exceeds limit"},
+	})
+
+	// start == end gives a zero-length span; the 193103 branch computes
+	// mid == startTime and bails with the typed "narrow the range" error.
+	err := mountAndRun(t, CalendarAgenda, []string{
+		"+agenda",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T00:00:00+08:00",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected typed error when 193103 range cannot be split, got nil")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+	if ae.Code != 193103 {
+		t.Errorf("code=%d, want 193103", ae.Code)
+	}
+	if !strings.Contains(ae.Error(), "narrow the range") {
+		t.Errorf("expected narrow-the-range guidance, got: %q", ae.Error())
+	}
+}
+
+// TestUpdate_PatchStepFails_TypedError pins that a failed event PATCH surfaces
+// the typed API error wrapped with completed-step context.
+func TestUpdate_PatchStepFails_TypedError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_patchfail",
+		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
+	})
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_patchfail",
+		"--calendar-id", "cal_test123",
+		"--summary", "New title",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error when PATCH step fails, got nil")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+}
+
+// TestUpdate_RemoveStepFails_TypedError pins the batch_delete failure path.
+func TestUpdate_RemoveStepFails_TypedError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_removefail/attendees/batch_delete",
+		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
+	})
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_removefail",
+		"--remove-attendee-ids", "ou_user1",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error when remove step fails, got nil")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+}
+
+// TestUpdate_AddStepFails_TypedError pins the add-attendees failure path.
+func TestUpdate_AddStepFails_TypedError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_addfail/attendees",
+		Body:   map[string]interface{}{"code": 190001, "msg": "permission denied"},
+	})
+
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update",
+		"--event-id", "evt_addfail",
+		"--add-attendee-ids", "ou_user1",
+		"--as", "bot",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error when add step fails, got nil")
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *errs.APIError, got %T", err)
+	}
+}
+
+// TestUpdate_InvalidEndTime_TypedFlag pins the --end parse error inside
+// buildCalendarUpdateEventData (start valid, end malformed).
+func TestUpdate_InvalidEndTime_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update", "--event-id", "evt_1",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "not-a-time", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--end" {
+		t.Errorf("param=%q, want --end", ve.Param)
+	}
+}
+
+// TestUpdate_RejectsDangerousChars pins the dangerous-character guard.
+func TestUpdate_RejectsDangerousChars(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarUpdate, []string{
+		"+update", "--event-id", "evt_1", "--summary", "bad\x7ftitle", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for dangerous chars, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--summary" {
+		t.Errorf("param=%q, want --summary", ve.Param)
+	}
+}
+
+// TestCreate_InvalidEndTime_TypedFlag pins the --end parse error in Validate.
+func TestCreate_InvalidEndTime_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create", "--summary", "X",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "not-a-time", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--end" {
+		t.Errorf("param=%q, want --end", ve.Param)
+	}
+}
+
+// TestCreate_RejectsDangerousChars pins the dangerous-character guard on
+// --summary.
+func TestCreate_RejectsDangerousChars(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create", "--summary", "bad\x7ftitle",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for dangerous chars, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--summary" {
+		t.Errorf("param=%q, want --summary", ve.Param)
+	}
+}
+
+// TestFreebusy_InvalidEnd_TypedFlag pins the --end parse error in
+// parseFreebusyTimeRange.
+func TestFreebusy_InvalidEnd_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarFreebusy, []string{
+		"+freebusy", "--start", "2025-03-21", "--end", "not-a-time",
+		"--user-id", "ou_someone", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--end" {
+		t.Errorf("param=%q, want --end", ve.Param)
+	}
+}
+
+// TestFreebusy_InvalidUserID_TypedFlag pins the --user-id format guard.
+func TestFreebusy_InvalidUserID_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarFreebusy, []string{
+		"+freebusy", "--start", "2025-03-21", "--end", "2025-03-21",
+		"--user-id", "not-an-open-id", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--user-id" {
+		t.Errorf("param=%q, want --user-id", ve.Param)
+	}
+}
+
+// TestRoomFind_InvalidCapacity_TypedFlag pins the --min-capacity / --max-capacity
+// ordering guard.
+func TestRoomFind_InvalidCapacity_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarRoomFind, []string{
+		"+room-find",
+		"--slot", "2025-03-21T10:00:00+08:00~2025-03-21T11:00:00+08:00",
+		"--min-capacity", "10", "--max-capacity", "5", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--min-capacity" {
+		t.Errorf("param=%q, want --min-capacity", ve.Param)
+	}
+}
+
+// TestFreebusy_NoLoginNoUserID_TypedFlag pins the "cannot determine user ID"
+// guard: no --user-id, not bot, and no logged-in user.
+func TestFreebusy_NoLoginNoUserID_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, noLoginConfig())
+	err := mountAndRun(t, CalendarFreebusy, []string{
+		"+freebusy", "--start", "2025-03-21", "--end", "2025-03-21",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	// May surface as a login/identity guard or the --user-id validation guard;
+	// either way it must be a typed error, never a panic or nil.
+	if _, ok := errs.ProblemOf(err); !ok {
+		t.Fatalf("expected a typed problem error, got %T: %v", err, err)
+	}
+}
+
+// TestSuggestion_DurationOutOfRange_TypedFlag pins the --duration-minutes range
+// guard (must be 1..1440).
+func TestSuggestion_DurationOutOfRange_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00",
+		"--duration-minutes", "5000", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--duration-minutes" {
+		t.Errorf("param=%q, want --duration-minutes", ve.Param)
+	}
+}
+
+// TestSuggestion_InvalidStart_TypedFlag pins the --start parse guard in Validate.
+func TestSuggestion_InvalidStart_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion", "--start", "not-a-time", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--start" {
+		t.Errorf("param=%q, want --start", ve.Param)
+	}
+}
+
+// TestSuggestion_InvalidEnd_TypedFlag pins the --end parse guard in Validate.
+func TestSuggestion_InvalidEnd_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion", "--start", "2025-03-21T10:00:00+08:00", "--end", "not-a-time", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--end" {
+		t.Errorf("param=%q, want --end", ve.Param)
+	}
+}
+
+// TestSuggestion_InvalidExcludeStart_TypedFlag pins the malformed --exclude
+// start-time guard in Validate.
+func TestSuggestion_InvalidExcludeStart_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T18:00:00+08:00",
+		"--exclude", "not-a-time~2025-03-21T12:00:00+08:00", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--exclude" {
+		t.Errorf("param=%q, want --exclude", ve.Param)
+	}
+}
+
+// TestSuggestion_InvalidExcludeEnd_TypedFlag pins the malformed --exclude
+// end-time guard in Validate.
+func TestSuggestion_InvalidExcludeEnd_TypedFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T18:00:00+08:00",
+		"--exclude", "2025-03-21T11:00:00+08:00~not-a-time", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--exclude" {
+		t.Errorf("param=%q, want --exclude", ve.Param)
+	}
+}
+
+// TestSuggestion_RejectsDangerousTimezone_Typed pins the dangerous-character
+// guard on --timezone.
+func TestSuggestion_RejectsDangerousTimezone_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarSuggestion, []string{
+		"+suggestion",
+		"--start", "2025-03-21T10:00:00+08:00", "--end", "2025-03-21T11:00:00+08:00",
+		"--timezone", "Asia/Shanghai\x7f", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--timezone" {
+		t.Errorf("param=%q, want --timezone", ve.Param)
 	}
 }

@@ -325,3 +325,29 @@ func TestMergeForwardConverterWithRuntime(t *testing.T) {
 		t.Fatalf("mergeForwardConverter.Convert(runtime) = %s", got)
 	}
 }
+
+func TestFormatMergeForwardSubTreeInteractiveCardUsesMentions(t *testing.T) {
+	cardContent := `{"json_card":"{\"body\":{\"elements\":[{\"tag\":\"at\",\"property\":{\"userID\":\"cde8a6c8\"}}]}}","json_attachment":"{\"at_users\":{\"cde8a6c8\":{\"user_id\":\"754700000001\",\"content\":\"Alice\",\"mention_key\":\"@_user_1\"}}}"}`
+	items := []map[string]interface{}{
+		{
+			"message_id":  "om_card",
+			"msg_type":    "interactive",
+			"create_time": "1710500000000",
+			"sender":      map[string]interface{}{"name": "Sender"},
+			"body":        map[string]interface{}{"content": cardContent},
+			"mentions": []interface{}{
+				map[string]interface{}{
+					"key":  "@_user_1",
+					"id":   "ou_real_open_id",
+					"name": "Alice",
+				},
+			},
+		},
+	}
+
+	children := BuildMergeForwardChildrenMap(items, "om_root")
+	got := FormatMergeForwardSubTree("om_root", children)
+	if !strings.Contains(got, "@Alice(ou_real_open_id)") {
+		t.Fatalf("FormatMergeForwardSubTree(interactive card) = %s", got)
+	}
+}

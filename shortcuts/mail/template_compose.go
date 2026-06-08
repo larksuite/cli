@@ -16,7 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -222,7 +222,7 @@ func validateTemplateID(tid string) error {
 		return nil
 	}
 	if _, err := strconv.ParseInt(tid, 10, 64); err != nil {
-		return output.ErrValidation("--template-id must be a decimal integer string")
+		return mailValidationParamError("--template-id", "--template-id must be a decimal integer string")
 	}
 	return nil
 }
@@ -264,7 +264,7 @@ func joinTemplateAddresses(addrs []templateMailAddr) string {
 func generateTemplateCID() (string, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return "", fmt.Errorf("failed to generate CID: %w", err)
+		return "", errs.NewInternalError(errs.SubtypeSDKError, "failed to generate CID: %v", err).WithCause(err)
 	}
 	return id.String(), nil
 }
@@ -276,23 +276,23 @@ func generateTemplateCID() (string, error) {
 func uploadToDriveForTemplate(ctx context.Context, runtime *common.RuntimeContext, path string) (fileKey string, size int64, err error) {
 	info, err := runtime.FileIO().Stat(path)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to stat %s: %w", path, err)
+		return "", 0, mailInputStatError(err)
 	}
 	size = info.Size()
 	if size > MaxLargeAttachmentSize {
-		return "", size, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+		return "", size, mailFailedPreconditionError("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
 			filepath.Base(path), float64(size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 	}
 	name := filepath.Base(path)
 	if err := filecheck.CheckBlockedExtension(name); err != nil {
-		return "", size, err
+		return "", size, mailValidationError("%v", err).WithCause(err)
 	}
 	userOpenId := runtime.UserOpenId()
 	if userOpenId == "" {
-		return "", size, fmt.Errorf("template attachment upload requires user identity (--as user)")
+		return "", size, mailFailedPreconditionError("template attachment upload requires user identity (--as user)")
 	}
 	if size <= common.MaxDriveMediaUploadSinglePartSize {
-		fileKey, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		fileKey, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   path,
 			FileName:   name,
 			FileSize:   size,
@@ -300,7 +300,7 @@ func uploadToDriveForTemplate(ctx context.Context, runtime *common.RuntimeContex
 			ParentNode: &userOpenId,
 		})
 	} else {
-		fileKey, err = common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+		fileKey, err = common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 			FilePath:   path,
 			FileName:   name,
 			FileSize:   size,
@@ -309,7 +309,7 @@ func uploadToDriveForTemplate(ctx context.Context, runtime *common.RuntimeContex
 		})
 	}
 	if err != nil {
-		return "", size, fmt.Errorf("upload %s to Drive failed: %w", name, err)
+		return "", size, mailDecorateProblemMessage(err, "upload %s to Drive failed", name)
 	}
 	return fileKey, size, nil
 }
@@ -404,7 +404,7 @@ func (b *templateAttachmentBuilder) append(fileKey, filename, cid string, isInli
 // self-healing via the LARGE switch inside append().
 func (b *templateAttachmentBuilder) finalize() error {
 	if b.rawBodyInlineSmall > maxTemplateBodyInlineSmallBytes {
-		return fmt.Errorf("template body + inline images exceed %d MB (got %.1f MB); "+
+		return mailFailedPreconditionError("template body + inline images exceed %d MB (got %.1f MB); "+
 			"reduce inline image size or count — inline images cannot be promoted to LARGE",
 			maxTemplateBodyInlineSmallBytes/(1024*1024),
 			float64(b.rawBodyInlineSmall)/1024/1024)
@@ -511,9 +511,9 @@ func replaceImgSrcOnce(html, rawSrc, newSrc string) string {
 // fetchTemplate GETs a single template (full fields) for --template-id
 // composition and update patch workflows.
 func fetchTemplate(runtime *common.RuntimeContext, mailboxID, templateID string) (*templatePayload, error) {
-	data, err := runtime.CallAPI("GET", templateMailboxPath(mailboxID, templateID), nil, nil)
+	data, err := runtime.CallAPITyped("GET", templateMailboxPath(mailboxID, templateID), nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("fetch template %s failed: %w", templateID, err)
+		return nil, mailDecorateProblemMessage(err, "fetch template %s failed", templateID)
 	}
 	return extractTemplatePayload(data)
 }
@@ -526,29 +526,29 @@ func extractTemplatePayload(data map[string]interface{}) (*templatePayload, erro
 		raw = t
 	}
 	if raw == nil {
-		return nil, fmt.Errorf("API response missing template body")
+		return nil, mailInvalidResponseError("API response missing template body")
 	}
 	buf, err := json.Marshal(raw)
 	if err != nil {
-		return nil, fmt.Errorf("re-encode template payload failed: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "re-encode template payload failed: %v", err).WithCause(err)
 	}
 	var out templatePayload
 	if err := json.Unmarshal(buf, &out); err != nil {
-		return nil, fmt.Errorf("decode template payload failed: %w", err)
+		return nil, mailInvalidResponseError("decode template payload failed: %v", err).WithCause(err)
 	}
 	return &out, nil
 }
 
 // createTemplate POSTs a new template.
 func createTemplate(runtime *common.RuntimeContext, mailboxID string, tpl *templatePayload) (map[string]interface{}, error) {
-	return runtime.CallAPI("POST", templateMailboxPath(mailboxID), nil, map[string]interface{}{
+	return runtime.CallAPITyped("POST", templateMailboxPath(mailboxID), nil, map[string]interface{}{
 		"template": tpl,
 	})
 }
 
 // updateTemplate PUTs a full-replace update.
 func updateTemplate(runtime *common.RuntimeContext, mailboxID, templateID string, tpl *templatePayload) (map[string]interface{}, error) {
-	return runtime.CallAPI("PUT", templateMailboxPath(mailboxID, templateID), nil, map[string]interface{}{
+	return runtime.CallAPITyped("PUT", templateMailboxPath(mailboxID, templateID), nil, map[string]interface{}{
 		"template": tpl,
 	})
 }
@@ -889,9 +889,9 @@ func fetchTemplateAttachmentURLs(
 		}
 		apiURL := templateMailboxPath(mailboxID, templateID) + "/attachments/download_url?" + strings.Join(parts, "&")
 
-		data, err := runtime.CallAPI("GET", apiURL, nil, nil)
+		data, err := runtime.CallAPITyped("GET", apiURL, nil, nil)
 		if err != nil {
-			return nil, warnings, fmt.Errorf("template attachments/download_url (template_id=%s): %w", templateID, err)
+			return nil, warnings, mailDecorateProblemMessage(err, "template attachments/download_url (template_id=%s)", templateID)
 		}
 		if urls, ok := data["download_urls"].([]interface{}); ok {
 			for _, item := range urls {
@@ -976,11 +976,11 @@ func embedTemplateInlineAttachments(
 	for _, ref := range wanted {
 		dlURL, ok := urlMap[ref.FileKey]
 		if !ok || dlURL == "" {
-			return bld, nil, fmt.Errorf("template inline image %q (cid=%s): download URL not returned by server", ref.Filename, ref.CID)
+			return bld, nil, mailInvalidResponseError("template inline image %q (cid=%s): download URL not returned by server", ref.Filename, ref.CID)
 		}
 		bytes, err := downloadAttachmentContent(runtime, dlURL)
 		if err != nil {
-			return bld, nil, fmt.Errorf("template inline image %q (cid=%s): %w", ref.Filename, ref.CID, err)
+			return bld, nil, mailDecorateProblemMessage(err, "template inline image %q (cid=%s)", ref.Filename, ref.CID)
 		}
 		filename := ref.Filename
 		if filename == "" {
@@ -988,7 +988,7 @@ func embedTemplateInlineAttachments(
 		}
 		contentType, err := filecheck.CheckInlineImageFormat(filename, bytes)
 		if err != nil {
-			return bld, nil, fmt.Errorf("template inline image %q (cid=%s): %w", filename, ref.CID, err)
+			return bld, nil, mailValidationError("template inline image %q (cid=%s): %v", filename, ref.CID, err).WithCause(err)
 		}
 		bld = bld.AddInline(bytes, contentType, filename, ref.CID)
 		registered = append(registered, ref.CID)
@@ -1037,11 +1037,11 @@ func embedTemplateSmallAttachments(
 		}
 		dlURL, ok := urlMap[ref.FileKey]
 		if !ok || dlURL == "" {
-			return bld, 0, fmt.Errorf("template attachment %q: download URL not returned by server", ref.Filename)
+			return bld, 0, mailInvalidResponseError("template attachment %q: download URL not returned by server", ref.Filename)
 		}
 		buf, err := downloadAttachmentContent(runtime, dlURL)
 		if err != nil {
-			return bld, 0, fmt.Errorf("template attachment %q: %w", ref.Filename, err)
+			return bld, 0, mailDecorateProblemMessage(err, "template attachment %q", ref.Filename)
 		}
 		filename := ref.Filename
 		if filename == "" {

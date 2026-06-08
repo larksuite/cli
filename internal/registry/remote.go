@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -178,7 +179,9 @@ func saveCachedMerged(data []byte, meta CacheMeta) error {
 // localVersion is sent as data_version query param for server-side version comparison.
 // Returns (data, reg, err). A nil reg means the version is unchanged (not modified).
 func fetchRemoteMerged(localVersion string) (data []byte, reg *MergedRegistry, err error) {
-	client := &http.Client{Timeout: fetchTimeout}
+	// Route through the shared proxy-plugin-aware transport so remote API
+	// definition fetches honor proxy plugin mode instead of bypassing it.
+	client := transport.NewHTTPClient(fetchTimeout)
 	req, err := http.NewRequest("GET", remoteMetaURL(localVersion), nil)
 	if err != nil {
 		return nil, nil, err

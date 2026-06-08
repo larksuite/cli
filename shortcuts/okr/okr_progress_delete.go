@@ -9,8 +9,8 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // OKRDeleteProgressRecord deletes a progress by ID.
@@ -28,10 +28,10 @@ var OKRDeleteProgressRecord = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		progressID := runtime.Str("progress-id")
 		if progressID == "" {
-			return common.FlagErrorf("--progress-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-id is required").WithParam("--progress-id")
 		}
 		if id, err := strconv.ParseInt(progressID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--progress-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-id must be a positive int64").WithParam("--progress-id")
 		}
 		return nil
 	},
@@ -46,7 +46,7 @@ var OKRDeleteProgressRecord = common.Shortcut{
 		progressID := runtime.Str("progress-id")
 
 		path := fmt.Sprintf("/open-apis/okr/v1/progress_records/%s", progressID)
-		_, err := runtime.DoAPIJSON("DELETE", path, larkcore.QueryParams{}, nil)
+		_, err := runtime.CallAPITyped("DELETE", path, nil, nil)
 		if err != nil {
 			return err
 		}

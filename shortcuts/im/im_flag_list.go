@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -56,7 +56,7 @@ var ImFlagList = common.Shortcut{
 			return executeListAllPages(runtime)
 		}
 
-		data, err := runtime.DoAPIJSON("GET", "/open-apis/im/v1/flags", listQuery(runtime), nil)
+		data, err := runtime.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags", listQuery(runtime), nil)
 		if err != nil {
 			return err
 		}
@@ -72,10 +72,10 @@ var ImFlagList = common.Shortcut{
 
 func validateListOptions(rt *common.RuntimeContext) error {
 	if n := rt.Int("page-size"); n < 1 || n > 50 {
-		return output.ErrValidation("--page-size must be an integer between 1 and 50")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 50").WithParam("--page-size")
 	}
 	if n := rt.Int("page-limit"); n < 1 || n > 1000 {
-		return output.ErrValidation("--page-limit must be an integer between 1 and 1000")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be an integer between 1 and 1000").WithParam("--page-limit")
 	}
 	return nil
 }
@@ -159,7 +159,7 @@ func enrichFeedThreadItems(rt *common.RuntimeContext, data map[string]any) error
 				end = len(ids)
 			}
 			batch := ids[i:end]
-			got, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/messages/mget",
+			got, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/messages/mget",
 				larkcore.QueryParams{"message_ids": batch}, nil)
 			if err != nil {
 				return err
@@ -244,7 +244,7 @@ func executeListAllPages(rt *common.RuntimeContext) error {
 		if page > 0 {
 			token = lastPageToken
 		}
-		data, err := rt.DoAPIJSON("GET", "/open-apis/im/v1/flags",
+		data, err := rt.DoAPIJSONTyped("GET", "/open-apis/im/v1/flags",
 			larkcore.QueryParams{
 				"page_size":  []string{strconv.Itoa(rt.Int("page-size"))},
 				"page_token": []string{token},

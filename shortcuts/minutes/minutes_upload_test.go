@@ -5,10 +5,12 @@ package minutes
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/spf13/cobra"
@@ -43,6 +45,31 @@ func TestMinutesUpload_Validate(t *testing.T) {
 				t.Errorf("error should contain %q, got: %s", tt.wantErr, err.Error())
 			}
 		})
+	}
+}
+
+func TestMinutesUpload_ValidateTyped(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	// ".." triggers ResourceName rejection — hits our Validate, not cobra's required-flag check.
+	parent := &cobra.Command{Use: "minutes"}
+	MinutesUpload.Mount(parent, f)
+	parent.SetArgs([]string{"+upload", "--file-token", "..", "--as", "user"})
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	err := parent.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--file-token" {
+		t.Errorf("param=%q", ve.Param)
 	}
 }
 

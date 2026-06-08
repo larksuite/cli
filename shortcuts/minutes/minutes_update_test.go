@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -52,6 +52,32 @@ func TestMinutesUpdate_Validate(t *testing.T) {
 				t.Errorf("error should contain %q, got: %s", tt.wantErr, err.Error())
 			}
 		})
+	}
+}
+
+func TestMinutesUpdate_ValidateTyped(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+
+	// ".." triggers ResourceName rejection — hits our Validate, not cobra's required-flag check.
+	parent := &cobra.Command{Use: "minutes"}
+	MinutesUpdate.Mount(parent, f)
+	parent.SetArgs([]string{"+update", "--minute-token", "..", "--topic", "title", "--as", "user"})
+	parent.SilenceErrors = true
+	parent.SilenceUsage = true
+	err := parent.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype=%q", ve.Subtype)
+	}
+	if ve.Param != "--minute-token" {
+		t.Errorf("param=%q", ve.Param)
 	}
 }
 
@@ -132,23 +158,20 @@ func TestMinutesUpdate_NoEditPermission(t *testing.T) {
 		t.Fatal("expected no-edit-permission error, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want typed errs.*, got %T: %v", err, err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("expected structured error detail, got nil")
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
 	}
-	if exitErr.Detail.Type != "no_edit_permission" {
-		t.Errorf("error type = %q, want no_edit_permission", exitErr.Detail.Type)
+	if !strings.Contains(p.Message, "No edit permission") {
+		t.Errorf("message should be friendly, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "No edit permission") {
-		t.Errorf("message should be friendly, got: %s", exitErr.Detail.Message)
+	if !strings.Contains(p.Message, minutesUpdateTestToken) {
+		t.Errorf("message should include minute token, got: %s", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Message, minutesUpdateTestToken) {
-		t.Errorf("message should include minute token, got: %s", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "edit permission") {
-		t.Errorf("hint should mention edit permission, got: %s", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "edit permission") {
+		t.Errorf("hint should mention edit permission, got: %s", p.Hint)
 	}
 }

@@ -20,7 +20,11 @@ var BaseTableCreate = common.Shortcut{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "table name", Required: true},
 		{Name: "view", Desc: "view JSON object/array for create"},
-		{Name: "fields", Desc: "field JSON array for create"},
+		{Name: "fields", Desc: `field JSON array for create, e.g. [{"name":"Title","type":"text"},{"name":"Status","type":"select","options":[{"name":"Todo"},{"name":"Done"}]}]`},
+	},
+	Tips: []string{
+		"Before using --fields, read lark-base-field-json.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
+		"The first --fields item replaces the default field.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateTableCreate(runtime)

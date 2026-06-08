@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
+//nolint:forbidigo // intermediate draft EML parser errors; mail command layer wraps into typed ValidationError.
 package draft
 
 import (

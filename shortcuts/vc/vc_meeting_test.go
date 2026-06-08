@@ -7,11 +7,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -101,6 +103,53 @@ func TestBuildMeetingJoinBody_TrimsWhitespace(t *testing.T) {
 	}
 	if body["password"] != "pw" {
 		t.Errorf("password should be trimmed, got %q", body["password"])
+	}
+}
+
+func TestBuildMeetingJoinBody_WithoutCallID(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if _, exists := body["call_id"]; exists {
+		t.Errorf("call_id should be omitted when empty, got %v", body["call_id"])
+	}
+}
+
+func TestBuildMeetingJoinBody_WithCallID(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+	_ = cmd.Flags().Set("call-id", "a08e06bf-9a41-44e4-a89c-a7871899e783")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if body["call_id"] != "a08e06bf-9a41-44e4-a89c-a7871899e783" {
+		t.Errorf("call_id = %v, want a08e06bf-9a41-44e4-a89c-a7871899e783", body["call_id"])
+	}
+}
+
+func TestBuildMeetingJoinBody_TrimsCallIDWhitespace(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	cmd.Flags().String("call-id", "", "")
+	_ = cmd.Flags().Set("meeting-number", "123456789")
+	_ = cmd.Flags().Set("call-id", "  call-xyz  ")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	body := buildMeetingJoinBody(runtime)
+
+	if body["call_id"] != "call-xyz" {
+		t.Errorf("call_id should be trimmed, got %q", body["call_id"])
 	}
 }
 
@@ -530,7 +579,67 @@ func TestMeetingLeave_Execute_APIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for API failure")
 	}
-	if !strings.Contains(err.Error(), "no permission") {
-		t.Errorf("error should surface API message, got: %v", err)
+	// code 121005 classifies to a typed permission error (no edit/view rights).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed error lock assertions
+// ---------------------------------------------------------------------------
+
+func TestMeetingJoin_Validate_InvalidFormat_TypedError(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	_ = cmd.Flags().Set("meeting-number", "12345678") // 8 digits — invalid
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	err := VCMeetingJoin.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "9 digits") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--meeting-number" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--meeting-number")
+	}
+}
+
+func TestMeetingLeave_Validate_WhitespaceOnly_TypedError(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-id", "", "")
+	_ = cmd.Flags().Set("meeting-id", "   ")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	err := VCMeetingLeave.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "meeting-id") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--meeting-id" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--meeting-id")
 	}
 }

@@ -16,16 +16,16 @@ import (
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "content format", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown"}},
-		{Name: "detail", Desc: "export detail level: simple (read-only) | with-ids (block IDs for cross-referencing) | full (all attrs for editing)", Hidden: true, Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
-		{Name: "revision-id", Desc: "document revision (-1 = latest)", Hidden: true, Type: "int", Default: "-1"},
-		{Name: "scope", Desc: "partial read scope: outline | range | keyword | section (omit to read whole doc)", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
-		{Name: "start-block-id", Desc: "range/section mode: start (anchor) block id"},
-		{Name: "end-block-id", Desc: "range mode: end block id; \"-1\" = to end of document"},
-		{Name: "keyword", Desc: "keyword mode: substring + regex match (case-insensitive); use '|' for OR branches, e.g. 'foo|bar' or 'bug|缺陷'"},
-		{Name: "context-before", Desc: "range/keyword/section mode: sibling blocks before match", Type: "int", Default: "0"},
-		{Name: "context-after", Desc: "range/keyword/section mode: sibling blocks after match", Type: "int", Default: "0"},
-		{Name: "max-depth", Desc: "outline: heading level cap; range/keyword/section: block subtree depth (-1 = unlimited)", Type: "int", Default: "-1"},
+		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "detail", Desc: "detail level; simple for reading, with-ids for block references, full for styles and edit metadata", Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
+		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
+		{Name: "scope", Desc: "read scope; full reads whole doc, outline lists headings, section expands from heading anchor, range uses block ids, keyword searches text", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
+		{Name: "start-block-id", Desc: "range/section anchor block id; required for section and optional start for range"},
+		{Name: "end-block-id", Desc: "range end block id; -1 means through document end"},
+		{Name: "keyword", Desc: "keyword scope query; supports case-insensitive substring/regex fallback and '|' OR branches, e.g. foo|bar or bug|缺陷"},
+		{Name: "context-before", Desc: "range/keyword/section context: sibling blocks before selected top-level blocks", Type: "int", Default: "0"},
+		{Name: "context-after", Desc: "range/keyword/section context: sibling blocks after selected top-level blocks", Type: "int", Default: "0"},
+		{Name: "max-depth", Desc: "outline heading level cap; other scopes subtree depth where -1 is unlimited and 0 is block only", Type: "int", Default: "-1"},
 	}
 }
 
@@ -33,6 +33,9 @@ func v2FetchFlags() []common.Flag {
 // --dry-run so that invalid input fails with a structured exit code (2) and
 // JSON envelope instead of slipping through dry-run as a "success".
 func validateFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
+	if err := validateDocsV2Only(runtime, "+fetch", docsFetchLegacyFlags()); err != nil {
+		return err
+	}
 	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
 		return common.FlagErrorf("invalid --doc: %v", err)
 	}

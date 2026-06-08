@@ -23,7 +23,7 @@ func FetchDriveMeta(runtime *RuntimeContext, token, docType string, withURL bool
 		body["with_url"] = true
 	}
 
-	data, err := runtime.CallAPI(
+	data, err := runtime.CallAPITyped(
 		"POST",
 		"/open-apis/drive/v1/metas/batch_query",
 		nil,

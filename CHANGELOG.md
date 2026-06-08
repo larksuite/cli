@@ -2,6 +2,84 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.48] - 2026-06-04
+
+### Features
+
+- **mail**: Preserve mailbox context in `+triage` output for public mailboxes (#1238)
+- **contact**: Add contact skill domain guidance (#1144)
+
+### Bug Fixes
+
+- **skills**: Use JSON skills list during update (#1251)
+
+### Documentation
+
+- **drive**: Refine lark-drive knowledge organize workflow (#1253)
+- **vc-agent**: Require explicit leave request (#1260)
+- **slides**: Add whiteboard element documentation and improve slide guidance (#1029)
+
+## [v1.0.47] - 2026-06-03
+
+### Features
+
+- **sheets**: Add spec-driven shortcut package with backward-compatible wrapper (#1220)
+- **base**: Add base block shortcuts (#1044)
+- **im**: Complete card message format (#1198)
+- **im**: Improve markdown guidance for messages (#1237)
+- **vc**: Forward invite call-id on meeting join (#1243)
+- **drive**: Emit typed error envelopes across the drive domain (#1205)
+- **common**: Emit typed validation errors from shared shortcut pre-checks (#1242)
+- **mail**: Validate `message_ids` in `+messages` before batch get (#1202)
+- **wiki**: Support `appid` member type (#1235)
+- **cli**: Add `--json` flag as no-op alias for `--format json` (#1104)
+- **config**: Validate credentials after `config init` (#1151)
+
+### Bug Fixes
+
+- **skills**: Recover empty fallback for skills to update (#1233)
+
+## [v1.0.46] - 2026-06-02
+
+### Features
+
+- **im**: Add card message format support (#1218)
+- **im**: Resolve markdown blank-line formatting inconsistency in post messages (#1216)
+- **vc**: Inline transcript from artifacts API and add keywords (#1206)
+- **transport**: Add proxy plugin mode for CLI HTTP transport (#1181)
+- **agent**: Increase agent trace max length to 1024 (#1211)
+- **shortcuts**: Unconditionally inject `--format` flag for all shortcuts (#1156)
+
+### Bug Fixes
+
+- **cli**: Remove FLAGS section from root `--help` (#1226)
+- **cli**: Stop root `--help` listing per-command flags as global (#1223)
+
+### Refactor
+
+- **transport**: Own all HTTP transport in `internal/transport`, fix util layering inversion (#1213)
+
+### Documentation
+
+- **base**: Optimize base skill references (#1171)
+- **drive**: Add Lark Drive knowledge organization workflow (#1028)
+
+## [v1.0.45] - 2026-06-01
+
+### Features
+
+- **errors**: Add typed envelope contract for auth-domain errors (#1135)
+- **platform**: Support multiple policy rules per plugin (#1182)
+
+### Bug Fixes
+
+- **vc**: Add domain boundaries and enrich `+notes` (#1172)
+- **whiteboard**: Fix whiteboard skill (#1180)
+
+### Refactor
+
+- **auth**: Update login hint and split-flow docs (#1201)
+
 ## [v1.0.44] - 2026-05-29
 
 ### Features
@@ -948,6 +1026,10 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48
+[v1.0.47]: https://github.com/larksuite/cli/releases/tag/v1.0.47
+[v1.0.46]: https://github.com/larksuite/cli/releases/tag/v1.0.46
+[v1.0.45]: https://github.com/larksuite/cli/releases/tag/v1.0.45
 [v1.0.44]: https://github.com/larksuite/cli/releases/tag/v1.0.44
 [v1.0.43]: https://github.com/larksuite/cli/releases/tag/v1.0.43
 [v1.0.42]: https://github.com/larksuite/cli/releases/tag/v1.0.42
