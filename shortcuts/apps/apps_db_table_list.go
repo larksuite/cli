@@ -58,6 +58,10 @@ var AppsDBTableList = common.Shortcut{
 			return err
 		}
 		items, _ := data["items"].([]interface{})
+		// json（默认）路径原样透出 server 返回的 items[]，含每张表完整的 columns[]。
+		// 这是产品设计：list 接口本就返回各表列定义，json 消费方（agent / 脚本）可一次拿到
+		// 全量结构、免去逐表再调 +db-table-schema。pretty 视图只摘 columns 计数（见 renderTableListPretty）
+		// 保持终端可读；两种形态共用同一份 data，不在此处裁剪。
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			renderTableListPretty(w, items)
 		})
