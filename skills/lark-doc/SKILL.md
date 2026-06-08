@@ -74,7 +74,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 
 ## 不在本 Skill 范围
 
-- 文档评论管理：切到 [`lark-drive`](../lark-drive/SKILL.md)
-- 电子表格或 Base 的数据操作：切到 [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
-- 画板绘图或复杂画板编辑：切到 [`lark-whiteboard`](../lark-whiteboard/SKILL.md)
-- 云空间文件上传、下载、权限管理：切到 [`lark-drive`](../lark-drive/SKILL.md)
+- 文档评论管理 → [`lark-drive`](../lark-drive/SKILL.md)
+- 电子表格或 Base 的数据操作 → [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
+- 画板绘图或复杂画板编辑 → [`lark-whiteboard`](../lark-whiteboard/SKILL.md)
+- 云空间文件上传、下载、权限管理 → [`lark-drive`](../lark-drive/SKILL.md)
