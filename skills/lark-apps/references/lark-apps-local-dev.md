@@ -2,13 +2,12 @@
 
 适用：用户要把妙搭全栈应用源码拉到本地，用本地 code agent/IDE 开发、调试数据库，再发布。
 
-## 先分清：已有应用拉到本地 还是 新建
+## 新建 vs 已有应用
 
-进 local-dev 第一步先判断意图，别默认新建：
+新建还是修改已有，由上方入口（SKILL.md「选择开发路径」）判定；进到本地流程后按分支走：
 
-- “开发 X 应用 / 把 X 拉到本地 / 接着开发”，或用户给了 app_id / 妙搭链接 → **已有应用**：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地。
-- “做一个 / 新建一个 X” → **新建**：从 `+create` 开始走下面的流程。
-- 带名字的“开发 xxx 应用”通常指已有应用；拿不准先问一句，不要直接 `+create`。
+- **新建**：从 `+create` 开始走下面的端到端流程。
+- **已有应用**（本地还没有源码）：跳过 `+create`，先按下方「存量应用入口」拿 `app_id`，再 `+init`（或 `+git-credential-init` + `git clone`）把它拉到本地，然后照常开发。
 
 ## 端到端流程（新建应用）
 
@@ -19,7 +18,7 @@
 lark-cli apps +create --name "审批系统" --app-type full_stack \
   --description "支持登录、提交申请、多级审批、状态查询"
 
-# 初始化本地仓库（--dir 目标目录由用户选定，见下方「领域规则」，勿照抄此处示例值）
+# 初始化本地仓库（--dir 取值见下方「领域规则」，勿照抄此处示例值）
 lark-cli apps +init --app-id app_xxx --dir ./approval-app
 
 # 进入仓库后按项目脚手架启动
@@ -42,15 +41,13 @@ lark-cli apps +publish --app-id app_xxx
 1. `git status` 确认改动已提交，工作区干净。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
 3. `lark-cli apps +publish --app-id <app_id>` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询、`finished` 成功、`failed` 接 `+publish-error-log`。
-
-`+publish` 部署上线属高影响动作，按 SKILL.md「失败与高影响动作」先征得用户同意再发布。
+4. `lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询；`finished` 成功后，`lark-cli apps +list --keyword <应用名>` 读 `online_url` 返回给用户（这才是可分享链接）；`failed` 接 `+publish-error-log`。
 
 ## 领域规则
 
 - 代码读写走原生 `git`；CLI 负责凭证、初始化、发布和数据库调试。不存在 `apps +pull` / `apps +push` / `apps code +read` 这类代码读写 shortcut，不要臆造。
 - `+init` 会编排 `+git-credential-init`、`git clone`、切到 `sprint/default`、运行脚手架，并在有变更时提交/推送。
-- `+init --dir` 的目标目录由用户决定：调用前先给出目录建议/选项让用户选，拿到选择再传 `--dir`。
+- `+init --dir` 选目录：用户已预授权或表达"不要询问"（见 SKILL.md「预授权判定」）→ 按应用名派生 `./<app-name>` 直接传 `--dir`、不停问；否则先问用户用哪个目录再传。目标已存在/非空时回问换目录。
 - `sprint/default` 是工作分支；`main` 是发布态快照，由 `+publish` 成功后服务端 fast-forward 推进；服务端护栏禁直推 `main`、拒 force-push、要求 `sprint/default` fast-forward。
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。

@@ -42,7 +42,6 @@ lark-cli apps +session-list --app-id app_xxx
 - `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃。
 - `is_streaming=false` 且 `latest_turn.status=completed` 表示本轮完成，可发下一条。
 - `failed` / `cancelled` 时转述错误字段或 hint，询问是否重试。
-- 预览 URL 只来自 `+session-read` 返回的明确字段；为空时不要编造链接。
 - 要中止正在运行的一轮，从 `+session-read` 的 `latest_turn.turnID` 取值，再调用：
 
 ```bash

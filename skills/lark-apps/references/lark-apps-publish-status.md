@@ -22,4 +22,4 @@ lark-cli apps +publish-status --app-id app_xxx --release-id release_yyy
 ## 输出契约
 
 - 成功可能直接返回 release 字段，也可能包在 `data.release`；读取 `release_id`、`status`、`created_at`、`updated_at`。
-- `status=publishing` 继续轮询；`finished` 告知成功；`failed` 接 [`+publish-error-log`](lark-apps-publish-error-log.md) 取错误日志。
+- `status=publishing` 继续轮询；`finished` 发布成功——此时用 `lark-cli apps +list --keyword <应用名>` 取 `online_url` 返回用户（`+publish-status` 本身不含可分享 URL）；`failed` 接 [`+publish-error-log`](lark-apps-publish-error-log.md) 取错误日志。

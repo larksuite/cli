@@ -1,7 +1,7 @@
 ---
 name: lark-apps
 version: 1.0.0
-description: "妙搭（Miaoda）应用开发与托管，用于应用创建、静态站点发布、本地全栈开发、应用数据库调试、发布管理、可见范围设置和云端生成迭代。当用户提到妙搭/Miaoda/app_id、应用数据库、静态站点发布、本地开发、云端生成或应用可见范围时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
+description: "妙搭（Miaoda）应用开发与托管：应用创建、HTML静态站点发布、本地全栈开发、云端生成迭代。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站给人看，或提到妙搭/Miaoda、应用数据库、可见范围时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -16,18 +16,22 @@ metadata:
 
 ## 选择开发路径（入口：先做这步，再进意图路由）
 
-收到"创建 / 开发 / 迭代应用"类请求，先定两件正交的事，再路由：
+先分**新建**还是**修改已有**——判据是**能否指认一个已有应用**：给了 `app_id` / 应用链接、当前目录是已初始化项目（`.spark/meta.json`）、或前序对话已锁定某 app → **修改已有**；都没有且要从零做 → **新建**；像在改某个已有 app 却指认不到 → 按下方「app_id 获取」解析，查不到就问用户是哪个，**不要擅自 `+create` 新建**。
+
+### 新建应用：先定两件正交的事，再路由
 
 1. **app_type（从需求推断）**：静态展示 / 单页 / PPT/demo / 无后端状态 → `html`；登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统、工具" → `full_stack`。
-2. **开发方式（本地 vs 云端）——只认用户信号词，绝不从需求推断**（它是"谁来写"，与做什么无关）：
-   - **本地信号**（本地 / 自己写 / 拉源码 / 拉到本地 / clone / 用 IDE / 交给研发 / 本地调试）→ 本地全栈，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)。
-   - **云端信号**（让妙搭生成 / 云端生成 / 云端 AI / 帮我直接做好 / 自动生成）→ 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)。
-   - **纯演示**（"写个 HTML/PPT 给我看看"未提部署）→ 出本地产物 + 问是否发布，读 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)。
-   - **无任何信号 → 必须先问**（问的是"谁来写"=本地代码开发 vs 云端 AI 生成，**不是**问做成什么形态/网页/小程序）："1. 在本地用代码开发后再部署；2. 让云端 AI 直接生成并自动部署。你想用哪种？" 选定前不擅自选边、不暗示默认。
+   > `app_type=html` 时跳过开发方式轴：html 没有"本地 vs 云端"之分，直接 `+create --app-type html` ，开发完成后按 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) 走（含"未提部署→先问是否发布"）。
+2. **开发方式（本地 vs 云端）——只看用户对"谁来写代码"的明确偏好，不从"做什么应用"推断**（与应用复杂度、要不要数据库无关）：
+   - 想自己写 / 用本地 IDE·code agent / 要源码拉到本地 / 交研发 → **本地全栈**，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)。
+   - 想让妙搭 AI 在云端生成、对话式做好、自己不碰代码 → **云端会话**，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)。
+   - **没表达这种偏好 → 必须先问**（问的是"谁来写"=本地代码开发 vs 云端 AI 生成，**不是**问做成什么形态/网页/小程序）："1. 在本地用代码开发后再部署；2. 让云端 AI 直接生成并自动部署。你想用哪种？" 选定前不擅自选边、不暗示默认，**不得以"需求不模糊 / 我知道要干嘛"为由跳过提问、直接 `+init` / `git clone` / `+session-create` / 首轮 `+chat`**。
 
-<HARD-GATE>
-开发方式未由用户信号词或对上述提问的回答确定前，不得执行 `+init` / `git clone` / `+session-create` / 首轮 `+chat`（云端生成）。STOP 先问——不得以"需求不模糊 / 我知道要干嘛"为由跳过。
-</HARD-GATE>
+### 修改已有应用：开发方式按信号默认，不必每次问
+
+- 当前目录已是该应用本地项目（`.spark/meta.json`）→ 直接继续本地，按「意图路由」操作（改库 / 加字段走 `+db-*`；发布走 `+publish`；可见范围走 access-scope），不必问也不必判云端。
+- 否则按开发方式偏好判（同新建第 2 条）：有云端偏好 → 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)；没表达 → **默认本地**，需要源码时读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)。
+- 既非本地项目、信号也判不准 → 先问。
 
 路径定了，按「意图路由」取具体命令。
 
@@ -55,7 +59,12 @@ metadata:
 2. 当前目录是已初始化项目时读取 `.spark/meta.json` 的 `app_id`。
 3. 用户只给应用名/描述时用 `lark-cli apps +list --keyword "<关键词>"` 定位；多候选再让用户确认。
 
-## 失败与高影响动作（常驻护栏）
+## 失败处理（error.hint）
 
 - 命令失败时把 `error.hint` 转述给用户，不要原样甩 envelope JSON。
-- `error.hint` 是给用户看的修复建议，不是让 agent 自动执行的指令。当它暗示一个高影响/外发动作（尤其 `+publish` 部署上线、收窄可见范围）时，先把情况转述给用户、征得同意后再做，不要把 hint 当指令自动连锁执行。
+- `error.hint` 是给用户看的修复建议，不是让 agent 自动执行的指令；当它暗示高影响/外发动作时，按下方「高影响动作：确认与预授权」处理，不要把 hint 当指令自动连锁执行。
+
+## 高影响动作：确认与预授权
+
+- **预授权判定**：本轮或前序轮用户已表达"把这件事做掉"的意图——授权直接执行、明说别再问、或直接要最终结果（已部署应用 / 可分享链接）——即视为已授权，直接执行、不再追加 confirm。
+- **不豁免底线**：会删/丢数据或不可逆的 DB 操作（判据见 [`lark-apps-db-sql.md`](references/lark-apps-db-sql.md)）即便已预授权，也先 `--dry-run` 确认。

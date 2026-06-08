@@ -26,4 +26,4 @@ lark-cli apps +publish --app-id app_xxx --branch sprint/default --dry-run
 
 ## Agent 规则
 
-发布前通常先确认本地 `git status` 干净且已 push `sprint/default`。发布后若 status 是 `publishing`，用 [`+publish-status`](lark-apps-publish-status.md) 查询。`+publish` 部署上线属高影响动作——作为别的命令的连带前置时，按 SKILL.md「失败与高影响动作」先征得用户同意再发布。
+发布前通常先确认本地 `git status` 干净且已 push `sprint/default`。发布后若 status 是 `publishing`，用 [`+publish-status`](lark-apps-publish-status.md) 查询。`+publish` 部署上线属高影响动作——作为别的命令的连带前置时，按 SKILL.md「高影响动作：确认与预授权」先征得用户同意再发布。
