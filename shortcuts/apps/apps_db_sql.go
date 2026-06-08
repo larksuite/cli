@@ -85,6 +85,9 @@ var AppsDBSQL = common.Shortcut{
 		// server `result: string` 内嵌结构化数组 —— CLI 解出来放进 envelope 的 data.results，
 		// 让 json/pretty 路径都基于同一份反序列化产物渲染。
 		stmts := parseSQLResult(common.GetString(raw, "result"))
+		// 注意：data.results 在 json（默认）路径下原样透出全部行，CLI 侧不再二次截断。
+		// 这不是无界 token 黑洞 —— server 对单条 SELECT 结果集有 1000 行硬上限，超出会直接
+		// 返报错（而非静默截断）。需要更大结果集时请在 SQL 里显式 LIMIT/分页，由调用方控制规模。
 		data := map[string]interface{}{"results": stmts}
 
 		// 多语句 / 单语句失败：server 仍返 code:0，把失败语句标成 ERROR 哨兵塞进 result。
