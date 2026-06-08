@@ -26,9 +26,12 @@ var AppsDBTableSchema = common.Shortcut{
 	Command:     "+db-table-schema",
 	Description: "Show a table's structure, columns, indexes and constraints",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +db-table-schema --app-id <app_id> --table <table>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "table name", Required: true},

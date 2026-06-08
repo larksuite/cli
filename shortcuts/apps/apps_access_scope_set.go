@@ -27,9 +27,12 @@ var AppsAccessScopeSet = common.Shortcut{
 	Command:     "+access-scope-set",
 	Description: "Set Miaoda app access scope (specific / public / tenant)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +access-scope-set --app-id <app_id> --scope tenant",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "scope", Desc: "scope: specific | public | tenant", Required: true, Enum: []string{"specific", "public", "tenant"}},

@@ -18,9 +18,12 @@ var AppsSessionList = common.Shortcut{
 	Command:     "+session-list",
 	Description: "List sessions under a Miaoda app (cursor pagination)",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +session-list --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (max 50)"},

@@ -20,9 +20,12 @@ var AppsSessionStop = common.Shortcut{
 	Command:     "+session-stop",
 	Description: "Stop (interrupt) the running turn of a session",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +session-stop --app-id <app_id> --session-id <session_id> --turn-id <turn_id>",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "session-id", Desc: "session ID", Required: true},

@@ -40,9 +40,13 @@ var AppsDBSQL = common.Shortcut{
 	Command:     "+db-sql",
 	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		`Example: lark-cli apps +db-sql --app-id <app_id> --query "SELECT * FROM orders LIMIT 10"`,
+		`Example: lark-cli apps +db-sql --app-id <app_id> --env dev --query "ALTER TABLE orders ADD COLUMN priority int DEFAULT 0"`,
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "query", Desc: "SQL text; use @path to read a file, - to read stdin", Required: true,
@@ -75,7 +79,7 @@ var AppsDBSQL = common.Shortcut{
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-schema --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
 		}
 
 		// server `result: string` 内嵌结构化数组 —— CLI 解出来放进 envelope 的 data.results，

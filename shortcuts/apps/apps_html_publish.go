@@ -21,9 +21,13 @@ var AppsHTMLPublish = common.Shortcut{
 	Command:     "+html-publish",
 	Description: "Publish HTML to a Miaoda app (single multipart POST returns the access URL)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
+		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./site --dry-run",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "path", Desc: "path to HTML file or directory", Required: true},

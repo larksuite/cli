@@ -19,9 +19,13 @@ var AppsCreate = common.Shortcut{
 	Command:     "+create",
 	Description: "Create a new Miaoda app",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		`Example: lark-cli apps +create --name "审批系统" --app-type full_stack`,
+		`Example: lark-cli apps +create --name "活动页" --app-type html --description "活动报名"`,
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "app display name", Required: true},
 		{Name: "app-type", Desc: "app type (html or full_stack)", Required: true},

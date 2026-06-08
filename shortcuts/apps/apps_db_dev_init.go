@@ -21,9 +21,12 @@ var AppsDBDevInit = common.Shortcut{
 	Command:     "+db-dev-init",
 	Description: "Initialize dev environment (split single-env DB into dev/online, irreversible)",
 	Risk:        "high-risk-write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +db-dev-init --app-id <app_id> --yes",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "sync-data", Type: "bool", Desc: "copy existing online data into the new dev branch"},

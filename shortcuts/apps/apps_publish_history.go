@@ -20,9 +20,12 @@ var AppsPublishHistory = common.Shortcut{
 	Command:     "+publish-history",
 	Description: "List a Miaoda app's release history (server returns ~50 most recent by default)",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +publish-history --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "status", Enum: []string{"publishing", "finished", "failed"}, Desc: "filter by release status: publishing | finished | failed"},

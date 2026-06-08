@@ -37,9 +37,12 @@ var AppsGitCredentialInit = common.Shortcut{
 	Command:     "+git-credential-init",
 	Description: "Initialize Git credentials and a URL-scoped Git helper for a Miaoda app repository",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +git-credential-init --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 	},
@@ -102,9 +105,12 @@ var AppsGitCredentialRemove = common.Shortcut{
 	Command:     "+git-credential-remove",
 	Description: "Remove local Git credentials and the URL-scoped Git helper for a Miaoda app repository",
 	Risk:        "write",
-	Scopes:      []string{},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +git-credential-remove --app-id <app_id>",
+	},
+	Scopes:    []string{},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 	},
@@ -155,9 +161,12 @@ var AppsGitCredentialList = common.Shortcut{
 	Command:     "+git-credential-list",
 	Description: "List local Git credentials for Miaoda app repositories",
 	Risk:        "read",
-	Scopes:      []string{},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +git-credential-list",
+	},
+	Scopes:    []string{},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		records, err := listGitCredentialRecords(rctx.Factory.Keychain, time.Now)
 		if err != nil {

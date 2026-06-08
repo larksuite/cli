@@ -20,9 +20,13 @@ var AppsUpdate = common.Shortcut{
 	Command:     "+update",
 	Description: "Partially update a Miaoda app (only provided fields are sent)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		`Example: lark-cli apps +update --app-id <app_id> --name "新名称"`,
+		`Example: lark-cli apps +update --app-id <app_id> --description "..."`,
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "name", Desc: "new app display name"},

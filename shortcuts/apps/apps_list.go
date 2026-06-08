@@ -24,9 +24,13 @@ var AppsList = common.Shortcut{
 	Command:     "+list",
 	Description: "List Miaoda apps visible to the calling user (cursor pagination)",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +list",
+		"Example: lark-cli apps +list --keyword <keyword>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "keyword", Desc: "fuzzy match on app name"},
 		{Name: "scope", Desc: "collaborator dimension", Enum: []string{"all", "created_by_me", "shared_with_me"}},

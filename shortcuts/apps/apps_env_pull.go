@@ -35,9 +35,12 @@ var AppsEnvPull = common.Shortcut{
 	Command:     "+env-pull",
 	Description: "Pull app startup env vars into the local project .env.local",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +env-pull --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID"},
 		{Name: "project-path", Desc: "local project root path (defaults to current directory)"},

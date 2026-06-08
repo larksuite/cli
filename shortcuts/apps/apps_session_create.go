@@ -20,9 +20,12 @@ var AppsSessionCreate = common.Shortcut{
 	Command:     "+session-create",
 	Description: "Create a session under a Miaoda app",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +session-create --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 	},

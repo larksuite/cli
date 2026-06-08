@@ -20,9 +20,12 @@ var AppsPublishErrorLog = common.Shortcut{
 	Command:     "+publish-error-log",
 	Description: "Get the error log for a release",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +publish-error-log --app-id <app_id> --release-id <release_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "release-id", Desc: "release ID (the release_id returned by +publish)", Required: true},
@@ -50,7 +53,7 @@ var AppsPublishErrorLog = common.Shortcut{
 		path := fmt.Sprintf(publishErrorLogPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
 		data, err := rctx.CallAPI("GET", path, nil, nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +publish-history --app-id "+appID+"`")
 		}
 		out := shapeErrorLog(data)
 		rctx.OutFormat(out, nil, func(w io.Writer) {

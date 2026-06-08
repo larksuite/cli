@@ -25,9 +25,12 @@ var AppsDBTableList = common.Shortcut{
 	Command:     "+db-table-list",
 	Description: "List tables in a Miaoda app database (cursor pagination)",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +db-table-list --app-id <app_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},

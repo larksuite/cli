@@ -20,9 +20,12 @@ var AppsPublishStatus = common.Shortcut{
 	Command:     "+publish-status",
 	Description: "Get a single release's status/detail by release ID",
 	Risk:        "read",
-	Scopes:      []string{"spark:app:read"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>",
+	},
+	Scopes:    []string{"spark:app:read"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "release-id", Desc: "release ID (the release_id returned by +publish)", Required: true},
@@ -50,7 +53,7 @@ var AppsPublishStatus = common.Shortcut{
 		path := fmt.Sprintf(publishGetPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
 		data, err := rctx.CallAPI("GET", path, nil, nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +publish-history --app-id "+appID+"`")
 		}
 		out := data
 		if release, ok := data["release"].(map[string]interface{}); ok {

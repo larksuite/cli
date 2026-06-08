@@ -22,9 +22,12 @@ var AppsChat = common.Shortcut{
 	Command:     "+chat",
 	Description: "Send a message to a session to start/continue a conversation",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		`Example: lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message "做一个待办清单页面"`,
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "session-id", Desc: "session ID", Required: true},
@@ -52,7 +55,7 @@ var AppsChat = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		data, err := rctx.CallAPI("POST", chatPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildChatBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, "if the session_id is unknown or invalid, list this app's sessions with `lark-cli apps +session-list --app-id "+strings.TrimSpace(rctx.Str("app-id"))+"`")
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "message sent; poll +session-read after %vms for turn status\n",

@@ -55,6 +55,10 @@ var AppsInit = common.Shortcut{
 	Command:     "+init",
 	Description: "Initialize a Miaoda app's local development repository",
 	Risk:        "write",
+	Tips: []string{
+		"Example: lark-cli apps +init --app-id <app_id> --dir <dir>",
+		"Example: lark-cli apps +init --app-id <app_id> --dir <dir> --dry-run",
+	},
 	// +init makes no direct lark API calls (it shells out to the
 	// +git-credential-init subprocess, which enforces its own scopes), so it
 	// declares no scopes of its own. Explicit []string{} (not nil) per the
