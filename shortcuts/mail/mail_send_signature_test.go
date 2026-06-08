@@ -366,6 +366,22 @@ func TestMailSendSignatureFlagConflictValidation(t *testing.T) {
 	assertValidationError(t, err, "--signature-id and --no-signature")
 }
 
+func TestMailSendEmptySignatureIDFailsBeforeAPI(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	mailboxID := "owner-empty@example.com"
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", mailboxID,
+		"--from", "owner-empty@example.com",
+		"--to", "alice@example.com",
+		"--subject", "hello",
+		"--body", "<p>Body</p>",
+		"--signature-id", "",
+	}, f, stdout)
+	assertValidationError(t, err, "--signature-id must not be empty")
+}
+
 func TestMailSendDryRunSignaturePlan(t *testing.T) {
 	runtimeFor := func(args []string) string {
 		f, stdout, _, _ := mailShortcutTestFactory(t)

@@ -175,7 +175,7 @@ func TestDownloadSignatureImageSuccessUsesFilenameContentType(t *testing.T) {
 }
 
 func TestValidateSignatureFlagsTypedError(t *testing.T) {
-	err := validateSignatureFlags("sig_123", true)
+	err := validateSignatureFlags("sig_123", true, true)
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T (%v)", err, err)
@@ -185,6 +185,17 @@ func TestValidateSignatureFlagsTypedError(t *testing.T) {
 	}
 	if validationErr.Params[0].Name != "--signature-id" || validationErr.Params[1].Name != "--no-signature" {
 		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestValidateSignatureFlagsRejectsExplicitEmpty(t *testing.T) {
+	err := validateSignatureFlags("", true, false)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T (%v)", err, err)
+	}
+	if validationErr.Param != "--signature-id" {
+		t.Fatalf("param = %q, want --signature-id", validationErr.Param)
 	}
 }
 

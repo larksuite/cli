@@ -323,7 +323,10 @@ func signatureCIDs(sig *signatureResult) []string {
 	return cids
 }
 
-func validateSignatureFlags(signatureID string, noSignature bool) error {
+func validateSignatureFlags(signatureID string, signatureIDChanged bool, noSignature bool) error {
+	if signatureIDChanged && strings.TrimSpace(signatureID) == "" {
+		return mailValidationParamError("--signature-id", "--signature-id must not be empty; omit it to use the default signature or pass --no-signature to skip signatures")
+	}
 	if signatureID != "" && noSignature {
 		return mailValidationError("--signature-id and --no-signature are mutually exclusive").
 			WithParams(

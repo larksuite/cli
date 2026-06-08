@@ -104,7 +104,7 @@ var MailSend = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
-		if err := validateSignatureFlags(runtime.Str("signature-id"), runtime.Bool("no-signature")); err != nil {
+		if err := validateSignatureFlags(runtime.Str("signature-id"), runtime.Changed("signature-id"), runtime.Bool("no-signature")); err != nil {
 			return err
 		}
 		// Resolve the body content first (reading --body-file if set) so
