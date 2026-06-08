@@ -1,10 +1,8 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package skillcontent reads embedded skill content (SKILL.md bodies, files
-// under a skill directory, and a skill inventory) from an injected fs.FS. The
-// FS is rooted at the skill list (entries are "lark-calendar/SKILL.md", ...).
-// It is pure logic — the embedding lives in the repo-root package main.
+// Package skillcontent reads embedded skill content from an injected fs.FS
+// rooted at the skill list (entries like "lark-calendar/SKILL.md").
 package skillcontent
 
 import (
@@ -17,15 +15,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Reader reads skill content from fsys (rooted at the skill list).
 type Reader struct {
 	fsys fs.FS
 }
 
-// New returns a Reader backed by fsys.
 func New(fsys fs.FS) *Reader { return &Reader{fsys: fsys} }
 
-// SkillInfo describes one skill in the top-level list output.
 type SkillInfo struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
@@ -33,15 +28,13 @@ type SkillInfo struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 }
 
-// DirEntry is one child of a listed directory. Path is skill-name-prefixed
-// (e.g. "lark-doc/references/x.md") so it can be passed straight to `read`.
+// DirEntry.Path is skill-prefixed (e.g. "lark-doc/references/x.md") so it can be
+// fed straight back into `read`.
 type DirEntry struct {
 	Path  string `json:"path"`
 	IsDir bool   `json:"is_dir"`
 }
 
-// List returns every skill (top-level dir) with its description, version, and
-// metadata (from SKILL.md frontmatter). Skills are sorted by name.
 func (r *Reader) List() ([]SkillInfo, error) {
 	entries, err := fs.ReadDir(r.fsys, ".")
 	if err != nil {
@@ -52,9 +45,7 @@ func (r *Reader) List() ([]SkillInfo, error) {
 		if !e.IsDir() {
 			continue
 		}
-		// Skip directories without a SKILL.md: they are not real skills, and a
-		// blank entry in the catalog would be worse than an omission. Full
-		// validation (name==dir, etc.) is enforced at build time, not here.
+		// Skip dirs that aren't real skills (no SKILL.md).
 		if info, ok := r.skillInfo(e.Name()); ok {
 			out = append(out, info)
 		}
@@ -63,9 +54,6 @@ func (r *Reader) List() ([]SkillInfo, error) {
 	return out, nil
 }
 
-// skillInfo builds the SkillInfo for a skill directory from its SKILL.md
-// frontmatter (description/version/metadata). The bool is false when the
-// directory has no readable SKILL.md, so callers can skip non-skill dirs.
 func (r *Reader) skillInfo(name string) (SkillInfo, bool) {
 	data, err := fs.ReadFile(r.fsys, name+"/SKILL.md")
 	if err != nil {
@@ -75,11 +63,8 @@ func (r *Reader) skillInfo(name string) (SkillInfo, bool) {
 	return SkillInfo{Name: name, Description: desc, Version: version, Metadata: metadata}, true
 }
 
-// ListPath lists the direct children (one layer, no recursion) of the directory
-// named by arg, which is "<name>" or "<name>/<subpath>". It returns the entries
-// (sorted by path), the cleaned skill-prefixed path that was listed, and an
-// error. Unknown skill, traversal, or a non-directory target → typed validation
-// error.
+// ListPath lists one directory layer (no recursion) under "<name>" or
+// "<name>/<sub>", returning the entries and the cleaned path listed.
 func (r *Reader) ListPath(arg string) ([]DirEntry, string, error) {
 	name, sub := SplitArg(arg)
 	if err := r.ensureSkill(name); err != nil {
@@ -117,16 +102,14 @@ func (r *Reader) ListPath(arg string) ([]DirEntry, string, error) {
 }
 
 // SplitArg splits "<name>/<rest>" at the first separator; an argument with no
-// separator is a bare skill name (rest ""). It is the single splitter shared by
-// `read <name>/<path>` and `list <name>/<sub>`.
+// separator is a bare skill name (rest "").
 func SplitArg(arg string) (name, rest string) {
 	name, rest, _ = strings.Cut(arg, "/")
 	return name, rest
 }
 
-// parseFrontmatter extracts the `description`, `version`, and `metadata` fields
-// from a SKILL.md YAML frontmatter block. All are best-effort: missing or
-// unparseable frontmatter yields ("", "", nil) — never an error.
+// parseFrontmatter best-effort-extracts the frontmatter fields; missing or
+// unparseable frontmatter yields ("", "", nil), never an error.
 func parseFrontmatter(skillMD []byte) (description, version string, metadata map[string]any) {
 	lines := strings.Split(string(skillMD), "\n")
 	if strings.TrimRight(lines[0], "\r") != "---" {
@@ -155,7 +138,6 @@ func parseFrontmatter(skillMD []byte) (description, version string, metadata map
 	return fm.Description, fm.Version, fm.Metadata
 }
 
-// ReadSkill returns the raw bytes of <name>/SKILL.md.
 func (r *Reader) ReadSkill(name string) ([]byte, error) {
 	if err := r.ensureSkill(name); err != nil {
 		return nil, err
@@ -168,8 +150,6 @@ func (r *Reader) ReadSkill(name string) ([]byte, error) {
 	return data, nil
 }
 
-// ensureSkill validates that name is a single path segment naming an embedded
-// skill directory. Returns a typed validation error otherwise.
 func (r *Reader) ensureSkill(name string) error {
 	if name == "" || strings.ContainsAny(name, `/\`) || name == "." || name == ".." {
 		return unknownSkill(name)
@@ -186,14 +166,12 @@ func unknownSkill(name string) error {
 		WithHint("run 'lark-cli skills list' to see available skills")
 }
 
-// cleanSubPath validates that relpath is a safe relative path within a skill
-// directory and returns its cleaned form. Absolute paths and ".." escapes are
-// rejected with a typed validation error. relpath must be non-empty — callers
-// handle the empty (skill-root) case themselves.
+// cleanSubPath returns the cleaned form of relpath, rejecting absolute paths and
+// ".." escapes. relpath must be non-empty (callers handle the skill-root case).
 func cleanSubPath(relpath string) (string, error) {
 	cleaned := path.Clean(relpath)
 	// path.Clean only treats '/' as a separator, so a Windows-style "..\" prefix
-	// survives verbatim in cleaned; reject it explicitly alongside the "../" case.
+	// survives; reject it explicitly alongside "../".
 	if relpath == "" || path.IsAbs(relpath) || cleaned == "." ||
 		cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, `..\`) {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -202,10 +180,7 @@ func cleanSubPath(relpath string) (string, error) {
 	return cleaned, nil
 }
 
-// ReadReference returns the raw bytes of <name>/<relpath> and the cleaned
-// relative path. relpath must be a relative path within the skill dir; ".."
-// segments, absolute paths, and escapes are rejected with a typed validation
-// error and no content is returned.
+// ReadReference returns the bytes of <name>/<relpath> and the cleaned path.
 func (r *Reader) ReadReference(name, relpath string) ([]byte, string, error) {
 	if err := r.ensureSkill(name); err != nil {
 		return nil, "", err

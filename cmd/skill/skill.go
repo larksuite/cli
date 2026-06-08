@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package skill implements the top-level `lark-cli skills` command group, which
-// reads skill content embedded in the binary (injected via the Factory's
-// SkillContent fs.FS) for AI agents. The package/dir name stays "skill"
-// (internal); the user-facing verb is "skills".
+// Package skill implements the `lark-cli skills` command group, which serves
+// binary-embedded skill content to AI agents. The package is "skill"; the
+// user-facing verb is "skills".
 package skill
 
 import (
@@ -17,9 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newReader builds a Reader over the embedded skill tree carried by the Factory
-// (wired by cmd.WithSkillContent). Builds that embed no skills leave it nil; the
-// commands then return a typed internal error instead of panicking.
 func newReader(f *cmdutil.Factory) (*skillcontent.Reader, error) {
 	if f.SkillContent == nil {
 		return nil, errs.NewInternalError(errs.SubtypeFileIO,
@@ -28,8 +24,6 @@ func newReader(f *cmdutil.Factory) (*skillcontent.Reader, error) {
 	return skillcontent.New(f.SkillContent), nil
 }
 
-// readEnvelope is the --json shape for `skills read`. Guidance is present only
-// when reading the main SKILL.md (omitted for reference files).
 type readEnvelope struct {
 	Skill    string `json:"skill"`
 	Path     string `json:"path"`
@@ -37,20 +31,12 @@ type readEnvelope struct {
 	Guidance string `json:"guidance,omitempty"`
 }
 
-// listEnvelope is the JSON shape for `skills list` (catalog form). "ok" is an
-// explicit success marker. These are typed structs (not maps), so the automatic
-// output.injectNotice _notice does not attach — that notice is a general
-// binary/disk-skills update hint surfaced on every other command, and the
-// embedded catalog is version-consistent by construction, so its absence here
-// loses nothing.
 type listEnvelope struct {
 	OK     bool                     `json:"ok"`
 	Skills []skillcontent.SkillInfo `json:"skills"`
 	Count  int                      `json:"count"`
 }
 
-// listPathEnvelope is the JSON shape for `skills list <name[/sub]>` (the ls-style
-// one-layer directory listing).
 type listPathEnvelope struct {
 	OK      bool                    `json:"ok"`
 	Path    string                  `json:"path"`
@@ -58,16 +44,15 @@ type listPathEnvelope struct {
 	Count   int                     `json:"count"`
 }
 
-// NewCmdSkill builds the `skills` command group.
 func NewCmdSkill(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skills",
 		Short: "Read embedded skill content (list / read)",
-		Long:  "Read skill content embedded in the CLI binary at build time. Content stays in sync with the CLI version.",
+		Long: "Read agent-readable skill content (SKILL.md and reference files) embedded in " +
+			"the CLI binary at build time, so it stays in sync with the CLI version. " +
+			"Machine resources such as assets/ and scripts/ are not embedded.",
 	}
-	// Risk is set per leaf subcommand (GetRisk does not walk parents); the group
-	// itself carries none, matching the config/service command groups. AuthCheck
-	// is disabled on the group and propagates to children.
+	// Risk is set on each leaf (GetRisk does not walk parents); the group has none.
 	cmdutil.DisableAuthCheck(cmd)
 	cmd.AddCommand(newListCmd(f), newReadCmd(f))
 	return cmd
@@ -99,8 +84,6 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 				output.PrintJson(f.IOStreams.Out, listEnvelope{OK: true, Skills: skills, Count: len(skills)})
 				return nil
 			}
-			// One-layer directory listing under args[0]; unknown skill / traversal /
-			// non-directory → typed validation (exit 2).
 			entries, listed, err := r.ListPath(args[0])
 			if err != nil {
 				return err
@@ -109,9 +92,7 @@ func newListCmd(f *cmdutil.Factory) *cobra.Command {
 			return nil
 		},
 	}
-	// list output is always JSON; accept --json as a no-op so it stays symmetric
-	// with read (where --json is meaningful) and never surprises a caller with
-	// cobra's "unknown flag" (exit 1) for a flag the sibling command accepts.
+	// --json is a no-op (list is always JSON), accepted only to stay symmetric with read.
 	cmd.Flags().Bool("json", false, "no-op (list output is always JSON)")
 	cmdutil.SetRisk(cmd, "read")
 	cmdutil.DisableAuthCheck(cmd)
@@ -150,9 +131,6 @@ func newReadCmd(f *cmdutil.Factory) *cobra.Command {
 				return err
 			}
 
-			// Guidance is emitted only when reading the main SKILL.md — it nudges
-			// the model to fetch this skill's own reference files via this command
-			// (so they match the CLI version). Skipped for reference reads.
 			isMain := pathOut == "SKILL.md"
 			if asJSON {
 				env := readEnvelope{Skill: name, Path: pathOut, Content: string(content)}
@@ -162,9 +140,7 @@ func newReadCmd(f *cmdutil.Factory) *cobra.Command {
 				output.PrintJson(f.IOStreams.Out, env)
 				return nil
 			}
-			// Raw mode: stdout is the SKILL.md bytes verbatim (so callers can treat
-			// it as the file content). The guidance goes to stderr instead, keeping
-			// stdout byte-identical while a human/agent still sees the tip.
+			// Raw stdout stays byte-identical to the file; guidance goes to stderr.
 			if _, err := f.IOStreams.Out.Write(content); err != nil {
 				return errs.NewInternalError(errs.SubtypeFileIO, "failed to write output: %v", err)
 			}
@@ -180,11 +156,8 @@ func newReadCmd(f *cmdutil.Factory) *cobra.Command {
 	return cmd
 }
 
-// parseReadTarget resolves the read command's positional args into a skill name
-// and an optional relative path. relpath "" means read the main SKILL.md.
-//   - 2 args      → (args[0], args[1])
-//   - 1 arg "a/b" → ("a", "b")   (only the first '/' splits)
-//   - 1 arg "a"   → ("a", "")
+// parseReadTarget maps 1-or-2 positional args to (name, relpath); a lone
+// "<a>/<b>" splits on the first '/', and relpath "" reads the main SKILL.md.
 func parseReadTarget(args []string) (name, relpath string, err error) {
 	switch len(args) {
 	case 1:
@@ -199,13 +172,9 @@ func parseReadTarget(args []string) (name, relpath string, err error) {
 	}
 }
 
-// readGuidance is the one-line tip emitted for a skill's main SKILL.md — to
-// stderr in raw mode, or the --json guidance field; never appended to stdout.
-// It points the model at `skills read` for both this skill's own files and
-// references to sibling skills: a "../lark-foo/..." reference is the same
-// command with the leading "../" removed, keeping every hop version-consistent
-// with the embedded tree (the path guard rejects literal "../", so the relative
-// form must be rewritten to the sibling skill's name).
+// readGuidance routes cross-skill "../lark-foo/..." references back through
+// `skills read lark-foo/...`: the path guard rejects a literal "../", so the
+// relative form must be rewritten.
 func readGuidance(name string) string {
 	return fmt.Sprintf("> Tip: read this skill's own files (e.g. `references/...`) with "+
 		"`lark-cli skills read %s <relative-path>` to keep them in sync with this CLI version. "+
