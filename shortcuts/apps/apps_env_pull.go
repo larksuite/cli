@@ -81,9 +81,9 @@ var AppsEnvPull = common.Shortcut{
 		}
 
 		path := fmt.Sprintf("%s/apps/%s/env_vars", apiBasePath, validate.EncodePathSegment(appID))
-		data, err := rctx.CallAPI("POST", path, nil, nil)
+		data, err := rctx.CallAPITyped("POST", path, nil, nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`")
 		}
 
 		envVars, databaseInfo, skippedKeys, err := extractEnvPullVars(data)

@@ -52,7 +52,7 @@ var AppsUpdate = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
-		data, err := rctx.CallAPI("PATCH", path, nil, buildAppsUpdateBody(rctx))
+		data, err := rctx.CallAPITyped("PATCH", path, nil, buildAppsUpdateBody(rctx))
 		if err != nil {
 			return err
 		}

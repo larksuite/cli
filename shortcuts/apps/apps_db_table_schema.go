@@ -28,6 +28,7 @@ var AppsDBTableSchema = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +db-table-schema --app-id <app_id> --table <table>",
+		"Tip: filter fields with --jq (json format), e.g. -q '.data.columns[].name'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -59,7 +60,7 @@ var AppsDBTableSchema = common.Shortcut{
 			return err
 		}
 		path := appTablePath(appID, strings.TrimSpace(rctx.Str("table")))
-		data, err := rctx.CallAPI("GET", path, buildDBTableSchemaParams(rctx), nil)
+		data, err := rctx.CallAPITyped("GET", path, buildDBTableSchemaParams(rctx), nil)
 		if err != nil {
 			return err
 		}

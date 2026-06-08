@@ -27,6 +27,7 @@ var AppsList = common.Shortcut{
 	Tips: []string{
 		"Example: lark-cli apps +list",
 		"Example: lark-cli apps +list --keyword <keyword>",
+		"Tip: filter fields with --jq, e.g. -q '.data.items[].app_id'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -45,11 +46,31 @@ var AppsList = common.Shortcut{
 			Params(buildAppsListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("GET", apiBasePath+"/apps", buildAppsListParams(rctx), nil)
+		data, err := rctx.CallAPITyped("GET", apiBasePath+"/apps", buildAppsListParams(rctx), nil)
 		if err != nil {
 			return err
 		}
-		items, _ := data["items"].([]interface{})
+		// Project away icon_url (an image URL agents can't render) and created_at
+		// (redundant with updated_at) from every item BEFORE OutFormat, so json /
+		// table / pretty are all lean. Every other field (description, etc.) is kept.
+		rawItems, _ := data["items"].([]interface{})
+		items := make([]interface{}, 0, len(rawItems))
+		for _, item := range rawItems {
+			m, ok := item.(map[string]interface{})
+			if !ok {
+				items = append(items, item)
+				continue
+			}
+			out := make(map[string]interface{}, len(m))
+			for k, v := range m {
+				if k == "icon_url" || k == "created_at" {
+					continue
+				}
+				out[k] = v
+			}
+			items = append(items, out)
+		}
+		data["items"] = items
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			// Curated pretty view (--format pretty) shows the columns most useful
 			// for visual scanning: app_id (to copy-paste downstream), name (to match
@@ -58,8 +79,9 @@ var AppsList = common.Shortcut{
 			// and updated_at (to pick the most recent variant). online_url can be long
 			// but is the key value once published; the renderer clamps column width.
 			// Unpublished apps carry no online_url, so that cell renders empty.
-			// description / icon_url / created_at stay in the underlying data
-			// (--format json / table) but would make the curated view too wide.
+			// description stays in the underlying data (--format json / table) but
+			// would make the curated view too wide. icon_url / created_at are trimmed
+			// from the data entirely above (not useful to an agent).
 			rows := make([]map[string]interface{}, 0, len(items))
 			for _, item := range items {
 				m, ok := item.(map[string]interface{})

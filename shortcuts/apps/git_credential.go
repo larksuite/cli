@@ -32,6 +32,10 @@ import (
 
 const gitCredentialIssuePath = apiBasePath + "/apps/:app_id/git_info"
 
+// gitCredentialIssueHint is the actionable next-step attached to a failed
+// Git-credential issuance. A 5xx is flagged retryable separately at the call site.
+const gitCredentialIssueHint = "failed to issue the Git credential: verify --app-id is correct and you have developer access to this Miaoda app; a 5xx is a transient server error and is safe to retry"
+
 var AppsGitCredentialInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-init",
@@ -443,11 +447,13 @@ func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any
 			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
 		}
 		return nil, &errs.APIError{Problem: errs.Problem{
-			Category: errs.CategoryAPI,
-			Subtype:  errs.SubtypeUnknown,
-			Code:     resp.StatusCode,
-			Message:  msg,
-			LogID:    logIDString(resp),
+			Category:  errs.CategoryAPI,
+			Subtype:   errs.SubtypeUnknown,
+			Code:      resp.StatusCode,
+			Message:   msg,
+			LogID:     logIDString(resp),
+			Hint:      gitCredentialIssueHint,
+			Retryable: resp.StatusCode >= http.StatusInternalServerError,
 		}}
 	}
 	if _, hasCode := result["code"]; hasCode {
@@ -459,6 +465,7 @@ func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any
 				Code:     int(code),
 				Message:  firstString(result, "msg", "message"),
 				LogID:    logIDString(resp),
+				Hint:     gitCredentialIssueHint,
 			}}
 		}
 		if data, ok := result["data"].(map[string]any); ok {

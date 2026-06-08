@@ -5,17 +5,21 @@ package apps
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope 验证 server 业务错误
 // （code != 0，如单环境 app 查 env=dev 返 "Invalid DB Branch"）被 CLI 透出成
-// typed api_error envelope —— 用 BOE 实测的错误码 / 文案做输入。
+// typed error —— 用 BOE 实测的错误码 / 文案做输入。
+//
+// 迁移到 runtime.CallAPITyped 后，非零 code 的业务错误由 errclass.BuildAPIError
+// 归类为 typed errs.* error（wire type 为 "api" 类别，不再是 legacy 的
+// *output.ExitError / "api_error"），但仍保留 code 与 message。与 drive/okr 等
+// 已迁移域一致：用 errs.ProblemOf 读 typed envelope，断言不弱化。
 func TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -33,18 +37,18 @@ func TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected business error to surface, got nil; stdout=%s", stdout.String())
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.Problem, got %T: %v", err, err)
 	}
-	if exitErr.Detail.Type != "api_error" {
-		t.Fatalf("error.type = %q, want api_error", exitErr.Detail.Type)
+	if p.Category != errs.CategoryAPI {
+		t.Fatalf("error.type = %q, want %q", p.Category, errs.CategoryAPI)
 	}
-	if exitErr.Detail.Code != 500002511 {
-		t.Fatalf("error.code = %d, want 500002511", exitErr.Detail.Code)
+	if p.Code != 500002511 {
+		t.Fatalf("error.code = %d, want 500002511", p.Code)
 	}
-	if !strings.Contains(exitErr.Detail.Message, "Invalid DB Branch") {
-		t.Fatalf("error.message missing 'Invalid DB Branch': %q", exitErr.Detail.Message)
+	if !strings.Contains(p.Message, "Invalid DB Branch") {
+		t.Fatalf("error.message missing 'Invalid DB Branch': %q", p.Message)
 	}
 }
 

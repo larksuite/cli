@@ -22,6 +22,7 @@ var AppsPublishHistory = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +publish-history --app-id <app_id>",
+		"Tip: filter fields with --jq, e.g. -q '.data.releases[].release_id'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -55,7 +56,7 @@ var AppsPublishHistory = common.Shortcut{
 		limit := rctx.Int("limit")
 		pageToken := strings.TrimSpace(rctx.Str("page-token"))
 		path := fmt.Sprintf(publishListPath, validate.EncodePathSegment(appID))
-		data, err := rctx.CallAPI("GET", path, buildHistoryQuery(status, limit, pageToken), nil)
+		data, err := rctx.CallAPITyped("GET", path, buildHistoryQuery(status, limit, pageToken), nil)
 		if err != nil {
 			return err
 		}

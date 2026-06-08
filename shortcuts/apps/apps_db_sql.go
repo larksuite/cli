@@ -43,6 +43,7 @@ var AppsDBSQL = common.Shortcut{
 	Tips: []string{
 		`Example: lark-cli apps +db-sql --app-id <app_id> --query "SELECT * FROM orders LIMIT 10"`,
 		`Example: lark-cli apps +db-sql --app-id <app_id> --env dev --query "ALTER TABLE orders ADD COLUMN priority int DEFAULT 0"`,
+		"Tip: filter fields with --jq, e.g. -q '.data.results[].sql_type'",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -75,7 +76,7 @@ var AppsDBSQL = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		raw, err := rctx.CallAPI("POST", appSQLPath(appID),
+		raw, err := rctx.CallAPITyped("POST", appSQLPath(appID),
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {

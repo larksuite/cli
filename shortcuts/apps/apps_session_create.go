@@ -41,7 +41,7 @@ var AppsSessionCreate = common.Shortcut{
 			Desc("Create a session under a Miaoda app")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("POST", sessionsPath(rctx.Str("app-id")), nil, nil)
+		data, err := rctx.CallAPITyped("POST", sessionsPath(rctx.Str("app-id")), nil, nil)
 		if err != nil {
 			return err
 		}

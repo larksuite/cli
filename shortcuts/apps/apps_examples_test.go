@@ -31,3 +31,22 @@ func TestAppsShortcutsHaveExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestHighFreqCommandsHaveMultipleExamples(t *testing.T) {
+	want := map[string]int{"+chat": 2, "+access-scope-set": 2}
+	for _, s := range Shortcuts() {
+		min, ok := want[s.Command]
+		if !ok {
+			continue
+		}
+		n := 0
+		for _, tip := range s.Tips {
+			if strings.HasPrefix(tip, "Example: lark-cli apps +") {
+				n++
+			}
+		}
+		if n < min {
+			t.Errorf("%s has %d Example tips, want >= %d", s.Command, n, min)
+		}
+	}
+}

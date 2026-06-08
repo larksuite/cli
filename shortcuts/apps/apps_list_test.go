@@ -129,6 +129,48 @@ func TestAppsList_DryRun(t *testing.T) {
 	}
 }
 
+func TestAppsList_TrimsIconURLAndCreatedAt(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/spark/v1/apps?page_size=20",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"app_id":       "app_x",
+						"name":         "Trim Me",
+						"is_published": true,
+						"online_url":   "https://example.com/spark/faas/app_x",
+						"updated_at":   "2026-05-28T10:05:16Z",
+						"created_at":   "2026-05-01T08:00:00Z",
+						"icon_url":     "https://example.com/icon.png",
+						"description":  "An app to test trimming",
+					},
+				},
+				"page_token": "next_cursor",
+				"has_more":   true,
+			},
+		},
+	})
+
+	if err := runAppsShortcut(t, AppsList, []string{"+list", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	got := stdout.String()
+	for _, drop := range []string{"icon_url", "created_at"} {
+		if strings.Contains(got, drop) {
+			t.Fatalf("default output should not contain %q:\n%s", drop, got)
+		}
+	}
+	for _, keep := range []string{"app_id", "name", "is_published", "online_url", "updated_at", "description"} {
+		if !strings.Contains(got, keep) {
+			t.Fatalf("default output missing %q:\n%s", keep, got)
+		}
+	}
+}
+
 func TestAppsList_PrettyShowsPublishFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

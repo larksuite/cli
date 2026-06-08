@@ -47,7 +47,7 @@ var AppsDBDevInit = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPI("POST", appDbDevInitPath(appID), nil,
+		data, err := rctx.CallAPITyped("POST", appDbDevInitPath(appID), nil,
 			map[string]interface{}{"sync_data": rctx.Bool("sync-data")})
 		if err != nil {
 			return err

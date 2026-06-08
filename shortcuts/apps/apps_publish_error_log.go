@@ -51,7 +51,7 @@ var AppsPublishErrorLog = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		releaseID := strings.TrimSpace(rctx.Str("release-id"))
 		path := fmt.Sprintf(publishErrorLogPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
-		data, err := rctx.CallAPI("GET", path, nil, nil)
+		data, err := rctx.CallAPITyped("GET", path, nil, nil)
 		if err != nil {
 			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +publish-history --app-id "+appID+"`")
 		}

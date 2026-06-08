@@ -24,6 +24,7 @@ var AppsChat = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		`Example: lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message "做一个待办清单页面"`,
+		`Example: lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message "把首页标题改为 我的待办"`,
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -53,7 +54,7 @@ var AppsChat = common.Shortcut{
 			Body(buildChatBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("POST", chatPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildChatBody(rctx))
+		data, err := rctx.CallAPITyped("POST", chatPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildChatBody(rctx))
 		if err != nil {
 			return withAppsHint(err, "if the session_id is unknown or invalid, list this app's sessions with `lark-cli apps +session-list --app-id "+strings.TrimSpace(rctx.Str("app-id"))+"`")
 		}

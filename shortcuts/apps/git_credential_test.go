@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -844,6 +845,114 @@ func TestParseIssueCredentialDataErrors(t *testing.T) {
 	}
 	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"baseResp":{"statusCode":7}}`)}, nil); err == nil || !strings.Contains(err.Error(), "non-zero BaseResp") {
 		t.Fatalf("BaseResp fallback error = %v", err)
+	}
+}
+
+// TestParseIssueCredentialData503IsRetryableWithHint verifies that a 5xx Git
+// credential issuance failure is flagged retryable and carries the developer-access hint.
+func TestParseIssueCredentialData503IsRetryableWithHint(t *testing.T) {
+	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
+	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusServiceUnavailable, RawBody: []byte(`{"msg":"upstream busy"}`), Header: header}, nil)
+	if err == nil {
+		t.Fatal("expected 503 error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs.Problem, got %T: %v", err, err)
+	}
+	if !p.Retryable {
+		t.Fatalf("503 should be retryable, got Retryable=false")
+	}
+	if !strings.Contains(p.Hint, "developer access") {
+		t.Fatalf("hint missing 'developer access': %q", p.Hint)
+	}
+}
+
+// TestParseIssueCredentialDataBusinessCodeHasHintNotRetryable verifies that a
+// non-zero business code (no HTTP status) carries the hint but is not retryable.
+func TestParseIssueCredentialDataBusinessCodeHasHintNotRetryable(t *testing.T) {
+	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
+	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":999,"msg":"no developer access"}`), Header: header}, nil)
+	if err == nil {
+		t.Fatal("expected business-code error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs.Problem, got %T: %v", err, err)
+	}
+	if p.Retryable {
+		t.Fatalf("business code != 0 must not be retryable, got Retryable=true")
+	}
+	if !strings.Contains(p.Hint, "developer access") {
+		t.Fatalf("hint missing 'developer access': %q", p.Hint)
+	}
+}
+
+// TestParseIssueCredentialDataMessageAddsNoExtraSecret verifies the security
+// condition that apps does not ADDITIONALLY inject any token/secret into the
+// Git-credential error it builds. The server `msg` is passed through verbatim
+// into Problem.Message, and the only thing apps adds is the static
+// gitCredentialIssueHint — which itself contains no secret. We feed a benign
+// server msg and assert (a) Message equals that msg exactly, and (b) neither
+// Message nor Hint contains any token/secret-shaped string.
+//
+// Note: server msg passthrough is the framework's responsibility; apps adds
+// only a static hint. There is no msg redaction in this path (verbatim
+// passthrough is the existing behavior), so this test does not assert a
+// redaction that does not exist — it asserts that apps injects nothing
+// sensitive of its own.
+func TestParseIssueCredentialDataMessageAddsNoExtraSecret(t *testing.T) {
+	const serverMsg = "permission denied"
+	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
+
+	for _, tc := range []struct {
+		name string
+		resp *larkcore.ApiResp
+	}{
+		{
+			name: "http error path",
+			resp: &larkcore.ApiResp{
+				StatusCode: http.StatusForbidden,
+				RawBody:    []byte(`{"msg":"` + serverMsg + `"}`),
+				Header:     header,
+			},
+		},
+		{
+			name: "business code path",
+			resp: &larkcore.ApiResp{
+				StatusCode: http.StatusOK,
+				RawBody:    []byte(`{"code":999,"msg":"` + serverMsg + `"}`),
+				Header:     header,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseIssueCredentialData(tc.resp, nil)
+			if err == nil {
+				t.Fatal("expected an error, got nil")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed errs.Problem, got %T: %v", err, err)
+			}
+			// (a) The server msg is passed through verbatim.
+			if p.Message != serverMsg {
+				t.Fatalf("Message = %q, want server msg %q (verbatim passthrough)", p.Message, serverMsg)
+			}
+			// apps adds only the static hint — assert that exact static text,
+			// proving apps injects no per-request secret into the hint either.
+			if p.Hint != gitCredentialIssueHint {
+				t.Fatalf("Hint = %q, want the static gitCredentialIssueHint", p.Hint)
+			}
+			// (b) Neither field may contain a token/secret-shaped string that
+			// apps could have added on top of the framework passthrough.
+			secret := regexp.MustCompile(`(?i)(pat-[a-z0-9]+|secret\s*[=:]\s*\S|token\s*[=:]\s*\S|password\s*[=:]\s*\S)`)
+			for field, val := range map[string]string{"Message": p.Message, "Hint": p.Hint} {
+				if secret.MatchString(val) {
+					t.Fatalf("%s leaks a token/secret-shaped string: %q", field, val)
+				}
+			}
+		})
 	}
 }
 

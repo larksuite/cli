@@ -20,6 +20,7 @@ var AppsSessionList = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +session-list --app-id <app_id>",
+		"Tip: filter fields with --jq, e.g. -q '.data.sessions[].session_id'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -42,7 +43,7 @@ var AppsSessionList = common.Shortcut{
 			Params(buildSessionListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("GET", sessionsPath(rctx.Str("app-id")), buildSessionListParams(rctx), nil)
+		data, err := rctx.CallAPITyped("GET", sessionsPath(rctx.Str("app-id")), buildSessionListParams(rctx), nil)
 		if err != nil {
 			return err
 		}

@@ -478,7 +478,9 @@ func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (commit
 	}
 
 	if _, se, e := initRunner.Run(ctx, dir, "git", "push", "origin", defaultInitBranch); e != nil {
-		return true, false, output.Errorf(output.ExitAPI, "git_push", "git push failed: %s", gitErr(se, e))
+		return true, false, withAppsHint(
+			output.Errorf(output.ExitAPI, "git_push", "git push failed: %s", gitErr(se, e)),
+			"the push was rejected — the git output is in the message above; if it is a non-fast-forward (remote has new commits), sync the remote and retry; if it is an auth failure, make sure `lark-cli apps +git-credential-init` has succeeded")
 	}
 	return true, true, nil
 }

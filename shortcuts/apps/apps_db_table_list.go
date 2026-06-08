@@ -27,6 +27,7 @@ var AppsDBTableList = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +db-table-list --app-id <app_id>",
+		"Tip: filter fields with --jq, e.g. -q '.data.items[].name'",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
@@ -53,7 +54,7 @@ var AppsDBTableList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPI("GET", appTablesPath(appID), buildDBTableListParams(rctx), nil)
+		data, err := rctx.CallAPITyped("GET", appTablesPath(appID), buildDBTableListParams(rctx), nil)
 		if err != nil {
 			return err
 		}

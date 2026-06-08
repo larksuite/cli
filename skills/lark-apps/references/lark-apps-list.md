@@ -23,7 +23,8 @@ lark-cli apps +list --page-token "<cursor>"
 
 ## 输出契约
 
-- 成功读取 `data.items[]`；用于候选展示的核心字段是 `name`、`app_id`、`updated_at`。
+- 成功读取 `data.items[]`；保留字段为 `description`、`app_id`、`name`、`is_published`、`online_url`、`updated_at`，用于候选展示的核心字段是 `name`、`app_id`、`updated_at`。
+- 默认输出已裁掉 `icon_url`（图片 URL，agent 无法渲染）和 `created_at`（与 `updated_at` 冗余）；需要时可用 `--jq` 过滤上述保留字段。
 - `data.items` 可能为空；不要把空列表当失败。
 - 若有 `has_more=true`，用返回的 `page_token` / `next_page_token` 继续翻页。
 
