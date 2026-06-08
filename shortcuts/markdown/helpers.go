@@ -451,7 +451,11 @@ func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSp
 		if err != nil {
 			return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadAllAction)
 		}
-		return parseMarkdownUploadResult(data, spec.FileToken != "")
+		result, err := parseMarkdownUploadResult(data, spec.FileToken != "")
+		if err != nil {
+			return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadAllAction)
+		}
+		return result, nil
 	})
 }
 
@@ -480,7 +484,7 @@ func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUp
 
 	session, err := parseMarkdownMultipartSession(prepareResult)
 	if err != nil {
-		return markdownUploadResult{}, err
+		return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadPrepareAction)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, common.FormatSize(session.BlockSize))
@@ -509,7 +513,11 @@ func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUp
 		return markdownUploadResult{}, err
 	}
 
-	return parseMarkdownUploadResult(finishResult, spec.FileToken != "")
+	result, err := parseMarkdownUploadResult(finishResult, spec.FileToken != "")
+	if err != nil {
+		return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadFinishAction)
+	}
+	return result, nil
 }
 
 func parseMarkdownMultipartSession(data map[string]interface{}) (markdownMultipartSession, error) {
@@ -529,9 +537,8 @@ func parseMarkdownMultipartSession(data map[string]interface{}) (markdownMultipa
 func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.Reader, payloadSize int64, session markdownMultipartSession) error {
 	expectedBlocks := int((payloadSize + session.BlockSize - 1) / session.BlockSize)
 	if session.BlockNum != expectedBlocks {
-		return output.Errorf(
-			output.ExitAPI,
-			"api_error",
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
 			"upload_prepare returned inconsistent chunk plan: block_size=%d, block_num=%d, expected_block_num=%d, payload_size=%d",
 			session.BlockSize,
 			session.BlockNum,
@@ -542,7 +549,7 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 
 	maxInt := int64(^uint(0) >> 1)
 	if session.BlockSize > maxInt {
-		return output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_size returned")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "upload prepare failed: invalid block_size returned")
 	}
 
 	buffer := make([]byte, int(session.BlockSize))
@@ -591,9 +598,8 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 		remaining -= int64(n)
 	}
 	if remaining != 0 {
-		return output.Errorf(
-			output.ExitAPI,
-			"api_error",
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
 			"upload_prepare returned inconsistent chunk plan: %d bytes remain after %d blocks",
 			remaining,
 			session.BlockNum,
@@ -714,6 +720,8 @@ func markdownUploadProblem(err error, action string) error {
 	if p, ok := errs.ProblemOf(err); ok {
 		p.Message = action + ": " + p.Message
 		switch p.Code {
+		case 99991672, 99991679:
+			appendMarkdownProblemHint(err, "The current token or identity lacks the required document upload scope/capability. Grant the document upload scope or use a token with the appropriate permissions, then retry.")
 		case 10071:
 			appendMarkdownProblemHint(err, "The target document has reached its version limit. Clean up old versions or create a new file before retrying.")
 		case 90003087:

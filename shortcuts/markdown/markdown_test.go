@@ -641,6 +641,9 @@ func TestMarkdownCreateUploadAllReturnsTypedScopeError(t *testing.T) {
 	if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
 		t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadAllAction+": ")
 	}
+	if !strings.Contains(p.Hint, "lacks the required document upload scope") {
+		t.Fatalf("hint = %q, want upload scope guidance", p.Hint)
+	}
 }
 
 func TestMarkdownCreateUploadAllRetriesRateLimit(t *testing.T) {
@@ -1205,6 +1208,11 @@ func TestMarkdownUploadProblemAppendsCodeSpecificHints(t *testing.T) {
 		want string
 	}{
 		{
+			name: "missing scope",
+			code: 99991672,
+			want: "lacks the required document upload scope",
+		},
+		{
 			name: "version limit",
 			code: 10071,
 			want: "reached its version limit",
@@ -1242,6 +1250,128 @@ func TestMarkdownUploadProblemAppendsCodeSpecificHints(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUploadMarkdownFileAllMissingFileTokenGetsActionPrefix(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"version": "1001",
+			},
+		},
+	})
+
+	_, err := uploadMarkdownFileAll(
+		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+		markdownUploadSpec{ContentSet: true},
+		"README.md",
+		int64(len("# hello\n")),
+		func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("# hello\n")), nil
+		},
+	)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
+		t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadAllAction+": ")
+	}
+}
+
+func TestUploadMarkdownFileMultipartPrepareAndFinishParseErrorsGetActionPrefix(t *testing.T) {
+	t.Run("prepare", func(t *testing.T) {
+		f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_prepare",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"upload_id": "upload_123",
+					"block_num": 1,
+				},
+			},
+		})
+
+		_, err := uploadMarkdownFileMultipart(
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			markdownUploadSpec{ContentSet: true},
+			"README.md",
+			int64(len("# hello\n")),
+			func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("# hello\n")), nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected prepare parse error")
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T (%v)", err, err)
+		}
+		if !strings.HasPrefix(p.Message, markdownUploadPrepareAction+": ") {
+			t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadPrepareAction+": ")
+		}
+	})
+
+	t.Run("finish", func(t *testing.T) {
+		f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_prepare",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"upload_id":  "upload_123",
+					"block_size": float64(8),
+					"block_num":  float64(1),
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_part",
+			Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_finish",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"version": "1001",
+				},
+			},
+		})
+
+		_, err := uploadMarkdownFileMultipart(
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			markdownUploadSpec{ContentSet: true},
+			"README.md",
+			int64(len("# hello\n")),
+			func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("# hello\n")), nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected finish parse error")
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T (%v)", err, err)
+		}
+		if !strings.HasPrefix(p.Message, markdownUploadFinishAction+": ") {
+			t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadFinishAction+": ")
+		}
+	})
 }
 
 func TestAppendMarkdownProblemHintAppendsAndIgnoresBlank(t *testing.T) {
