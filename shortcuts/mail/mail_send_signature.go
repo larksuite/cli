@@ -226,7 +226,10 @@ func renderMailSendSignatureText(buf *bytes.Buffer, root *xhtml.Node, imagePlace
 }
 
 func appendMailSendSignatureTextNode(buf *bytes.Buffer, raw, imagePlaceholder string) {
-	unescaped := stdhtml.UnescapeString(raw)
+	// xhtml.Parse already unescapes HTML entities in text nodes, so raw is
+	// already in its final form. Calling UnescapeString again would corrupt
+	// double-encoded content (e.g. &amp;amp; → &amp; instead of staying as-is).
+	unescaped := raw
 	if !mailSendSignatureLooksLikeHTMLFragment(unescaped) {
 		appendMailSendSignatureText(buf, unescaped)
 		return
@@ -253,7 +256,10 @@ func appendMailSendSignatureTextNode(buf *bytes.Buffer, raw, imagePlaceholder st
 }
 
 func appendMailSendSignatureText(buf *bytes.Buffer, raw string) {
-	parts := strings.Fields(stdhtml.UnescapeString(raw))
+	// Callers (appendMailSendSignatureTextNode and renderMailSendSignatureText)
+	// already pass fully-unescaped text; UnescapeString here would be a redundant
+	// second pass and could corrupt double-encoded entities.
+	parts := strings.Fields(raw)
 	if len(parts) == 0 {
 		return
 	}
