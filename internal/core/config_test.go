@@ -11,7 +11,6 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 )
 
-// stubKeychain is a minimal KeychainAccess that always returns ErrNotFound.
 type stubKeychain struct{}
 
 func (stubKeychain) Get(service, account string) (string, error) {
@@ -48,7 +47,6 @@ func TestAppConfig_LangOmitEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	// Lang should be omitted when empty
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal raw: %v", err)
@@ -99,7 +97,7 @@ func TestResolveConfigFromMulti_RejectsSecretKeyMismatch(t *testing.T) {
 		},
 	}
 
-	_, err := ResolveConfigFromMulti(raw, nil, "")
+	_, err := ResolveConfigFromMulti(raw, nil, "", "")
 	if err == nil {
 		t.Fatal("expected error for mismatched appId and appSecret keychain key")
 	}
@@ -123,7 +121,7 @@ func TestResolveConfigFromMulti_AcceptsPlainSecret(t *testing.T) {
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,9 +131,8 @@ func TestResolveConfigFromMulti_AcceptsPlainSecret(t *testing.T) {
 }
 
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
-	// Keychain ref matches appId, so validation passes.
-	// The subsequent ResolveSecretInput will fail (no real keychain),
-	// but that proves the mismatch check itself passed.
+	// Mismatch check passes; subsequent keychain lookup fails, proving the
+	// failure came from resolution, not from the appId/keychain-key check.
 	raw := &MultiAppConfig{
 		Apps: []AppConfig{
 			{
@@ -149,13 +146,10 @@ func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T
 		},
 	}
 
-	_, err := ResolveConfigFromMulti(raw, stubKeychain{}, "")
+	_, err := ResolveConfigFromMulti(raw, stubKeychain{}, "", "")
 	if err == nil {
-		// stubKeychain returns ErrNotFound, so we expect a keychain error,
-		// but NOT a mismatch error — that's the point of this test.
 		t.Fatal("expected error (keychain entry not found), got nil")
 	}
-	// The error should come from keychain resolution, NOT from our mismatch check.
 	var cfgErr *ConfigError
 	if errors.As(err, &cfgErr) {
 		if cfgErr.Message == "appId and appSecret keychain key are out of sync" {
@@ -179,7 +173,7 @@ func TestResolveConfigFromMulti_DoesNotUseEnvProfileFallback(t *testing.T) {
 		},
 	}
 
-	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", "")
 	if err != nil {
 		t.Fatalf("ResolveConfigFromMulti() error = %v", err)
 	}

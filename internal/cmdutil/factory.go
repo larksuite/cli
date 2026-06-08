@@ -21,32 +21,35 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 )
 
-// Factory holds shared dependencies injected into every command.
-// All function fields are lazily initialized and cached after first call.
-// In tests, replace any field to stub out external dependencies.
 type InvocationContext struct {
 	Profile string
+	// Resolved --user / LARKSUITE_CLI_OPEN_ID override (empty when neither was
+	// provided); falls through to AppConfig.CurrentUser then Users[0] in
+	// core.ResolveConfigFromMulti.
+	UserOpenId string
+	// "flag", "env", or ""; downstream error hints branch on this so an env
+	// override miss gets different remediation copy than a --user miss.
+	UserSource string
 }
 
 type Factory struct {
-	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
-	HttpClient func() (*http.Client, error)    // HTTP client for non-Lark API calls (with retry and security headers)
-	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
-	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
+	Config     func() (*core.CliConfig, error)
+	HttpClient func() (*http.Client, error)
+	LarkClient func() (*lark.Client, error)
+	IOStreams  *IOStreams
 
-	Invocation           InvocationContext       // Immutable call context; do not mutate after Factory construction.
-	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
-	IdentityAutoDetected bool                    // set by ResolveAs when identity was auto-detected
-	ResolvedIdentity     core.Identity           // identity resolved by the last ResolveAs call
-	CurrentCommand       *cobra.Command          // last matched command being executed; set during PersistentPreRun
+	Invocation           InvocationContext // immutable; do not mutate after construction
+	Keychain             keychain.KeychainAccess
+	IdentityAutoDetected bool          // set by ResolveAs when identity was auto-detected
+	ResolvedIdentity     core.Identity // identity resolved by the last ResolveAs call
+	CurrentCommand       *cobra.Command
 
 	Credential *credential.CredentialProvider
 
-	FileIOProvider fileio.Provider // file transfer provider (default: local filesystem)
+	FileIOProvider fileio.Provider
 }
 
 // ResolveFileIO resolves a FileIO instance using the current execution context.
-// The provider controls whether the returned instance is fresh or cached.
 func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 	if f == nil || f.FileIOProvider == nil {
 		return nil
@@ -54,9 +57,8 @@ func (f *Factory) ResolveFileIO(ctx context.Context) fileio.FileIO {
 	return f.FileIOProvider.ResolveFileIO(ctx)
 }
 
-// ResolveAs returns the effective identity type.
-// If the user explicitly passed --as, use that value; otherwise use the configured default.
-// When the value is "auto" (or unset), auto-detect based on credential hints.
+// ResolveAs returns the effective identity. Explicit --as wins; otherwise the
+// configured default-as, then auto-detect from credential hints.
 func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core.Identity) core.Identity {
 	f.IdentityAutoDetected = false
 
@@ -84,7 +86,6 @@ func (f *Factory) ResolveAs(ctx context.Context, cmd *cobra.Command, flagAs core
 		}
 	}
 
-	// Auto-detect based on credential hint
 	f.IdentityAutoDetected = true
 	result := autoDetectIdentityFromHint(hint)
 	f.ResolvedIdentity = result
@@ -117,8 +118,7 @@ func (f *Factory) resolveIdentityHint(ctx context.Context) *credential.IdentityH
 }
 
 // CheckIdentity verifies the resolved identity is in the supported list.
-// On success, sets f.ResolvedIdentity. On failure, returns an error
-// tailored to whether the identity was explicit (--as) or auto-detected.
+// Error copy differs based on whether the identity was explicit (--as) or auto-detected.
 func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 	for _, t := range supported {
 		if string(as) == t {
@@ -142,8 +142,8 @@ func (f *Factory) CheckIdentity(as core.Identity, supported []string) error {
 		WithParam("--as")
 }
 
-// ResolveStrictMode returns the effective strict mode by reading
-// Account.SupportedIdentities from the credential provider chain.
+// ResolveStrictMode reads Account.SupportedIdentities from the credential
+// provider chain.
 func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 	if f.Credential == nil {
 		return core.StrictModeOff
@@ -174,8 +174,9 @@ func (f *Factory) CheckStrictMode(ctx context.Context, as core.Identity) error {
 	return nil
 }
 
-// NewAPIClient creates an APIClient using the Factory's base Config (app credentials only).
-// For user-mode calls where the correct user profile matters, use NewAPIClientWithConfig instead.
+// NewAPIClient creates an APIClient using the Factory's base Config (app
+// credentials only). For user-mode calls where the correct user profile
+// matters, use NewAPIClientWithConfig instead.
 func (f *Factory) NewAPIClient() (*client.APIClient, error) {
 	cfg, err := f.Config()
 	if err != nil {
@@ -185,7 +186,6 @@ func (f *Factory) NewAPIClient() (*client.APIClient, error) {
 }
 
 // NewAPIClientWithConfig creates an APIClient with an explicit config.
-// Use this when the caller has already resolved the correct config.
 func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient, error) {
 	sdk, err := f.LarkClient()
 	if err != nil {
@@ -209,12 +209,9 @@ func (f *Factory) NewAPIClientWithConfig(cfg *core.CliConfig) (*client.APIClient
 }
 
 // RequireBuiltinCredentialProvider returns a typed validation error when an
-// extension provider is actively managing credentials. Intended for use as
-// PersistentPreRunE on the auth and config parent commands.
-//
-// Returns nil when:
-//   - f.Credential is nil (test environments without credential setup)
-//   - No extension provider is active (built-in keychain/config path is used)
+// extension provider is actively managing credentials. Intended as
+// PersistentPreRunE on the auth and config parent commands. Returns nil when
+// f.Credential is nil or no extension provider is active.
 func (f *Factory) RequireBuiltinCredentialProvider(ctx context.Context, command string) error {
 	if f.Credential == nil {
 		return nil

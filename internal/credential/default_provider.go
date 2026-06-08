@@ -5,6 +5,8 @@ package credential
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
 
@@ -20,19 +23,9 @@ import (
 )
 
 // classifyTATResponseCode wraps a non-zero TAT endpoint response code into the
-// canonical typed error. The TAT mint endpoint reports invalid credentials
-// with two distinct codes:
-//
-//   - 10003: bad app_id format or non-existent app_id ("invalid param")
-//   - 10014: invalid app_secret ("app secret invalid")
-//
-// Both surface as CategoryConfig/InvalidClient from the user's perspective —
-// the configured credentials cannot mint a tenant access token. 10014 is
-// globally mapped in codemeta (TAT-mint-specific variant of OAuth 99991543).
-// 10003 is NOT globally mapped because in other Lark endpoints it carries
-// unrelated semantics (e.g. task API uses 10003 for permission denied), so
-// the override stays local to this TAT call site instead of leaking into the
-// shared codemeta table.
+// canonical typed error. 10003 (bad/missing app_id) is overridden locally
+// because in other Lark endpoints the same code means permission denied;
+// 10014 (invalid app_secret) is handled via the shared codemeta table.
 func classifyTATResponseCode(code int, msg, brand, appID string) error {
 	if code == 10003 {
 		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
@@ -50,30 +43,67 @@ func classifyTATResponseCode(code int, msg, brand, appID string) error {
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
-	keychain func() keychain.KeychainAccess
-	profile  string
+	keychain     func() keychain.KeychainAccess
+	profile      string
+	userOverride string
+	userSource   string // "flag", "env", or "" — drives error-hint copy on miss
 }
 
-func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile, userOverride, userSource string) *DefaultAccountProvider {
 	if kc == nil {
 		kc = keychain.Default
 	}
-	return &DefaultAccountProvider{keychain: kc, profile: profile}
+	return &DefaultAccountProvider{
+		keychain:     kc,
+		profile:      profile,
+		userOverride: userOverride,
+		userSource:   userSource,
+	}
 }
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
-	// Load config once — used for both credentials and strict mode.
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
-		return nil, core.NotConfiguredError()
+		return nil, core.PassThroughOrNotConfigured(err)
 	}
 
-	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
+	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile, p.userOverride)
 	if err != nil {
-		return nil, err
+		// Source-tag the user-resolution error here; the resolver layer is env-agnostic.
+		return nil, decorateUserResolutionError(err, p.userSource)
 	}
 	cfg.SupportedIdentities = strictModeToIdentitySupport(multi, p.profile)
 	return AccountFromCliConfig(cfg), nil
+}
+
+// decorateUserResolutionError appends a source-aware remediation suffix to a
+// user-rung *core.ConfigError. Pass-through on any non-ConfigError, empty
+// source, or non-user rung (which has its own remediation).
+//
+// Gating is structural via core.ConfigError.Rung — substring-matching the
+// Message was fragile: it false-matched a profile-rung error that
+// happened to contain "user" (e.g. "available users in this profile: ..."
+// rendered into a profile-resolution failure if the copy ever drifted),
+// and silently dropped the env-source hint on legitimately user-rung
+// errors when the wording changed in any direction.
+func decorateUserResolutionError(err error, source string) error {
+	if err == nil || source == "" {
+		return err
+	}
+	var cfgErr *core.ConfigError
+	if !errors.As(err, &cfgErr) {
+		return err
+	}
+	if cfgErr.Rung != core.RungUser {
+		return err
+	}
+	switch source {
+	case "env":
+		cfgErr.Hint = cfgErr.Hint + "; this value came from " + envvars.CliOpenID + " — unset it or pass --user explicitly to override"
+	case "flag":
+		// --user already named in the resolver's hint copy; no-op.
+	}
+	return cfgErr
 }
 
 // strictModeToIdentitySupport maps the config-level strict mode to
@@ -96,8 +126,8 @@ func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride str
 	}
 }
 
-// DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls.
-// No SDK/LarkClient dependency — eliminates circular dependency with Factory.
+// DefaultTokenProvider resolves UAT/TAT using keychain + direct HTTP calls
+// (no SDK/LarkClient dep — avoids a circular dependency with Factory).
 type DefaultTokenProvider struct {
 	defaultAcct *DefaultAccountProvider
 	httpClient  func() (*http.Client, error)
@@ -123,8 +153,8 @@ func (p *DefaultTokenProvider) ResolveToken(ctx context.Context, req TokenSpec) 
 	}
 }
 
-// resolveUAT resolves a user access token. Not cached (unlike TAT) because UAT
-// may be refreshed between calls and GetValidAccessToken handles its own caching.
+// resolveUAT resolves a user access token. Not cached — GetValidAccessToken
+// handles its own refresh/caching.
 func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, error) {
 	acct, err := p.defaultAcct.ResolveAccount(ctx)
 	if err != nil {
@@ -146,8 +176,8 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
-// resolveTAT resolves a tenant access token. Result is cached after first call.
-// NOTE: Uses sync.Once — only the context from the first call is used.
+// resolveTAT resolves a tenant access token, cached after the first call via
+// sync.Once — only the first caller's context is used.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
 	p.tatOnce.Do(func() {
 		p.tatResult, p.tatErr = p.doResolveTAT(ctx)

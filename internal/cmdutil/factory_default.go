@@ -28,12 +28,7 @@ import (
 )
 
 // NewDefault creates a production Factory with cached closures.
-// Initialization follows a credential-first order:
-//
-//	Phase 1: HttpClient (no credential dependency)
-//	Phase 2: Credential (sole data source for account info)
-//	Phase 3: Config derived from Credential
-//	Phase 4: LarkClient derived from Credential
+// Credential is the sole data source; Config and LarkClient derive from it.
 func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 	streams = normalizeStreams(streams)
 	f := &Factory{
@@ -42,27 +37,23 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		IOStreams:  streams,
 	}
 
-	// Workspace detection: determines which config subtree to use.
-	// Must run before any config or credential load, since those paths are
-	// workspace-scoped. Default is WorkspaceLocal — existing behavior unchanged.
+	// Must run before any config or credential load — those paths are workspace-scoped.
 	ws := core.DetectWorkspaceFromEnv(os.Getenv)
 	core.SetCurrentWorkspace(ws)
 
-	// Inject workspace-aware dir into keychain's log system.
-	// This breaks the core↔keychain import cycle by using a function variable.
+	// Function variable breaks the core↔keychain import cycle.
 	keychain.RuntimeDirFunc = core.GetRuntimeDir
 
-	// Phase 0: FileIO provider (no dependency)
 	f.FileIOProvider = fileio.GetProvider()
 
-	// Phase 1: HttpClient (no credential dependency)
 	f.HttpClient = cachedHttpClientFunc(f)
 
-	// Phase 2: Credential (sole data source)
-	// Keychain is read via closure so callers can replace f.Keychain after construction.
+	// Keychain read via closure so callers can replace f.Keychain after construction.
 	f.Credential = buildCredentialProvider(credentialDeps{
 		Keychain:   func() keychain.KeychainAccess { return f.Keychain },
 		Profile:    inv.Profile,
+		UserOpenId: inv.UserOpenId,
+		UserSource: inv.UserSource,
 		HttpClient: f.HttpClient,
 		ErrOut:     f.IOStreams.ErrOut,
 	})
@@ -78,16 +69,13 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		return cfg, nil
 	})
 
-	// Phase 4: LarkClient from Credential (placeholder AppSecret)
 	f.LarkClient = cachedLarkClientFunc(f)
 
 	return f
 }
 
-// safeRedirectPolicy prevents credential headers from being forwarded
-// when a response redirects to a different host (e.g. Lark API 302 → CDN).
-// Strips Authorization, X-Lark-MCP-UAT, and X-Lark-MCP-TAT on cross-host
-// redirects; other headers like X-Cli-* pass through.
+// safeRedirectPolicy strips Authorization, X-Lark-MCP-UAT, and X-Lark-MCP-TAT
+// on cross-host redirects (e.g. Lark API 302 → CDN). Other headers pass through.
 func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return fmt.Errorf("too many redirects")
@@ -107,7 +95,7 @@ func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 		var rt http.RoundTripper = transport.Shared()
 		rt = &RetryTransport{Base: rt}
 		rt = &SecurityHeaderTransport{Base: rt}
-		rt = &auth.SecurityPolicyTransport{Base: rt} // Add our global response interceptor
+		rt = &auth.SecurityPolicyTransport{Base: rt}
 		rt = wrapWithExtension(rt)
 		client := &http.Client{
 			Transport:     rt,
@@ -152,19 +140,19 @@ func buildSDKTransport() http.RoundTripper {
 type credentialDeps struct {
 	Keychain   func() keychain.KeychainAccess
 	Profile    string
+	UserOpenId string
+	UserSource string
 	HttpClient func() (*http.Client, error)
 	ErrOut     io.Writer
 }
 
 func buildCredentialProvider(deps credentialDeps) *credential.CredentialProvider {
 	providers := extcred.Providers()
-	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile)
+	defaultAcct := credential.NewDefaultAccountProvider(deps.Keychain, deps.Profile, deps.UserOpenId, deps.UserSource)
 	defaultToken := credential.NewDefaultTokenProvider(defaultAcct, deps.HttpClient, deps.ErrOut)
-	// NOTE: Do not pass deps.ErrOut as warnOut. Credential resolution
-	// happens before the command runs, so any plain-text warning written
-	// to stderr would break the JSON envelope contract that AI agents
-	// depend on. enrichUserInfo failures are already non-fatal (the
-	// provider clears unverified identity fields), so silencing the
-	// warning is safe.
+	// Do not pass deps.ErrOut as warnOut: credential resolution runs before the
+	// command, so plain-text warnings on stderr would break the JSON envelope
+	// contract that AI agents depend on. enrichUserInfo failures are already
+	// non-fatal (provider clears unverified identity fields).
 	return credential.NewCredentialProvider(providers, defaultAcct, defaultToken, deps.HttpClient)
 }

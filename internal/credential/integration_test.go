@@ -53,7 +53,6 @@ func TestFullChain_EnvWins(t *testing.T) {
 }
 
 func TestFullChain_Fallthrough(t *testing.T) {
-	// env provider returns nil (no env vars set), falls through to default token
 	ep := &envprovider.Provider{}
 	mock := &mockDefaultTokenProvider{token: "mock_tok", scopes: "drive:read"}
 
@@ -101,7 +100,7 @@ func TestFullChain_ConfigStrictMode(t *testing.T) {
 	}
 
 	ep := &envprovider.Provider{}
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "")
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", "", "")
 
 	cp := credential.NewCredentialProvider(
 		[]extcred.Provider{ep},
@@ -117,13 +116,9 @@ func TestFullChain_ConfigStrictMode(t *testing.T) {
 	}
 }
 
-// TestFullChain_LangSurvivesProductionPath exercises the exact data flow the
-// production Factory uses (factory_default.go Phase 3): disk → multi config →
-// DefaultAccountProvider.ResolveAccount → Account → ToCliConfig. If Lang gets
-// dropped at the credential boundary (as it would when Account lacks the field),
-// shortcuts/common/runner.go RuntimeContext.Lang() returns "" and downstream
-// consumers (mail signature, etc.) silently fall back to defaults — defeating
-// the whole point of persisting --lang.
+// TestFullChain_LangSurvivesProductionPath verifies Lang propagates through
+// DefaultAccountProvider → Account → ToCliConfig; without it RuntimeContext.Lang()
+// returns "" in production and --lang persistence is silently lost.
 func TestFullChain_LangSurvivesProductionPath(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "")
 	t.Setenv(envvars.CliAppSecret, "")
@@ -141,13 +136,13 @@ func TestFullChain_LangSurvivesProductionPath(t *testing.T) {
 		t.Fatalf("SaveMultiAppConfig: %v", err)
 	}
 
-	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "")
+	defaultAcct := credential.NewDefaultAccountProvider(func() keychain.KeychainAccess { return &noopKC{} }, "", "", "")
 	acct, err := defaultAcct.ResolveAccount(context.Background())
 	if err != nil {
 		t.Fatalf("ResolveAccount: %v", err)
 	}
 	if acct.Lang != i18n.LangJaJP {
-		t.Errorf("Account.Lang = %q, want %q (DefaultAccountProvider must propagate Lang from config)", acct.Lang, i18n.LangJaJP)
+		t.Errorf("Account.Lang = %q, want %q", acct.Lang, i18n.LangJaJP)
 	}
 
 	cfg := acct.ToCliConfig()
@@ -155,6 +150,6 @@ func TestFullChain_LangSurvivesProductionPath(t *testing.T) {
 		t.Fatal("ToCliConfig() = nil")
 	}
 	if cfg.Lang != i18n.LangJaJP {
-		t.Errorf("CliConfig.Lang = %q, want %q (this is the value RuntimeContext.Lang() reads in production)", cfg.Lang, i18n.LangJaJP)
+		t.Errorf("CliConfig.Lang = %q, want %q", cfg.Lang, i18n.LangJaJP)
 	}
 }

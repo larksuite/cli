@@ -4,11 +4,14 @@
 package profile
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -32,6 +35,15 @@ func profileRenameRun(f *cmdutil.Factory, oldName, newName string) error {
 	if err := core.ValidateProfileName(newName); err != nil {
 		return output.ErrValidation("%v", err)
 	}
+
+	root := larkauth.NewLocalRoot(core.GetConfigDir())
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(larkauth.SingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return output.Errorf(output.ExitInternal, "internal", "profile rename: acquire flock: %v", err)
+	}
+	defer lk.Release()
 
 	multi, err := core.LoadOrNotConfigured()
 	if err != nil {

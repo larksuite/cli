@@ -4,9 +4,7 @@
 package config
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -45,17 +43,37 @@ func configShowRun(opts *ConfigShowOptions) error {
 
 	config, err := core.LoadMultiAppConfig()
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return core.NotConfiguredError()
-		}
-		return errs.NewConfigError(errs.SubtypeInvalidConfig, "failed to load config: %v", err).WithCause(err)
+		// R2 transparency: a forward-incompat *core.ConfigError must reach
+		// the dispatcher with its upgrade Hint intact. The previous
+		// `errs.NewConfigError(SubtypeInvalidConfig, "failed to load
+		// config: %v", err).WithCause(err)` outer-typed envelope hid the
+		// R2 hint behind isOuterTypedError, leaving operators with a
+		// generic "failed to load config" message instead of "upgrade
+		// lark-cli". PassThroughOrNotConfigured maps:
+		//   - *core.ConfigError (R2 / parse) → returned verbatim for the
+		//     dispatcher to promote with its Hint intact
+		//   - os.ErrNotExist → workspace-aware NotConfiguredError
+		//   - other (permission, ...) → wrapped *core.ConfigError so the
+		//     dispatcher still gets a typed envelope.
+		return core.PassThroughOrNotConfigured(err)
 	}
 	if config == nil || len(config.Apps) == 0 {
 		return core.NotConfiguredError()
 	}
 	app := config.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil {
-		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").WithHint("run: lark-cli profile list")
+		// Apps[] is populated above this branch, so the resolution failure
+		// is either (a) operator named a ghost via --profile, or (b) the
+		// stored CurrentApp dangles. Neither is "no config" —
+		// SubtypeNotConfigured would steer AI agents to `config init` and
+		// clobber the existing profiles.
+		if f.Invocation.Profile != "" {
+			return errs.NewConfigError(errs.SubtypeInvalidArgument,
+				"profile %q not found", f.Invocation.Profile).
+				WithHint("available profiles: %s", strings.Join(config.ProfileNames(), ", "))
+		}
+		return errs.NewConfigError(errs.SubtypeInvalidConfig, "no active profile").
+			WithHint("run: lark-cli profile list")
 	}
 	users := "(no logged-in users)"
 	if len(app.Users) > 0 {

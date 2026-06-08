@@ -4,7 +4,9 @@
 package config
 
 import (
+	"context"
 	"fmt"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
@@ -41,8 +43,20 @@ func NewCmdConfigRemove(f *cmdutil.Factory, runF func(*ConfigRemoveOptions) erro
 func configRemoveRun(opts *ConfigRemoveOptions) error {
 	f := opts.Factory
 
+	root := auth.NewLocalRoot(core.GetConfigDir())
+	flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	lk, err := root.Locks(auth.SingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeStorage, "config remove: acquire flock: %v", err).WithCause(err)
+	}
+	defer lk.Release()
+
 	config, err := core.LoadMultiAppConfig()
-	if err != nil || config == nil || len(config.Apps) == 0 {
+	if err != nil {
+		return core.PassThroughOrNotConfigured(err)
+	}
+	if config == nil || len(config.Apps) == 0 {
 		return errs.NewConfigError(errs.SubtypeNotConfigured, "not configured yet")
 	}
 
@@ -57,7 +71,12 @@ func configRemoveRun(opts *ConfigRemoveOptions) error {
 	for _, app := range config.Apps {
 		core.RemoveSecretStore(app.AppSecret, f.Keychain)
 		for _, user := range app.Users {
-			_ = auth.RemoveStoredToken(app.AppId, user.UserOpenId)
+			// Sweep all three on-host artifacts: keychain UAT,
+			// sidecar profile JSON, and user_index.json row. A
+			// stale sidecar / index makes a "removed" user
+			// resurface in `auth users list` and mis-attribute a
+			// future re-login under the same open_id.
+			_ = auth.PurgeUserArtifacts(root, app.AppId, user.UserOpenId)
 		}
 	}
 

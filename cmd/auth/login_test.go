@@ -369,7 +369,7 @@ func TestWriteLoginSuccess_JSONIncludesScopeDiff(t *testing.T) {
 		NewlyGranted:   []string{"im:message:send"},
 		AlreadyGranted: []string{"im:message:reply"},
 		Granted:        []string{"im:message:send", "im:message:reply"},
-	})
+	}, nil)
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
@@ -399,7 +399,7 @@ func TestHandleLoginScopeIssue_NonJSONAlignsWithLoginSuccess(t *testing.T) {
 			Missing:   []string{"im:message:send"},
 			Granted:   []string{"base:app:copy"},
 		},
-	}, "ou_user", "tester")
+	}, "ou_user", "tester", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -441,7 +441,7 @@ func TestHandleLoginScopeIssue_JSONAlignsWithLoginSuccess(t *testing.T) {
 			Missing:   []string{"im:message:send"},
 			Granted:   []string{"base:app:copy"},
 		},
-	}, "ou_user", "tester")
+	}, "ou_user", "tester", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -473,7 +473,7 @@ func TestWriteLoginSuccess_JSONEmptySlicesNotNull(t *testing.T) {
 
 	writeLoginSuccess(&LoginOptions{JSON: true}, getLoginMsg("en"), f, "ou_user", "tester", &loginScopeSummary{
 		Granted: []string{"offline_access"},
-	})
+	}, nil)
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
@@ -558,7 +558,7 @@ func TestWriteLoginSuccess_TextOutputScenarios(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f, _, stderr, _ := cmdutil.TestFactory(t, nil)
-			writeLoginSuccess(&LoginOptions{}, getLoginMsg("zh"), f, "ou_user", "tester", tt.summary)
+			writeLoginSuccess(&LoginOptions{}, getLoginMsg("zh"), f, "ou_user", "tester", tt.summary, nil)
 
 			got := stderr.String()
 			for _, want := range tt.expectedPresent {
@@ -812,7 +812,7 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 		Requested:    []string{"im:message:send"},
 		NewlyGranted: []string{"im:message:send"},
 		Granted:      []string{"im:message:send"},
-	})
+	}, nil)
 
 	got := stderr.String()
 	for _, want := range []string{
@@ -833,6 +833,19 @@ func TestWriteLoginSuccess_TextOutputEnglishIncludesStatusHintWhenNoMissingScope
 func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 	keyring.MockInit()
 	setupLoginConfigDir(t)
+
+	// authLoginRun now resolves at the profile rung from disk (so
+	// `auth login --user ou_new` is reachable for fresh users); seed
+	// a minimal config.json so the resolve succeeds.
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "cli_test"},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
 
 	if err := saveLoginRequestedScope("device-code", "im:message:send"); err != nil {
 		t.Fatalf("saveLoginRequestedScope() error = %v", err)
@@ -876,6 +889,17 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 	keyring.MockInit()
 	setupLoginConfigDir(t)
+
+	// Profile-rung resolve reads from disk (see authLoginRun); seed config.
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "cli_test"},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
 
 	original := pollDeviceToken
 	t.Cleanup(func() { pollDeviceToken = original })

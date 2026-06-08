@@ -140,15 +140,39 @@ func writeLoginScopeBreakdown(errOut *cmdutil.IOStreams, msg *loginMsg, summary 
 }
 
 // writeLoginSuccess emits the successful login payload in either JSON or text
-// format together with the computed scope breakdown.
-func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, openId, userName string, summary *loginScopeSummary) {
+// format together with the computed scope breakdown. holderWarning is non-nil
+// only when the soft-mismatch advisory fired in enforceLoginHolderGate; it is
+// surfaced as a structured `holder_mismatch_warning` field in JSON mode so
+// non-human consumers can key on the active-user-stays semantics without
+// parsing the stderr WARN line.
+//
+// Returns a non-nil error only on the JSON branch when the encoder fails to
+// write the success line — broken pipe (`auth login --json | head -1`),
+// closed stdout (a tee dying mid-stream), full disk on a redirected file,
+// etc. The token is already persisted by the time this function runs, so
+// the error is purely an observability signal: a script that keys on exit
+// code to confirm event delivery would otherwise see exit 0 despite a
+// truncated payload. Mirrors the pattern at login.go:296-300 / :315-319
+// where the device_authorization event surfaces encoder errors as
+// SubtypeSDKError; the success event must do the same so the entire NDJSON
+// stream's write-failure semantics stay symmetric.
+func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, openId, userName string, summary *loginScopeSummary, holderWarning *holderMismatchWarning) error {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
 	if opts.JSON {
-		b, _ := json.Marshal(authorizationCompletePayload(openId, userName, summary, nil))
-		fmt.Fprintln(f.IOStreams.Out, string(b))
-		return
+		// SetEscapeHTML(false) keeps the encoding policy uniform across the
+		// whole NDJSON stream — the device_authorization line in login.go
+		// already disables HTML escaping; using package-level json.Marshal
+		// here would silently flip <, >, & to their entity escapes on the
+		// success line, breaking byte-comparing consumers that round-trip
+		// the two lines.
+		enc := json.NewEncoder(f.IOStreams.Out)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(authorizationCompletePayload(openId, userName, summary, nil, holderWarning)); err != nil {
+			return errs.NewInternalError(errs.SubtypeSDKError, "failed to write authorization_complete JSON: %v", err).WithCause(err)
+		}
+		return nil
 	}
 
 	fmt.Fprintln(f.IOStreams.ErrOut)
@@ -157,19 +181,33 @@ func writeLoginSuccess(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, op
 	if len(summary.Missing) == 0 && msg.StatusHint != "" {
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.StatusHint)
 	}
+	return nil
 }
 
 // handleLoginScopeIssue prints or returns a structured missing-scope result
 // while preserving a successful login outcome when authorization completed.
-func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, issue *loginScopeIssue, openId, userName string) error {
+// holderWarning is threaded through so a login that fires BOTH a soft
+// holder-mismatch AND a missing-scope issue still surfaces the holder
+// warning as a structured field on the success-side JSON payload.
+//
+// On the loginSucceeded + JSON branch, an encoder write failure is
+// surfaced as a SubtypeSDKError instead of the usual ErrBare ExitAuth —
+// the operator needs to see that the success-with-issue line was never
+// delivered, not just that exit code was non-zero. Without this, a
+// pipeline keyed on exit code would interpret "encoder failed" as
+// "auth issue surfaced" and miss the silent truncation.
+func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory, issue *loginScopeIssue, openId, userName string, holderWarning *holderMismatchWarning) error {
 	if issue == nil {
 		return nil
 	}
 	loginSucceeded := openId != ""
 	if opts.JSON {
 		if loginSucceeded {
-			b, _ := json.Marshal(authorizationCompletePayload(openId, userName, issue.Summary, issue))
-			fmt.Fprintln(f.IOStreams.Out, string(b))
+			enc := json.NewEncoder(f.IOStreams.Out)
+			enc.SetEscapeHTML(false)
+			if err := enc.Encode(authorizationCompletePayload(openId, userName, issue.Summary, issue, holderWarning)); err != nil {
+				return errs.NewInternalError(errs.SubtypeSDKError, "failed to write authorization_complete JSON: %v", err).WithCause(err)
+			}
 			return output.ErrBare(output.ExitAuth)
 		}
 		return errs.NewPermissionError(errs.SubtypeMissingScope, "%s", issue.Message).
@@ -197,8 +235,11 @@ func handleLoginScopeIssue(opts *LoginOptions, msg *loginMsg, f *cmdutil.Factory
 }
 
 // authorizationCompletePayload builds the JSON payload for a completed login,
-// optionally attaching a warning when requested scopes are missing.
-func authorizationCompletePayload(openId, userName string, summary *loginScopeSummary, issue *loginScopeIssue) map[string]interface{} {
+// optionally attaching a warning when requested scopes are missing and/or
+// when the operator's implied holder disagreed with the freshly-authorized
+// identity (soft mismatch). The two warnings are independent — a login can
+// surface both at once.
+func authorizationCompletePayload(openId, userName string, summary *loginScopeSummary, issue *loginScopeIssue, holderWarning *holderMismatchWarning) map[string]interface{} {
 	if summary == nil {
 		summary = &loginScopeSummary{}
 	}
@@ -218,6 +259,21 @@ func authorizationCompletePayload(openId, userName string, summary *loginScopeSu
 			"type":    "missing_scope",
 			"message": issue.Message,
 			"hint":    issue.Hint,
+		}
+	}
+	if holderWarning != nil {
+		// Distinct field name from the scope warning so JSON consumers can
+		// branch on each independently. The `type` discriminator stays for
+		// symmetry with `warning` and forward-compatibility (future holder
+		// warning subtypes — e.g. "holder_active_user_drift" — would slot in
+		// here without restructuring the payload).
+		payload["holder_mismatch_warning"] = map[string]interface{}{
+			"type":             "holder_currentuser_mismatch",
+			"message":          holderWarning.Message,
+			"holder_open_id":   holderWarning.HolderOpenId,
+			"holder_user_name": holderWarning.HolderUserName,
+			"fresh_open_id":    holderWarning.FreshOpenId,
+			"fresh_user_name":  holderWarning.FreshUserName,
 		}
 	}
 	return payload

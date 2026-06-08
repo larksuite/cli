@@ -6,8 +6,10 @@ package config
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/larksuite/cli/errs"
+	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/spf13/cobra"
@@ -37,6 +39,31 @@ explicit user confirmation — never run on your own initiative.`,
   lark-cli config strict-mode --reset       # clear profile override`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Read-only show path: skip the flock so a peer holding it across
+			// a TUI prompt (e.g. `config bind`) doesn't turn an instant status
+			// query into a 30s timeout. Every mutating arm below saves and
+			// MUST take the lock.
+			if !reset && len(args) == 0 {
+				multi, err := core.LoadOrNotConfigured()
+				if err != nil {
+					return err
+				}
+				app := multi.CurrentAppConfig(f.Invocation.Profile)
+				if app == nil {
+					return core.NoActiveProfileError()
+				}
+				return showStrictMode(cmd.Context(), f, multi, app)
+			}
+
+			root := larkauth.NewLocalRoot(core.GetConfigDir())
+			flockCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			lk, err := root.Locks(larkauth.SingleUser()).Acquire(flockCtx, "login", 30*time.Second)
+			if err != nil {
+				return errs.NewInternalError(errs.SubtypeStorage, "strict-mode: acquire flock: %v", err).WithCause(err)
+			}
+			defer lk.Release()
+
 			multi, err := core.LoadOrNotConfigured()
 			if err != nil {
 				return err
@@ -48,13 +75,6 @@ explicit user confirmation — never run on your own initiative.`,
 					return core.NoActiveProfileError()
 				}
 				return resetStrictMode(f, multi, app, global, args)
-			}
-			if len(args) == 0 {
-				app := multi.CurrentAppConfig(f.Invocation.Profile)
-				if app == nil {
-					return core.NoActiveProfileError()
-				}
-				return showStrictMode(cmd.Context(), f, multi, app)
 			}
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if !global && app == nil {
