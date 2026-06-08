@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.49] - 2026-06-08
+
+### Features
+
+- **events**: Add whiteboard event domain with per-board subscription (#1265)
+- **im**: Support feed group (#1102)
+- **im**: Add feed shortcut create, list, and remove shortcuts (#1273)
+- **im**: Format feed group error handling (#1308)
+- **im**: Return typed error envelopes across the im domain (#1230)
+- **base**: Emit typed error envelopes across the base domain (#1248)
+- **calendar**: Emit typed error envelopes across the calendar domain (#1232)
+- **task**: Emit typed error envelopes across the task domain (#1231)
+- **okr,whiteboard**: Emit typed error envelopes across both domains (#1236)
+- **minutes,vc**: Emit typed error envelopes across both domains (#1234)
+- **markdown**: Harden create upload failures (#1325)
+- **drive**: Harden inspect shortcut failures (#1324)
+- **slides**: Add IconPark lookup for Lark slides (#1123)
+- **doc**: Remove docs v1 API (#1291)
+- **cli**: Add `skills` command to read embedded skill content (#1318)
+- **cli**: Fetch official skills index (#1301)
+- **shared**: Document relative-path-only file arguments (#1319)
+- **scopes**: Clear `recommend.allow` scope auto-approve overrides (#1272)
+- **shortcuts**: Check shortcut example commands against the live CLI tree (#1244)
+
+### Bug Fixes
+
+- **events**: Keep bounded event consume runs alive after stdin EOF (#1285)
+- **drive**: Use docs secure label read scope (#1281)
+
+### Documentation
+
+- **approval**: Restructure skill with intent table and scope boundaries (#1307)
+- **skills**: Tighten drive and markdown guardrails (#1326)
+- **skills**: Optimize calendar, vc, and minutes skill guidance (#1269)
+- **markdown**: Add markdown domain template (#1293)
+- **markdown**: Improve lark-markdown skill guidance (#1279)
+- **doc**: Improve lark-doc skill guidance (#1283)
+- **wiki**: Optimize skill guidance and routing boundaries (#1275)
+- **slides**: Tighten routing/boundary and reconcile in-slide whiteboard (#1169)
+
 ## [v1.0.48] - 2026-06-04
 
 ### Features
@@ -1026,6 +1066,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.49]: https://github.com/larksuite/cli/releases/tag/v1.0.49
 [v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48
 [v1.0.47]: https://github.com/larksuite/cli/releases/tag/v1.0.47
 [v1.0.46]: https://github.com/larksuite/cli/releases/tag/v1.0.46
