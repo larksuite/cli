@@ -131,151 +131,159 @@ func TestValidateListComments_WikiURLAccepted(t *testing.T) {
 	}
 }
 
-// --- normalizeDocContent / normalizeQuoteNeedle ---
+// --- relation / block location helpers ---
 
-func TestNormalizeDocContent_StripsTagsEntitiesAndWhitespace(t *testing.T) {
-	t.Parallel()
-	in := `<p>由 <b>P2 / P3 事件聚类</b>触发&#x2F;关联</p>`
-	got := normalizeDocContent(in)
-	// Tags stripped, entity decoded, ALL whitespace removed.
-	// Verifies that text broken by an inline <b> tag is recombined and matches.
-	want := "由P2/P3事件聚类触发/关联"
-	if !strings.Contains(got, want) {
-		t.Fatalf("normalize failed: %q, want substring %q", got, want)
-	}
-}
-
-func TestNormalizeQuoteNeedle_UsesFirstLine(t *testing.T) {
-	t.Parallel()
-	multiline := "体验驱动\n随单/年度满意度调查\n舆情反馈"
-	got := normalizeQuoteNeedle(multiline)
-	if got != "体验驱动" {
-		t.Fatalf("got %q, want 体验驱动", got)
-	}
-}
-
-func TestNormalizeQuoteNeedle_RemovesAllWhitespace(t *testing.T) {
-	t.Parallel()
-	in := "  hello    world  "
-	got := normalizeQuoteNeedle(in)
-	if got != "helloworld" {
-		t.Fatalf("got %q, want helloworld", got)
-	}
-}
-
-func TestNormalizeQuoteNeedle_MatchesAcrossInlineTags(t *testing.T) {
-	t.Parallel()
-	// This test documents the cross-tag matching behavior: a needle that has
-	// whitespace in the original quote text must match content that was
-	// broken by inline tags in the document XML.
-	quote := "由 P2 / P3 事件聚类触发"
-	docContent := normalizeDocContent(`<p>由 <b>P2 / P3 事件聚类</b>触发：详细描述...</p>`)
-	needle := normalizeQuoteNeedle(quote)
-	if !strings.Contains(docContent, needle) {
-		t.Fatalf("needle %q not found in normalized doc %q (cross-tag match should succeed)", needle, docContent)
-	}
-}
-
-func TestNormalizeQuoteNeedle_EmptyQuote(t *testing.T) {
-	t.Parallel()
-	if got := normalizeQuoteNeedle(""); got != "" {
-		t.Fatalf("got %q, want empty", got)
-	}
-	if got := normalizeQuoteNeedle("\n\n  \n"); got != "" {
-		t.Fatalf("got %q, want empty for whitespace-only", got)
-	}
-}
-
-// --- buildCommentItem ---
-
-func TestBuildCommentItem_WholeDocComment(t *testing.T) {
+func TestExtractRelationBlockID(t *testing.T) {
 	t.Parallel()
 	raw := map[string]interface{}{
-		"comment_id":  "c1",
-		"is_whole":    true,
+		"relation": map[string]interface{}{
+			"content_deleted": false,
+			"relation":        `{"22-dox":{"objType":22,"positionInfo":{"blockID":"blk_123"}}}`,
+		},
+	}
+	blockID, deleted, ok := extractCommentRelation(raw)
+	if !ok {
+		t.Fatal("expected relation to parse")
+	}
+	if deleted {
+		t.Fatal("content_deleted should be false")
+	}
+	if blockID != "blk_123" {
+		t.Fatalf("blockID = %q, want blk_123", blockID)
+	}
+}
+
+func TestExtractRelationBlockID_MalformedRelationDoesNotDelete(t *testing.T) {
+	t.Parallel()
+	raw := map[string]interface{}{
+		"relation": map[string]interface{}{
+			"content_deleted": true,
+			"relation":        `{not-json`,
+		},
+	}
+	blockID, deleted, ok := extractCommentRelation(raw)
+	if ok {
+		t.Fatal("malformed relation JSON should not report a parsed block id")
+	}
+	if !deleted {
+		t.Fatal("content_deleted should still be honored when relation JSON is malformed")
+	}
+	if blockID != "" {
+		t.Fatalf("blockID = %q, want empty", blockID)
+	}
+}
+
+func TestBuildDocBlockIndex_OrdersBlockIDsAndEmbeddedTokens(t *testing.T) {
+	t.Parallel()
+	xml := `<doc>
+		<paragraph id="blk_a">A</paragraph>
+		<whiteboard id="blk_whiteboard" token="wbd_123"></whiteboard>
+		<paragraph block_id="blk_b">B</paragraph>
+	</doc>`
+	idx := buildDocBlockIndex(xml)
+	if got := idx.orderOfBlock("blk_a"); got != 0 {
+		t.Fatalf("blk_a order = %d, want 0", got)
+	}
+	if got := idx.orderOfBlock("blk_b"); got != 2 {
+		t.Fatalf("blk_b order = %d, want 2", got)
+	}
+	blockID, order, ok := idx.lookupEmbeddedToken("wbd_123")
+	if !ok {
+		t.Fatal("expected embedded token lookup to succeed")
+	}
+	if blockID != "blk_whiteboard" || order != 1 {
+		t.Fatalf("embedded lookup = (%q,%d), want (blk_whiteboard,1)", blockID, order)
+	}
+}
+
+func TestBuildCommentItem_ContentDeletedIsOrphaned(t *testing.T) {
+	t.Parallel()
+	raw := map[string]interface{}{
+		"comment_id": "c_deleted",
+		"relation": map[string]interface{}{
+			"content_deleted": true,
+			"relation":        `{"22-dox":{"positionInfo":{"blockID":"blk_deleted"}}}`,
+		},
+	}
+	idx := buildDocBlockIndex(`<paragraph id="blk_deleted">deleted anchor gone</paragraph>`)
+	it := buildCommentItem(raw, idx)
+	if it.AnchorState != "orphaned" || it.LocationAccuracy != "content_deleted" {
+		t.Fatalf("got state=%q accuracy=%q, want orphaned/content_deleted", it.AnchorState, it.LocationAccuracy)
+	}
+}
+
+func TestBuildCommentItem_RelationExact(t *testing.T) {
+	t.Parallel()
+	raw := map[string]interface{}{
+		"comment_id":  "c_exact",
 		"create_time": float64(1700000000),
+		"relation": map[string]interface{}{
+			"content_deleted": false,
+			"relation":        `{"22-dox":{"positionInfo":{"blockID":"blk_a"}}}`,
+		},
 	}
-	it := buildCommentItem(raw, "doc body", false, -1)
-	if it.AnchorState != "valid" || it.AnchorPosition != 0 {
-		t.Fatalf("got state=%q pos=%d, want valid/0", it.AnchorState, it.AnchorPosition)
+	idx := buildDocBlockIndex(`<paragraph id="blk_a">A</paragraph>`)
+	it := buildCommentItem(raw, idx)
+	if it.AnchorState != "valid" || it.LocationAccuracy != "relation_exact" {
+		t.Fatalf("got state=%q accuracy=%q, want valid/relation_exact", it.AnchorState, it.LocationAccuracy)
 	}
-}
-
-func TestBuildCommentItem_StickyWithReadonlyBlockPresent(t *testing.T) {
-	t.Parallel()
-	raw := map[string]interface{}{
-		"comment_id":  "c2",
-		"is_whole":    false,
-		"quote":       stickyNoteQuote,
-		"create_time": float64(1700000000),
-	}
-	it := buildCommentItem(raw, "ignored", true, 4800)
-	if it.AnchorState != "structural" {
-		t.Fatalf("got state=%q, want structural", it.AnchorState)
-	}
-	if it.AnchorPosition != 4800 {
-		t.Fatalf("got pos=%d, want 4800", it.AnchorPosition)
+	if it.AnchorBlockID != "blk_a" || it.AnchorPosition != 0 {
+		t.Fatalf("got block=%q pos=%d, want blk_a/0", it.AnchorBlockID, it.AnchorPosition)
 	}
 }
 
-func TestBuildCommentItem_StickyOrphan(t *testing.T) {
+func TestBuildCommentItem_ParentResourceExact(t *testing.T) {
 	t.Parallel()
 	raw := map[string]interface{}{
-		"comment_id": "c3",
-		"is_whole":   false,
-		"quote":      stickyNoteQuote,
+		"comment_id":   "c_embed",
+		"parent_type":  "WHITEBOARD_BLOCK",
+		"parent_token": "wbd_123",
 	}
-	it := buildCommentItem(raw, "ignored", false, -1)
-	if it.AnchorState != "orphaned" {
-		t.Fatalf("got state=%q, want orphaned", it.AnchorState)
+	idx := buildDocBlockIndex(`<whiteboard id="blk_whiteboard" token="wbd_123"></whiteboard>`)
+	it := buildCommentItem(raw, idx)
+	if it.AnchorState != "structural" || it.LocationAccuracy != "parent_resource_exact" {
+		t.Fatalf("got state=%q accuracy=%q, want structural/parent_resource_exact", it.AnchorState, it.LocationAccuracy)
+	}
+	if it.AnchorBlockID != "blk_whiteboard" || it.AnchorPosition != 0 {
+		t.Fatalf("got block=%q pos=%d, want blk_whiteboard/0", it.AnchorBlockID, it.AnchorPosition)
 	}
 }
 
-func TestBuildCommentItem_TextQuoteFound(t *testing.T) {
+func TestBuildCommentItem_ParentResourceTokenUsesLastUnderscore(t *testing.T) {
 	t.Parallel()
 	raw := map[string]interface{}{
-		"comment_id": "c4",
-		"is_whole":   false,
-		"quote":      "硬件、软件",
+		"comment_id":   "c_sheet_parent",
+		"parent_type":  "SHEET_BLOCK",
+		"parent_token": "sht_token_123_sheet1",
 	}
-	doc := "some intro text 硬件、软件 trailing text"
-	it := buildCommentItem(raw, doc, false, -1)
-	if it.AnchorState != "valid" {
-		t.Fatalf("got state=%q, want valid", it.AnchorState)
+	idx := buildDocBlockIndex(`<sheet id="blk_sheet" token="sht_token_123"></sheet>`)
+	it := buildCommentItem(raw, idx)
+	if it.AnchorState != "structural" || it.LocationAccuracy != "parent_resource_exact" {
+		t.Fatalf("got state=%q accuracy=%q, want structural/parent_resource_exact", it.AnchorState, it.LocationAccuracy)
 	}
-	wantPos := int64(strings.Index(doc, "硬件、软件"))
-	if it.AnchorPosition != wantPos {
-		t.Fatalf("got pos=%d, want %d", it.AnchorPosition, wantPos)
+	if it.AnchorBlockID != "blk_sheet" || it.AnchorPosition != 0 {
+		t.Fatalf("got block=%q pos=%d, want blk_sheet/0", it.AnchorBlockID, it.AnchorPosition)
 	}
 }
 
-func TestBuildCommentItem_TextQuoteOrphan(t *testing.T) {
+func TestBuildCommentItem_EmbeddedRelationUsesParentResourceAccuracy(t *testing.T) {
 	t.Parallel()
 	raw := map[string]interface{}{
-		"comment_id": "c5",
-		"is_whole":   false,
-		"quote":      "Initiate Project",
+		"comment_id":   "c_sheet",
+		"parent_type":  "SHEET_BLOCK",
+		"parent_token": "sht_123_sheet1",
+		"relation": map[string]interface{}{
+			"content_deleted": false,
+			"relation":        `{"22-dox":{"positionInfo":{"blockID":"blk_sheet"}}}`,
+		},
 	}
-	doc := "this doc does not mention it"
-	it := buildCommentItem(raw, doc, false, -1)
-	if it.AnchorState != "orphaned" || it.AnchorPosition != -1 {
-		t.Fatalf("got state=%q pos=%d, want orphaned/-1", it.AnchorState, it.AnchorPosition)
+	idx := buildDocBlockIndex(`<sheet id="blk_sheet" token="sht_123"></sheet>`)
+	it := buildCommentItem(raw, idx)
+	if it.AnchorState != "structural" || it.LocationAccuracy != "parent_resource_exact" {
+		t.Fatalf("got state=%q accuracy=%q, want structural/parent_resource_exact", it.AnchorState, it.LocationAccuracy)
 	}
-}
-
-func TestBuildCommentItem_MultilineQuoteUsesFirstLine(t *testing.T) {
-	t.Parallel()
-	raw := map[string]interface{}{
-		"comment_id": "c6",
-		"is_whole":   false,
-		"quote":      "体验驱动\n随单/年度满意度调查\n舆情反馈",
-	}
-	// Doc still contains 体验驱动 elsewhere but not the sub-bullets — should
-	// still classify as valid based on first-line match.
-	doc := "earlier 体验驱动和管理驱动 later"
-	it := buildCommentItem(raw, doc, false, -1)
-	if it.AnchorState != "valid" {
-		t.Fatalf("got state=%q, want valid (first-line match)", it.AnchorState)
+	if it.AnchorBlockID != "blk_sheet" || it.AnchorPosition != 0 {
+		t.Fatalf("got block=%q pos=%d, want blk_sheet/0", it.AnchorBlockID, it.AnchorPosition)
 	}
 }
 
@@ -284,18 +292,39 @@ func TestBuildCommentItem_MultilineQuoteUsesFirstLine(t *testing.T) {
 func TestSortCommentItems_OrphansAtEnd(t *testing.T) {
 	t.Parallel()
 	items := []commentItem{
-		{CommentID: "a", AnchorState: "valid", AnchorPosition: 100, CreateTime: 1},
+		{CommentID: "a", AnchorState: "valid", AnchorPosition: 2, CreateTime: 1},
 		{CommentID: "b", AnchorState: "orphaned", AnchorPosition: -1, CreateTime: 2},
-		{CommentID: "c", AnchorState: "valid", AnchorPosition: 50, CreateTime: 3},
-		{CommentID: "d", AnchorState: "structural", AnchorPosition: 75, CreateTime: 4},
+		{CommentID: "c", AnchorState: "valid", AnchorPosition: 0, CreateTime: 3},
+		{CommentID: "d", AnchorState: "structural", AnchorPosition: 1, CreateTime: 4},
 	}
 	sortCommentItems(items, "anchor")
 	gotIDs := make([]string, len(items))
 	for i, it := range items {
 		gotIDs[i] = it.CommentID
 	}
-	// Expected: c (50), d (75 structural), a (100), b (orphan)
+	// Expected: c (0), d (1 structural), a (2), b (orphan)
 	wantIDs := []string{"c", "d", "a", "b"}
+	for i, want := range wantIDs {
+		if gotIDs[i] != want {
+			t.Fatalf("position %d: got %q want %q (full: %v)", i, gotIDs[i], want, gotIDs)
+		}
+	}
+}
+
+func TestSortCommentItems_UnknownLocationsAfterAnchoredBeforeOrphans(t *testing.T) {
+	t.Parallel()
+	items := []commentItem{
+		{CommentID: "a", AnchorState: "valid", AnchorPosition: -1, CreateTime: 1},
+		{CommentID: "b", AnchorState: "valid", AnchorPosition: 2, CreateTime: 2},
+		{CommentID: "c", AnchorState: "orphaned", AnchorPosition: -1, CreateTime: 3},
+		{CommentID: "d", AnchorState: "valid", AnchorPosition: 1, CreateTime: 4},
+	}
+	sortCommentItems(items, "anchor")
+	gotIDs := make([]string, len(items))
+	for i, it := range items {
+		gotIDs[i] = it.CommentID
+	}
+	wantIDs := []string{"d", "b", "a", "c"}
 	for i, want := range wantIDs {
 		if gotIDs[i] != want {
 			t.Fatalf("position %d: got %q want %q (full: %v)", i, gotIDs[i], want, gotIDs)
@@ -321,28 +350,6 @@ func TestSortCommentItems_CreatedOrder(t *testing.T) {
 		if gotIDs[i] != want {
 			t.Fatalf("position %d: got %q want %q (full: %v)", i, gotIDs[i], want, gotIDs)
 		}
-	}
-}
-
-// --- projectRawPosToNormalized ---
-
-func TestProjectRawPosToNormalized_ExactPrefixNormalize(t *testing.T) {
-	t.Parallel()
-	raw := "<p>01234</p><readonly-block></readonly-block><p>56789</p>"
-	got := projectRawPosToNormalized(raw, "", "<readonly-block")
-	// normalizeDocContent strips tags and ALL whitespace. The prefix
-	// "<p>01234</p>" normalizes to "01234" (length 5), so the marker's
-	// position in normalized space is 5.
-	if got != 5 {
-		t.Fatalf("got %d, want 5", got)
-	}
-}
-
-func TestProjectRawPosToNormalized_NotFound(t *testing.T) {
-	t.Parallel()
-	got := projectRawPosToNormalized("no marker here", "normalized", "<readonly-block")
-	if got != -1 {
-		t.Fatalf("got %d, want -1", got)
 	}
 }
 
@@ -384,11 +391,18 @@ func TestDryRunListComments_DocxURL(t *testing.T) {
 	if got.API[0].Params["need_reaction"] != true {
 		t.Fatalf("default should include need_reaction=true: %#v", got.API[0].Params)
 	}
+	if got.API[0].Params["need_relation"] != true {
+		t.Fatalf("default should include need_relation=true: %#v", got.API[0].Params)
+	}
 	if !strings.Contains(got.API[1].URL, "/fetch") {
 		t.Fatalf("second call should hit fetch endpoint: %q", got.API[1].URL)
 	}
 	if got.API[1].Body["format"] != "xml" {
 		t.Fatalf("fetch should use format=xml: %#v", got.API[1].Body)
+	}
+	exportOption, _ := got.API[1].Body["export_option"].(map[string]interface{})
+	if exportOption["export_block_id"] != true {
+		t.Fatalf("fetch should request export_block_id=true: %#v", got.API[1].Body)
 	}
 }
 
@@ -459,7 +473,8 @@ func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
 	cfg := &core.CliConfig{AppID: "drive-listcomments-e2e", AppSecret: "test-secret", Brand: core.BrandFeishu}
 	f, stdout, _, reg := cmdutil.TestFactory(t, cfg)
 
-	// 3 comments: one valid quote, one orphaned, one sticky (with readonly-block present).
+	// 4 comments: two relation-exact anchors, one embedded-resource anchor,
+	// and one content_deleted orphan.
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/drive/v1/files/doxTest/comments",
@@ -470,28 +485,50 @@ func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
 				"page_token": "",
 				"items": []map[string]interface{}{
 					{
-						"comment_id":  "v1",
-						"quote":       "硬件、软件",
+						"comment_id":  "later",
+						"quote":       "later block",
 						"is_whole":    false,
 						"is_solved":   false,
 						"create_time": float64(1700000001),
-						"reply_list":  map[string]interface{}{"replies": []interface{}{}},
+						"relation": map[string]interface{}{
+							"content_deleted": false,
+							"relation":        `{"22-doxTest":{"positionInfo":{"blockID":"blk_b"}}}`,
+						},
+						"reply_list": map[string]interface{}{"replies": []interface{}{}},
 					},
 					{
-						"comment_id":  "o1",
-						"quote":       "this text is not in doc",
+						"comment_id":  "deleted",
+						"quote":       "deleted anchor",
 						"is_whole":    false,
 						"is_solved":   false,
 						"create_time": float64(1700000002),
-						"reply_list":  map[string]interface{}{"replies": []interface{}{}},
+						"relation": map[string]interface{}{
+							"content_deleted": true,
+							"relation":        `{"22-doxTest":{"positionInfo":{"blockID":"blk_deleted"}}}`,
+						},
+						"reply_list": map[string]interface{}{"replies": []interface{}{}},
 					},
 					{
-						"comment_id":  "s1",
-						"quote":       stickyNoteQuote,
+						"comment_id":   "embed",
+						"quote":        "画板节点文本",
+						"is_whole":     false,
+						"is_solved":    false,
+						"create_time":  float64(1700000003),
+						"parent_type":  "WHITEBOARD_BLOCK",
+						"parent_token": "wbd_123",
+						"reply_list":   map[string]interface{}{"replies": []interface{}{}},
+					},
+					{
+						"comment_id":  "earlier",
+						"quote":       "first block",
 						"is_whole":    false,
 						"is_solved":   false,
-						"create_time": float64(1700000003),
-						"reply_list":  map[string]interface{}{"replies": []interface{}{}},
+						"create_time": float64(1700000004),
+						"relation": map[string]interface{}{
+							"content_deleted": false,
+							"relation":        `{"22-doxTest":{"positionInfo":{"blockID":"blk_a"}}}`,
+						},
+						"reply_list": map[string]interface{}{"replies": []interface{}{}},
 					},
 				},
 			},
@@ -504,7 +541,7 @@ func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"document": map[string]interface{}{
-					"content": `<p>introduction</p><p>硬件、软件 are technical</p><readonly-block type="isv"></readonly-block><p>trailing</p>`,
+					"content": `<doc><paragraph id="blk_a">first</paragraph><whiteboard id="blk_whiteboard" token="wbd_123"></whiteboard><paragraph id="blk_b">later</paragraph></doc>`,
 				},
 			},
 		},
@@ -525,15 +562,33 @@ func TestDriveListComments_E2E_FiltersOrphanedByDefault(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing items array: %#v", out)
 	}
-	if len(items) != 2 {
-		t.Fatalf("expected 2 items after orphan filter, got %d", len(items))
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items after orphan filter, got %d", len(items))
+	}
+	gotIDs := make([]string, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		gotIDs = append(gotIDs, item["comment_id"].(string))
+	}
+	wantIDs := []string{"earlier", "embed", "later"}
+	for i, want := range wantIDs {
+		if gotIDs[i] != want {
+			t.Fatalf("item order = %v, want %v", gotIDs, wantIDs)
+		}
+	}
+	embed, _ := items[1].(map[string]interface{})
+	if embed["anchor_block_id"] != "blk_whiteboard" {
+		t.Fatalf("embedded anchor_block_id = %#v, want blk_whiteboard", embed["anchor_block_id"])
+	}
+	if embed["location_accuracy"] != "parent_resource_exact" {
+		t.Fatalf("embedded location_accuracy = %#v, want parent_resource_exact", embed["location_accuracy"])
 	}
 	counts, _ := out["counts"].(map[string]interface{})
-	if counts["total"] != float64(3) {
-		t.Fatalf("counts.total = %#v, want 3", counts["total"])
+	if counts["total"] != float64(4) {
+		t.Fatalf("counts.total = %#v, want 4", counts["total"])
 	}
-	if counts["valid"] != float64(1) {
-		t.Fatalf("counts.valid = %#v, want 1", counts["valid"])
+	if counts["valid"] != float64(2) {
+		t.Fatalf("counts.valid = %#v, want 2", counts["valid"])
 	}
 	if counts["structural"] != float64(1) {
 		t.Fatalf("counts.structural = %#v, want 1", counts["structural"])
@@ -555,8 +610,26 @@ func TestDriveListComments_E2E_IncludeOrphanedKeepsAll(t *testing.T) {
 			"data": map[string]interface{}{
 				"has_more": false,
 				"items": []map[string]interface{}{
-					{"comment_id": "v1", "quote": "硬件", "is_whole": false, "create_time": float64(1)},
-					{"comment_id": "o1", "quote": "missing", "is_whole": false, "create_time": float64(2)},
+					{
+						"comment_id":  "v1",
+						"quote":       "硬件",
+						"is_whole":    false,
+						"create_time": float64(1),
+						"relation": map[string]interface{}{
+							"content_deleted": false,
+							"relation":        `{"22-doxTest2":{"positionInfo":{"blockID":"blk_a"}}}`,
+						},
+					},
+					{
+						"comment_id":  "o1",
+						"quote":       "missing",
+						"is_whole":    false,
+						"create_time": float64(2),
+						"relation": map[string]interface{}{
+							"content_deleted": true,
+							"relation":        `{"22-doxTest2":{"positionInfo":{"blockID":"blk_missing"}}}`,
+						},
+					},
 				},
 			},
 		},
@@ -568,7 +641,7 @@ func TestDriveListComments_E2E_IncludeOrphanedKeepsAll(t *testing.T) {
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
 				"document": map[string]interface{}{
-					"content": "<p>硬件 only</p>",
+					"content": `<paragraph id="blk_a">硬件 only</paragraph>`,
 				},
 			},
 		},

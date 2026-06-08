@@ -5,10 +5,10 @@ package drive
 
 import (
 	"context"
+	"encoding/json"
+	"encoding/xml"
 	"fmt"
-	"html"
 	"io"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -24,25 +24,6 @@ const listCommentsPageSize = 100
 // documents with very large comment histories.
 const listCommentsMaxPages = 100
 
-// stickyNoteQuote is the placeholder quote text the comments API returns when
-// a comment is anchored to a sticky-note element (XML element type
-// <readonly-block>). The actual sticky-note content is not exposed via the
-// comments list API, so orphan detection falls back to "does the document
-// still contain any readonly-block element?".
-const stickyNoteQuote = "[Sticky note]"
-
-// structuralAnchorTag is the XML prefix used to detect the existence of any
-// sticky-note element when validating a [Sticky note] comment.
-const structuralAnchorTag = "<readonly-block"
-
-// xmlTagPattern matches any XML/HTML tag for tag stripping during orphan
-// detection.
-var xmlTagPattern = regexp.MustCompile(`<[^>]*>`)
-
-// whitespacePattern matches one or more whitespace characters (incl.
-// newlines) for normalization to a single space.
-var whitespacePattern = regexp.MustCompile(`\s+`)
-
 // DriveListComments lists comments on a docx with smart defaults: filter to
 // unresolved + non-orphan anchors, ordered by anchor position, including
 // replies and reactions. See https://github.com/larksuite/cli/issues/1111.
@@ -51,7 +32,7 @@ var DriveListComments = common.Shortcut{
 	Command:           "+list-comments",
 	Description:       "List docx comments with smart defaults (unresolved + non-orphan + anchor-ordered + replies + reactions); wiki URLs are auto-unwrapped",
 	Risk:              "read",
-	Scopes:            []string{"docs:document.comment:read"},
+	Scopes:            []string{"docs:document.comment:read", "docx:document:readonly"},
 	ConditionalScopes: []string{"wiki:node:retrieve"},
 	AuthTypes:         []string{"user", "bot"},
 	HasFormat:         true,
@@ -160,8 +141,9 @@ func dryRunListComments(_ context.Context, runtime *common.RuntimeContext) *comm
 	}
 	stepCount++
 	listParams := map[string]interface{}{
-		"file_type": "docx",
-		"page_size": listCommentsPageSize,
+		"file_type":     "docx",
+		"page_size":     listCommentsPageSize,
+		"need_relation": true,
 	}
 	if !runtime.Bool("include-resolved") {
 		listParams["is_solved"] = false
@@ -175,23 +157,28 @@ func dryRunListComments(_ context.Context, runtime *common.RuntimeContext) *comm
 
 	stepCount++
 	dry.POST(fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", listToken)).
-		Desc(fmt.Sprintf("[%d] Fetch document XML for orphan detection", stepCount)).
-		Body(map[string]interface{}{"format": "xml"})
+		Desc(fmt.Sprintf("[%d] Fetch document XML with block IDs for anchor ordering", stepCount)).
+		Body(buildListCommentsFetchBody())
 
-	dry.Desc(fmt.Sprintf("%d-step orchestration: list comments + fetch document + cross-check anchors", stepCount))
+	dry.Desc(fmt.Sprintf("%d-step orchestration: list comments with relation + fetch block IDs + order anchors", stepCount))
 	return dry
 }
 
 // commentItem holds a single comment card plus our derived anchor metadata.
 type commentItem struct {
-	Raw            map[string]interface{}
-	CommentID      string
-	Quote          string
-	IsWhole        bool
-	IsSolved       bool
-	CreateTime     int64
-	AnchorState    string // "valid" | "structural" | "orphaned"
-	AnchorPosition int64  // byte offset within normalized doc text; -1 for orphan
+	Raw              map[string]interface{}
+	CommentID        string
+	Quote            string
+	IsWhole          bool
+	IsSolved         bool
+	CreateTime       int64
+	AnchorState      string // "valid" | "structural" | "orphaned"
+	AnchorPosition   int64  // block order in docs fetch XML; -1 when unknown/orphaned
+	AnchorBlockID    string
+	LocationAccuracy string // relation_exact | parent_resource_exact | weak_inferred | content_deleted
+	ParentType       string
+	ParentToken      string
+	ContentDeleted   bool
 }
 
 func executeListComments(_ context.Context, runtime *common.RuntimeContext) error {
@@ -238,21 +225,17 @@ func executeListComments(_ context.Context, runtime *common.RuntimeContext) erro
 		return err
 	}
 
-	// Step 3: Fetch document XML for orphan detection.
+	// Step 3: Fetch document XML with block IDs for stable anchor ordering.
 	docXML, err := fetchDocxXML(runtime, fileToken)
 	if err != nil {
 		return err
 	}
-	normalized := normalizeDocContent(docXML)
-	hasStructuralAnchor := strings.Contains(docXML, structuralAnchorTag)
-	// Approximate position of the FIRST sticky-note anchor in normalized space.
-	// All sticky-anchored comments share this position for sorting purposes.
-	structuralPos := projectRawPosToNormalized(docXML, normalized, structuralAnchorTag)
+	blockIndex := buildDocBlockIndex(docXML)
 
-	// Step 4: Build commentItem list with anchor_state + anchor_position.
+	// Step 4: Build commentItem list with relation-derived location metadata.
 	items := make([]commentItem, 0, len(allRaw))
 	for _, r := range allRaw {
-		items = append(items, buildCommentItem(r, normalized, hasStructuralAnchor, structuralPos))
+		items = append(items, buildCommentItem(r, blockIndex))
 	}
 
 	// Step 5: Filter by include-orphaned.
@@ -281,6 +264,11 @@ func executeListComments(_ context.Context, runtime *common.RuntimeContext) erro
 		m := cloneCommentMap(it.Raw)
 		m["anchor_state"] = it.AnchorState
 		m["anchor_position"] = it.AnchorPosition
+		m["location_accuracy"] = it.LocationAccuracy
+		m["content_deleted"] = it.ContentDeleted
+		if it.AnchorBlockID != "" {
+			m["anchor_block_id"] = it.AnchorBlockID
+		}
 		outItems = append(outItems, m)
 	}
 
@@ -316,8 +304,9 @@ func listAllComments(runtime *common.RuntimeContext, fileToken string, includeRe
 	var all []map[string]interface{}
 	for page := 0; page < listCommentsMaxPages; page++ {
 		params := map[string]interface{}{
-			"file_type": "docx",
-			"page_size": listCommentsPageSize,
+			"file_type":     "docx",
+			"page_size":     listCommentsPageSize,
+			"need_relation": true,
 		}
 		if !includeResolved {
 			params["is_solved"] = false
@@ -352,14 +341,13 @@ func listAllComments(runtime *common.RuntimeContext, fileToken string, includeRe
 	return all, nil
 }
 
-// fetchDocxXML returns the document content as XML for orphan detection.
-// `text` format was removed from the docs +fetch enum (see PR #1109), so we
-// use `xml` and strip tags client-side. Markdown would also work but XML is
-// preferred because it preserves structural elements like <readonly-block>.
+// fetchDocxXML returns document XML with block IDs exported for comment anchor
+// ordering. The comment API supplies the anchor block ID via need_relation; the
+// docs fetch call supplies the current document block order.
 func fetchDocxXML(runtime *common.RuntimeContext, fileToken string) (string, error) {
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch",
 		validate.EncodePathSegment(fileToken))
-	body := map[string]interface{}{"format": "xml"}
+	body := buildListCommentsFetchBody()
 	data, err := runtime.CallAPI("POST", apiPath, nil, body)
 	if err != nil {
 		return "", err
@@ -368,118 +356,231 @@ func fetchDocxXML(runtime *common.RuntimeContext, fileToken string) (string, err
 	return common.GetString(doc, "content"), nil
 }
 
-// normalizeDocContent prepares a haystack for substring matching by stripping
-// XML tags, decoding HTML entities, and removing ALL whitespace.
-//
-// Whitespace is removed (not just collapsed) so that text broken by inline
-// tags matches correctly. Example:
-//
-//	"<p>由 <b>P2 / P3 事件聚类</b>触发：…</p>"
-//
-// becomes "由P2/P3事件聚类触发：…" — the quote "由 P2 / P3 事件聚类触发：" then
-// matches after the same normalization is applied to the needle.
-func normalizeDocContent(content string) string {
-	stripped := xmlTagPattern.ReplaceAllString(content, "")
-	decoded := html.UnescapeString(stripped)
-	return whitespacePattern.ReplaceAllString(decoded, "")
-}
-
-// normalizeQuoteNeedle prepares the first line of a comment quote for
-// substring matching against a normalized document. Whitespace and HTML
-// entities are stripped to keep the same coordinate system as
-// normalizeDocContent.
-func normalizeQuoteNeedle(quote string) string {
-	firstLine := strings.TrimSpace(strings.SplitN(quote, "\n", 2)[0])
-	if firstLine == "" {
-		return ""
+func buildListCommentsFetchBody() map[string]interface{} {
+	return map[string]interface{}{
+		"format": "xml",
+		"export_option": map[string]interface{}{
+			"export_block_id": true,
+		},
 	}
-	decoded := html.UnescapeString(firstLine)
-	return whitespacePattern.ReplaceAllString(decoded, "")
 }
 
-// projectRawPosToNormalized returns the position of `marker` in `raw`
-// mapped onto the normalized coordinate system by re-normalizing the prefix
-// that precedes the marker. Returns -1 if the marker is not found.
-//
-// This is exact rather than a linear projection: it spends one extra
-// normalize pass on the prefix to get the true position of the marker in
-// normalized space, which keeps structural anchors (sticky notes etc.)
-// correctly ordered relative to text anchors.
-func projectRawPosToNormalized(raw, _ string, marker string) int64 {
-	idx := strings.Index(raw, marker)
-	if idx < 0 {
+type docBlockIndex struct {
+	orderByBlockID map[string]int64
+	blockByToken   map[string]string
+}
+
+func buildDocBlockIndex(content string) docBlockIndex {
+	idx := docBlockIndex{
+		orderByBlockID: map[string]int64{},
+		blockByToken:   map[string]string{},
+	}
+	decoder := xml.NewDecoder(strings.NewReader(content))
+	var order int64
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			break
+		}
+		start, ok := token.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		blockID := firstXMLAttr(start, "id", "block_id")
+		if blockID == "" {
+			continue
+		}
+		if _, exists := idx.orderByBlockID[blockID]; !exists {
+			idx.orderByBlockID[blockID] = order
+			order++
+		}
+		for _, attr := range start.Attr {
+			if attr.Value == "" {
+				continue
+			}
+			switch attr.Name.Local {
+			case "token", "spreadsheet_token", "base_token", "app_token", "whiteboard_token":
+				idx.blockByToken[attr.Value] = blockID
+			}
+		}
+	}
+	return idx
+}
+
+func firstXMLAttr(start xml.StartElement, names ...string) string {
+	for _, want := range names {
+		for _, attr := range start.Attr {
+			if attr.Name.Local == want {
+				return attr.Value
+			}
+		}
+	}
+	return ""
+}
+
+func (idx docBlockIndex) orderOfBlock(blockID string) int64 {
+	if blockID == "" {
 		return -1
 	}
-	return int64(len(normalizeDocContent(raw[:idx])))
+	order, ok := idx.orderByBlockID[blockID]
+	if !ok {
+		return -1
+	}
+	return order
 }
 
-// buildCommentItem parses an API comment card and computes anchor_state +
-// anchor_position. The position is a byte offset in normalized doc text.
-//
-// Known limitations:
-//   - Short quote text that appears multiple times in the doc cannot be
-//     uniquely localized; the first occurrence wins. This can yield
-//     false-positive "valid" classification when the specific anchor
-//     instance has been deleted but the text still appears elsewhere.
-//   - Quotes broken by XML tags (e.g. "<b>...</b>" wrapping a substring)
-//     are matched after tag stripping; partial wrapping is handled.
-func buildCommentItem(raw map[string]interface{}, normalized string, hasStructuralAnchor bool, structuralPos int64) commentItem {
+func (idx docBlockIndex) lookupEmbeddedToken(parentToken string) (string, int64, bool) {
+	for _, candidate := range parentTokenCandidates(parentToken) {
+		if blockID := idx.blockByToken[candidate]; blockID != "" {
+			return blockID, idx.orderOfBlock(blockID), true
+		}
+	}
+	return "", -1, false
+}
+
+func parentTokenCandidates(parentToken string) []string {
+	parentToken = strings.TrimSpace(parentToken)
+	if parentToken == "" {
+		return nil
+	}
+	candidates := []string{parentToken}
+	if idx := strings.LastIndex(parentToken, "_tbl"); idx > 0 {
+		candidates = append(candidates, parentToken[:idx])
+	}
+	if idx := strings.LastIndex(parentToken, "_"); idx > 0 {
+		candidates = append(candidates, parentToken[:idx])
+	}
+	if idx := strings.Index(parentToken, "_"); idx > 0 {
+		candidates = append(candidates, parentToken[:idx])
+	}
+	return candidates
+}
+
+// extractCommentRelation parses the relation payload returned by
+// need_relation=true. The nested relation.relation value is itself a JSON
+// string, keyed by server object identity; positionInfo.blockID is the stable
+// docx block anchor we need.
+func extractCommentRelation(raw map[string]interface{}) (blockID string, contentDeleted bool, ok bool) {
+	relation := common.GetMap(raw, "relation")
+	if relation == nil {
+		return "", false, false
+	}
+	contentDeleted = common.GetBool(relation, "content_deleted")
+	relJSON := strings.TrimSpace(common.GetString(relation, "relation"))
+	if relJSON == "" {
+		return "", contentDeleted, false
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(relJSON), &parsed); err != nil {
+		return "", contentDeleted, false
+	}
+	blockID = findRelationBlockID(parsed)
+	return blockID, contentDeleted, blockID != ""
+}
+
+func findRelationBlockID(v interface{}) string {
+	switch node := v.(type) {
+	case map[string]interface{}:
+		if pos, ok := node["positionInfo"].(map[string]interface{}); ok {
+			if blockID, _ := pos["blockID"].(string); blockID != "" {
+				return blockID
+			}
+			if blockID, _ := pos["block_id"].(string); blockID != "" {
+				return blockID
+			}
+		}
+		for _, child := range node {
+			if blockID := findRelationBlockID(child); blockID != "" {
+				return blockID
+			}
+		}
+	case []interface{}:
+		for _, child := range node {
+			if blockID := findRelationBlockID(child); blockID != "" {
+				return blockID
+			}
+		}
+	}
+	return ""
+}
+
+// buildCommentItem parses an API comment card and computes relation-derived
+// anchor_state + anchor_position. Position is current document block order, not
+// a byte offset, and -1 means the location is unknown or deleted.
+func buildCommentItem(raw map[string]interface{}, idx docBlockIndex) commentItem {
 	quote, _ := raw["quote"].(string)
 	isWhole, _ := raw["is_whole"].(bool)
 	isSolved, _ := raw["is_solved"].(bool)
 	commentID, _ := raw["comment_id"].(string)
+	parentType, _ := raw["parent_type"].(string)
+	parentToken, _ := raw["parent_token"].(string)
 	var createTime int64
 	if v, ok := raw["create_time"].(float64); ok {
 		createTime = int64(v)
 	}
 
 	item := commentItem{
-		Raw:        raw,
-		CommentID:  commentID,
-		Quote:      quote,
-		IsWhole:    isWhole,
-		IsSolved:   isSolved,
-		CreateTime: createTime,
+		Raw:              raw,
+		CommentID:        commentID,
+		Quote:            quote,
+		IsWhole:          isWhole,
+		IsSolved:         isSolved,
+		CreateTime:       createTime,
+		AnchorPosition:   -1,
+		LocationAccuracy: "weak_inferred",
+		ParentType:       parentType,
+		ParentToken:      parentToken,
 	}
 
-	switch {
-	case isWhole:
-		item.AnchorState = "valid"
-		item.AnchorPosition = 0
-	case quote == stickyNoteQuote:
-		if hasStructuralAnchor {
-			item.AnchorState = "structural"
-			if structuralPos >= 0 {
-				item.AnchorPosition = structuralPos
+	blockID, deleted, hasRelation := extractCommentRelation(raw)
+	item.ContentDeleted = deleted
+	if deleted {
+		item.AnchorState = "orphaned"
+		item.LocationAccuracy = "content_deleted"
+		item.AnchorBlockID = blockID
+		return item
+	}
+	if hasRelation {
+		item.AnchorBlockID = blockID
+		if order := idx.orderOfBlock(blockID); order >= 0 {
+			if parentType != "" {
+				item.AnchorState = "structural"
+				item.LocationAccuracy = "parent_resource_exact"
 			} else {
-				item.AnchorPosition = 0
+				item.AnchorState = "valid"
+				item.LocationAccuracy = "relation_exact"
 			}
-		} else {
-			item.AnchorState = "orphaned"
-			item.AnchorPosition = -1
-		}
-	default:
-		needle := normalizeQuoteNeedle(quote)
-		if needle == "" {
-			item.AnchorState = "orphaned"
-			item.AnchorPosition = -1
-			break
-		}
-		pos := strings.Index(normalized, needle)
-		if pos >= 0 {
-			item.AnchorState = "valid"
-			item.AnchorPosition = int64(pos)
-		} else {
-			item.AnchorState = "orphaned"
-			item.AnchorPosition = -1
+			item.AnchorPosition = order
+			return item
 		}
 	}
+	if parentType != "" && parentToken != "" {
+		if blockID, order, ok := idx.lookupEmbeddedToken(parentToken); ok {
+			item.AnchorState = "structural"
+			item.AnchorBlockID = blockID
+			item.AnchorPosition = order
+			item.LocationAccuracy = "parent_resource_exact"
+			return item
+		}
+	}
+	if hasRelation {
+		item.AnchorState = "valid"
+		item.LocationAccuracy = "weak_inferred"
+		return item
+	}
+	if isWhole {
+		item.AnchorState = "valid"
+		item.AnchorPosition = 0
+		item.LocationAccuracy = "whole_document"
+		return item
+	}
+	item.AnchorState = "valid"
 	return item
 }
 
 // sortCommentItems sorts items in-place. Orphans always sort to the end.
 // Within the non-orphan group:
-//   - order=anchor (default): by AnchorPosition ascending
+//   - order=anchor (default): by AnchorPosition ascending, unknown locations after anchored comments
 //   - order=created: by CreateTime ascending
 func sortCommentItems(items []commentItem, orderKey string) {
 	sort.SliceStable(items, func(i, j int) bool {
@@ -493,6 +594,11 @@ func sortCommentItems(items []commentItem, orderKey string) {
 			return a.CreateTime < b.CreateTime
 		}
 		// anchor order
+		aUnknown := a.AnchorPosition < 0
+		bUnknown := b.AnchorPosition < 0
+		if aUnknown != bUnknown {
+			return !aUnknown
+		}
 		if a.AnchorPosition != b.AnchorPosition {
 			return a.AnchorPosition < b.AnchorPosition
 		}
@@ -526,7 +632,7 @@ func cloneCommentMap(m map[string]interface{}) map[string]interface{} {
 }
 
 func truncateQuote(s string, n int) string {
-	s = whitespacePattern.ReplaceAllString(s, " ")
+	s = strings.Join(strings.Fields(s), " ")
 	runes := []rune(s)
 	if len(runes) <= n {
 		return s

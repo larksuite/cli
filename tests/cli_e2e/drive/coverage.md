@@ -1,9 +1,9 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 31 leaf commands
-- Covered: 10
-- Coverage: 32.3%
+- Denominator: 32 leaf commands
+- Covered: 11
+- Coverage: 34.4%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
@@ -14,6 +14,7 @@
 - TestDriveAddCommentDryRun_File: dry-run coverage for `drive +add-comment` on supported Drive file targets; pins the `metas.batch_query -> files/:token/new_comments` request chain, `file_type=file`, and the required placeholder `anchor.block_id`.
 - TestDriveAddCommentMarkdownFileWorkflow: opt-in live workflow skeleton for the same path, gated by `LARK_DRIVE_MD_COMMENT_E2E=1`.
 - TestDrive_SecureLabelDryRun: dry-run coverage for `drive +secure-label-list` and `drive +secure-label-update`; asserts label-list query params and update URL→type inference, request method/URL/type query, and `label-id` body shape. Runs without hitting live APIs because update can trigger document-level security approval flows.
+- TestDriveListCommentsDryRun_RequestsRelationAndBlockIDs / TestDriveListCommentsWorkflow: dry-run coverage for `drive +list-comments` plus an opt-in live docx workflow; pins `need_relation=true` on comment listing, `export_block_id=true` on docs fetch, and relation-exact block mapping after creating a real comment.
 - TestDriveExportDryRun_FileNameMetadata: dry-run coverage for `drive +export`; asserts export task request shape and local `--file-name` / `--output-dir` metadata without calling live APIs.
 - TestDrive_PullDryRun / TestDrive_PullDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +pull`; asserts the list-files request shape, Validate-stage safety guards, and acceptance of `--on-duplicate-remote=rename|newest|oldest` by the real CLI binary.
 - TestDrive_PushDryRun / TestDrive_PushDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +push`; asserts the list-files request shape, Validate-stage safety guards, conditional delete preflight, and acceptance of `--on-duplicate-remote=newest|oldest` by the real CLI binary.
@@ -32,6 +33,7 @@
 | ✓ | drive +export | shortcut | drive_export_dryrun_test.go::TestDriveExportDryRun_FileNameMetadata | `--token`; `--doc-type`; `--file-extension`; `--file-name`; `--output-dir` | dry-run only; no live export workflow yet |
 | ✕ | drive +export-download | shortcut |  | none | no export-download workflow yet |
 | ✕ | drive +import | shortcut |  | none | no import workflow yet |
+| ✓ | drive +list-comments | shortcut | drive_list_comments_dryrun_test.go::TestDriveListCommentsDryRun_RequestsRelationAndBlockIDs + drive_list_comments_workflow_test.go::TestDriveListCommentsWorkflow | `--doc` docx URL; `need_relation=true`; docs fetch `export_block_id=true`; opt-in live docx comment round-trip | dry-run runs in CI; live workflow gated by `LARK_DRIVE_LIST_COMMENTS_E2E=1`; unit/httpmock E2E cover relation/content_deleted sorting and filtering |
 | ✕ | drive +move | shortcut |  | none | no move workflow yet |
 | ✓ | drive +pull | shortcut | drive_pull_dryrun_test.go::TestDrive_PullDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--on-duplicate-remote=rename\|newest\|oldest`; `--delete-local --yes` guard | dry-run locks flag/validate shape; live workflow proves duplicate fail-fast and rename recovery |
 | ✓ | drive +push | shortcut | drive_push_dryrun_test.go::TestDrive_PushDryRun + drive_duplicate_sync_workflow_test.go::TestDrive_DuplicateRemoteWorkflow | `--local-dir`; `--folder-token`; `--if-exists`; `--on-duplicate-remote=newest\|oldest`; `--delete-remote --yes` | dry-run locks flag/validate shape; live workflow proves overwrite + duplicate cleanup converges status |
