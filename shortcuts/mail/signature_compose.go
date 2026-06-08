@@ -25,11 +25,76 @@ var signatureFlag = common.Flag{
 	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
 }
 
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Skip automatic default signature lookup and send without a signature.",
+}
+
 // signatureResult holds the pre-processed signature data ready for HTML injection.
 type signatureResult struct {
 	ID              string
 	RenderedContent string
 	Images          []draftpkg.SignatureImage
+}
+
+// resolveComposeSignature selects and renders a signature for compose flows.
+// It does not download images; HTML callers opt into image resolution after
+// deciding the final body mode.
+func resolveComposeSignature(runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string, noSignature bool) (*signatureResult, []signature.SignatureImage, error) {
+	if noSignature {
+		return nil, nil, nil
+	}
+
+	var sig *signature.Signature
+	if signatureID != "" {
+		var err error
+		sig, err = signature.Get(runtime, mailboxID, signatureID)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		resp, err := signature.ListAll(runtime, mailboxID)
+		if err != nil {
+			return nil, nil, err
+		}
+		var ok bool
+		sig, ok = signature.FindSendDefault(resp, fromEmail)
+		if !ok {
+			return nil, nil, nil
+		}
+	}
+
+	lang := resolveLang(runtime)
+	senderName, senderEmail := resolveSenderInfo(runtime, mailboxID, fromEmail)
+	return &signatureResult{
+		ID:              sig.ID,
+		RenderedContent: signature.InterpolateTemplate(sig, lang, senderName, senderEmail),
+	}, sig.Images, nil
+}
+
+func resolveSignatureImages(runtime *common.RuntimeContext, sig *signatureResult, images []signature.SignatureImage) (*signatureResult, error) {
+	if sig == nil {
+		return nil, nil
+	}
+	resolved := *sig
+	resolved.Images = nil
+	for _, img := range images {
+		if img.DownloadURL == "" || img.CID == "" {
+			continue
+		}
+		data, ct, err := downloadSignatureImage(runtime, img.DownloadURL, img.ImageName)
+		if err != nil {
+			return nil, mailDecorateProblemMessage(err, "failed to download signature image %s", img.ImageName)
+		}
+		resolved.Images = append(resolved.Images, draftpkg.SignatureImage{
+			CID:         img.CID,
+			ContentType: ct,
+			FileName:    img.ImageName,
+			Data:        data,
+		})
+	}
+	return &resolved, nil
 }
 
 // resolveSignature fetches, interpolates, and downloads images for a signature.
@@ -229,6 +294,20 @@ func contentTypeFromFilename(name string) string {
 	}
 }
 
+func appendPlainTextSignature(body string, sig *signatureResult) string {
+	if sig == nil {
+		return body
+	}
+	text := signature.PlainTextFromHTML(sig.RenderedContent)
+	if text == "" {
+		return body
+	}
+	if strings.TrimSpace(body) == "" {
+		return text
+	}
+	return strings.TrimRight(body, "\r\n") + "\n\n" + text
+}
+
 // signatureCIDs returns the CID list from a signatureResult, for inline CID validation.
 func signatureCIDs(sig *signatureResult) []string {
 	if sig == nil {
@@ -242,6 +321,17 @@ func signatureCIDs(sig *signatureResult) []string {
 		}
 	}
 	return cids
+}
+
+func validateSignatureFlags(signatureID string, noSignature bool) error {
+	if signatureID != "" && noSignature {
+		return mailValidationError("--signature-id and --no-signature are mutually exclusive").
+			WithParams(
+				mailInvalidParam("--signature-id", "mutually exclusive with --no-signature"),
+				mailInvalidParam("--no-signature", "skip signatures lookup or remove --signature-id"),
+			)
+	}
+	return nil
 }
 
 // validateSignatureWithPlainText returns an error if both --plain-text and --signature-id are set.

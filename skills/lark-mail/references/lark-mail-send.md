@@ -7,6 +7,7 @@
 - 抄送/密送
 - 本地文件附件（`--attach`）
 - 内嵌图片（`--inline`，CID 可用随机字符串）
+- 默认追加当前发件地址的新邮件签名，可用 `--no-signature` 跳过
 
 本 skill 对应 shortcut：`lark-cli mail +send`。
 
@@ -53,6 +54,9 @@ lark-cli mail +send --to alice@example.com --subject '周报' \
 # 保存带附件的草稿
 lark-cli mail +send --to alice@example.com --subject '请查收' --body '<p>见附件</p>' --attach ./report.pdf,./logs.zip
 
+# 保存草稿但不要追加默认签名
+lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p>' --no-signature
+
 # 保存带内嵌图片的草稿（推荐：直接用相对路径，自动解析）
 lark-cli mail +send --to alice@example.com --subject '预览图' --body '<img src="./logo.png" />'
 
@@ -75,10 +79,11 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
-| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
+| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用。若命中默认签名或显式签名，签名 HTML 会转为可见纯文本追加，不下载签名图片 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
-| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 显式签名 ID，优先于默认签名。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥；可与 `--plain-text` 共存，纯文本模式下追加签名文本 |
+| `--no-signature` | 否 | 跳过默认签名查询和追加。用户明确要求“不要带签名”“不加签名”时使用。与 `--signature-id` 互斥 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |
@@ -88,6 +93,14 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--send-time <timestamp>` | 否 | 定时发送时间，Unix 时间戳（秒）。需至少为当前时间 + 5 分钟。配合 `--confirm-send` 使用可定时发送邮件 |
 | `--request-receipt` | 否 | 请求已读回执（RFC 3798 Message Disposition Notification）。在出站 EML 里写 `Disposition-Notification-To: <sender>` 头。收件人的邮件客户端**可能**弹出提示询问是否回执、可能自动发送、也可能忽略——送达不保证 |
 | `--dry-run` | 否 | 仅打印请求，不执行 |
+
+### 签名规则
+
+- 默认行为：未传 `--signature-id` / `--no-signature` 时，`+send` 会按实际发件地址匹配账号配置的新邮件默认签名并追加。
+- 别名发信：同时使用 `--mailbox owner@example.com --from alias@example.com` 时，默认签名按 `alias@example.com` 匹配。
+- 显式签名：`--signature-id <id>` 优先于默认签名。
+- 跳过签名：用户明确要求不带签名时必须加 `--no-signature`。
+- 无默认签名或默认签名配置为空时，正常创建无签名草稿。
 
 ### 日程邀请约束
 

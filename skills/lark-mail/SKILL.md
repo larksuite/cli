@@ -329,11 +329,17 @@ lark-cli mail +send --as user \
 - HTML 支持粗体、列表、链接、段落等富文本排版，收件人阅读体验更好
 - 所有发送类命令（`+send`、`+reply`、`+reply-all`、`+forward`、`+draft-create`）都支持自动检测 HTML，可通过 `--plain-text` 强制纯文本
 - 纯文本仅适用于极简内容（如一句话回复 "收到"）
+- `+send` 默认按实际发件地址追加新邮件默认签名；用户明确说“不要带签名”“不加签名”时必须传 `--no-signature`
+- `+send --plain-text` 命中签名时会追加签名的纯文本表示，不会下载签名图片
 
 ```bash
 # ✅ 推荐：HTML 格式
 lark-cli mail +send --to alice@example.com --subject '周报' \
   --body '<p>本周进展：</p><ul><li>完成 A 模块</li><li>修复 3 个 bug</li></ul>'
+
+# ✅ 用户要求不要签名时
+lark-cli mail +send --to alice@example.com --subject '周报' \
+  --body '<p>本周进展...</p>' --no-signature
 
 # ⚠️ 仅在内容极简时使用纯文本
 lark-cli mail +reply --message-id <id> --body '收到，谢谢'
@@ -657,4 +663,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
