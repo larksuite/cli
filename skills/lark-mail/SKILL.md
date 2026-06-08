@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
+description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, mail rules, and sender allow/block lists. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, 发件人白名单, 发件人黑名单, 信任发件人, 屏蔽发件人, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -22,6 +22,7 @@ metadata:
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
+- **发件人名单（Allow/Blocked sender）**：用户级信任发件人白名单和屏蔽发件人黑名单。通过 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders` 原生资源批量添加、列出、搜索和删除；黑白名单互斥，由服务端统一校验和生效。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -104,7 +105,8 @@ metadata:
 7. **HTML body 预检（可选）** — 复杂 HTML body 提交前可先跑 `+lint-html` 看 lint 会改 / 删什么；写信路径（`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` / `+draft-edit` body op）已内置 autofix，普通正文不必先跑。详见 [references/lark-mail-html.md](references/lark-mail-html.md) 中的「写入路径内置 HTML lint」章节
 8. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
 9. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-10. **已读回执** —
+10. **管理发件人名单** — 使用 `user_mailbox.allow_senders` 管理信任发件人，使用 `user_mailbox.blocked_senders` 管理屏蔽发件人。添加和删除均为批量操作，执行前向用户展示目标地址/域名和数量；`sender_type` 使用整数 `1`（邮箱地址）或 `2`（域名）。
+11. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
 
@@ -459,6 +461,32 @@ lark-cli mail user_mailbox.folders create \
 
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
 - 列表接口支持 `--page-all` 自动翻页，无需手动处理 `page_token`
+- 发件人名单资源使用复数命令名：`user_mailbox.allow_senders` / `user_mailbox.blocked_senders`。创建/删除时 `user_mailbox_id` 放在 `--params`，`items` 或 `senders` 放在 `--data`；列表/搜索只用 `--params`。
+
+### 发件人黑白名单管理
+
+用户级信任/屏蔽发件人名单是原生 API 资源，不是 Shortcut。先用 `-h` 和 `schema` 确认字段，再调用：
+
+```bash
+# 加入信任发件人（sender_type: 1=邮箱地址, 2=域名）
+lark-cli mail user_mailbox.allow_senders batch_create --as user \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"items":[{"sender":"alice@example.com","sender_type":1},{"sender":"example.org","sender_type":2}]}'
+
+# 列出/搜索屏蔽发件人
+lark-cli mail user_mailbox.blocked_senders list --as user \
+  --params '{"user_mailbox_id":"me","page_size":20,"keyword":"example"}'
+
+# 批量移除屏蔽发件人
+lark-cli mail user_mailbox.blocked_senders batch_remove --as user \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"senders":["spam@example.com","example.net"]}'
+```
+
+注意：
+- 单次添加或删除最多 100 项，单用户黑白名单合计最多 2000 项；超限、格式非法、自身地址/域名、黑白互斥等由服务端返回错误或 `failed_items`。
+- `list` 支持 `keyword` 前缀搜索；若服务端提示搜索缓存仍在构建，直接向用户转述并建议稍后重试，不要自动重试或吞掉错误。
+- `me` 只适合 user 身份；使用 tenant 身份时传显式邮箱地址或 open_id。
 
 ## Shortcuts（推荐优先使用）
 
@@ -497,6 +525,18 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 ### multi_entity
 
   - `search` — 适用于写信联系人搜索
+
+### user_mailbox.allow_senders
+
+  - `batch_create` — 批量将发件人加入指定用户邮箱的「信任发件人」白名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与黑名单互斥（添加白名单会从黑名单删除对侧记录）。
+  - `batch_remove` — 批量从指定用户邮箱的「信任发件人」白名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。
+  - `list` — 列表/搜索指定用户邮箱的「信任发件人」白名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。
+
+### user_mailbox.blocked_senders
+
+  - `batch_create` — 批量将发件人加入指定用户邮箱的「屏蔽发件人」黑名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与白名单互斥（添加黑名单会从白名单删除对侧记录）。
+  - `batch_remove` — 批量从指定用户邮箱的「屏蔽发件人」黑名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。
+  - `list` — 列表/搜索指定用户邮箱的「屏蔽发件人」黑名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。
 
 ### user_mailboxes
 
@@ -601,6 +641,12 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | 方法 | 所需 scope |
 |------|-----------|
 | `multi_entity.search` | `mail:user_mailbox:readonly` |
+| `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:readonly` |
+| `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailboxes.accessible_mailboxes` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
@@ -657,4 +703,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
