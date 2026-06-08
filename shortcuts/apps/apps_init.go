@@ -38,7 +38,7 @@ const (
 )
 
 const (
-	miaodaCLIPkg    = "@lark-apaas/miaoda-cli@alpha"
+	miaodaCLIPkg    = "@lark-apaas/miaoda-cli@latest"
 	defaultTemplate = "nestjs-react-fullstack"
 	metaRelPath     = ".spark/meta.json"
 	steeringRelPath = ".agent/skills/steering"
