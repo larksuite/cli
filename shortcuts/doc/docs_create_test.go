@@ -48,7 +48,6 @@ func TestDocsCreateV2BotAutoGrantSuccess(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>项目计划</title><h1>目标</h1>",
 		"--as", "bot",
 	})
@@ -249,148 +248,63 @@ func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
 	}
 }
 
-// ── V1 (MCP) tests ──
-
-func TestDocsCreateV1BotAutoGrantSuccess(t *testing.T) {
-	t.Parallel()
-
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
-	})
-
-	permStub := &httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/doxcn_new_doc/members",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"member": map[string]interface{}{
-					"member_id":   "ou_current_user",
-					"member_type": "openid",
-					"perm":        "full_access",
-				},
-			},
-		},
-	}
-	reg.Register(permStub)
-
-	err := runDocsCreateShortcut(t, f, stdout, []string{
-		"+create",
-		"--title", "项目计划",
-		"--markdown", "## 目标",
-		"--as", "bot",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	data := decodeDocsCreateEnvelope(t, stdout)
-	grant, _ := data["permission_grant"].(map[string]interface{})
-	if grant["status"] != common.PermissionGrantGranted {
-		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantGranted)
-	}
-}
-
-func TestDocsCreateV1WikiSpaceAutoGrantFailure(t *testing.T) {
-	t.Parallel()
-
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, "ou_current_user"))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://example.feishu.cn/wiki/wikcn_new_node",
-		"message": "文档创建成功",
-	})
-
-	permStub := &httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/permissions/wikcn_new_node/members",
-		Body: map[string]interface{}{
-			"code": 230001,
-			"msg":  "no permission",
-		},
-	}
-	reg.Register(permStub)
-
-	err := runDocsCreateShortcut(t, f, stdout, []string{
-		"+create",
-		"--markdown", "## 内容",
-		"--wiki-space", "my_library",
-		"--as", "bot",
-	})
-	if err != nil {
-		t.Fatalf("document creation should still succeed when auto-grant fails, got: %v", err)
-	}
-
-	data := decodeDocsCreateEnvelope(t, stdout)
-	grant, _ := data["permission_grant"].(map[string]interface{})
-	if grant["status"] != common.PermissionGrantFailed {
-		t.Fatalf("permission_grant.status = %#v, want %q", grant["status"], common.PermissionGrantFailed)
-	}
-
-	var body map[string]interface{}
-	if err := json.Unmarshal(permStub.CapturedBody, &body); err != nil {
-		t.Fatalf("failed to parse permission request body: %v", err)
-	}
-	if body["perm_type"] != "container" {
-		t.Fatalf("permission request perm_type = %#v, want %q", body["perm_type"], "container")
-	}
-}
-
-func TestDocsCreateV1FallbackURLWhenBackendOmitsIt(t *testing.T) {
+func TestDocsCreateAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"message": "文档创建成功",
-		// "doc_url" deliberately omitted to exercise the fallback.
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
 	})
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
 		"--api-version", "v1",
-		"--title", "项目计划",
-		"--markdown", "## 目标",
+		"--content", "<title>项目计划</title>",
 		"--as", "user",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-
 	data := decodeDocsCreateEnvelope(t, stdout)
-	if got, want := data["doc_url"], "https://www.feishu.cn/docx/doxcn_new_doc"; got != want {
-		t.Fatalf("doc_url = %#v, want %q (brand-standard fallback)", got, want)
+	doc, _ := data["document"].(map[string]interface{})
+	if got, want := doc["document_id"], "doxcn_new_doc"; got != want {
+		t.Fatalf("document.document_id = %#v, want %q", got, want)
 	}
 }
 
-func TestDocsCreateV1PreservesBackendDocURL(t *testing.T) {
+func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	t.Parallel()
 
-	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
-	registerDocsCreateMCPStub(reg, map[string]interface{}{
-		"doc_id":  "doxcn_new_doc",
-		"doc_url": "https://tenant.feishu.cn/docx/doxcn_new_doc",
-		"message": "文档创建成功",
-	})
-
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v1",
 		"--title", "项目计划",
 		"--markdown", "## 目标",
 		"--as", "user",
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected legacy v1 flags to be rejected")
 	}
-
-	data := decodeDocsCreateEnvelope(t, stdout)
-	if got, want := data["doc_url"], "https://tenant.feishu.cn/docx/doxcn_new_doc"; got != want {
-		t.Fatalf("doc_url = %#v, want backend tenant URL %q (fallback must not overwrite)", got, want)
+	for _, want := range []string{
+		"docs +create is v2-only",
+		"the old v1 interface has been shut down",
+		"legacy v1 flag(s) --title, --markdown are no longer supported",
+		"--title -> put the title in --content",
+		"--markdown -> use --content with --doc-format markdown",
+		"lark-cli skills read lark-doc references/lark-doc-create.md",
+		"lark-cli skills read lark-doc references/lark-doc-xml.md",
+		"lark-cli skills read lark-doc references/lark-doc-md.md",
+		"follow the latest format rules",
+		"MUST NOT grep/open local SKILL.md files",
+		"lark-cli docs +create --help",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
 	}
 }
 
@@ -417,24 +331,6 @@ func registerDocsCreateAPIStub(reg *httpmock.Registry, data map[string]interface
 			"code": 0,
 			"msg":  "ok",
 			"data": data,
-		},
-	})
-}
-
-func registerDocsCreateMCPStub(reg *httpmock.Registry, result map[string]interface{}) {
-	payload, _ := json.Marshal(result)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/mcp",
-		Body: map[string]interface{}{
-			"result": map[string]interface{}{
-				"content": []map[string]interface{}{
-					{
-						"type": "text",
-						"text": string(payload),
-					},
-				},
-			},
 		},
 	})
 }

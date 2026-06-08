@@ -5,57 +5,13 @@ package doc
 
 import (
 	"context"
-	"fmt"
-	"regexp"
-	"strings"
-
-	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-var validModesV1 = map[string]bool{
-	"append":        true,
-	"overwrite":     true,
-	"replace_range": true,
-	"replace_all":   true,
-	"insert_before": true,
-	"insert_after":  true,
-	"delete_range":  true,
-}
-
-var needsSelectionV1 = map[string]bool{
-	"replace_range": true,
-	"replace_all":   true,
-	"insert_before": true,
-	"insert_after":  true,
-	"delete_range":  true,
-}
-
-// v1UpdateFlags returns the flag definitions for the v1 (MCP) update path.
+// v1UpdateFlags returns hidden parse-only compatibility flags for old v1 commands.
 func v1UpdateFlags() []common.Flag {
-	return []common.Flag{
-		{Name: "mode", Desc: "update mode: append | overwrite | replace_range | replace_all | insert_before | insert_after | delete_range", Hidden: true},
-		{Name: "markdown", Desc: "new content (Lark-flavored Markdown; create blank whiteboards with <whiteboard type=\"blank\"></whiteboard>, repeat to create multiple boards)", Hidden: true, Input: []string{common.File, common.Stdin}},
-		{Name: "selection-with-ellipsis", Desc: "content locator (e.g. 'start...end')", Hidden: true},
-		{Name: "selection-by-title", Desc: "title locator (e.g. '## Section')", Hidden: true},
-		{Name: "new-title", Desc: "also update document title", Hidden: true},
-	}
-}
-
-var docsUpdateFlagVersions = buildFlagVersionMap(v1UpdateFlags(), v2UpdateFlags())
-
-// useV2Update returns true when the v2 (OpenAPI) update path should be used.
-// Explicit --api-version v2 takes priority; otherwise auto-detect by v2-only flags.
-func useV2Update(runtime *common.RuntimeContext) bool {
-	if runtime.Str("api-version") == "v2" {
-		return true
-	}
-	return runtime.Str("command") != "" ||
-		runtime.Str("content") != "" ||
-		runtime.Str("pattern") != "" ||
-		runtime.Str("block-id") != "" ||
-		runtime.Str("src-block-ids") != ""
+	return docsLegacyFlagDefinitions(docsUpdateLegacyFlags())
 }
 
 var DocsUpdate = common.Shortcut{
@@ -65,225 +21,22 @@ var DocsUpdate = common.Shortcut{
 	Risk:        "write",
 	Scopes:      []string{"docx:document:write_only", "docx:document:readonly"},
 	AuthTypes:   []string{"user", "bot"},
-	Tips:        docsVersionSelectionTips,
+	PostMount:   installDocsShortcutHelp("+update"),
 	Flags: concatFlags(
 		[]common.Flag{
-			{Name: "api-version", Desc: "API version", Default: "v1", Enum: []string{"v1", "v2"}},
+			docsAPIVersionCompatFlag(),
 			{Name: "doc", Desc: "document URL or token", Required: true},
 		},
-		v1UpdateFlags(),
 		v2UpdateFlags(),
+		v1UpdateFlags(),
 	),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if useV2Update(runtime) {
-			return validateUpdateV2(ctx, runtime)
-		}
-		return validateUpdateV1(ctx, runtime)
+		return validateUpdateV2(ctx, runtime)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		if useV2Update(runtime) {
-			return dryRunUpdateV2(ctx, runtime)
-		}
-		return dryRunUpdateV1(ctx, runtime)
+		return dryRunUpdateV2(ctx, runtime)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if useV2Update(runtime) {
-			return executeUpdateV2(ctx, runtime)
-		}
-		return executeUpdateV1(ctx, runtime)
+		return executeUpdateV2(ctx, runtime)
 	},
-	PostMount: func(cmd *cobra.Command) {
-		installVersionedHelp(cmd, "v1", docsUpdateFlagVersions)
-	},
-}
-
-// ── V1 (MCP) implementation ──
-
-func validateUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
-	mode := runtime.Str("mode")
-	if mode == "" {
-		return common.FlagErrorf("--mode is required")
-	}
-	if !validModesV1[mode] {
-		return common.FlagErrorf("invalid --mode %q, valid: append | overwrite | replace_range | replace_all | insert_before | insert_after | delete_range", mode)
-	}
-
-	if mode != "delete_range" && runtime.Str("markdown") == "" {
-		return common.FlagErrorf("--%s mode requires --markdown", mode)
-	}
-
-	selEllipsis := runtime.Str("selection-with-ellipsis")
-	selTitle := runtime.Str("selection-by-title")
-	if selEllipsis != "" && selTitle != "" {
-		return common.FlagErrorf("--selection-with-ellipsis and --selection-by-title are mutually exclusive")
-	}
-
-	if needsSelectionV1[mode] && selEllipsis == "" && selTitle == "" {
-		return common.FlagErrorf(selectionRequiredMessageV1(mode))
-	}
-	if err := validateSelectionByTitleV1(selTitle); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func selectionRequiredMessageV1(mode string) string {
-	msg := fmt.Sprintf("--%s mode requires --selection-with-ellipsis or --selection-by-title", mode)
-	if mode == "replace_all" {
-		msg += ". If you intended to replace the entire document body, use --mode overwrite instead."
-	}
-	return msg
-}
-
-func validateSelectionByTitleV1(title string) error {
-	if title == "" {
-		return nil
-	}
-	trimmed := strings.TrimSpace(title)
-	if strings.Contains(trimmed, "\n") || strings.Contains(trimmed, "\r") {
-		return common.FlagErrorf("--selection-by-title must be a single heading line (for example: '## Section')")
-	}
-	if strings.HasPrefix(trimmed, "#") {
-		return nil
-	}
-	return common.FlagErrorf("--selection-by-title must include markdown heading prefix '#'. Example: --selection-by-title '## Section'")
-}
-
-func dryRunUpdateV1(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	args := buildUpdateArgsV1(runtime)
-	return common.NewDryRunAPI().
-		POST(common.MCPEndpoint(runtime.Config.Brand)).
-		Desc("MCP tool: update-doc").
-		Body(map[string]interface{}{"method": "tools/call", "params": map[string]interface{}{"name": "update-doc", "arguments": args}}).
-		Set("mcp_tool", "update-doc").Set("args", args)
-}
-
-func executeUpdateV1(_ context.Context, runtime *common.RuntimeContext) error {
-	warnDeprecatedV1(runtime, "+update")
-
-	// Static semantic checks run before the MCP call so users see
-	// warnings even if the subsequent request fails. They never block
-	// execution — the update still proceeds.
-	for _, w := range docsUpdateWarnings(runtime.Str("mode"), runtime.Str("markdown")) {
-		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
-	}
-
-	// Overwrite replaces the entire document, silently discarding any
-	// whiteboard or file-attachment blocks that cannot be re-created from
-	// Markdown. Pre-fetch the current content and warn when such blocks
-	// are present so the caller can take a backup before proceeding.
-	if runtime.Str("mode") == "overwrite" {
-		if w := warnOverwriteResourceBlocks(runtime); w != "" {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", w)
-		}
-	}
-
-	// Surface callout type= hint so users know to switch to background-color/
-	// border-color when they want a colored callout. Non-blocking, advisory.
-	if md := runtime.Str("markdown"); md != "" {
-		WarnCalloutType(md, runtime.IO().ErrOut)
-	}
-
-	args := buildUpdateArgsV1(runtime)
-
-	result, err := common.CallMCPTool(runtime, "update-doc", args)
-	if err != nil {
-		return err
-	}
-
-	normalizeWhiteboardResult(result, runtime.Str("markdown"))
-	runtime.Out(result, nil)
-	return nil
-}
-
-func buildUpdateArgsV1(runtime *common.RuntimeContext) map[string]interface{} {
-	args := map[string]interface{}{
-		"doc_id": runtime.Str("doc"),
-		"mode":   runtime.Str("mode"),
-	}
-	if v := runtime.Str("markdown"); v != "" {
-		args["markdown"] = v
-	}
-	if v := runtime.Str("selection-with-ellipsis"); v != "" {
-		args["selection_with_ellipsis"] = v
-	}
-	if v := runtime.Str("selection-by-title"); v != "" {
-		args["selection_by_title"] = v
-	}
-	if v := runtime.Str("new-title"); v != "" {
-		args["new_title"] = v
-	}
-	return args
-}
-
-// resourceBlockRe matches the opening of a <whiteboard …> or <file …> tag
-// (followed by whitespace, > or /) to avoid false positives on tag names like
-// <file-view> or prose that merely mentions the word "whiteboard".
-var resourceBlockRe = regexp.MustCompile(`<(whiteboard|file)[\s/>]`)
-
-// warnOverwriteResourceBlocks pre-fetches the current document and returns a
-// non-empty warning string when the document contains whiteboard or file
-// attachment blocks that would be permanently deleted by an overwrite. Returns
-// an empty string (no warning) when the document is clean or the fetch fails
-// (we never block the overwrite on a best-effort check).
-//
-// This function is not unit-tested because it depends on an external MCP call
-// (fetch-doc). The pure detection logic lives in checkOverwriteResourceBlocks,
-// which has full table-driven coverage.
-//
-// Performance: this adds one extra fetch-doc round-trip to every --mode overwrite
-// call, even when the document has no resource blocks. The cost is intentional:
-// the guard is best-effort and silent on failure, so the latency is bounded and
-// the trade-off is acceptable to avoid silent data loss.
-func warnOverwriteResourceBlocks(runtime *common.RuntimeContext) string {
-	args := map[string]interface{}{
-		"doc_id": runtime.Str("doc"),
-		// skip_task_detail reduces response payload by omitting per-block task
-		// metadata, making the pre-fetch faster and cheaper.
-		"skip_task_detail": true,
-	}
-	result, err := common.CallMCPTool(runtime, "fetch-doc", args)
-	if err != nil {
-		// Fetch failed — silently skip the guard rather than blocking overwrite.
-		return ""
-	}
-	md, _ := result["markdown"].(string)
-	return checkOverwriteResourceBlocks(md)
-}
-
-// checkOverwriteResourceBlocks scans Markdown for resource block tags that
-// cannot survive an overwrite: <whiteboard …> and <file …>. Returns a
-// warning string listing the counts if any are found, empty string otherwise.
-func checkOverwriteResourceBlocks(markdown string) string {
-	matches := resourceBlockRe.FindAllStringSubmatch(markdown, -1)
-	whiteboards, files := 0, 0
-	for _, m := range matches {
-		switch m[1] {
-		case "whiteboard":
-			whiteboards++
-		case "file":
-			files++
-		}
-	}
-	var found []string
-	if whiteboards == 1 {
-		found = append(found, "1 whiteboard block")
-	} else if whiteboards > 1 {
-		found = append(found, fmt.Sprintf("%d whiteboard blocks", whiteboards))
-	}
-	if files == 1 {
-		found = append(found, "1 file attachment block")
-	} else if files > 1 {
-		found = append(found, fmt.Sprintf("%d file attachment blocks", files))
-	}
-	if len(found) == 0 {
-		return ""
-	}
-	return fmt.Sprintf(
-		"the document contains %s that cannot be reconstructed from Markdown; "+
-			"overwrite will permanently delete them. "+
-			"Consider fetching a backup with `docs +fetch` before overwriting.",
-		strings.Join(found, " and "),
-	)
 }

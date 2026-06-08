@@ -155,7 +155,7 @@ func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
 	}
 }
 
-func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndUpgradeTips(t *testing.T) {
+func TestRegisterShortcutsDocsHelpAddsSkillReadGuidance(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))
 
@@ -166,12 +166,18 @@ func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndUpgradeTips(t *testing.T
 	if docsCmd == nil || docsCmd.Name() != "docs" {
 		t.Fatalf("docs command not mounted: %#v", docsCmd)
 	}
-	if docsCmd.Flags().Lookup("api-version") == nil {
-		t.Fatal("docs command should expose --api-version for versioned help")
+	if docsCmd.Flags().Lookup("api-version") != nil {
+		t.Fatal("docs command should not expose service-level --api-version")
 	}
 
 	if !strings.Contains(docsCmd.Long, "Document and content operations.") {
 		t.Fatalf("docs long help missing default description:\n%s", docsCmd.Long)
+	}
+
+	for _, child := range docsCmd.Commands() {
+		if child.Name() == "+get-skill" {
+			t.Fatal("docs +get-skill should not be mounted")
+		}
 	}
 
 	var defaultHelp bytes.Buffer
@@ -180,107 +186,91 @@ func TestRegisterShortcutsDocsHelpAddsVersionSelectorAndUpgradeTips(t *testing.T
 		t.Fatalf("docs help failed: %v", err)
 	}
 	for _, want := range []string{
-		"Tips:",
-		"Docs v1 is deprecated and will be removed soon",
-		"Check the installed lark-doc skill first",
-		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
-		"After confirming lark-doc is v2",
-		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+		"Start here (required for AI agents):",
+		"lark-cli skills read lark-doc",
+		"AI agents MUST read the matching embedded skill",
+		"Do not skip this step",
+		"MUST NOT grep/open local SKILL.md files",
 	} {
 		if !strings.Contains(defaultHelp.String(), want) {
 			t.Fatalf("docs default help missing %q:\n%s", want, defaultHelp.String())
 		}
 	}
-}
-
-func TestRegisterShortcutsDocsV2HelpUsesV2Description(t *testing.T) {
-	program := &cobra.Command{Use: "root"}
-	RegisterShortcuts(program, newRegisterTestFactory(t))
-
-	docsCmd, _, err := program.Find([]string{"docs"})
-	if err != nil {
-		t.Fatalf("find docs command: %v", err)
-	}
-	if err := docsCmd.Flags().Set("api-version", "v2"); err != nil {
-		t.Fatalf("set docs api-version: %v", err)
-	}
-
-	var out bytes.Buffer
-	docsCmd.SetOut(&out)
-	if err := docsCmd.Help(); err != nil {
-		t.Fatalf("docs v2 help failed: %v", err)
-	}
-
-	for _, want := range []string{
-		"Document and content operations (v2).",
-		"Tips:",
-		"Check the installed lark-doc skill first",
-		"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
-	} {
-		if !strings.Contains(out.String(), want) {
-			t.Fatalf("docs v2 help missing %q:\n%s", want, out.String())
-		}
+	if startIdx, usageIdx := strings.Index(defaultHelp.String(), "Start here (required for AI agents):"), strings.Index(defaultHelp.String(), "Usage:"); startIdx < 0 || usageIdx < 0 || startIdx > usageIdx {
+		t.Fatalf("docs help should show Start here before Usage:\n%s", defaultHelp.String())
 	}
 	for _, unwanted := range []string{
+		"Tips:",
+		"+get-skill",
+		"Docs shortcuts are v2-only",
 		"Docs v1 is deprecated and will be removed soon",
-		"After confirming lark-doc is v2",
-		"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
+		"lark-cli update",
+		"upgrade skills",
+		"Use --api-version v2 for the latest API",
 	} {
-		if strings.Contains(out.String(), unwanted) {
-			t.Fatalf("docs v2 help should not include %q:\n%s", unwanted, out.String())
+		if strings.Contains(defaultHelp.String(), unwanted) {
+			t.Fatalf("docs help should not include %q:\n%s", unwanted, defaultHelp.String())
 		}
 	}
 }
 
-func TestRegisterShortcutsDocsVersionedShortcutHelpAddsVersionTips(t *testing.T) {
+func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 	tests := []struct {
-		name          string
-		shortcut      string
-		apiVersion    string
-		shortcutHelp  string
-		versionedFlag string
+		name         string
+		shortcut     string
+		shortcutHelp string
+		visibleFlag  string
+		skillCommand string
+		hiddenFlags  []string
+		contentHelp  []string
+		unwanted     []string
 	}{
 		{
-			name:          "create v1",
-			shortcut:      "+create",
-			apiVersion:    "v1",
-			shortcutHelp:  "Create a Lark document",
-			versionedFlag: "--markdown",
+			name:         "create",
+			shortcut:     "+create",
+			shortcutHelp: "Create a Lark document",
+			visibleFlag:  "--content",
+			skillCommand: "lark-cli skills read lark-doc references/lark-doc-create.md",
+			hiddenFlags:  []string{"title", "markdown", "folder-token", "wiki-node", "wiki-space"},
+			contentHelp: []string{
+				"AI agents MUST read",
+				"lark-cli skills read lark-doc references/lark-doc-xml.md",
+				"before writing any --content payload",
+				"when using --doc-format markdown, also read",
+				"lark-cli skills read lark-doc references/lark-doc-md.md",
+				"Follow the latest rules",
+				"MUST NOT grep/open local SKILL.md files",
+				"use --help for the latest command flags",
+			},
+			unwanted: []string{"--markdown", "--title", "--folder-token", "--wiki-node", "--wiki-space"},
 		},
 		{
-			name:          "create v2",
-			shortcut:      "+create",
-			apiVersion:    "v2",
-			shortcutHelp:  "Create a Lark document",
-			versionedFlag: "--content",
+			name:         "fetch",
+			shortcut:     "+fetch",
+			shortcutHelp: "Fetch Lark document content",
+			visibleFlag:  "read scope",
+			skillCommand: "lark-cli skills read lark-doc references/lark-doc-fetch.md",
+			hiddenFlags:  []string{"offset", "limit"},
+			unwanted:     []string{"--offset", "--limit"},
 		},
 		{
-			name:          "fetch v1",
-			shortcut:      "+fetch",
-			apiVersion:    "v1",
-			shortcutHelp:  "Fetch Lark document content",
-			versionedFlag: "--offset",
-		},
-		{
-			name:          "fetch v2",
-			shortcut:      "+fetch",
-			apiVersion:    "v2",
-			shortcutHelp:  "Fetch Lark document content",
-			versionedFlag: "partial read scope",
-		},
-		{
-			name:          "update v1",
-			shortcut:      "+update",
-			apiVersion:    "v1",
-			shortcutHelp:  "Update a Lark document",
-			versionedFlag: "--mode",
-		},
-		{
-			name:          "update v2",
-			shortcut:      "+update",
-			apiVersion:    "v2",
-			shortcutHelp:  "Update a Lark document",
-			versionedFlag: "--command",
+			name:         "update",
+			shortcut:     "+update",
+			shortcutHelp: "Update a Lark document",
+			visibleFlag:  "--command",
+			skillCommand: "lark-cli skills read lark-doc references/lark-doc-update.md",
+			hiddenFlags:  []string{"mode", "markdown", "selection-with-ellipsis", "selection-by-title", "new-title"},
+			contentHelp: []string{
+				"AI agents MUST read",
+				"lark-cli skills read lark-doc references/lark-doc-xml.md",
+				"before writing any --content payload",
+				"when using --doc-format markdown, also read",
+				"lark-cli skills read lark-doc references/lark-doc-md.md",
+				"Follow the latest rules",
+				"MUST NOT grep/open local SKILL.md files",
+				"use --help for the latest command flags",
+			},
+			unwanted: []string{"--mode", "--markdown", "--selection-with-ellipsis", "--selection-by-title", "--new-title"},
 		},
 	}
 
@@ -296,8 +286,25 @@ func TestRegisterShortcutsDocsVersionedShortcutHelpAddsVersionTips(t *testing.T)
 			if cmd == nil || cmd.Name() != tt.shortcut {
 				t.Fatalf("docs %s shortcut not mounted: %#v", tt.shortcut, cmd)
 			}
-			if err := cmd.Flags().Set("api-version", tt.apiVersion); err != nil {
-				t.Fatalf("set docs %s api-version: %v", tt.shortcut, err)
+
+			for _, flagName := range tt.hiddenFlags {
+				flag := cmd.Flags().Lookup(flagName)
+				if flag == nil {
+					t.Fatalf("docs %s missing hidden compatibility flag %q", tt.shortcut, flagName)
+				}
+				if !flag.Hidden {
+					t.Fatalf("docs %s flag %q should be hidden", tt.shortcut, flagName)
+				}
+			}
+			apiVersionFlag := cmd.Flags().Lookup("api-version")
+			if apiVersionFlag == nil {
+				t.Fatalf("docs %s missing --api-version flag", tt.shortcut)
+			}
+			if apiVersionFlag.Hidden {
+				t.Fatalf("docs %s --api-version should be visible", tt.shortcut)
+			}
+			if apiVersionFlag.DefValue != "v2" {
+				t.Fatalf("docs %s --api-version default = %q, want v2", tt.shortcut, apiVersionFlag.DefValue)
 			}
 
 			var out bytes.Buffer
@@ -306,49 +313,39 @@ func TestRegisterShortcutsDocsVersionedShortcutHelpAddsVersionTips(t *testing.T)
 				t.Fatalf("docs %s help failed: %v", tt.shortcut, err)
 			}
 
-			wantTips := []string{
-				"Tips:",
-				"Docs v1 is deprecated and will be removed soon",
-				"Check the installed lark-doc skill first",
-				"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
-				"After confirming lark-doc is v2",
-				"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
-			}
-			unwantedTips := []string{
-				"[NOTE]",
-				"Use --api-version v2 for the latest API",
-				"otherwise use the default v1 flags",
-				"legacy v1 examples and flags",
-			}
-			if tt.apiVersion == "v2" {
-				wantTips = []string{
-					"Tips:",
-					"Check the installed lark-doc skill first",
-					"if it is not the v2 skill, run `lark-cli update` to upgrade skills",
-				}
-				unwantedTips = append(unwantedTips,
-					"Docs v1 is deprecated and will be removed soon",
-					"After confirming lark-doc is v2",
-					"use `--api-version v2` with docs +create, docs +fetch, and docs +update",
-				)
-			}
-
 			for _, want := range []string{
 				tt.shortcutHelp,
-				tt.versionedFlag,
+				tt.visibleFlag,
+				"--api-version",
+				"deprecated compatibility flag; docs shortcuts always use v2",
+				"both v1/v2 are accepted",
+				"(default \"v2\")",
+				"Start here (required for AI agents):",
+				"AI agents MUST read the matching embedded skill",
+				"Do not skip this step",
+				"MUST NOT grep/open local SKILL.md files",
+				tt.skillCommand,
 			} {
 				if !strings.Contains(out.String(), want) {
-					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
+					t.Fatalf("docs %s help missing %q:\n%s", tt.shortcut, want, out.String())
 				}
 			}
-			for _, want := range wantTips {
+			for _, want := range tt.contentHelp {
 				if !strings.Contains(out.String(), want) {
-					t.Fatalf("docs %s %s help missing %q:\n%s", tt.shortcut, tt.apiVersion, want, out.String())
+					t.Fatalf("docs %s content help missing %q:\n%s", tt.shortcut, want, out.String())
 				}
 			}
-			for _, unwanted := range unwantedTips {
+			if startIdx, usageIdx := strings.Index(out.String(), "Start here (required for AI agents):"), strings.Index(out.String(), "Usage:"); startIdx < 0 || usageIdx < 0 || startIdx > usageIdx {
+				t.Fatalf("docs %s help should show Start here before Usage:\n%s", tt.shortcut, out.String())
+			}
+			for _, unwanted := range []string{"Tips:", "+get-skill", "Docs shortcuts are v2-only"} {
 				if strings.Contains(out.String(), unwanted) {
-					t.Fatalf("docs %s %s help should not include %q:\n%s", tt.shortcut, tt.apiVersion, unwanted, out.String())
+					t.Fatalf("docs %s help should not include %q:\n%s", tt.shortcut, unwanted, out.String())
+				}
+			}
+			for _, unwanted := range tt.unwanted {
+				if strings.Contains(out.String(), unwanted) {
+					t.Fatalf("docs %s help should not include %q:\n%s", tt.shortcut, unwanted, out.String())
 				}
 			}
 		})
