@@ -155,6 +155,7 @@ func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
+		"+url-resolve", "+title-resolve",
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",

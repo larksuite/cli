@@ -31,8 +31,10 @@ metadata:
 - Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
 - 本轮 Base 不依赖 `lark-cli schema`。SKILL 只保留路由、风险和复杂 JSON/DSL；简单命令由命令自身的参数、tips 和错误恢复承接。
 - 用户要把 Excel / CSV / `.base` 导入成 Base 时，先转 `lark-cli drive +import --type bitable`，导入完成后再回到 Base 命令。
-- 用户只给 Base 名称或关键词时，先用 `lark-cli drive +search --query <keyword> --doc-types bitable` 定位资源。
-- Base 命令必须先有 `base_token` 或可解析出的 Base URL。没有 token 时：用户要新建就用 `+base-create`；用户给标题/关键词就搜 `lark-cli drive +search --query "<base title>" --doc-types bitable --only-title --as user`；仍无法定位时，反问用户具体是哪一个 Base。
+- 用户输入 URL 或分享链接时，先用 `lark-cli base +url-resolve --url "<url>" --as user` 判断是否为 Base 相关 URL 并解析 Base 坐标。
+- 用户输入 Base 标题、关键词或不确定名称时，用 `lark-cli base +title-resolve --query "<text>" --as user` 搜索并定位 Base。
+- 文档嵌入 Base 标签可直接用：`<bitable>` / `<base_refer>` 的 `token` → `--base-token`，`table-id` → `--table-id`，`view-id` → `--view-id`；孤立 raw token 不走 `+url-resolve`。
+- Base 命令必须先有 `base_token` 或可解析出的 Base URL。没有 token 时：用户要新建就用 `+base-create`；仍无法定位时，反问用户具体是哪一个 Base。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
 
 ## 快速路由
@@ -115,19 +117,9 @@ metadata:
 
 ## Token 与链接
 
-| 输入类型 | 含义 / 正确处理方式 |
-|---|---|
-| `/base/{token}` | 普通 Base 链接；提取 `/base/` 后的 token 作为 `--base-token` |
-| `/wiki/{token}` | Wiki 节点链接；先 `wiki +node-get`，当 `data.obj_type=bitable` 时使用 `data.obj_token` 作为 `--base-token` |
-| `/base/{token}?table={id}` | `table` 参数用于定位 Base 内对象：`tbl` 开头是数据表 `--table-id`；`blk` 开头是 dashboard ID；`wkf` 开头是 workflow ID |
-| `/base/{token}?view={id}` | `view` 参数用于定位表视图，提取为 `--view-id`；通常还需要确认 `table` 参数或先查表结构 |
-| `/share/base/form/{shareToken}` | 表单分享链接；这是表单 share token，走 `+form-detail` / `+form-submit --share-token <shareToken>` |
-| `/share/base/view/{shareToken}` | 视图分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
-| `/share/base/dashboard/{shareToken}` | 仪表盘分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
-| `/record/{shareToken}` | 记录分享链接；暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开。若用户想生成现有记录的分享链接，用 `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-ids <record_id>` |
-| `/base/workspace/{token}` | BaseApp / workspace 链接；暂不支持用 CLI 直接访问 |
-
-`wiki +node-get` 返回非 `bitable` 时，不继续使用 Base 命令：`docx` 转文档，`sheet` 转表格，其他云空间对象转对应 skill 或 drive。
+- URL 或分享链接统一交给 `+url-resolve`；该命令会解析支持的 URL，并输出可用于后续 Base 命令的 `base_token`、`table_id`、`view_id`、`record_id` 或分享 token 等信息。
+- 标题或关键词统一交给 `+title-resolve`；多候选时先消歧，不要猜。
+- 文档内嵌 Base 标签按上文规则直接提取 `token` / `table-id` / `view-id`。
 
 ## Dashboard / Workflow / Role
 
