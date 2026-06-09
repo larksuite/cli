@@ -24,8 +24,8 @@ func SafeInputPath(path string) (string, error) {
 
 // SafeLocalFlagPath validates a flag value as a local file path.
 // Empty values and http/https URLs are returned unchanged without validation.
-// Absolute paths are validated for safety (control characters, symlink
-// resolution) without restricting to the working directory.
+// Non-empty non-URL values are validated via SafeInputPath, which requires
+// a relative path within the current working directory.
 func SafeLocalFlagPath(flagName, value string) (string, error) {
 	if value == "" || strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 		return value, nil
