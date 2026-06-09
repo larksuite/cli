@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -58,7 +59,7 @@ var DocsSearch = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.CallAPI("POST", "/open-apis/search/v2/doc_wiki/search", nil, requestData)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/search/v2/doc_wiki/search", nil, requestData)
 		if err != nil {
 			return err
 		}
@@ -159,7 +160,7 @@ func buildDocsSearchRequest(query, filterStr, pageToken, pageSizeStr string) (ma
 
 	var filter map[string]interface{}
 	if err := json.Unmarshal([]byte(filterStr), &filter); err != nil {
-		return nil, output.ErrValidation("--filter is not valid JSON")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--filter is not valid JSON").WithParam("--filter").WithCause(err)
 	}
 	if err := convertTimeRangeInFilter(filter, "open_time"); err != nil {
 		return nil, err
@@ -172,7 +173,7 @@ func buildDocsSearchRequest(query, filterStr, pageToken, pageSizeStr string) (ma
 	hasSpaceIDs := hasNonEmptyFilterArray(filter, "space_ids")
 
 	if hasFolderTokens && hasSpaceIDs {
-		return nil, output.ErrValidation("--filter cannot contain both folder_tokens and space_ids; doc and wiki scoped search cannot be combined")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--filter cannot contain both folder_tokens and space_ids; doc and wiki scoped search cannot be combined").WithParam("--filter")
 	}
 
 	docFilter := cloneFilterMap(filter)
@@ -225,14 +226,14 @@ func convertTimeRangeInFilter(filter map[string]interface{}, key string) error {
 	if start, ok := rangeMap["start"].(string); ok && start != "" {
 		startTime, err := toUnixSeconds(start)
 		if err != nil {
-			return output.ErrValidation("invalid %s.start %q: %s", key, start, err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid %s.start %q: %s", key, start, err).WithParam("--filter").WithCause(err)
 		}
 		result["start"] = startTime
 	}
 	if end, ok := rangeMap["end"].(string); ok && end != "" {
 		endTime, err := toUnixSeconds(end)
 		if err != nil {
-			return output.ErrValidation("invalid %s.end %q: %s", key, end, err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid %s.end %q: %s", key, end, err).WithParam("--filter").WithCause(err)
 		}
 		result["end"] = endTime
 	}
@@ -256,7 +257,7 @@ func toUnixSeconds(input string) (int64, error) {
 	if n, err := strconv.ParseInt(input, 10, 64); err == nil {
 		return n, nil
 	}
-	return 0, fmt.Errorf("expected RFC3339, YYYY-MM-DD[ HH:MM:SS], or unix seconds")
+	return 0, fmt.Errorf("expected RFC3339, YYYY-MM-DD[ HH:MM:SS], or unix seconds") //nolint:forbidigo // intermediate parse helper; caller wraps into typed ValidationError
 }
 
 func unixTimestampToISO8601(v interface{}) string {

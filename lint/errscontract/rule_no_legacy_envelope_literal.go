@@ -22,6 +22,7 @@ var migratedEnvelopePaths = []string{
 	"shortcuts/base/",
 	"shortcuts/calendar/",
 	"shortcuts/contact/",
+	"shortcuts/doc/",
 	"shortcuts/drive/",
 	"shortcuts/event/",
 	"shortcuts/mail/",
