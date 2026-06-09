@@ -11,7 +11,7 @@
 
 ## 端到端流程（新建应用）
 
-`+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> `git push origin sprint/default` -> `+publish` -> `+publish-status`。
+`+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> `git add` + `git commit`（提交本次改动）-> `git push origin sprint/default` -> `+publish` -> `+publish-status`。
 
 ```bash
 # 新建 full_stack 应用
@@ -26,8 +26,10 @@ cd ./approval-app
 npm install
 npm run dev
 
-# 开发完成后：原生 git 推工作分支，再发布
-git status
+# 开发完成后：提交本次改动 -> git push origin sprint/default -> +publish。
+# +publish 部署的是远端 sprint/default 上已 push 的代码，不是本地工作区——没 commit + push 的改动不会进入发布。
+git add <本次开发的文件>          # 提交粒度见下方「改完代码后部署上线」
+git commit -m "feat: ..."
 git push origin sprint/default
 lark-cli apps +publish --app-id app_xxx
 ```
@@ -36,9 +38,11 @@ lark-cli apps +publish --app-id app_xxx
 
 ## 改完代码后部署上线
 
-已拉到本地、改完代码，用户说"推上去""部署""上线""发布到云端"时，按此序列：
+已拉到本地、改完代码，用户说"推上去""部署""上线""发布到云端"时，按此序列。
 
-1. `git status` 确认改动已提交，工作区干净。
+> `+publish` 部署的是远端 `sprint/default` 上**已 push** 的代码，不是你本地工作区——未 commit / 未 push 的改动不会进入这次发布。所以发布前务必先把本次改动提交并推送。
+
+1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
 3. `lark-cli apps +publish --app-id <app_id>` 发起部署上线，记下返回的 `release_id`。
 4. `lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询；`finished` 成功后，`lark-cli apps +list --keyword <应用名>` 读 `online_url` 返回给用户（这是本轮发布完成后的可分享链接）；`failed` 接 `+publish-error-log`。
