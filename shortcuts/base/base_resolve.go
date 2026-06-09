@@ -19,7 +19,6 @@ const (
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
-	nextStepRecordPatch       = "use +record-upsert with base_token, table_id, and record_id to update this resolved record"
 )
 
 var BaseURLResolve = common.Shortcut{
@@ -359,7 +358,7 @@ func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string
 		}
 	}
 	out["hint"] = resolveHint(tableID, hint)
-	common.GetMap(out, "hint")["next_step"] = nextStepRecordPatch
+	common.GetMap(out, "hint")["next_step"] = recordShareNextStep(baseToken, tableID, recordID)
 }
 
 func getResolveRecord(runtime *common.RuntimeContext, baseToken, tableID, recordID string) (map[string]interface{}, error) {
@@ -396,6 +395,10 @@ func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) strin
 		}
 	}
 	return fmt.Sprintf("field_%d", index+1)
+}
+
+func recordShareNextStep(baseToken, tableID, recordID string) string {
+	return fmt.Sprintf(`use +record-upsert --base-token %s --table-id %s --record-id %s --json '{"<field_id>":"<new_value>"}' to update this record`, baseToken, tableID, recordID)
 }
 
 func resolveHint(tableID string, extra map[string]interface{}) map[string]interface{} {
