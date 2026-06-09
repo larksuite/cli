@@ -1202,8 +1202,56 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 			rctx.Cmd.Flags().Set(fl.Name, stripUTF8BOM(string(data)))
 			continue
 		}
+
+		// Bare literal that looks like a file path is almost always a forgotten
+		// "@" (e.g. `--csv data.csv` instead of `--csv @data.csv`). Inputs like
+		// CSV accept any string as valid content, so the slip never surfaces as
+		// a downstream parse error the way malformed JSON would — the filename
+		// gets silently written as a one-cell value. Fail fast with a fix-it
+		// hint; piping via stdin (--flag -) bypasses this check for the rare
+		// case the path-shaped text really is the intended content.
+		if slices.Contains(fl.Input, File) && looksLikePathNotContent(raw) {
+			return ValidationErrorf(
+				"--%s value %q looks like a file path, not inline content; "+
+					"to read that file use --%s @%s, or pass the literal text via stdin with --%s -",
+				fl.Name, raw, fl.Name, raw, fl.Name,
+			).WithParam("--" + fl.Name)
+		}
 	}
 	return nil
+}
+
+// looksLikePathNotContent reports whether a bare flag value (no "@"/"-"/"@@"
+// prefix) is far more likely a file path the caller forgot to prefix with "@"
+// than literal inline content. It is deliberately conservative: a single short
+// line, no embedded comma (real CSV/TSV rows carry delimiters), and a known
+// data or document file extension. The narrow match keeps false positives near
+// zero, and any legitimate value it does trip can be forced through with the
+// existing "@@" escape.
+func looksLikePathNotContent(raw string) bool {
+	s := strings.TrimSpace(raw)
+	if s == "" || len(s) > 255 || strings.ContainsAny(s, "\r\n") {
+		return false
+	}
+	if strings.Contains(s, ",") {
+		return false
+	}
+	lower := strings.ToLower(s)
+	for _, ext := range pathLikeExtensions {
+		if strings.HasSuffix(lower, ext) {
+			return true
+		}
+	}
+	return false
+}
+
+// pathLikeExtensions are the file suffixes that, on a bare single-token flag
+// value, signal a forgotten "@" rather than intended inline content.
+var pathLikeExtensions = []string{
+	".csv", ".tsv", ".psv", ".tab",
+	".txt", ".md",
+	".json", ".jsonl", ".ndjson",
+	".xlsx", ".xls", ".dat",
 }
 
 func validateEnumFlags(rctx *RuntimeContext, flags []Flag) error {

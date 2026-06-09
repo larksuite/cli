@@ -271,3 +271,118 @@ func TestResolveInputFlags_StripBOMFile(t *testing.T) {
 		t.Errorf("leading BOM not stripped from file, got %q", got)
 	}
 }
+
+func TestResolveInputFlags_FilenameMistakenForContent(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"csv extension", "data.csv"},
+		{"tsv extension", "export.tsv"},
+		{"xlsx extension", "report.xlsx"},
+		{"json extension", "config.json"},
+		{"relative path", "./out/data.csv"},
+		{"uppercase extension", "DATA.CSV"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rctx := newTestRuntimeWithStdin(map[string]string{"csv": c.value}, "")
+			flags := []Flag{{Name: "csv", Input: []string{File, Stdin}}}
+
+			err := resolveInputFlags(rctx, flags)
+			if err == nil {
+				t.Fatalf("expected error for path-like value %q", c.value)
+			}
+			assertValidationParam(t, err, "--csv")
+			if !strings.Contains(err.Error(), "looks like a file path") {
+				t.Errorf("unexpected error: %v", err)
+			}
+			// the hint must point at the @ fix using the original value
+			if !strings.Contains(err.Error(), "@"+c.value) {
+				t.Errorf("error should suggest --csv @%s, got: %v", c.value, err)
+			}
+		})
+	}
+}
+
+func TestResolveInputFlags_ContentNotMistakenForPath(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"multi-cell csv", "a,b\n1,2"},
+		{"single row with commas", "name,age,file.csv"},
+		{"plain text", "hello world"},
+		{"formula", "=SUM(A1:A2)"},
+		{"multiline ending in filename", "line1\nfile.csv"},
+		{"unknown extension", "report.docx-ish"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rctx := newTestRuntimeWithStdin(map[string]string{"csv": c.value}, "")
+			flags := []Flag{{Name: "csv", Input: []string{File, Stdin}}}
+
+			if err := resolveInputFlags(rctx, flags); err != nil {
+				t.Fatalf("unexpected error for content %q: %v", c.value, err)
+			}
+			if got := rctx.Str("csv"); got != c.value {
+				t.Errorf("value should pass through unchanged, got %q", got)
+			}
+		})
+	}
+}
+
+func TestResolveInputFlags_PathLikeContentViaStdin(t *testing.T) {
+	// stdin is the escape hatch for the rare case the literal path-shaped text
+	// is the intended content — the "-" branch returns before the heuristic.
+	rctx := newTestRuntimeWithStdin(map[string]string{"csv": "-"}, "data.csv")
+	flags := []Flag{{Name: "csv", Input: []string{File, Stdin}}}
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("csv"); got != "data.csv" {
+		t.Errorf("expected %q, got %q", "data.csv", got)
+	}
+}
+
+func TestResolveInputFlags_PathCheckSkippedWithoutFileInput(t *testing.T) {
+	// A flag that does not accept @file input must not get the file-path hint —
+	// suggesting "@" would be useless, so the bare value passes through.
+	rctx := newTestRuntimeWithStdin(map[string]string{"name": "data.csv"}, "")
+	flags := []Flag{{Name: "name", Input: []string{Stdin}}} // stdin only, no file
+
+	if err := resolveInputFlags(rctx, flags); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := rctx.Str("name"); got != "data.csv" {
+		t.Errorf("expected pass-through, got %q", got)
+	}
+}
+
+func TestLooksLikePathNotContent(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"data.csv", true},
+		{"  data.csv  ", true},
+		{"./out/report.xlsx", true},
+		{"DATA.CSV", true},
+		{"notes.md", true},
+		{"config.json", true},
+		{"a,b\n1,2", false},    // multi-line
+		{"a,b,c", false},       // has commas
+		{"x,data.csv", false},  // comma guard: a real row, not a bare filename
+		{"hello world", false}, // no extension
+		{"=SUM(A1:A2)", false}, // formula
+		{"", false},
+		{"plain.unknownext", false},
+		{strings.Repeat("a", 256) + ".csv", false}, // too long
+	}
+	for _, c := range cases {
+		if got := looksLikePathNotContent(c.in); got != c.want {
+			t.Errorf("looksLikePathNotContent(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
