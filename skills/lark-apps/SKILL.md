@@ -60,6 +60,8 @@ metadata:
 
 ## app_id 获取
 
+`app_id` 必须是妙搭应用 ID（`app_` 开头）。`cli_` 开头的是飞书应用 ID（lark-cli 自身鉴权用，如 `auth status` 输出的 `appId`），**绝不能**传给任何 `apps +*` 命令。
+
 按顺序尝试，不要一上来要求用户手填：
 
 1. 用户给出 `app_xxx` 或妙搭链接（如 `/app/app_xxx`）时直接提取。
