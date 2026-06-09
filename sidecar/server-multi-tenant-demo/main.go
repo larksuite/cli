@@ -29,10 +29,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/larksuite/cli/internal/charcheck"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -54,6 +54,21 @@ func main() {
 	}
 }
 
+// validateSidecarPath rejects path traversal while allowing absolute server paths.
+func validateSidecarPath(flagName, path string) error {
+	if path == "" {
+		return fmt.Errorf("invalid %s path: empty", flagName)
+	}
+	if err := charcheck.RejectControlChars(path, flagName); err != nil {
+		return fmt.Errorf("invalid %s path: %w", flagName, err)
+	}
+	clean := filepath.Clean(path)
+	if strings.Contains(clean, "..") {
+		return fmt.Errorf("invalid %s path: path traversal not allowed", flagName)
+	}
+	return nil
+}
+
 func defaultKeyFile() string {
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".lark-sidecar", "proxy.key")
@@ -69,17 +84,17 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 		return fmt.Errorf("invalid --listen address: empty")
 	}
 
-	if _, err := validate.SafeInputPath(keyFile); err != nil {
-		return fmt.Errorf("invalid --key-file path: %w", err)
+	if err := validateSidecarPath("--key-file", keyFile); err != nil {
+		return err
 	}
 	if logFile != "" {
-		if _, err := validate.SafeInputPath(logFile); err != nil {
-			return fmt.Errorf("invalid --log-file path: %w", err)
+		if err := validateSidecarPath("--log-file", logFile); err != nil {
+			return err
 		}
 	}
 	if keysDir != "" {
-		if _, err := validate.SafeInputPath(keysDir); err != nil {
-			return fmt.Errorf("invalid --keys-dir path: %w", err)
+		if err := validateSidecarPath("--keys-dir", keysDir); err != nil {
+			return err
 		}
 	}
 
@@ -139,8 +154,6 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 	)
 	allowedIDs := buildAllowedIdentities(cfg)
 
-	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, factory.Credential, auditLogger)
-
 	handler := &proxyHandler{
 		key:          []byte(keyHex),
 		cred:         factory.Credential,
@@ -150,10 +163,14 @@ func run(ctx context.Context, listen, keyFile, keysDir, logFile, profile string)
 		forwardCl:    newForwardClient(),
 		allowedHosts: allowedHosts,
 		allowedIDs:   allowedIDs,
-		authBridge:   ab,
 		keysDir:      keysDir,
+		clientKeys:   make(map[string]clientKeyEntry),
 	}
 	handler.loadClientKeys()
+
+	ab := newAuthBridge([]byte(keyHex), cfg.AppID, cfg.AppSecret, cfg.Brand, factory.Credential, auditLogger)
+	ab.keyRegistrar = handler
+	handler.authBridge = ab
 
 	server := &http.Server{
 		Handler:           handler,

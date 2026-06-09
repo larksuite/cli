@@ -49,6 +49,14 @@ type authBridge struct {
 	// clientName → feishuOpenId (protected by mu)
 	userMap map[string]string
 	mapFile string
+
+	// Optional callback to register per-client keys (set from main after handler init).
+	keyRegistrar keyRegistrar
+}
+
+// keyRegistrar registers a client key with the data-plane handler.
+type keyRegistrar interface {
+	registerClientKey(clientID, keyHex string) (status string, err error)
 }
 
 func newAuthBridge(key []byte, appID, appSecret string, brand core.LarkBrand, cred *credential.CredentialProvider, logger *log.Logger) *authBridge {
@@ -165,9 +173,46 @@ func (ab *authBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ab.handlePoll(w, r, body)
 	case "/_sidecar/auth/status":
 		ab.handleStatus(w, r, body)
+	case "/_sidecar/keys/register":
+		ab.handleRegisterKey(w, r, body)
 	default:
 		jsonError(w, http.StatusNotFound, "unknown management endpoint")
 	}
+}
+
+// handleRegisterKey registers a per-client HMAC key for data-plane identity isolation.
+// Request body: {"client_id": "...", "key_hex": "..."}
+func (ab *authBridge) handleRegisterKey(w http.ResponseWriter, _ *http.Request, body []byte) {
+	var req struct {
+		ClientID string `json:"client_id"`
+		KeyHex   string `json:"key_hex"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		jsonError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if ab.keyRegistrar == nil {
+		jsonError(w, http.StatusInternalServerError, "key registration not configured")
+		return
+	}
+
+	status, err := ab.keyRegistrar.registerClientKey(req.ClientID, req.KeyHex)
+	if err != nil {
+		if strings.Contains(err.Error(), "key_conflict") {
+			jsonError(w, http.StatusConflict, err.Error())
+			ab.logger.Printf("KEYS_REGISTER client_id=%s status=conflict error=%q", req.ClientID, err.Error())
+			return
+		}
+		jsonError(w, http.StatusBadRequest, err.Error())
+		ab.logger.Printf("KEYS_REGISTER client_id=%s status=error error=%q", req.ClientID, err.Error())
+		return
+	}
+
+	ab.logger.Printf("KEYS_REGISTER client_id=%s status=%s", req.ClientID, status)
+	jsonOK(w, map[string]interface{}{
+		"ok":     true,
+		"status": status,
+	})
 }
 
 // parseClientID extracts the client identifier from a JSON body.

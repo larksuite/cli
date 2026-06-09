@@ -7,12 +7,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -106,6 +108,93 @@ func (h *proxyHandler) loadClientKeys() {
 		}
 		h.logger.Printf("KEYS_LOADED count=%d clients=%v", len(newKeys), names)
 	}
+}
+
+var validClientID = regexp.MustCompile(`^[a-zA-Z0-9._-]{1,128}$`)
+
+// validateClientID checks client_id for registration and path safety.
+func validateClientID(clientID string) error {
+	if clientID == "" {
+		return fmt.Errorf("client_id is required")
+	}
+	if clientID == "proxy" {
+		return fmt.Errorf("client_id %q is reserved", clientID)
+	}
+	if !validClientID.MatchString(clientID) {
+		return fmt.Errorf("client_id contains invalid characters")
+	}
+	return nil
+}
+
+// registerClientKey persists a per-client key and hot-loads it into memory.
+// Returns status: "registered", "already_registered", or error on conflict.
+func (h *proxyHandler) registerClientKey(clientID, keyHex string) (string, error) {
+	if err := validateClientID(clientID); err != nil {
+		return "", err
+	}
+	keyHex = strings.TrimSpace(keyHex)
+	if len(keyHex) != 64 {
+		return "", fmt.Errorf("key_hex must be 64 hex characters")
+	}
+	if _, err := hex.DecodeString(keyHex); err != nil {
+		return "", fmt.Errorf("key_hex must be valid hex")
+	}
+	if keyHex == string(h.key) {
+		return "", fmt.Errorf("key_hex must not match the shared proxy key")
+	}
+	if h.keysDir == "" {
+		return "", fmt.Errorf("keys directory not configured")
+	}
+
+	keyPath := filepath.Join(h.keysDir, clientID+".key")
+	existing, readErr := vfs.ReadFile(keyPath)
+	if readErr == nil {
+		existingHex := strings.TrimSpace(string(existing))
+		if existingHex == keyHex {
+			h.hotLoadClientKey(clientID, keyHex)
+			return "already_registered", nil
+		}
+		return "", fmt.Errorf("key_conflict: client %q already has a different key", clientID)
+	}
+
+	if err := vfs.WriteFile(keyPath, []byte(keyHex), 0600); err != nil {
+		return "", fmt.Errorf("failed to write key file: %w", err)
+	}
+
+	if err := h.hotLoadClientKey(clientID, keyHex); err != nil {
+		return "", err
+	}
+	return "registered", nil
+}
+
+// hotLoadClientKey adds or updates a single client key in the in-memory map.
+func (h *proxyHandler) hotLoadClientKey(clientID, keyHex string) error {
+	h.ckMu.Lock()
+	defer h.ckMu.Unlock()
+
+	if h.clientKeys == nil {
+		h.clientKeys = make(map[string]clientKeyEntry)
+	}
+
+	sharedKeyHex := string(h.key)
+	if keyHex == sharedKeyHex {
+		return fmt.Errorf("key collides with shared proxy key")
+	}
+	for hex, entry := range h.clientKeys {
+		if hex == keyHex {
+			if entry.clientName != clientID {
+				return fmt.Errorf("duplicate key hex, already loaded for client %s", entry.clientName)
+			}
+			return nil
+		}
+		if entry.clientName == clientID && hex != keyHex {
+			delete(h.clientKeys, hex)
+		}
+	}
+
+	h.clientKeys[keyHex] = clientKeyEntry{key: []byte(keyHex), clientName: clientID}
+	h.logger.Printf("KEYS_HOTLOAD client=%s", clientID)
+	return nil
 }
 
 // verifyWithClientKeys tries each client key to verify the HMAC.

@@ -8,6 +8,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,8 +19,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
@@ -874,5 +879,166 @@ func TestUserMap_RoundTripPersistence(t *testing.T) {
 	}
 	if ab2.userMap["bob"] != "ou_bob_open_id_456" {
 		t.Errorf("after reload, bob=%q, want ou_bob_open_id_456", ab2.userMap["bob"])
+	}
+}
+
+func signManagementRequest(key []byte, method, path string, body []byte) (ts, bodySHA, sig string) {
+	ts = strconv.FormatInt(time.Now().Unix(), 10)
+	h := sha256.Sum256(body)
+	bodySHA = hex.EncodeToString(h[:])
+	canonical := "sidecar-mgmt\n" + method + "\n" + path + "\n" + ts + "\n" + bodySHA
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(canonical))
+	sig = hex.EncodeToString(mac.Sum(nil))
+	return ts, bodySHA, sig
+}
+
+func TestRegisterClientKey_RegisteredAndIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	sharedKey := strings.Repeat("aa", 32)
+	clientKey := strings.Repeat("bb", 32)
+
+	h := &proxyHandler{
+		key:        []byte(sharedKey),
+		keysDir:    dir,
+		clientKeys: make(map[string]clientKeyEntry),
+		logger:     discardLogger(),
+	}
+
+	status, err := h.registerClientKey("alice", clientKey)
+	if err != nil || status != "registered" {
+		t.Fatalf("first register: status=%q err=%v", status, err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "alice.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(data)) != clientKey {
+		t.Fatalf("file content mismatch: %q", data)
+	}
+
+	status, err = h.registerClientKey("alice", clientKey)
+	if err != nil || status != "already_registered" {
+		t.Fatalf("idempotent register: status=%q err=%v", status, err)
+	}
+
+	h.ckMu.RLock()
+	found := false
+	for _, e := range h.clientKeys {
+		if e.clientName == "alice" {
+			found = true
+		}
+	}
+	h.ckMu.RUnlock()
+	if !found {
+		t.Error("alice key not in memory after register")
+	}
+}
+
+func TestRegisterClientKey_Conflict(t *testing.T) {
+	dir := t.TempDir()
+	sharedKey := strings.Repeat("aa", 32)
+	key1 := strings.Repeat("bb", 32)
+	key2 := strings.Repeat("cc", 32)
+
+	h := &proxyHandler{
+		key:        []byte(sharedKey),
+		keysDir:    dir,
+		clientKeys: make(map[string]clientKeyEntry),
+		logger:     discardLogger(),
+	}
+
+	if _, err := h.registerClientKey("alice", key1); err != nil {
+		t.Fatal(err)
+	}
+	_, err := h.registerClientKey("alice", key2)
+	if err == nil || !strings.Contains(err.Error(), "key_conflict") {
+		t.Fatalf("expected key_conflict, got %v", err)
+	}
+}
+
+func TestRegisterClientKey_InvalidInput(t *testing.T) {
+	dir := t.TempDir()
+	h := &proxyHandler{
+		key:        []byte(strings.Repeat("aa", 32)),
+		keysDir:    dir,
+		clientKeys: make(map[string]clientKeyEntry),
+		logger:     discardLogger(),
+	}
+	validKey := strings.Repeat("bb", 32)
+
+	cases := []struct {
+		clientID string
+		keyHex   string
+		wantSub  string
+	}{
+		{"", validKey, "client_id"},
+		{"../evil", validKey, "invalid"},
+		{"alice", "tooshort", "64 hex"},
+		{"alice", strings.Repeat("gg", 32), "valid hex"},
+		{"alice", strings.Repeat("aa", 32), "shared proxy"},
+	}
+	for _, tc := range cases {
+		_, err := h.registerClientKey(tc.clientID, tc.keyHex)
+		if err == nil || !strings.Contains(err.Error(), tc.wantSub) {
+			t.Errorf("clientID=%q keyHex=%q: want error containing %q, got %v", tc.clientID, tc.keyHex, tc.wantSub, err)
+		}
+	}
+}
+
+func TestHandleRegisterKey_HTTP(t *testing.T) {
+	dir := t.TempDir()
+	mgmtKey := []byte(strings.Repeat("aa", 32))
+	clientKey := strings.Repeat("bb", 32)
+
+	handler := &proxyHandler{
+		key:        mgmtKey,
+		keysDir:    dir,
+		clientKeys: make(map[string]clientKeyEntry),
+		logger:     discardLogger(),
+	}
+	ab := newAuthBridge(mgmtKey, "app", "secret", core.BrandFeishu, nil, discardLogger())
+	ab.keyRegistrar = handler
+
+	body, _ := json.Marshal(map[string]string{
+		"client_id": "wuchenyu",
+		"key_hex":   clientKey,
+	})
+	ts, bodySHA, sig := signManagementRequest(mgmtKey, "POST", "/_sidecar/keys/register", body)
+
+	req := httptest.NewRequest("POST", "/_sidecar/keys/register", bytes.NewReader(body))
+	req.Header.Set("X-Sidecar-Timestamp", ts)
+	req.Header.Set("X-Sidecar-Body-SHA256", bodySHA)
+	req.Header.Set("X-Sidecar-Signature", sig)
+
+	w := httptest.NewRecorder()
+	ab.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", w.Code, w.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["ok"] != true || resp["status"] != "registered" {
+		t.Fatalf("unexpected response: %v", resp)
+	}
+
+	// Conflict on different key
+	body2, _ := json.Marshal(map[string]string{
+		"client_id": "wuchenyu",
+		"key_hex":   strings.Repeat("cc", 32),
+	})
+	ts2, bodySHA2, sig2 := signManagementRequest(mgmtKey, "POST", "/_sidecar/keys/register", body2)
+	req2 := httptest.NewRequest("POST", "/_sidecar/keys/register", bytes.NewReader(body2))
+	req2.Header.Set("X-Sidecar-Timestamp", ts2)
+	req2.Header.Set("X-Sidecar-Body-SHA256", bodySHA2)
+	req2.Header.Set("X-Sidecar-Signature", sig2)
+	w2 := httptest.NewRecorder()
+	ab.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", w2.Code, w2.Body.String())
 	}
 }
