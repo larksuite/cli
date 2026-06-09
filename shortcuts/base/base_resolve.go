@@ -171,6 +171,11 @@ func executeBaseURLResolve(runtime *common.RuntimeContext) error {
 			"This is a Base workspace URL. CLI does not support resolving Base workspace URLs.",
 			"Open it in the browser, or provide the URL of the Base itself, such as its Wiki URL or Base URL.",
 		)
+	case "add_record_url":
+		return resolveValidationError(
+			"This is a Base add-record URL. CLI does not support resolving Base add-record URLs.",
+			"Open it in the browser, or provide the URL of the Base itself, such as its Wiki URL or Base URL.",
+		)
 	default:
 		return resolveValidationError("This URL is not a supported Base URL pattern.", baseURLResolveHintGeneric)
 	}
@@ -192,6 +197,8 @@ func classifyBaseURL(u *url.URL) string {
 	switch {
 	case pathSegmentExists(path, "/base/workspace/"):
 		return "workspace_url"
+	case pathSegmentExists(path, "/base/add/"):
+		return "add_record_url"
 	case pathSegmentExists(path, "/base/"):
 		return "base_url"
 	case pathSegmentExists(path, "/wiki/"):

@@ -230,6 +230,7 @@ func TestBaseURLResolveValidationErrors(t *testing.T) {
 		{"dashboard share", "https://example.larkoffice.com/share/base/dashboard/shr1", "CLI does not support resolving Base dashboard share URLs", "provide the URL of the Base itself"},
 		{"view share", "https://example.larkoffice.com/share/base/view/shr1", "CLI does not support resolving Base view share URLs", "provide the URL of the Base itself"},
 		{"workspace", "https://example.larkoffice.com/base/workspace/ws1", "CLI does not support resolving Base workspace URLs", "provide the URL of the Base itself"},
+		{"add record", "https://example.larkoffice.com/base/add/addtoken", "CLI does not support resolving Base add-record URLs", "provide the URL of the Base itself"},
 		{"unrelated", "https://example.larkoffice.com/docx/doc1", "not a supported Base URL pattern", ""},
 		{"not url", "bas123", "only accepts full URLs", ""},
 	}
