@@ -8,11 +8,13 @@ package main
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -147,24 +149,38 @@ func (h *proxyHandler) registerClientKey(clientID, keyHex string) (string, error
 	}
 
 	keyPath := filepath.Join(h.keysDir, clientID+".key")
-	existing, readErr := vfs.ReadFile(keyPath)
-	if readErr == nil {
-		existingHex := strings.TrimSpace(string(existing))
-		if existingHex == keyHex {
-			h.hotLoadClientKey(clientID, keyHex)
-			return "already_registered", nil
+
+	// Atomic create: O_CREATE|O_EXCL fails with EEXIST if the file already
+	// exists, preventing a TOCTOU race between concurrent registrations.
+	f, createErr := vfs.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if createErr == nil {
+		_, writeErr := f.Write([]byte(keyHex))
+		f.Close()
+		if writeErr != nil {
+			vfs.Remove(keyPath)
+			return "", fmt.Errorf("failed to write key file: %w", writeErr)
 		}
-		return "", fmt.Errorf("key_conflict: client %q already has a different key", clientID)
+		if err := h.hotLoadClientKey(clientID, keyHex); err != nil {
+			return "", err
+		}
+		return "registered", nil
 	}
 
-	if err := vfs.WriteFile(keyPath, []byte(keyHex), 0600); err != nil {
-		return "", fmt.Errorf("failed to write key file: %w", err)
+	if !errors.Is(createErr, os.ErrExist) {
+		return "", fmt.Errorf("failed to create key file: %w", createErr)
 	}
 
-	if err := h.hotLoadClientKey(clientID, keyHex); err != nil {
-		return "", err
+	// File already exists — check if it matches.
+	existing, readErr := vfs.ReadFile(keyPath)
+	if readErr != nil {
+		return "", fmt.Errorf("failed to read existing key file: %w", readErr)
 	}
-	return "registered", nil
+	existingHex := strings.TrimSpace(string(existing))
+	if existingHex == keyHex {
+		h.hotLoadClientKey(clientID, keyHex)
+		return "already_registered", nil
+	}
+	return "", fmt.Errorf("key_conflict: client %q already has a different key", clientID)
 }
 
 // hotLoadClientKey adds or updates a single client key in the in-memory map.

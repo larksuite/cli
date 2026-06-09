@@ -285,7 +285,7 @@ client key works across all instances because each independently verifies it.
 ```bash
 # Register with all organization instances during init
 for PORT in 16384 16385; do
-  call_sidecar POST /_sidecar/keys/register "$REGISTER_BODY" "$SIDECAR_HOST" "$PORT"
+  SIDECAR_PORT="$PORT" call_sidecar POST /_sidecar/keys/register "$REGISTER_BODY"
 done
 
 # Switch to Organization A at runtime
