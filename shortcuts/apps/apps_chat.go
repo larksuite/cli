@@ -17,6 +17,12 @@ import (
 // Async: the message is queued and the response carries no turn_id (the turn is
 // not generated yet). Poll +session-read; once the turn runs, its handle is in
 // latest_turn.turnID.
+//
+// Turn cost varies sharply by init state: the first +chat on a not-initialized
+// app runs a one-time design + first-generation pass server-side (~20-50 min);
+// chat on an already-initialized app is incremental and finishes in minutes.
+// The init-state check and matching polling cadence live in the lark-apps
+// skill reference (references/lark-apps-cloud-dev.md) — the canonical source.
 var AppsChat = common.Shortcut{
 	Service:     appsService,
 	Command:     "+chat",
