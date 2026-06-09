@@ -219,7 +219,12 @@ var CsvPut = common.Shortcut{
 		}
 		cmd.MarkFlagsOneRequired("start-cell", "range")
 	},
-	Validate: validateViaInput(csvPutInput),
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
+			return err
+		}
+		return validateViaInput(csvPutInput)(ctx, runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -293,6 +298,36 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 	endCol := columnIndexToLetter(col0 + cols - 1)
 	endRow := row0 + len(records) // row0 is 0-based; +len(records) is the 1-based bottom row
 	return fmt.Sprintf("%s:%s%d", anchor, endCol, endRow), true
+}
+
+// guardCSVValueIsNotFilePath catches the common slip of passing a CSV file path
+// to --csv without the "@" that reads it (e.g. `--csv data.csv` instead of
+// `--csv @data.csv`). Because any string is a valid one-cell CSV, the mistake
+// would otherwise be written silently as the literal text "data.csv". It runs
+// in +csv-put's Validate, after resolveInputFlags — so an @file / stdin value is
+// already its contents (a real CSV blob, never a path) and only a bare value
+// reaches here unchanged. It flags the value only when it actually names an
+// existing file in the cwd subtree; checking real existence (not name shape)
+// means inline content that merely ends in a filename ("see config.json") is
+// never misjudged. Fails open: any Stat error or a directory leaves the value
+// untouched. Scoped to --csv only — no other flag is affected.
+func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
+	raw := strings.TrimSpace(runtime.Str("csv"))
+	if raw == "" {
+		return nil
+	}
+	fio := runtime.FileIO()
+	if fio == nil {
+		return nil
+	}
+	info, err := fio.Stat(raw)
+	if err != nil || info == nil || info.IsDir() {
+		return nil //nolint:nilerr // fail-open: a missing/unreadable path is treated as inline content, not a forgotten @
+	}
+	return common.FlagErrorf(
+		"--csv value %q is an existing file, not inline CSV; to read it use --csv @%s, or pass the literal text via stdin (--csv -)",
+		raw, raw,
+	)
 }
 
 func csvPutInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
