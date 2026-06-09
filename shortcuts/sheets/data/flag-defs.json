@@ -54,7 +54,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Insert position; appended to the end when omitted",
+        "desc": "Insert position (0-based); appended to the end when omitted",
         "default": "-1"
       },
       {

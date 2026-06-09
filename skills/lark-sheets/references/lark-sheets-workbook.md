@@ -62,7 +62,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `--title` | string | required | 新工作表名称 |
-| `--index` | int | optional | 插入位置；省略时附加到末尾 |
+| `--index` | int | optional | 插入位置（0-based）；省略时附加到末尾 |
 | `--row-count` | int | optional | 初始行数（默认 200，上限 50000） |
 | `--col-count` | int | optional | 初始列数（默认 20，上限 200） |
 
