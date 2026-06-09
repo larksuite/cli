@@ -168,7 +168,7 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 			map[string]interface{}{"user_ids": batch},
 		)
 		if err != nil {
-			break
+			continue
 		}
 
 		users, _ := data["users"].([]interface{})
@@ -200,7 +200,7 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 
 		data, err := runtime.DoAPIJSONTyped(http.MethodGet, apiURL, nil, nil)
 		if err != nil {
-			break
+			continue
 		}
 
 		items, _ := data["items"].([]interface{})
