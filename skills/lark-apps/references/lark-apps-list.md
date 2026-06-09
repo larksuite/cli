@@ -9,7 +9,7 @@
 ## 命令骨架
 
 - 支持 `--keyword` 按应用名模糊搜索。
-- `--scope` 枚举：`all` / `created_by_me` / `shared_with_me`。
+- `--ownership` 枚举：`all` / `mine` / `shared`（默认 `all` = 我创建的 + 共享给我的；`mine` = 仅我创建；`shared` = 仅共享给我）。
 - `--app-type` 枚举：`html` / `full_stack`。
 - 分页：`--page-size` 默认 20，`--page-token` 传上一页 cursor。
 
@@ -17,7 +17,7 @@
 
 ```bash
 lark-cli apps +list --keyword "审批"
-lark-cli apps +list --scope created_by_me --app-type full_stack
+lark-cli apps +list --ownership mine --app-type full_stack
 lark-cli apps +list --page-token "<cursor>"
 ```
 
