@@ -79,7 +79,7 @@ var AppsDBSQL = common.Shortcut{
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {
-			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-schema --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
+			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
 		}
 
 		// server `result: string` 内嵌结构化数组 —— CLI 解出来放进 envelope 的 data.results，

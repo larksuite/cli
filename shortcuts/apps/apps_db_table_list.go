@@ -18,9 +18,9 @@ import (
 // GET /apps/{app_id}/tables（cursor 分页），response items[] 含 estimated_row_count /
 // size_bytes optional 字段，默认返回，不必额外传 query。
 //
-// 输出裁剪：server 给每张表回完整 columns[]（与 +db-table-schema 同源、内容一致）。CLI 用白名单
+// 输出裁剪：server 给每张表回完整 columns[]（与 +db-table-get 同源、内容一致）。CLI 用白名单
 // 投影（dbTableListItem）只组装产品要求字段、把 columns[] 折算成 column_count，避免逐表重复列定义
-// 放大 token、并与 +db-table-schema 职责区分。完整列定义 / 索引 / 约束 / DDL 用 +db-table-schema。
+// 放大 token、并与 +db-table-get 职责区分。完整列定义 / 索引 / 约束 / DDL 用 +db-table-get。
 //
 // pretty 渲染 5 列：name / description / estimated_row_count / size / columns（即 column_count）；
 // 列间两空格、列对齐填充、空 description 用 "—" 占位、size 按 KB/MB/GB 友好格式化。
@@ -62,9 +62,9 @@ var AppsDBTableList = common.Shortcut{
 			return err
 		}
 		// 白名单投影：只把产品要求的字段组装进 dbTableListItem，替换 server 原始 items[]。
-		// server 给每张表回完整 columns[]（与 +db-table-schema 同源、逐字节一致），在 list 里逐表
+		// server 给每张表回完整 columns[]（与 +db-table-get 同源、逐字节一致），在 list 里逐表
 		// 重复既放大 token 又与 schema 职责重叠。这里用白名单而非 delete 黑名单 —— server 后续新增
-		// 字段不会自动泄漏进 CLI 输出。需要完整列定义 / 索引 / 约束 / DDL 用 +db-table-schema。
+		// 字段不会自动泄漏进 CLI 输出。需要完整列定义 / 索引 / 约束 / DDL 用 +db-table-get。
 		items := projectTableListItems(data["items"])
 		data["items"] = items
 		rctx.OutFormat(data, nil, func(w io.Writer) {

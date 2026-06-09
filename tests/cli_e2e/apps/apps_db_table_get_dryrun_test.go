@@ -14,12 +14,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// TestAppsDBTableSchemaDryRun pins +db-table-schema 复用存量 URL。
+// TestAppsDBTableGetDryRun pins +db-table-get 复用存量 URL。
 // 没有独立 --ddl flag —— 由 --format 同时驱动 CLI 渲染和 server 请求形态：
 //
 //	--format pretty → CLI 给 server 带 ?format=ddl
 //	--format json / table / ndjson / csv（含默认）→ CLI 不传 format query
-func TestAppsDBTableSchemaDryRun(t *testing.T) {
+func TestAppsDBTableGetDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
 	t.Run("DefaultFormatJSONOmitsFormatQuery", func(t *testing.T) {
@@ -27,7 +27,7 @@ func TestAppsDBTableSchemaDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-table-schema", "--app-id", "app_x", "--table", "orders", "--dry-run"},
+			Args:      []string{"apps", "+db-table-get", "--app-id", "app_x", "--table", "orders", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestAppsDBTableSchemaDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-table-schema", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--dry-run"},
+			Args:      []string{"apps", "+db-table-get", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestAppsDBTableSchemaDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-table-schema", "--app-id", "app_x", "--table", "orders", "--format", "table", "--dry-run"},
+			Args:      []string{"apps", "+db-table-get", "--app-id", "app_x", "--table", "orders", "--format", "table", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestAppsDBTableSchemaDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-table-schema", "--app-id", "app_x", "--dry-run"},
+			Args:      []string{"apps", "+db-table-get", "--app-id", "app_x", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
