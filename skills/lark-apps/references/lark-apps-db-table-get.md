@@ -1,6 +1,6 @@
-# apps +db-table-schema
+# apps +db-table-get
 
-查看妙搭应用数据库某张表的结构。运行时命令事实以 `lark-cli apps +db-table-schema --help` 为准。
+查看妙搭应用数据库某张表的结构。运行时命令事实以 `lark-cli apps +db-table-get --help` 为准。
 
 ## 何时用
 
@@ -15,8 +15,8 @@
 ## 示例
 
 ```bash
-lark-cli apps +db-table-schema --app-id app_xxx --table orders
-lark-cli apps +db-table-schema --app-id app_xxx --table orders --env dev --format pretty
+lark-cli apps +db-table-get --app-id app_xxx --table orders
+lark-cli apps +db-table-get --app-id app_xxx --table orders --env dev --format pretty
 ```
 
 ## 输出契约

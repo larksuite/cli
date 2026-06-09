@@ -11,7 +11,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-func TestAppsDBTableSchema_DefaultJSONReturnsStructuredFields(t *testing.T) {
+func TestAppsDBTableGet_DefaultJSONReturnsStructuredFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -40,8 +40,8 @@ func TestAppsDBTableSchema_DefaultJSONReturnsStructuredFields(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsDBTableSchema,
-		[]string{"+db-table-schema", "--app-id", "app_x", "--table", "orders", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBTableGet,
+		[]string{"+db-table-get", "--app-id", "app_x", "--table", "orders", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -54,10 +54,10 @@ func TestAppsDBTableSchema_DefaultJSONReturnsStructuredFields(t *testing.T) {
 // 用 --format json + --dry-run 走 JSON envelope 路径方便 parse，但 query 形态由代码内部
 // 根据 rctx.Format 决定 —— 这里我们直接传 --format pretty + --dry-run，pretty 模式下 dry-run
 // 输出是 plain text 列表，用 substring 校验 format=ddl 出现在 URL query 中。
-func TestAppsDBTableSchema_PrettyFormatSendsFormatDDLQuery(t *testing.T) {
+func TestAppsDBTableGet_PrettyFormatSendsFormatDDLQuery(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsDBTableSchema,
-		[]string{"+db-table-schema", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--dry-run", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBTableGet,
+		[]string{"+db-table-get", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -70,13 +70,13 @@ func TestAppsDBTableSchema_PrettyFormatSendsFormatDDLQuery(t *testing.T) {
 	}
 }
 
-func TestAppsDBTableSchema_NonPrettyFormatsOmitFormatQuery(t *testing.T) {
+func TestAppsDBTableGet_NonPrettyFormatsOmitFormatQuery(t *testing.T) {
 	// 默认 json / table / ndjson / csv 都走 schema 路径 —— CLI 不传 format query。
 	for _, format := range []string{"json", "table", "ndjson", "csv"} {
 		t.Run(format, func(t *testing.T) {
 			factory, stdout, _ := newAppsExecuteFactory(t)
-			args := []string{"+db-table-schema", "--app-id", "app_x", "--table", "orders", "--format", format, "--dry-run", "--as", "user"}
-			if err := runAppsShortcut(t, AppsDBTableSchema, args, factory, stdout); err != nil {
+			args := []string{"+db-table-get", "--app-id", "app_x", "--table", "orders", "--format", format, "--dry-run", "--as", "user"}
+			if err := runAppsShortcut(t, AppsDBTableGet, args, factory, stdout); err != nil {
 				t.Fatalf("dry-run err=%v", err)
 			}
 			var env struct {
@@ -94,7 +94,7 @@ func TestAppsDBTableSchema_NonPrettyFormatsOmitFormatQuery(t *testing.T) {
 	}
 }
 
-func TestAppsDBTableSchema_PrettyOutputIsDDLTextOnly(t *testing.T) {
+func TestAppsDBTableGet_PrettyOutputIsDDLTextOnly(t *testing.T) {
 	// pretty 模式 stdout 直接打 ddl 字段文本，无 envelope / 表格包装。
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	ddl := "CREATE TABLE orders (\n  id bigint NOT NULL,\n  PRIMARY KEY (id)\n);"
@@ -107,8 +107,8 @@ func TestAppsDBTableSchema_PrettyOutputIsDDLTextOnly(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsDBTableSchema,
-		[]string{"+db-table-schema", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBTableGet,
+		[]string{"+db-table-get", "--app-id", "app_x", "--table", "orders", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -121,10 +121,10 @@ func TestAppsDBTableSchema_PrettyOutputIsDDLTextOnly(t *testing.T) {
 	}
 }
 
-func TestAppsDBTableSchema_RequiresTable(t *testing.T) {
+func TestAppsDBTableGet_RequiresTable(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsDBTableSchema,
-		[]string{"+db-table-schema", "--app-id", "app_x", "--as", "user"}, factory, stdout)
+	err := runAppsShortcut(t, AppsDBTableGet,
+		[]string{"+db-table-get", "--app-id", "app_x", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "table") {
 		t.Fatalf("expected table required error, got %v", err)
 	}

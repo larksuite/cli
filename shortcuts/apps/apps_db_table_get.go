@@ -12,7 +12,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsDBTableSchema shows one table's structure.
+// AppsDBTableGet gets one table's structure (动词对齐 +db-table-list)。
 //
 // GET /apps/{app_id}/tables/{table_name}。
 //
@@ -21,13 +21,13 @@ import (
 //     columns / indexes / constraints / stats，envelope 化输出。
 //   - `--format pretty`：CLI 给 server 带 ?format=ddl，response 含 ddl 字符串，stdout 直接打
 //     ddl 内容（无 envelope / 无表格包装）。
-var AppsDBTableSchema = common.Shortcut{
+var AppsDBTableGet = common.Shortcut{
 	Service:     appsService,
-	Command:     "+db-table-schema",
-	Description: "Show a table's structure, columns, indexes and constraints",
+	Command:     "+db-table-get",
+	Description: "Get a table's structure: columns, indexes and constraints",
 	Risk:        "read",
 	Tips: []string{
-		"Example: lark-cli apps +db-table-schema --app-id <app_id> --table <table>",
+		"Example: lark-cli apps +db-table-get --app-id <app_id> --table <table>",
 		"Tip: filter fields with --jq (json format), e.g. -q '.data.columns[].name'",
 	},
 	Scopes:    []string{"spark:app:read"},
@@ -52,7 +52,7 @@ var AppsDBTableSchema = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET(appTablePath(appID, strings.TrimSpace(rctx.Str("table")))).
 			Desc("Get Miaoda app db table schema").
-			Params(buildDBTableSchemaParams(rctx))
+			Params(buildDBTableGetParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
@@ -60,7 +60,7 @@ var AppsDBTableSchema = common.Shortcut{
 			return err
 		}
 		path := appTablePath(appID, strings.TrimSpace(rctx.Str("table")))
-		data, err := rctx.CallAPITyped("GET", path, buildDBTableSchemaParams(rctx), nil)
+		data, err := rctx.CallAPITyped("GET", path, buildDBTableGetParams(rctx), nil)
 		if err != nil {
 			return err
 		}
@@ -72,11 +72,11 @@ var AppsDBTableSchema = common.Shortcut{
 	},
 }
 
-// buildDBTableSchemaParams 构造 schema 接口的 query。
+// buildDBTableGetParams 构造 schema 接口的 query。
 //
 // CLI 检测 rctx.Format == "pretty" 时给 server 带 format=ddl，要求返 CREATE 语句文本；
 // 其他 format（含默认 json）不传该参数，让 server 返默认结构化字段。
-func buildDBTableSchemaParams(rctx *common.RuntimeContext) map[string]interface{} {
+func buildDBTableGetParams(rctx *common.RuntimeContext) map[string]interface{} {
 	params := map[string]interface{}{"env": rctx.Str("env")}
 	if rctx.Format == "pretty" {
 		params["format"] = "ddl"

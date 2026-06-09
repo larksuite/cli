@@ -27,7 +27,7 @@ func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "select 1", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select 1", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -51,7 +51,7 @@ func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 func TestAppsDBSQL_DryRunSendsTransactionalFalse(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -86,7 +86,7 @@ func TestAppsDBSQL_DryRunSendsTransactionalFalse(t *testing.T) {
 func TestAppsDBSQL_RejectsEmptyQuery(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "   ", "--as", "user"}, factory, stdout)
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "   ", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "query") {
 		t.Fatalf("expected empty query error, got %v", err)
 	}
@@ -112,7 +112,7 @@ func TestAppsDBSQL_LegacyWireSingleSelect(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -143,7 +143,7 @@ func TestAppsDBSQL_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -180,7 +180,7 @@ func TestAppsDBSQL_LegacyWireMultiSelect(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT 1; SELECT 2;", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1; SELECT 2;", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -210,7 +210,7 @@ func TestAppsDBSQL_LegacyWireDDLEmptyResult(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "CREATE TABLE foo (id INT)", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "CREATE TABLE foo (id INT)", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -235,7 +235,7 @@ func TestAppsDBSQL_LegacyWireMultiSelectWithRealTable(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "SELECT id,title,capacity FROM course LIMIT 1", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT id,title,capacity FROM course LIMIT 1", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -262,7 +262,7 @@ func TestAppsDBSQL_PrettySingleSelectTable(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -292,7 +292,7 @@ func TestAppsDBSQL_PrettyEmptySelect(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -326,7 +326,7 @@ func TestAppsDBSQL_PrettySingleDMLAndDDL(t *testing.T) {
 				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"result": c.result}},
 			})
 			if err := runAppsShortcut(t, AppsDBSQL,
-				[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+				[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
 				factory, stdout); err != nil {
 				t.Fatalf("execute err=%v", err)
 			}
@@ -354,7 +354,7 @@ func TestAppsDBSQL_PrettyMultiStatementsAllSuccess(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -387,7 +387,7 @@ func TestAppsDBSQL_PrettyMultiStatementsDDL(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -423,7 +423,7 @@ func TestAppsDBSQL_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testi
 	})
 	// pretty 失败路径：逐条 ✓/✗ 摘要照打到 stdout（人看），同时返回 typed error（exit 非 0）。
 	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("pretty multi-statement failure must still return a typed error; stdout:\n%s", stdout.String())
@@ -466,7 +466,7 @@ func TestAppsDBSQL_MultiStatementFailureReturnsTypedError(t *testing.T) {
 		},
 	})
 	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("multi-statement failure must return a typed error; stdout:\n%s", stdout.String())
@@ -521,7 +521,7 @@ func TestAppsDBSQL_SingleErrorReturnsTypedError(t *testing.T) {
 		},
 	})
 	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--app-id", "app_x", "--query", "x", "--as", "user"},
+		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("single ERROR sentinel must return a typed error; stdout:\n%s", stdout.String())

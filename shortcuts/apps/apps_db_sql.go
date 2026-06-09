@@ -35,14 +35,16 @@ import (
 // 落地，故 rolled_back=false（真机 boe 实证）。
 //
 // JSON envelope（成功路径）：CLI 把 server 返的 result 字符串解出来放进 `data.results` 数组。
+//
+// Risk: high-risk-write —— SQL 可含 DML/DDL，框架对所有执行强制 --yes 确认关卡（--dry-run 预览豁免）。
 var AppsDBSQL = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-sql",
 	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
-	Risk:        "write",
+	Risk:        "high-risk-write",
 	Tips: []string{
-		`Example: lark-cli apps +db-sql --app-id <app_id> --query "SELECT * FROM orders LIMIT 10"`,
-		`Example: lark-cli apps +db-sql --app-id <app_id> --env dev --query "ALTER TABLE orders ADD COLUMN priority int DEFAULT 0"`,
+		`Example: lark-cli apps +db-sql --app-id <app_id> --query "SELECT * FROM orders LIMIT 10" --yes`,
+		`Example: lark-cli apps +db-sql --app-id <app_id> --env dev --query "ALTER TABLE orders ADD COLUMN priority int DEFAULT 0" --yes`,
 		"Tip: filter fields with --jq, e.g. -q '.data.results[].sql_type'",
 	},
 	Scopes:    []string{"spark:app:write"},
@@ -80,7 +82,7 @@ var AppsDBSQL = common.Shortcut{
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {
-			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-schema --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
+			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
 		}
 
 		// server `result: string` 内嵌结构化数组 —— CLI 解出来放进 envelope 的 data.results，

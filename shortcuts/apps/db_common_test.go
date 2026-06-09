@@ -23,10 +23,10 @@ func TestAppSQLPath_ReusesExistingURL(t *testing.T) {
 	}
 }
 
-func TestAppDbDevInitPath_NewURL(t *testing.T) {
-	// db-dev-init 是本期新增接口，URL 走 /db_dev_init（与上面三条复用 URL 不同）。
-	if got := appDbDevInitPath("app_x"); got != "/open-apis/spark/v1/apps/app_x/db_dev_init" {
-		t.Fatalf("appDbDevInitPath = %q", got)
+func TestAppDbEnvCreatePath_NewURL(t *testing.T) {
+	// db-env-create 是本期新增接口，URL 走 /db_dev_init（与上面三条复用 URL 不同）。
+	if got := appDbEnvCreatePath("app_x"); got != "/open-apis/spark/v1/apps/app_x/db_dev_init" {
+		t.Fatalf("appDbEnvCreatePath = %q", got)
 	}
 }
 

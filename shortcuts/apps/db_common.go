@@ -28,8 +28,8 @@ func appSQLPath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/sql_commands", apiBasePath, validate.EncodePathSegment(appID))
 }
 
-// appDbDevInitPath 返回 app db dev 环境初始化 URL（新增接口）。
-func appDbDevInitPath(appID string) string {
+// appDbEnvCreatePath 返回 app db 环境创建 URL（服务端接口名仍为 db_dev_init）。
+func appDbEnvCreatePath(appID string) string {
 	return fmt.Sprintf("%s/apps/%s/db_dev_init", apiBasePath, validate.EncodePathSegment(appID))
 }
 
