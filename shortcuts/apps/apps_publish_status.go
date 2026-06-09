@@ -62,6 +62,15 @@ var AppsPublishStatus = common.Shortcut{
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",
 				out["release_id"], out["status"], out["created_at"], out["updated_at"])
+			status, _ := out["status"].(string)
+			switch status {
+			case "finished":
+				if url, ok := out["online_url"].(string); ok && url != "" {
+					fmt.Fprintf(w, "online_url: %s\n", url)
+				}
+			case "failed":
+				writeReleaseErrorLogTable(w, out["error_logs"])
+			}
 		})
 		return nil
 	},

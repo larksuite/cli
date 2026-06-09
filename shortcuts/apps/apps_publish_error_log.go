@@ -58,19 +58,7 @@ var AppsPublishErrorLog = common.Shortcut{
 		out := shapeErrorLog(data)
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "status: %v\n", out["status"])
-			logs, _ := out["error_logs"].([]interface{})
-			rows := make([]map[string]interface{}, 0, len(logs))
-			for _, l := range logs {
-				m, ok := l.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				rows = append(rows, map[string]interface{}{
-					"step":      m["step"],
-					"error_log": m["error_log"],
-				})
-			}
-			output.PrintTable(w, rows)
+			writeReleaseErrorLogTable(w, out["error_logs"])
 		})
 		return nil
 	},

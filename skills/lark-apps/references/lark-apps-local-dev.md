@@ -45,7 +45,7 @@ lark-cli apps +publish --app-id app_xxx
 1. `git status` 看本次改动；`git add <本次相关文件>` 暂存后 `git commit` 提交。只提交本次任务相关的改动即可，无关的零散文件不必强求清空——发布门禁是「**本次相关改动已提交并推送**」，不是「工作区绝对干净」。
 2. `git push origin sprint/default` 把工作分支推到云端（遇非 fast-forward：先 `git pull --rebase origin sprint/default` 解决冲突再推，绝不 force-push）。
 3. `lark-cli apps +publish --app-id <app_id>` 发起部署上线，记下返回的 `release_id`。
-4. `lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询；`finished` 成功后，`lark-cli apps +list --keyword <应用名>` 读 `online_url` 返回给用户（这是本轮发布完成后的可分享链接）；`failed` 接 `+publish-error-log`。
+4. `lark-cli apps +publish-status --app-id <app_id> --release-id <release_id>` 轮询：`publishing` 继续轮询；`finished` 成功时该命令输出已含 `online_url`，直接读取它返回给用户（这是本轮发布完成后的可分享链接），无需再调 `+list`；`failed` 时该命令输出已含 `error_logs`，直接据此给出失败原因，无需再调 `+publish-error-log`（`+list` / `+publish-error-log` 仅作独立查询入口）。
 
 ## 领域规则
 

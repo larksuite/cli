@@ -40,7 +40,7 @@ metadata:
 - 云端会话完成只代表本轮生成/迭代结束，不代表最新内容已经发布到线上。
 - `apps +list` 的 `is_published=true` 只代表该应用历史上存在发布版本；不能据此判断最新云端生成结果已部署。
 - 开发态链接只要拿到 `app_id` 就可以拼接：`https://miaoda.feishu.cn/app/{app_id}`。
-- 发布态可访问链接只能在本轮发布已确认完成后给出：HTML 发布用 `+html-publish` 返回的 `data.url`；全栈发布用 `+publish-status` 确认 `finished` 后，再从 `+list` 读取 `online_url`。
+- 发布态可访问链接只能在本轮发布已确认完成后给出：HTML 发布用 `+html-publish` 返回的 `data.url`；全栈发布用 `+publish-status` 轮询，`finished` 时该命令输出已含 `online_url` 直接返回，`failed` 时该命令输出已含 `error_logs` 直接给出失败原因。
 
 ## 意图路由
 
@@ -54,7 +54,7 @@ metadata:
 | 发布本地 `index.html` 或静态目录为可访问 URL | `+html-publish` | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git） | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
 | 看表、看 schema、跑 SQL、初始化 dev/online 多环境 DB | `+db-table-list`, `+db-table-schema`, `+db-sql`, `+db-dev-init` | 对应 `lark-apps-db-*.md` |
-| **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史/失败日志 | `+publish`（部署上线动作）, `+publish-status`（轮询发布结果）, `+publish-history`, `+publish-error-log` | 对应 publish reference |
+| **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史/失败日志 | `+publish`（部署上线动作）, `+publish-status`（轮询发布结果，finished 给 online_url / failed 给 error_logs）, `+publish-history`, `+publish-error-log`（独立查失败日志，fallback） | 对应 publish reference |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-read` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
 

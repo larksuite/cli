@@ -33,7 +33,7 @@ lark-cli apps +session-list --app-id app_xxx
 云端搭建完成后，给用户区分两类链接：
 
 - 开发态链接：拿到 `app_id` 后即可拼 `https://miaoda.feishu.cn/app/{app_id}`，例如 `https://miaoda.feishu.cn/app/app_xxx`。
-- 发布态访问链接：只有在发布动作已完成时才提供。全栈应用在 `+publish-status` 返回 `finished` 后，用 `+list` 读取 `online_url`；HTML 应用使用 `+html-publish` 返回的 `data.url`。
+- 发布态访问链接：只有在发布动作已完成时才提供。全栈应用在 `+publish-status` 返回 `finished` 时，该命令输出已含 `online_url`，直接读取（`failed` 时其输出已含 `error_logs` 给出失败原因；`+list` 仅作独立查询入口）；HTML 应用使用 `+html-publish` 返回的 `data.url`。
 
 如果只完成了云端会话、没有确认发布完成，就明确告诉用户“开发态链接可进入继续编辑，发布态是否为最新版本尚未确认”。
 
