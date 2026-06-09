@@ -23,9 +23,15 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 
 ## 输出契约
 
-- 成功默认 JSON envelope 只关心 `data.url`；这是要返回给用户的访问链接。
+- 成功默认 JSON envelope 只关心 `data.url`；这是本轮 HTML 发布后的发布态访问链接。
 - pretty 输出为 `url: <url>`，适合人看；自动化取字段用 JSON 或 `--jq '.data.url'`。
 - 业务失败如构建失败、应用不存在通常带 `error.hint`；优先转述 hint。网络/服务端失败则建议稍后重试。
+
+## 链接边界
+
+- 开发态链接可由 `app_id` 拼出：`https://miaoda.feishu.cn/app/{app_id}`，用于进入妙搭编辑/开发态。
+- 发布态访问链接以本命令成功返回的 `data.url` 为准。
+- 重新发布前，`+list` 的 `is_published=true` 只能说明历史上发布过，不代表当前本地产物已经部署。
 
 ## 预览与发布边界
 
