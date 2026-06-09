@@ -676,30 +676,10 @@ func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 		WithCause(err)
 }
 
-// WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
-// using standardized messages and the given error category (e.g. "api_error", "io").
-// Path validation errors always use ErrValidation (exit code 2).
-//
-// Deprecated: use WrapSaveErrorTyped for typed error envelopes.
-func WrapSaveErrorByCategory(err error, category string) error {
-	if err == nil {
-		return nil
-	}
-	var me *fileio.MkdirError
-	switch {
-	case errors.Is(err, fileio.ErrPathValidation):
-		return output.ErrValidation("unsafe output path: %s", err)
-	case errors.As(err, &me):
-		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
-	default:
-		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
-	}
-}
-
 // WrapSaveErrorTyped maps a FileIO.Save error to typed validation/internal errors.
-// Unlike WrapSaveErrorByCategory, non-path failures always emit the canonical
-// "internal" wire type: call sites migrating from a custom category
-// (e.g. "io", "api_error") change their envelope's type field.
+// Non-path failures always emit the canonical "internal" wire type; call sites
+// migrating from a custom category (e.g. "io", "api_error") change their
+// envelope's type field.
 func WrapSaveErrorTyped(err error) error {
 	if err == nil {
 		return nil

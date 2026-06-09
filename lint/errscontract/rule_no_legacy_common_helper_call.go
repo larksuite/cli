@@ -25,6 +25,7 @@ var migratedCommonHelperPaths = []string{
 	"shortcuts/drive/",
 	"shortcuts/event/",
 	"shortcuts/mail/",
+	"shortcuts/markdown/",
 	"shortcuts/minutes/",
 	"shortcuts/okr/",
 	"shortcuts/sheets/",

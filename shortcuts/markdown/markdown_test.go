@@ -858,6 +858,41 @@ func TestMarkdownCreateBotAutoGrantFailed(t *testing.T) {
 	}
 }
 
+// requireMarkdownValidationParam asserts err is a typed validation envelope
+// (category + subtype) whose recoverable Param names the expected flag. It does
+// not assert a cause: Param-tagged validation failures such as the +diff content
+// limit carry no underlying error.
+func requireMarkdownValidationParam(t *testing.T, err error, want string) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("classification = %s/%s, want %s/%s", p.Category, p.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	if ve.Param != want {
+		t.Fatalf("validation param = %q, want %q", ve.Param, want)
+	}
+}
+
+// requireMarkdownValidationParamWithCause is requireMarkdownValidationParam for
+// file open/read failures, which wrap the underlying os error via WithCause. It
+// additionally enforces that the cause is preserved. Validation failures that
+// carry no underlying error (e.g. the +diff content limit) use the plain helper.
+func requireMarkdownValidationParamWithCause(t *testing.T, err error, want string) {
+	t.Helper()
+	requireMarkdownValidationParam(t, err, want)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Cause == nil {
+		t.Fatalf("expected validation cause to be preserved, got %T (%v)", err, err)
+	}
+}
+
 func TestMarkdownCreateMissingFileReturnsReadError(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
 
@@ -868,6 +903,7 @@ func TestMarkdownCreateMissingFileReturnsReadError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "cannot read file") {
 		t.Fatalf("expected cannot read file error, got %v", err)
 	}
+	requireMarkdownValidationParamWithCause(t, err, "--file")
 }
 
 func TestMarkdownCreateMultipartUploadSuccess(t *testing.T) {
@@ -1284,6 +1320,36 @@ func TestUploadMarkdownFileAllMissingFileTokenGetsActionPrefix(t *testing.T) {
 	if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
 		t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadAllAction+": ")
 	}
+}
+
+func TestUploadMarkdownFileMultipartOpenFailureNamesFileParam(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_prepare",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"upload_id":  "upload_123",
+				"block_size": 4194304,
+				"block_num":  1,
+			},
+		},
+	})
+
+	_, err := uploadMarkdownFileMultipart(
+		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+		markdownUploadSpec{FileSet: true, FilePath: "missing.md"},
+		"missing.md",
+		int64(1),
+		func() (io.ReadCloser, error) {
+			return nil, errors.New("open missing.md: no such file")
+		},
+	)
+	if err == nil {
+		t.Fatal("expected open failure after prepare, got nil")
+	}
+	requireMarkdownValidationParamWithCause(t, err, "--file")
 }
 
 func TestUploadMarkdownFileMultipartPrepareAndFinishParseErrorsGetActionPrefix(t *testing.T) {
@@ -1710,6 +1776,7 @@ func TestMarkdownOverwriteMissingFileReturnsReadError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "cannot read file") {
 		t.Fatalf("expected cannot read file error, got %v", err)
 	}
+	requireMarkdownValidationParamWithCause(t, err, "--file")
 }
 
 func TestMarkdownOverwritePrettyOutputUsesDataVersionFallback(t *testing.T) {

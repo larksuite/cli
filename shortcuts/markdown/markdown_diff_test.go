@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -44,6 +45,32 @@ func TestMarkdownDiffRejectsToVersionWithoutFromVersion(t *testing.T) {
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "--to-version requires --from-version") {
 		t.Fatalf("expected version validation error, got %v", err)
+	}
+}
+
+func TestMarkdownDiffMissingVersionAndFileNamesCandidateParams(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+	err := mountAndRunMarkdown(t, MarkdownDiff, []string{
+		"+diff",
+		"--file-token", "box_md_diff",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected validation error when no version or file source is given")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T (%v)", err, err)
+	}
+	got := map[string]bool{}
+	for _, p := range ve.Params {
+		got[p.Name] = true
+	}
+	for _, want := range []string{"--from-version", "--to-version", "--file"} {
+		if !got[want] {
+			t.Fatalf("params %+v missing candidate %q", ve.Params, want)
+		}
 	}
 }
 
@@ -211,24 +238,72 @@ func TestMarkdownDiffRejectsOversizedLocalContent(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "local Markdown file exceeds 10.0 MB markdown +diff content limit") {
 		t.Fatalf("expected local content size error, got %v", err)
 	}
+	requireMarkdownValidationParam(t, err, "--file")
 }
 
-func TestMarkdownDownloadErrorPreservesStructuredErrors(t *testing.T) {
-	apiErr := output.ErrAPI(99991663, "permission denied", map[string]interface{}{"permission": "drive:file:download"})
-	if got := wrapMarkdownDownloadError(apiErr); got != apiErr {
-		t.Fatalf("wrapMarkdownDownloadError() = %v, want original API error", got)
+func TestWrapMarkdownDownloadError(t *testing.T) {
+	cause := errors.New("dial tcp timeout")
+
+	tests := []struct {
+		name        string
+		in          error
+		wantSame    bool // result must be the same error value (carrier preserved)
+		wantMessage string
+		wantCat     errs.Category
+		wantSubtype errs.Subtype
+		wantCode    int
+		wantCause   error // when set, errors.Is(result, wantCause) must hold
+	}{
+		{
+			name:        "non-validation typed error keeps carrier and gains prefix",
+			in:          errs.NewAPIError(errs.SubtypePermissionDenied, "permission denied").WithCode(99991663),
+			wantSame:    true,
+			wantMessage: "download failed: permission denied",
+			wantCat:     errs.CategoryAPI,
+			wantSubtype: errs.SubtypePermissionDenied,
+			wantCode:    99991663,
+		},
+		{
+			name:        "validation error passes through verbatim",
+			in:          markdownValidationError("invalid markdown content"),
+			wantSame:    true,
+			wantMessage: "invalid markdown content",
+			wantCat:     errs.CategoryValidation,
+			wantSubtype: errs.SubtypeInvalidArgument,
+		},
+		{
+			name:        "untyped error becomes a network transport error",
+			in:          cause,
+			wantMessage: "download failed: dial tcp timeout",
+			wantCat:     errs.CategoryNetwork,
+			wantSubtype: errs.SubtypeNetworkTransport,
+			wantCause:   cause,
+		},
 	}
 
-	got := wrapMarkdownDownloadError(errors.New("dial tcp timeout"))
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("wrapMarkdownDownloadError() = %T, want *output.ExitError", got)
-	}
-	if exitErr.Code != output.ExitNetwork {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitNetwork)
-	}
-	if !strings.Contains(got.Error(), "download failed: dial tcp timeout") {
-		t.Fatalf("wrapped error = %q", got.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wrapMarkdownDownloadError(tt.in)
+			if tt.wantSame && got != tt.in {
+				t.Fatalf("wrapMarkdownDownloadError() returned a new error; want the original carrier preserved")
+			}
+			if got.Error() != tt.wantMessage {
+				t.Fatalf("message = %q, want %q", got.Error(), tt.wantMessage)
+			}
+			problem, ok := errs.ProblemOf(got)
+			if !ok {
+				t.Fatalf("wrapMarkdownDownloadError() = %T, want a typed problem", got)
+			}
+			if problem.Category != tt.wantCat || problem.Subtype != tt.wantSubtype {
+				t.Fatalf("classification = %s/%s, want %s/%s", problem.Category, problem.Subtype, tt.wantCat, tt.wantSubtype)
+			}
+			if tt.wantCode != 0 && problem.Code != tt.wantCode {
+				t.Fatalf("code = %d, want %d", problem.Code, tt.wantCode)
+			}
+			if tt.wantCause != nil && !errors.Is(got, tt.wantCause) {
+				t.Fatalf("wrapped error does not unwrap to its cause")
+			}
+		})
 	}
 }
 

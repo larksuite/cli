@@ -620,6 +620,7 @@ func boom() error {
 
 func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnMigratedShortcutPaths(t *testing.T) {
 	for _, path := range []string{
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_image_upload.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_update.go",
@@ -953,6 +954,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"shortcuts/doc/docs_fetch_v2.go",
 		"shortcuts/drive/drive_search.go",
 		"shortcuts/mail/mail_send.go",
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_progress_create.go",
 		"shortcuts/sheets/helpers.go",
 		"shortcuts/slides/slides_create.go",
@@ -1054,6 +1056,23 @@ func boom() {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/slides/slides_create.go", src)
 	if len(v) != 2 {
 		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on slides path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversMarkdownPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/markdown/markdown_fetch.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on markdown path, got %d: %+v", len(v), v)
 	}
 }
 
