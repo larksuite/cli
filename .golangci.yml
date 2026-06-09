@@ -73,20 +73,20 @@ linters:
           - forbidigo
       # errs-typed-only enforced on paths already migrated to errs.NewXxxError.
       # Add a path when its migration is complete.
-      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|internal/event/consume/|cmd/event/|events/|shortcuts/event/)
+      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|internal/event/consume/|cmd/event/|events/|shortcuts/event/)
         text: errs-typed-only
         linters:
           - forbidigo
       # errs-no-bare-wrap enforced on paths fully migrated to typed final
       # errors. Scoped separately from errs-typed-only because cmd/auth/,
       # cmd/config/ still have residual fmt.Errorf and must not be caught.
-      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/common/mcp_client\.go|cmd/event/|events/|shortcuts/event/)
+      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/common/mcp_client\.go|cmd/event/|events/|shortcuts/event/)
         text: errs-no-bare-wrap
         linters:
           - forbidigo
       # errs-no-legacy-helper enforced on domains whose shared validation/save
       # helpers have migrated to typed final errors.
-      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|cmd/event/|events/|shortcuts/event/)
+      - path-except: (shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|cmd/event/|events/|shortcuts/event/)
         text: errs-no-legacy-helper
         linters:
           - forbidigo

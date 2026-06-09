@@ -6,12 +6,14 @@ package slides
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -400,15 +402,21 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for partial failure, got nil")
 	}
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "pres_partial") {
-		t.Fatalf("error should contain presentation ID, got: %s", errMsg)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %v", err)
 	}
-	if !strings.Contains(errMsg, "slide 2/2") {
-		t.Fatalf("error should indicate slide 2/2 failed, got: %s", errMsg)
+	// The presentation was created but a slide add failed; the recovery hint
+	// carries the partial-progress context (which presentation exists, how many
+	// slides landed) so the caller can resume without recreating.
+	if !strings.Contains(p.Hint, "pres_partial") {
+		t.Fatalf("hint should contain presentation ID, got: %s", p.Hint)
 	}
-	if !strings.Contains(errMsg, "1 slide(s) added") {
-		t.Fatalf("error should report 1 slide added before failure, got: %s", errMsg)
+	if !strings.Contains(p.Hint, "slide 2/2") {
+		t.Fatalf("hint should indicate slide 2/2 failed, got: %s", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "1 slide(s) added") {
+		t.Fatalf("hint should report 1 slide added before failure, got: %s", p.Hint)
 	}
 }
 
@@ -454,6 +462,71 @@ func TestSlidesCreateWithSlidesExceedsMax(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "exceeds maximum") {
 		t.Fatalf("error = %q, want 'exceeds maximum' mention", err.Error())
+	}
+}
+
+// TestSlidesCreateValidationParam locks Param=="--slides" on the pure
+// validation rejections, so callers route on the typed field rather than the
+// message.
+func TestSlidesCreateValidationParam(t *testing.T) {
+	t.Parallel()
+
+	elems := make([]string, 11)
+	for i := range elems {
+		elems[i] = `"<slide/>"`
+	}
+	exceedsMax := "[" + strings.Join(elems, ",") + "]"
+
+	tests := []struct {
+		name   string
+		slides string
+	}{
+		{"invalid JSON", "not json"},
+		{"exceeds max", exceedsMax},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesCreateShortcut(t, f, stdout, []string{
+				"+create",
+				"--slides", tt.slides,
+				"--as", "user",
+			})
+
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want *errs.ValidationError", err)
+			}
+			if ve.Param != "--slides" {
+				t.Fatalf("Param = %q, want --slides", ve.Param)
+			}
+		})
+	}
+}
+
+// TestSlidesCreatePlaceholderMissingParam guards the create.go caller wiring:
+// a missing @-placeholder file must surface a --slides-tagged validation error
+// through the shared slidesInputStatError helper.
+func TestSlidesCreatePlaceholderMissingParam(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	slidesJSON := `["<slide><data><img src=\"@./missing.png\"/></data></slide>"]`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--slides", slidesJSON,
+		"--as", "user",
+	})
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %v, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--slides" {
+		t.Fatalf("Param = %q, want --slides", ve.Param)
 	}
 }
 
