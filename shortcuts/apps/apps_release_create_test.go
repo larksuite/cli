@@ -33,19 +33,19 @@ func TestBuildPublishBody(t *testing.T) {
 	}
 }
 
-func TestAppsPublishMeta(t *testing.T) {
-	if AppsPublish.Command != "+publish" || AppsPublish.Risk != "write" {
-		t.Errorf("meta mismatch: %+v", AppsPublish)
+func TestAppsReleaseCreateMeta(t *testing.T) {
+	if AppsReleaseCreate.Command != "+release-create" || AppsReleaseCreate.Risk != "write" {
+		t.Errorf("meta mismatch: %+v", AppsReleaseCreate)
 	}
-	if len(AppsPublish.Scopes) != 1 || AppsPublish.Scopes[0] != "spark:app:publish" {
-		t.Errorf("scopes = %v", AppsPublish.Scopes)
+	if len(AppsReleaseCreate.Scopes) != 1 || AppsReleaseCreate.Scopes[0] != "spark:app:publish" {
+		t.Errorf("scopes = %v", AppsReleaseCreate.Scopes)
 	}
 }
 
-// newPublishRuntimeContext builds a RuntimeContext whose cobra.Command has the
-// flags that AppsPublish.Execute reads (app-id, branch). Flag values are set
+// newReleaseCreateRuntimeContext builds a RuntimeContext whose cobra.Command has the
+// flags that AppsReleaseCreate.Execute reads (app-id, branch). Flag values are set
 // via the returned setter helper.
-func newPublishRuntimeContext(t *testing.T, appID, branch string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
+func newReleaseCreateRuntimeContext(t *testing.T, appID, branch string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
@@ -55,7 +55,7 @@ func newPublishRuntimeContext(t *testing.T, appID, branch string) (*common.Runti
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
 
-	cmd := &cobra.Command{Use: "test-publish"}
+	cmd := &cobra.Command{Use: "test-release-create"}
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("app-id", "", "")
 	cmd.Flags().String("branch", "", "")
@@ -68,8 +68,8 @@ func newPublishRuntimeContext(t *testing.T, appID, branch string) (*common.Runti
 	return rctx, stdoutBuf, reg
 }
 
-func TestAppsPublishExecute_Success(t *testing.T) {
-	rctx, stdoutBuf, reg := newPublishRuntimeContext(t, "app_x", "main")
+func TestAppsReleaseCreateExecute_Success(t *testing.T) {
+	rctx, stdoutBuf, reg := newReleaseCreateRuntimeContext(t, "app_x", "main")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_x/releases",
@@ -83,7 +83,7 @@ func TestAppsPublishExecute_Success(t *testing.T) {
 		},
 	})
 
-	err := AppsPublish.Execute(context.Background(), rctx)
+	err := AppsReleaseCreate.Execute(context.Background(), rctx)
 	if err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}

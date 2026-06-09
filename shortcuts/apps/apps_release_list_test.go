@@ -17,25 +17,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestBuildHistoryQuery(t *testing.T) {
-	// status, limit, page_token omitted when zero/empty; app_id is in the path
-	q := buildHistoryQuery("", 0, "")
+func TestBuildReleaseListQuery(t *testing.T) {
+	// page_size always present; status/page_token omitted when empty; app_id is in the path
+	q := buildReleaseListQuery("", 0, "")
+	if q["page_size"] != 0 {
+		t.Errorf("page_size should always be present, got %v", q)
+	}
 	if _, ok := q["status"]; ok {
 		t.Errorf("status should be omitted when empty, got %v", q)
-	}
-	if _, ok := q["limit"]; ok {
-		t.Errorf("limit should be omitted when 0, got %v", q)
 	}
 	if _, ok := q["page_token"]; ok {
 		t.Errorf("page_token should be omitted when empty, got %v", q)
 	}
-	// all params included; page_token uses snake_case key
-	q2 := buildHistoryQuery("finished", 30, "tok")
+	q2 := buildReleaseListQuery("finished", 30, "tok")
+	if q2["page_size"] != 30 {
+		t.Errorf("page_size = %v, want 30", q2["page_size"])
+	}
 	if q2["status"] != "finished" {
 		t.Errorf("status = %v, want finished", q2["status"])
-	}
-	if q2["limit"] != 30 {
-		t.Errorf("limit = %v, want 30", q2["limit"])
 	}
 	if q2["page_token"] != "tok" {
 		t.Errorf("page_token = %v, want tok", q2["page_token"])
@@ -45,23 +44,8 @@ func TestBuildHistoryQuery(t *testing.T) {
 	}
 }
 
-func TestValidateHistoryLimit(t *testing.T) {
-	if err := validateHistoryLimit(0); err != nil {
-		t.Errorf("limit 0 (unset) should pass, got %v", err)
-	}
-	if err := validateHistoryLimit(500); err != nil {
-		t.Errorf("limit 500 should pass, got %v", err)
-	}
-	if err := validateHistoryLimit(501); err == nil {
-		t.Error("limit 501 should fail")
-	}
-	if err := validateHistoryLimit(-1); err == nil {
-		t.Error("limit -1 should fail")
-	}
-}
-
-// newHistoryRuntimeContext builds a RuntimeContext for AppsPublishHistory.Execute tests.
-func newHistoryRuntimeContext(t *testing.T, appID string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
+// newReleaseListRuntimeContext builds a RuntimeContext for AppsReleaseList.Execute tests.
+func newReleaseListRuntimeContext(t *testing.T, appID string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{
 		AppID:      "test-app-" + strings.ToLower(t.Name()),
@@ -71,11 +55,11 @@ func newHistoryRuntimeContext(t *testing.T, appID string) (*common.RuntimeContex
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
 
-	cmd := &cobra.Command{Use: "test-publish-history"}
+	cmd := &cobra.Command{Use: "test-release-list"}
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("app-id", "", "")
 	cmd.Flags().String("status", "", "")
-	cmd.Flags().Int("limit", 0, "")
+	cmd.Flags().Int("page-size", 20, "")
 	cmd.Flags().String("page-token", "", "")
 	_ = cmd.Flags().Set("app-id", appID)
 
@@ -83,8 +67,8 @@ func newHistoryRuntimeContext(t *testing.T, appID string) (*common.RuntimeContex
 	return rctx, stdoutBuf, reg
 }
 
-func TestAppsPublishHistoryExecute_Success(t *testing.T) {
-	rctx, stdoutBuf, reg := newHistoryRuntimeContext(t, "app_x")
+func TestAppsReleaseListExecute_Success(t *testing.T) {
+	rctx, stdoutBuf, reg := newReleaseListRuntimeContext(t, "app_x")
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/spark/v1/apps/app_x/releases",
@@ -106,7 +90,7 @@ func TestAppsPublishHistoryExecute_Success(t *testing.T) {
 		},
 	})
 
-	err := AppsPublishHistory.Execute(context.Background(), rctx)
+	err := AppsReleaseList.Execute(context.Background(), rctx)
 	if err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}

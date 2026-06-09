@@ -17,24 +17,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestAppsPublishStatusMeta(t *testing.T) {
-	if AppsPublishStatus.Command != "+publish-status" || AppsPublishStatus.Risk != "read" {
-		t.Errorf("meta mismatch: %+v", AppsPublishStatus)
+func TestAppsReleaseGetMeta(t *testing.T) {
+	if AppsReleaseGet.Command != "+release-get" || AppsReleaseGet.Risk != "read" {
+		t.Errorf("meta mismatch: %+v", AppsReleaseGet)
 	}
-	if len(AppsPublishStatus.Scopes) != 1 || AppsPublishStatus.Scopes[0] != "spark:app:read" {
-		t.Errorf("scopes = %v", AppsPublishStatus.Scopes)
+	if len(AppsReleaseGet.Scopes) != 1 || AppsReleaseGet.Scopes[0] != "spark:app:read" {
+		t.Errorf("scopes = %v", AppsReleaseGet.Scopes)
 	}
 	// both --app-id and --release-id must be required
 	req := map[string]bool{}
-	for _, f := range AppsPublishStatus.Flags {
+	for _, f := range AppsReleaseGet.Flags {
 		req[f.Name] = f.Required
 	}
 	if !req["app-id"] || !req["release-id"] {
-		t.Errorf("app-id and release-id must be Required; flags=%+v", AppsPublishStatus.Flags)
+		t.Errorf("app-id and release-id must be Required; flags=%+v", AppsReleaseGet.Flags)
 	}
 }
 
-// newStatusRuntimeContext builds a RuntimeContext for AppsPublishStatus.Execute tests.
+// newStatusRuntimeContext builds a RuntimeContext for AppsReleaseGet.Execute tests.
 func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.RuntimeContext, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	cfg := &core.CliConfig{
@@ -45,7 +45,7 @@ func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.Run
 	}
 	factory, stdoutBuf, _, reg := cmdutil.TestFactory(t, cfg)
 
-	cmd := &cobra.Command{Use: "test-publish-status"}
+	cmd := &cobra.Command{Use: "test-release-get"}
 	cmd.SetContext(context.Background())
 	cmd.Flags().String("app-id", "", "")
 	cmd.Flags().String("release-id", "", "")
@@ -56,7 +56,7 @@ func newStatusRuntimeContext(t *testing.T, appID, releaseID string) (*common.Run
 	return rctx, stdoutBuf, reg
 }
 
-func TestAppsPublishStatusExecute_Success(t *testing.T) {
+func TestAppsReleaseGetExecute_Success(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "5")
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -75,7 +75,7 @@ func TestAppsPublishStatusExecute_Success(t *testing.T) {
 		},
 	})
 
-	err := AppsPublishStatus.Execute(context.Background(), rctx)
+	err := AppsReleaseGet.Execute(context.Background(), rctx)
 	if err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
@@ -99,7 +99,7 @@ func TestAppsPublishStatusExecute_Success(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusPrettyFinishedOnlineURL(t *testing.T) {
+func TestAppsReleaseGetPrettyFinishedOnlineURL(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "5")
 	rctx.Format = "pretty"
 	reg.Register(&httpmock.Stub{
@@ -114,7 +114,7 @@ func TestAppsPublishStatusPrettyFinishedOnlineURL(t *testing.T) {
 			}},
 		},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	out := stdoutBuf.String()
@@ -126,7 +126,7 @@ func TestAppsPublishStatusPrettyFinishedOnlineURL(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusPrettyFailedErrorLogs(t *testing.T) {
+func TestAppsReleaseGetPrettyFailedErrorLogs(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "6")
 	rctx.Format = "pretty"
 	reg.Register(&httpmock.Stub{
@@ -143,7 +143,7 @@ func TestAppsPublishStatusPrettyFailedErrorLogs(t *testing.T) {
 			}},
 		},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	out := stdoutBuf.String()
@@ -155,7 +155,7 @@ func TestAppsPublishStatusPrettyFailedErrorLogs(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusPrettyPublishingNoExtra(t *testing.T) {
+func TestAppsReleaseGetPrettyPublishingNoExtra(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "7")
 	rctx.Format = "pretty"
 	reg.Register(&httpmock.Stub{
@@ -166,7 +166,7 @@ func TestAppsPublishStatusPrettyPublishingNoExtra(t *testing.T) {
 				"created_at": "1700000000000", "updated_at": "1700000000000",
 			}}},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	out := stdoutBuf.String()
@@ -175,7 +175,7 @@ func TestAppsPublishStatusPrettyPublishingNoExtra(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusPrettyFinishedNoURL(t *testing.T) {
+func TestAppsReleaseGetPrettyFinishedNoURL(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "8")
 	rctx.Format = "pretty"
 	reg.Register(&httpmock.Stub{
@@ -186,7 +186,7 @@ func TestAppsPublishStatusPrettyFinishedNoURL(t *testing.T) {
 				"created_at": "1700000000000", "updated_at": "1700000000001",
 			}}},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	if strings.Contains(stdoutBuf.String(), "online_url:") {
@@ -194,7 +194,7 @@ func TestAppsPublishStatusPrettyFinishedNoURL(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusPrettyFailedEmptyLogs(t *testing.T) {
+func TestAppsReleaseGetPrettyFailedEmptyLogs(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "9")
 	rctx.Format = "pretty"
 	reg.Register(&httpmock.Stub{
@@ -206,7 +206,7 @@ func TestAppsPublishStatusPrettyFailedEmptyLogs(t *testing.T) {
 				"error_logs": []interface{}{},
 			}}},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	if strings.Contains(stdoutBuf.String(), "compile error") {
@@ -214,7 +214,7 @@ func TestAppsPublishStatusPrettyFailedEmptyLogs(t *testing.T) {
 	}
 }
 
-func TestAppsPublishStatusJSONOnlineURLPassthrough(t *testing.T) {
+func TestAppsReleaseGetJSONOnlineURLPassthrough(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "5")
 	reg.Register(&httpmock.Stub{
 		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/releases/5",
@@ -225,7 +225,7 @@ func TestAppsPublishStatusJSONOnlineURLPassthrough(t *testing.T) {
 				"online_url": "https://example.feishu.cn/spark/faas/app_x",
 			}}},
 	})
-	if err := AppsPublishStatus.Execute(context.Background(), rctx); err != nil {
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
 	var env struct {

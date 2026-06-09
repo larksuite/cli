@@ -33,5 +33,5 @@ git checkout sprint/default
 
 - 不要手动打印、保存或拼接 token。
 - clone、pull、push、diff、log 等代码仓库操作都使用原生 `git`；不存在 `apps +pull` / `apps +push` / `apps code +read` 这类代码读写 shortcut，不要臆造。
-- 不要 push/force-push `main`；`main` 是发布态快照，由 `apps +publish` 成功后服务端推进，直推/force-push 会被服务端护栏拒绝。
+- 不要 push/force-push `main`；`main` 是发布态快照，由 `apps +release-create` 成功后服务端推进，直推/force-push 会被服务端护栏拒绝。
 - Git 认证失败、本地凭证损坏或 helper 缺失时，重新执行 `+git-credential-init --app-id <id>` 覆盖本地配置；不要让用户复制 token 到 remote URL。

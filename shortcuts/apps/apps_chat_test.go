@@ -20,7 +20,7 @@ func TestAppsChat_Success(t *testing.T) {
 			"code": 0,
 			// +chat is async and returns NO business payload (no turn_id, no
 			// next_poll_after_ms — the turn is not generated yet). turn_id and the
-			// poll interval are read later from +session-read.
+			// poll interval are read later from +session-get.
 			"data": map[string]interface{}{},
 		},
 	}
@@ -58,7 +58,7 @@ func TestAppsChat_Pretty(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, "message sent") || !strings.Contains(got, "+session-read") {
+	if got := stdout.String(); !strings.Contains(got, "message sent") || !strings.Contains(got, "+session-get") {
 		t.Fatalf("pretty wrong: %q", got)
 	}
 }

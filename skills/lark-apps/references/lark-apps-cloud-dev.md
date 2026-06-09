@@ -16,9 +16,9 @@
 
 ### 执行模型：异步 + 轮询
 
-`+chat` 把消息入队后立即返回，**不等生成完成**（响应 `data` 为空，不带 `turn_id`）。本轮跑到哪、能不能发下一条，全靠 `+session-read` 轮询。
+`+chat` 把消息入队后立即返回，**不等生成完成**（响应 `data` 为空，不带 `turn_id`）。本轮跑到哪、能不能发下一条，全靠 `+session-get` 轮询。
 
-`+session-read` 关键字段：
+`+session-get` 关键字段：
 
 - `is_streaming`：当前是否有一轮正在跑（`true`=还在生成）。
 - `latest_turn.status`：最近一轮的状态，只有 `running` / `completed` / `failed` / `cancelled`。
@@ -42,7 +42,7 @@ lark-cli apps +session-create --app-id app_xxx
 lark-cli apps +chat --app-id app_xxx --session-id sess_xxx --message "做一个待办清单页面"
 
 # 4) 轮询本轮状态；完成后从 latest_turn.messages 读取结果
-lark-cli apps +session-read --app-id app_xxx --session-id sess_xxx
+lark-cli apps +session-get --app-id app_xxx --session-id sess_xxx
 
 # 找该 app 已有的会话（续聊/不确定 session 时用）
 lark-cli apps +session-list --app-id app_xxx
@@ -52,7 +52,7 @@ lark-cli apps +session-list --app-id app_xxx
 
 云端会话的完成态和应用发布态分开判断：
 
-- `+session-read` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束。
+- `+session-get` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束。
 - 这不会自动证明最新版本已经发布部署，也不能证明用户拿到的发布态 URL 指向最新内容。
 - `+list` 的 `is_published=true` 只说明应用历史上已有发布版本；不要把它当作“最新云端生成结果已部署”的证据。
 - 若用户要“最新可访问链接”或“确认已上线”，必须先走发布链路并确认完成：全栈应用用 `+publish` -> `+publish-status`，HTML 应用用 `+html-publish`。
@@ -80,12 +80,13 @@ lark-cli apps +session-list --app-id app_xxx
 | 已知 app_id，用户没指定会话 | 先 `+session-list`；有活跃会话时问用户继续现有还是新开 |
 | 用户说“新开一段/换个话题” | `+session-create` 后再 `+chat` |
 | 用户说“接着刚才” | 复用上下文 session_id；拿不到就 `+session-list` 让用户选 |
+| 用户问会话“进行到哪一步/当前状态/最新进展” | 用 `+session-get --session-id <sid>` 读状态。`+session-list` 只负责发现/选择会话，不含执行状态；它返回空不等于无状态可查（session_id 也可能来自上下文），别用 `+session-list`/`+release-list` 代替 `+session-get` 回答进度 |
 
 ## 轮询：操作约定
 
 - 不知道某 app 有哪些 session 时，先 `+session-list --app-id <id>`，再选最近活跃的或让用户确认，别直接猜 `session_id`。
 - `latest_turn.status` 为 `failed` / `cancelled` 时，由用户决定是否重试，不要静默重发。
-- 要中止正在运行的一轮，从 `+session-read` 的 `latest_turn.turn_id` 取值，再调用：
+- 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turn_id` 取值，再调用：
 - 
 ## 初始化 vs 增量修改
 
@@ -97,7 +98,7 @@ lark-cli apps +session-list --app-id app_xxx
 
 1. 本地存在该 app 的项目目录（已 `+init` 或 clone 过），**且** git commit 数 > 2；
 2. 应用维度（云端）至少有一个已提交的版本，按以下任一信号判断：
-   - `lark-cli apps +session-read --app-id <app_id> --session-id <session_id>` 的返回里出现已提交版本信息；
+   - `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>` 的返回里出现已提交版本信息；
    - 在 `lark-cli apps +list`（必要时配 `--keyword <name>` 定位）的目标 app 条目里 `is_published: true`。
 
 **未初始化**（两个条件同时成立）：
@@ -112,17 +113,17 @@ lark-cli apps +session-list --app-id app_xxx
 | 已初始化 → **增量修改** | 云端 Agent 在已有云端工作区上对**已提交代码**做局部修改，跳过方案设计与首次生成 | 通常分钟级 | `next_poll_after_ms` 为空时 5-10 秒一次 |
 | 未初始化 → **首次初始化 + 生成** | 服务端跑完整的应用初始化流程：需求分析、技术方案、数据模型、UI 与后端代码生成、首版代码提交到云端工作区 | 视需求复杂度，**通常 20~50 分钟** | `next_poll_after_ms` 为空时 60-120 秒一次 |
 
-初始化阶段 `+session-read` 可能长时间持续返回 `building` / `running`，是正常状态，**不要按失败处理，也不要催用户**。
+初始化阶段 `+session-get` 可能长时间持续返回 `building` / `running`，是正常状态，**不要按失败处理，也不要催用户**。
 
 ## 轮询规则
 
 - `+chat` 异步，只返回 `next_poll_after_ms`，不返回 `turn_id`。
-- 等待 `next_poll_after_ms` 后调用 `+session-read`；由 agent 驱动轮询。`next_poll_after_ms` 为空时，按 [初始化 vs 增量修改](#初始化-vs-增量修改) 的判定选择节奏：增量 5-10 秒一次，初始化 60-120 秒一次。
+- 等待 `next_poll_after_ms` 后调用 `+session-get`；由 agent 驱动轮询。`next_poll_after_ms` 为空时，按 [初始化 vs 增量修改](#初始化-vs-增量修改) 的判定选择节奏：增量 5-10 秒一次，初始化 60-120 秒一次。
 - 不知道已有 session 时先 `+session-list --app-id <id>`，再选最近活跃或让用户确认。
 - `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃。初始化阶段单次 sleep 拉到 60-120 秒；进入 `streaming` 或属增量修改时切回 5-10 秒。
 - `is_streaming=false` 且 `latest_turn.status=completed` 表示本轮完成，可发下一条。
 - `failed` / `cancelled` 时转述错误字段或 hint，询问是否重试。
-- 要中止正在运行的一轮，从 `+session-read` 的 `latest_turn.turnID` 取值，再调用：
+- 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turnID` 取值，再调用：
 
 ```bash
 lark-cli apps +session-stop --app-id app_xxx --session-id sess_xxx --turn-id turn_xxx

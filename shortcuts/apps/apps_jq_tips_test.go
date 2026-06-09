@@ -11,7 +11,7 @@ import (
 func TestListyCommandsHaveJqTip(t *testing.T) {
 	wantCmds := map[string]bool{
 		"+list": true, "+db-table-list": true, "+db-table-schema": true,
-		"+db-sql": true, "+publish-history": true, "+session-list": true,
+		"+db-sql": true, "+release-list": true, "+session-list": true,
 	}
 	for _, s := range Shortcuts() {
 		if !wantCmds[s.Command] {

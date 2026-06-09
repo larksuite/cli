@@ -19,13 +19,13 @@ func TestWithAppsHint(t *testing.T) {
 
 	t.Run("empty hint gets filled, code/type preserved", func(t *testing.T) {
 		in := &output.ExitError{Code: 1, Detail: &output.ErrDetail{Type: "api_error", Message: "boom"}}
-		out := withAppsHint(in, "run +publish-history")
+		out := withAppsHint(in, "run +release-list")
 		var exitErr *output.ExitError
 		if !errors.As(out, &exitErr) {
 			t.Fatalf("returned error is not *output.ExitError: %T", out)
 		}
-		if exitErr.Detail.Hint != "run +publish-history" {
-			t.Errorf("Hint = %q, want %q", exitErr.Detail.Hint, "run +publish-history")
+		if exitErr.Detail.Hint != "run +release-list" {
+			t.Errorf("Hint = %q, want %q", exitErr.Detail.Hint, "run +release-list")
 		}
 		if exitErr.Code != 1 || exitErr.Detail.Type != "api_error" || exitErr.Detail.Message != "boom" {
 			t.Errorf("code/type/message mutated: code=%d type=%q msg=%q", exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message)

@@ -14,15 +14,15 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsSessionRead reads a session's current status, queued turns, and latest turn.
+// AppsSessionGet reads a session's current status, queued turns, and latest turn.
 // Single-shot: the caller drives polling using next_poll_after_ms.
-var AppsSessionRead = common.Shortcut{
+var AppsSessionGet = common.Shortcut{
 	Service:     appsService,
-	Command:     "+session-read",
+	Command:     "+session-get",
 	Description: "Read a session's current status, queued turns, and latest turn",
 	Risk:        "read",
 	Tips: []string{
-		"Example: lark-cli apps +session-read --app-id <app_id> --session-id <session_id>",
+		"Example: lark-cli apps +session-get --app-id <app_id> --session-id <session_id>",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},

@@ -14,14 +14,14 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsPublishHistory lists a Miaoda app's release history (most recent first).
-var AppsPublishHistory = common.Shortcut{
+// AppsReleaseList lists a Miaoda app's release history (most recent first).
+var AppsReleaseList = common.Shortcut{
 	Service:     appsService,
-	Command:     "+publish-history",
-	Description: "List a Miaoda app's release history (server returns ~50 most recent by default)",
+	Command:     "+release-list",
+	Description: "List a Miaoda app's release history (most recent first)",
 	Risk:        "read",
 	Tips: []string{
-		"Example: lark-cli apps +publish-history --app-id <app_id>",
+		"Example: lark-cli apps +release-list --app-id <app_id>",
 		"Tip: filter fields with --jq, e.g. -q '.data.releases[].release_id'",
 	},
 	Scopes:    []string{"spark:app:read"},
@@ -30,33 +30,33 @@ var AppsPublishHistory = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "status", Enum: []string{"publishing", "finished", "failed"}, Desc: "filter by release status: publishing | finished | failed"},
-		{Name: "limit", Type: "int", Desc: "page size (1-500); omit to use server default (~50)"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (max 50)"},
 		{Name: "page-token", Desc: "pagination cursor from a previous response"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
 			return output.ErrValidation("--app-id is required")
 		}
-		return validateHistoryLimit(rctx.Int("limit"))
+		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		status := strings.TrimSpace(rctx.Str("status"))
-		limit := rctx.Int("limit")
+		pageSize := rctx.Int("page-size")
 		pageToken := strings.TrimSpace(rctx.Str("page-token"))
 		dry := common.NewDryRunAPI()
-		dry.GET(fmt.Sprintf(publishListPath, validate.EncodePathSegment(appID))).
+		dry.GET(fmt.Sprintf(releaseListPath, validate.EncodePathSegment(appID))).
 			Desc("List release history").
-			Params(buildHistoryQuery(status, limit, pageToken))
+			Params(buildReleaseListQuery(status, pageSize, pageToken))
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		status := strings.TrimSpace(rctx.Str("status"))
-		limit := rctx.Int("limit")
+		pageSize := rctx.Int("page-size")
 		pageToken := strings.TrimSpace(rctx.Str("page-token"))
-		path := fmt.Sprintf(publishListPath, validate.EncodePathSegment(appID))
-		data, err := rctx.CallAPITyped("GET", path, buildHistoryQuery(status, limit, pageToken), nil)
+		path := fmt.Sprintf(releaseListPath, validate.EncodePathSegment(appID))
+		data, err := rctx.CallAPITyped("GET", path, buildReleaseListQuery(status, pageSize, pageToken), nil)
 		if err != nil {
 			return err
 		}
@@ -81,30 +81,18 @@ var AppsPublishHistory = common.Shortcut{
 	},
 }
 
-// buildHistoryQuery builds the list-releases query parameters. app_id is in the
-// path. status is included when non-empty; limit when > 0; page_token (snake)
-// when non-empty.
-func buildHistoryQuery(status string, limit int, pageToken string) map[string]interface{} {
-	q := map[string]interface{}{}
+// buildReleaseListQuery builds the list-releases query parameters. app_id is in
+// the path. page_size is always sent; status and page_token (snake) are included
+// only when non-empty.
+func buildReleaseListQuery(status string, pageSize int, pageToken string) map[string]interface{} {
+	q := map[string]interface{}{
+		"page_size": pageSize,
+	}
 	if status != "" {
 		q["status"] = status
-	}
-	if limit > 0 {
-		q["limit"] = limit
 	}
 	if pageToken != "" {
 		q["page_token"] = pageToken
 	}
 	return q
-}
-
-// validateHistoryLimit accepts 0 (unset) or 1-500.
-func validateHistoryLimit(limit int) error {
-	if limit == 0 {
-		return nil
-	}
-	if limit < 1 || limit > 500 {
-		return output.ErrValidation("--limit must be between 1 and 500")
-	}
-	return nil
 }

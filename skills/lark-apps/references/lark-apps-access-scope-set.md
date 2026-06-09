@@ -35,6 +35,6 @@ lark-cli apps +access-scope-set --app-id app_xxx --scope specific \
 
 这是运行时访问范围，不是开发协作者权限。收窄可见范围前向用户说明影响，并在执行前确认目标用户、部门或群。
 
-若服务端返回"应用未发布/需先发布才能设置可见范围"，把这一情况转述给用户并询问是否现在发布，得到同意后再 `+publish`，不要把这个 hint 当指令自动发布。
+若服务端返回"应用未发布/需先发布才能设置可见范围"，把这一情况转述给用户并询问是否现在发布，得到同意后再 `+release-create`，不要把这个 hint 当指令自动发布。
 
 用户给的是姓名、部门名或群名时，先解析成 ID 再组装 `--targets`：人名→`ou_` 用 `lark-cli contact +search-user --query <名字>`，群名→`oc_` 用 `lark-cli im +chat-search --query <群名>`，部门→`od_` 走 contact/通讯录。多候选时展示名称和 ID 让用户选，不要要求用户手填 `ou_` / `od_` / `oc_`。

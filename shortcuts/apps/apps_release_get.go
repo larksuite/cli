@@ -14,21 +14,21 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsPublishErrorLog fetches the error log for a release.
-var AppsPublishErrorLog = common.Shortcut{
+// AppsReleaseGet fetches a single release's detail by release ID.
+var AppsReleaseGet = common.Shortcut{
 	Service:     appsService,
-	Command:     "+publish-error-log",
-	Description: "Get the error log for a release",
+	Command:     "+release-get",
+	Description: "Get a single release's status/detail by release ID",
 	Risk:        "read",
 	Tips: []string{
-		"Example: lark-cli apps +publish-error-log --app-id <app_id> --release-id <release_id>",
+		"Example: lark-cli apps +release-get --app-id <app_id> --release-id <release_id>",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
-		{Name: "release-id", Desc: "release ID (the release_id returned by +publish)", Required: true},
+		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -43,36 +43,35 @@ var AppsPublishErrorLog = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		releaseID := strings.TrimSpace(rctx.Str("release-id"))
 		dry := common.NewDryRunAPI()
-		dry.GET(fmt.Sprintf(publishErrorLogPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))).
-			Desc("Get release error log")
+		dry.GET(fmt.Sprintf(releaseGetPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))).
+			Desc("Get release detail")
 		return dry
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		releaseID := strings.TrimSpace(rctx.Str("release-id"))
-		path := fmt.Sprintf(publishErrorLogPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
+		path := fmt.Sprintf(releaseGetPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
 		data, err := rctx.CallAPITyped("GET", path, nil, nil)
 		if err != nil {
-			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +publish-history --app-id "+appID+"`")
+			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +release-list --app-id "+appID+"`")
 		}
-		out := shapeErrorLog(data)
+		out := data
+		if release, ok := data["release"].(map[string]interface{}); ok {
+			out = release
+		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "status: %v\n", out["status"])
-			writeReleaseErrorLogTable(w, out["error_logs"])
+			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",
+				out["release_id"], out["status"], out["created_at"], out["updated_at"])
+			status, _ := out["status"].(string)
+			switch status {
+			case "finished":
+				if url, ok := out["online_url"].(string); ok && url != "" {
+					fmt.Fprintf(w, "online_url: %s\n", url)
+				}
+			case "failed":
+				writeReleaseErrorLogTable(w, out["error_logs"])
+			}
 		})
 		return nil
 	},
-}
-
-// shapeErrorLog shapes the error-log response into the CLI envelope.
-// status is a string passthrough; error_logs (snake_case from gateway) is
-// passed through directly, defaulting to an empty slice when absent.
-func shapeErrorLog(data map[string]interface{}) map[string]interface{} {
-	out := map[string]interface{}{"status": data["status"]}
-	if logs, ok := data["error_logs"]; ok {
-		out["error_logs"] = logs
-	} else {
-		out["error_logs"] = []interface{}{}
-	}
-	return out
 }

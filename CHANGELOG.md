@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Refactoring
+
+- refactor(apps): rename +publish* release commands to +release-* (+release-create / +release-list / +release-get), remove +publish-error-log (error logs now surfaced by +release-get on failed), rename +session-read to +session-get, unify +release-list pagination flag to --page-size
+
 ## [v1.0.47] - 2026-06-03
 
 ### Features
