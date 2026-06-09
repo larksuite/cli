@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -98,7 +98,7 @@ var WikiNodeGet = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Fetching wiki node %s...\n", common.MaskToken(spec.Token))
 
-		data, err := runtime.CallAPI("GET", "/open-apis/wiki/v2/spaces/get_node", spec.RequestParams(), nil)
+		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", spec.RequestParams(), nil)
 		if err != nil {
 			return err
 		}
@@ -109,10 +109,10 @@ var WikiNodeGet = common.Shortcut{
 		}
 
 		if spec.SpaceID != "" && node.SpaceID != "" && spec.SpaceID != node.SpaceID {
-			return output.ErrValidation(
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--space-id %q does not match the resolved node space %q (node_token=%s)",
 				spec.SpaceID, node.SpaceID, node.NodeToken,
-			)
+			).WithParam("--space-id")
 		}
 		if spec.SpaceID != "" && node.SpaceID == "" {
 			// The cross-check was requested but get_node returned no space_id,
@@ -178,8 +178,8 @@ func resolveWikiNodeGetRawToken(nodeToken, legacyToken string) (string, error) {
 	legacy := strings.TrimSpace(legacyToken)
 	switch {
 	case canonical != "" && legacy != "" && canonical != legacy:
-		return "", output.ErrValidation(
-			"--node-token and --token are both set with different values; pass --node-token only (--token is deprecated)")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--node-token and --token are both set with different values; pass --node-token only (--token is deprecated)").WithParam("--token")
 	case canonical != "":
 		return nodeToken, nil
 	default:
@@ -193,7 +193,7 @@ func resolveWikiNodeGetRawToken(nodeToken, legacyToken string) (string, error) {
 func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetSpec, error) {
 	tokenInput := strings.TrimSpace(rawToken)
 	if tokenInput == "" {
-		return wikiNodeGetSpec{}, output.ErrValidation("--node-token is required")
+		return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token is required").WithParam("--node-token")
 	}
 
 	spec := wikiNodeGetSpec{
@@ -204,14 +204,14 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 	if strings.Contains(tokenInput, "://") {
 		u, err := url.Parse(tokenInput)
 		if err != nil || u.Path == "" {
-			return wikiNodeGetSpec{}, output.ErrValidation("--node-token URL is malformed: %q", tokenInput)
+			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token URL is malformed: %q", tokenInput).WithParam("--node-token")
 		}
 		token, urlObjType, ok := tokenAndObjTypeFromWikiURL(u.Path)
 		if !ok {
-			return wikiNodeGetSpec{}, output.ErrValidation(
+			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"unsupported --node-token URL path %q: expected /wiki/, /docx/, /doc/, /sheets/, /base/, /mindnote/, /slides/, or /file/ followed by a token",
 				u.Path,
-			)
+			).WithParam("--node-token")
 		}
 		spec.Token = token
 		if urlObjType == "" {
@@ -223,16 +223,16 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		case spec.ObjType == "" && urlObjType != "":
 			spec.ObjType = urlObjType
 		case spec.ObjType != "" && urlObjType != "" && spec.ObjType != urlObjType:
-			return wikiNodeGetSpec{}, output.ErrValidation(
+			return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--obj-type %q does not match the obj_type %q implied by the URL path; pass only one",
 				spec.ObjType, urlObjType,
-			)
+			).WithParam("--obj-type")
 		}
 	} else if strings.ContainsAny(tokenInput, "/?#") {
-		return wikiNodeGetSpec{}, output.ErrValidation(
+		return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--node-token must be a raw token or a full URL; partial paths are not accepted: %q",
 			tokenInput,
-		)
+		).WithParam("--node-token")
 	} else {
 		spec.Token = tokenInput
 		if looksLikeWikiNodeToken(spec.Token) {
@@ -241,10 +241,10 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 			// than silently passing it (the API would just ignore it, but the
 			// mismatch signals caller confusion).
 			if spec.ObjType != "" {
-				return wikiNodeGetSpec{}, output.ErrValidation(
+				return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"--obj-type is only valid for obj_tokens; %q looks like a node_token",
 					spec.Token,
-				)
+				).WithParam("--obj-type")
 			}
 		} else {
 			spec.SourceKind = "raw-obj"
@@ -253,10 +253,10 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 			// sheet / bitable / ... Fail fast with the same upfront contract
 			// as +node-delete instead of deferring to an opaque API error.
 			if spec.ObjType == "" {
-				return wikiNodeGetSpec{}, output.ErrValidation(
+				return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"--obj-type is required for a raw obj_token %q (one of: %s); or pass a typed Lark URL (e.g. /docx/<token>) so it can be inferred",
 					spec.Token, strings.Join(wikiNodeGetObjTypeEnum, ", "),
-				)
+				).WithParam("--obj-type")
 			}
 		}
 	}
