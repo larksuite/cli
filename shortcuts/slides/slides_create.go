@@ -33,6 +33,9 @@ var SlidesCreate = common.Shortcut{
 	// like wiki_move) so the pre-flight check fails fast and lark-cli's
 	// auth login --scope hint guides the user, instead of leaving an orphaned
 	// empty presentation when the in-flight upload 403s.
+	// NB: no drive scope here on purpose — slides creation never touches drive;
+	// the presentation URL is built locally (see Execute), so we don't gate a
+	// drive-free operation behind a drive scope.
 	Scopes: []string{"slides:presentation:create", "slides:presentation:write_only", "docs:document.media:upload"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "presentation title"},
@@ -205,29 +208,14 @@ var SlidesCreate = common.Shortcut{
 			}
 		}
 
-		// Fetch presentation URL via drive meta (best-effort)
-		if metaData, err := runtime.CallAPI(
-			"POST",
-			"/open-apis/drive/v1/metas/batch_query",
-			nil,
-			map[string]interface{}{
-				"request_docs": []map[string]interface{}{
-					{
-						"doc_token": presentationID,
-						"doc_type":  "slides",
-					},
-				},
-				"with_url": true,
-			},
-		); err == nil {
-			metas := common.GetSlice(metaData, "metas")
-			if len(metas) > 0 {
-				if meta, ok := metas[0].(map[string]interface{}); ok {
-					if url := common.GetString(meta, "url"); url != "" {
-						result["url"] = url
-					}
-				}
-			}
+		// Build the presentation URL locally from the token. The brand-standard
+		// host transparently redirects to the tenant domain (same fallback used by
+		// drive +upload / wiki +node-create). This avoids the prior best-effort
+		// drive metas/batch_query call, which needed an extra drive scope and 403'd
+		// for users who only authorized slides scopes — without ever blocking an
+		// otherwise-successful creation.
+		if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
+			result["url"] = url
 		}
 
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, presentationID, "slides"); grant != nil {
