@@ -56,7 +56,7 @@ lark-cli apps +publish --app-id app_xxx
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
 - DB 调试用 `+db-table-list` / `+db-table-schema` / `+db-sql`；不要裸连数据库或自行拼连接串。
 - DB 分 `dev` / `online`；日常调试优先 `--env dev`。dev 的库结构变更要上线时，仍按应用发布链路走 `+publish`，不要另造“数据库发布”步骤。
-- 存量单库应用需要 dev/online 多环境时，用 `+db-dev-init`。这是不可逆 high-risk 操作。
+- 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --env dev`。这是不可逆 high-risk 操作。
 
 ## 存量应用入口
 

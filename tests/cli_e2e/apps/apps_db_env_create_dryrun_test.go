@@ -14,9 +14,9 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// TestAppsDBDevInitDryRun pins +db-dev-init URL `/apps/{app_id}/db_dev_init` 和 sync_data body 透传。
+// TestAppsDBEnvCreateDryRun pins +db-env-create URL `/apps/{app_id}/db_dev_init` 和 sync_data body 透传。
 // Risk: high-risk-write 在 dry-run 下不需要 --yes 确认。
-func TestAppsDBDevInitDryRun(t *testing.T) {
+func TestAppsDBEnvCreateDryRun(t *testing.T) {
 	setAppsDryRunEnv(t)
 
 	t.Run("DefaultSyncDataFalse", func(t *testing.T) {
@@ -24,7 +24,7 @@ func TestAppsDBDevInitDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-dev-init", "--app-id", "app_x", "--dry-run"},
+			Args:      []string{"apps", "+db-env-create", "--app-id", "app_x", "--env", "dev", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
@@ -40,7 +40,7 @@ func TestAppsDBDevInitDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-dev-init", "--app-id", "app_x", "--sync-data", "--dry-run"},
+			Args:      []string{"apps", "+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "true", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)

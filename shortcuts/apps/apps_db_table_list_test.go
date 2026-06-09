@@ -82,6 +82,13 @@ func TestAppsDBTableList_SuccessReturnsItemsWithStats(t *testing.T) {
 	if !strings.Contains(got, `"estimated_row_count": 1200`) {
 		t.Fatalf("stdout missing estimated_row_count: %s", got)
 	}
+	// CLI 裁剪：json 默认不透出每表 columns[]，折算成 column_count（mock 给了 2 列）。
+	if !strings.Contains(got, `"column_count": 2`) {
+		t.Fatalf("stdout missing column_count (should replace columns[]): %s", got)
+	}
+	if strings.Contains(got, `"columns"`) {
+		t.Fatalf("stdout should NOT contain raw columns[] (stripped to column_count): %s", got)
+	}
 }
 
 // pretty 5 列 + 列名 (size / columns，不是 size_bytes / column_count) + size 友好格式（KB） +

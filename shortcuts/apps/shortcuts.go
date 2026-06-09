@@ -23,7 +23,7 @@ func Shortcuts() []common.Shortcut {
 		AppsDBTableList,
 		AppsDBTableSchema,
 		AppsDBSQL,
-		AppsDBDevInit,
+		AppsDBEnvCreate,
 		AppsGitCredentialInit,
 		AppsGitCredentialList,
 		AppsGitCredentialRemove,

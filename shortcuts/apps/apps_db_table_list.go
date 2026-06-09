@@ -18,8 +18,12 @@ import (
 // GET /apps/{app_id}/tables（cursor 分页），response items[] 含 estimated_row_count /
 // size_bytes optional 字段，默认返回，不必额外传 query。
 //
-// pretty 渲染 5 列：name / description / estimated_row_count / size / columns；列间两空格、
-// 列对齐填充、空 description 用 "—" 占位、size 按 KB/MB/GB 友好格式化。
+// 输出裁剪：server 给每张表回完整 columns[]（与 +db-table-schema 同源、内容一致）。CLI 用白名单
+// 投影（dbTableListItem）只组装产品要求字段、把 columns[] 折算成 column_count，避免逐表重复列定义
+// 放大 token、并与 +db-table-schema 职责区分。完整列定义 / 索引 / 约束 / DDL 用 +db-table-schema。
+//
+// pretty 渲染 5 列：name / description / estimated_row_count / size / columns（即 column_count）；
+// 列间两空格、列对齐填充、空 description 用 "—" 占位、size 按 KB/MB/GB 友好格式化。
 var AppsDBTableList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-table-list",
@@ -57,16 +61,48 @@ var AppsDBTableList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		items, _ := data["items"].([]interface{})
-		// json（默认）路径原样透出 server 返回的 items[]，含每张表完整的 columns[]。
-		// 这是产品设计：list 接口本就返回各表列定义，json 消费方（agent / 脚本）可一次拿到
-		// 全量结构、免去逐表再调 +db-table-schema。pretty 视图只摘 columns 计数（见 renderTableListPretty）
-		// 保持终端可读；两种形态共用同一份 data，不在此处裁剪。
+		// 白名单投影：只把产品要求的字段组装进 dbTableListItem，替换 server 原始 items[]。
+		// server 给每张表回完整 columns[]（与 +db-table-schema 同源、逐字节一致），在 list 里逐表
+		// 重复既放大 token 又与 schema 职责重叠。这里用白名单而非 delete 黑名单 —— server 后续新增
+		// 字段不会自动泄漏进 CLI 输出。需要完整列定义 / 索引 / 约束 / DDL 用 +db-table-schema。
+		items := projectTableListItems(data["items"])
+		data["items"] = items
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			renderTableListPretty(w, items)
 		})
 		return nil
 	},
+}
+
+// dbTableListItem 是 +db-table-list 对外输出的「产品要求字段」白名单。
+// 改字段在此处增删即可，无需在 Execute 里逐个 delete server 返回的多余字段。
+type dbTableListItem struct {
+	Name              string      `json:"name"`
+	Description       string      `json:"description"`
+	EstimatedRowCount interface{} `json:"estimated_row_count,omitempty"`
+	SizeBytes         interface{} `json:"size_bytes,omitempty"`
+	ColumnCount       int         `json:"column_count"`
+}
+
+// projectTableListItems 把 server 原始 items[]（map）投影成白名单 dbTableListItem 切片。
+// column_count 由 server 返回的 columns[] 长度派生（随后 columns[] 不再透出）。
+func projectTableListItems(raw interface{}) []dbTableListItem {
+	arr, _ := raw.([]interface{})
+	out := make([]dbTableListItem, 0, len(arr))
+	for _, it := range arr {
+		m, ok := it.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		out = append(out, dbTableListItem{
+			Name:              common.GetString(m, "name"),
+			Description:       common.GetString(m, "description"),
+			EstimatedRowCount: m["estimated_row_count"],
+			SizeBytes:         m["size_bytes"],
+			ColumnCount:       deriveColumnCount(m),
+		})
+	}
+	return out
 }
 
 func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} {
@@ -83,25 +119,22 @@ func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} 
 // renderTableListPretty 5 列输出，列间两空格、列对齐填充。
 //
 // 列名：name / description / estimated_row_count / size / columns。
-// 空 description 用 "—" 占位；size 由 size_bytes 经 humanBytes 友好格式化；columns 由 len(columns) derive。
-func renderTableListPretty(w io.Writer, items []interface{}) {
+// 空 description 用 "—" 占位；size 由 size_bytes 经 humanBytes 友好格式化；
+// columns 列取白名单投影的 column_count。
+func renderTableListPretty(w io.Writer, items []dbTableListItem) {
 	headers := []string{"name", "description", "estimated_row_count", "size", "columns"}
 	rows := make([][]string, 0, len(items))
-	for _, it := range items {
-		m, ok := it.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		desc := common.GetString(m, "description")
+	for _, item := range items {
+		desc := item.Description
 		if desc == "" {
 			desc = "—"
 		}
 		rows = append(rows, []string{
-			common.GetString(m, "name"),
+			item.Name,
 			desc,
-			intString(m["estimated_row_count"]),
-			humanBytes(m["size_bytes"]),
-			fmt.Sprintf("%d", deriveColumnCount(m)),
+			intString(item.EstimatedRowCount),
+			humanBytes(item.SizeBytes),
+			fmt.Sprintf("%d", item.ColumnCount),
 		})
 	}
 	renderAlignedTable(w, headers, rows)
