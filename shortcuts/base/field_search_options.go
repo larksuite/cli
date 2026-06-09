@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -19,7 +20,8 @@ var BaseFieldSearchOptions = common.Shortcut{
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
-		fieldRefFlag(true),
+		fieldRefFlag(false),
+		{Name: "field-name", Hidden: true},
 		{Name: "keyword", Desc: "keyword for option query"},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, default 30"},
@@ -29,6 +31,12 @@ var BaseFieldSearchOptions = common.Shortcut{
 		"Use only for fields with options, such as select or multi-select fields.",
 	},
 	DryRun: dryRunFieldSearchOptions,
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if strings.TrimSpace(fieldSearchOptionsRef(runtime)) == "" {
+			return baseFlagErrorf("--field-id is required")
+		}
+		return nil
+	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeFieldSearchOptions(runtime)
 	},

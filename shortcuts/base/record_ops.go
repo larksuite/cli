@@ -45,8 +45,8 @@ func validateRecordSelection(runtime *common.RuntimeContext) error {
 }
 
 func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, error) {
-	recordIDs := runtime.StrArray("record-id")
-	fieldIDs := runtime.StrArray("field-id")
+	recordIDs := recordIDFlags(runtime)
+	fieldIDs := recordListFields(runtime)
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
 		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
@@ -91,6 +91,14 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 		recordIDs:    normalized,
 		selectFields: selectFields,
 	}, nil
+}
+
+func recordIDFlags(runtime *common.RuntimeContext) []string {
+	recordIDs := runtime.StrArray("record-id")
+	if len(recordIDs) == 0 {
+		recordIDs = runtime.StrArray("record-ids")
+	}
+	return recordIDs
 }
 
 func normalizeRecordIDs(values interface{}) ([]string, error) {
@@ -207,7 +215,7 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := recordListLimit(runtime)
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
 	params.Set("limit", strconv.Itoa(limit))
@@ -341,7 +349,8 @@ func validateRecordShareBatch(runtime *common.RuntimeContext) error {
 }
 
 func deduplicateRecordIDs(runtime *common.RuntimeContext) []string {
-	raw := runtime.StrSlice("record-ids")
+	raw := append([]string{}, runtime.StrSlice("record-ids")...)
+	raw = append(raw, runtime.StrArray("record-id")...)
 	seen := make(map[string]bool, len(raw))
 	result := make([]string, 0, len(raw))
 	for _, id := range raw {
@@ -375,7 +384,15 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 }
 
 func recordListFields(runtime *common.RuntimeContext) []string {
-	return runtime.StrArray("field-id")
+	fields := runtime.StrArray("field-id")
+	if len(fields) == 0 {
+		fields = recordListFieldAliases(runtime)
+	}
+	return fields
+}
+
+func recordListFieldAliases(runtime *common.RuntimeContext) []string {
+	return runtime.StrArray("field-names")
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {
@@ -386,7 +403,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := recordListLimit(runtime)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
 	fields := recordListFields(runtime)
 	if len(fields) > 0 {
@@ -407,6 +424,13 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	}
 	runtime.Out(data, nil)
 	return nil
+}
+
+func recordListLimit(runtime *common.RuntimeContext) int {
+	if runtime.Changed("page-size") {
+		return common.ParseIntBounded(runtime, "page-size", 1, 200)
+	}
+	return common.ParseIntBounded(runtime, "limit", 1, 200)
 }
 
 func executeRecordGet(runtime *common.RuntimeContext) error {

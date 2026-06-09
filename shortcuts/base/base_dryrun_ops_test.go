@@ -58,12 +58,21 @@ func TestDryRunBaseBlockOps(t *testing.T) {
 func TestDryRunFieldOps(t *testing.T) {
 	ctx := context.Background()
 
-	listRT := newBaseTestRuntime(
-		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+	listRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x"},
+		map[string][]string{"table-id": {"tbl_1"}},
 		nil,
 		map[string]int{"offset": -2, "limit": 999},
 	)
 	assertDryRunContains(t, dryRunFieldList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields", "offset=0", "limit=200")
+
+	multiListRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x"},
+		map[string][]string{"table-id": {"tbl_1", "tbl_2"}},
+		nil,
+		map[string]int{"offset": 0, "limit": 50},
+	)
+	assertDryRunContains(t, dryRunFieldList(ctx, multiListRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields", "GET /open-apis/base/v3/bases/app_x/tables/tbl_2/fields", "limit=50")
 
 	rt := newBaseTestRuntime(
 		map[string]string{

@@ -31,7 +31,10 @@ var DriveImport = common.Shortcut{
 		{Name: "type", Desc: "target document type (docx, sheet, bitable, slides)", Required: true},
 		{Name: "folder-token", Desc: "target folder token (omit for root folder; API accepts empty mount_key as root)"},
 		{Name: "name", Desc: "imported file name (default: local file name without extension)"},
-		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
+		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); verify the returned verification_token, not the import task token"},
+	},
+	Tips: []string{
+		"When --target-token is set, data is mounted into that existing Base; verify output.verification_token with lark-cli base +base-get.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateDriveImportSpec(driveImportSpec{
@@ -138,6 +141,14 @@ var DriveImport = common.Shortcut{
 		}
 		if status.Extra != nil {
 			out["extra"] = status.Extra
+		}
+		if spec.TargetToken != "" {
+			out["target_token"] = spec.TargetToken
+			out["verification_token"] = spec.TargetToken
+			if u := common.BuildResourceURL(runtime.Config.Brand, "bitable", spec.TargetToken); u != "" {
+				out["verification_url"] = u
+			}
+			out["verify_hint"] = fmt.Sprintf("because --target-token was used, verify the existing target Base with: lark-cli base +base-get --base-token %s", spec.TargetToken)
 		}
 		if !ready {
 			nextCommand := driveImportTaskResultCommand(ticket)

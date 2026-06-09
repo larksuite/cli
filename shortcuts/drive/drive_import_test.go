@@ -762,3 +762,43 @@ func TestDriveImportFallbackURLForSlides(t *testing.T) {
 		t.Fatalf("data.url = %#v, want %q (slides fallback)", got, want)
 	}
 }
+
+func TestDriveImportTargetTokenOutputsVerificationToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveImportTestConfig("target-token"))
+	driveImportMockEnv(t, reg, "ticket_target", map[string]interface{}{
+		"token":      "bascn_backend_result",
+		"type":       "bitable",
+		"job_status": float64(0),
+	})
+
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Chdir: %v", err)
+	}
+	defer os.Chdir(origDir)
+	if err := os.WriteFile("snapshot.base", []byte("fake-base"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if err := mountAndRunDrive(t, DriveImport, []string{
+		"+import", "--file", "snapshot.base", "--type", "bitable", "--target-token", "bascn_target", "--as", "user",
+	}, f, stdout); err != nil {
+		t.Fatalf("import should succeed, got: %v", err)
+	}
+
+	data := decodeDriveEnvelope(t, stdout)
+	if got, want := data["token"], "bascn_backend_result"; got != want {
+		t.Fatalf("data.token = %#v, want backend result token %q", got, want)
+	}
+	if got, want := data["verification_token"], "bascn_target"; got != want {
+		t.Fatalf("data.verification_token = %#v, want target token %q", got, want)
+	}
+	if got, want := data["target_token"], "bascn_target"; got != want {
+		t.Fatalf("data.target_token = %#v, want target token %q", got, want)
+	}
+	hint, _ := data["verify_hint"].(string)
+	if !strings.Contains(hint, "lark-cli base +base-get --base-token bascn_target") {
+		t.Fatalf("verify_hint = %q, want target-token verification command", hint)
+	}
+}

@@ -59,6 +59,70 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 	return &common.RuntimeContext{Cmd: cmd, Config: &core.CliConfig{UserOpenId: "ou_test"}}
 }
 
+func TestRecordQueryAliases(t *testing.T) {
+	runtime := newBaseTestRuntime(
+		map[string]string{
+			"filter": `{"logic":"and","conditions":[["Status","==","Todo"]]}`,
+			"sort":   `[{"field":"Updated","desc":true}]`,
+		},
+		nil,
+		nil,
+	)
+	filter, err := parseRecordFilterFlag(runtime)
+	if err != nil {
+		t.Fatalf("filter err=%v", err)
+	}
+	if filter.(map[string]interface{})["logic"] != "and" {
+		t.Fatalf("filter=%#v", filter)
+	}
+	sortConfig, err := parseRecordSortFlag(runtime)
+	if err != nil {
+		t.Fatalf("sort err=%v", err)
+	}
+	if sortConfig[0].(map[string]interface{})["field"] != "Updated" {
+		t.Fatalf("sort=%#v", sortConfig)
+	}
+}
+
+func TestRecordSelectionAliases(t *testing.T) {
+	runtime := newBaseTestRuntimeWithArrays(
+		map[string]string{},
+		map[string][]string{
+			"record-ids":  {"rec_1", "rec_2"},
+			"field-names": {"Name"},
+		},
+		nil,
+		nil,
+	)
+	selection, err := resolveRecordSelection(runtime)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if len(selection.recordIDs) != 2 || selection.recordIDs[1] != "rec_2" {
+		t.Fatalf("recordIDs=%#v", selection.recordIDs)
+	}
+	if len(selection.selectFields) != 1 || selection.selectFields[0] != "Name" {
+		t.Fatalf("selectFields=%#v", selection.selectFields)
+	}
+}
+
+func TestFieldSearchOptionsAlias(t *testing.T) {
+	runtime := newBaseTestRuntime(map[string]string{"field-name": "Status"}, nil, nil)
+	if got := fieldSearchOptionsRef(runtime); got != "Status" {
+		t.Fatalf("field ref=%q", got)
+	}
+	if err := BaseFieldSearchOptions.Validate(context.Background(), runtime); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestFieldSearchOptionsRequiresFieldRef(t *testing.T) {
+	err := BaseFieldSearchOptions.Validate(context.Background(), newBaseTestRuntime(map[string]string{}, nil, nil))
+	if err == nil || !strings.Contains(err.Error(), "--field-id is required") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestBaseAction(t *testing.T) {
 	t.Run("missing action", func(t *testing.T) {
 		runtime := newBaseTestRuntime(map[string]string{"get": ""}, map[string]bool{"list": false}, nil)
@@ -1025,6 +1089,13 @@ func TestBaseRecordValidate(t *testing.T) {
 	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
 		t.Fatalf("err=%v", err)
 	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1"},
+		nil,
+		map[string]int{"limit": 20, "page-size": 20},
+	)); err == nil || !strings.Contains(err.Error(), "use only one") {
+		t.Fatalf("err=%v", err)
+	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
 		t.Fatalf("err=%v", err)
 	}
@@ -1035,6 +1106,22 @@ func TestBaseRecordValidate(t *testing.T) {
 		nil,
 	)); err != nil {
 		t.Fatalf("record search flag validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "query": "Alice"},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("record search query alias validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice", "query": "Bob"},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		nil,
+	)); err == nil || !strings.Contains(err.Error(), "use only one") {
+		t.Fatalf("err=%v", err)
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
 		map[string]string{

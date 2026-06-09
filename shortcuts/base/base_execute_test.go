@@ -855,6 +855,37 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("list multiple tables", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_a", "name": "Name", "type": "text", "style": map[string]interface{}{"type": "plain"}},
+				}, "total": 1},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_b", "name": "Status", "type": "select", "options": []interface{}{map[string]interface{}{"name": "Todo", "color": "red"}}},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "tbl_a", "--table-id", "tbl_b"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"options": [`) || !strings.Contains(got, `"Todo"`) || strings.Contains(got, `"style"`) || strings.Contains(got, `"color"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -1220,6 +1251,92 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		firstSort := sortConfig[0].(map[string]interface{})
 		if firstSort["field"] != "Updated At" || firstSort["desc"] != true {
 			t.Fatalf("sort=%#v", sortConfig)
+		}
+	})
+
+	t.Run("search accepts query alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title"},
+					"field_id_list":  []interface{}{"fld_title"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--query", "Created",
+				"--search-field", "Title",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(searchStub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(searchStub.CapturedBody))
+		}
+		if body["keyword"] != "Created" {
+			t.Fatalf("captured body=%#v", body)
+		}
+	})
+
+	t.Run("list accepts page size alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		var gotLimit string
+		listStub := &httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records",
+			OnMatch: func(req *http.Request) {
+				gotLimit = req.URL.Query().Get("limit")
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title"},
+					"field_id_list":  []interface{}{"fld_title"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(listStub)
+		if err := runShortcut(
+			t,
+			BaseRecordList,
+			[]string{
+				"+record-list",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--page-size", "20",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		if gotLimit != "20" {
+			t.Fatalf("limit query=%q, want 20", gotLimit)
 		}
 	})
 
@@ -1861,6 +1978,42 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`, "--yes"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("share link accepts record-id alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		shareStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/share_links/batch",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"record_share_links": map[string]interface{}{
+						"rec_1": "https://example.test/rec_1",
+						"rec_2": "https://example.test/rec_2",
+					},
+				},
+			},
+		}
+		reg.Register(shareStub)
+		err := runShortcut(t, BaseRecordShareLinkCreate, []string{
+			"+record-share-link-create",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_1",
+			"--record-id", "rec_2",
+			"--record-id", "rec_1",
+		}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		body := string(shareStub.CapturedBody)
+		if !strings.Contains(body, `"record_ids":["rec_1","rec_2"]`) {
+			t.Fatalf("request body=%s", body)
+		}
+		if got := stdout.String(); !strings.Contains(got, "rec_1") || !strings.Contains(got, "rec_2") {
+			t.Fatalf("stdout=%s", got)
 		}
 	})
 

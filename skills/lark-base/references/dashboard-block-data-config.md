@@ -2,6 +2,8 @@
 
 Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 dashboard block `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。
 
+`data_config` 是 dashboard block 的数据源配置。先用 `+table-list` 拿表，再用 `+field-list --table-id <表1> --table-id <表2>` **一次批量**拿到相关表字段（不要逐表多次 `+field-list`，每次多余调用都拉高 token）；表用 **name**，不是 table_id；字段用 **field_name**。
+
 ## 支持的组件类型（`type` 枚举）
 
 | type 值 | 说明 |

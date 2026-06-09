@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	recordFilterJSONFlag = "filter-json"
-	recordSortJSONFlag   = "sort-json"
-	recordSortMaxCount   = 10
+	recordFilterJSONFlag  = "filter-json"
+	recordSortJSONFlag    = "sort-json"
+	recordFilterAliasFlag = "filter"
+	recordSortAliasFlag   = "sort"
+	recordSortMaxCount    = 10
 )
 
 func recordFilterFlag() common.Flag {
@@ -43,7 +45,7 @@ func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
 }
 
 func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) {
-	filterRaw := strings.TrimSpace(runtime.Str(recordFilterJSONFlag))
+	filterRaw := recordQueryFlagValue(runtime, recordFilterJSONFlag, recordFilterAliasFlag)
 	if filterRaw == "" {
 		return nil, nil
 	}
@@ -52,7 +54,7 @@ func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) 
 }
 
 func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
-	sortRaw := strings.TrimSpace(runtime.Str(recordSortJSONFlag))
+	sortRaw := recordQueryFlagValue(runtime, recordSortJSONFlag, recordSortAliasFlag)
 	if sortRaw == "" {
 		return nil, nil
 	}
@@ -62,6 +64,14 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 		return nil, err
 	}
 	return normalizeRecordSortValue(value, "--"+recordSortJSONFlag)
+}
+
+func recordQueryFlagValue(runtime *common.RuntimeContext, canonical string, alias string) string {
+	canonicalValue := strings.TrimSpace(runtime.Str(canonical))
+	if canonicalValue != "" {
+		return canonicalValue
+	}
+	return strings.TrimSpace(runtime.Str(alias))
 }
 
 func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, error) {
@@ -167,7 +177,7 @@ func applyRecordQueryToBody(runtime *common.RuntimeContext, body map[string]inte
 
 func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
-	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+	if keyword := recordSearchKeyword(runtime); keyword != "" {
 		body["keyword"] = keyword
 	}
 	searchFields := runtime.StrArray("search-field")
@@ -217,6 +227,9 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	if err := validateRecordReadFormat(runtime); err != nil {
 		return err
 	}
+	if strings.TrimSpace(runtime.Str("keyword")) != "" && strings.TrimSpace(runtime.Str("query")) != "" {
+		return baseFlagErrorf("--query is a deprecated alias for --keyword; use only one")
+	}
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if jsonRaw != "" {
 		if recordSearchHasJSONExclusiveFlagInputs(runtime) {
@@ -225,7 +238,7 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 		_, err := recordSearchJSONBody(runtime)
 		return err
 	}
-	if strings.TrimSpace(runtime.Str("keyword")) == "" {
+	if recordSearchKeyword(runtime) == "" {
 		return baseFlagErrorf("--keyword is required unless --json is used")
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
@@ -235,12 +248,20 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 }
 
 func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool {
-	return strings.TrimSpace(runtime.Str("keyword")) != "" ||
+	return recordSearchKeyword(runtime) != "" ||
 		len(runtime.StrArray("search-field")) > 0 ||
 		len(recordListFields(runtime)) > 0 ||
+		len(recordListFieldAliases(runtime)) > 0 ||
 		runtime.Str("view-id") != "" ||
 		runtime.Changed("offset") ||
 		runtime.Changed("limit")
+}
+
+func recordSearchKeyword(runtime *common.RuntimeContext) string {
+	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+		return keyword
+	}
+	return strings.TrimSpace(runtime.Str("query"))
 }
 
 func formatRecordQueryPriorityTip() string {

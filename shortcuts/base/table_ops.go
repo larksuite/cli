@@ -60,7 +60,8 @@ func executeTableList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 100)
-	tables, total, err := listAllTables(runtime, runtime.Str("base-token"), offset, limit)
+	baseToken := runtime.Str("base-token")
+	tables, total, err := listAllTables(runtime, baseToken, offset, limit)
 	if err != nil {
 		return err
 	}

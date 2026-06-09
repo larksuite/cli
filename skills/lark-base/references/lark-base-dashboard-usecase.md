@@ -15,16 +15,11 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 你想做什么 | 用这些命令 | 关键文档 |
 |------|-----------|---------|
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
-| 在仪表盘里添加组件 | `+dashboard-block-create` | 先定位 dashboard、表和字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
+| 在仪表盘里添加组件 | `+dashboard-block-create` | 先用 `+table-list` 拿表，再用 `+field-list --table-id <表1> --table-id <表2>` 批量拿字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 决定替换哪些顶层 key |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 只在用户明确要求重排时执行；无法指定精确位置 |
-
-硬规则：
-
-- 删除并用 `+dashboard-get` 复核 `not_found` 后，用户只回复“确认/好的/收到”视为结束，不要再次创建或保留同名/正式版仪表盘。
-- 用户只说“更新标题”但未给新标题时，可基于原名生成一次新标题；先用 `+dashboard-list` 避开已存在名称，遇同名冲突换名更新，不要创建新仪表盘。
 
 ## 典型场景工作流
 
@@ -38,8 +33,8 @@ lark-cli base +dashboard-create --base-token xxx --name "销售数据分析"
 # 记录返回的 dashboard_id
 
 # 第 2 步：获取数据源信息
-lark-cli base +table-list --base-token xxx
-lark-cli base +field-list --base-token xxx --table-id <table_id>
+lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
+lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 3 步：规划应该创建哪些组件（根据用户需求确定组件类型和数量）
 # 例如：总销售额（指标卡）、月度趋势（折线图）、品类占比（饼图）
@@ -85,8 +80,8 @@ lark-cli base +dashboard-list --base-token xxx
 lark-cli base +dashboard-get --base-token xxx --dashboard-id blk_xxx
 
 # 第 3 步：获取数据源信息
-lark-cli base +table-list --base-token xxx
-lark-cli base +field-list --base-token xxx --table-id <table_id>
+lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
+lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 4 步：顺序创建每个新组件（必须串行执行，不能并发）
 # 重要：先确定 dashboard_id、组件 name/type 和真实表字段
@@ -119,8 +114,8 @@ lark-cli base +dashboard-block-get --base-token xxx --dashboard-id blk_xxx --blo
 
 # 第 4 步：根据用户编辑诉求准备更新
 # 如果编辑诉求涉及数据源变更，需要先获取数据源信息
-lark-cli base +table-list --base-token xxx
-lark-cli base +field-list --base-token xxx --table-id <table_id>
+lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
+lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 5 步：执行更新
 # 重要：先读取当前 block 的 name/type/data_config

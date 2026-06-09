@@ -35,6 +35,15 @@ metadata:
 - Base 命令必须先有 `base_token` 或可解析出的 Base URL。没有 token 时：用户要新建就用 `+base-create`；用户给标题/关键词就搜 `lark-cli drive +search --query "<base title>" --doc-types bitable --only-title --as user`；仍无法定位时，反问用户具体是哪一个 Base。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
 
+## 执行节奏
+
+- 目标明确、边界清晰的简单读写任务（查表/字段/视图/少量记录、单字段新增/更新/删除、单视图配置、明确记录写入/删除）不要先建 Todo 或长计划，直接按最少 `lark-cli base +...` 命令执行并必要时验证。
+- 仅在多阶段批量写入、跨多个对象且有依赖、workflow/dashboard/role 等复杂配置时使用 Todo/分步计划。
+
+## 导出/导入快路径
+
+- Base 导出再导入：source 用用户给的 `/base/{token}`；target 用 `drive +search --doc-types bitable --only-title --format json` 定位；`cd` 到工作目录后用 `drive +export --output-dir .` 和 `drive +import --file ./name.base --target-token <target>`；异步导入续查用 `drive +task_result --scenario import --ticket <ticket>`；导入返回新 token 时仍先验证原 `target`。
+
 ## 快速路由
 
 | 用户目标 | 优先命令 | 何时读 reference |
@@ -43,7 +52,7 @@ metadata:
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
 | 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
-| 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
+| 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除；需要多表结构时先 `+table-list` 拿表，再用 `+field-list --table-id <表1> --table-id <表2>` 批量拿字段，避免逐表多次调用 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
@@ -129,8 +138,12 @@ metadata:
 
 ## Dashboard / Workflow / Role
 
-- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
+- Dashboard 创建/改图前先用 `+table-list` 拿表，再用 `+field-list --table-id <表1> --table-id <表2>` 批量拿字段（不要逐表多次 `+field-list`，多余调用会显著抬高 token）。
+- Dashboard 快路径：布局/重排/撑满/排列美观直接用 `+dashboard-arrange`，不要尝试用 `+dashboard-block-update` 修改 layout，layout 不是 `data_config`。
+- Dashboard block 换图表类型或换数据源表（`table_name`）时，删除旧 block 后用 `+dashboard-block-create` 新建；`+dashboard-block-update` 只适合同一数据源内改 `series/filter/group_by/name`。
+- 删除具名图表：`+dashboard-list` → `+dashboard-block-list` 精确匹配名称 → `+dashboard-block-delete`；长 `block_id` 用变量传参，避免手抄截断。
+- 创建或更新 block 数据配置前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；完整 dashboard 用例按需读 [lark-base-dashboard-usecase.md](references/lark-base-dashboard-usecase.md)，复杂/完整 data_config 模板按需读 [dashboard-block-data-config-full.md](references/dashboard-block-data-config-full.md)。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
+- Workflow 查询优先走上方快速查询，不读完整 reference；创建、更新或复用复杂 `steps` 时才读 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## 常见恢复

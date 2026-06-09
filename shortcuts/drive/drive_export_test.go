@@ -723,6 +723,14 @@ func TestDriveExportReadyDownloadFailureIncludesRecoveryHint(t *testing.T) {
 	}
 }
 
+func TestDriveExportDownloadCommandUsesCdForAbsoluteOutputDir(t *testing.T) {
+	got := driveExportDownloadCommand("box_ready", "report.pdf", "/tmp", true)
+	want := `cd "/tmp" && lark-cli drive +export-download --file-token "box_ready" --file-name "report.pdf" --output-dir "." --overwrite`
+	if got != want {
+		t.Fatalf("command=%q want %q", got, want)
+	}
+}
+
 func TestDriveExportTimeoutReturnsFollowUpCommand(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{

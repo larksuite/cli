@@ -20,6 +20,7 @@ var BaseRecordDelete = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		{Name: "record-id", Type: "string_array", Desc: "record ID (repeatable)"},
+		{Name: "record-ids", Type: "string_array", Hidden: true},
 		{Name: "json", Desc: `JSON object with record_id_list, e.g. {"record_id_list":["rec_xxx"]}`},
 	},
 	Tips: []string{

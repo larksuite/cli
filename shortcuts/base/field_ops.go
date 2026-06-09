@@ -16,11 +16,14 @@ func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	return common.NewDryRunAPI().
-		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
-		Params(map[string]interface{}{"offset": offset, "limit": limit}).
-		Set("base_token", runtime.Str("base-token")).
-		Set("table_id", baseTableID(runtime))
+	dry := common.NewDryRunAPI()
+	for _, tableIDValue := range fieldListTableRefs(runtime) {
+		dry.GET(baseV3Path("bases", runtime.Str("base-token"), "tables", tableIDValue, "fields")).
+			Params(map[string]interface{}{"offset": offset, "limit": limit}).
+			Set("base_token", runtime.Str("base-token")).
+			Set("table_id", tableIDValue)
+	}
+	return dry
 }
 
 func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -61,6 +64,7 @@ func dryRunFieldDelete(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	fieldRef := fieldSearchOptionsRef(runtime)
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
 		"limit":  runtime.Int("limit"),
@@ -72,11 +76,11 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 		params["query"] = keyword
 	}
 	return common.NewDryRunAPI().
-		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id/options").
+		GET(baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields", fieldRef, "options")).
 		Params(params).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime)).
-		Set("field_id", runtime.Str("field-id"))
+		Set("field_id", fieldRef)
 }
 
 func validateFieldJSON(runtime *common.RuntimeContext) (map[string]interface{}, error) {
@@ -118,15 +122,86 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	fields, total, err := listAllFields(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
-	if err != nil {
-		return err
+	tableRefs := fieldListTableRefs(runtime)
+	if len(tableRefs) == 1 {
+		fields, total, err := listAllFields(runtime, runtime.Str("base-token"), tableRefs[0], offset, limit)
+		if err != nil {
+			return err
+		}
+		if total == 0 {
+			total = len(fields)
+		}
+		if !runtime.Bool("full") {
+			fields = compactFields(fields)
+		}
+		runtime.Out(map[string]interface{}{"fields": fields, "total": total}, nil)
+		return nil
 	}
-	if total == 0 {
-		total = len(fields)
+
+	baseToken := runtime.Str("base-token")
+	results := make([]map[string]interface{}, 0, len(tableRefs))
+	for _, tableRef := range tableRefs {
+		fields, total, err := listAllFields(runtime, baseToken, tableRef, offset, limit)
+		if err != nil {
+			return err
+		}
+		if total == 0 {
+			total = len(fields)
+		}
+		if !runtime.Bool("full") {
+			fields = compactFields(fields)
+		}
+		results = append(results, map[string]interface{}{
+			"table_id": tableRef,
+			"fields":   fields,
+			"total":    total,
+		})
 	}
-	runtime.Out(map[string]interface{}{"fields": fields, "total": total}, nil)
+	runtime.Out(map[string]interface{}{"tables": results, "total": len(results)}, nil)
 	return nil
+}
+
+func fieldListTableRefs(runtime *common.RuntimeContext) []string {
+	refs := runtime.StrArray("table-id")
+	if len(refs) == 0 {
+		ref := baseTableID(runtime)
+		if ref != "" {
+			refs = []string{ref}
+		}
+	}
+	return refs
+}
+
+// compactFields projects each field to the keys an agent needs for selection
+// (id / name / type, plus select option names), dropping verbose display style,
+// formula expressions and lookup internals that bloat agent context. Full detail
+// stays available via `+field-list --full` or `+field-get`.
+func compactFields(fields []map[string]interface{}) []map[string]interface{} {
+	keep := []string{"id", "name", "type", "is_primary", "ui_type", "description"}
+	out := make([]map[string]interface{}, 0, len(fields))
+	for _, f := range fields {
+		c := map[string]interface{}{}
+		for _, k := range keep {
+			if v, ok := f[k]; ok {
+				c[k] = v
+			}
+		}
+		if opts, ok := f["options"].([]interface{}); ok && len(opts) > 0 {
+			names := make([]interface{}, 0, len(opts))
+			for _, o := range opts {
+				if om, ok := o.(map[string]interface{}); ok {
+					if name, ok := om["name"]; ok {
+						names = append(names, name)
+						continue
+					}
+				}
+				names = append(names, o)
+			}
+			c["options"] = names
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 func executeFieldGet(runtime *common.RuntimeContext) error {
@@ -184,10 +259,18 @@ func executeFieldDelete(runtime *common.RuntimeContext) error {
 	return nil
 }
 
+func fieldSearchOptionsRef(runtime *common.RuntimeContext) string {
+	fieldRef := runtime.Str("field-id")
+	if strings.TrimSpace(fieldRef) == "" {
+		fieldRef = runtime.Str("field-name")
+	}
+	return fieldRef
+}
+
 func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
-	fieldRef := runtime.Str("field-id")
+	fieldRef := fieldSearchOptionsRef(runtime)
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
 		"limit":  runtime.Int("limit"),

@@ -48,6 +48,7 @@ lark-cli drive +import --file ./data.csv --type bitable --folder-token <FOLDER_T
 
 # 导入数据到已有的多维表格（不新建，数据挂载到目标多维表格中）
 lark-cli drive +import --file ./data.xlsx --type bitable --target-token <BASE_TOKEN>
+# 成功后验证 <BASE_TOKEN>；不要拿返回中的导入任务 token 当作 Base token 复核
 
 # 预览底层调用链（上传 -> 创建任务 -> 轮询）
 lark-cli drive +import --file ./README.md --type docx --dry-run
@@ -72,7 +73,7 @@ lark-cli drive +import --file ./README.md --type docx --dry-run
   2. 调用 `import_tasks` 接口发起导入任务，自动根据本地文件提取扩展名并构造挂载点（`mount_point`）参数
   3. 自动轮询查询导入任务状态；如果在内置轮询窗口内完成，则直接返回导入结果；如果仍未完成，则返回 `ticket`、当前状态和后续查询命令
 - **默认根目录行为**：不传 `--folder-token` 时，shortcut 会保留空的 `point.mount_key`，Lark Import API 会将其视为"导入到调用者根目录"。
-- **导入到已有 bitable**：当 `--type bitable` 且传了 `--target-token` 时，请求 body 中会增加一个 `token` 字段指向目标多维表格的 token，point 挂载点逻辑不变。数据会挂载到该已有多维表格中，而非创建新文档。
+- **导入到已有 bitable**：当 `--type bitable` 且传了 `--target-token` 时，请求 body 中会增加一个 `token` 字段指向目标多维表格。数据会挂载到该已有多维表格中，而非创建新文档；完成后用输出的 `verification_token`（即传入的 `--target-token`）复核，不要改用返回的导入任务 `token` 做 Base 查询。
 
 ### 支持的文件类型转换
 
