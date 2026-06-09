@@ -5,11 +5,12 @@ package sheets
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // TestExecute_WorkbookInfo_Happy stubs the invoke_read endpoint and
@@ -453,16 +454,27 @@ func TestExecute_WorkbookCreate_FillFailureKeepsToken(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected a partial-success error; got nil\nout=%s", out)
 	}
-	exitErr, ok := err.(*output.ExitError)
+	p, ok := errs.ProblemOf(err)
 	if !ok {
-		t.Fatalf("error type = %T, want *output.ExitError (structured)", err)
+		t.Fatalf("error type = %T, want typed problem", err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatal("ExitError.Detail is nil; want structured detail carrying the token")
+	if p.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition (the spreadsheet exists; caller must change state, not retry)", p.Subtype)
 	}
-	detail, _ := exitErr.Detail.Detail.(map[string]interface{})
-	if detail["spreadsheet_token"] != "shtNEW" {
-		t.Errorf("detail.spreadsheet_token = %v, want shtNEW (must survive the fill failure)", detail["spreadsheet_token"])
+	if !strings.Contains(p.Message, "shtNEW") {
+		t.Errorf("message = %q, want spreadsheet token for recovery", p.Message)
+	}
+	if !strings.Contains(p.Hint, "spreadsheet_token") {
+		t.Errorf("hint = %q, want recovery guidance naming spreadsheet_token", p.Hint)
+	}
+	// The underlying fill failure is preserved as the cause so its subtype and
+	// log_id stay diagnosable rather than being flattened into the message.
+	inner := errors.Unwrap(err)
+	if inner == nil {
+		t.Fatalf("expected the underlying fill failure preserved as the cause")
+	}
+	if ip, ok := errs.ProblemOf(inner); !ok || ip.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("cause = %v, want the underlying invalid_response failure preserved for diagnosis", inner)
 	}
 }
 

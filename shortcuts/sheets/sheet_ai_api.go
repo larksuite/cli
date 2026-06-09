@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,7 +42,7 @@ func toolInvokePath(token string, kind ToolKind) string {
 func buildToolBody(toolName string, input map[string]interface{}) (map[string]interface{}, error) {
 	inputJSON, err := json.Marshal(input)
 	if err != nil {
-		return nil, fmt.Errorf("encode tool input: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeSDKError, "encode tool input: %v", err).WithCause(err)
 	}
 	return map[string]interface{}{
 		"tool_name": toolName,
@@ -77,13 +77,14 @@ func callTool(
 
 	envelope, ok := raw.(map[string]interface{})
 	if !ok {
-		return nil, output.Errorf(output.ExitAPI, "tool_response",
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"tool %q: unexpected non-JSON-object response: %v", toolName, raw)
 	}
 	code, _ := util.ToFloat64(envelope["code"])
 	if code != 0 {
 		msg, _ := envelope["msg"].(string)
-		return nil, output.ErrAPI(int(code), fmt.Sprintf("tool %q failed: [%d] %s", toolName, int(code), msg), envelope["error"])
+		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), msg).
+			WithCode(int(code))
 	}
 	data, _ := envelope["data"].(map[string]interface{})
 	rawOutput, _ := data["output"].(string)
@@ -93,8 +94,8 @@ func callTool(
 
 	var out interface{}
 	if err := json.Unmarshal([]byte(rawOutput), &out); err != nil {
-		return nil, output.Errorf(output.ExitAPI, "tool_output",
-			"tool %q returned invalid JSON output: %v", toolName, err)
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"tool %q returned invalid JSON output: %v", toolName, err).WithCause(err)
 	}
 	return out, nil
 }

@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // ─── schema-driven flag validation ────────────────────────────────────
@@ -95,7 +93,7 @@ func validateValueAgainstSchema(fv flagView, name string, value interface{}) err
 	var schema schemaProperty
 	json.Unmarshal(raw, &schema)
 	if vErr := validateAgainstSchema(value, &schema, ""); vErr != nil {
-		return common.FlagErrorf("--%s: %s", name, vErr.Error())
+		return sheetsValidationForFlag(name, "--%s: %s", name, vErr.Error())
 	}
 	return nil
 }

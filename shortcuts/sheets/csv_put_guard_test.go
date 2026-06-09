@@ -4,10 +4,12 @@
 package sheets
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -40,6 +42,16 @@ func TestGuardCSVValueIsNotFilePath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "existing file") || !strings.Contains(err.Error(), "@data.csv") {
 		t.Errorf("error should flag the file and suggest @data.csv, got: %v", err)
+	}
+	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("problem = %+v, want validation/invalid_argument", p)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("guard error = %T, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--csv" {
+		t.Errorf("param = %q, want --csv", ve.Param)
 	}
 
 	// Content that is not a real file must pass through unchanged.

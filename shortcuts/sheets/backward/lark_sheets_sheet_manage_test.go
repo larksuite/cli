@@ -6,14 +6,13 @@ package backward
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/tidwall/gjson"
 )
@@ -402,38 +401,26 @@ func TestSheetCopySheetExecuteMoveFailureIncludesCopiedSheetRecovery(t *testing.
 		t.Fatal("expected move failure, got nil")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError with detail, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T: %v", err, err)
 	}
-	if exitErr.Detail.Code != 1310211 {
-		t.Fatalf("error code = %d, want 1310211", exitErr.Detail.Code)
+	if p.Code != 1310211 {
+		t.Fatalf("error code = %d, want 1310211", p.Code)
 	}
-	if !strings.Contains(exitErr.Detail.Message, `sheet copied successfully as "sheet_copy"`) {
-		t.Fatalf("message missing copied sheet id: %q", exitErr.Detail.Message)
+	if !strings.Contains(p.Message, `sheet copied successfully as "sheet_copy"`) {
+		t.Fatalf("message missing copied sheet id: %q", p.Message)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "do not retry +copy-sheet") {
-		t.Fatalf("hint missing retry guard: %q", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "do not retry +copy-sheet") {
+		t.Fatalf("hint missing retry guard: %q", p.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "+update-sheet --spreadsheet-token shtTOKEN --sheet-id sheet_copy --index 2") {
-		t.Fatalf("hint missing recovery command: %q", exitErr.Detail.Hint)
+	// The recovery command in the hint is the AI-actionable signal: retry only
+	// the move (not the whole +copy-sheet, which would duplicate the sheet).
+	if !strings.Contains(p.Hint, "+update-sheet --spreadsheet-token shtTOKEN --sheet-id sheet_copy --index 2") {
+		t.Fatalf("hint missing recovery command: %q", p.Hint)
 	}
-
-	detail, _ := exitErr.Detail.Detail.(map[string]interface{})
-	if detail["partial_success"] != true {
-		t.Fatalf("partial_success = %#v, want true", detail["partial_success"])
-	}
-	if detail["sheet_id"] != "sheet_copy" {
-		t.Fatalf("sheet_id = %#v, want %q", detail["sheet_id"], "sheet_copy")
-	}
-	if detail["requested_index"] != 2 {
-		t.Fatalf("requested_index = %#v, want 2", detail["requested_index"])
-	}
-	if detail["retry_command"] != "lark-cli sheets +update-sheet --spreadsheet-token shtTOKEN --sheet-id sheet_copy --index 2" {
-		t.Fatalf("retry_command = %#v", detail["retry_command"])
-	}
-	if detail["log_id"] != "log-move-failed" {
-		t.Fatalf("log_id = %#v, want %q", detail["log_id"], "log-move-failed")
+	if p.LogID != "log-move-failed" {
+		t.Fatalf("log_id = %q, want %q", p.LogID, "log-move-failed")
 	}
 }
 
