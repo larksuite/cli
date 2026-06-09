@@ -268,3 +268,64 @@ func buildChatContexts(chatIDs []string) []interface{} {
 	}
 	return items
 }
+
+func TestImMessagesSearchMgetPartialResults(t *testing.T) {
+	var mgetCalls int
+
+	runtime := newMessagesSearchRuntime(t, map[string]string{
+		"query": "incident",
+	}, map[string]bool{
+		"page-all": true,
+	}, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/search"):
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"items":    buildSearchResultItems(1, 55),
+					"has_more": false,
+				},
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/mget"):
+			mgetCalls++
+			if mgetCalls == 1 {
+				return nil, fmt.Errorf("transient mget failure")
+			}
+			ids := req.URL.Query()["message_ids"]
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"items": buildMessageDetails(ids),
+				},
+			}), nil
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/chats/batch_query"):
+			var body struct {
+				ChatIDs []string `json:"chat_ids"`
+			}
+			rawBody, _ := io.ReadAll(req.Body)
+			json.Unmarshal(rawBody, &body)
+			return shortcutJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"items": buildChatContexts(body.ChatIDs),
+				},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	if err := ImMessagesSearch.Execute(context.Background(), runtime); err != nil {
+		t.Fatalf("ImMessagesSearch.Execute() error = %v", err)
+	}
+
+	if mgetCalls != 2 {
+		t.Fatalf("mgetCalls = %d, want 2 (first batch fails, second succeeds)", mgetCalls)
+	}
+
+	outBuf, _ := runtime.Factory.IOStreams.Out.(*bytes.Buffer)
+	output := outBuf.String()
+	if !strings.Contains(output, "5 search result(s)") {
+		t.Fatalf("stdout should contain 5 partial results, got: %s", output)
+	}
+}

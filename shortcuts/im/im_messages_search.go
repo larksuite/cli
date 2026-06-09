@@ -121,9 +121,8 @@ var ImMessagesSearch = common.Shortcut{
 		}
 
 		// ── Step 2: Batch fetch message details (mget) ──
-		msgItems, err := batchMGetMessages(runtime, messageIds)
-		if err != nil {
-			// Fallback when mget fails: return ID list only
+		msgItems := batchMGetMessages(runtime, messageIds)
+		if len(msgItems) == 0 {
 			outData := map[string]interface{}{
 				"message_ids": messageIds,
 				"total":       len(messageIds),
@@ -444,17 +443,17 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, nil
 }
 
-func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
+func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) []interface{} {
 	var items []interface{}
 	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
 		mgetData, err := runtime.DoAPIJSONTyped(http.MethodGet, buildMGetURL(batch), nil, nil)
 		if err != nil {
-			return nil, err
+			continue
 		}
 		batchItems, _ := mgetData["items"].([]interface{})
 		items = append(items, batchItems...)
 	}
-	return items, nil
+	return items
 }
 
 func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) map[string]map[string]interface{} {
