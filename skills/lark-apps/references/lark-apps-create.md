@@ -9,7 +9,7 @@
 ## 命令骨架
 
 - 必填：`--name`、`--app-type`。
-- app type 只接受 `html` / `full_stack`，大小写敏感。
+- app type 语义取值为 `html` / `full_stack`；CLI 会把输入归一成小写后校验。
 - 可选：`--description`、`--icon-url`。
 
 ## 示例

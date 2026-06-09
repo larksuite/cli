@@ -23,6 +23,7 @@ lark-cli apps +publish --app-id app_xxx --branch sprint/default --dry-run
 
 - 成功读取 `data.release_id` 和 `data.status`；`release_id` 是后续 `+publish-status` / `+publish-error-log` 的入参。
 - `status=publishing` 表示发布仍在进行；继续用 `+publish-status` 轮询。
+- `+publish` 返回 release 只代表发布已发起。只有 `+publish-status` 对同一个 `release_id` 返回 `finished` 后，才能说本轮最新版本已部署。
 
 ## Agent 规则
 

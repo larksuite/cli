@@ -19,9 +19,27 @@ lark-cli apps +session-read --app-id app_xxx --session-id sess_xxx
 lark-cli apps +session-list --app-id app_xxx
 ```
 
+## 完成态不等于发布态
+
+云端会话的完成态和应用发布态分开判断：
+
+- `+session-read` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束。
+- 这不会自动证明最新版本已经发布部署，也不能证明用户拿到的发布态 URL 指向最新内容。
+- `+list` 的 `is_published=true` 只说明应用历史上已有发布版本；不要把它当作“最新云端生成结果已部署”的证据。
+- 若用户要“最新可访问链接”或“确认已上线”，必须先走发布链路并确认完成：全栈应用用 `+publish` -> `+publish-status`，HTML 应用用 `+html-publish`。
+
+## 链接交付
+
+云端搭建完成后，给用户区分两类链接：
+
+- 开发态链接：拿到 `app_id` 后即可拼 `https://miaoda.feishu.cn/app/{app_id}`，例如 `https://miaoda.feishu.cn/app/app_xxx`。
+- 发布态访问链接：只有在发布动作已完成时才提供。全栈应用在 `+publish-status` 返回 `finished` 后，用 `+list` 读取 `online_url`；HTML 应用使用 `+html-publish` 返回的 `data.url`。
+
+如果只完成了云端会话、没有确认发布完成，就明确告诉用户“开发态链接可进入继续编辑，发布态是否为最新版本尚未确认”。
+
 ## 需求发送
 
-- 只有用户明确选择云端路径，或明确说“让妙搭 Agent/云端 AI 生成/迭代”时，才进入本 reference；不要因为用户只说“做个 X”或“给我链接”就默认云端。
+- 只有用户明确选择云端路径，或明确说“让妙搭 Agent / 云端 AI 生成/迭代”时，才进入本 reference；不要因为用户只说“做个 X”或“给我链接”就默认云端。
 - 进入云端路径后，极简需求也可直接发起生成，例如“做个投票工具”“做个站会小应用”。先建 `full_stack` app，再用 `+chat --message "<用户原话>"` 透传需求，不编造实体、字段或业务细节。
 - 如果需求过泛，可在 `+chat --message` 中保留原话，并只补一句“请先生成通用版本，后续可继续迭代”，不要用多轮追问阻塞生成。
 
