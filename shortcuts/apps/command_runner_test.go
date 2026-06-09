@@ -49,7 +49,12 @@ func (f *fakeCommandRunner) Run(ctx context.Context, dir, name string, args ...s
 		key = name + " " + args[0]
 	}
 	if name != "git" && len(args) >= 2 && args[0] == "apps" {
-		key = "credential-init"
+		switch args[1] {
+		case "+env-pull":
+			key = "env-pull"
+		default:
+			key = "credential-init"
+		}
 	}
 	if r, ok := f.results[key]; ok {
 		return r.stdout, r.stderr, r.err

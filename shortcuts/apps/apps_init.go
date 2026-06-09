@@ -92,7 +92,8 @@ var AppsInit = common.Shortcut{
 			Set("checkout", "git checkout "+defaultInitBranch).
 			Set("scaffold", fmt.Sprintf("empty repo: npx -y --prefer-online %s app init --template %s --app-id %s; non-empty: npx -y --prefer-online %s app sync + .spark/meta.json app_id patch + conditional skills sync --local", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
 			Set("commit_push", "conditional: git add -A + commit + push origin "+defaultInitBranch+" when the working tree has changes").
-			Set("template", template)
+			Set("template", template).
+			Set("env_pull", fmt.Sprintf("apps +env-pull --app-id %s --project-path <clone_path> --format json (after successful init)", appID))
 		dir, err := resolveTargetPath(rctx, appID)
 		if err != nil {
 			dry.Set("dir_error", err.Error())
@@ -313,6 +314,50 @@ func parseRepoURLFromEnvelope(stdout string) (string, error) {
 	return env.Data.RepositoryURL, nil
 }
 
+// parseEnvFileFromEnvelope extracts data.env_file from a `+env-pull` success
+// envelope ({"ok":true,"data":{"env_file":"..."}}) on stdout.
+func parseEnvFileFromEnvelope(stdout string) (string, error) {
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			EnvFile string `json:"env_file"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+		return "", output.Errorf(output.ExitInternal, "env_pull", "could not parse +env-pull output as JSON: %v", err)
+	}
+	if !env.OK {
+		return "", output.Errorf(output.ExitInternal, "env_pull", "+env-pull reported failure")
+	}
+	if strings.TrimSpace(env.Data.EnvFile) == "" {
+		return "", output.Errorf(output.ExitInternal, "env_pull", "+env-pull returned no env_file")
+	}
+	return env.Data.EnvFile, nil
+}
+
+// parseEnvPullErrorEnvelope extracts a single-line reason from a `+env-pull`
+// error envelope ({"ok":false,"error":{"type":...,"message":...}}) on stderr.
+// Returns "" when stderr is not a parseable error envelope (caller falls back).
+func parseEnvPullErrorEnvelope(stderr string) string {
+	var env struct {
+		Error struct {
+			Type    string `json:"type"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stderr)), &env); err != nil {
+		return ""
+	}
+	msg := strings.TrimSpace(env.Error.Message)
+	if msg == "" {
+		return ""
+	}
+	if t := strings.TrimSpace(env.Error.Type); t != "" {
+		return t + ": " + msg
+	}
+	return msg
+}
+
 // validateRepoURLScheme rejects any repository_url that is not http(s):// to
 // block git's dangerous transports (ext::, file://, ssh://) and option injection.
 func validateRepoURLScheme(repoURL string) error {
@@ -397,6 +442,15 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		initLogf(rctx, "Working tree clean — skipped commit/push")
 	}
 
+	initLogf(rctx, "Pulling local environment variables...")
+	envFile, envPullErr := pullEnv(ctx, rctx, appID, dir)
+	envPulled := envPullErr == ""
+	if envPulled {
+		initLogf(rctx, "Local environment written to %s", envFile)
+	} else {
+		initLogf(rctx, "Could not pull local env vars: %s", envPullErr)
+	}
+
 	out := map[string]interface{}{
 		"app_id":         appID,
 		"repository_url": redactURLCredentials(repoURL),
@@ -405,14 +459,57 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 		"scaffold":       scaffold,
 		"committed":      committed,
 		"pushed":         pushed,
+		"env_pulled":     envPulled,
 		"message":        "Repository initialized. You can start developing.",
+	}
+	if envPulled {
+		out["env_file"] = envFile
+	} else {
+		out["env_pull_error"] = envPullErr
+		out["message"] = fmt.Sprintf("Repository initialized. Could not pull local env vars automatically — run `lark-cli apps +env-pull --app-id %s` to retry.", appID)
 	}
 	rctx.OutFormat(out, nil, func(w io.Writer) {
 		fmt.Fprintf(w, "✓ Repository initialized at %s\n", dir)
 		fmt.Fprintf(w, "  branch: %s\n  scaffold: %s\n", defaultInitBranch, scaffold)
+		if envPulled {
+			fmt.Fprintf(w, "✓ Local environment written to %s\n", envFile)
+		} else {
+			fmt.Fprintf(w, "⚠ Could not pull local env vars: %s\n", envPullErr)
+			fmt.Fprintf(w, "  run `lark-cli apps +env-pull --app-id %s` to retry\n", appID)
+		}
 		fmt.Fprintln(w, "仓库已初始化完成，可以开始开发了。")
 	})
 	return nil
+}
+
+// pullEnv runs `<self> apps +env-pull --app-id <appID> --project-path <dir>
+// --format json`, forwarding --as when set. Returns (envFile, "") on success or
+// ("", reason) on failure. Non-fatal by contract: the caller logs a warning and
+// continues. The success envelope is read from stdout, the error envelope from
+// stderr (lark-cli writes structured errors to stderr; see cmd/root.go
+// handleRootError). The reason is always redacted.
+func pullEnv(ctx context.Context, rctx *common.RuntimeContext, appID, dir string) (envFile, reason string) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", redactURLCredentials(fmt.Sprintf("cannot locate lark-cli executable: %v", err))
+	}
+	args := []string{"apps", "+env-pull", "--app-id", appID, "--project-path", dir, "--format", "json"}
+	if as := strings.TrimSpace(rctx.Str("as")); as != "" {
+		args = append(args, "--as", as)
+	}
+	stdout, stderr, runErr := initRunner.Run(ctx, "", self, args...)
+	if runErr != nil {
+		r := parseEnvPullErrorEnvelope(stderr)
+		if r == "" {
+			r = gitErr(stderr, runErr)
+		}
+		return "", redactURLCredentials(r)
+	}
+	envFile, perr := parseEnvFileFromEnvelope(stdout)
+	if perr != nil {
+		return "", redactURLCredentials(perr.Error())
+	}
+	return envFile, ""
 }
 
 // issueCredentials runs `<self> apps +git-credential-init --app-id <id> --format json`
