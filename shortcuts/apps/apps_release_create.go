@@ -24,7 +24,7 @@ var AppsReleaseCreate = common.Shortcut{
 		"Example: lark-cli apps +release-create --app-id <app_id>",
 		"Example: lark-cli apps +release-create --app-id <app_id> --branch sprint/default --dry-run",
 	},
-	Scopes:    []string{"spark:app:publish"},
+	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{

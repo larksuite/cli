@@ -37,7 +37,7 @@ func TestAppsReleaseCreateMeta(t *testing.T) {
 	if AppsReleaseCreate.Command != "+release-create" || AppsReleaseCreate.Risk != "write" {
 		t.Errorf("meta mismatch: %+v", AppsReleaseCreate)
 	}
-	if len(AppsReleaseCreate.Scopes) != 1 || AppsReleaseCreate.Scopes[0] != "spark:app:publish" {
+	if len(AppsReleaseCreate.Scopes) != 1 || AppsReleaseCreate.Scopes[0] != "spark:app:write" {
 		t.Errorf("scopes = %v", AppsReleaseCreate.Scopes)
 	}
 }

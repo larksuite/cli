@@ -62,6 +62,9 @@ var AppsReleaseGet = common.Shortcut{
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",
 				out["release_id"], out["status"], out["created_at"], out["updated_at"])
+			if commitID, ok := out["commit_id"].(string); ok && commitID != "" {
+				fmt.Fprintf(w, "commit_id: %s\n", commitID)
+			}
 			status, _ := out["status"].(string)
 			switch status {
 			case "finished":

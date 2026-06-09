@@ -30,7 +30,7 @@ var AppsReleaseList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
 		{Name: "status", Enum: []string{"publishing", "finished", "failed"}, Desc: "filter by release status: publishing | finished | failed"},
-		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (max 50)"},
+		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (max 500)"},
 		{Name: "page-token", Desc: "pagination cursor from a previous response"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {

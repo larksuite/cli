@@ -10,7 +10,7 @@
 
 - 必填：`--app-id`。
 - 可选 `--status`：`publishing` / `finished` / `failed`。
-- 可选 `--page-size`：默认 20，最大 50；总是发送给服务端。
+- 可选 `--page-size`：默认 20，最大 500；总是发送给服务端。
 - 可选 `--page-token`：上一页 cursor。
 
 ## 示例

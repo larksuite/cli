@@ -214,6 +214,65 @@ func TestAppsReleaseGetPrettyFailedEmptyLogs(t *testing.T) {
 	}
 }
 
+func TestAppsReleaseGetPrettyCommitID(t *testing.T) {
+	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "10")
+	rctx.Format = "pretty"
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/releases/10",
+		Body: map[string]interface{}{"code": 0, "msg": "",
+			"data": map[string]interface{}{"release": map[string]interface{}{
+				"release_id": "10", "status": "publishing",
+				"created_at": "1700000000000", "updated_at": "1700000000000",
+				"commit_id": "1230aisdkjah9123913hi193",
+			}}},
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if !strings.Contains(stdoutBuf.String(), "commit_id: 1230aisdkjah9123913hi193") {
+		t.Errorf("expected commit_id line, got:\n%s", stdoutBuf.String())
+	}
+}
+
+func TestAppsReleaseGetPrettyNoCommitID(t *testing.T) {
+	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "11")
+	rctx.Format = "pretty"
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/releases/11",
+		Body: map[string]interface{}{"code": 0, "msg": "",
+			"data": map[string]interface{}{"release": map[string]interface{}{
+				"release_id": "11", "status": "publishing",
+				"created_at": "1700000000000", "updated_at": "1700000000000",
+			}}},
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if strings.Contains(stdoutBuf.String(), "commit_id:") {
+		t.Errorf("absent commit_id must not print commit_id line, got:\n%s", stdoutBuf.String())
+	}
+}
+
+func TestAppsReleaseGetPrettyEmptyCommitID(t *testing.T) {
+	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "12")
+	rctx.Format = "pretty"
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/releases/12",
+		Body: map[string]interface{}{"code": 0, "msg": "",
+			"data": map[string]interface{}{"release": map[string]interface{}{
+				"release_id": "12", "status": "publishing",
+				"created_at": "1700000000000", "updated_at": "1700000000000",
+				"commit_id": "",
+			}}},
+	})
+	if err := AppsReleaseGet.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if strings.Contains(stdoutBuf.String(), "commit_id:") {
+		t.Errorf("empty commit_id must not print commit_id line, got:\n%s", stdoutBuf.String())
+	}
+}
+
 func TestAppsReleaseGetJSONOnlineURLPassthrough(t *testing.T) {
 	rctx, stdoutBuf, reg := newStatusRuntimeContext(t, "app_x", "5")
 	reg.Register(&httpmock.Stub{
