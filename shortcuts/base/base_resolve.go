@@ -349,7 +349,7 @@ func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string
 	hint := map[string]interface{}{}
 	if baseToken != "" && tableID != "" && recordID != "" {
 		if record, err := getResolveRecord(runtime, baseToken, tableID, recordID); err == nil {
-			hint["record"] = record
+			hint["record"] = formatResolvedRecord(record)
 		}
 	}
 	if baseToken != "" && tableID != "" {
@@ -364,6 +364,50 @@ func getResolveRecord(runtime *common.RuntimeContext, baseToken, tableID, record
 	body := map[string]interface{}{"record_id_list": []string{recordID}}
 	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableID, "records", "batch_get"), nil, body)
 	return handleBaseAPIResult(result, err, "batch get records")
+}
+
+func formatResolvedRecord(record map[string]interface{}) map[string]interface{} {
+	recordIDs := common.GetSlice(record, "record_id_list")
+	fieldIDs := common.GetSlice(record, "field_id_list")
+	fieldNames := common.GetSlice(record, "fields")
+	rows := common.GetSlice(record, "data")
+
+	out := map[string]interface{}{}
+	if len(recordIDs) > 0 {
+		out["record_id"] = fmt.Sprintf("%v", recordIDs[0])
+	}
+
+	data := map[string]interface{}{}
+	if len(rows) > 0 {
+		if values, ok := rows[0].([]interface{}); ok {
+			for i, value := range values {
+				data[resolvedRecordFieldKey(fieldIDs, fieldNames, i)] = value
+			}
+		}
+	}
+	out["data"] = data
+	return out
+}
+
+func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) string {
+	fieldID := ""
+	if index < len(fieldIDs) {
+		fieldID = strings.TrimSpace(fmt.Sprintf("%v", fieldIDs[index]))
+	}
+	fieldName := ""
+	if index < len(fieldNames) {
+		fieldName = strings.TrimSpace(fmt.Sprintf("%v", fieldNames[index]))
+	}
+	switch {
+	case fieldID != "" && fieldName != "":
+		return fmt.Sprintf("%s(%s)", fieldID, fieldName)
+	case fieldID != "":
+		return fieldID
+	case fieldName != "":
+		return fieldName
+	default:
+		return fmt.Sprintf("field_%d", index+1)
+	}
 }
 
 func resolveHint(tableID string, extra map[string]interface{}) map[string]interface{} {
