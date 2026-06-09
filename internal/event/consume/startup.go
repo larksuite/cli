@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
@@ -51,10 +52,9 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 		} else {
 			fmt.Fprintf(errOut, "[event] remote connection check: online_instance_cnt=%d\n", count)
 			if count > 0 {
-				return nil, fmt.Errorf("another event bus is already connected to this app "+
-					"(%d active connection(s) detected via API).\n"+
-					"Only one bus should run globally to avoid duplicate event delivery.\n"+
-					"Use 'lark-cli event status' to check, or 'lark-cli event stop' on the other machine first", count)
+				return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+					"another event bus is already connected to this app (%d active connection(s) detected via API); only one bus should run globally to avoid duplicate event delivery", count).
+					WithHint("use `lark-cli event status` to check, or `lark-cli event stop` on the other machine first")
 			}
 		}
 	} else {
@@ -65,8 +65,10 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 	pid, forkErr := forkBus(tr, appID, profileName, domain)
 	if forkErr != nil && !errors.Is(forkErr, lockfile.ErrHeld) {
 		eventsRoot := filepath.Join(core.GetConfigDir(), "events")
-		return nil, fmt.Errorf("failed to start event bus daemon: %w\n"+
-			"Check: disk space, permissions on %s, and 'lark-cli doctor'", forkErr, eventsRoot)
+		return nil, errs.NewInternalError(errs.SubtypeUnknown,
+			"failed to start event bus daemon: %s", forkErr).
+			WithCause(forkErr).
+			WithHint("check disk space, permissions on %s, and `lark-cli doctor`", eventsRoot)
 	}
 	if pid > 0 {
 		announceForkedBus(errOut, pid)
@@ -88,7 +90,9 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 	fmt.Fprintln(errOut, "[event] event bus exited unexpectedly.")
 	fmt.Fprintln(errOut, "[event] please check app credentials (lark-cli config show) and retry.")
 	fmt.Fprintf(errOut, "[event] logs: %s\n", logPath)
-	return nil, fmt.Errorf("failed to connect to event bus within %v (app=%s)", dialTimeout, appID)
+	return nil, errs.NewInternalError(errs.SubtypeUnknown,
+		"failed to connect to event bus within %v (app=%s)", dialTimeout, appID).
+		WithHint("check app credentials (`lark-cli config show`) and retry; bus logs: %s", logPath)
 }
 
 // probeAndDialBus distinguishes a healthy bus from a mid-shutdown listener via StatusQuery first.

@@ -23,8 +23,6 @@ import (
 	"strings"
 	"time"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
@@ -74,22 +72,13 @@ const (
 )
 
 func minutesReadError(err error, minuteToken string) error {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Code != minutesNoReadPermissionCode {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != minutesNoReadPermissionCode {
 		return err
 	}
-
-	return &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "no_read_permission",
-			Code:    minutesNoReadPermissionCode,
-			Message: fmt.Sprintf("No read permission for minute %s: cannot query the minute.", minuteToken),
-			Hint:    "Ask the minute owner for minute file read permission",
-			Detail:  exitErr.Detail.Detail,
-		},
-		Err: err,
-	}
+	p.Message = fmt.Sprintf("No read permission for minute %s: cannot query the minute.", minuteToken)
+	p.Hint = "Ask the minute owner for minute file read permission"
+	return err
 }
 
 // validMinuteToken matches the server's minute-token format and blocks any
@@ -114,19 +103,19 @@ func sanitizeLogValue(s string) string {
 
 // getPrimaryCalendarID retrieves the current user's primary calendar ID.
 func getPrimaryCalendarID(runtime *common.RuntimeContext) (string, error) {
-	data, err := runtime.DoAPIJSON(http.MethodPost, "/open-apis/calendar/v4/calendars/primary", nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodPost, "/open-apis/calendar/v4/calendars/primary", nil, nil)
 	if err != nil {
-		return "", err // preserve original API error (with lark error code)
+		return "", err
 	}
 	calendars, _ := data["calendars"].([]any)
 	if len(calendars) == 0 {
-		return "", output.ErrValidation("primary calendar not found")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "primary calendar not found")
 	}
 	first, _ := calendars[0].(map[string]any)
 	cal, _ := first["calendar"].(map[string]any)
 	calID, _ := cal["calendar_id"].(string)
 	if calID == "" {
-		return "", output.ErrValidation("primary calendar ID is empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "primary calendar ID is empty")
 	}
 	return calID, nil
 }
@@ -149,23 +138,23 @@ func resolveMeetingIDsFromCalendarEvent(runtime *common.RuntimeContext, instance
 	if needNotes {
 		body["need_meeting_notes"] = true
 	}
-	data, err := runtime.DoAPIJSON(http.MethodPost,
+	data, err := runtime.CallAPITyped(http.MethodPost,
 		fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/mget_instance_relation_info", validate.EncodePathSegment(calendarID)),
 		nil,
 		body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query event relation info: %w", err)
+		return nil, err
 	}
 
 	infos, _ := data["instance_relation_infos"].([]any)
 	if len(infos) == 0 {
-		return nil, fmt.Errorf("no event relation info found")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "no event relation info found")
 	}
 	info, _ := infos[0].(map[string]any)
 
 	rawIDs, _ := info["meeting_instance_ids"].([]any)
 	if len(rawIDs) == 0 {
-		return nil, fmt.Errorf("no associated video meeting for this event")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "no associated video meeting for this event")
 	}
 
 	result := &eventRelationInfo{}
@@ -293,13 +282,12 @@ func asStringSlice(v any) []string {
 // Other failures fall back to the raw API error description so Agents can
 // still parse the underlying cause.
 func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (token, errMsg string) {
-	data, err := runtime.DoAPIJSON(http.MethodGet,
+	data, err := runtime.CallAPITyped(http.MethodGet,
 		fmt.Sprintf("/open-apis/vc/v1/meetings/%s/recording", validate.EncodePathSegment(meetingID)),
 		nil, nil)
 	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) && exitErr.Detail != nil {
-			switch exitErr.Detail.Code {
+		if p, ok := errs.ProblemOf(err); ok {
+			switch p.Code {
 			case recordingNotFoundCode:
 				return "", "no minute file for this meeting"
 			case recordingNoPermissionCode:
@@ -328,8 +316,8 @@ func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (
 // (semicolon-separated) so Agents always see all causes at once. The
 // `minute_token` field is only populated on success.
 func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, meetingID string) map[string]any {
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
-		larkcore.QueryParams{"with_participants": []string{"false"}, "query_mode": []string{"0"}}, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
+		map[string]interface{}{"with_participants": "false", "query_mode": "0"}, nil)
 	if err != nil {
 		return map[string]any{"meeting_id": meetingID, "error": fmt.Sprintf("failed to query meeting: %v", err)}
 	}
@@ -399,13 +387,12 @@ func hasNotesPayload(m map[string]any) bool {
 func fetchNoteByMinuteToken(ctx context.Context, runtime *common.RuntimeContext, minuteToken string) map[string]any {
 	errOut := runtime.IO().ErrOut
 
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
 	if err != nil {
 		err = minutesReadError(err, minuteToken)
 		result := map[string]any{"minute_token": minuteToken, "error": err.Error()}
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Hint != "" {
-			result["hint"] = exitErr.Detail.Hint
+		if p, ok := errs.ProblemOf(err); ok && p.Hint != "" {
+			result["hint"] = p.Hint
 		}
 		return result
 	}
@@ -469,7 +456,7 @@ func sanitizeDirName(title, minuteToken string) string {
 func fetchInlineArtifacts(runtime *common.RuntimeContext, minuteToken string, title string, result map[string]any) {
 	errOut := runtime.IO().ErrOut
 	fmt.Fprintf(errOut, "%s fetching AI artifacts...\n", logPrefix)
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
 	if err != nil {
 		fmt.Fprintf(errOut, "%s failed to fetch AI artifacts: %v\n", logPrefix, err)
 		return
@@ -582,11 +569,10 @@ func extractDocTokens(refs []any) []string {
 
 // fetchNoteDetail retrieves note document tokens via note_id.
 func fetchNoteDetail(_ context.Context, runtime *common.RuntimeContext, noteID string) map[string]any {
-	data, err := runtime.DoAPIJSON(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/notes/%s", validate.EncodePathSegment(noteID)), nil, nil)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/notes/%s", validate.EncodePathSegment(noteID)), nil, nil)
 	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code == noteNoPermissionCode {
-			return map[string]any{"error": fmt.Sprintf("[%v]: no read permission for this meeting note", exitErr.Detail.Code)}
+		if p, ok := errs.ProblemOf(err); ok && p.Code == noteNoPermissionCode {
+			return map[string]any{"error": fmt.Sprintf("[%v]: no read permission for this meeting note", p.Code)}
 		}
 		return map[string]any{"error": fmt.Sprintf("failed to query note detail: %v", err)}
 	}
@@ -630,7 +616,7 @@ var VCNotes = common.Shortcut{
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing artifact files"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if err := common.ExactlyOne(runtime, "meeting-ids", "minute-tokens", "calendar-event-ids"); err != nil {
+		if err := common.ExactlyOneTyped(runtime, "meeting-ids", "minute-tokens", "calendar-event-ids"); err != nil {
 			return err
 		}
 		// batch input size limit
@@ -638,12 +624,12 @@ var VCNotes = common.Shortcut{
 		for _, flag := range []string{"meeting-ids", "minute-tokens", "calendar-event-ids"} {
 			if v := runtime.Str(flag); v != "" {
 				if ids := common.SplitCSV(v); len(ids) > maxBatchSize {
-					return output.ErrValidation("--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize).WithParam("--" + flag)
 				}
 			}
 		}
 		if outDir := runtime.Str("output-dir"); outDir != "" {
-			if err := common.ValidateSafePath(runtime.FileIO(), outDir); err != nil {
+			if err := common.ValidateSafePathTyped(runtime.FileIO(), outDir); err != nil {
 				return err
 			}
 		}
@@ -651,7 +637,7 @@ var VCNotes = common.Shortcut{
 		if v := runtime.Str("minute-tokens"); v != "" {
 			for _, token := range common.SplitCSV(v) {
 				if !validMinuteToken.MatchString(token) {
-					return output.ErrValidation("invalid minute token %q: must contain only lowercase alphanumeric characters", token)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid minute token %q: must contain only lowercase alphanumeric characters", token).WithParam("--minute-tokens")
 				}
 			}
 		}
@@ -772,9 +758,7 @@ var VCNotes = common.Shortcut{
 
 		// all failed → return structured error
 		if successCount == 0 && len(results) > 0 {
-			outData := map[string]any{"notes": results}
-			runtime.OutFormat(outData, &output.Meta{Count: len(results)}, nil)
-			return output.ErrAPI(0, fmt.Sprintf("all %d queries failed", len(results)), nil)
+			return runtime.OutPartialFailure(map[string]any{"notes": results}, &output.Meta{Count: len(results)})
 		}
 
 		// output

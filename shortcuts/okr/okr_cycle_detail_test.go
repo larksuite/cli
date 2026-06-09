@@ -6,11 +6,13 @@ package okr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -103,6 +105,31 @@ func TestCycleDetailValidate_InvalidCycleID_Negative(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--cycle-id must be a positive int64") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestCycleDetailValidate_TypedError locks the typed-envelope contract shared by
+// every okr flag check: an invalid flag surfaces as *errs.ValidationError carrying
+// SubtypeInvalidArgument and the offending --flag (readable via errors.As /
+// errs.ProblemOf), and maps to the validation exit code rather than a legacy api error.
+func TestCycleDetailValidate_TypedError(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, cycleDetailTestConfig(t))
+	err := runCycleDetailShortcut(t, f, stdout, []string{"+cycle-detail", "--cycle-id", "0"})
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error is not *errs.ValidationError: %T (%v)", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--cycle-id" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--cycle-id")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation {
+		t.Errorf("ProblemOf category = %v (ok=%v), want %q", p, ok, errs.CategoryValidation)
 	}
 }
 

@@ -12,9 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // parseTimeRange parses a "YYYY-MM--YYYY-MM" string into two time.Time values.
@@ -22,20 +21,20 @@ import (
 func parseTimeRange(s string) (start, end time.Time, err error) {
 	parts := strings.SplitN(s, "--", 2)
 	if len(parts) != 2 {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid time-range format %q, expected YYYY-MM--YYYY-MM", s)
+		return time.Time{}, time.Time{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --time-range format %q, expected YYYY-MM--YYYY-MM", s).WithParam("--time-range")
 	}
 	start, err = time.Parse("2006-01", strings.TrimSpace(parts[0]))
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid start month %q: %w", parts[0], err)
+		return time.Time{}, time.Time{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --time-range start month %q: %v", parts[0], err).WithParam("--time-range").WithCause(err)
 	}
 	end, err = time.Parse("2006-01", strings.TrimSpace(parts[1]))
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("invalid end month %q: %w", parts[1], err)
+		return time.Time{}, time.Time{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --time-range end month %q: %v", parts[1], err).WithParam("--time-range").WithCause(err)
 	}
 	// end is the last moment of the end month
 	end = end.AddDate(0, 1, 0).Add(-time.Millisecond)
 	if start.After(end) {
-		return time.Time{}, time.Time{}, fmt.Errorf("start month %s is after end month %s", parts[0], parts[1])
+		return time.Time{}, time.Time{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --time-range: start month %s is after end month %s", parts[0], parts[1]).WithParam("--time-range")
 	}
 	return start, end, nil
 }
@@ -69,20 +68,20 @@ var OKRListCycles = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
-			return common.FlagErrorf("--user-id-type must be one of: open_id | union_id | user_id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id-type must be one of: open_id | union_id | user_id").WithParam("--user-id-type")
 		}
 		userID := runtime.Str("user-id")
-		if err := validate.RejectControlChars(userID, "user-id"); err != nil {
+		if err := common.RejectDangerousCharsTyped("--user-id", userID); err != nil {
 			return err
 		}
 
 		tr := runtime.Str("time-range")
 		if tr != "" {
-			if err := validate.RejectControlChars(tr, "time-range"); err != nil {
+			if err := common.RejectDangerousCharsTyped("--time-range", tr); err != nil {
 				return err
 			}
 			if _, _, err := parseTimeRange(tr); err != nil {
-				return common.FlagErrorf("--time-range: %s", err)
+				return err
 			}
 		}
 		return nil
@@ -110,16 +109,17 @@ var OKRListCycles = common.Shortcut{
 			var err error
 			rangeStart, rangeEnd, err = parseTimeRange(timeRange)
 			if err != nil {
-				return common.FlagErrorf("--time-range: %s", err)
+				return err
 			}
 			hasRange = true
 		}
 
 		// Paginated fetch of all cycles
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id", userID)
-		queryParams.Set("user_id_type", userIDType)
-		queryParams.Set("page_size", "100")
+		queryParams := map[string]interface{}{
+			"user_id":      userID,
+			"user_id_type": userIDType,
+			"page_size":    "100",
+		}
 
 		var allCycles []Cycle
 		page := 0
@@ -136,7 +136,7 @@ var OKRListCycles = common.Shortcut{
 			}
 			page++
 
-			data, err := runtime.DoAPIJSON("GET", "/open-apis/okr/v2/cycles", queryParams, nil)
+			data, err := runtime.CallAPITyped("GET", "/open-apis/okr/v2/cycles", queryParams, nil)
 			if err != nil {
 				return err
 			}
@@ -158,7 +158,7 @@ var OKRListCycles = common.Shortcut{
 			if !hasMore || pageToken == "" {
 				break
 			}
-			queryParams.Set("page_token", pageToken)
+			queryParams["page_token"] = pageToken
 		}
 
 		// Filter by time-range overlap

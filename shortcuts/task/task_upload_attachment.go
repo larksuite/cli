@@ -14,8 +14,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -91,20 +91,22 @@ var UploadAttachmentTask = common.Shortcut{
 
 		fio := runtime.FileIO()
 		if fio == nil {
-			return output.ErrValidation("file operations require a FileIO provider")
+			// A nil FileIO is a runtime wiring fault, not user input.
+			return errs.NewInternalError(errs.SubtypeUnknown, "file operations require a FileIO provider")
 		}
 		stat, err := fio.Stat(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
+			return taskInputStatError(err, "--file", "cannot access file")
 		}
 		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
 		}
 		if stat.Size() > taskAttachmentUploadMaxSize {
-			return output.ErrValidation(
+			return errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
 				"attachment %s exceeds the 50MB per-file limit",
 				common.FormatSize(stat.Size()),
-			)
+			).WithParam("--file")
 		}
 
 		fileName := filepath.Base(filePath)
@@ -118,7 +120,7 @@ var UploadAttachmentTask = common.Shortcut{
 
 		f, err := fio.Open(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err, "cannot open file")
+			return taskInputStatError(err, "--file", "cannot open file")
 		}
 		defer f.Close()
 
@@ -129,20 +131,20 @@ var UploadAttachmentTask = common.Shortcut{
 		var bodyBuf bytes.Buffer
 		mw := common.NewMultipartWriter(&bodyBuf)
 		if err := mw.WriteField("resource_type", resourceType); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "build multipart body: %s", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "build multipart body: %s", err)
 		}
 		if err := mw.WriteField("resource_id", resourceID); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "build multipart body: %s", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "build multipart body: %s", err)
 		}
 		filePart, err := mw.CreateFormFile("file", fileName)
 		if err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "build multipart body: %s", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "build multipart body: %s", err)
 		}
 		if _, err := io.Copy(filePart, f); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "write file to multipart body: %s", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "write file to multipart body: %s", err)
 		}
 		if err := mw.Close(); err != nil {
-			return output.Errorf(output.ExitInternal, "internal", "finalize multipart body: %s", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "finalize multipart body: %s", err)
 		}
 
 		queryParams := make(larkcore.QueryParams)
@@ -167,7 +169,7 @@ var UploadAttachmentTask = common.Shortcut{
 		if err != nil {
 			fmt.Fprintf(runtime.IO().ErrOut,
 				"[+upload-attachment] http response: error=%v\n", err)
-			return err
+			return wrapTaskNetworkErr(err, "upload attachment request failed")
 		}
 		defer httpResp.Body.Close()
 
@@ -175,21 +177,17 @@ var UploadAttachmentTask = common.Shortcut{
 		if readErr != nil {
 			fmt.Fprintf(runtime.IO().ErrOut,
 				"[+upload-attachment] http response: read_error=%v\n", readErr)
-			return WrapTaskError(ErrCodeTaskInternalError,
-				fmt.Sprintf("failed to read response: %v", readErr),
-				"upload task attachment")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to read response: %v", readErr)
 		}
 
 		var result map[string]interface{}
 		if parseErr := json.Unmarshal(rawBody, &result); parseErr != nil {
 			fmt.Fprintf(runtime.IO().ErrOut,
 				"[+upload-attachment] http response: parse_error=%v\n", parseErr)
-			return WrapTaskError(ErrCodeTaskInternalError,
-				fmt.Sprintf("failed to parse response: %v", parseErr),
-				"upload task attachment")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to parse response: %v", parseErr)
 		}
 
-		data, err := HandleTaskApiResult(result, nil, "upload task attachment")
+		data, err := HandleTaskApiResultWithContext(result, nil, "upload task attachment", runtime.APIClassifyContext())
 		if err != nil {
 			code, _ := result["code"]
 			msg, _ := result["msg"].(string)

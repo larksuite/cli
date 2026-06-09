@@ -28,7 +28,7 @@ var BaseWorkflowList = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
 	},

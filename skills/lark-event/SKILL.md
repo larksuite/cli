@@ -1,7 +1,7 @@
 ---
 name: lark-event
 version: 1.0.0
-description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM messages/reactions/chat changes, VC meeting ended, Minutes generated, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
+description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM messages/reactions/chat changes, VC meeting ended, Minutes generated, Whiteboard updated, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -69,7 +69,7 @@ wait
 
 ### stdin EOF = graceful exit
 
-`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause an immediate graceful exit (stderr `reason: signal`). To keep running:
+`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). **Bounded runs are exempt: when `--max-events` or `--timeout` is set (> 0), stdin EOF is ignored and the run exits only via its own bound, timeout, or SIGTERM.** For unbounded runs, `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause an immediate graceful exit (stderr `reason: signal`). To keep an unbounded run alive:
 
 - Feed stdin a source that never EOFs: `< <(tail -f /dev/null)`
 - Or run bounded: `--max-events N` / `--timeout D`
@@ -82,8 +82,13 @@ On exit, the last stderr line is `[event] exited — received N event(s) in Xs (
 |---|---|---|
 | 0 | `reason: limit` | `--max-events` reached |
 | 0 | `reason: timeout` | `--timeout` reached |
-| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF |
-| non-0 | `Error: ...` (no `exited` line) | Startup / runtime failure (permissions, network, params, config) |
+| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF (stdin EOF applies to unbounded runs only) |
+| 1 | JSON error envelope on stderr | Lark API business failure during pre-consume setup (for example subscription create/delete) |
+| 2 | JSON error envelope on stderr (no `exited` line) | Validation failure (unknown EventKey, bad `--param` / `--jq`, another bus already connected) |
+| 3 | JSON error envelope on stderr | Auth failure (missing token, missing scopes) |
+| 4 / 5 | JSON error envelope on stderr | Network / internal failure (bus startup, handshake, file I/O) |
+
+Startup and runtime failures emit a structured JSON envelope on stderr: `{"ok":false,"error":{"type","subtype","param","message","hint",...}}` (the envelope may also carry top-level `identity` / `_notice` siblings). Parse `error.type` / `error.subtype` to branch (e.g. `missing_scope` carries a `missing_scopes` list), `error.param` to find the offending flag, and `error.hint` for the recovery action — do not regex-match message text.
 
 Orchestrators should treat `reason: limit/timeout/signal` (all exit 0) as "business completion" and non-zero as "failure".
 
@@ -140,8 +145,9 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 
 ## Topic index
 
-| Topic | Reference | Coverage |
-|---|---|---|
-| IM | [`references/lark-event-im.md`](references/lark-event-im.md) | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
-| VC | [`references/lark-event-vc.md`](references/lark-event-vc.md) | Catalog of 2 VC EventKeys (`vc.meeting.participant_meeting_ended_v1`, `vc.note.generated_v1`) + field reference + source type semantics (meeting only) |
-| Minutes | [`references/lark-event-minutes.md`](references/lark-event-minutes.md) | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + source type semantics (meeting only) |
+| Topic      | Reference                                                                    | Coverage |
+|------------|------------------------------------------------------------------------------|---|
+| IM         | [`references/lark-event-im.md`](references/lark-event-im.md)                 | Catalog of 11 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender) |
+| VC         | [`references/lark-event-vc.md`](references/lark-event-vc.md)                 | Catalog of 2 VC EventKeys (`vc.meeting.participant_meeting_ended_v1`, `vc.note.generated_v1`) + field reference + source type semantics (meeting only) |
+| Minutes    | [`references/lark-event-minutes.md`](references/lark-event-minutes.md)       | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + source type semantics (meeting only) |
+| Whiteboard | [`references/lark-event-whiteboard.md`](references/lark-event-whiteboard.md) | Catalog of 1 Board EventKey (`board.whiteboard.updated_v1`) + per-whiteboard subscription model (requires `-p whiteboard_id=<token>`) + payload field reference (whiteboard_id / operator_ids triple-id) |

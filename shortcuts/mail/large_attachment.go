@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -121,11 +122,11 @@ func statAttachmentFiles(fio fileio.FileIO, paths []string) ([]attachmentFile, e
 		}
 		name := filepath.Base(p)
 		if err := filecheck.CheckBlockedExtension(name); err != nil {
-			return nil, err
+			return nil, mailValidationError("%v", err).WithCause(err)
 		}
 		info, err := fio.Stat(p)
 		if err != nil {
-			return nil, fmt.Errorf("failed to stat attachment %s: %w", p, err)
+			return nil, mailInputStatError(err)
 		}
 		files = append(files, attachmentFile{
 			Path:     p,
@@ -144,7 +145,7 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 	}
 	userOpenId := runtime.UserOpenId()
 	if userOpenId == "" {
-		return nil, fmt.Errorf("large attachment upload requires user identity (user open_id not available)")
+		return nil, mailFailedPreconditionError("large attachment upload requires user identity (user open_id not available)")
 	}
 
 	results := make([]largeAttachmentResult, 0, len(files))
@@ -156,7 +157,7 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 			err       error
 		)
 		if f.Data != nil {
-			fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+			fileToken, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 				FileName:   f.FileName,
 				FileSize:   f.Size,
 				ParentType: "email",
@@ -164,7 +165,7 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 				Reader:     bytes.NewReader(f.Data),
 			})
 		} else if f.Size <= common.MaxDriveMediaUploadSinglePartSize {
-			fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+			fileToken, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 				FilePath:   f.Path,
 				FileName:   f.FileName,
 				FileSize:   f.Size,
@@ -172,7 +173,7 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 				ParentNode: &userOpenId,
 			})
 		} else {
-			fileToken, err = common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+			fileToken, err = common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 				FilePath:   f.Path,
 				FileName:   f.FileName,
 				FileSize:   f.Size,
@@ -181,7 +182,7 @@ func uploadLargeAttachments(ctx context.Context, runtime *common.RuntimeContext,
 			})
 		}
 		if err != nil {
-			return nil, fmt.Errorf("failed to upload large attachment %s: %w", f.FileName, err)
+			return nil, mailDecorateProblemMessage(err, "failed to upload large attachment %s", f.FileName)
 		}
 
 		results = append(results, largeAttachmentResult{
@@ -397,7 +398,7 @@ func processLargeAttachments(
 ) (emlbuilder.Builder, error) {
 	totalCount := extraAttachCount + len(attachPaths)
 	if totalCount > MaxAttachmentCount {
-		return bld, fmt.Errorf("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
+		return bld, mailFailedPreconditionError("attachment count %d exceeds the limit of %d", totalCount, MaxAttachmentCount)
 	}
 
 	files, err := statAttachmentFiles(runtime.FileIO(), attachPaths)
@@ -407,7 +408,7 @@ func processLargeAttachments(
 
 	for _, f := range files {
 		if f.Size > MaxLargeAttachmentSize {
-			return bld, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+			return bld, mailFailedPreconditionError("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
 				f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 		}
 	}
@@ -422,7 +423,7 @@ func processLargeAttachments(
 	}
 
 	if htmlBody == "" && textBody == "" {
-		return bld, fmt.Errorf("large attachments require a body; " +
+		return bld, mailFailedPreconditionError("large attachments require a body; " +
 			"empty messages cannot include the download link")
 	}
 
@@ -431,7 +432,7 @@ func processLargeAttachments(
 		for _, f := range files {
 			totalBytes += f.Size
 		}
-		return bld, fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+		return bld, mailFailedPreconditionError("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
 			"large attachment upload requires user identity (--as user)",
 			float64(totalBytes)/1024/1024)
 	}
@@ -455,7 +456,7 @@ func processLargeAttachments(
 	}
 	idsJSON, err := json.Marshal(ids)
 	if err != nil {
-		return bld, fmt.Errorf("failed to encode large attachment IDs: %w", err)
+		return bld, errs.NewInternalError(errs.SubtypeSDKError, "failed to encode large attachment IDs: %v", err).WithCause(err)
 	}
 	bld = bld.Header(draftpkg.LargeAttachmentIDsHeader, base64.StdEncoding.EncodeToString(idsJSON))
 
@@ -588,7 +589,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	// Check 3GB single file limit.
 	for _, f := range files {
 		if f.Size > MaxLargeAttachmentSize {
-			return patch, fmt.Errorf("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
+			return patch, mailFailedPreconditionError("attachment %s (%.1f GB) exceeds the %.0f GB single file limit",
 				f.FileName, float64(f.Size)/1024/1024/1024, float64(MaxLargeAttachmentSize)/1024/1024/1024)
 		}
 	}
@@ -606,7 +607,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	hasHTML := draftpkg.FindHTMLBodyPart(snapshot.Body) != nil
 	hasText := draftpkg.FindTextBodyPart(snapshot.Body) != nil
 	if !hasHTML && !hasText {
-		return patch, fmt.Errorf("large attachments require a body; " +
+		return patch, mailFailedPreconditionError("large attachments require a body; " +
 			"empty drafts cannot include the download link")
 	}
 
@@ -616,7 +617,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 		for _, f := range files {
 			totalBytes += f.Size
 		}
-		return patch, fmt.Errorf("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
+		return patch, mailFailedPreconditionError("total attachment size %.1f MB exceeds the 25 MB EML limit; "+
 			"large attachment upload requires user identity (--as user)",
 			float64(totalBytes)/1024/1024)
 	}
@@ -672,7 +673,7 @@ func preprocessLargeAttachmentsForDraftEdit(
 	}
 	idsJSON, err := json.Marshal(merged)
 	if err != nil {
-		return patch, fmt.Errorf("failed to encode large attachment IDs: %w", err)
+		return patch, errs.NewInternalError(errs.SubtypeSDKError, "failed to encode large attachment IDs: %v", err).WithCause(err)
 	}
 	headerValue := base64.StdEncoding.EncodeToString(idsJSON)
 	if existingIdx >= 0 {

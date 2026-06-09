@@ -243,7 +243,7 @@ func ExpandThreadReplies(runtime *common.RuntimeContext, messages []map[string]i
 // Returns the raw message items, whether more replies exist beyond the limit,
 // and a non-nil error when the API call fails.
 func fetchThreadReplies(runtime *common.RuntimeContext, threadID string, limit int) ([]map[string]interface{}, bool, error) {
-	data, err := runtime.DoAPIJSON(http.MethodGet, "/open-apis/im/v1/messages", larkcore.QueryParams{
+	data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", larkcore.QueryParams{
 		"container_id_type":     []string{"thread"},
 		"container_id":          []string{threadID},
 		"sort_type":             []string{"ByCreateTimeAsc"},
@@ -251,7 +251,7 @@ func fetchThreadReplies(runtime *common.RuntimeContext, threadID string, limit i
 		"card_msg_content_type": []string{"raw_card_content"},
 	}, nil)
 	if err != nil {
-		return nil, false, fmt.Errorf("fetch thread replies for %s: %w", threadID, err)
+		return nil, false, fmt.Errorf("fetch thread replies for %s: %w", threadID, err) //nolint:forbidigo // best-effort internal thread fetch; never surfaced as a final shortcut error (ExpandThreadReplies is void)
 	}
 	hasMore, _ := data["has_more"].(bool)
 	rawItems, _ := data["items"].([]interface{})

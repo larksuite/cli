@@ -12,9 +12,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 const (
@@ -31,7 +31,7 @@ func toRFC3339(input string, hint ...string) (string, error) {
 	}
 	sec, err := strconv.ParseInt(ts, 10, 64)
 	if err != nil {
-		return "", fmt.Errorf("invalid timestamp %q: %w", ts, err)
+		return "", fmt.Errorf("invalid timestamp %q: %w", ts, err) //nolint:forbidigo // intermediate parse error; callers wrap it into a typed ValidationError
 	}
 	return time.Unix(sec, 0).Format(time.RFC3339), nil
 }
@@ -47,14 +47,14 @@ func parseTimeRange(runtime *common.RuntimeContext) (string, string, error) {
 	if start != "" {
 		parsed, err := toRFC3339(start)
 		if err != nil {
-			return "", "", output.ErrValidation("--start: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		startTime = parsed
 	}
 	if end != "" {
 		parsed, err := toRFC3339(end, "end")
 		if err != nil {
-			return "", "", output.ErrValidation("--end: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		endTime = parsed
 	}
@@ -63,7 +63,7 @@ func parseTimeRange(runtime *common.RuntimeContext) (string, string, error) {
 		st, _ := time.Parse(time.RFC3339, startTime)
 		et, _ := time.Parse(time.RFC3339, endTime)
 		if st.After(et) {
-			return "", "", output.ErrValidation("--start (%s) is after --end (%s)", start, end)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--start (%s) is after --end (%s)", start, end).WithParam("--start")
 		}
 	}
 	return startTime, endTime, nil
@@ -138,16 +138,16 @@ func buildSearchBody(runtime *common.RuntimeContext, startTime, endTime string) 
 	return body
 }
 
-func buildSearchParams(runtime *common.RuntimeContext) larkcore.QueryParams {
-	params := larkcore.QueryParams{}
+func buildSearchParams(runtime *common.RuntimeContext) map[string]interface{} {
+	params := map[string]interface{}{}
 	pageToken := strings.TrimSpace(runtime.Str("page-token"))
 	pageSize, _ := strconv.Atoi(strings.TrimSpace(runtime.Str("page-size")))
 	if pageSize <= 0 {
 		pageSize = defaultVCSearchPageSize
 	}
-	params["page_size"] = []string{strconv.Itoa(pageSize)}
+	params["page_size"] = strconv.Itoa(pageSize)
 	if pageToken != "" {
-		params["page_token"] = []string{pageToken}
+		params["page_token"] = pageToken
 	}
 	return params
 }
@@ -192,9 +192,9 @@ var VCSearch = common.Shortcut{
 			return err
 		}
 		if q := strings.TrimSpace(runtime.Str("query")); q != "" && utf8.RuneCountInString(q) > maxVCSearchQueryLen {
-			return output.ErrValidation("--query: length must be between 1 and 50 characters")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--query: length must be between 1 and 50 characters").WithParam("--query")
 		}
-		if _, err := common.ValidatePageSize(runtime, "page-size", defaultVCSearchPageSize, 1, maxVCSearchPageSize); err != nil {
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", defaultVCSearchPageSize, 1, maxVCSearchPageSize); err != nil {
 			return err
 		}
 		for _, flag := range []string{"query", "start", "end", "organizer-ids", "participant-ids", "room-ids"} {
@@ -202,7 +202,7 @@ var VCSearch = common.Shortcut{
 				return nil
 			}
 		}
-		return common.FlagErrorf("specify at least one of --query, --start, --end, --organizer-ids, --participant-ids, or --room-ids")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --query, --start, --end, --organizer-ids, --participant-ids, or --room-ids")
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		startTime, endTime, err := parseTimeRange(runtime)
@@ -210,20 +210,10 @@ var VCSearch = common.Shortcut{
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
 		params := buildSearchParams(runtime)
-		dryRunParams := map[string]interface{}{}
-		for key, values := range params {
-			if len(values) == 1 {
-				dryRunParams[key] = values[0]
-			} else if len(values) > 1 {
-				vs := make([]string, len(values))
-				copy(vs, values)
-				dryRunParams[key] = vs
-			}
-		}
 		dryRun := common.NewDryRunAPI().
 			POST("/open-apis/vc/v1/meetings/search")
-		if len(dryRunParams) > 0 {
-			dryRun.Params(dryRunParams)
+		if len(params) > 0 {
+			dryRun.Params(params)
 		}
 		return dryRun.Body(buildSearchBody(runtime, startTime, endTime))
 	},
@@ -232,7 +222,7 @@ var VCSearch = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/vc/v1/meetings/search", buildSearchParams(runtime), buildSearchBody(runtime, startTime, endTime))
+		data, err := runtime.CallAPITyped("POST", "/open-apis/vc/v1/meetings/search", buildSearchParams(runtime), buildSearchBody(runtime, startTime, endTime))
 		if err != nil {
 			return err
 		}

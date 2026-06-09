@@ -6,9 +6,9 @@ package base
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -47,7 +47,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		if strings.TrimSpace(raw) == "" {
 			// text 类型必须提供 data-config（含 text 内容）
 			if strings.ToLower(runtime.Str("type")) == "text" {
-				return fmt.Errorf("text 类型组件必须提供 data-config，包含必填字段 text")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "text 类型组件必须提供 data-config，包含必填字段 text").WithParam("--data-config")
 			}
 			return nil
 		}

@@ -6,9 +6,11 @@ package minutes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -63,10 +65,11 @@ func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 		start       string
 		end         string
 		wantMessage string
+		wantParam   string
 	}{
-		{name: "invalid start", start: "bad-start", wantMessage: "--start:"},
-		{name: "invalid end", end: "bad-end", wantMessage: "--end:"},
-		{name: "start after end", start: "2026-03-26", end: "2026-03-25", wantMessage: "is after --end"},
+		{name: "invalid start", start: "bad-start", wantMessage: "--start:", wantParam: "--start"},
+		{name: "invalid end", end: "bad-end", wantMessage: "--end:", wantParam: "--end"},
+		{name: "start after end", start: "2026-03-26", end: "2026-03-25", wantMessage: "is after --end", wantParam: "--start"},
 	}
 
 	for _, tt := range tests {
@@ -87,6 +90,16 @@ func TestMinutesSearchParseTimeRangeErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantMessage) {
 				t.Fatalf("error = %v, want %q", err, tt.wantMessage)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
 			}
 		})
 	}
@@ -209,6 +222,16 @@ func TestMinutesSearchValidationMeRequiresResolvableUser(t *testing.T) {
 			if !strings.Contains(err.Error(), "resolvable open_id") {
 				t.Fatalf("unexpected error: %v", err)
 			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+			}
+			if ve.Param != "--"+tt.flag {
+				t.Fatalf("Param = %q, want --%s", ve.Param, tt.flag)
+			}
 		})
 	}
 }
@@ -267,6 +290,13 @@ func TestMinutesSearchValidationNoFilter(t *testing.T) {
 	if !strings.Contains(err.Error(), "specify at least one") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
 }
 
 // TestMinutesSearchValidationInvalidParticipantID verifies participant IDs must be valid open_ids.
@@ -279,6 +309,16 @@ func TestMinutesSearchValidationInvalidParticipantID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected invalid user ID error")
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--participant-ids" {
+		t.Fatalf("Param = %q, want --participant-ids", ve.Param)
+	}
 }
 
 // TestMinutesSearchValidationInvalidOwnerID verifies owner IDs must be valid open_ids.
@@ -290,6 +330,16 @@ func TestMinutesSearchValidationInvalidOwnerID(t *testing.T) {
 	err := MinutesSearch.Validate(context.Background(), runtime)
 	if err == nil {
 		t.Fatal("expected invalid owner ID error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--owner-ids" {
+		t.Fatalf("Param = %q, want --owner-ids", ve.Param)
 	}
 }
 
@@ -305,6 +355,16 @@ func TestMinutesSearchValidationQueryTooLong(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "length must be between 1 and 50 characters") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--query" {
+		t.Fatalf("Param = %q, want --query", ve.Param)
 	}
 }
 
@@ -334,6 +394,16 @@ func TestMinutesSearchValidationPageSizeAboveMax(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--page-size") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--page-size" {
+		t.Fatalf("Param = %q, want --page-size", ve.Param)
 	}
 }
 
@@ -371,6 +441,13 @@ func TestMinutesSearchValidationTimeErrors(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantMessage) {
 				t.Fatalf("error = %v, want %q", err, tt.wantMessage)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T", err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
 			}
 		})
 	}

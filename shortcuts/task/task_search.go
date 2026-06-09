@@ -5,14 +5,12 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -77,18 +75,7 @@ var SearchTask = common.Shortcut{
 		var lastHasMore bool
 		currentBody := body
 		for page := 0; page < pageLimit; page++ {
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod: http.MethodPost,
-				ApiPath:    "/open-apis/task/v2/tasks/search",
-				Body:       currentBody,
-			})
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse task search")
-				}
-			}
-			data, err := HandleTaskApiResult(result, err, "search tasks")
+			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/search", nil, currentBody)
 			if err != nil {
 				return err
 			}
@@ -173,7 +160,7 @@ func buildTaskSearchBody(runtime *common.RuntimeContext) (map[string]interface{}
 	if dueRange := runtime.Str("due"); dueRange != "" {
 		start, end, err := parseTimeRangeRFC3339(dueRange)
 		if err != nil {
-			return nil, WrapTaskError(ErrCodeTaskInvalidParams, fmt.Sprintf("invalid due: %v", err), "build task search")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid due: %v", err).WithParam("--due")
 		}
 		if dueFilter := buildTimeRangeFilter("due_time", start, end); dueFilter != nil {
 			mergeIntoFilter(filter, dueFilter)
@@ -196,27 +183,15 @@ func buildTaskSearchBody(runtime *common.RuntimeContext) (map[string]interface{}
 }
 
 func getTaskDetail(runtime *common.RuntimeContext, taskID string) (map[string]interface{}, error) {
-	queryParams := make(larkcore.QueryParams)
-	queryParams.Set("user_id_type", "open_id")
+	params := map[string]interface{}{"user_id_type": "open_id"}
 
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod:  http.MethodGet,
-		ApiPath:     "/open-apis/task/v2/tasks/" + url.PathEscape(taskID),
-		QueryParams: queryParams,
-	})
-	var result map[string]interface{}
-	if err == nil {
-		if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-			return nil, WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse task detail response: %v", parseErr), "parse task detail")
-		}
-	}
-	data, err := HandleTaskApiResult(result, err, "get task detail "+taskID)
+	data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasks/"+url.PathEscape(taskID), params, nil)
 	if err != nil {
 		return nil, err
 	}
 	task, _ := data["task"].(map[string]interface{})
 	if task == nil {
-		return nil, WrapTaskError(ErrCodeTaskInternalError, "task detail response missing task object", "get task detail")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "task detail response missing task object")
 	}
 	return task, nil
 }

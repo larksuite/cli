@@ -10,8 +10,8 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // OKRGetProgressRecord gets a progress by ID.
@@ -30,14 +30,14 @@ var OKRGetProgressRecord = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		progressID := runtime.Str("progress-id")
 		if progressID == "" {
-			return common.FlagErrorf("--progress-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-id is required").WithParam("--progress-id")
 		}
 		if id, err := strconv.ParseInt(progressID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--progress-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-id must be a positive int64").WithParam("--progress-id")
 		}
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
-			return common.FlagErrorf("--user-id-type must be one of: open_id | union_id | user_id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id-type must be one of: open_id | union_id | user_id").WithParam("--user-id-type")
 		}
 		return nil
 	},
@@ -56,11 +56,10 @@ var OKRGetProgressRecord = common.Shortcut{
 		progressID := runtime.Str("progress-id")
 		userIDType := runtime.Str("user-id-type")
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", userIDType)
+		queryParams := map[string]interface{}{"user_id_type": userIDType}
 
 		path := fmt.Sprintf("/open-apis/okr/v1/progress_records/%s", progressID)
-		data, err := runtime.DoAPIJSON("GET", path, queryParams, nil)
+		data, err := runtime.CallAPITyped("GET", path, queryParams, nil)
 		if err != nil {
 			return err
 		}
@@ -93,11 +92,11 @@ var OKRGetProgressRecord = common.Shortcut{
 func parseProgressRecord(data map[string]any) (*ProgressV1, error) {
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid progress response: marshal failed: %s", err).WithCause(err)
 	}
 	var record ProgressV1
 	if err := json.Unmarshal(raw, &record); err != nil {
-		return nil, err
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid progress response: unmarshal failed: %s", err).WithCause(err)
 	}
 	return &record, nil
 }

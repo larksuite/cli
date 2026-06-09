@@ -84,14 +84,14 @@ lark-cli vc +meeting-join --meeting-number 123456789 --dry-run
 
 ## Agent 组合场景
 
-### 场景 1：加入会议 → 离开会议（最小闭环）
+### 场景 1：加入会议 → 监听会中事件
 
 ```bash
 # 第 1 步：加入会议，记录返回的 meeting.id
 lark-cli vc +meeting-join --meeting-number 123456789
 
-# 第 2 步：完成任务后，使用上一步返回的 meeting.id 离开会议
-lark-cli vc +meeting-leave --meeting-id <meeting.id>
+# 第 2 步：使用返回的 meeting.id 查询会中事件
+lark-cli vc +meeting-events --meeting-id <meeting.id> --page-all --format pretty
 ```
 
 ### 场景 2：加入会议 → 会后拉取纪要 / 录制
@@ -100,13 +100,10 @@ lark-cli vc +meeting-leave --meeting-id <meeting.id>
 # 第 1 步：加入并参会
 lark-cli vc +meeting-join --meeting-number 123456789
 
-# 第 2 步：离会
-lark-cli vc +meeting-leave --meeting-id <meeting.id>
-
-# 第 3 步：会议结束后，查询录制（拿到 minute_token）
+# 第 2 步：会议结束后，查询录制（拿到 minute_token）
 lark-cli vc +recording --meeting-ids <meeting.id>
 
-# 第 4 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
+# 第 3 步：查询会议纪要（总结 / 待办 / 章节 / 逐字稿）
 lark-cli vc +notes --meeting-ids <meeting.id>
 ```
 
@@ -123,7 +120,7 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 ## 提示
 
 - 仅在 Agent 需要**真实加入**会议（例如参会机器人、会中助手）时使用；只拉取会议数据不需要入会。
-- 入会会让机器人立即出现在参会列表；若要回退，直接 `+meeting-leave` 即可。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
+- 入会会让机器人立即出现在参会列表；若用户要求退出 / 离开 / 结束参会，直接 `+meeting-leave` 即可。参数格式不确定时可选 `--dry-run` 预览，但不是必经步骤。
 - 执行成功后，立即记录返回的 `meeting.id`，用于后续 `+meeting-leave` / `+meeting-events`。
 
 ## 参考

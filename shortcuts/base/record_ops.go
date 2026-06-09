@@ -49,7 +49,7 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 	fieldIDs := runtime.StrArray("field-id")
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
-		return recordSelection{}, common.FlagErrorf("--record-id and --json are mutually exclusive")
+		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
 	}
 	if jsonRaw != "" {
 		pc := newParseCtx(runtime)
@@ -59,11 +59,11 @@ func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, er
 		}
 		recordIDListValue, ok := body["record_id_list"]
 		if !ok {
-			return recordSelection{}, common.FlagErrorf(`--json must include "record_id_list" as a non-empty string array; %s`, jsonInputTip("json"))
+			return recordSelection{}, baseFlagErrorf(`--json must include "record_id_list" as a non-empty string array; %s`, jsonInputTip("json"))
 		}
 		recordIDItems, ok := recordIDListValue.([]interface{})
 		if !ok {
-			return recordSelection{}, common.FlagErrorf(`--json field "record_id_list" must be a string array; %s`, jsonInputTip("json"))
+			return recordSelection{}, baseFlagErrorf(`--json field "record_id_list" must be a string array; %s`, jsonInputTip("json"))
 		}
 		normalized, err := normalizeRecordIDs(recordIDItems)
 		if err != nil {
@@ -117,14 +117,14 @@ func resolveRecordGetSelectFields(flagFields []string, body map[string]interface
 		return fromFlags, nil
 	}
 	if len(fromFlags) > 0 {
-		return nil, common.FlagErrorf(`--field-id and --json field "select_fields" are mutually exclusive`)
+		return nil, baseFlagErrorf(`--field-id and --json field "select_fields" are mutually exclusive`)
 	}
 	items, ok := rawJSONFields.([]interface{})
 	if !ok {
-		return nil, common.FlagErrorf(`--json field "select_fields" must be a string array; %s`, jsonInputTip("json"))
+		return nil, baseFlagErrorf(`--json field "select_fields" must be a string array; %s`, jsonInputTip("json"))
 	}
 	if len(items) == 0 {
-		return nil, common.FlagErrorf(`--json field "select_fields" must not be empty; %s`, jsonInputTip("json"))
+		return nil, baseFlagErrorf(`--json field "select_fields" must not be empty; %s`, jsonInputTip("json"))
 	}
 	normalized, err := normalizeRecordGetSelectFields(items)
 	if err != nil {
@@ -152,7 +152,7 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 		if opts.allowNil {
 			return nil, nil
 		}
-		return nil, common.FlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf(opts.typeError)
 	case []interface{}:
 		rawItems = typed
 	case []string:
@@ -161,30 +161,30 @@ func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([
 			rawItems = append(rawItems, item)
 		}
 	default:
-		return nil, common.FlagErrorf(opts.typeError)
+		return nil, baseFlagErrorf(opts.typeError)
 	}
 	if len(rawItems) == 0 {
 		if opts.allowEmpty {
 			return nil, nil
 		}
-		return nil, common.FlagErrorf(opts.emptyError)
+		return nil, baseFlagErrorf(opts.emptyError)
 	}
 	if opts.max > 0 && len(rawItems) > opts.max {
-		return nil, common.FlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))
+		return nil, baseFlagErrorf("%s exceeds maximum limit of %d (got %d)", opts.limitName, opts.max, len(rawItems))
 	}
 	seen := make(map[string]int, len(rawItems))
 	result := make([]string, 0, len(rawItems))
 	for index, value := range rawItems {
 		item, ok := value.(string)
 		if !ok {
-			return nil, common.FlagErrorf("%s %d must be a string", opts.itemName, index+1)
+			return nil, baseFlagErrorf("%s %d must be a string", opts.itemName, index+1)
 		}
 		item = strings.TrimSpace(item)
 		if item == "" {
-			return nil, common.FlagErrorf("%s %d must not be empty", opts.itemName, index+1)
+			return nil, baseFlagErrorf("%s %d must not be empty", opts.itemName, index+1)
 		}
 		if first, exists := seen[item]; exists {
-			return nil, common.FlagErrorf("duplicate %s %q at positions %d and %d", opts.duplicateName, item, first, index+1)
+			return nil, baseFlagErrorf("duplicate %s %q at positions %d and %d", opts.duplicateName, item, first, index+1)
 		}
 		seen[item] = index + 1
 		result = append(result, item)
@@ -332,10 +332,10 @@ const maxShareBatchSize = 100
 func validateRecordShareBatch(runtime *common.RuntimeContext) error {
 	recordIDs := deduplicateRecordIDs(runtime)
 	if len(recordIDs) == 0 {
-		return common.FlagErrorf("--record-ids is required and must not be empty")
+		return baseFlagErrorf("--record-ids is required and must not be empty")
 	}
 	if len(recordIDs) > maxShareBatchSize {
-		return common.FlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
+		return baseFlagErrorf("--record-ids exceeds maximum limit of %d (got %d)", maxShareBatchSize, len(recordIDs))
 	}
 	return nil
 }

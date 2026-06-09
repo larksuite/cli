@@ -14,9 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
@@ -73,22 +72,22 @@ var WhiteboardQuery = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		// Check if token contains control characters
 		token := runtime.Str("whiteboard-token")
-		if err := validate.RejectControlChars(token, "whiteboard-token"); err != nil {
+		if err := common.RejectDangerousCharsTyped("--whiteboard-token", token); err != nil {
 			return err
 		}
 		out := runtime.Str("output")
 		if out != "" {
-			if err := runtime.ValidatePath(out); err != nil {
-				return output.ErrValidation("invalid output path: %s", err)
+			if _, err := runtime.ResolveSavePath(out); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
 			}
 		}
 		if out == "" && runtime.Str("output_as") == WhiteboardQueryAsImage {
-			return output.ErrValidation("need a output directory to query whiteboard as image")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "need a output directory to query whiteboard as image").WithParam("--output")
 		}
 
 		as := runtime.Str("output_as")
 		if as != WhiteboardQueryAsImage && as != WhiteboardQueryAsCode && as != WhiteboardQueryAsRaw {
-			return common.FlagErrorf("--output_as flag must be one of: image | code | raw")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | code | raw").WithParam("--output_as")
 		}
 		return nil
 	},
@@ -125,7 +124,7 @@ var WhiteboardQuery = common.Shortcut{
 		case WhiteboardQueryAsRaw:
 			return exportWhiteboardRaw(runtime, token, outDir)
 		default:
-			return output.ErrValidation("--as flag must be one of: image | code | raw")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | code | raw").WithParam("--output_as")
 		}
 
 	},
@@ -136,14 +135,26 @@ func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext
 		HttpMethod: http.MethodGet,
 		ApiPath:    fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/download_as_image", url.PathEscape(wbToken)),
 	}
-	// Execute API request
+	// Execute API request. The preview endpoint streams raw image bytes (not a
+	// JSON envelope), so classify by HTTP status: 5xx is retryable network,
+	// while 4xx remains an API-side rejection.
 	resp, err := runtime.DoAPI(req, larkcore.WithFileDownload())
 	if err != nil {
-		return output.ErrNetwork(fmt.Sprintf("get whiteboard preview failed: %v", err))
+		return wrapWbNetworkErr(err, "get whiteboard preview failed: %v", err)
 	}
-	// Check response status code
-	if resp.StatusCode != http.StatusOK {
-		return output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+	if resp.StatusCode >= 400 {
+		body := common.TruncateStr(strings.TrimSpace(string(resp.RawBody)), 500)
+		if resp.StatusCode >= 500 {
+			return errs.NewNetworkError(errs.SubtypeNetworkServer, "get whiteboard preview failed: HTTP %d: %s", resp.StatusCode, body).
+				WithCode(resp.StatusCode).
+				WithRetryable()
+		}
+		subtype := errs.SubtypeUnknown
+		if resp.StatusCode == http.StatusNotFound {
+			subtype = errs.SubtypeNotFound
+		}
+		return errs.NewAPIError(subtype, "get whiteboard preview failed: HTTP %d: %s", resp.StatusCode, body).
+			WithCode(resp.StatusCode)
 	}
 
 	finalPath, size, err := saveOutputFile(outDir, ".png", wbToken, runtime, bytes.NewReader(resp.RawBody))
@@ -162,33 +173,27 @@ func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext
 }
 
 type wbNodesResp struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
 	Data struct {
 		Nodes []interface{} `json:"nodes"`
 	} `json:"data"`
 }
 
 func fetchWhiteboardNodes(runtime *common.RuntimeContext, wbToken string) (*wbNodesResp, error) {
-	req := &larkcore.ApiReq{
-		HttpMethod: http.MethodGet,
-		ApiPath:    fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", wbToken),
-	}
-	resp, err := runtime.DoAPI(req)
+	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", url.PathEscape(wbToken)), nil, nil)
 	if err != nil {
-		return nil, output.ErrNetwork(fmt.Sprintf("get whiteboard nodes failed: %v", err))
-	}
-	// 检查响应状态码
-	if resp.StatusCode != http.StatusOK {
-		return nil, output.ErrAPI(resp.StatusCode, string(resp.RawBody), nil)
+		return nil, err
 	}
 	var nodes wbNodesResp
-	err = json.Unmarshal(resp.RawBody, &nodes)
-	if err != nil {
-		return nil, output.Errorf(output.ExitInternal, "parsing", fmt.Sprintf("parse whiteboard nodes failed: %v", err))
+	rawNodes, ok := data["nodes"]
+	if !ok {
+		return nil, wbInvalidResponse("get whiteboard nodes failed: missing data.nodes")
 	}
-	if nodes.Code != 0 {
-		return nil, output.ErrAPI(nodes.Code, "get whiteboard nodes failed", fmt.Sprintf("get whiteboard nodes failed: %s", nodes.Msg))
+	if rawNodes != nil {
+		var ok bool
+		nodes.Data.Nodes, ok = rawNodes.([]interface{})
+		if !ok {
+			return nil, wbInvalidResponse("get whiteboard nodes failed: data.nodes must be an array")
+		}
 	}
 	return &nodes, nil
 }
@@ -229,6 +234,12 @@ func exportWhiteboardCode(runtime *common.RuntimeContext, wbToken, outDir string
 		code, _ := syntaxMap["code"].(string)
 		var syntaxType SyntaxType
 		switch v := syntaxMap["syntax_type"].(type) {
+		case json.Number:
+			// runtime.ClassifyAPIResponse decodes the response with UseNumber,
+			// so numeric fields arrive as json.Number rather than float64.
+			if n, err := v.Int64(); err == nil {
+				syntaxType = SyntaxType(n)
+			}
 		case float64:
 			syntaxType = SyntaxType(v)
 		case SyntaxType:
@@ -299,7 +310,7 @@ func exportWhiteboardRaw(runtime *common.RuntimeContext, wbToken, outDir string)
 
 	jsonData, err := json.MarshalIndent(wbNodes.Data, "", "  ")
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "json_error", "cannot marshal whiteboard data: %s", err)
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "cannot marshal whiteboard data: %s", err).WithCause(err)
 	}
 
 	if outDir == "" {
@@ -340,18 +351,18 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 		}
 		finalPath = outPath
 	}
-	if err := runtime.ValidatePath(finalPath); err != nil { // double check
-		return "", 0, err
+	if _, err := runtime.ResolveSavePath(finalPath); err != nil { // double check
+		return "", 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid output path: %s", err).WithParam("--output").WithCause(err)
 	}
 
 	// Step 2: Check overwrite
 	_, err = runtime.FileIO().Stat(finalPath)
 	if err == nil {
 		if !runtime.Bool("overwrite") {
-			return "", 0, output.ErrValidation(fmt.Sprintf("file already exists: %s (use --overwrite to overwrite)", finalPath))
+			return "", 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "file already exists: %s (use --overwrite to overwrite)", finalPath).WithParam("--overwrite")
 		}
 	} else if !os.IsNotExist(err) {
-		return "", 0, output.Errorf(output.ExitInternal, "io_error", "cannot check file existence: %s", err)
+		return "", 0, errs.NewInternalError(errs.SubtypeFileIO, "cannot check file existence: %s", err).WithCause(err)
 	}
 
 	// Step 3: Save file
@@ -369,7 +380,7 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 		ContentType: contentType,
 	}, data)
 	if err != nil {
-		return "", 0, common.WrapSaveError(err, "unsafe file path", "cannot create parent directory", "cannot create file")
+		return "", 0, wbSaveError(err)
 	}
 
 	return finalPath, savResult.Size(), nil

@@ -4,7 +4,6 @@
 package common
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -107,25 +106,6 @@ func ExactlyOneTyped(rt *RuntimeContext, flags ...string) error {
 	return MutuallyExclusiveTyped(rt, flags...)
 }
 
-// ValidatePageSize validates that the named flag (if set) is an integer within [minVal, maxVal].
-// It returns the parsed value (or defaultVal if the flag is empty) and any validation error.
-//
-// Deprecated: use ValidatePageSizeTyped for typed error envelopes.
-func ValidatePageSize(rt *RuntimeContext, flagName string, defaultVal, minVal, maxVal int) (int, error) {
-	s := rt.Str(flagName)
-	if s == "" {
-		return defaultVal, nil
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return 0, FlagErrorf("invalid --%s %q: must be an integer", flagName, s)
-	}
-	if n < minVal || n > maxVal {
-		return 0, FlagErrorf("invalid --%s %d: must be between %d and %d", flagName, n, minVal, maxVal)
-	}
-	return n, nil
-}
-
 // ValidatePageSizeTyped validates that the named flag (if set) is an integer within [minVal, maxVal].
 // It returns the parsed value (or defaultVal if the flag is empty) and any validation error.
 func ValidatePageSizeTyped(rt *RuntimeContext, flagName string, defaultVal, minVal, maxVal int) (int, error) {
@@ -173,25 +153,6 @@ func ValidateSafePathTyped(fio fileio.FileIO, path string) error {
 	_, err := fio.ResolvePath(path)
 	if err != nil {
 		return ValidationErrorf("%s", err).WithCause(err)
-	}
-	return nil
-}
-
-// RejectDangerousChars returns an error if value contains ASCII control
-// characters or dangerous Unicode code points.
-//
-// Deprecated: use RejectDangerousCharsTyped for typed error envelopes.
-func RejectDangerousChars(paramName, value string) error {
-	for _, r := range value {
-		if r < 0x20 && r != '\t' && r != '\n' {
-			return fmt.Errorf("parameter %q contains control character U+%04X", paramName, r)
-		}
-		if r == 0x7F {
-			return fmt.Errorf("parameter %q contains DEL character", paramName)
-		}
-		if IsDangerousUnicode(r) {
-			return fmt.Errorf("parameter %q contains dangerous Unicode character U+%04X", paramName, r)
-		}
 	}
 	return nil
 }

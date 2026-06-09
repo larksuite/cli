@@ -5,21 +5,7 @@ package common
 
 import (
 	"strings"
-
-	"github.com/larksuite/cli/internal/output"
 )
-
-// ValidateChatID checks if a chat ID has valid format (oc_ prefix).
-// Also extracts token from URL if provided.
-//
-// Deprecated: use ValidateChatIDTyped for typed error envelopes.
-func ValidateChatID(input string) (string, error) {
-	chatID, msg := normalizeChatID(input)
-	if msg != "" {
-		return "", output.ErrValidation("%s", msg)
-	}
-	return chatID, nil
-}
 
 // ValidateChatIDTyped checks if a chat ID has valid format (oc_ prefix).
 // Also extracts token from URL if provided. param names the flag being
@@ -52,17 +38,6 @@ func normalizeChatID(input string) (string, string) {
 		return "", "invalid chat ID format, should start with 'oc_' (e.g., oc_abc123)"
 	}
 	return input, ""
-}
-
-// ValidateUserID checks if a user ID has valid format (ou_ prefix).
-//
-// Deprecated: use ValidateUserIDTyped for typed error envelopes.
-func ValidateUserID(input string) (string, error) {
-	userID, msg := normalizeUserID(input)
-	if msg != "" {
-		return "", output.ErrValidation("%s", msg)
-	}
-	return userID, nil
 }
 
 // ValidateUserIDTyped checks if a user ID has valid format (ou_ prefix).

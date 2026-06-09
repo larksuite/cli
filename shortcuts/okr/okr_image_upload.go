@@ -5,8 +5,6 @@ package okr
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -14,7 +12,7 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -43,24 +41,24 @@ var OKRUploadImage = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		filePath := runtime.Str("file")
 		if filePath == "" {
-			return common.FlagErrorf("--file is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file is required").WithParam("--file")
 		}
 		ext := strings.ToLower(filepath.Ext(filePath))
 		if !allowedImageExts[ext] {
-			return common.FlagErrorf("--file must be an image (supported: JPG, JPEG, PNG, GIF, BMP), got %q", ext)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file must be an image (supported: JPG, JPEG, PNG, GIF, BMP), got %q", ext).WithParam("--file")
 		}
 
 		targetID := runtime.Str("target-id")
 		if targetID == "" {
-			return common.FlagErrorf("--target-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id is required").WithParam("--target-id")
 		}
 		if id, err := strconv.ParseInt(targetID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--target-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id must be a positive int64").WithParam("--target-id")
 		}
 
 		targetType := runtime.Str("target-type")
 		if _, ok := targetTypeAllowed[targetType]; !ok {
-			return common.FlagErrorf("--target-type must be one of: objective | key_result")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-type must be one of: objective | key_result").WithParam("--target-type")
 		}
 		return nil
 	},
@@ -87,12 +85,12 @@ var OKRUploadImage = common.Shortcut{
 
 		info, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return okrInputStatError(err)
 		}
 
 		f, err := runtime.FileIO().Open(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return okrInputStatError(err)
 		}
 		defer f.Close()
 
@@ -110,30 +108,22 @@ var OKRUploadImage = common.Shortcut{
 			Body:       fd,
 		}, larkcore.WithFileUpload())
 		if err != nil {
-			var exitErr *output.ExitError
-			if errors.As(err, &exitErr) {
-				return err
-			}
-			return output.ErrNetwork("upload failed: %v", err)
+			// The DoAPI boundary already returns typed errs.* (auth →
+			// AuthenticationError, transport → NetworkError, etc.); wrapOkrNetworkErr
+			// passes those through via ProblemOf and only wraps a still-untyped error.
+			return wrapOkrNetworkErr(err, "upload failed: %v", err)
 		}
 
-		var result map[string]interface{}
-		if err := json.Unmarshal(apiResp.RawBody, &result); err != nil {
-			return output.Errorf(output.ExitAPI, "api_error", "upload failed: invalid response JSON: %v", err)
+		data, err := runtime.ClassifyAPIResponse(apiResp)
+		if err != nil {
+			return err
 		}
 
-		if larkCode := int(common.GetFloat(result, "code")); larkCode != 0 {
-			msg, _ := result["msg"].(string)
-			return output.ErrAPI(larkCode, fmt.Sprintf("upload failed: [%d] %s", larkCode, msg), result["error"])
-		}
-
-		data, _ := result["data"].(map[string]interface{})
-		fileToken, _ := data["file_token"].(string)
-		url, _ := data["url"].(string)
-
+		fileToken := common.GetString(data, "file_token")
 		if fileToken == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned")
 		}
+		url := common.GetString(data, "url")
 
 		runtime.Out(map[string]interface{}{
 			"file_token": fileToken,

@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -37,7 +38,7 @@ var VCMeetingJoin = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		mn := strings.TrimSpace(runtime.Str("meeting-number"))
 		if !validMeetingNumber(mn) {
-			return common.FlagErrorf("--meeting-number must be exactly 9 digits, got %q", mn)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-number must be exactly 9 digits, got %q", mn).WithParam("--meeting-number")
 		}
 		return nil
 	},
@@ -49,7 +50,7 @@ var VCMeetingJoin = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		body := buildMeetingJoinBody(runtime)
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/vc/v1/bots/join", nil, body)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/vc/v1/bots/join", nil, body)
 		if err != nil {
 			return err
 		}

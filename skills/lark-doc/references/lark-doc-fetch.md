@@ -1,8 +1,6 @@
 
 # docs +fetch（获取飞书云文档）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 ## 命令
 
 ```bash
@@ -137,4 +135,3 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 - [lark-doc-update](lark-doc-update.md) — 更新文档
 - [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
 - [lark-doc-media-download](lark-doc-media-download.md) — 下载素材/画板缩略图
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

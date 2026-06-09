@@ -14,7 +14,6 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -62,31 +61,31 @@ func validateFormSubmit(runtime *common.RuntimeContext) error {
 	attachments, hasAttachments := raw["attachments"]
 
 	if !hasAttachments && fields == nil {
-		return common.FlagErrorf("--json must contain at least \"fields\" or \"attachments\"")
+		return baseFlagErrorf("--json must contain at least \"fields\" or \"attachments\"")
 	}
 
 	if hasAttachments {
 		// 有附件时 --base-token 必填（上传附件到 Base Drive Media 需要）
 		if runtime.Str("base-token") == "" {
-			return common.FlagErrorf("--base-token is required when --json contains \"attachments\"")
+			return baseFlagErrorf("--base-token is required when --json contains \"attachments\"")
 		}
 
 		attMap, ok := attachments.(map[string]interface{})
 		if !ok {
-			return common.FlagErrorf("--json.attachments must be a JSON object mapping field names to file path arrays")
+			return baseFlagErrorf("--json.attachments must be a JSON object mapping field names to file path arrays")
 		}
 		for fieldName, value := range attMap {
 			paths, ok := value.([]interface{})
 			if !ok {
-				return common.FlagErrorf("--json.attachments.%q must be a file path array, got %T", fieldName, value)
+				return baseFlagErrorf("--json.attachments.%q must be a file path array, got %T", fieldName, value)
 			}
 			for i, item := range paths {
 				if _, ok := item.(string); !ok {
-					return common.FlagErrorf("--json.attachments.%q[%d] must be a file path string, got %T", fieldName, i, item)
+					return baseFlagErrorf("--json.attachments.%q[%d] must be a file path string, got %T", fieldName, i, item)
 				}
 			}
 			if len(paths) == 0 {
-				return common.FlagErrorf("--json.attachments.%q must not be empty; remove it or provide at least one file path", fieldName)
+				return baseFlagErrorf("--json.attachments.%q must not be empty; remove it or provide at least one file path", fieldName)
 			}
 		}
 	}
@@ -111,21 +110,21 @@ func parseFormSubmitJSON(runtime *common.RuntimeContext) (map[string]interface{}
 	if attachments, ok := raw["attachments"]; ok {
 		attObj, ok := attachments.(map[string]interface{})
 		if !ok {
-			return nil, nil, common.FlagErrorf(`--json.attachments must be a JSON object mapping field names to file path arrays`)
+			return nil, nil, baseFlagErrorf(`--json.attachments must be a JSON object mapping field names to file path arrays`)
 		}
 		if len(attObj) > 0 {
 			attMap = make(map[string][]string, len(attObj))
 			for fieldName, value := range attObj {
 				paths, ok := value.([]interface{})
 				if !ok {
-					return nil, nil, common.FlagErrorf("--json.attachments.%q must be a file path array, got %T", fieldName, value)
+					return nil, nil, baseFlagErrorf("--json.attachments.%q must be a file path array, got %T", fieldName, value)
 				}
 				filePaths := make([]string, 0, len(paths))
 				for _, item := range paths {
 					if s, ok := item.(string); ok {
 						filePaths = append(filePaths, s)
 					} else {
-						return nil, nil, common.FlagErrorf("--json.attachments.%q must contain file path strings only, got %T", fieldName, item)
+						return nil, nil, baseFlagErrorf("--json.attachments.%q must contain file path strings only, got %T", fieldName, item)
 					}
 				}
 				if len(filePaths) > 0 {
@@ -195,33 +194,33 @@ func executeFormSubmit(runtime *common.RuntimeContext) error {
 		baseToken := runtime.Str("base-token")
 		fio := runtime.FileIO()
 		if fio == nil {
-			return output.ErrValidation("file operations require a FileIO provider (needed for attachments in --json)")
+			return baseMissingFileIOError("file operations require a FileIO provider (needed for attachments in --json)")
 		}
 
 		// Step 1: 收集所有唯一路径（跨字段去重）
 		allPaths := collectUniquePaths(attachmentMap)
 		if len(allPaths) == 0 {
-			return common.FlagErrorf("attachments in --json contains no valid file paths")
+			return baseFlagErrorf("attachments in --json contains no valid file paths")
 		}
 
 		// Step 2: 前置校验所有文件路径安全性与可访问性，同时收集文件大小供上传使用
 		sizeMap := make(map[string]int64, len(allPaths))
 		for _, filePath := range allPaths {
 			if _, err := validate.SafeInputPath(filePath); err != nil {
-				return output.ErrValidation("unsafe attachment file path: %s: %v", filePath, err)
+				return baseValidationErrorf("unsafe attachment file path: %s: %v", filePath, err)
 			}
 			fileInfo, err := fio.Stat(filePath)
 			if err != nil {
 				if errors.Is(err, fileio.ErrPathValidation) {
-					return output.ErrValidation("unsafe attachment file path: %s: %v", filePath, err)
+					return baseValidationErrorf("unsafe attachment file path: %s: %v", filePath, err)
 				}
-				return output.ErrValidation("attachment file not accessible: %s: %v", filePath, err)
+				return baseValidationErrorf("attachment file not accessible: %s: %v", filePath, err)
 			}
 			if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
-				return output.ErrValidation("attachment file %s exceeds 2GB limit", filePath)
+				return baseValidationErrorf("attachment file %s exceeds 2GB limit", filePath)
 			}
 			if !fileInfo.Mode().IsRegular() {
-				return output.ErrValidation("attachment file %s is not a regular file", filePath)
+				return baseValidationErrorf("attachment file %s is not a regular file", filePath)
 			}
 			sizeMap[filePath] = fileInfo.Size()
 		}
@@ -328,7 +327,7 @@ func uploadAttachmentsParallel(runtime *common.RuntimeContext, paths []string, t
 func uploadSingleAttachment(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, target baseAttachmentUploadTarget) (interface{}, error) {
 	att, err := uploadAttachmentToBase(runtime, filePath, fileName, fileSize, target)
 	if err != nil {
-		return nil, fmt.Errorf("failed to upload attachment %s: %w", filePath, err)
+		return nil, baseUploadAttachmentError(filePath, err)
 	}
 	return att, nil
 }

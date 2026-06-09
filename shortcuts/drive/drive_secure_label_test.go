@@ -12,6 +12,17 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+func TestDriveSecureLabelScopes(t *testing.T) {
+	t.Parallel()
+
+	if len(DriveSecureLabelList.Scopes) != 1 || DriveSecureLabelList.Scopes[0] != "docs:secure_label:readonly" {
+		t.Fatalf("list scopes = %v, want docs:secure_label:readonly", DriveSecureLabelList.Scopes)
+	}
+	if len(DriveSecureLabelUpdate.Scopes) != 1 || DriveSecureLabelUpdate.Scopes[0] != "docs:secure_label:write_only" {
+		t.Fatalf("update scopes = %v, want docs:secure_label:write_only", DriveSecureLabelUpdate.Scopes)
+	}
+}
+
 func TestDriveSecureLabelList_DryRun(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())

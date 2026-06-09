@@ -21,9 +21,9 @@ func createDocWithRetry(t *testing.T, parentT *testing.T, ctx context.Context, f
 	result, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"docs", "+create",
-			"--folder-token", folderToken,
-			"--title", title,
-			"--markdown", markdown,
+			"--parent-token", folderToken,
+			"--doc-format", "markdown",
+			"--content", "# " + title + "\n\n" + markdown,
 		},
 		DefaultAs: defaultAs,
 	})
@@ -31,7 +31,7 @@ func createDocWithRetry(t *testing.T, parentT *testing.T, ctx context.Context, f
 	result.AssertExitCode(t, 0)
 	result.AssertStdoutStatus(t, true)
 
-	docToken := gjson.Get(result.Stdout, "data.doc_id").String()
+	docToken := gjson.Get(result.Stdout, "data.document.document_id").String()
 	require.NotEmpty(t, docToken, "stdout:\n%s", result.Stdout)
 
 	parentT.Cleanup(func() {

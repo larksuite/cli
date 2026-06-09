@@ -71,18 +71,18 @@ func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, e
 	} else if obj, ok := value.(map[string]interface{}); ok {
 		rawSortConfig, ok := obj["sort_config"]
 		if !ok {
-			return nil, common.FlagErrorf("%s must be a JSON array or an object with sort_config array", label)
+			return nil, baseFlagErrorf("%s must be a JSON array or an object with sort_config array", label)
 		}
 		parsed, ok := rawSortConfig.([]interface{})
 		if !ok {
-			return nil, common.FlagErrorf("%s.sort_config must be a JSON array", label)
+			return nil, baseFlagErrorf("%s.sort_config must be a JSON array", label)
 		}
 		sortConfig = parsed
 	} else {
-		return nil, common.FlagErrorf("%s must be a JSON array or an object with sort_config array", label)
+		return nil, baseFlagErrorf("%s must be a JSON array or an object with sort_config array", label)
 	}
 	if len(sortConfig) > recordSortMaxCount {
-		return nil, common.FlagErrorf("sort supports at most %d sort conditions; got %d", recordSortMaxCount, len(sortConfig))
+		return nil, baseFlagErrorf("sort supports at most %d sort conditions; got %d", recordSortMaxCount, len(sortConfig))
 	}
 	return sortConfig, nil
 }
@@ -90,7 +90,7 @@ func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, e
 func marshalRecordQueryFlag(flagName string, value interface{}) (string, error) {
 	data, err := json.Marshal(value)
 	if err != nil {
-		return "", common.FlagErrorf("--%s cannot encode JSON: %v", flagName, err)
+		return "", baseFlagErrorf("--%s cannot encode JSON: %v", flagName, err)
 	}
 	return string(data), nil
 }
@@ -220,16 +220,16 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if jsonRaw != "" {
 		if recordSearchHasJSONExclusiveFlagInputs(runtime) {
-			return common.FlagErrorf("--json is mutually exclusive with keyword/search/projection/pagination flags; put those fields inside --json, or omit --json")
+			return baseFlagErrorf("--json is mutually exclusive with keyword/search/projection/pagination flags; put those fields inside --json, or omit --json")
 		}
 		_, err := recordSearchJSONBody(runtime)
 		return err
 	}
 	if strings.TrimSpace(runtime.Str("keyword")) == "" {
-		return common.FlagErrorf("--keyword is required unless --json is used")
+		return baseFlagErrorf("--keyword is required unless --json is used")
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
-		return common.FlagErrorf("--search-field is required unless --json is used")
+		return baseFlagErrorf("--search-field is required unless --json is used")
 	}
 	return validateRecordQueryOptions(runtime)
 }

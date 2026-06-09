@@ -13,10 +13,12 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -28,7 +30,16 @@ const markdownEmptyContentError = "empty markdown content is not supported; cann
 const (
 	markdownUploadParentTypeExplorer = "explorer"
 	markdownUploadParentTypeWiki     = "wiki"
+	markdownUploadAllAction          = "upload markdown file failed"
+	markdownUploadPrepareAction      = "initialize markdown multipart upload failed"
+	markdownUploadFinishAction       = "finalize markdown multipart upload failed"
+	markdownFetchNameAction          = "fetch existing markdown file name failed"
 )
+
+var markdownUploadRetryBackoffs = []time.Duration{
+	200 * time.Millisecond,
+	500 * time.Millisecond,
+}
 
 type markdownUploadSpec struct {
 	FileToken   string
@@ -387,58 +398,68 @@ func uploadMarkdownContent(runtime *common.RuntimeContext, spec markdownUploadSp
 	fileName := finalMarkdownFileName(spec)
 	fileSize := int64(len(payload))
 	if fileSize > markdownSinglePartSizeLimit {
-		return uploadMarkdownFileMultipart(runtime, spec, bytes.NewReader(payload), fileName, fileSize)
+		return uploadMarkdownFileMultipart(runtime, spec, fileName, fileSize, func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(payload)), nil
+		})
 	}
-	return uploadMarkdownFileAll(runtime, spec, bytes.NewReader(payload), fileName, fileSize)
+	return uploadMarkdownFileAll(runtime, spec, fileName, fileSize, func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
+	})
 }
 
 func uploadMarkdownLocalFile(runtime *common.RuntimeContext, spec markdownUploadSpec, fileSize int64) (markdownUploadResult, error) {
 	fileName := finalMarkdownFileName(spec)
-	f, err := runtime.FileIO().Open(spec.FilePath)
-	if err != nil {
-		return markdownUploadResult{}, common.WrapInputStatError(err)
-	}
-	defer f.Close()
-
 	if fileSize > markdownSinglePartSizeLimit {
-		return uploadMarkdownFileMultipart(runtime, spec, f, fileName, fileSize)
+		return uploadMarkdownFileMultipart(runtime, spec, fileName, fileSize, func() (io.ReadCloser, error) {
+			return runtime.FileIO().Open(spec.FilePath)
+		})
 	}
-	return uploadMarkdownFileAll(runtime, spec, f, fileName, fileSize)
+	return uploadMarkdownFileAll(runtime, spec, fileName, fileSize, func() (io.ReadCloser, error) {
+		return runtime.FileIO().Open(spec.FilePath)
+	})
 }
 
-func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSpec, fileName string, fileSize int64, openReader func() (io.ReadCloser, error)) (markdownUploadResult, error) {
 	target := spec.Target()
-	fd := larkcore.NewFormdata()
-	fd.AddField("file_name", fileName)
-	fd.AddField("parent_type", target.ParentType)
-	fd.AddField("parent_node", target.ParentNode)
-	fd.AddField("size", fmt.Sprintf("%d", fileSize))
-	if spec.FileToken != "" {
-		fd.AddField("file_token", spec.FileToken)
-	}
-	fd.AddFile("file", fileReader)
-
-	apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-		HttpMethod: http.MethodPost,
-		ApiPath:    "/open-apis/drive/v1/files/upload_all",
-		Body:       fd,
-	}, larkcore.WithFileUpload())
-	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
-			return markdownUploadResult{}, err
+	return withMarkdownUploadRetryResult(runtime, markdownUploadAllAction, func() (markdownUploadResult, error) {
+		fileReader, err := openReader()
+		if err != nil {
+			return markdownUploadResult{}, common.WrapInputStatErrorTyped(err)
 		}
-		return markdownUploadResult{}, output.ErrNetwork("upload failed: %v", err)
-	}
+		defer fileReader.Close()
 
-	data, err := common.ParseDriveMediaUploadResponse(apiResp, "upload failed")
-	if err != nil {
-		return markdownUploadResult{}, err
-	}
-	return parseMarkdownUploadResult(data, spec.FileToken != "")
+		fd := larkcore.NewFormdata()
+		fd.AddField("file_name", fileName)
+		fd.AddField("parent_type", target.ParentType)
+		fd.AddField("parent_node", target.ParentNode)
+		fd.AddField("size", fmt.Sprintf("%d", fileSize))
+		if spec.FileToken != "" {
+			fd.AddField("file_token", spec.FileToken)
+		}
+		fd.AddFile("file", fileReader)
+
+		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+			HttpMethod: http.MethodPost,
+			ApiPath:    "/open-apis/drive/v1/files/upload_all",
+			Body:       fd,
+		}, larkcore.WithFileUpload())
+		if err != nil {
+			return markdownUploadResult{}, markdownUploadProblem(client.WrapDoAPIError(err), markdownUploadAllAction)
+		}
+
+		data, err := runtime.ClassifyAPIResponse(apiResp)
+		if err != nil {
+			return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadAllAction)
+		}
+		result, err := parseMarkdownUploadResult(data, spec.FileToken != "")
+		if err != nil {
+			return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadAllAction)
+		}
+		return result, nil
+	})
 }
 
-func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUploadSpec, fileReader io.Reader, fileName string, fileSize int64) (markdownUploadResult, error) {
+func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUploadSpec, fileName string, fileSize int64, openReader func() (io.ReadCloser, error)) (markdownUploadResult, error) {
 	target := spec.Target()
 	prepareBody := map[string]interface{}{
 		"file_name":   fileName,
@@ -450,31 +471,53 @@ func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUp
 		prepareBody["file_token"] = spec.FileToken
 	}
 
-	prepareResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
+	prepareResult, err := withMarkdownUploadRetryData(runtime, markdownUploadPrepareAction, func() (map[string]interface{}, error) {
+		data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_prepare", nil, prepareBody)
+		if err != nil {
+			return nil, markdownUploadProblem(err, markdownUploadPrepareAction)
+		}
+		return data, nil
+	})
 	if err != nil {
 		return markdownUploadResult{}, err
 	}
 
 	session, err := parseMarkdownMultipartSession(prepareResult)
 	if err != nil {
-		return markdownUploadResult{}, err
+		return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadPrepareAction)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Multipart upload initialized: %d chunks x %s\n", session.BlockNum, common.FormatSize(session.BlockSize))
+
+	fileReader, err := openReader()
+	if err != nil {
+		return markdownUploadResult{}, common.WrapInputStatErrorTyped(err)
+	}
+	defer fileReader.Close()
 
 	if err := uploadMarkdownMultipartParts(runtime, fileReader, fileSize, session); err != nil {
 		return markdownUploadResult{}, err
 	}
 
-	finishResult, err := runtime.CallAPI("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{
-		"upload_id": session.UploadID,
-		"block_num": session.BlockNum,
+	finishResult, err := withMarkdownUploadRetryData(runtime, markdownUploadFinishAction, func() (map[string]interface{}, error) {
+		data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/files/upload_finish", nil, map[string]interface{}{
+			"upload_id": session.UploadID,
+			"block_num": session.BlockNum,
+		})
+		if err != nil {
+			return nil, markdownUploadProblem(err, markdownUploadFinishAction)
+		}
+		return data, nil
 	})
 	if err != nil {
 		return markdownUploadResult{}, err
 	}
 
-	return parseMarkdownUploadResult(finishResult, spec.FileToken != "")
+	result, err := parseMarkdownUploadResult(finishResult, spec.FileToken != "")
+	if err != nil {
+		return markdownUploadResult{}, markdownUploadProblem(err, markdownUploadFinishAction)
+	}
+	return result, nil
 }
 
 func parseMarkdownMultipartSession(data map[string]interface{}) (markdownMultipartSession, error) {
@@ -484,7 +527,7 @@ func parseMarkdownMultipartSession(data map[string]interface{}) (markdownMultipa
 		BlockNum:  int(common.GetFloat(data, "block_num")),
 	}
 	if session.UploadID == "" || session.BlockSize <= 0 || session.BlockNum <= 0 {
-		return markdownMultipartSession{}, output.Errorf(output.ExitAPI, "api_error",
+		return markdownMultipartSession{}, errs.NewInternalError(errs.SubtypeInvalidResponse,
 			"upload_prepare returned invalid data: upload_id=%q, block_size=%d, block_num=%d",
 			session.UploadID, session.BlockSize, session.BlockNum)
 	}
@@ -494,9 +537,8 @@ func parseMarkdownMultipartSession(data map[string]interface{}) (markdownMultipa
 func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.Reader, payloadSize int64, session markdownMultipartSession) error {
 	expectedBlocks := int((payloadSize + session.BlockSize - 1) / session.BlockSize)
 	if session.BlockNum != expectedBlocks {
-		return output.Errorf(
-			output.ExitAPI,
-			"api_error",
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
 			"upload_prepare returned inconsistent chunk plan: block_size=%d, block_num=%d, expected_block_num=%d, payload_size=%d",
 			session.BlockSize,
 			session.BlockNum,
@@ -507,7 +549,7 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 
 	maxInt := int64(^uint(0) >> 1)
 	if session.BlockSize > maxInt {
-		return output.Errorf(output.ExitAPI, "api_error", "upload prepare failed: invalid block_size returned")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "upload prepare failed: invalid block_size returned")
 	}
 
 	buffer := make([]byte, int(session.BlockSize))
@@ -528,22 +570,27 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 		fd.AddField("upload_id", session.UploadID)
 		fd.AddField("seq", fmt.Sprintf("%d", seq))
 		fd.AddField("size", fmt.Sprintf("%d", n))
-		fd.AddFile("file", bytes.NewReader(buffer[:n]))
+		action := fmt.Sprintf("upload markdown file part %d/%d failed", seq+1, session.BlockNum)
+		if err := withMarkdownUploadRetryVoid(runtime, action, func() error {
+			fd := larkcore.NewFormdata()
+			fd.AddField("upload_id", session.UploadID)
+			fd.AddField("seq", fmt.Sprintf("%d", seq))
+			fd.AddField("size", fmt.Sprintf("%d", n))
+			fd.AddFile("file", bytes.NewReader(buffer[:n]))
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod: http.MethodPost,
-			ApiPath:    "/open-apis/drive/v1/files/upload_part",
-			Body:       fd,
-		}, larkcore.WithFileUpload())
-		if err != nil {
-			var exitErr *output.ExitError
-			if errors.As(err, &exitErr) {
-				return err
+			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
+				HttpMethod: http.MethodPost,
+				ApiPath:    "/open-apis/drive/v1/files/upload_part",
+				Body:       fd,
+			}, larkcore.WithFileUpload())
+			if err != nil {
+				return markdownUploadProblem(client.WrapDoAPIError(err), action)
 			}
-			return output.ErrNetwork("upload part %d/%d failed: %v", seq+1, session.BlockNum, err)
-		}
-
-		if _, err := common.ParseDriveMediaUploadResponse(apiResp, fmt.Sprintf("upload part %d/%d failed", seq+1, session.BlockNum)); err != nil {
+			if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+				return markdownUploadProblem(err, action)
+			}
+			return nil
+		}); err != nil {
 			return err
 		}
 
@@ -551,9 +598,8 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 		remaining -= int64(n)
 	}
 	if remaining != 0 {
-		return output.Errorf(
-			output.ExitAPI,
-			"api_error",
+		return errs.NewInternalError(
+			errs.SubtypeInvalidResponse,
 			"upload_prepare returned inconsistent chunk plan: %d bytes remain after %d blocks",
 			remaining,
 			session.BlockNum,
@@ -572,28 +618,34 @@ func parseMarkdownUploadResult(data map[string]interface{}, requireVersion bool)
 		result.Version = common.GetString(data, "data_version")
 	}
 	if result.FileToken == "" {
-		return markdownUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "upload failed: no file_token returned")
+		return markdownUploadResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "upload failed: no file_token returned")
 	}
 	if requireVersion && result.Version == "" {
-		return markdownUploadResult{}, output.Errorf(output.ExitAPI, "api_error", "overwrite failed: no version returned")
+		return markdownUploadResult{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "overwrite failed: no version returned")
 	}
 	return result, nil
 }
 
 func fetchMarkdownFileName(runtime *common.RuntimeContext, fileToken string) (string, error) {
-	data, err := runtime.CallAPI(
-		"POST",
-		"/open-apis/drive/v1/metas/batch_query",
-		nil,
-		map[string]interface{}{
-			"request_docs": []map[string]interface{}{
-				{
-					"doc_token": fileToken,
-					"doc_type":  "file",
+	data, err := withMarkdownUploadRetryData(runtime, markdownFetchNameAction, func() (map[string]interface{}, error) {
+		data, err := runtime.CallAPITyped(
+			"POST",
+			"/open-apis/drive/v1/metas/batch_query",
+			nil,
+			map[string]interface{}{
+				"request_docs": []map[string]interface{}{
+					{
+						"doc_token": fileToken,
+						"doc_type":  "file",
+					},
 				},
 			},
-		},
-	)
+		)
+		if err != nil {
+			return nil, markdownUploadProblem(err, markdownFetchNameAction)
+		}
+		return data, nil
+	})
 	if err != nil {
 		return "", err
 	}
@@ -604,6 +656,97 @@ func fetchMarkdownFileName(runtime *common.RuntimeContext, fileToken string) (st
 	}
 	meta, _ := metas[0].(map[string]interface{})
 	return common.GetString(meta, "title"), nil
+}
+
+func withMarkdownUploadRetryResult(runtime *common.RuntimeContext, action string, fn func() (markdownUploadResult, error)) (markdownUploadResult, error) {
+	var zero markdownUploadResult
+	for attempt := 0; ; attempt++ {
+		result, err := fn()
+		if err == nil {
+			return result, nil
+		}
+		if !markdownUploadShouldRetry(err) || attempt >= len(markdownUploadRetryBackoffs) {
+			return zero, markdownUploadRetryExhausted(err, action, attempt)
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "%s; retrying (attempt %d/%d)\n", err.Error(), attempt+1, len(markdownUploadRetryBackoffs))
+		time.Sleep(markdownUploadRetryBackoffs[attempt])
+	}
+}
+
+func withMarkdownUploadRetryData(runtime *common.RuntimeContext, action string, fn func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	for attempt := 0; ; attempt++ {
+		result, err := fn()
+		if err == nil {
+			return result, nil
+		}
+		if !markdownUploadShouldRetry(err) || attempt >= len(markdownUploadRetryBackoffs) {
+			return nil, markdownUploadRetryExhausted(err, action, attempt)
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "%s; retrying (attempt %d/%d)\n", err.Error(), attempt+1, len(markdownUploadRetryBackoffs))
+		time.Sleep(markdownUploadRetryBackoffs[attempt])
+	}
+}
+
+func withMarkdownUploadRetryVoid(runtime *common.RuntimeContext, action string, fn func() error) error {
+	for attempt := 0; ; attempt++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		if !markdownUploadShouldRetry(err) || attempt >= len(markdownUploadRetryBackoffs) {
+			return markdownUploadRetryExhausted(err, action, attempt)
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "%s; retrying (attempt %d/%d)\n", err.Error(), attempt+1, len(markdownUploadRetryBackoffs))
+		time.Sleep(markdownUploadRetryBackoffs[attempt])
+	}
+}
+
+func markdownUploadShouldRetry(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p == nil {
+		return false
+	}
+	return p.Retryable || p.Category == errs.CategoryNetwork
+}
+
+func markdownUploadRetryExhausted(err error, action string, retries int) error {
+	if retries <= 0 {
+		return err
+	}
+	return appendMarkdownProblemHint(err, fmt.Sprintf("%s remained retryable after %d attempts; retry later if the upstream service is throttling or temporarily unavailable", action, retries+1))
+}
+
+func markdownUploadProblem(err error, action string) error {
+	if p, ok := errs.ProblemOf(err); ok {
+		p.Message = action + ": " + p.Message
+		switch p.Code {
+		case 99991672, 99991679:
+			appendMarkdownProblemHint(err, "The current token or identity lacks the required document upload scope/capability. Grant the document upload scope or use a token with the appropriate permissions, then retry.")
+		case 10071:
+			appendMarkdownProblemHint(err, "The target document has reached its version limit. Clean up old versions or create a new file before retrying.")
+		case 90003087:
+			appendMarkdownProblemHint(err, "The current tenant or user may not have document capabilities enabled. Ask an administrator to verify document-module access.")
+		case 1061003, 1061044:
+			appendMarkdownProblemHint(err, "Check whether the target folder or wiki node still exists, and verify the token you passed to the command.")
+		case 1061004, 1062501:
+			appendMarkdownProblemHint(err, "Check whether the current identity has write access to the target folder or wiki node.")
+		}
+	}
+	return err
+}
+
+func appendMarkdownProblemHint(err error, hint string) error {
+	if strings.TrimSpace(hint) == "" {
+		return err
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint = p.Hint + "\n" + hint
+		} else {
+			p.Hint = hint
+		}
+	}
+	return err
 }
 
 func prettyPrintMarkdownWrite(w io.Writer, data map[string]interface{}) {

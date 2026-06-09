@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -102,6 +103,13 @@ func TestFetchDriveMetaTitle(t *testing.T) {
 		_, err := FetchDriveMetaTitle(runtime, "doxcnABC", "docx")
 		if err == nil {
 			t.Fatal("FetchDriveMetaTitle() expected error, got nil")
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed error, got %T", err)
+		}
+		if p.Code != 99991668 {
+			t.Fatalf("code = %d, want 99991668", p.Code)
 		}
 	})
 }

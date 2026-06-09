@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -70,11 +70,11 @@ func buildSuggestionRequest(runtime *common.RuntimeContext) (*SuggestionRequest,
 
 	timeMin, err := common.ParseTime(startInput)
 	if err != nil {
-		return nil, output.ErrValidation("invalid --start: %v", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --start: %v", err).WithParam("--start")
 	}
 	minSec, err := strconv.ParseInt(timeMin, 10, 64)
 	if err != nil {
-		return nil, output.ErrValidation("invalid start timestamp: %v", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp: %v", err)
 	}
 	startTime := time.Unix(minSec, 0)
 
@@ -87,12 +87,12 @@ func buildSuggestionRequest(runtime *common.RuntimeContext) (*SuggestionRequest,
 
 	timeMax, err := common.ParseTime(endInput, "end")
 	if err != nil {
-		return nil, output.ErrValidation("invalid --end: %v", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --end: %v", err).WithParam("--end")
 	}
 	// Convert Unix timestamp string back to RFC3339 since the API requires RFC3339
 	maxSec, err := strconv.ParseInt(timeMax, 10, 64)
 	if err != nil {
-		return nil, output.ErrValidation("invalid end timestamp: %v", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp: %v", err)
 	}
 	req.SearchStartTime = startTime.Format(time.RFC3339)
 	req.SearchEndTime = time.Unix(maxSec, 0).Format(time.RFC3339)
@@ -157,23 +157,23 @@ func buildSuggestionRequest(runtime *common.RuntimeContext) (*SuggestionRequest,
 			}
 			parts := strings.Split(r, "~")
 			if len(parts) != 2 {
-				return nil, output.ErrValidation("invalid --exclude format %q, expected 'start~end'", r)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --exclude format %q, expected 'start~end'", r).WithParam("--exclude")
 			}
 			startTsStr, err := common.ParseTime(parts[0])
 			if err != nil {
-				return nil, output.ErrValidation("invalid start time in --exclude: %q (%v)", parts[0], err)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time in --exclude: %q (%v)", parts[0], err).WithParam("--exclude")
 			}
 			endTsStr, err := common.ParseTime(parts[1], "end")
 			if err != nil {
-				return nil, output.ErrValidation("invalid end time in --exclude: %q (%v)", parts[1], err)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time in --exclude: %q (%v)", parts[1], err).WithParam("--exclude")
 			}
 			startSec, err := strconv.ParseInt(startTsStr, 10, 64)
 			if err != nil {
-				return nil, output.ErrValidation("invalid start timestamp in --exclude: %v", err)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start timestamp in --exclude: %v", err).WithParam("--exclude")
 			}
 			endSec, err := strconv.ParseInt(endTsStr, 10, 64)
 			if err != nil {
-				return nil, output.ErrValidation("invalid end timestamp in --exclude: %v", err)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end timestamp in --exclude: %v", err).WithParam("--exclude")
 			}
 			excludedTimes = append(excludedTimes, &EventTime{
 				EventStartTime: time.Unix(startSec, 0).Format(time.RFC3339),
@@ -219,13 +219,13 @@ var CalendarSuggestion = common.Shortcut{
 		}
 		durationMinutes := runtime.Int(flagDurationMinutes)
 		if durationMinutes != 0 && (durationMinutes < 1 || durationMinutes > 1440) {
-			return output.ErrValidation("--duration-minutes must be between 1 and 1440")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--duration-minutes must be between 1 and 1440").WithParam("--duration-minutes")
 		}
 
 		for _, flag := range []string{flagEventRrule, flagTimezone} {
 			if val := runtime.Str(flag); val != "" {
-				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-					return output.ErrValidation(err.Error())
+				if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+					return err
 				}
 			}
 		}
@@ -237,7 +237,7 @@ var CalendarSuggestion = common.Shortcut{
 					continue
 				}
 				if !strings.HasPrefix(id, "ou_") && !strings.HasPrefix(id, "oc_") {
-					return output.ErrValidation("invalid attendee id format %q: should start with 'ou_' or 'oc_'", id)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_' or 'oc_'", id).WithParam("--" + flagAttendees)
 				}
 			}
 		}
@@ -245,14 +245,14 @@ var CalendarSuggestion = common.Shortcut{
 		startInput := runtime.Str(flagStart)
 		if startInput != "" {
 			if _, err := common.ParseTime(startInput); err != nil {
-				return output.ErrValidation("invalid start time: %v", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
 			}
 		}
 
 		endInput := runtime.Str(flagEnd)
 		if endInput != "" {
 			if _, err := common.ParseTime(endInput, "end"); err != nil {
-				return output.ErrValidation("invalid end time: %v", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
 			}
 		}
 
@@ -267,13 +267,13 @@ var CalendarSuggestion = common.Shortcut{
 				}
 				parts := strings.Split(r, "~")
 				if len(parts) != 2 {
-					return output.ErrValidation("invalid range format in --exclude: %q, expect start~end", r)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid range format in --exclude: %q, expect start~end", r).WithParam("--exclude")
 				}
 				if _, err := common.ParseTime(parts[0]); err != nil {
-					return output.ErrValidation("invalid start time in --exclude: %q (%v)", parts[0], err)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time in --exclude: %q (%v)", parts[0], err).WithParam("--exclude")
 				}
 				if _, err := common.ParseTime(parts[1], "end"); err != nil {
-					return output.ErrValidation("invalid end time in --exclude: %q (%v)", parts[1], err)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time in --exclude: %q (%v)", parts[1], err).WithParam("--exclude")
 				}
 			}
 		}
@@ -292,20 +292,19 @@ var CalendarSuggestion = common.Shortcut{
 			Body:       req,
 		})
 		if err != nil {
-			return err
+			if _, ok := errs.ProblemOf(err); ok {
+				return err
+			}
+			return errs.WrapInternal(err)
 		}
 
-		if apiResp.StatusCode < http.StatusOK || apiResp.StatusCode >= http.StatusMultipleChoices {
-			return output.ErrAPI(apiResp.StatusCode, "", string(apiResp.RawBody))
+		if _, err := runtime.ClassifyAPIResponse(apiResp); err != nil {
+			return err
 		}
 
 		var resp = &OpenAPIResponse[*SuggestionResponse]{}
 		if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-			return output.ErrWithHint(output.ExitInternal, "validation", "unmarshal response fail", err.Error())
-		}
-
-		if resp.Code != 0 {
-			return output.ErrAPI(resp.Code, resp.Msg, resp.Data)
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "unmarshal response fail").WithCause(err)
 		}
 
 		data := resp.Data

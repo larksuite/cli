@@ -43,9 +43,9 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 			Args: []string{
 				"docs", "+update",
 				"--doc", docToken,
-				"--mode", "overwrite",
-				"--markdown", updatedContent,
-				"--new-title", updatedTitle,
+				"--command", "overwrite",
+				"--doc-format", "markdown",
+				"--content", "# " + updatedTitle + "\n\n" + updatedContent,
 			},
 			DefaultAs: defaultAs,
 		})
@@ -61,12 +61,15 @@ func TestDocs_UpdateWorkflow(t *testing.T) {
 			Args: []string{
 				"docs", "+fetch",
 				"--doc", docToken,
+				"--doc-format", "markdown",
 			},
 			DefaultAs: defaultAs,
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 		result.AssertStdoutStatus(t, true)
-		assert.Equal(t, updatedTitle, gjson.Get(result.Stdout, "data.title").String())
+		content := gjson.Get(result.Stdout, "data.document.content").String()
+		assert.Contains(t, content, updatedTitle)
+		assert.Contains(t, content, "This is the updated content.")
 	})
 }

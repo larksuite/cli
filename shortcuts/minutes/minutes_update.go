@@ -5,12 +5,11 @@ package minutes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -33,13 +32,13 @@ var MinutesUpdate = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
 		if minuteToken == "" {
-			return output.ErrValidation("--minute-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--minute-token is required").WithParam("--minute-token")
 		}
 		if err := validate.ResourceName(minuteToken, "--minute-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--minute-token")
 		}
 		if strings.TrimSpace(runtime.Str("topic")) == "" {
-			return output.ErrValidation("--topic is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--topic is required").WithParam("--topic")
 		}
 		return nil
 	},
@@ -57,7 +56,7 @@ var MinutesUpdate = common.Shortcut{
 			"topic": topic,
 		}
 
-		_, err := runtime.CallAPI(http.MethodPatch,
+		_, err := runtime.CallAPITyped(http.MethodPatch,
 			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)),
 			nil, body)
 		if err != nil {
@@ -75,20 +74,11 @@ var MinutesUpdate = common.Shortcut{
 }
 
 func minutesUpdateError(err error, minuteToken string) error {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Code != minutesUpdateNoEditPermissionCode {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != minutesUpdateNoEditPermissionCode {
 		return err
 	}
-
-	return &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "no_edit_permission",
-			Code:    minutesUpdateNoEditPermissionCode,
-			Message: fmt.Sprintf("No edit permission for minute %q: cannot update the title.", minuteToken),
-			Hint:    "Ask the minute owner for minute edit permission",
-			Detail:  exitErr.Detail.Detail,
-		},
-		Err: err,
-	}
+	p.Message = fmt.Sprintf("No edit permission for minute %q: cannot update the title.", minuteToken)
+	p.Hint = "Ask the minute owner for minute edit permission"
+	return err
 }

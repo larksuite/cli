@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	convertlib "github.com/larksuite/cli/shortcuts/im/convert_lib"
@@ -66,15 +67,15 @@ var ImChatMessageList = common.Shortcut{
 		// Under bot identity, --user-id is not supported; require --chat-id only.
 		if runtime.IsBot() {
 			if runtime.Str("user-id") != "" {
-				return common.FlagErrorf("--user-id requires user identity (--as user); use --chat-id when calling with bot identity")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id requires user identity (--as user); use --chat-id when calling with bot identity").WithParam("--user-id")
 			}
 			if runtime.Str("chat-id") == "" {
-				return common.FlagErrorf("specify --chat-id (bot identity does not support --user-id)")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --chat-id (bot identity does not support --user-id)").WithParam("--chat-id")
 			}
 		} else {
-			if err := common.ExactlyOne(runtime, "chat-id", "user-id"); err != nil {
+			if err := common.ExactlyOneTyped(runtime, "chat-id", "user-id"); err != nil {
 				if runtime.Str("chat-id") == "" && runtime.Str("user-id") == "" {
-					return common.FlagErrorf("specify at least one of --chat-id or --user-id")
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --chat-id or --user-id")
 				}
 				return err
 			}
@@ -82,12 +83,12 @@ var ImChatMessageList = common.Shortcut{
 
 		// Validate ID formats
 		if chatFlag := runtime.Str("chat-id"); chatFlag != "" {
-			if _, err := common.ValidateChatID(chatFlag); err != nil {
+			if _, err := common.ValidateChatIDTyped("--chat-id", chatFlag); err != nil {
 				return err
 			}
 		}
 		if userFlag := runtime.Str("user-id"); userFlag != "" {
-			if _, err := common.ValidateUserID(userFlag); err != nil {
+			if _, err := common.ValidateUserIDTyped("--user-id", userFlag); err != nil {
 				return err
 			}
 		}
@@ -109,7 +110,7 @@ var ImChatMessageList = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.DoAPIJSON(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
+		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
 		if err != nil {
 			return err
 		}
@@ -205,14 +206,14 @@ func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) 
 	if startFlag := runtime.Str("start"); startFlag != "" {
 		startTime, err := common.ParseTime(startFlag)
 		if err != nil {
-			return nil, output.ErrValidation("--start: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		params["start_time"] = []string{startTime}
 	}
 	if endFlag := runtime.Str("end"); endFlag != "" {
 		endTime, err := common.ParseTime(endFlag, "end")
 		if err != nil {
-			return nil, output.ErrValidation("--end: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		params["end_time"] = []string{endTime}
 	}
@@ -236,7 +237,7 @@ func resolveChatIDForMessagesList(runtime *common.RuntimeContext, dryRun bool) (
 		return "", err
 	}
 	if chatId == "" {
-		return "", output.Errorf(output.ExitAPI, "not_found", "P2P chat not found for this user")
+		return "", errs.NewAPIError(errs.SubtypeNotFound, "P2P chat not found for this user")
 	}
 	return chatId, nil
 }

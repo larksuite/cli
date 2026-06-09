@@ -7,25 +7,32 @@ import (
 	"context"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // v2CreateFlags returns the flag definitions for the v2 (OpenAPI) create path.
 func v2CreateFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "content", Desc: "document content (XML or Markdown)", Hidden: true, Input: []string{common.File, common.Stdin}},
-		{Name: "doc-format", Desc: "content format (prefer XML)", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown"}},
-		{Name: "parent-token", Desc: "parent folder or wiki-node token", Hidden: true},
-		{Name: "parent-position", Desc: "parent position (e.g. my_library)", Hidden: true},
+		{Name: "content", Desc: "document body; XML by default or Markdown when --doc-format markdown. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
+		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks, markdown imports plain Markdown", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "parent-token", Desc: "parent folder token or wiki node token; mutually exclusive with --parent-position"},
+		{Name: "parent-position", Desc: "parent position such as my_library; mutually exclusive with --parent-token"},
 	}
 }
 
 func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
+	if err := validateDocsV2Only(runtime, "+create", docsCreateLegacyFlags()); err != nil {
+		return err
+	}
 	if runtime.Str("content") == "" {
-		return common.FlagErrorf("--content is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is required").WithParam("--content")
 	}
 	if runtime.Str("parent-token") != "" && runtime.Str("parent-position") != "" {
-		return common.FlagErrorf("--parent-token and --parent-position are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parent-token and --parent-position are mutually exclusive").WithParams(
+			errs.InvalidParam{Name: "--parent-token", Reason: "mutually exclusive with --parent-position"},
+			errs.InvalidParam{Name: "--parent-position", Reason: "mutually exclusive with --parent-token"},
+		)
 	}
 	return nil
 }

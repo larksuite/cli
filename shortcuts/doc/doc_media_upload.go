@@ -9,8 +9,8 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -84,10 +84,10 @@ var DocMediaUpload = common.Shortcut{
 		// Validate file
 		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
+			return wrapDocInputFileErr(err, "file not found")
 		}
 		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
 		}
 
 		fileName := filepath.Base(filePath)

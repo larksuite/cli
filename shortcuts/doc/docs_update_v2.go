@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -24,13 +25,13 @@ var validCommandsV2 = map[string]bool{
 // v2UpdateFlags returns the flag definitions for the v2 (OpenAPI) update path.
 func v2UpdateFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "command", Desc: "operation: str_replace | block_delete | block_insert_after | block_copy_insert_after | block_replace | block_move_after | overwrite | append", Hidden: true, Enum: validCommandsV2Keys()},
-		{Name: "doc-format", Desc: "content format (prefer XML)", Hidden: true, Default: "xml", Enum: []string{"xml", "markdown"}},
-		{Name: "content", Desc: "new content (XML or Markdown)", Hidden: true, Input: []string{common.File, common.Stdin}},
-		{Name: "pattern", Desc: "regex pattern for str_replace", Hidden: true},
-		{Name: "block-id", Desc: "target block ID for block_* operations", Hidden: true},
-		{Name: "src-block-ids", Desc: "source block IDs (comma-separated) for block_copy_insert_after / block_move_after", Hidden: true},
-		{Name: "revision-id", Desc: "base revision (-1 = latest)", Hidden: true, Type: "int", Default: "-1"},
+		{Name: "command", Desc: "operation; requirements: str_replace(--pattern), block_delete(--block-id, comma-separated for batch), block_insert_after/block_replace(--block-id,--content), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)", Enum: validCommandsV2Keys()},
+		{Name: "doc-format", Desc: "content format for --content; xml is default for precise rich edits, markdown for user-provided Markdown or plain append/overwrite", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "content", Desc: "replacement or inserted content; XML by default or Markdown when --doc-format markdown; empty with str_replace deletes match. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
+		{Name: "pattern", Desc: "str_replace match pattern; XML mode is inline text, Markdown mode can match multiline text"},
+		{Name: "block-id", Desc: "target block ID(s) for block operations (comma-separated for batch delete); -1 means document end where supported"},
+		{Name: "src-block-ids", Desc: "comma-separated source block ids for block_copy_insert_after and block_move_after"},
+		{Name: "revision-id", Desc: "base revision id; -1 means latest", Type: "int", Default: "-1"},
 	}
 }
 
@@ -39,15 +40,18 @@ func validCommandsV2Keys() []string {
 }
 
 func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
+	if err := validateDocsV2Only(runtime, "+update", docsUpdateLegacyFlags()); err != nil {
+		return err
+	}
 	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
-		return common.FlagErrorf("invalid --doc: %v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc: %v", err).WithParam("--doc")
 	}
 	cmd := runtime.Str("command")
 	if cmd == "" {
-		return common.FlagErrorf("--command is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command is required").WithParam("--command")
 	}
 	if !validCommandsV2[cmd] {
-		return common.FlagErrorf("invalid --command %q, valid: str_replace | block_delete | block_insert_after | block_copy_insert_after | block_replace | block_move_after | overwrite | append", cmd)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --command %q, valid: str_replace | block_delete | block_insert_after | block_copy_insert_after | block_replace | block_move_after | overwrite | append", cmd).WithParam("--command")
 	}
 	content := runtime.Str("content")
 	pattern := runtime.Str("pattern")
@@ -57,50 +61,50 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	switch cmd {
 	case "str_replace":
 		if pattern == "" {
-			return common.FlagErrorf("--command str_replace requires --pattern")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command str_replace requires --pattern").WithParam("--pattern")
 		}
 	case "block_delete":
 		if blockID == "" {
-			return common.FlagErrorf("--command block_delete requires --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_delete requires --block-id").WithParam("--block-id")
 		}
 	case "block_insert_after":
 		if blockID == "" {
-			return common.FlagErrorf("--command block_insert_after requires --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_insert_after requires --block-id").WithParam("--block-id")
 		}
 		if content == "" {
-			return common.FlagErrorf("--command block_insert_after requires --content")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_insert_after requires --content").WithParam("--content")
 		}
 	case "block_copy_insert_after":
 		if blockID == "" {
-			return common.FlagErrorf("--command block_copy_insert_after requires --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_copy_insert_after requires --block-id").WithParam("--block-id")
 		}
 		if srcBlockIDs == "" {
-			return common.FlagErrorf("--command block_copy_insert_after requires --src-block-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_copy_insert_after requires --src-block-ids").WithParam("--src-block-ids")
 		}
 	case "block_move_after":
 		if blockID == "" {
-			return common.FlagErrorf("--command block_move_after requires --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_move_after requires --block-id").WithParam("--block-id")
 		}
 		if srcBlockIDs == "" {
-			return common.FlagErrorf("--command block_move_after requires --src-block-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_move_after requires --src-block-ids").WithParam("--src-block-ids")
 		}
 		if content != "" {
-			return common.FlagErrorf("--command block_move_after does not accept --content; use --src-block-ids")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_move_after does not accept --content; use --src-block-ids").WithParam("--content")
 		}
 	case "block_replace":
 		if blockID == "" {
-			return common.FlagErrorf("--command block_replace requires --block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_replace requires --block-id").WithParam("--block-id")
 		}
 		if content == "" {
-			return common.FlagErrorf("--command block_replace requires --content")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_replace requires --content").WithParam("--content")
 		}
 	case "overwrite":
 		if content == "" {
-			return common.FlagErrorf("--command overwrite requires --content")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command overwrite requires --content").WithParam("--content")
 		}
 	case "append":
 		if content == "" {
-			return common.FlagErrorf("--command append requires --content")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command append requires --content").WithParam("--content")
 		}
 	}
 	return nil

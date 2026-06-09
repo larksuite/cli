@@ -14,8 +14,7 @@ import (
 	"time"
 	"unicode"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -37,7 +36,7 @@ func toUnixSeconds(input string, hint ...string) (string, error) {
 		return "", err
 	}
 	if _, err := strconv.ParseInt(ts, 10, 64); err != nil {
-		return "", fmt.Errorf("invalid timestamp %q: %w", ts, err)
+		return "", fmt.Errorf("invalid timestamp %q: %w", ts, err) //nolint:forbidigo // intermediate parse error; callers wrap it into a typed ValidationError
 	}
 	return ts, nil
 }
@@ -134,7 +133,7 @@ func meetingEventsPageSize(runtime *common.RuntimeContext) (int, error) {
 	}
 	pageSize, err := strconv.Atoi(pageSizeStr)
 	if err != nil {
-		return 0, common.FlagErrorf("invalid --page-size %q: must be an integer", pageSizeStr)
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --page-size %q: must be an integer", pageSizeStr).WithParam("--page-size")
 	}
 	if pageSize < minVCMeetingEventsPageSize {
 		return minVCMeetingEventsPageSize, nil
@@ -155,11 +154,11 @@ func meetingEventsPaginationConfig(runtime *common.RuntimeContext) (bool, int) {
 func validateMeetingEventsMeetingID(meetingID string) error {
 	meetingID = strings.TrimSpace(meetingID)
 	if meetingID == "" {
-		return common.FlagErrorf("--meeting-id is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-id is required").WithParam("--meeting-id")
 	}
 	value, err := strconv.ParseInt(meetingID, 10, 64)
 	if err != nil || value <= 0 {
-		return common.FlagErrorf("--meeting-id must be a positive integer, got %q", meetingID)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-id must be a positive integer, got %q", meetingID).WithParam("--meeting-id")
 	}
 	return nil
 }
@@ -176,14 +175,14 @@ func parseMeetingEventsTimeRange(runtime *common.RuntimeContext) (string, string
 	if start != "" {
 		parsed, err := toUnixSeconds(start)
 		if err != nil {
-			return "", "", output.ErrValidation("--start: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		startTime = parsed
 	}
 	if end != "" {
 		parsed, err := toUnixSeconds(end, "end")
 		if err != nil {
-			return "", "", output.ErrValidation("--end: %v", err)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		endTime = parsed
 	}
@@ -191,29 +190,30 @@ func parseMeetingEventsTimeRange(runtime *common.RuntimeContext) (string, string
 		startValue, _ := strconv.ParseInt(startTime, 10, 64)
 		endValue, _ := strconv.ParseInt(endTime, 10, 64)
 		if startValue > endValue {
-			return "", "", output.ErrValidation("--start (%s) is after --end (%s)", start, end)
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--start (%s) is after --end (%s)", start, end).WithParam("--start")
 		}
 	}
 	return startTime, endTime, nil
 }
 
-func buildMeetingEventsParams(runtime *common.RuntimeContext, startTime, endTime string) (larkcore.QueryParams, error) {
+func buildMeetingEventsParams(runtime *common.RuntimeContext, startTime, endTime string) (map[string]interface{}, error) {
 	pageSize, err := meetingEventsPageSize(runtime)
 	if err != nil {
 		return nil, err
 	}
 
-	params := make(larkcore.QueryParams)
-	params.Set("meeting_id", strings.TrimSpace(runtime.Str("meeting-id")))
-	params.Set("page_size", strconv.Itoa(pageSize))
+	params := map[string]interface{}{
+		"meeting_id": strings.TrimSpace(runtime.Str("meeting-id")),
+		"page_size":  strconv.Itoa(pageSize),
+	}
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
-		params.Set("page_token", pageToken)
+		params["page_token"] = pageToken
 	}
 	if startTime != "" {
-		params.Set("start_time", startTime)
+		params["start_time"] = startTime
 	}
 	if endTime != "" {
-		params.Set("end_time", endTime)
+		params["end_time"] = endTime
 	}
 	return params, nil
 }
@@ -225,7 +225,7 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 	}
 	autoPaginate, pageLimit := meetingEventsPaginationConfig(runtime)
 	if !autoPaginate {
-		data, err := runtime.DoAPIJSON(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
+		data, err := runtime.CallAPITyped(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
 		if err != nil {
 			return nil, nil, false, "", err
 		}
@@ -245,7 +245,7 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 		lastHasMore   bool
 	)
 	for page := 0; page < pageLimit; page++ {
-		data, err := runtime.DoAPIJSON(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
+		data, err := runtime.CallAPITyped(http.MethodGet, vcMeetingEventsAPIPath, params, nil)
 		if err != nil {
 			return nil, nil, false, "", err
 		}
@@ -260,7 +260,7 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 		if !lastHasMore || lastPageToken == "" {
 			break
 		}
-		params.Set("page_token", lastPageToken)
+		params["page_token"] = lastPageToken
 	}
 	if lastData == nil {
 		lastData = map[string]interface{}{}
@@ -271,24 +271,11 @@ func fetchMeetingEvents(ctx context.Context, runtime *common.RuntimeContext, sta
 	return lastData, allEvents, lastHasMore, lastPageToken, nil
 }
 
-func flattenQueryParams(params larkcore.QueryParams) map[string]interface{} {
+func flattenQueryParams(params map[string]interface{}) map[string]interface{} {
 	if len(params) == 0 {
 		return nil
 	}
-	flat := make(map[string]interface{}, len(params))
-	for key, values := range params {
-		switch len(values) {
-		case 0:
-			continue
-		case 1:
-			flat[key] = values[0]
-		default:
-			copied := make([]string, len(values))
-			copy(copied, values)
-			flat[key] = copied
-		}
-	}
-	return flat
+	return params
 }
 
 func compactMeetingEvents(events []interface{}) []interface{} {

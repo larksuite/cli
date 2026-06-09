@@ -32,12 +32,12 @@ var BaseDataQuery = common.Shortcut{
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))
 		dec.UseNumber()
 		if err := dec.Decode(&dsl); err != nil {
-			return common.FlagErrorf("--dsl invalid JSON: %v", err)
+			return baseFlagErrorf("--dsl invalid JSON: %v", err)
 		}
 		_, hasDim := dsl["dimensions"]
 		_, hasMeas := dsl["measures"]
 		if !hasDim && !hasMeas {
-			return common.FlagErrorf("--dsl must contain at least one of 'dimensions' or 'measures'")
+			return baseFlagErrorf("--dsl must contain at least one of 'dimensions' or 'measures'")
 		}
 		return nil
 	},

@@ -5,11 +5,13 @@ package okr
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -188,5 +190,21 @@ func TestProgressGetExecute_APIError(t *testing.T) {
 	err := runProgressGetShortcut(t, f, stdout, []string{"+progress-get", "--progress-id", "999"})
 	if err == nil {
 		t.Fatal("expected error for API failure")
+	}
+}
+
+func TestParseProgressRecord_InvalidResponseTypedError(t *testing.T) {
+	_, err := parseProgressRecord(map[string]any{
+		"progress_rate": "not-an-object",
+	})
+	if err == nil {
+		t.Fatal("expected invalid response error")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("error is not *errs.InternalError: %T (%v)", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("Subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
 	}
 }

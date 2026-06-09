@@ -5,13 +5,10 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -37,22 +34,9 @@ var SetAncestorTask = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		taskID := runtime.Str("task-id")
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPost,
-			ApiPath:     "/open-apis/task/v2/tasks/" + url.PathEscape(taskID) + "/set_ancestor_task",
-			QueryParams: queryParams,
-			Body:        buildSetAncestorBody(runtime.Str("ancestor-id")),
-		})
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "set ancestor task")
-			}
-		}
-		if _, err = HandleTaskApiResult(result, err, "set ancestor task"); err != nil {
+		if _, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+url.PathEscape(taskID)+"/set_ancestor_task", params, buildSetAncestorBody(runtime.Str("ancestor-id"))); err != nil {
 			return err
 		}
 

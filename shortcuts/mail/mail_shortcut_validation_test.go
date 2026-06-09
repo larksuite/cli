@@ -16,16 +16,13 @@ import (
 
 // assertValidationError fails the test unless err carries the validation
 // category with ExitValidation exit code and a message containing wantSubstr.
-// Accepts both typed *errs.ValidationError and legacy *output.ExitError so
-// the helper survives the error-contract migration.
+// Mail-produced validation errors should be typed; the exit-code fallback keeps
+// shared framework validation gates covered without asserting their shape here.
 func assertValidationError(t *testing.T, err error, wantSubstr string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected a validation error, got nil")
 	}
-	// Accept both typed *errs.ValidationError and legacy *output.ExitError —
-	// the helper's purpose is to assert "this is a validation-category
-	// error" via either contract, so the dual-path matches the docstring.
 	code := output.ExitCodeOf(err)
 	if !errs.IsValidation(err) && code != output.ExitValidation {
 		t.Fatalf("expected a validation-category error, got %T: %v", err, err)
@@ -190,10 +187,21 @@ func validMessageIDForTest(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
 }
 
+func rawMessageIDForTest(s string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(s))
+}
+
 func TestValidateMessageIDsAcceptsValidIDs(t *testing.T) {
 	_, err := validateMessageIDs(validMessageIDForTest("biz-001") + "," + validMessageIDForTest("biz-002"))
 	if err != nil {
 		t.Fatalf("expected nil error for valid IDs, got: %v", err)
+	}
+}
+
+func TestValidateMessageIDsAcceptsRawBase64URLIDs(t *testing.T) {
+	_, err := validateMessageIDs(rawMessageIDForTest("biz-raw-001"))
+	if err != nil {
+		t.Fatalf("expected nil error for raw base64url ID, got: %v", err)
 	}
 }
 

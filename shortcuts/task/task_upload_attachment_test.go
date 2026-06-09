@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
@@ -246,12 +247,15 @@ func TestUploadAttachmentTask_SizeLimit(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
 	}
 	if !strings.Contains(err.Error(), "50MB") {
 		t.Fatalf("error message should mention 50MB limit, got: %v", err)
@@ -274,12 +278,139 @@ func TestUploadAttachmentTask_FileMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+	if ve.Param != "--file" {
+		t.Fatalf("param = %q, want %q", ve.Param, "--file")
+	}
+}
+
+func TestUploadAttachmentTask_NotRegularFile(t *testing.T) {
+	f, stdout, _, _ := taskShortcutTestFactory(t)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	// A directory stats fine but is not a regular file; we must reject it as
+	// invalid --file input before any HTTP call (no stub registered).
+	if err := os.Mkdir("a-dir", 0o755); err != nil {
+		t.Fatalf("Mkdir error: %v", err)
+	}
+
+	err := runMountedTaskShortcut(t, UploadAttachmentTask, []string{
+		"+upload-attachment",
+		"--resource-id", "task-guid-123",
+		"--file", "a-dir",
+		"--as", "bot",
+		"--format", "json",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--file" {
+		t.Fatalf("param = %q, want %q", ve.Param, "--file")
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+	if !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("error message should mention regular file, got: %v", err)
+	}
+}
+
+func TestUploadAttachmentTask_StatErrorMessage(t *testing.T) {
+	f, stdout, _, _ := taskShortcutTestFactory(t)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	// A missing path fails Stat → taskInputStatError surfaces "cannot access
+	// file" (no longer "file not found"). No HTTP stub: must fail before any call.
+	err := runMountedTaskShortcut(t, UploadAttachmentTask, []string{
+		"+upload-attachment",
+		"--resource-id", "task-guid-123",
+		"--file", "missing.bin",
+		"--as", "bot",
+		"--format", "json",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
+	}
+	if !strings.Contains(err.Error(), "cannot access file") {
+		t.Fatalf("error message should contain %q, got: %v", "cannot access file", err)
+	}
+}
+
+func TestUploadAttachmentTask_MalformedResponse(t *testing.T) {
+	f, stdout, stderr, reg := taskShortcutTestFactory(t)
+	warmTenantToken(t, f, reg)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+
+	filePath := writeTestFile(t, "note.txt", 4)
+
+	// A 200 response whose body is not valid JSON: the parse failure must
+	// surface a typed internal invalid_response error (exit 5), not a panic
+	// or a silent success.
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/task/v2/attachments/upload",
+		RawBody: []byte("this is not json{"),
+	})
+
+	err := runMountedTaskShortcut(t, UploadAttachmentTask, []string{
+		"+upload-attachment",
+		"--resource-id", "task-guid-123",
+		"--file", filePath,
+		"--as", "bot",
+		"--format", "json",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitInternal)
+	}
+	if !strings.Contains(err.Error(), "parse response") {
+		t.Fatalf("error message should mention parse response, got: %v", err)
+	}
+
+	// The parse-error observability log should be emitted on stderr.
+	if errOut := stderr.String(); !strings.Contains(errOut, "parse_error") {
+		t.Errorf("stderr missing parse_error log; got:\n%s", errOut)
 	}
 }
 
@@ -311,12 +442,23 @@ func TestUploadAttachmentTask_APIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Code != ErrCodeTaskPermissionDenied {
-		t.Fatalf("expected task permission denied code %d, got: %+v", ErrCodeTaskPermissionDenied, exitErr.Detail)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(err) = !ok, want typed errs.* error; err = %v", err)
+	}
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
+	}
+	if p.Code != ErrCodeTaskPermissionDenied {
+		t.Fatalf("code = %d, want %d", p.Code, ErrCodeTaskPermissionDenied)
+	}
+	// permission_denied maps to CategoryAuthorization → exit 3 (was exit 1 under legacy).
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitAuth)
 	}
 
 	// Key-path log should still be emitted on failure.

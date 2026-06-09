@@ -18,7 +18,7 @@ import (
 // forbidigo's errs-typed-only ban does not see them because they are method
 // calls, not output.Err* identifiers — this AST rule covers that gap.
 //
-// Migrated code must call a typed API wrapper (e.g. drive's driveCallAPI) or use
+// Migrated code must call the domain's typed API wrapper or use
 // runtime.DoAPI + errclass.BuildAPIError directly, so failures classify into
 // typed errs.* errors.
 //
@@ -27,6 +27,11 @@ import (
 // is not matched. runtime.DoAPI / runtime.RawAPI are intentionally not listed:
 // they return the raw response for the caller to classify and do not emit a
 // legacy envelope themselves.
+//
+// Files that do not import shortcuts/common are skipped: the legacy helpers
+// are methods on common.RuntimeContext, so a same-named method on another
+// receiver (for example the event domain's APIClient interface, whose
+// implementation classifies into typed errs.* errors) is not a legacy call.
 func CheckNoLegacyRuntimeAPICall(path, src string) []Violation {
 	if !isMigratedEnvelopePath(path) || strings.HasSuffix(path, "_test.go") {
 		return nil
@@ -34,6 +39,9 @@ func CheckNoLegacyRuntimeAPICall(path, src string) []Violation {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
+		return nil
+	}
+	if !importsPath(file, commonImportPath) {
 		return nil
 	}
 	var out []Violation
@@ -53,7 +61,7 @@ func CheckNoLegacyRuntimeAPICall(path, src string) []Violation {
 				File:    path,
 				Line:    fset.Position(call.Pos()).Line,
 				Message: "runtime." + name + " emits a legacy output.ExitError api_error envelope and downgrades typed network/auth boundary errors; it is forbidden on migrated paths",
-				Suggestion: "call the domain's typed API wrapper (e.g. driveCallAPI) or runtime.DoAPI + errclass.BuildAPIError " +
+				Suggestion: "call the domain's typed API wrapper (for example driveCallAPI or callTaskAPITyped) or runtime.DoAPI + errclass.BuildAPIError " +
 					"so failures classify into typed errs.* errors",
 			})
 		}
@@ -70,4 +78,17 @@ func matchLegacyRuntimeAPIMethod(name string) (string, bool) {
 		return name, true
 	}
 	return "", false
+}
+
+// importsPath reports whether the file imports the given package path.
+func importsPath(file *ast.File, importPath string) bool {
+	for _, imp := range file.Imports {
+		if imp.Path == nil {
+			continue
+		}
+		if strings.Trim(imp.Path.Value, "`\"") == importPath {
+			return true
+		}
+	}
+	return false
 }

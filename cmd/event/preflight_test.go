@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/output"
 )
 
 func newPreflightCtx(appID string, brand core.LarkBrand, identity core.Identity, keyDef *eventlib.KeyDefinition, appVer *appmeta.AppVersion) *preflightCtx {
@@ -89,19 +89,17 @@ func TestPreflightEventTypes_MissingBlocks(t *testing.T) {
 	if !strings.Contains(err.Error(), "mail.user_mailbox.event.message_read_v1") {
 		t.Errorf("error should name the missing event type, got: %v", err)
 	}
-	var exit *output.ExitError
-	if !errors.As(err, &exit) {
-		t.Fatalf("expected output.ExitError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
 	}
-	if exit.Code != output.ExitValidation {
-		t.Errorf("ExitCode = %d, want ExitValidation (%d)", exit.Code, output.ExitValidation)
-	}
-	if exit.Detail == nil {
-		t.Fatal("expected Detail with hint")
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("problem = %s/%s, want %s/%s", p.Category, p.Subtype,
+			errs.CategoryValidation, errs.SubtypeFailedPrecondition)
 	}
 	wantURL := "https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/event"
-	if !strings.Contains(exit.Detail.Hint, wantURL) {
-		t.Errorf("hint missing subscription URL %q\ngot: %s", wantURL, exit.Detail.Hint)
+	if !strings.Contains(p.Hint, wantURL) {
+		t.Errorf("hint missing subscription URL %q\ngot: %s", wantURL, p.Hint)
 	}
 }
 
@@ -145,17 +143,19 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 	if !strings.Contains(err.Error(), "im:message.group_at_msg") {
 		t.Errorf("error should name missing scope, got: %v", err)
 	}
-	var exit *output.ExitError
-	if !errors.As(err, &exit) {
-		t.Fatalf("expected output.ExitError, got %T: %v", err, err)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
 	}
-	if exit.Code != output.ExitAuth {
-		t.Errorf("ExitCode = %d, want ExitAuth (%d)", exit.Code, output.ExitAuth)
+	if permErr.Category != errs.CategoryAuthorization || permErr.Subtype != errs.SubtypeMissingScope {
+		t.Errorf("problem = %s/%s, want %s/%s", permErr.Category, permErr.Subtype,
+			errs.CategoryAuthorization, errs.SubtypeMissingScope)
 	}
-	if exit.Detail == nil {
-		t.Fatal("expected Detail with hint, got nil Detail")
+	wantMissing := []string{"im:message.group_at_msg"}
+	if len(permErr.MissingScopes) != 1 || permErr.MissingScopes[0] != wantMissing[0] {
+		t.Errorf("MissingScopes = %v, want %v", permErr.MissingScopes, wantMissing)
 	}
-	hint := exit.Detail.Hint
+	hint := permErr.Hint
 	wantSubstrings := []string{
 		"https://open.feishu.cn/app/cli_x/auth?q=",
 		"im:message.group_at_msg",

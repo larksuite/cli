@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -43,7 +42,7 @@ var BaseFormQuestionsDelete = common.Shortcut{
 
 		var questionIds []string
 		if err := json.Unmarshal([]byte(questionIdsJSON), &questionIds); err != nil {
-			return output.Errorf(output.ExitValidation, "invalid_json", "--question-ids must be a valid JSON array of strings: %s", err)
+			return baseValidationErrorf("--question-ids must be a valid JSON array of strings: %s", err)
 		}
 
 		_, err := baseV3Call(runtime, "DELETE",

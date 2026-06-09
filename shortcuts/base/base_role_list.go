@@ -32,7 +32,7 @@ var BaseRoleList = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
 	},
@@ -52,6 +52,6 @@ var BaseRoleList = common.Shortcut{
 			return err
 		}
 
-		return handleRoleResponse(runtime, apiResp.RawBody, "list roles failed")
+		return handleRoleAPIResponse(runtime, apiResp, "list roles failed")
 	},
 }

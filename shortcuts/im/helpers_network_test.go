@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -445,8 +447,15 @@ func TestDownloadIMResourceToPathRetryContextCanceled(t *testing.T) {
 	cmdutil.TestChdir(t, t.TempDir())
 	target := "out.bin"
 	_, _, err := downloadIMResourceToPath(ctx, runtime, "om_cancel", "file_cancel", "file", target, true)
-	if err != context.Canceled {
-		t.Fatalf("downloadIMResourceToPath() error = %v, want context.Canceled", err)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("downloadIMResourceToPath() error = %v, want errors.Is(context.Canceled)", err)
+	}
+	var ne *errs.NetworkError
+	if !errors.As(err, &ne) {
+		t.Fatalf("downloadIMResourceToPath() error = %T, want *errs.NetworkError", err)
+	}
+	if ne.Subtype != errs.SubtypeNetworkTransport {
+		t.Fatalf("network subtype = %q, want %q", ne.Subtype, errs.SubtypeNetworkTransport)
 	}
 	// First attempt is made, then retry checks ctx.Err() and returns
 	if attempts != 1 {
@@ -600,6 +609,14 @@ func TestDownloadIMResourceToPathRangeChunkFailureCleansOutput(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "HTTP 500: chunk failed") {
 		t.Fatalf("downloadIMResourceToPath() error = %v", err)
 	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("downloadIMResourceToPath() error = %T, want typed problem", err)
+	}
+	if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkServer || p.Code != http.StatusInternalServerError {
+		t.Fatalf("network problem = subtype %q code %d, want subtype %q code %d",
+			p.Subtype, p.Code, errs.SubtypeNetworkServer, http.StatusInternalServerError)
+	}
 	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
 		t.Fatalf("output file exists after failed download, stat error = %v", statErr)
 	}
@@ -716,7 +733,7 @@ func TestUploadImageToIMSuccess(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := uploadImageToIM(context.Background(), runtime, path, "message")
+	got, err := uploadImageToIM(context.Background(), runtime, path, "message", "--image")
 	if err != nil {
 		t.Fatalf("uploadImageToIM() error = %v", err)
 	}
@@ -754,7 +771,7 @@ func TestUploadFileToIMSuccess(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := uploadFileToIM(context.Background(), runtime, path, "stream", "1200")
+	got, err := uploadFileToIM(context.Background(), runtime, path, "stream", "1200", "--file")
 	if err != nil {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
@@ -784,9 +801,13 @@ func TestUploadImageToIMSizeLimit(t *testing.T) {
 	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("unexpected")
 	}))
-	_, err = uploadImageToIM(context.Background(), rt, path, "message")
+	_, err = uploadImageToIM(context.Background(), rt, path, "message", "--image")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadImageToIM() error = %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--image" {
+		t.Fatalf("uploadImageToIM() size error must carry Param=--image, got %T %+v", err, err)
 	}
 }
 
@@ -805,13 +826,21 @@ func TestUploadFileToIMSizeLimit(t *testing.T) {
 	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("unexpected")
 	}))
-	_, err = uploadFileToIM(context.Background(), rt, path, "stream", "")
+	_, err = uploadFileToIM(context.Background(), rt, path, "stream", "", "--file")
 	if err == nil || !strings.Contains(err.Error(), "exceeds limit") {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--file" {
+		t.Fatalf("uploadFileToIM() size error must carry Param=--file, got %T %+v", err, err)
+	}
 }
 
-func TestResolveMediaContentWrapsUploadError(t *testing.T) {
+// TestResolveMediaContentMissingLocalFileIsValidation pins that a missing local
+// media path is a typed validation error (bad --image input), not a network or
+// internal error: the file never opened, so there is no transport failure to
+// classify as network.
+func TestResolveMediaContentMissingLocalFileIsValidation(t *testing.T) {
 	runtime := &common.RuntimeContext{
 		Factory: &cmdutil.Factory{
 			FileIOProvider: fileio.GetProvider(),
@@ -826,8 +855,49 @@ func TestResolveMediaContentWrapsUploadError(t *testing.T) {
 
 	missing := "missing.png"
 	_, _, err := resolveMediaContent(context.Background(), runtime, "", missing, "", "", "", "")
-	if err == nil || !strings.Contains(err.Error(), "image upload failed") {
-		t.Fatalf("resolveMediaContent() error = %v", err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("missing local media file must be a validation error, got %T: %v", err, err)
+	}
+	if ve.Param != "--image" {
+		t.Fatalf("missing local media file Param = %q, want --image", ve.Param)
+	}
+	if !strings.Contains(err.Error(), "cannot read file") {
+		t.Fatalf("error should explain the unreadable file, got %v", err)
+	}
+}
+
+func TestUploadFileToIMMissingLocalFileCarriesParam(t *testing.T) {
+	runtime := &common.RuntimeContext{
+		Factory: &cmdutil.Factory{
+			FileIOProvider: fileio.GetProvider(),
+			IOStreams: &cmdutil.IOStreams{
+				Out:    &bytes.Buffer{},
+				ErrOut: &bytes.Buffer{},
+			},
+		},
+	}
+
+	cmdutil.TestChdir(t, t.TempDir())
+
+	_, err := uploadFileToIM(context.Background(), runtime, "missing.bin", "stream", "", "--file")
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("missing local file must be a validation error, got %T: %v", err, err)
+	}
+	if ve.Param != "--file" {
+		t.Fatalf("missing local file Param = %q, want --file", ve.Param)
+	}
+}
+
+func TestStartURLDownloadBlockedURLCarriesParam(t *testing.T) {
+	_, _, err := startURLDownload(context.Background(), nil, "http://127.0.0.1/image.png", "--image")
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("blocked URL must be a validation error, got %T: %v", err, err)
+	}
+	if ve.Param != "--image" {
+		t.Fatalf("blocked URL Param = %q, want --image", ve.Param)
 	}
 }
 
@@ -920,7 +990,7 @@ func TestUploadFileToIMPreservesLocalFileName(t *testing.T) {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if _, err := uploadFileToIM(context.Background(), runtime, "./"+localName, "pdf", ""); err != nil {
+	if _, err := uploadFileToIM(context.Background(), runtime, "./"+localName, "pdf", "", "--file"); err != nil {
 		t.Fatalf("uploadFileToIM() error = %v", err)
 	}
 	if !strings.Contains(gotBody, `name="file_name"`) || !strings.Contains(gotBody, localName) {

@@ -36,14 +36,14 @@ var BaseRoleUpdate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("role-id")) == "" {
-			return common.FlagErrorf("--role-id must not be blank")
+			return baseFlagErrorf("--role-id must not be blank")
 		}
 		var body map[string]any
 		if err := json.Unmarshal([]byte(runtime.Str("json")), &body); err != nil {
-			return common.FlagErrorf("--json must be valid JSON: %v", err)
+			return baseFlagErrorf("--json must be valid JSON: %v", err)
 		}
 		return nil
 	},
@@ -72,6 +72,6 @@ var BaseRoleUpdate = common.Shortcut{
 			return err
 		}
 
-		return handleRoleResponse(runtime, apiResp.RawBody, "update role failed")
+		return handleRoleAPIResponse(runtime, apiResp, "update role failed")
 	},
 }

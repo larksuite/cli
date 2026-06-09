@@ -10,8 +10,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -45,11 +45,11 @@ var DocMediaPreview = common.Shortcut{
 		overwrite := runtime.Bool("overwrite")
 
 		if err := validate.ResourceName(token, "--token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--token")
 		}
 		// Early path validation before API call (final validation after auto-extension below)
 		if _, err := runtime.ResolveSavePath(outputPath); err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Previewing: media %s\n", common.MaskToken(token))
@@ -65,7 +65,7 @@ var DocMediaPreview = common.Shortcut{
 			},
 		})
 		if err != nil {
-			return output.ErrNetwork("preview failed: %v", err)
+			return wrapDocNetworkErr(err, "preview failed: %v", err)
 		}
 		defer resp.Body.Close()
 
@@ -74,14 +74,14 @@ var DocMediaPreview = common.Shortcut{
 		// Validate final path after extension append
 		if finalPath != outputPath {
 			if _, err := runtime.ResolveSavePath(finalPath); err != nil {
-				return output.ErrValidation("unsafe output path: %s", err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 			}
 		}
 
 		// Overwrite check on final path (after extension detection)
 		if !overwrite {
 			if _, statErr := runtime.FileIO().Stat(finalPath); statErr == nil {
-				return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", finalPath)
+				return errs.NewValidationError(errs.SubtypeFailedPrecondition, "output file already exists: %s (use --overwrite to replace)", finalPath).WithParam("--output")
 			}
 		}
 
@@ -90,7 +90,7 @@ var DocMediaPreview = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "io")
+			return common.WrapSaveErrorTyped(err)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(finalPath)

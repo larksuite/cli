@@ -5,13 +5,10 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -42,24 +39,8 @@ var ReopenTask = common.Shortcut{
 		taskId := url.PathEscape(runtime.Str("task-id"))
 		body := buildReopenBody()
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
-
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPatch,
-			ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
-			QueryParams: queryParams,
-			Body:        body,
-		})
-
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse reopen response")
-			}
-		}
-
-		data, err := HandleTaskApiResult(result, err, "reopen task")
+		params := map[string]interface{}{"user_id_type": "open_id"}
+		data, err := callTaskAPITyped(runtime, http.MethodPatch, "/open-apis/task/v2/tasks/"+taskId, params, body)
 		if err != nil {
 			return err
 		}

@@ -5,13 +5,10 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -55,14 +52,15 @@ var GetRelatedTasks = common.Shortcut{
 			Params(params)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
-		queryParams.Set("page_size", fmt.Sprintf("%d", relatedTasksPageSize))
+		params := map[string]interface{}{
+			"user_id_type": "open_id",
+			"page_size":    relatedTasksPageSize,
+		}
 		if runtime.Cmd.Flags().Changed("include-complete") && !runtime.Bool("include-complete") {
-			queryParams.Set("completed", "false")
+			params["completed"] = "false"
 		}
 		if pageToken := runtime.Str("page-token"); pageToken != "" {
-			queryParams.Set("page_token", pageToken)
+			params["page_token"] = pageToken
 		}
 
 		pageLimit := runtime.Int("page-limit")
@@ -80,18 +78,7 @@ var GetRelatedTasks = common.Shortcut{
 		var lastPageToken string
 		var lastHasMore bool
 		for page := 0; page < pageLimit; page++ {
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodGet,
-				ApiPath:     "/open-apis/task/v2/task_v2/list_related_task",
-				QueryParams: queryParams,
-			})
-			var result map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse related tasks")
-				}
-			}
-			data, err := HandleTaskApiResult(result, err, "list related tasks")
+			data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/task_v2/list_related_task", params, nil)
 			if err != nil {
 				return err
 			}
@@ -103,7 +90,7 @@ var GetRelatedTasks = common.Shortcut{
 			if !lastHasMore || lastPageToken == "" {
 				break
 			}
-			queryParams.Set("page_token", lastPageToken)
+			params["page_token"] = lastPageToken
 		}
 
 		userOpenID := runtime.UserOpenId()

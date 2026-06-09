@@ -113,10 +113,11 @@ var MailSendReceipt = common.Shortcut{
 
 		msg, err := fetchFullMessage(runtime, mailboxID, messageID, false)
 		if err != nil {
-			return fmt.Errorf("failed to fetch original message: %w", err)
+			return mailDecorateProblemMessage(err, "failed to fetch original message")
 		}
 		if !hasReadReceiptRequestLabel(msg) {
-			return fmt.Errorf("message %s did not request a read receipt (no %s label); refusing to send receipt", messageID, readReceiptRequestLabel)
+			return mailFailedPreconditionError("message %s did not request a read receipt (no %s label); refusing to send receipt", messageID, readReceiptRequestLabel).
+				WithHint("only run +send-receipt for incoming messages that carry the READ_RECEIPT_REQUEST label")
 		}
 
 		origSubject := strVal(msg["subject"])
@@ -126,12 +127,12 @@ var MailSendReceipt = common.Shortcut{
 		origSendMillis := parseInternalDateMillis(msg["internal_date"])
 
 		if origFromEmail == "" {
-			return fmt.Errorf("original message %s has no sender address; cannot address receipt", messageID)
+			return mailFailedPreconditionError("original message %s has no sender address; cannot address receipt", messageID)
 		}
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		if senderEmail == "" {
-			return fmt.Errorf("unable to determine sender email; please specify --from explicitly")
+			return mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 		}
 
 		lang := detectSubjectLang(origSubject)
@@ -158,16 +159,16 @@ var MailSendReceipt = common.Shortcut{
 
 		rawEML, err := bld.BuildBase64URL()
 		if err != nil {
-			return fmt.Errorf("failed to build receipt EML: %w", err)
+			return mailValidationError("failed to build receipt EML: %v", err).WithCause(err)
 		}
 
 		draftResult, err := draftpkg.CreateWithRaw(runtime, mailboxID, rawEML)
 		if err != nil {
-			return fmt.Errorf("failed to create receipt draft: %w", err)
+			return mailDecorateProblemMessage(err, "failed to create receipt draft")
 		}
 		resData, err := draftpkg.Send(runtime, mailboxID, draftResult.DraftID, "")
 		if err != nil {
-			return fmt.Errorf("failed to send receipt (draft %s created but not sent): %w", draftResult.DraftID, err)
+			return mailDecorateProblemMessage(err, "failed to send receipt (draft %s created but not sent)", draftResult.DraftID)
 		}
 
 		out := buildDraftSendOutput(resData, mailboxID)

@@ -33,10 +33,10 @@ var BaseWorkflowUpdate = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
-			return common.FlagErrorf("--base-token must not be blank")
+			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
-			return common.FlagErrorf("--workflow-id must not be blank")
+			return baseFlagErrorf("--workflow-id must not be blank")
 		}
 		pc := newParseCtx(runtime)
 		if _, err := parseJSONObject(pc, runtime.Str("json"), "json"); err != nil {

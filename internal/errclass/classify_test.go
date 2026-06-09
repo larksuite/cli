@@ -220,6 +220,111 @@ func TestBuildAPIError_TroubleshooterLiftedOnPermissionArm(t *testing.T) {
 	}
 }
 
+// TestBuildAPIError_DetailsLiftedToHintOnAPIArm pins that BuildAPIError lifts
+// resp.error.details[].value into Problem.Hint when the response routes to the
+// catch-all CategoryAPI arm. The real Lark shape (verified for code 190014) is
+// {"error":{"details":[{"value":"end_time should be later than start_time"}]}}
+// — only a human-readable reason string, no machine-readable field name. It is
+// lifted into Hint (sanctioned free-text recovery prompt) rather than fabricated
+// structured params.
+func TestBuildAPIError_DetailsLiftedToHintOnAPIArm(t *testing.T) {
+	resp := map[string]any{
+		"code": 190014,
+		"msg":  "invalid params",
+		"error": map[string]any{
+			"details": []any{
+				map[string]any{"value": "end_time should be later than start_time"},
+			},
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if !strings.Contains(p.Hint, "end_time should be later than start_time") {
+		t.Errorf("Hint = %q, want it to contain the server detail value", p.Hint)
+	}
+}
+
+// TestBuildAPIError_MultipleDetailsJoinedIntoHint pins that multiple non-empty
+// detail values are joined with "; " into a single Hint, and empty values are
+// skipped.
+func TestBuildAPIError_MultipleDetailsJoinedIntoHint(t *testing.T) {
+	resp := map[string]any{
+		"code": 190014,
+		"msg":  "invalid params",
+		"error": map[string]any{
+			"details": []any{
+				map[string]any{"value": "first reason"},
+				map[string]any{"value": ""},
+				map[string]any{"value": "second reason"},
+			},
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if p.Hint != "first reason; second reason" {
+		t.Errorf("Hint = %q, want %q", p.Hint, "first reason; second reason")
+	}
+}
+
+// TestBuildAPIError_DetailsSkipsNonMapEntries pins that malformed entries in
+// the details array (not a JSON object) are skipped rather than panicking, and
+// well-formed siblings still surface in the Hint.
+func TestBuildAPIError_DetailsSkipsNonMapEntries(t *testing.T) {
+	resp := map[string]any{
+		"code": 190014,
+		"msg":  "invalid params",
+		"error": map[string]any{
+			"details": []any{
+				"i am a bare string, not an object",
+				map[string]any{"value": "the real reason"},
+				42,
+			},
+		},
+	}
+	err := errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if p.Hint != "the real reason" {
+		t.Errorf("Hint = %q, want %q", p.Hint, "the real reason")
+	}
+}
+
+// TestBuildAPIError_DetailsMalformedShapesNoHint pins that a missing error
+// block, a non-array details field, and an empty details array all leave the
+// Hint untouched (no lifted detail) instead of erroring.
+func TestBuildAPIError_DetailsMalformedShapesNoHint(t *testing.T) {
+	cases := []struct {
+		name string
+		resp map[string]any
+	}{
+		{"no error block", map[string]any{"code": 190014, "msg": "invalid params"}},
+		{"details not array", map[string]any{"code": 190014, "msg": "invalid params", "error": map[string]any{"details": "nope"}}},
+		{"empty details", map[string]any{"code": 190014, "msg": "invalid params", "error": map[string]any{"details": []any{}}}},
+		{"detail values all empty", map[string]any{"code": 190014, "msg": "invalid params", "error": map[string]any{"details": []any{map[string]any{"value": ""}}}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := errclass.BuildAPIError(tc.resp, errclass.ClassifyContext{})
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatal("ProblemOf returned !ok")
+			}
+			// With no liftable detail, the Hint must not echo a server detail.
+			if strings.Contains(p.Hint, "nope") {
+				t.Errorf("Hint should not lift a non-array details field, got %q", p.Hint)
+			}
+		})
+	}
+}
+
 // TestBuildAPIError_TroubleshooterAbsent pins that Troubleshooter stays empty
 // when the upstream response omits it — wire envelope must omit the field.
 func TestBuildAPIError_TroubleshooterAbsent(t *testing.T) {

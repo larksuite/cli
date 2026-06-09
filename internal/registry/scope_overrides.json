@@ -12,25 +12,7 @@
     "vc:meeting.meetingevent:read": 75
   },
   "recommend": {
-    "allow": [
-      "calendar:calendar.event:create",
-      "calendar:calendar.event:delete",
-      "calendar:calendar.event:read",
-      "calendar:calendar.event:update",
-      "calendar:calendar.free_busy:read",
-      "calendar:calendar:create",
-      "calendar:calendar:delete",
-      "calendar:calendar:read",
-      "calendar:calendar:update",
-      "contact:user.basic_profile:readonly",
-      "mail:event",
-      "mail:user_mailbox.mail_contact:read",
-      "mail:user_mailbox.mail_contact:write",
-      "mail:user_mailbox.message.address:read",
-      "mail:user_mailbox.message.body:read",
-      "mail:user_mailbox.message.subject:read",
-      "mail:user_mailbox.message:readonly"
-    ],
+    "allow": [],
     "deny": [
       "im:chat",
       "im:message.send_as_user"

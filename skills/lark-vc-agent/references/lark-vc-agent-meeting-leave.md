@@ -44,7 +44,7 @@ lark-cli vc +meeting-leave --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 
 ### 4. 离会立即生效，对其他参会人可见
 
-机器人会立刻从参会列表消失；若会议启用了录制/纪要，bot 的参会时段到此截止。确认任务完成再调用；如需要重新入会，再跑 `+meeting-join` 即可（非真正"不可逆"）。
+机器人会立刻从参会列表消失；若会议启用了录制/纪要，bot 的参会时段到此截止。只有在用户明确要求退出 / 离开 / 结束参会时才调用；如需要重新入会，再跑 `+meeting-join` 即可（非真正"不可逆"）。
 
 ## 输出结果
 
@@ -59,29 +59,28 @@ lark-cli vc +meeting-leave --meeting-id 69xxxxxxxxxxxxx28 --dry-run
 
 ## Agent 组合场景
 
-### 场景 1：加入 → 完成任务 → 离开（最小闭环）
+### 场景 1：加入 → 用户明确要求时离开
 
 ```bash
 # 第 1 步：加入会议，记录 meeting.id
 lark-cli vc +meeting-join --meeting-number 123456789
 
-# 第 2 步：在会中完成任务（如监听发言、记录信息等）
+# 第 2 步：在会中处理用户请求（如监听发言、记录信息等）
 # ...
 
-# 第 3 步：使用上一步记录的 meeting.id 离会
+# 第 3 步：仅在用户明确要求退出 / 离开 / 结束参会时，使用上一步记录的 meeting.id 离会
 lark-cli vc +meeting-leave --meeting-id <meeting.id>
 ```
 
-### 场景 2：会后补拉产物
+### 场景 2：会后补拉产物（不需要离会）
+
+如果用户只是要求会议结束后拉录制、纪要或逐字稿，不要先调用 `+meeting-leave`；直接跨到 `lark-vc` 查询会后产物。
 
 ```bash
-# 第 1 步：离会后会议仍在进行或已结束
-lark-cli vc +meeting-leave --meeting-id <meeting.id>
-
-# 第 2 步：会议结束后查询录制
+# 第 1 步：会议结束后查询录制
 lark-cli vc +recording --meeting-ids <meeting.id>
 
-# 第 3 步：查询会议纪要
+# 第 2 步：查询会议纪要
 lark-cli vc +notes --meeting-ids <meeting.id>
 ```
 
@@ -95,9 +94,9 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 
 ## 提示
 
-- 离会会让机器人从参会列表消失，对其他参会人可见；若需要重新入会直接再 `+meeting-join`，不是真正的"不可逆"。参数格式不确定时可选 `--dry-run` 预览。
-- 与 `+meeting-join` 成对使用：能 join 的身份才能 leave。
-- `meeting_id` 必须来自 `+meeting-join` 的返回值，不要用 9 位会议号。
+- 只有用户明确要求退出 / 离开 / 结束参会时才调用；离会会让机器人从参会列表消失，对其他参会人可见。若需要重新入会直接再 `+meeting-join`，不是真正的"不可逆"。参数格式不确定时可选 `--dry-run` 预览。
+- `+meeting-leave` 依赖 `+meeting-join` 返回的 `meeting.id`，但不是每次 join 后都必须调用 leave。
+- `meeting_id` 优先使用 `+meeting-join` 返回的 `meeting.id`；如果来自 `+search`，也必须先确认当前身份就在该会议中。不要用 9 位会议号。
 
 ## 参考
 

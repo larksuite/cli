@@ -4,12 +4,15 @@
 package task
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 )
 
 func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
@@ -102,6 +105,53 @@ func TestGetMyTasks_LocalTimeFormatting(t *testing.T) {
 				if !strings.Contains(outNorm, expected) && !strings.Contains(out, expected) {
 					t.Errorf("output missing expected string (%s), got: %s", expected, out)
 				}
+			}
+		})
+	}
+}
+
+// TestGetMyTasks_InvalidTimeFlags locks the three time-flag validation arms in
+// Execute (--created_at / --due-start / --due-end). The parse runs before any
+// API call, so a malformed value deterministically surfaces a typed
+// *errs.ValidationError (exit 2) regardless of credentials — the command runs
+// as user with a throwaway token. Each error carries the corresponding --flag
+// param so the caller can point at the offending input.
+func TestGetMyTasks_InvalidTimeFlags(t *testing.T) {
+	tests := []struct {
+		name      string
+		flag      string
+		wantParam string
+	}{
+		{name: "created_at", flag: "--created_at", wantParam: "--created_at"},
+		{name: "due-start", flag: "--due-start", wantParam: "--due-start"},
+		{name: "due-end", flag: "--due-end", wantParam: "--due-end"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, _ := taskShortcutTestFactory(t)
+
+			s := GetMyTasks
+			s.AuthTypes = []string{"bot", "user"}
+
+			args := []string{"+get-my-tasks", tt.flag, "not-a-time", "--as", "user"}
+			err := runMountedTaskShortcut(t, s, args, f, stdout)
+			if err == nil {
+				t.Fatalf("expected validation error for %s, got nil", tt.flag)
+			}
+
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d", got, output.ExitValidation)
+			}
+			if ve.Param != tt.wantParam {
+				t.Errorf("param = %q, want %q", ve.Param, tt.wantParam)
 			}
 		})
 	}

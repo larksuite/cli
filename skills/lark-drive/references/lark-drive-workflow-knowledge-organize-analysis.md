@@ -24,7 +24,8 @@ MUST:
 4. Switch to `lark-sheets` / `lark-base` only when sheet / bitable title and path are insufficient.
 5. Record read evidence for classification.
 6. Continue reading low-confidence resources in internal batches until all supported low-confidence resources in the current inventory are processed or a blocker occurs.
-7. Output progress / summary without asking the user to continue between batches.
+7. Apply `Analysis Progress Reporting`.
+8. Output progress / summary without asking the user to continue between batches.
 
 Exit: low-confidence items are classified or marked `needs_review=true`.
 
@@ -93,6 +94,30 @@ Output this summary:
 
 - After every 50 processed low-confidence resources.
 - Once after low-confidence reading finishes.
+- About every 60 seconds during long-running reads, even if fewer than 50 additional resources were processed.
+
+### Analysis Progress Reporting
+
+Applies to `CONTENT_READ`, `ISSUE_ANALYSIS`, and `RULE_GENERATION`.
+
+Rules:
+
+1. For `CONTENT_READ`, use `Low-Confidence Read Summary` as the progress report format.
+2. For `ISSUE_ANALYSIS`, if analysis runs longer than about 60 seconds, output progress about every 60 seconds with current stage, processed resource count when known, detected problem type count when known, and the next analysis step.
+3. For `RULE_GENERATION`, if classification rule or target-tree generation runs longer than about 60 seconds, output progress about every 60 seconds with current stage, classified item count when known, unresolved item count when known, and target category / path count when known.
+4. Progress reports MUST be factual and stage-specific. Do not output generic "still running" messages without counts or the current stage.
+5. Do not ask the user to continue between internal batches unless auth, permission, API, target scope, or environment blockers occur.
+6. Do not expose internal chain-of-thought, raw tokens, or intermediate rule drafts.
+
+Examples:
+
+```text
+分析进度：正在归纳整理问题，已处理 <processed_count>/<resource_count> 项资源，已识别 <problem_type_count> 类问题。继续生成整理思路，不会执行移动或创建。
+```
+
+```text
+规则生成进度：正在生成分类规则和目标目录，已归类 <classified_count> 项，待人工确认 <needs_review_count> 项。继续生成完整计划前置数据。
+```
 
 ## State: ISSUE_ANALYSIS
 
@@ -103,8 +128,9 @@ MUST:
 1. Detect problems from organization perspective only. Do not generate research conclusions.
 2. Generate an organization approach based on inventory, low-confidence read evidence, and detected problems.
 3. Include how non-reused source containers will be handled after their contents are moved.
-4. Output `Inventory And Organization Approach Decision`.
-5. Stop and wait for the user to confirm the approach before `RULE_GENERATION`.
+4. Apply `Analysis Progress Reporting`.
+5. Output `Inventory And Organization Approach Decision`.
+6. Stop and wait for the user to confirm the approach before `RULE_GENERATION`.
 
 Problem rules:
 
@@ -161,10 +187,10 @@ MUST output evidence count or example paths. Do not output only abstract judgmen
 是否基于这个整理思路生成目标目录和移动 / 创建计划？
 
 你可以选择：
-A. 基于这个思路生成目标目录和计划
-B. 调整整理思路
-C. 查看问题详情
-D. 取消本次整理
+1. 基于这个思路生成目标目录和计划
+2. 调整整理思路
+3. 查看问题详情
+4. 取消本次整理
 ```
 
 ## State: RULE_GENERATION
@@ -181,7 +207,8 @@ MUST:
 6. For non-reused source containers, ensure `target_tree` includes a source-container cleanup target, defaulting to `待人工确认/待清理旧目录`, unless the user explicitly asks to keep source containers in place.
 7. Ensure target tree can contain every planned `target_path`.
 8. Ensure the target tree contains a manual confirmation target named `待人工确认` unless the user explicitly provides an equivalent name.
-9. Continue to `PLAN_GENERATION` without a separate target-tree-only confirmation.
+9. Apply `Analysis Progress Reporting`.
+10. Continue to `PLAN_GENERATION` without a separate target-tree-only confirmation.
 
 ### Classification
 

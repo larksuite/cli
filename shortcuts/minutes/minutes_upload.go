@@ -6,7 +6,7 @@ package minutes
 import (
 	"context"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -36,10 +36,10 @@ var MinutesUpload = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		fileToken := runtime.Str("file-token")
 		if fileToken == "" {
-			return output.ErrValidation("--file-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-token is required").WithParam("--file-token")
 		}
 		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--file-token")
 		}
 		return nil
 	},
@@ -55,7 +55,7 @@ var MinutesUpload = common.Shortcut{
 			"file_token": fileToken,
 		}
 
-		data, err := runtime.CallAPI("POST", "/open-apis/minutes/v1/minutes/upload", nil, body)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/minutes/v1/minutes/upload", nil, body)
 		if err != nil {
 			return err
 		}

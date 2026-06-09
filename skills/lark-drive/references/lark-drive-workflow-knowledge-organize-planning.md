@@ -24,7 +24,8 @@ MUST:
 4. Apply `Plan Pagination`.
 5. Set `active_plan_items` to the latest complete plan.
 6. Keep complete plan internally even if only one page is displayed.
-7. Output `Target Tree And Plan Overview` or requested plan page, then wait.
+7. Apply `Plan Generation Progress Reporting`.
+8. Output `Target Tree And Plan Overview` or requested plan page, then wait.
 
 ### Plan Generation
 
@@ -43,6 +44,25 @@ MUST:
 | Source container handling is ambiguous | Move it to the manual confirmation target or mark `needs_review=true`; do not leave it in the root by default |
 | Target parent token unresolved | Keep plan item but block execution until token is resolved |
 | Resource title is poor or inconsistent | Report the naming issue only; do not create rename or title-patch plan items |
+
+### Plan Generation Progress Reporting
+
+Plan generation can be long-running when `resource_items` is large or source-container parent / child move ordering is complex.
+
+Rules:
+
+1. If plan generation starts with more than 500 `resource_items`, output one concise start notice with the resource count and that no write operation is being executed.
+2. If plan generation runs longer than about 60 seconds, output progress about every 60 seconds.
+3. Progress reports SHOULD include only fields currently known: processed resource count, generated plan item count, create count, move count, source-container move count, review count, and current step.
+4. Do not display unpaginated plan details as progress. Complete `plan_items` remain internal until the normal paginated output.
+5. Do not ask the user to continue during plan generation unless auth, permission, API, target scope, or environment blockers occur.
+6. Do not output filler such as "still running" without current counts or current step.
+
+Example:
+
+```text
+计划生成进度：已处理 <processed_count>/<resource_count> 项资源，生成 <plan_item_count> 项计划，其中创建 <create_count> 项、移动 <move_count> 项。继续计算父子目录移动顺序，不会执行创建或移动。
+```
 
 ## PlanItem
 
@@ -167,11 +187,11 @@ Confidence display map:
 - 低置信度：<low_count> 项
 
 你可以选择：
-- 查看第 1 页明细
-- 只看将创建的目录 / 节点
-- 只看待人工确认项
-- 只看高置信度移动项
-- 进入执行确认
+1. 查看第 1 页明细
+2. 只看将创建的目录 / 节点
+3. 只看待人工确认项
+4. 只看高置信度移动项
+5. 进入下一步：确认执行计划
 ```
 
 If `total_count > 500`, say:
@@ -224,10 +244,10 @@ User-facing output:
 说明：后续执行默认基于这份完整修正版计划，不是只执行刚才的修正项。
 
 你可以选择：
-A. 查看修正版计划总览
-B. 查看本次修改涉及的资源
-C. 进入执行确认
-D. 继续调整
+1. 查看修正版计划总览
+2. 查看本次修改涉及的资源
+3. 进入下一步：确认执行计划
+4. 继续调整
 ```
 
 If the user explicitly asks to execute only the corrected items, ask for confirmation before execution:
@@ -248,15 +268,15 @@ If the user explicitly asks to execute only the corrected items, ask for confirm
 还有 <remaining_pages> 页未展示。
 
 你可以回复：
-- 继续看下一页
-- 只看待人工确认项
-- 只看低置信度项
-- 进入执行确认
+1. 继续看下一页
+2. 只看待人工确认项
+3. 只看低置信度项
+4. 进入下一步：确认执行计划
 ```
 
 ## State: EXEC_CONFIRM
 
-Entry: user asks to execute.
+Entry: user asks to view execution confirmation or continue toward execution.
 
 MUST:
 
@@ -284,17 +304,17 @@ Before execution confirmation, MUST show this notice:
 
 When the user wants execution, ask for execution scope:
 
-Execution confirmation options MUST be renumbered by currently available choices. Do not show disabled choices, and do not ask the user to reply with skipped letters.
+Execution confirmation options MUST be numbered by currently available choices. Do not show disabled choices, and do not ask the user to reply with skipped numbers.
 
 If a plan detail page is currently active:
 
 ```text
 请确认执行范围：
 
-A. 执行完整计划：<total_count> 项
-B. 只执行当前页：<current_page_count> 项
-C. 只执行高置信度项：<high_confidence_count> 项
-D. 暂不执行，只保留方案
+1. 执行完整计划：<total_count> 项
+2. 只执行当前页：<current_page_count> 项
+3. 只执行高置信度项：<high_confidence_count> 项
+4. 暂不执行，只保留方案
 
 本 workflow 只执行已确认范围内的创建、移动和必要的单资源权限申请；不会重命名任何资源。
 ```
@@ -304,9 +324,9 @@ If no plan detail page is currently active:
 ```text
 请确认执行范围：
 
-A. 执行完整计划：<total_count> 项
-B. 只执行高置信度项：<high_confidence_count> 项
-C. 暂不执行，只保留方案
+1. 执行完整计划：<total_count> 项
+2. 只执行高置信度项：<high_confidence_count> 项
+3. 暂不执行，只保留方案
 
 如需只执行某一页，请先查看计划明细页。
 

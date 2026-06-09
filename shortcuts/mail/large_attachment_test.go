@@ -974,7 +974,7 @@ func TestStatAttachmentFiles_FileNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
-	if !strings.Contains(err.Error(), "failed to stat") {
+	if !strings.Contains(err.Error(), "cannot read file") {
 		t.Errorf("unexpected error: %v", err)
 	}
 }

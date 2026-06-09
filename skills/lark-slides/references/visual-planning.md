@@ -168,6 +168,8 @@ Text:
 
 Purpose: explain components, dependencies, or system flow.
 
+Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
+
 Geometry:
 - Main visual area should be a diagram, not prose.
 - Use grouped boxes, lanes, arrows or lines, and short labels.
@@ -181,6 +183,8 @@ Text:
 ### `process-flow`
 
 Purpose: show operational steps, workflow, or cause-effect path.
+
+Implementation: prefer `<whiteboard>` (see `lark-slides-whiteboard.md`); use `<shape>` + `<line>` only as fallback.
 
 Geometry:
 - Use numbered steps connected by arrows or lines.

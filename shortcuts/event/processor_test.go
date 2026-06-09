@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,7 +16,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/lockfile"
+	"github.com/larksuite/cli/shortcuts/common"
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
+	"github.com/spf13/cobra"
 )
 
 // chdirTemp changes cwd to a fresh temp dir for the test duration.
@@ -44,6 +51,87 @@ func makeRawEvent(eventType string, eventJSON string) *RawEvent {
 	}
 }
 
+func requireProblem(t *testing.T, err error, category errs.Category, subtype errs.Subtype, param string) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf(%T) = false, error: %v", err, err)
+	}
+	if p.Category != category || p.Subtype != subtype {
+		t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, category, subtype)
+	}
+	if param != "" {
+		var ve *errs.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("error %T is not *errs.ValidationError", err)
+		}
+		if ve.Param != param {
+			t.Fatalf("Param = %q, want %q", ve.Param, param)
+		}
+	}
+}
+
+func TestEventTypedErrorHelpers(t *testing.T) {
+	cause := errors.New("cause")
+
+	validation := eventValidationError("bad input")
+	requireProblem(t, validation, errs.CategoryValidation, errs.SubtypeInvalidArgument, "")
+
+	paramErr := eventValidationParamErrorWithCause(cause, "--flag", "bad %s value", "flag")
+	requireProblem(t, paramErr, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--flag")
+	if got := paramErr.Error(); got != "bad flag value: cause" {
+		t.Fatalf("message = %q, want %q", got, "bad flag value: cause")
+	}
+	if !errors.Is(paramErr, cause) {
+		t.Fatal("validation error should preserve its cause")
+	}
+
+	fileErr := eventFileIOError(cause, "write failed")
+	requireProblem(t, fileErr, errs.CategoryInternal, errs.SubtypeFileIO, "")
+	if got := fileErr.Error(); got != "write failed: cause" {
+		t.Fatalf("message = %q, want %q", got, "write failed: cause")
+	}
+	if !errors.Is(fileErr, cause) {
+		t.Fatal("file_io error should preserve its cause")
+	}
+
+	networkErr := eventNetworkError(cause, "websocket failed")
+	requireProblem(t, networkErr, errs.CategoryNetwork, errs.SubtypeNetworkTransport, "")
+	if got := networkErr.Error(); got != "websocket failed: cause" {
+		t.Fatalf("message = %q, want %q", got, "websocket failed: cause")
+	}
+	if !errors.Is(networkErr, cause) {
+		t.Fatal("network error should preserve its cause")
+	}
+}
+
+func newSubscribeTestRuntime(t *testing.T) *common.RuntimeContext {
+	t.Helper()
+
+	var out, errOut bytes.Buffer
+	cmd := &cobra.Command{Use: "+subscribe"}
+	cmd.Flags().String("event-types", "", "")
+	cmd.Flags().String("filter", "", "")
+	cmd.Flags().Bool("json", false, "")
+	cmd.Flags().Bool("compact", false, "")
+	cmd.Flags().String("output-dir", "", "")
+	cmd.Flags().Bool("quiet", false, "")
+	cmd.Flags().StringArray("route", nil, "")
+	cmd.Flags().Bool("force", false, "")
+
+	return &common.RuntimeContext{
+		Cmd: cmd,
+		Config: &core.CliConfig{
+			AppID:     "cli_event_test",
+			AppSecret: "secret",
+			Brand:     core.BrandFeishu,
+		},
+		Factory: &cmdutil.Factory{
+			IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), &out, &errOut),
+		},
+	}
+}
+
 // --- Registry ---
 
 func TestRegistryLookup(t *testing.T) {
@@ -63,9 +151,11 @@ func TestRegistryDuplicateReturnsError(t *testing.T) {
 	if err := r.Register(&ImMessageProcessor{}); err != nil {
 		t.Fatalf("first register should succeed: %v", err)
 	}
-	if err := r.Register(&ImMessageProcessor{}); err == nil {
+	err := r.Register(&ImMessageProcessor{})
+	if err == nil {
 		t.Error("expected error on duplicate registration")
 	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeUnknown, "")
 }
 
 // --- Filters ---
@@ -104,6 +194,54 @@ func TestRegexFilter_Invalid(t *testing.T) {
 	if err == nil {
 		t.Error("should error")
 	}
+}
+
+func TestEventSubscribeExecuteRejectsUnsafeOutputDir(t *testing.T) {
+	rt := newSubscribeTestRuntime(t)
+	if err := rt.Cmd.Flags().Set("output-dir", "/tmp/events"); err != nil {
+		t.Fatal(err)
+	}
+	err := EventSubscribe.Execute(context.Background(), rt)
+	if err == nil {
+		t.Fatal("expected unsafe output-dir error")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--output-dir")
+	if errors.Unwrap(err) == nil {
+		t.Fatal("unsafe output-dir error should preserve its cause")
+	}
+}
+
+func TestEventSubscribeExecuteRejectsInvalidFilter(t *testing.T) {
+	rt := newSubscribeTestRuntime(t)
+	if err := rt.Cmd.Flags().Set("force", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Cmd.Flags().Set("filter", "[invalid"); err != nil {
+		t.Fatal(err)
+	}
+	err := EventSubscribe.Execute(context.Background(), rt)
+	if err == nil {
+		t.Fatal("expected invalid filter error")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--filter")
+	if errors.Unwrap(err) == nil {
+		t.Fatal("invalid filter error should preserve its cause")
+	}
+}
+
+func TestEventSubscribeExecuteRejectsInvalidRoute(t *testing.T) {
+	rt := newSubscribeTestRuntime(t)
+	if err := rt.Cmd.Flags().Set("force", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if err := rt.Cmd.Flags().Set("route", "no-equals-sign"); err != nil {
+		t.Fatal(err)
+	}
+	err := EventSubscribe.Execute(context.Background(), rt)
+	if err == nil {
+		t.Fatal("expected invalid route error")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 }
 
 func TestFilterChain(t *testing.T) {
@@ -336,6 +474,106 @@ func TestPipeline_OutputDir(t *testing.T) {
 	}
 	if m["type"] != "im.message.receive_v1" {
 		t.Errorf("type = %v", m["type"])
+	}
+}
+
+func TestEventSubscribeExecuteRejectsHeldLock(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	lock, err := lockfile.ForSubscribe("cli_event_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lock.TryLock(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = lock.Unlock() })
+
+	rt := newSubscribeTestRuntime(t)
+	execErr := EventSubscribe.Execute(context.Background(), rt)
+	if execErr == nil {
+		t.Fatal("expected lock-held error")
+	}
+	requireProblem(t, execErr, errs.CategoryValidation, errs.SubtypeFailedPrecondition, "")
+	if !errors.Is(execErr, lockfile.ErrHeld) {
+		t.Error("lock-held error should preserve lockfile.ErrHeld for errors.Is")
+	}
+	p, _ := errs.ProblemOf(execErr)
+	if p.Hint == "" {
+		t.Error("lock-held error should carry a recovery hint")
+	}
+	var ve *errs.ValidationError
+	if errors.As(execErr, &ve) && ve.Param != "" {
+		t.Errorf("lock contention names no offending flag; param = %q, want empty", ve.Param)
+	}
+}
+
+func TestEventSubscribeDryRunEchoesFlags(t *testing.T) {
+	rt := newSubscribeTestRuntime(t)
+	for flag, value := range map[string]string{
+		"event-types": "im.message.receive_v1",
+		"filter":      "^im\\.",
+		"output-dir":  "events_out",
+	} {
+		if err := rt.Cmd.Flags().Set(flag, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := rt.Cmd.Flags().Set("route", "^im\\.message=dir:./messages"); err != nil {
+		t.Fatal(err)
+	}
+
+	d := EventSubscribe.DryRun(context.Background(), rt)
+	if d == nil {
+		t.Fatal("DryRun returned nil")
+	}
+	payload, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`"command":"event +subscribe"`,
+		`"app_id":"cli_event_test"`,
+		`"event_types":"im.message.receive_v1"`,
+		`"output_dir":"events_out"`,
+	} {
+		if !strings.Contains(string(payload), want) {
+			t.Errorf("dry-run payload missing %s\ngot: %s", want, payload)
+		}
+	}
+}
+
+func TestPipeline_EnsureDirsRouteDirFileIOError(t *testing.T) {
+	chdirTemp(t)
+	if err := os.WriteFile("blocked", []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	router, err := ParseRoutes([]string{`^im\.=dir:./blocked/child`})
+	if err != nil {
+		t.Fatalf("ParseRoutes: %v", err)
+	}
+	p := NewEventPipeline(DefaultRegistry(), NewFilterChain(),
+		PipelineConfig{Mode: TransformCompact, Router: router}, io.Discard, io.Discard)
+	err = p.EnsureDirs()
+	if err == nil {
+		t.Fatal("expected file_io error for route dir blocked by a file")
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeFileIO, "")
+}
+
+func TestPipeline_EnsureDirsFileIOError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(path, []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := NewEventPipeline(DefaultRegistry(), NewFilterChain(),
+		PipelineConfig{Mode: TransformCompact, OutputDir: filepath.Join(path, "child")}, io.Discard, io.Discard)
+	err := p.EnsureDirs()
+	if err == nil {
+		t.Fatal("expected file_io error")
+	}
+	requireProblem(t, err, errs.CategoryInternal, errs.SubtypeFileIO, "")
+	if errors.Unwrap(err) == nil {
+		t.Fatal("file_io error should preserve its cause")
 	}
 }
 
@@ -608,12 +846,17 @@ func TestParseRoutes_MissingEquals(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing =")
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 }
 
 func TestParseRoutes_InvalidRegex(t *testing.T) {
 	_, err := ParseRoutes([]string{"[invalid=dir:./foo/"})
 	if err == nil {
 		t.Error("expected error for invalid regex")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
+	if errors.Unwrap(err) == nil {
+		t.Fatal("invalid regex error should preserve its cause")
 	}
 }
 
@@ -622,6 +865,7 @@ func TestParseRoutes_MissingPrefix(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing dir: prefix")
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 	if !strings.Contains(err.Error(), "dir:") {
 		t.Errorf("error should mention dir: prefix, got: %v", err)
 	}
@@ -632,6 +876,7 @@ func TestParseRoutes_EmptyPath(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for empty path")
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 }
 
 func TestParseRoutes_RejectsAbsolutePath(t *testing.T) {
@@ -639,6 +884,7 @@ func TestParseRoutes_RejectsAbsolutePath(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for absolute path in route")
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 }
 
 func TestParseRoutes_RejectsTraversal(t *testing.T) {
@@ -646,6 +892,7 @@ func TestParseRoutes_RejectsTraversal(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for path traversal in route")
 	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, "--route")
 }
 
 func TestParseRoutes_PathSafety(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
@@ -55,7 +56,7 @@ func extractMinuteToken(recordingURL string) string {
 
 // fetchRecordingByMeetingID queries recording info for a single meeting.
 func fetchRecordingByMeetingID(_ context.Context, runtime *common.RuntimeContext, meetingID string) map[string]any {
-	data, err := runtime.DoAPIJSON(http.MethodGet,
+	data, err := runtime.CallAPITyped(http.MethodGet,
 		fmt.Sprintf("/open-apis/vc/v1/meetings/%s/recording", validate.EncodePathSegment(meetingID)),
 		nil, nil)
 	if err != nil {
@@ -97,14 +98,14 @@ var VCRecording = common.Shortcut{
 		{Name: "calendar-event-ids", Desc: "calendar event instance IDs, comma-separated for batch"},
 	},
 	Validate: func(_ context.Context, runtime *common.RuntimeContext) error {
-		if err := common.ExactlyOne(runtime, "meeting-ids", "calendar-event-ids"); err != nil {
+		if err := common.ExactlyOneTyped(runtime, "meeting-ids", "calendar-event-ids"); err != nil {
 			return err
 		}
 		const maxBatchSize = 50
 		for _, flag := range []string{"meeting-ids", "calendar-event-ids"} {
 			if v := runtime.Str(flag); v != "" {
 				if ids := common.SplitCSV(v); len(ids) > maxBatchSize {
-					return output.ErrValidation("--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s: too many IDs (%d), maximum is %d", flag, len(ids), maxBatchSize).WithParam("--" + flag)
 				}
 			}
 		}
@@ -121,9 +122,11 @@ var VCRecording = common.Shortcut{
 			stored := auth.GetStoredToken(appID, userOpenID)
 			if stored != nil {
 				if missing := auth.MissingScopes(stored.Scope, required); len(missing) > 0 {
-					return output.ErrWithHint(output.ExitAuth, "missing_scope",
-						fmt.Sprintf("missing required scope(s): %s", strings.Join(missing, ", ")),
-						fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")))
+					return errs.NewPermissionError(errs.SubtypeMissingScope,
+						"missing required scope(s): %s", strings.Join(missing, ", ")).
+						WithHint("run `lark-cli auth login --scope %q` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " ")).
+						WithMissingScopes(missing...).
+						WithIdentity(string(runtime.As()))
 				}
 			}
 		}
@@ -212,9 +215,7 @@ var VCRecording = common.Shortcut{
 		fmt.Fprintf(errOut, "%s done: %d total, %d succeeded, %d failed\n", recordingLogPrefix, len(results), successCount, len(results)-successCount)
 
 		if successCount == 0 && len(results) > 0 {
-			outData := map[string]any{"recordings": results}
-			runtime.OutFormat(outData, &output.Meta{Count: len(results)}, nil)
-			return output.ErrAPI(0, fmt.Sprintf("all %d queries failed", len(results)), nil)
+			return runtime.OutPartialFailure(map[string]any{"recordings": results}, &output.Meta{Count: len(results)})
 		}
 
 		outData := map[string]any{"recordings": results}

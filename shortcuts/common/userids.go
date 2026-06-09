@@ -6,23 +6,7 @@ package common
 import (
 	"fmt"
 	"strings"
-
-	"github.com/larksuite/cli/internal/output"
 )
-
-// ResolveOpenIDs expands the special identifier "me" to the current user's
-// open_id, removes duplicates case-insensitively while preserving the
-// first-occurrence form, and returns nil for an empty input. flagName is
-// used in error messages to point the user at the offending CLI flag.
-//
-// Deprecated: use ResolveOpenIDsTyped for typed error envelopes.
-func ResolveOpenIDs(flagName string, ids []string, runtime *RuntimeContext) ([]string, error) {
-	out, msg := resolveOpenIDs(flagName, ids, runtime)
-	if msg != "" {
-		return nil, output.ErrValidation("%s", msg)
-	}
-	return out, nil
-}
 
 // ResolveOpenIDsTyped expands the special identifier "me" to the current
 // user's open_id, removes duplicates case-insensitively while preserving the

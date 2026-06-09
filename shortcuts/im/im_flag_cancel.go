@@ -8,21 +8,20 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // ImFlagCancel provides the +flag-cancel shortcut for removing a bookmark.
 // When no --flag-type is given, it performs double-cancel: removes both message and feed layers.
 var ImFlagCancel = common.Shortcut{
-	Service: "im",
-	Command: "+flag-cancel",
-	Description: "Cancel (remove) a bookmark. When no --flag-type is given, " +
-		"performs double-cancel: removes both message and feed layers",
-	Risk:       "write",
-	UserScopes: flagWriteLookupScopes,
-	AuthTypes:  []string{"user"},
-	HasFormat:  true,
+	Service:     "im",
+	Command:     "+flag-cancel",
+	Description: "Cancel (remove) a bookmark. When no --flag-type is given, best-effort double-cancel: removes message layer and (when chat_type is determinable) feed layer",
+	Risk:        "write",
+	UserScopes:  flagWriteLookupScopes,
+	AuthTypes:   []string{"user"},
+	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "message-id", Desc: "message ID (om_xxx)"},
 		{Name: "item-type", Desc: "item type override: default|thread|msg_thread"},
@@ -63,11 +62,9 @@ var ImFlagCancel = common.Shortcut{
 				"item_type": itemType,
 				"flag_type": flagType,
 			}
-			data, err := runtime.DoAPIJSON("POST", "/open-apis/im/v1/flags/cancel", nil,
+			data, err := runtime.DoAPIJSONTyped("POST", "/open-apis/im/v1/flags/cancel", nil,
 				map[string]any{"flag_items": []flagItem{item}})
 			if err != nil {
-				fmt.Fprintf(runtime.IO().ErrOut, "warning: cancel failed for %s/%s: %v\n",
-					itemType, flagType, err)
 				result["status"] = "failed"
 				result["error"] = err.Error()
 				lastErr = err
@@ -78,8 +75,12 @@ var ImFlagCancel = common.Shortcut{
 			results = append(results, result)
 		}
 
-		runtime.Out(map[string]any{"results": results}, nil)
-		return lastErr
+		payload := map[string]any{"results": results}
+		if lastErr != nil {
+			return runtime.OutPartialFailure(payload, nil)
+		}
+		runtime.Out(payload, nil)
+		return nil
 	},
 }
 
@@ -203,20 +204,20 @@ func buildSingleCancelItem(id, itOverride, ftOverride string) (flagItem, error) 
 		// Provide more specific hints for common mistakes
 		if itOverride != "" && ftOverride == "" {
 			if itemType == ItemTypeThread || itemType == ItemTypeMsgThread {
-				return flagItem{}, output.ErrValidation(
+				return flagItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 					"invalid combination: --item-type=%s requires --flag-type=feed (feed-layer flags are the only valid type for threads)",
-					itOverride)
+					itOverride).WithParam("--item-type")
 			}
-			return flagItem{}, output.ErrValidation(
+			return flagItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"invalid combination: --item-type=%s with inferred --flag-type=%s; specify --flag-type explicitly to override",
-				itOverride, flagTypeString(flagType))
+				itOverride, flagTypeString(flagType)).WithParam("--item-type")
 		}
 		if itOverride == "" && ftOverride != "" {
-			return flagItem{}, output.ErrValidation(
+			return flagItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"invalid combination: --flag-type=%s with inferred --item-type=%s; specify --item-type explicitly to override",
-				ftOverride, itemTypeString(itemType))
+				ftOverride, itemTypeString(itemType)).WithParam("--flag-type")
 		}
-		return flagItem{}, output.ErrValidation(
+		return flagItem{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"invalid --item-type/--flag-type combination: supported pairs are default+message, thread+feed, and msg_thread+feed")
 	}
 	return newFlagItem(id, itemType, flagType), nil

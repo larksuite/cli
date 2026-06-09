@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -102,20 +102,20 @@ var ImMessagesReply = common.Shortcut{
 		}
 
 		if messageId == "" {
-			return output.ErrValidation("--message-id is required (om_xxx)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--message-id is required (om_xxx)").WithParam("--message-id")
 		}
 		if _, err := validateMessageID(messageId); err != nil {
 			return err
 		}
 
 		if msg := validateContentFlags(text, markdown, content, imageKey, fileKey, videoKey, videoCoverKey, audioKey); msg != "" {
-			return output.ErrValidation(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg)
 		}
 		if content != "" && !json.Valid([]byte(content)) {
-			return output.ErrValidation("--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is not valid JSON: %s\nexample: --content '{\"text\":\"hello\"}' or --text 'hello'", content).WithParam("--content")
 		}
 		if msg := validateExplicitMsgType(runtime.Cmd, msgType, text, markdown, imageKey, fileKey, videoKey, audioKey); msg != "" {
-			return output.ErrValidation(msg)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).WithParam("--msg-type")
 		}
 
 		return nil
@@ -167,7 +167,7 @@ var ImMessagesReply = common.Shortcut{
 			data["uuid"] = idempotencyKey
 		}
 
-		resData, err := runtime.DoAPIJSON(http.MethodPost,
+		resData, err := runtime.DoAPIJSONTyped(http.MethodPost,
 			fmt.Sprintf("/open-apis/im/v1/messages/%s/reply", validate.EncodePathSegment(messageId)),
 			nil, data)
 		if err != nil {

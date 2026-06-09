@@ -22,7 +22,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -225,7 +224,7 @@ func dryRunRecordRemoveAttachment(_ context.Context, runtime *common.RuntimeCont
 
 func validateRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	if runtime.Changed("name") {
-		return common.FlagErrorf("--name is no longer supported; uploaded attachment names are derived from local file basenames")
+		return baseFlagErrorf("--name is no longer supported; uploaded attachment names are derived from local file basenames")
 	}
 	files, err := normalizeAttachmentFiles(runtime.StrArray("file"))
 	if err != nil {
@@ -245,9 +244,16 @@ func validateRecordDownloadAttachment(runtime *common.RuntimeContext) error {
 		return err
 	}
 	if len(tokens) != 1 {
+		const outputDirRequired = "--output must be an existing directory when downloading multiple attachments or when --file-token is omitted"
 		info, statErr := runtime.FileIO().Stat(runtime.Str("output"))
-		if statErr != nil || !info.IsDir() {
-			return common.FlagErrorf("--output must be an existing directory when downloading multiple attachments or when --file-token is omitted")
+		if statErr != nil {
+			if errors.Is(statErr, fileio.ErrPathValidation) {
+				return baseValidationErrorf("unsafe output path: %s", statErr)
+			}
+			return baseFlagErrorf(outputDirRequired)
+		}
+		if !info.IsDir() {
+			return baseFlagErrorf(outputDirRequired)
 		}
 	}
 	return nil
@@ -269,7 +275,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		return err
 	}
 	if normalized := normalizeFieldTypeName(fieldTypeName(field)); normalized != "attachment" {
-		return output.ErrValidation("field %q is type %q, expected attachment", fieldName(field), normalized)
+		return baseValidationErrorf("field %q is type %q, expected attachment", fieldName(field), normalized)
 	}
 	resolvedFieldID := fieldID(field)
 	if resolvedFieldID == "" {
@@ -316,7 +322,7 @@ func executeRecordRemoveAttachment(runtime *common.RuntimeContext) error {
 		return err
 	}
 	if normalized := normalizeFieldTypeName(fieldTypeName(field)); normalized != "attachment" {
-		return output.ErrValidation("field %q is type %q, expected attachment", fieldName(field), normalized)
+		return baseValidationErrorf("field %q is type %q, expected attachment", fieldName(field), normalized)
 	}
 	resolvedFieldID := fieldID(field)
 	if resolvedFieldID == "" {
@@ -353,7 +359,7 @@ func executeRecordDownloadAttachment(ctx context.Context, runtime *common.Runtim
 		saved, err := downloadBaseAttachment(ctx, runtime, target.Item, target.TargetPath, runtime.Bool("overwrite"))
 		if err != nil {
 			failed := attachmentDownloadFailure(target, err)
-			return attachmentDownloadProgressError(err, downloaded, []map[string]interface{}{failed})
+			return attachmentDownloadProgressError(runtime, err, downloaded, []map[string]interface{}{failed})
 		}
 		downloaded = append(downloaded, saved)
 	}
@@ -364,20 +370,20 @@ func executeRecordDownloadAttachment(ctx context.Context, runtime *common.Runtim
 func validateAttachmentInputFile(runtime *common.RuntimeContext, filePath string) (fileio.FileInfo, error) {
 	fio := runtime.FileIO()
 	if fio == nil {
-		return nil, output.ErrValidation("file operations require a FileIO provider")
+		return nil, baseValidationErrorf("file operations require a FileIO provider")
 	}
 	fileInfo, err := fio.Stat(filePath)
 	if err != nil {
 		if errors.Is(err, fileio.ErrPathValidation) {
-			return nil, output.ErrValidation("unsafe file path: %s", err)
+			return nil, baseValidationErrorf("unsafe file path: %s", err)
 		}
-		return nil, output.ErrValidation("file not accessible: %s: %v", filePath, err)
+		return nil, baseValidationErrorf("file not accessible: %s: %v", filePath, err)
 	}
 	if fileInfo.IsDir() {
-		return nil, output.ErrValidation("file path is a directory: %s", filePath)
+		return nil, baseValidationErrorf("file path is a directory: %s", filePath)
 	}
 	if fileInfo.Size() > baseAttachmentUploadMaxFileSize {
-		return nil, output.ErrValidation("file %s exceeds 2GB limit", common.FormatSize(fileInfo.Size()))
+		return nil, baseValidationErrorf("file %s exceeds 2GB limit (size: %s)", filePath, common.FormatSize(fileInfo.Size()))
 	}
 	return fileInfo, nil
 }
@@ -412,13 +418,13 @@ func normalizeOptionalDownloadAttachmentFileTokens(tokens []string) ([]string, e
 	for index, token := range tokens {
 		token = strings.TrimSpace(token)
 		if token == "" {
-			return nil, common.FlagErrorf("attachment file token %d must not be empty", index+1)
+			return nil, baseFlagErrorf("attachment file token %d must not be empty", index+1)
 		}
 		normalized = append(normalized, token)
 	}
 	normalized = dedupeStringsPreserveOrder(normalized)
 	if len(normalized) > baseAttachmentMaxBatchSize {
-		return nil, common.FlagErrorf("attachment file token count exceeds maximum limit of %d (got %d)", baseAttachmentMaxBatchSize, len(normalized))
+		return nil, baseFlagErrorf("attachment file token count exceeds maximum limit of %d (got %d)", baseAttachmentMaxBatchSize, len(normalized))
 	}
 	return normalized, nil
 }
@@ -453,10 +459,10 @@ func fetchBaseField(runtime *common.RuntimeContext, baseToken, tableIDValue, fie
 
 func fetchBaseAttachments(runtime *common.RuntimeContext, baseToken, tableIDValue string, recordIDs []string) (map[string]interface{}, error) {
 	if len(recordIDs) == 0 {
-		return nil, output.ErrValidation("provide at least one record id")
+		return nil, baseValidationErrorf("provide at least one record id")
 	}
 	if len(recordIDs) > baseAttachmentGetMaxRecords {
-		return nil, output.ErrValidation("get attachments record selection exceeds maximum limit of %d (got %d)", baseAttachmentGetMaxRecords, len(recordIDs))
+		return nil, baseValidationErrorf("get attachments record selection exceeds maximum limit of %d (got %d)", baseAttachmentGetMaxRecords, len(recordIDs))
 	}
 	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "get_attachments"), nil, map[string]interface{}{
 		"record_id_list": recordIDs,
@@ -560,14 +566,14 @@ func detectAttachmentMIMEType(fio fileio.FileIO, filePath, fileName string) (str
 
 	f, err := fio.Open(filePath)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", baseInputStatError(err)
 	}
 	defer f.Close()
 
 	buf := make([]byte, 512)
 	n, readErr := f.Read(buf)
 	if readErr != nil && !errors.Is(readErr, io.EOF) {
-		return "", output.ErrValidation("cannot read file: %s", readErr)
+		return "", baseValidationErrorf("cannot read file: %s", readErr)
 	}
 	return detectAttachmentMIMEFromContent(buf[:n]), nil
 }
@@ -617,11 +623,11 @@ type baseAttachmentDownloadTarget struct {
 func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID string, tokens []string) ([]baseAttachmentDownloadItem, error) {
 	recordRaw, ok := attachments[recordID]
 	if !ok {
-		return nil, output.ErrValidation("record %q has no attachment metadata; verify the record-id", recordID)
+		return nil, baseValidationErrorf("record %q has no attachment metadata; verify the record-id", recordID)
 	}
 	fields, ok := recordRaw.(map[string]interface{})
 	if !ok {
-		return nil, output.ErrValidation("record %q attachment metadata has unexpected type %T", recordID, recordRaw)
+		return nil, baseValidationErrorf("record %q attachment metadata has unexpected type %T", recordID, recordRaw)
 	}
 	byToken := map[string]baseAttachmentDownloadItem{}
 	fieldIDs := make([]string, 0, len(fields))
@@ -633,12 +639,12 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 		rawList := fields[currentFieldID]
 		items, ok := rawList.([]interface{})
 		if !ok {
-			return nil, output.ErrValidation("record %q field %q attachment metadata has unexpected type %T", recordID, currentFieldID, rawList)
+			return nil, baseValidationErrorf("record %q field %q attachment metadata has unexpected type %T", recordID, currentFieldID, rawList)
 		}
 		for _, rawItem := range items {
 			item, ok := rawItem.(map[string]interface{})
 			if !ok {
-				return nil, output.ErrValidation("record %q field %q contains unexpected attachment item type %T", recordID, currentFieldID, rawItem)
+				return nil, baseValidationErrorf("record %q field %q contains unexpected attachment item type %T", recordID, currentFieldID, rawItem)
 			}
 			fileToken, _ := item["file_token"].(string)
 			if fileToken == "" {
@@ -668,7 +674,7 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 			result = append(result, item)
 		}
 		if len(result) == 0 {
-			return nil, output.ErrValidation("record %q has no attachments to download", recordID)
+			return nil, baseValidationErrorf("record %q has no attachments to download", recordID)
 		}
 		sort.SliceStable(result, func(i, j int) bool {
 			leftName := strings.ToLower(baseAttachmentDownloadName(result[i]))
@@ -683,7 +689,7 @@ func selectAttachmentDownloadItems(attachments map[string]interface{}, recordID 
 	for _, token := range tokens {
 		item, ok := byToken[token]
 		if !ok {
-			return nil, output.ErrValidation("attachment file_token %q not found in record %q; verify the record-id/file-token pair", token, recordID)
+			return nil, baseValidationErrorf("attachment file_token %q not found in record %q; verify the record-id/file-token pair", token, recordID)
 		}
 		result = append(result, item)
 	}
@@ -702,15 +708,15 @@ func planAttachmentDownloadTargets(runtime *common.RuntimeContext, items []baseA
 		}
 		resolved, err := runtime.ResolveSavePath(targetPath)
 		if err != nil {
-			return nil, output.ErrValidation("unsafe output path: %s", err)
+			return nil, baseValidationErrorf("unsafe output path: %s", err)
 		}
 		if previous, exists := seen[resolved]; exists {
-			return nil, output.ErrValidation("multiple attachments resolve to the same output path %q (%s and %s); download them separately or choose a different directory", resolved, previous.FileToken, item.FileToken)
+			return nil, baseValidationErrorf("multiple attachments resolve to the same output path %q (%s and %s); download them separately or choose a different directory", resolved, previous.FileToken, item.FileToken)
 		}
 		seen[resolved] = item
 		if !overwrite {
 			if _, statErr := runtime.FileIO().Stat(targetPath); statErr == nil {
-				return nil, output.ErrValidation("output file already exists: %s (use --overwrite to replace)", targetPath)
+				return nil, baseValidationErrorf("output file already exists: %s (use --overwrite to replace)", targetPath)
 			}
 		}
 		targets = append(targets, baseAttachmentDownloadTarget{
@@ -776,7 +782,7 @@ func safeAttachmentFileTokenSuffix(fileToken string) string {
 
 func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext, item baseAttachmentDownloadItem, targetPath string, overwrite bool) (map[string]interface{}, error) {
 	if _, err := runtime.ResolveSavePath(targetPath); err != nil {
-		return nil, output.ErrValidation("unsafe output path: %s", err)
+		return nil, baseValidationErrorf("unsafe output path: %s", err)
 	}
 
 	query := larkcore.QueryParams{}
@@ -795,7 +801,7 @@ func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext,
 
 	if !overwrite {
 		if _, statErr := runtime.FileIO().Stat(targetPath); statErr == nil {
-			return nil, output.ErrValidation("output file already exists: %s (use --overwrite to replace)", targetPath)
+			return nil, baseValidationErrorf("output file already exists: %s (use --overwrite to replace)", targetPath)
 		}
 	}
 	result, err := runtime.FileIO().Save(targetPath, fileio.SaveOptions{
@@ -803,7 +809,7 @@ func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext,
 		ContentLength: resp.ContentLength,
 	}, resp.Body)
 	if err != nil {
-		return nil, common.WrapSaveErrorByCategory(err, "io")
+		return nil, baseSaveError(err)
 	}
 	savedPath, _ := runtime.ResolveSavePath(targetPath)
 	if savedPath == "" {
@@ -822,7 +828,7 @@ func downloadBaseAttachment(ctx context.Context, runtime *common.RuntimeContext,
 }
 
 func attachmentDownloadFailure(target baseAttachmentDownloadTarget, err error) map[string]interface{} {
-	return map[string]interface{}{
+	failure := map[string]interface{}{
 		"record_id":     target.Item.RecordID,
 		"field_id":      target.Item.FieldID,
 		"file_token":    target.Item.FileToken,
@@ -831,72 +837,45 @@ func attachmentDownloadFailure(target baseAttachmentDownloadTarget, err error) m
 		"resolved_path": target.ResolvedPath,
 		"error":         err.Error(),
 	}
+	if p, ok := errs.ProblemOf(err); ok {
+		failure["type"] = string(p.Category)
+		failure["subtype"] = string(p.Subtype)
+		if p.Code != 0 {
+			failure["code"] = p.Code
+		}
+		if p.LogID != "" {
+			failure["log_id"] = p.LogID
+		}
+	}
+	return failure
 }
 
-func attachmentDownloadProgressError(err error, downloaded []map[string]interface{}, failed []map[string]interface{}) error {
+func attachmentDownloadProgressError(runtime *common.RuntimeContext, err error, downloaded []map[string]interface{}, failed []map[string]interface{}) error {
 	msg := fmt.Sprintf("download failed after %d attachment(s) succeeded and %d failed: %v", len(downloaded), len(failed), err)
-	detail := map[string]interface{}{
+	payload := map[string]interface{}{
+		"message":    msg,
 		"downloaded": downloaded,
 		"failed":     failed,
 	}
+	const hint = "Some files may already have been saved. Inspect downloaded before retrying, or rerun with --overwrite if the failed target now exists."
+	payload["hint"] = hint
+	if p, ok := errs.ProblemOf(err); ok {
+		payload["type"] = string(p.Category)
+		payload["subtype"] = string(p.Subtype)
+		if p.Code != 0 {
+			payload["code"] = p.Code
+		}
+	}
 	if logID := baseAttachmentDownloadLogID(err); logID != "" {
-		detail["log_id"] = logID
+		payload["log_id"] = logID
 	}
-	const hint = "Some files may already have been saved. Inspect error.detail.downloaded before retrying, or rerun with --overwrite if the failed target now exists."
-
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		return &output.ExitError{
-			Code: exitErr.Code,
-			Detail: &output.ErrDetail{
-				Type:    exitErr.Detail.Type,
-				Code:    exitErr.Detail.Code,
-				Message: msg,
-				Hint:    hint,
-				Detail:  detail,
-			},
-			Err: err,
-		}
-	}
-	var netErr *errs.NetworkError
-	if errors.As(err, &netErr) {
-		return &output.ExitError{
-			Code: output.ExitNetwork,
-			Detail: &output.ErrDetail{
-				Type:    "network",
-				Code:    netErr.Code,
-				Message: msg,
-				Hint:    hint,
-				Detail:  detail,
-			},
-			Err: err,
-		}
-	}
-	return &output.ExitError{
-		Code: output.ExitInternal,
-		Detail: &output.ErrDetail{
-			Type:    "io",
-			Message: msg,
-			Hint:    hint,
-			Detail:  detail,
-		},
-		Err: err,
-	}
+	return runtime.OutPartialFailure(payload, nil)
 }
 
 func baseAttachmentDownloadLogID(err error) string {
-	var netErr *errs.NetworkError
-	if errors.As(err, &netErr) {
-		if id := strings.TrimSpace(netErr.LogID); id != "" {
-			return id
-		}
-	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		if detail, ok := exitErr.Detail.Detail.(map[string]interface{}); ok {
-			if logID, _ := detail["log_id"].(string); logID != "" {
-				return strings.TrimSpace(logID)
-			}
+	if p, ok := errs.ProblemOf(err); ok {
+		if logID := strings.TrimSpace(p.LogID); logID != "" {
+			return logID
 		}
 	}
 	return ""

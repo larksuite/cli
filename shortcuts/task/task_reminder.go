@@ -5,7 +5,6 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,8 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
-
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -35,10 +33,10 @@ var ReminderTask = common.Shortcut{
 
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if runtime.Str("set") == "" && !runtime.Bool("remove") {
-			return WrapTaskError(ErrCodeTaskInvalidParams, "must specify either --set or --remove", "validate reminder")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "must specify either --set or --remove")
 		}
 		if runtime.Str("set") != "" && runtime.Bool("remove") {
-			return WrapTaskError(ErrCodeTaskInvalidParams, "cannot specify both --set and --remove", "validate reminder")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot specify both --set and --remove")
 		}
 		return nil
 	},
@@ -66,24 +64,10 @@ var ReminderTask = common.Shortcut{
 
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		taskId := url.PathEscape(runtime.Str("task-id"))
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
 		// First, get the task to find existing reminders
-		getResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodGet,
-			ApiPath:     "/open-apis/task/v2/tasks/" + taskId,
-			QueryParams: queryParams,
-		})
-
-		var getResult map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(getResp.RawBody, &getResult); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse task details: %v", parseErr), "parse task details")
-			}
-		}
-
-		data, err := HandleTaskApiResult(getResult, err, "get task reminders")
+		data, err := callTaskAPITyped(runtime, http.MethodGet, "/open-apis/task/v2/tasks/"+taskId, params, nil)
 		if err != nil {
 			return err
 		}
@@ -112,21 +96,7 @@ var ReminderTask = common.Shortcut{
 				body := map[string]interface{}{
 					"reminder_ids": reminderIds,
 				}
-				apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-					HttpMethod:  http.MethodPost,
-					ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/remove_reminders",
-					QueryParams: queryParams,
-					Body:        body,
-				})
-
-				var removeResult map[string]interface{}
-				if err == nil {
-					if parseErr := json.Unmarshal(apiResp.RawBody, &removeResult); parseErr != nil {
-						return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse remove response")
-					}
-				}
-
-				if _, err := HandleTaskApiResult(removeResult, err, "remove task reminders"); err != nil {
+				if _, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+taskId+"/remove_reminders", params, body); err != nil {
 					return err
 				}
 			}
@@ -155,7 +125,7 @@ var ReminderTask = common.Shortcut{
 			}
 
 			if parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInvalidParams, parseErr.Error(), "set reminder")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", parseErr)
 			}
 
 			// If any reminders exist, remove them first
@@ -173,21 +143,7 @@ var ReminderTask = common.Shortcut{
 					body := map[string]interface{}{
 						"reminder_ids": reminderIds,
 					}
-					apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-						HttpMethod:  http.MethodPost,
-						ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/remove_reminders",
-						QueryParams: queryParams,
-						Body:        body,
-					})
-
-					var removeResult map[string]interface{}
-					if err == nil {
-						if parseErr := json.Unmarshal(apiResp.RawBody, &removeResult); parseErr != nil {
-							return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse remove response")
-						}
-					}
-
-					if _, err := HandleTaskApiResult(removeResult, err, "remove existing task reminders before setting new one"); err != nil {
+					if _, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+taskId+"/remove_reminders", params, body); err != nil {
 						return err
 					}
 				}
@@ -200,21 +156,7 @@ var ReminderTask = common.Shortcut{
 					},
 				},
 			}
-			apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-				HttpMethod:  http.MethodPost,
-				ApiPath:     "/open-apis/task/v2/tasks/" + taskId + "/add_reminders",
-				QueryParams: queryParams,
-				Body:        body,
-			})
-
-			var addResult map[string]interface{}
-			if err == nil {
-				if parseErr := json.Unmarshal(apiResp.RawBody, &addResult); parseErr != nil {
-					return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse add response")
-				}
-			}
-
-			if _, err := HandleTaskApiResult(addResult, err, "add task reminder"); err != nil {
+			if _, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/"+taskId+"/add_reminders", params, body); err != nil {
 				return err
 			}
 		}

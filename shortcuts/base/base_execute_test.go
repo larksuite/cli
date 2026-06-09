@@ -18,6 +18,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -513,6 +514,65 @@ func TestBaseBlockExecuteShortcuts(t *testing.T) {
 	}
 }
 
+func TestBaseBlockValidationReturnsTypedErrors(t *testing.T) {
+	factory, stdout, _ := newExecuteFactory(t)
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		args     []string
+		params   []string
+	}{
+		{
+			name:     "create blank name",
+			shortcut: BaseBaseBlockCreate,
+			args:     []string{"+base-block-create", "--base-token", "app_x", "--type", "docx", "--name", " "},
+			params:   []string{"--name"},
+		},
+		{
+			name:     "move conflicting sibling anchors",
+			shortcut: BaseBaseBlockMove,
+			args:     []string{"+base-block-move", "--base-token", "app_x", "--block-id", "blk_doc", "--before-id", "blk_a", "--after-id", "blk_b"},
+			params:   []string{"--before-id", "--after-id"},
+		},
+		{
+			name:     "rename blank name",
+			shortcut: BaseBaseBlockRename,
+			args:     []string{"+base-block-rename", "--base-token", "app_x", "--block-id", "blk_doc", "--name", " "},
+			params:   []string{"--name"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := runShortcut(t, tt.shortcut, tt.args, factory, stdout)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected ValidationError, got %T %v", err, err)
+			}
+			if validationErr.Param != tt.params[0] {
+				t.Fatalf("param=%q, want %q", validationErr.Param, tt.params[0])
+			}
+			if len(validationErr.Params) != len(tt.params) {
+				t.Fatalf("params=%#v, want %v", validationErr.Params, tt.params)
+			}
+			for i, param := range tt.params {
+				if validationErr.Params[i].Name != param {
+					t.Fatalf("params=%#v, want %v", validationErr.Params, tt.params)
+				}
+				if validationErr.Params[i].Reason == "" {
+					t.Fatalf("params[%d] missing reason: %#v", i, validationErr.Params)
+				}
+			}
+		})
+	}
+}
+
 func TestBaseHistoryExecute(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -871,10 +931,10 @@ func TestBaseTableExecuteReadAndDelete(t *testing.T) {
 	t.Run("list-http-404", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Status: 404,
-			Body:   "404 page not found",
+			Method:  "GET",
+			URL:     "/open-apis/base/v3/bases/app_x/tables",
+			Status:  404,
+			RawBody: []byte("404 page not found"),
 			Headers: map[string][]string{
 				"Content-Type": {"text/plain"},
 			},
@@ -2093,6 +2153,9 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		if !strings.Contains(err.Error(), "exceeds 2GB limit") {
 			t.Fatalf("err=%v", err)
 		}
+		if !strings.Contains(err.Error(), filepath.Base(tmpFile.Name())) {
+			t.Fatalf("err=%v should name the offending file", err)
+		}
 	})
 
 	t.Run("upload attachment rejects deprecated name flag", func(t *testing.T) {
@@ -2258,6 +2321,23 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--output", "file.txt",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "--output must be an existing directory") {
+			t.Fatalf("err=%v", err)
+		}
+	})
+
+	t.Run("download surfaces unsafe output path instead of directory hint", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		tmpDir := t.TempDir()
+		withBaseWorkingDir(t, tmpDir)
+
+		err := runShortcut(t, BaseRecordDownloadAttachment, []string{
+			"+record-download-attachment",
+			"--base-token", "app_x",
+			"--table-id", "tbl_x",
+			"--record-id", "rec_x",
+			"--output", "../escape",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "unsafe output path") {
 			t.Fatalf("err=%v", err)
 		}
 	})
@@ -2458,21 +2538,37 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 			"--record-id", "rec_x",
 			"--output", "downloads",
 		}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "download failed after 1 attachment(s) succeeded and 1 failed") {
+		if err == nil {
 			t.Fatalf("err=%v", err)
 		}
-		var exitErr *output.ExitError
-		if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-			t.Fatalf("expected structured error, got %T %v", err, err)
+		var partialErr *output.PartialFailureError
+		if !errors.As(err, &partialErr) {
+			t.Fatalf("expected partial failure error, got %T %v", err, err)
 		}
-		detail, _ := exitErr.Detail.Detail.(map[string]interface{})
-		downloaded, _ := detail["downloaded"].([]map[string]interface{})
-		failed, _ := detail["failed"].([]map[string]interface{})
-		if len(downloaded) != 1 || downloaded[0]["file_token"] != "box_a" || len(failed) != 1 || failed[0]["file_token"] != "box_b" {
-			t.Fatalf("detail=%#v", exitErr.Detail.Detail)
+
+		var envelope map[string]interface{}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatalf("failed to decode partial failure output: %v\nraw=%s", err, stdout.String())
 		}
-		if detail["log_id"] != "202605270001" {
-			t.Fatalf("detail=%#v, want log_id", exitErr.Detail.Detail)
+		if envelope["ok"] != false {
+			t.Fatalf("ok=%#v, want false; envelope=%#v", envelope["ok"], envelope)
+		}
+		data, _ := envelope["data"].(map[string]interface{})
+		if msg, _ := data["message"].(string); !strings.Contains(msg, "download failed after 1 attachment(s) succeeded and 1 failed") {
+			t.Fatalf("message=%q", msg)
+		}
+		downloaded, _ := data["downloaded"].([]interface{})
+		failed, _ := data["failed"].([]interface{})
+		if len(downloaded) != 1 || len(failed) != 1 {
+			t.Fatalf("data=%#v", data)
+		}
+		downloadedItem, _ := downloaded[0].(map[string]interface{})
+		failedItem, _ := failed[0].(map[string]interface{})
+		if downloadedItem["file_token"] != "box_a" || failedItem["file_token"] != "box_b" {
+			t.Fatalf("data=%#v", data)
+		}
+		if data["log_id"] != "202605270001" {
+			t.Fatalf("data=%#v, want log_id", data)
 		}
 		if _, err := os.Stat(filepath.Join(tmpDir, "downloads", "a.txt")); err != nil {
 			t.Fatalf("expected first file to remain: %v", err)

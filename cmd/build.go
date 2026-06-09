@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"io"
+	"io/fs"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
@@ -16,6 +17,7 @@ import (
 	"github.com/larksuite/cli/cmd/profile"
 	"github.com/larksuite/cli/cmd/schema"
 	"github.com/larksuite/cli/cmd/service"
+	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
 	_ "github.com/larksuite/cli/events"
 	"github.com/larksuite/cli/internal/build"
@@ -50,6 +52,18 @@ func WithKeychain(kc keychain.KeychainAccess) BuildOption {
 		c.keychain = kc
 	}
 }
+
+// embeddedSkillContent is the skill tree wired into cmdutil.Factory.SkillContent
+// at build time. It is registered by the repo-root package main's init via
+// SetEmbeddedSkillContent — it cannot be threaded through main.go without
+// breaking the single-file preview build (see skills_embed.go). nil in builds
+// that embed no skills; the `skills` commands then return a typed internal error.
+var embeddedSkillContent fs.FS
+
+// SetEmbeddedSkillContent registers the embedded skill tree. Called from the
+// repo-root package main's init; a wrapper main can call it before Execute to
+// supply its own skill content.
+func SetEmbeddedSkillContent(fsys fs.FS) { embeddedSkillContent = fsys }
 
 // HideProfile sets the visibility policy for the root-level --profile flag.
 // When hide is true the flag stays registered (so existing invocations still
@@ -103,6 +117,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	if cfg.keychain != nil {
 		f.Keychain = cfg.keychain
 	}
+	f.SkillContent = embeddedSkillContent
 	rootCmd := &cobra.Command{
 		Use:     "lark-cli",
 		Short:   "Lark/Feishu CLI — OAuth authorization, UAT management, API calls",
@@ -140,6 +155,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
 	rootCmd.AddCommand(cmdupdate.NewCmdUpdate(f))
 	rootCmd.AddCommand(cmdevent.NewCmdEvents(f))
+	rootCmd.AddCommand(skill.NewCmdSkill(f))
 	service.RegisterServiceCommandsWithContext(ctx, rootCmd, f)
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
 

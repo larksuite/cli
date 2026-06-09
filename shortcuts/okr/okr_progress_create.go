@@ -11,10 +11,9 @@ import (
 	"math"
 	"strconv"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // targetTypeAllowed values for --target-type flag
@@ -39,7 +38,7 @@ func parseCreateProgressRecordParams(runtime *common.RuntimeContext) (*createPro
 	content := runtime.Str("content")
 	var cb ContentBlock
 	if err := json.Unmarshal([]byte(content), &cb); err != nil {
-		return nil, common.FlagErrorf("--content must be valid ContentBlock JSON: %s", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
 	}
 	contentV1 := cb.ToV1()
 
@@ -60,13 +59,13 @@ func parseCreateProgressRecordParams(runtime *common.RuntimeContext) (*createPro
 	if v := runtime.Str("progress-percent"); v != "" {
 		percent, err := strconv.ParseFloat(v, 64)
 		if err != nil || math.IsNaN(percent) || math.IsInf(percent, 0) || percent < -99999999999 || percent > 99999999999 {
-			return nil, common.FlagErrorf("--progress-percent must be a number between -99999999999 and 99999999999")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-percent must be a number between -99999999999 and 99999999999").WithParam("--progress-percent")
 		}
 		progressRate = &ProgressRateV1{Percent: &percent}
 		if s := runtime.Str("progress-status"); s != "" {
 			status, ok := ParseProgressStatus(s)
 			if !ok {
-				return nil, common.FlagErrorf("--progress-status must be one of: normal | overdue | done")
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-status must be one of: normal | overdue | done").WithParam("--progress-status")
 			}
 			progressRate.Status = int32Ptr(int32(status))
 		}
@@ -105,40 +104,40 @@ var OKRCreateProgressRecord = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		content := runtime.Str("content")
 		if content == "" {
-			return common.FlagErrorf("--content is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content is required").WithParam("--content")
 		}
-		if err := validate.RejectControlChars(content, "content"); err != nil {
+		if err := common.RejectDangerousCharsTyped("--content", content); err != nil {
 			return err
 		}
 		// Validate content is valid JSON and can be parsed as ContentBlock
 		var cb ContentBlock
 		if err := json.Unmarshal([]byte(content), &cb); err != nil {
-			return common.FlagErrorf("--content must be valid ContentBlock JSON: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
 		}
 
 		targetID := runtime.Str("target-id")
 		if targetID == "" {
-			return common.FlagErrorf("--target-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id is required").WithParam("--target-id")
 		}
-		if err := validate.RejectControlChars(targetID, "target-id"); err != nil {
+		if err := common.RejectDangerousCharsTyped("--target-id", targetID); err != nil {
 			return err
 		}
 		if id, err := strconv.ParseInt(targetID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--target-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-id must be a positive int64").WithParam("--target-id")
 		}
 
 		targetType := runtime.Str("target-type")
 		if _, ok := targetTypeAllowed[targetType]; !ok {
-			return common.FlagErrorf("--target-type must be one of: objective | key_result")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-type must be one of: objective | key_result").WithParam("--target-type")
 		}
 
 		if v := runtime.Str("source-title"); v != "" {
-			if err := validate.RejectControlChars(v, "source-title"); err != nil {
+			if err := common.RejectDangerousCharsTyped("--source-title", v); err != nil {
 				return err
 			}
 		}
 		if v := runtime.Str("source-url"); v != "" {
-			if err := validate.RejectControlChars(v, "source-url"); err != nil {
+			if err := common.RejectDangerousCharsTyped("--source-url", v); err != nil {
 				return err
 			}
 		}
@@ -146,21 +145,21 @@ var OKRCreateProgressRecord = common.Shortcut{
 		if v := runtime.Str("progress-percent"); v != "" {
 			percent, err := strconv.ParseFloat(v, 64)
 			if err != nil || math.IsNaN(percent) || math.IsInf(percent, 0) || percent < -99999999999 || percent > 99999999999 {
-				return common.FlagErrorf("--progress-percent must be a number between -99999999999 and 99999999999")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-percent must be a number between -99999999999 and 99999999999").WithParam("--progress-percent")
 			}
 		}
 		if v := runtime.Str("progress-status"); v != "" {
 			if _, ok := ParseProgressStatus(v); !ok {
-				return common.FlagErrorf("--progress-status must be one of: normal | overdue | done")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-status must be one of: normal | overdue | done").WithParam("--progress-status")
 			}
 			if v := runtime.Str("progress-percent"); v == "" {
-				return common.FlagErrorf("--progress-percent must provided with --progress-status")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--progress-percent must provided with --progress-status").WithParam("--progress-percent")
 			}
 		}
 
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
-			return common.FlagErrorf("--user-id-type must be one of: open_id | union_id | user_id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id-type must be one of: open_id | union_id | user_id").WithParam("--user-id-type")
 		}
 		return nil
 	},
@@ -202,10 +201,9 @@ var OKRCreateProgressRecord = common.Shortcut{
 			body["progress_rate"] = p.ProgressRate
 		}
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", p.UserIDType)
+		queryParams := map[string]interface{}{"user_id_type": p.UserIDType}
 
-		data, err := runtime.DoAPIJSON("POST", "/open-apis/okr/v1/progress_records/", queryParams, body)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/okr/v1/progress_records/", queryParams, body)
 		if err != nil {
 			return err
 		}

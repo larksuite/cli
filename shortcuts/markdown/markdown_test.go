@@ -17,9 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -603,6 +605,100 @@ func TestMarkdownCreateSuccessUploadAllToWikiReturnsMetaURL(t *testing.T) {
 	}
 }
 
+func TestMarkdownCreateUploadAllReturnsTypedScopeError(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "Access denied. One of the following scopes is required: [drive:file:upload]",
+			"error": map[string]interface{}{
+				"log_id": "log-md-upload-scope",
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("expected scope error")
+	}
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 99991672 {
+		t.Fatalf("code = %d, want 99991672", p.Code)
+	}
+	if p.Subtype != errs.SubtypeAppScopeNotApplied {
+		t.Fatalf("subtype = %s, want %s", p.Subtype, errs.SubtypeAppScopeNotApplied)
+	}
+	if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
+		t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadAllAction+": ")
+	}
+	if !strings.Contains(p.Hint, "lacks the required document upload scope") {
+		t.Fatalf("hint = %q, want upload scope guidance", p.Hint)
+	}
+}
+
+func TestMarkdownCreateUploadAllRetriesRateLimit(t *testing.T) {
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "request frequency limit exceeded",
+			"error": map[string]interface{}{
+				"log_id": "log-md-upload-ratelimit-1",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"file_token": "box_md_retry_success",
+				"version":    "1003",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"metas": []map[string]interface{}{
+					{"doc_token": "box_md_retry_success", "doc_type": "file", "url": "https://tenant.example.com/file/box_md_retry_success"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello\n",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr.String(), "retrying (attempt 1/2)") {
+		t.Fatalf("stderr = %q, want retry log", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"file_token": "box_md_retry_success"`) {
+		t.Fatalf("stdout missing retried upload token: %s", stdout.String())
+	}
+}
+
 func TestMarkdownCreatePrettyOutputIncludesPermissionGrant(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -1033,6 +1129,270 @@ func TestUploadMarkdownMultipartPartsRejectsOversizedBlockSize(t *testing.T) {
 	}
 }
 
+func TestWithMarkdownUploadRetryDataDoesNotRetryNonRetryable(t *testing.T) {
+	f, _, stderr, _ := cmdutil.TestFactory(t, markdownTestConfig())
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser)
+
+	attempts := 0
+	expected := errs.NewAPIError(errs.SubtypePermissionDenied, "permission denied").WithCode(1061004)
+	_, err := withMarkdownUploadRetryData(rt, markdownUploadAllAction, func() (map[string]interface{}, error) {
+		attempts++
+		return nil, expected
+	})
+	if err != expected {
+		t.Fatalf("err = %v, want original error", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1", attempts)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("stderr = %q, want no retry log", stderr.String())
+	}
+}
+
+func TestWithMarkdownUploadRetryVoidExhaustedAppendsHint(t *testing.T) {
+	f, _, stderr, _ := cmdutil.TestFactory(t, markdownTestConfig())
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser)
+
+	orig := markdownUploadRetryBackoffs
+	markdownUploadRetryBackoffs = []time.Duration{0, 0}
+	t.Cleanup(func() { markdownUploadRetryBackoffs = orig })
+
+	attempts := 0
+	err := withMarkdownUploadRetryVoid(rt, markdownUploadFinishAction, func() error {
+		attempts++
+		return errs.NewAPIError(errs.SubtypeRateLimit, "too many requests").WithCode(99991400).WithRetryable()
+	})
+	if err == nil {
+		t.Fatal("expected retryable error")
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if !strings.Contains(p.Hint, "remained retryable after 3 attempts") {
+		t.Fatalf("hint = %q, want retry exhaustion guidance", p.Hint)
+	}
+	if strings.Count(stderr.String(), "retrying (attempt") != 2 {
+		t.Fatalf("stderr = %q, want 2 retry logs", stderr.String())
+	}
+}
+
+func TestMarkdownUploadShouldRetryBranches(t *testing.T) {
+	if markdownUploadShouldRetry(errors.New("plain")) {
+		t.Fatal("plain error should not be retryable")
+	}
+	if !markdownUploadShouldRetry(errs.NewAPIError(errs.SubtypeRateLimit, "slow down").WithRetryable()) {
+		t.Fatal("retryable API error should be retryable")
+	}
+	if !markdownUploadShouldRetry(errs.NewNetworkError(errs.SubtypeNetworkServer, "gateway").WithCode(502)) {
+		t.Fatal("network error should be retryable by category")
+	}
+}
+
+func TestMarkdownUploadRetryExhaustedZeroRetriesKeepsOriginal(t *testing.T) {
+	original := errs.NewAPIError(errs.SubtypeRateLimit, "slow down").WithRetryable()
+	got := markdownUploadRetryExhausted(original, markdownUploadAllAction, 0)
+	if got != original {
+		t.Fatalf("got = %v, want original error", got)
+	}
+}
+
+func TestMarkdownUploadProblemAppendsCodeSpecificHints(t *testing.T) {
+	tests := []struct {
+		name string
+		code int
+		want string
+	}{
+		{
+			name: "missing scope",
+			code: 99991672,
+			want: "lacks the required document upload scope",
+		},
+		{
+			name: "version limit",
+			code: 10071,
+			want: "reached its version limit",
+		},
+		{
+			name: "document capability",
+			code: 90003087,
+			want: "document capabilities enabled",
+		},
+		{
+			name: "target not found",
+			code: 1061044,
+			want: "target folder or wiki node still exists",
+		},
+		{
+			name: "no write access",
+			code: 1062501,
+			want: "has write access",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := errs.NewAPIError(errs.SubtypeUnknown, "boom").WithCode(tt.code)
+			got := markdownUploadProblem(err, markdownUploadAllAction)
+			p, ok := errs.ProblemOf(got)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T (%v)", got, got)
+			}
+			if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
+				t.Fatalf("message = %q, want action prefix", p.Message)
+			}
+			if !strings.Contains(p.Hint, tt.want) {
+				t.Fatalf("hint = %q, want substring %q", p.Hint, tt.want)
+			}
+		})
+	}
+}
+
+func TestUploadMarkdownFileAllMissingFileTokenGetsActionPrefix(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"version": "1001",
+			},
+		},
+	})
+
+	_, err := uploadMarkdownFileAll(
+		common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+		markdownUploadSpec{ContentSet: true},
+		"README.md",
+		int64(len("# hello\n")),
+		func() (io.ReadCloser, error) {
+			return io.NopCloser(strings.NewReader("# hello\n")), nil
+		},
+	)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if !strings.HasPrefix(p.Message, markdownUploadAllAction+": ") {
+		t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadAllAction+": ")
+	}
+}
+
+func TestUploadMarkdownFileMultipartPrepareAndFinishParseErrorsGetActionPrefix(t *testing.T) {
+	t.Run("prepare", func(t *testing.T) {
+		f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_prepare",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"upload_id": "upload_123",
+					"block_num": 1,
+				},
+			},
+		})
+
+		_, err := uploadMarkdownFileMultipart(
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			markdownUploadSpec{ContentSet: true},
+			"README.md",
+			int64(len("# hello\n")),
+			func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("# hello\n")), nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected prepare parse error")
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T (%v)", err, err)
+		}
+		if !strings.HasPrefix(p.Message, markdownUploadPrepareAction+": ") {
+			t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadPrepareAction+": ")
+		}
+	})
+
+	t.Run("finish", func(t *testing.T) {
+		f, _, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_prepare",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"upload_id":  "upload_123",
+					"block_size": float64(8),
+					"block_num":  float64(1),
+				},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_part",
+			Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/drive/v1/files/upload_finish",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"version": "1001",
+				},
+			},
+		})
+
+		_, err := uploadMarkdownFileMultipart(
+			common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+create"}, markdownTestConfig(), f, core.AsUser),
+			markdownUploadSpec{ContentSet: true},
+			"README.md",
+			int64(len("# hello\n")),
+			func() (io.ReadCloser, error) {
+				return io.NopCloser(strings.NewReader("# hello\n")), nil
+			},
+		)
+		if err == nil {
+			t.Fatal("expected finish parse error")
+		}
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T (%v)", err, err)
+		}
+		if !strings.HasPrefix(p.Message, markdownUploadFinishAction+": ") {
+			t.Fatalf("message = %q, want %q prefix", p.Message, markdownUploadFinishAction+": ")
+		}
+	})
+}
+
+func TestAppendMarkdownProblemHintAppendsAndIgnoresBlank(t *testing.T) {
+	err := errs.NewAPIError(errs.SubtypeUnknown, "boom").WithHint("first")
+	appendMarkdownProblemHint(err, "second")
+	appendMarkdownProblemHint(err, "   ")
+
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Hint != "first\nsecond" {
+		t.Fatalf("hint = %q, want newline-joined hints", p.Hint)
+	}
+
+	plain := errors.New("plain")
+	if got := appendMarkdownProblemHint(plain, "ignored"); got != plain {
+		t.Fatalf("plain error should pass through unchanged")
+	}
+}
+
 func TestMarkdownOverwriteUploadAllIncludesFileTokenAndVersion(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -1303,7 +1663,18 @@ func TestMarkdownOverwriteRejectsEmptyLocalFile(t *testing.T) {
 }
 
 func TestMarkdownOverwriteMetadataLookupFailure(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+	f, stdout, _, reg := cmdutil.TestFactory(t, markdownTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/metas/batch_query",
+		Body: map[string]interface{}{
+			"code": 1061044,
+			"msg":  "parent node not exist",
+			"error": map[string]interface{}{
+				"log_id": "log-md-meta-notfound",
+			},
+		},
+	})
 
 	err := mountAndRunMarkdown(t, MarkdownOverwrite, []string{
 		"+overwrite",
@@ -1312,6 +1683,19 @@ func TestMarkdownOverwriteMetadataLookupFailure(t *testing.T) {
 	}, f, stdout)
 	if err == nil {
 		t.Fatal("expected metadata lookup failure")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T (%v)", err, err)
+	}
+	if p.Code != 1061044 {
+		t.Fatalf("code = %d, want 1061044", p.Code)
+	}
+	if !strings.HasPrefix(p.Message, markdownFetchNameAction+": ") {
+		t.Fatalf("message = %q, want %q prefix", p.Message, markdownFetchNameAction+": ")
+	}
+	if !strings.Contains(p.Hint, "target folder or wiki node still exists") {
+		t.Fatalf("hint = %q, want target guidance", p.Hint)
 	}
 }
 

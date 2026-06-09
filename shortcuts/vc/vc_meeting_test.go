@@ -7,11 +7,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -577,7 +579,67 @@ func TestMeetingLeave_Execute_APIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for API failure")
 	}
-	if !strings.Contains(err.Error(), "no permission") {
-		t.Errorf("error should surface API message, got: %v", err)
+	// code 121005 classifies to a typed permission error (no edit/view rights).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T: %v", err, err)
+	}
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed error lock assertions
+// ---------------------------------------------------------------------------
+
+func TestMeetingJoin_Validate_InvalidFormat_TypedError(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-number", "", "")
+	cmd.Flags().String("password", "", "")
+	_ = cmd.Flags().Set("meeting-number", "12345678") // 8 digits — invalid
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	err := VCMeetingJoin.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "9 digits") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--meeting-number" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--meeting-number")
+	}
+}
+
+func TestMeetingLeave_Validate_WhitespaceOnly_TypedError(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().String("meeting-id", "", "")
+	_ = cmd.Flags().Set("meeting-id", "   ")
+
+	runtime := common.TestNewRuntimeContext(cmd, defaultConfig())
+	err := VCMeetingLeave.Validate(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "meeting-id") {
+		t.Errorf("message mismatch: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--meeting-id" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--meeting-id")
 	}
 }

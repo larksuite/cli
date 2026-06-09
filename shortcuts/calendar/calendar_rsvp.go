@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -51,15 +51,15 @@ var CalendarRsvp = common.Shortcut{
 		}
 		for _, flag := range []string{"calendar-id", "event-id", "rsvp-status"} {
 			if val := strings.TrimSpace(runtime.Str(flag)); val != "" {
-				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-					return output.ErrValidation(err.Error())
+				if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+					return err
 				}
 			}
 		}
 
 		eventId := strings.TrimSpace(runtime.Str("event-id"))
 		if eventId == "" {
-			return output.ErrValidation("event-id cannot be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "event-id cannot be empty").WithParam("--event-id")
 		}
 		return nil
 	},
@@ -71,7 +71,7 @@ var CalendarRsvp = common.Shortcut{
 		eventId := strings.TrimSpace(runtime.Str("event-id"))
 		status := strings.TrimSpace(runtime.Str("rsvp-status"))
 
-		_, err := runtime.DoAPIJSON("POST",
+		_, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s/reply",
 				validate.EncodePathSegment(calendarId),
 				validate.EncodePathSegment(eventId)),

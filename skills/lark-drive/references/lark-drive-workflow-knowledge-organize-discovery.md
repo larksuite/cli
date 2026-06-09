@@ -10,8 +10,9 @@ Before executing rules in this file:
 
 1. Follow [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for identity, auth, and permission handling.
 2. For Wiki / personal library targets, follow [`../../lark-wiki/SKILL.md`](../../lark-wiki/SKILL.md).
-3. For Drive search targets, follow [`lark-drive-search.md`](lark-drive-search.md).
-4. For URL / token inspection, follow [`lark-drive-inspect.md`](lark-drive-inspect.md) and [`../../lark-wiki/references/lark-wiki-node-get.md`](../../lark-wiki/references/lark-wiki-node-get.md).
+3. For Drive folder inventory, follow [`lark-drive-files-list.md`](lark-drive-files-list.md).
+4. For Drive search targets, follow [`lark-drive-search.md`](lark-drive-search.md).
+5. For URL / token inspection, follow [`lark-drive-inspect.md`](lark-drive-inspect.md) and [`../../lark-wiki/references/lark-wiki-node-get.md`](../../lark-wiki/references/lark-wiki-node-get.md).
 
 ## State: PARSE_SCOPE
 
@@ -87,6 +88,10 @@ Clarification template:
 请确认是否按这个范围继续？
 ```
 
+Scope confirmation is user-facing. It MUST confirm only the business scope, environment / profile, identity, and whether write operations will run.
+
+Do not display internal batching controls in scope confirmation, including `max_depth`, `max_items`, `page_size`, page tokens, retry counts, or `partial=true`. For example, when the user confirms Drive root, say the scope is the Drive root tree; do not append "recursive depth at most 3" or "at most 500 resources".
+
 ## State: INVENTORY
 
 Entry: `target_scope` confirmed.
@@ -96,20 +101,57 @@ MUST:
 1. Recursively list resources according to target type.
 2. Generate `path` during traversal.
 3. Normalize all results to `ResourceItem`.
-4. Track pagination, depth, and item limits.
-5. Set `partial=true` when limits are hit.
-6. Output `Inventory Summary`.
-7. Continue to `CONTENT_READ` without asking the user unless auth, permission, API, target scope, or environment blockers occur.
+4. Track pagination, depth, item limits, and continuation checkpoints.
+5. Treat pagination, depth, item, and per-folder page limits as batching checkpoints; continue inventory in the confirmed scope unless blocked.
+6. Set `partial=true` only when inventory cannot continue because of auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, target scope, or environment blockers.
+7. Apply `Inventory Progress Reporting`.
+8. Output `Inventory Summary`.
+9. Do not leave `INVENTORY` while `inventory_continuation_state` has queued folders, nodes, pages, or slices that can still be fetched.
+10. Continue to `CONTENT_READ` without asking the user only after the confirmed scope is exhausted or blocked.
 
-### Inventory Limits
+### Inventory Batch Checkpoints
 
-| Scope | Default Limit | If Limit Is Hit |
-|-------|---------------|-----------------|
-| Wiki recursion | `max_depth=3`, `max_items=500`; follow `lark-wiki-node-list` pagination | Set `partial=true`; list covered paths and suggested next first-level directories |
-| Drive folder recursion | `max_depth=3`, `max_items=500`, max 10 pages per folder, `page_size=50` | Set `partial=true`; list folders not drilled into |
-| Search discovery | `page_size=20`, `max_items=500`; continue pages until `has_more=false` or `max_items` is reached | Set `partial=true`; report collected_count, service_total when available, page_count, and continuation information |
+| Scope | Internal Batch Checkpoint | Required Continuation |
+|-------|---------------------------|-----------------------|
+| Wiki recursion | `max_depth=3`, `max_items=500`; follow `lark-wiki-node-list` pagination | Record queued nodes / paths in `inventory_continuation_state` and immediately continue the next internal batch within the confirmed scope unless blocked |
+| Drive folder tree | `max_depth=3`, `max_items=500`, max 10 pages per folder, `page_size=200` | Record queued folders / pages in `inventory_continuation_state` and immediately continue the next internal batch within the confirmed scope unless blocked |
+| Search discovery | `page_size=20`, `max_items=500`; continue pages until `has_more=false` | Record remaining pages / slices in `inventory_continuation_state` and immediately continue the next internal batch within the confirmed scope unless blocked |
 
-If the user explicitly asks for full processing, batch by first-level directory, Wiki space, or time window. Do not remove all limits in one run.
+These checkpoints are pacing controls, not coverage limits. If the confirmed scope still has queued work after a checkpoint, continue with the next internal batch instead of presenting the current `resource_items` as final inventory or moving to content analysis.
+
+When a depth checkpoint is reached, enqueue the child folders / nodes that would exceed the current batch depth; the next batch starts from those queued children with their original paths preserved. When an item checkpoint is reached, persist the current folder / node / page cursor plus the remaining queue, visited page keys, and resource dedupe keys, then continue from that checkpoint before analysis or planning.
+
+If tool budget would be exceeded for a very large confirmed scope, stop only at that blocker, report that the inventory is incomplete, and suggest batching by first-level directory, Wiki space, or time window. Do not stop merely because a depth or item checkpoint was reached.
+
+### Inventory Continuation Rules
+
+1. Pagination, depth, item, and per-folder page limits are internal batching checkpoints.
+2. When a checkpoint is reached, record `inventory_continuation_state` with `scope`, `queue`, `current_cursor`, `visited_page_keys`, `dedupe_keys`, and `blockers`; Drive queue entries MUST contain `folder_token`, `path`, `depth`, and `page_token`; Wiki queue entries MUST contain `space_id` / `node_token`, `path`, `depth`, and pagination cursor; search entries MUST contain query / filters and pagination cursor.
+3. A depth checkpoint MUST enqueue deeper folders / nodes; it MUST NOT discard them or treat the current depth as final coverage.
+4. An item-count checkpoint MUST persist the current cursor and queue; it MUST NOT transition to `CONTENT_READ`, `ISSUE_ANALYSIS`, or `PLAN_GENERATION` while fetchable work remains.
+5. If `inventory_continuation_state` is missing, corrupt, or lacks required fields for the current scope, set `partial=true`, record the checkpoint blocker, and do not claim full coverage.
+6. Do not set `partial=true` solely because a valid batching checkpoint was reached.
+7. Set `partial=true` only when continuation is blocked by auth, permission, API / pagination failure after retries, API coverage limitations, tool budget, target scope, or environment blockers.
+8. Do not claim full coverage until the continuation queue for the confirmed scope is exhausted or blocked.
+
+### Inventory Progress Reporting
+
+Inventory can be long-running when a Drive root, large folder tree, Wiki space, or broad search scope is confirmed.
+
+Rules:
+
+1. When inventory starts, output one concise stage notice with the confirmed scope type and the fact that no write operation will be executed.
+2. If inventory runs longer than about 60 seconds, output progress about every 60 seconds.
+3. Progress reports SHOULD include only fields that are currently known: scanned folders / nodes, collected resources, current depth, queued folders / nodes, current search page / slice, and current blocker if any.
+4. When a batching checkpoint is reached and continuation will proceed automatically, report it as continuing inventory, not as a user action request.
+5. Do not output filler such as "still running" without current counts or current stage.
+6. Do not expose raw folder tokens, page tokens, retry logs, or `partial=true` unless the user explicitly asks to view inventory coverage details.
+
+Example:
+
+```text
+盘点进度：已扫描 <scanned_container_count> 个目录 / 节点，收集 <resource_count> 项资源，队列剩余 <queued_container_count> 个目录 / 节点。继续盘点，不会执行移动或创建。
+```
 
 ### Wiki Inventory Rules
 
@@ -120,11 +162,13 @@ If the user explicitly asks for full processing, batch by first-level directory,
 
 ### Drive Inventory Rules
 
-1. Use CLI command family `drive files list` according to `lark-drive` API rules; its schema path is `drive.files.list`.
-2. Recurse only into `folder` items.
-3. Use `drive metas batch_query` when URL, owner, created time, or updated time is needed.
-4. Continue pages by feeding `next_page_token` into request param `page_token`.
-5. Prefer explicit `folder_token`; querying root with empty `folder_token` may return broad root data and may not paginate as expected.
+1. Use `drive files list` according to [`lark-drive-files-list.md`](lark-drive-files-list.md); its schema path is `drive.files.list`.
+2. Use the same Drive folder-tree traversal for Drive root and ordinary folders after the first request. Drive root differs only for the first-level request: it uses omitted or empty `folder_token`, does not support pagination, and does not return root-level shortcuts according to schema; returned child folders MUST still be listed by their own folder tokens like ordinary folders, and those ordinary folder lists may return `type=shortcut` entries. For a Drive root target, record this root-level shortcut coverage caveat, set `partial=true` only if the user requested full root-level shortcut coverage or root pagination cannot continue, and do not claim root-level shortcut coverage as complete.
+3. Recurse only into `folder` items within the confirmed scope.
+4. For each directory, continue pages manually by feeding the returned `next_page_token` into request param `page_token`. Do not rely on `--page-all` for inventory.
+5. If a page returns `has_more=true` but no usable `next_page_token`, retry the same page request up to 3 times. If retries still cannot produce a continuation token, set `partial=true` for that directory and record the pagination blocker.
+6. Use `drive metas batch_query` when URL, owner, created time, or updated time is needed.
+7. Pagination blocker details such as `partial=true`, folder token, page token, and retry logs are internal by default. Do not show them to the user unless the user explicitly asks to view inventory coverage details.
 
 ### Search Inventory Rules
 
@@ -132,10 +176,11 @@ If the user explicitly asks for full processing, batch by first-level directory,
 2. If a search result is a Wiki item and lacks `node_token`, resolve it with `drive +inspect` or `wiki +node-get` before dedupe.
 3. If Wiki identity still cannot be resolved, keep the item, set `needs_review=true`, and record `needs_review_reason`.
 4. For search scope, use `page_size=20` unless a lower value is required by the command.
-5. Continue fetching pages until `has_more=false` or `max_items` is reached.
-6. Do not stop at an arbitrary sample size such as first 5 pages unless the user explicitly asks for sampling or auth, permission, API, environment, or tool-budget blockers occur.
-7. If `service_total` / result total is greater than collected items, set `partial=true` and show collected_count, service_total, page_count, and continuation information.
-8. Do not present a partial search sample as complete inventory. Before generating a full organization plan from partial search results, ask whether to continue fetching more pages or proceed with sample-based planning.
+5. Continue fetching pages until `has_more=false`.
+6. If `max_items=500` is reached in one batch, record the current search cursor in `inventory_continuation_state` and continue the next internal batch without asking the user.
+7. Do not stop at an arbitrary sample size such as first 5 pages unless the user explicitly asks for sampling or auth, permission, API, environment, or tool-budget blockers occur.
+8. If `service_total` / result total is greater than collected items, treat it as continuation evidence: continue fetching when a cursor / page is available; set `partial=true` only if continuation is blocked.
+9. Do not present a partial search sample as complete inventory. Before generating a full organization plan from partial search results, continue fetching available pages unless the user explicitly asked for sampling or a blocker prevents continuation.
 
 ## ResourceItem
 
@@ -179,7 +224,9 @@ ResourceItem rules:
 ## Inventory Summary
 
 ```text
-已完成盘点。
+已完成当前可覆盖范围盘点。
+
+<仅当适用：覆盖说明：Drive 根目录第一层清单不返回快捷方式；本次盘点不包含根目录第一层快捷方式。根目录下子文件夹会按普通文件夹继续盘点，普通文件夹内返回的 `type=shortcut` 条目仍会被纳入资源清单。>
 
 | 指标 | 数量 |
 |------|------|
@@ -202,4 +249,5 @@ ResourceItem rules:
 | Environment / profile is ambiguous | Ask user to confirm prod / BOE / PRE and profile | Do not cross environment boundaries |
 | Missing API scope | Follow `lark-shared` permission handling and stop | Do not retry the same command repeatedly |
 | Resource access denied | Stop and follow the main workflow `Permission Request Gate` | Do not request permission automatically or in batch |
-| Pagination / depth / item limit reached | Set `partial=true`; record uncovered range and continuation command | Do not claim full coverage |
+| Pagination / depth / item checkpoint reached | Record `inventory_continuation_state` and continue inventory in the confirmed scope | Do not set `partial=true` solely because a batching checkpoint was reached |
+| Pagination cursor missing after retries / API pagination failure | Set `partial=true`; record the affected directory and blocker | Do not loop indefinitely or claim full coverage |

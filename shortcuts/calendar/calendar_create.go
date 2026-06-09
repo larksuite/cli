@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -60,7 +61,7 @@ func parseAttendees(attendeesStr string, currentUserId string) ([]map[string]str
 		case strings.HasPrefix(id, "ou_"):
 			attendees = append(attendees, map[string]string{"type": "user", "user_id": id})
 		default:
-			return nil, fmt.Errorf("unsupported attendee id format: %s", id)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported attendee id format: %s", id)
 		}
 	}
 	return attendees, nil
@@ -89,8 +90,8 @@ var CalendarCreate = common.Shortcut{
 		}
 		for _, flag := range []string{"summary", "description", "rrule", "calendar-id"} {
 			if val := runtime.Str(flag); val != "" {
-				if err := common.RejectDangerousChars("--"+flag, val); err != nil {
-					return output.ErrValidation(err.Error())
+				if err := common.RejectDangerousCharsTyped("--"+flag, val); err != nil {
+					return err
 				}
 			}
 		}
@@ -102,35 +103,35 @@ var CalendarCreate = common.Shortcut{
 					continue
 				}
 				if !strings.HasPrefix(id, "ou_") && !strings.HasPrefix(id, "oc_") && !strings.HasPrefix(id, "omm_") {
-					return output.ErrValidation("invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid attendee id format %q: should start with 'ou_', 'oc_', or 'omm_'", id).WithParam("--attendee-ids")
 				}
 			}
 		}
 
 		if runtime.Str("start") == "" {
-			return common.FlagErrorf("specify --start (e.g. '2026-03-12T14:00+08:00')")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --start (e.g. '2026-03-12T14:00+08:00')").WithParam("--start")
 		}
 		if runtime.Str("end") == "" {
-			return common.FlagErrorf("specify --end (e.g. '2026-03-12T15:00+08:00')")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --end (e.g. '2026-03-12T15:00+08:00')").WithParam("--end")
 		}
 		startTs, err := common.ParseTime(runtime.Str("start"))
 		if err != nil {
-			return common.FlagErrorf("--start: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		endTs, err := common.ParseTime(runtime.Str("end"), "end")
 		if err != nil {
-			return common.FlagErrorf("--end: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 		s, err := strconv.ParseInt(startTs, 10, 64)
 		if err != nil {
-			return common.FlagErrorf("invalid start time: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
 		}
 		e, err := strconv.ParseInt(endTs, 10, 64)
 		if err != nil {
-			return common.FlagErrorf("invalid end time: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
 		}
 		if e <= s {
-			return common.FlagErrorf("end time must be after start time")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "end time must be after start time")
 		}
 		return nil
 	},
@@ -183,27 +184,26 @@ var CalendarCreate = common.Shortcut{
 
 		startTs, err := common.ParseTime(runtime.Str("start"))
 		if err != nil {
-			return output.ErrValidation("--start: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
 		}
 		endTs, err := common.ParseTime(runtime.Str("end"), "end")
 		if err != nil {
-			return output.ErrValidation("--end: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
 		}
 
 		eventData := buildEventData(runtime, startTs, endTs)
 
 		// Create event
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events", validate.EncodePathSegment(calendarId)),
 			nil, eventData)
-		err = wrapPredefinedError(err)
 		if err != nil {
 			return err
 		}
 		event, _ := data["event"].(map[string]interface{})
 		eventId, _ := event["event_id"].(string)
 		if eventId == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "failed to create event: no event_id returned")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to create event: no event_id returned")
 		}
 
 		// Add attendees if specified
@@ -214,27 +214,25 @@ var CalendarCreate = common.Shortcut{
 			}
 			attendees, err := parseAttendees(attendeesStr, currentUserId)
 			if err != nil {
-				return output.ErrValidation("invalid attendee id: %v", err)
+				return withParam(err, "--attendee-ids")
 			}
 
-			_, err = runtime.CallAPI("POST",
+			_, err = runtime.CallAPITyped("POST",
 				fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s/attendees", validate.EncodePathSegment(calendarId), validate.EncodePathSegment(eventId)),
 				map[string]interface{}{"user_id_type": "open_id"},
 				map[string]interface{}{
 					"attendees":         attendees,
 					"need_notification": true,
 				})
-			err = wrapPredefinedError(err)
 			if err != nil {
 				// Rollback: delete the event
-				_, rollbackErr := runtime.RawAPI("DELETE",
+				_, rollbackErr := runtime.CallAPITyped("DELETE",
 					fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s", validate.EncodePathSegment(calendarId), validate.EncodePathSegment(eventId)),
 					map[string]interface{}{"need_notification": false}, nil)
-				rollbackErr = wrapPredefinedError(rollbackErr)
 				if rollbackErr != nil {
-					return output.Errorf(output.ExitAPI, "api_error", "failed to add attendees: %v; rollback also failed, orphan event_id=%s needs manual cleanup", rollbackErr, eventId)
+					return withStepContext(err, "rollback also failed (%v); orphan event_id=%s needs manual cleanup", rollbackErr, eventId)
 				}
-				return output.Errorf(output.ExitAPI, "api_error", "failed to add attendees: %v; event rolled back successfully", err)
+				return withStepContext(err, "event rolled back successfully")
 			}
 		}
 

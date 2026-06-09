@@ -8,10 +8,18 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const (
+	driveInspectRateLimitRetries    = 2
+	driveInspectRetryInitialBackoff = 200 * time.Millisecond
+)
+
+var driveInspectAfter = time.After
 
 var DriveInspect = common.Shortcut{
 	Service:           "drive",
@@ -35,32 +43,15 @@ var DriveInspect = common.Shortcut{
 		},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		raw := strings.TrimSpace(runtime.Str("url"))
-		if raw == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--url cannot be empty").WithParam("--url")
-		}
-
-		_, ok := common.ParseResourceURL(raw)
-		if !ok {
-			// Not a recognized URL pattern.
-			if strings.Contains(raw, "://") {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --url %q: use a recognized Lark document URL or a bare token with --type", raw).WithParam("--url")
-			}
-			// Bare token: --type is required.
-			if strings.TrimSpace(runtime.Str("type")) == "" {
-				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --url is a bare token (allowed: doc, docx, sheet, bitable, wiki, file, folder, mindnote, slides)").WithParam("--type")
-			}
+		if _, err := driveInspectResolveRef(runtime); err != nil {
+			return err
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		raw := strings.TrimSpace(runtime.Str("url"))
-		ref, ok := common.ParseResourceURL(raw)
-		if !ok {
-			ref = common.ResourceRef{
-				Type:  strings.TrimSpace(runtime.Str("type")),
-				Token: raw,
-			}
+		ref, err := driveInspectResolveRef(runtime)
+		if err != nil {
+			return common.NewDryRunAPI()
 		}
 
 		dry := common.NewDryRunAPI()
@@ -91,15 +82,9 @@ var DriveInspect = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		raw := strings.TrimSpace(runtime.Str("url"))
-
-		// Step 1: Parse URL to extract {type, token}.
-		ref, ok := common.ParseResourceURL(raw)
-		if !ok {
-			// Bare token: use --type.
-			ref = common.ResourceRef{
-				Type:  strings.TrimSpace(runtime.Str("type")),
-				Token: raw,
-			}
+		ref, err := driveInspectResolveRef(runtime)
+		if err != nil {
+			return err
 		}
 
 		inputURL := raw
@@ -111,14 +96,19 @@ var DriveInspect = common.Shortcut{
 		// Step 2: If type is "wiki", unwrap via get_node API.
 		if docType == "wiki" {
 			fmt.Fprintf(runtime.IO().ErrOut, "Inspecting wiki node: %s\n", common.MaskToken(docToken))
-			data, err := runtime.CallAPITyped(
-				"GET",
-				"/open-apis/wiki/v2/spaces/get_node",
-				map[string]interface{}{"token": docToken},
-				nil,
+			data, err := driveInspectCallWithRetry(
+				ctx,
+				func() (map[string]interface{}, error) {
+					return runtime.CallAPITyped(
+						"GET",
+						"/open-apis/wiki/v2/spaces/get_node",
+						map[string]interface{}{"token": docToken},
+						nil,
+					)
+				},
 			)
 			if err != nil {
-				return err
+				return driveInspectAnnotateError("resolve_wiki", err)
 			}
 
 			node := common.GetMap(data, "node")
@@ -145,9 +135,9 @@ var DriveInspect = common.Shortcut{
 		}
 
 		// Step 3: Call batch_query to verify and get title.
-		title, err := common.FetchDriveMetaTitle(runtime, docToken, docType)
+		title, err := driveInspectFetchMetaTitle(ctx, runtime, docToken, docType)
 		if err != nil {
-			return err
+			return driveInspectAnnotateError("query_meta", err)
 		}
 
 		// Step 4: Build the resolved URL.
@@ -180,4 +170,117 @@ var DriveInspect = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+func driveInspectResolveRef(runtime *common.RuntimeContext) (common.ResourceRef, error) {
+	raw := strings.TrimSpace(runtime.Str("url"))
+	if raw == "" {
+		return common.ResourceRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--url cannot be empty").WithParam("--url")
+	}
+
+	inputType := strings.ToLower(strings.TrimSpace(runtime.Str("type")))
+	ref, ok := common.ParseResourceURL(raw)
+	if ok {
+		if inputType != "" && inputType != ref.Type {
+			return common.ResourceRef{}, errs.NewValidationError(
+				errs.SubtypeInvalidArgument,
+				"--type %q conflicts with URL path type %q; remove --type or use a matching value",
+				inputType,
+				ref.Type,
+			).WithParam("--type")
+		}
+		return ref, nil
+	}
+
+	if strings.Contains(raw, "://") {
+		return common.ResourceRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --url %q: use a recognized Lark document URL or a bare token with --type", raw).WithParam("--url")
+	}
+	if strings.ContainsAny(raw, "/?#") {
+		return common.ResourceRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid bare token %q: remove path/query fragments and pass only the raw token with --type", raw).WithParam("--url")
+	}
+	if inputType == "" {
+		return common.ResourceRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --url is a bare token (allowed: doc, docx, sheet, bitable, wiki, file, folder, mindnote, slides)").WithParam("--type")
+	}
+	return common.ResourceRef{Type: inputType, Token: raw}, nil
+}
+
+func driveInspectFetchMetaTitle(ctx context.Context, runtime *common.RuntimeContext, token, docType string) (string, error) {
+	var title string
+	_, err := driveInspectCallWithRetry(ctx, func() (map[string]interface{}, error) {
+		got, callErr := common.FetchDriveMeta(runtime, token, docType, false)
+		if callErr != nil {
+			return nil, callErr
+		}
+		title = got.Title
+		return map[string]interface{}{"title": got.Title}, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return title, nil
+}
+
+func driveInspectCallWithRetry(ctx context.Context, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	var lastErr error
+	for attempt := 0; attempt <= driveInspectRateLimitRetries; attempt++ {
+		data, err := call()
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+		if !driveInspectShouldRetry(err) || attempt == driveInspectRateLimitRetries {
+			return nil, err
+		}
+		backoff := driveInspectRetryInitialBackoff * time.Duration(1<<attempt)
+		if waitErr := driveInspectWait(ctx, backoff); waitErr != nil {
+			return nil, waitErr
+		}
+	}
+	return nil, lastErr
+}
+
+func driveInspectShouldRetry(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return false
+	}
+	return problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400 || problem.Retryable
+}
+
+func driveInspectWait(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return errs.WrapInternal(ctx.Err())
+	case <-driveInspectAfter(d):
+		return nil
+	}
+}
+
+func driveInspectAnnotateError(stage string, err error) error {
+	problem, ok := errs.ProblemOf(err)
+	if !ok || problem == nil {
+		return err
+	}
+	label := map[string]string{
+		"resolve_wiki": "resolve wiki node",
+		"query_meta":   "query document metadata",
+	}[stage]
+	if label == "" {
+		label = stage
+	}
+	problem.Message = fmt.Sprintf("%s failed: %s", label, problem.Message)
+	if strings.TrimSpace(problem.Hint) == "" {
+		switch stage {
+		case "resolve_wiki":
+			problem.Hint = "check that the wiki URL/token is valid and that the current identity can read the wiki node"
+		case "query_meta":
+			problem.Hint = "check that the resolved document still exists and that the current identity can read its metadata"
+		}
+	} else if !strings.Contains(problem.Hint, label) {
+		problem.Hint = label + ": " + problem.Hint
+	}
+	return err
 }

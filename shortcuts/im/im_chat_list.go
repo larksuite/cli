@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -71,15 +72,15 @@ var ImChatList = common.Shortcut{
 	// enum, and the bot + single-p2p rejection (mixed types degrade in Execute).
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if n := runtime.Int("page-size"); n < 1 || n > 100 {
-			return output.ErrValidation("--page-size must be an integer between 1 and 100")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
 		}
 		parts, err := normalizeTypes(runtime.StrSlice("types"))
 		if err != nil {
 			return err
 		}
 		if len(parts) == 1 && parts[0] == "p2p" && runtime.IsBot() {
-			return output.ErrValidation(
-				`--types=p2p (single chats) is only supported with user identity (--as user). To protect user privacy, bot identity cannot list p2p chats. Use --as user, or include "group" in --types.`)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				`--types=p2p (single chats) is only supported with user identity (--as user). To protect user privacy, bot identity cannot list p2p chats. Use --as user, or include "group" in --types.`).WithParam("--types")
 		}
 		return nil
 	},
@@ -95,7 +96,7 @@ var ImChatList = common.Shortcut{
 			writeBotStripP2pWarning(runtime.IO().ErrOut)
 		}
 		params := buildChatListParams(runtime, effective)
-		resData, err := runtime.CallAPI("GET", imChatListPath, params, nil)
+		resData, err := runtime.CallAPITyped("GET", imChatListPath, params, nil)
 		if err != nil {
 			return err
 		}
@@ -211,10 +212,10 @@ func normalizeTypes(raw []string) ([]string, error) {
 	for _, p := range raw {
 		p = strings.TrimSpace(strings.ToLower(p))
 		if p == "" {
-			return nil, output.ErrValidation("--types must contain at least one of p2p, group")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--types must contain at least one of p2p, group").WithParam("--types")
 		}
 		if p != "p2p" && p != "group" {
-			return nil, output.ErrValidation("--types contains invalid value %q: expected one of p2p, group", p)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--types contains invalid value %q: expected one of p2p, group", p).WithParam("--types")
 		}
 		if _, dup := seen[p]; dup {
 			continue

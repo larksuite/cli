@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -15,9 +16,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -692,5 +695,286 @@ func TestDownload_Batch_DryRun(t *testing.T) {
 	out := stdout.String()
 	if !strings.Contains(out, "tok001") || !strings.Contains(out, "tok002") {
 		t.Errorf("dry-run should show tokens, got: %s", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed-error lock tests
+// ---------------------------------------------------------------------------
+
+// TestDownload_TypedErr_ValidationInvalidArgument verifies that an invalid
+// minute token format (passing cobra's required check but failing our regex)
+// returns a *errs.ValidationError with SubtypeInvalidArgument and the expected
+// Param.  This locks site :64 (invalid minute token %q).
+func TestDownload_TypedErr_ValidationInvalidArgument(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "INVALID***TOKEN", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "--minute-tokens" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--minute-tokens")
+	}
+}
+
+// TestDownload_TypedErr_NetworkTransport_HttpError verifies that a non-2xx
+// download response from downloadMediaFile returns a *errs.NetworkError with
+// SubtypeNetworkTransport.
+//
+// In the end-to-end single-token Execute path the typed error is now passed
+// through directly via r.err (single-mode passthrough).  We call downloadMediaFile
+// directly via a probe shortcut to assert the typed shape at the source.
+func TestDownload_TypedErr_NetworkTransport_HttpError(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	var capturedErr error
+	probe := common.Shortcut{
+		Service:   "minutes",
+		Command:   "+probe-dl",
+		AuthTypes: []string{"bot"},
+		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+			client, err := rctx.Factory.HttpClient()
+			if err != nil {
+				return err
+			}
+			_, capturedErr = downloadMediaFile(ctx, client,
+				"https://example.com/presigned/download", "tok001",
+				downloadOpts{fio: rctx.FileIO(), outputPath: "out.mp4"})
+			return nil
+		},
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		URL:     "example.com/presigned/download",
+		Status:  503,
+		RawBody: []byte("Service Unavailable"),
+	})
+
+	if err := mountAndRun(t, probe, []string{"+probe-dl", "--as", "bot"}, f, nil); err != nil {
+		t.Fatalf("probe shortcut should not error: %v", err)
+	}
+	if capturedErr == nil {
+		t.Fatal("expected downloadMediaFile to return an error for HTTP 503, got nil")
+	}
+	var ne *errs.NetworkError
+	if !errors.As(capturedErr, &ne) {
+		t.Fatalf("expected *errs.NetworkError, got %T: %v", capturedErr, capturedErr)
+	}
+	if ne.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("Subtype = %q, want %q", ne.Subtype, errs.SubtypeNetworkTransport)
+	}
+	if !strings.Contains(ne.Error(), "503") {
+		t.Errorf("error message should contain status code 503, got: %v", ne)
+	}
+}
+
+// TestDownload_TypedErr_InternalInvalidResponse verifies that fetchDownloadURL
+// returns *errs.InternalError with SubtypeInvalidResponse when the API
+// response contains an empty download_url field.
+//
+// In the end-to-end single-token Execute path the typed error is now passed
+// through directly via r.err (single-mode passthrough).  The typed assertion
+// is also made at the fetchDownloadURL call site directly via a probe shortcut.
+func TestDownload_TypedErr_InternalInvalidResponse(t *testing.T) {
+	var capturedErr error
+	probe := common.Shortcut{
+		Service:   "minutes",
+		Command:   "+probe-download-url",
+		AuthTypes: []string{"bot"},
+		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+			_, capturedErr = fetchDownloadURL(ctx, rctx, "tok001")
+			// Always return nil so mountAndRun doesn't swallow the error type.
+			return nil
+		},
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tok001/media",
+		Status: 200,
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"download_url": ""},
+		},
+	})
+
+	if err := mountAndRun(t, probe, []string{"+probe-download-url", "--as", "bot"}, f, nil); err != nil {
+		t.Fatalf("probe shortcut should not error: %v", err)
+	}
+	if capturedErr == nil {
+		t.Fatal("expected fetchDownloadURL to return an error for empty download_url, got nil")
+	}
+	var ie *errs.InternalError
+	if !errors.As(capturedErr, &ie) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", capturedErr, capturedErr)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("Subtype = %q, want %q", ie.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if !strings.Contains(ie.Error(), "download_url") {
+		t.Errorf("error message should mention download_url, got: %v", ie)
+	}
+}
+
+// TestDownload_TypedErr_OverwriteProtection verifies that the overwrite guard
+// in downloadMediaFile returns *errs.ValidationError with SubtypeFailedPrecondition.
+//
+// In the end-to-end single-token Execute path this typed error is now passed
+// through directly via r.err (single-mode passthrough), so the typed shape is
+// also asserted end-to-end via the probe shortcut.
+func TestDownload_TypedErr_OverwriteProtection(t *testing.T) {
+	chdir(t, t.TempDir())
+	if err := os.WriteFile("existing.mp4", []byte("old"), 0644); err != nil {
+		t.Fatalf("setup failed: %v", err)
+	}
+
+	var capturedErr error
+	probe := common.Shortcut{
+		Service:   "minutes",
+		Command:   "+probe-overwrite",
+		AuthTypes: []string{"bot"},
+		Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
+			client, err := rctx.Factory.HttpClient()
+			if err != nil {
+				return err
+			}
+			_, capturedErr = downloadMediaFile(ctx, client,
+				"https://example.com/presigned/download", "tok001",
+				downloadOpts{fio: rctx.FileIO(), outputPath: "existing.mp4", overwrite: false})
+			return nil
+		},
+	}
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(downloadStub("example.com/presigned/download", []byte("new-content"), "video/mp4"))
+
+	if err := mountAndRun(t, probe, []string{"+probe-overwrite", "--as", "bot"}, f, nil); err != nil {
+		t.Fatalf("probe shortcut should not error: %v", err)
+	}
+	if capturedErr == nil {
+		t.Fatal("expected downloadMediaFile to return an error for existing file without overwrite, got nil")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(capturedErr, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", capturedErr, capturedErr)
+	}
+	if ve.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if !strings.Contains(ve.Error(), "exists") {
+		t.Errorf("error message should mention exists, got: %v", ve)
+	}
+}
+
+// TestDownload_TypedErr_SingleMode_PassthroughTyped verifies that in single-token
+// mode a typed error from fetchDownloadURL or downloadMediaFile is returned
+// directly to the caller with its Problem shape intact (exit code preserved).
+func TestDownload_TypedErr_SingleMode_PassthroughTyped(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	// API returns non-zero code → CallAPITyped yields a typed APIError.
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/tok001/media",
+		Status: 200,
+		Body: map[string]interface{}{
+			"code": 99991, "msg": "permission denied",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001", "--output", "out.mp4", "--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for API failure, got nil")
+	}
+
+	// The error must carry a Problem (typed envelope).
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error (ProblemOf ok), got %T: %v", err, err)
+	}
+	if p == nil {
+		t.Fatal("ProblemOf returned nil Problem")
+	}
+
+	// Exit code must be non-zero and come from the typed error, not a generic 1.
+	code := output.ExitCodeOf(err)
+	if code == 0 {
+		t.Errorf("ExitCodeOf typed error = 0, want non-zero")
+	}
+}
+
+// TestDownload_TypedErr_Batch_AllFail_OutPartialFailure verifies that when every
+// token in a batch fails, Execute emits an ok:false stdout envelope (carrying the
+// full downloads array) and returns *output.PartialFailureError with Code==ExitAPI.
+// This locks the double-emit fix: the old code called OutFormat then returned ErrAPI;
+// the new code calls OutPartialFailure once.
+func TestDownload_TypedErr_Batch_AllFail_OutPartialFailure(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	// Both tokens fail at the API level.
+	for _, tok := range []string{"tok001", "tok002"} {
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/minutes/v1/minutes/" + tok + "/media",
+			Status: 200,
+			Body: map[string]interface{}{
+				"code": 99991, "msg": "permission denied",
+				"data": map[string]interface{}{},
+			},
+		})
+	}
+
+	err := mountAndRun(t, MinutesDownload, []string{
+		"+download", "--minute-tokens", "tok001,tok002", "--as", "bot",
+	}, f, stdout)
+
+	// Must return *output.PartialFailureError with ExitAPI.
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("PartialFailureError.Code = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
+	}
+
+	// stdout must carry ok:false with the downloads array (both failed entries).
+	var env struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Downloads []struct {
+				MinuteToken string `json:"minute_token"`
+				Error       string `json:"error"`
+			} `json:"downloads"`
+		} `json:"data"`
+	}
+	if jsonErr := json.Unmarshal(stdout.Bytes(), &env); jsonErr != nil {
+		t.Fatalf("failed to parse stdout: %v\nraw: %s", jsonErr, stdout.String())
+	}
+	if env.OK {
+		t.Errorf("ok must be false on all-fail batch, got ok:true\nstdout: %s", stdout.String())
+	}
+	if len(env.Data.Downloads) != 2 {
+		t.Fatalf("expected 2 download entries, got %d\nstdout: %s", len(env.Data.Downloads), stdout.String())
+	}
+	for _, d := range env.Data.Downloads {
+		if d.Error == "" {
+			t.Errorf("token %s: expected non-empty error field in all-fail batch", d.MinuteToken)
+		}
 	}
 }

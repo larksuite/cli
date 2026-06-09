@@ -5,9 +5,9 @@ package minutes
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 )
 
@@ -16,7 +16,8 @@ const cleanupTimeout = 5 * time.Second
 func subscriptionPreConsume(eventType, subscribePath, unsubscribePath string) func(context.Context, event.APIClient, map[string]string) (func(), error) {
 	return func(ctx context.Context, rt event.APIClient, _ map[string]string) (func(), error) {
 		if rt == nil {
-			return nil, fmt.Errorf("runtime API client is required for pre-consume subscription")
+			return nil, errs.NewInternalError(errs.SubtypeUnknown,
+				"runtime API client is required for pre-consume subscription")
 		}
 
 		body := map[string]string{"event_type": eventType}

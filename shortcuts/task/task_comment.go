@@ -5,12 +5,9 @@ package task
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -48,24 +45,9 @@ var CommentTask = common.Shortcut{
 			"resource_type": "task",
 		}
 
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("user_id_type", "open_id")
+		params := map[string]interface{}{"user_id_type": "open_id"}
 
-		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
-			HttpMethod:  http.MethodPost,
-			ApiPath:     "/open-apis/task/v2/comments",
-			QueryParams: queryParams,
-			Body:        body,
-		})
-
-		var result map[string]interface{}
-		if err == nil {
-			if parseErr := json.Unmarshal(apiResp.RawBody, &result); parseErr != nil {
-				return WrapTaskError(ErrCodeTaskInternalError, fmt.Sprintf("failed to parse response: %v", parseErr), "parse comment response")
-			}
-		}
-
-		data, err := HandleTaskApiResult(result, err, "add task comment")
+		data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/comments", params, body)
 		if err != nil {
 			return err
 		}

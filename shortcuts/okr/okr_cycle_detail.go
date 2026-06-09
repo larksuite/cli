@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
 // OKRCycleDetail lists all objectives and their key results under a given OKR cycle.
@@ -30,10 +30,10 @@ var OKRCycleDetail = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		cycleID := runtime.Str("cycle-id")
 		if cycleID == "" {
-			return common.FlagErrorf("--cycle-id is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id is required").WithParam("--cycle-id")
 		}
 		if id, err := strconv.ParseInt(cycleID, 10, 64); err != nil || id <= 0 {
-			return common.FlagErrorf("--cycle-id must be a positive int64")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id must be a positive int64").WithParam("--cycle-id")
 		}
 		return nil
 	},
@@ -52,8 +52,7 @@ var OKRCycleDetail = common.Shortcut{
 		cycleID := runtime.Str("cycle-id")
 
 		// Paginate objectives under the cycle.
-		queryParams := make(larkcore.QueryParams)
-		queryParams.Set("page_size", "100")
+		queryParams := map[string]interface{}{"page_size": "100"}
 
 		var objectives []Objective
 		page := 0
@@ -71,7 +70,7 @@ var OKRCycleDetail = common.Shortcut{
 			page++
 
 			path := fmt.Sprintf("/open-apis/okr/v2/cycles/%s/objectives", cycleID)
-			data, err := runtime.DoAPIJSON("GET", path, queryParams, nil)
+			data, err := runtime.CallAPITyped("GET", path, queryParams, nil)
 			if err != nil {
 				return err
 			}
@@ -93,7 +92,7 @@ var OKRCycleDetail = common.Shortcut{
 			if !hasMore || pageToken == "" {
 				break
 			}
-			queryParams.Set("page_token", pageToken)
+			queryParams["page_token"] = pageToken
 		}
 
 		// For each objective, paginate key results and convert to response format.
@@ -104,8 +103,7 @@ var OKRCycleDetail = common.Shortcut{
 			}
 			obj := &objectives[i]
 
-			krQuery := make(larkcore.QueryParams)
-			krQuery.Set("page_size", "100")
+			krQuery := map[string]interface{}{"page_size": "100"}
 
 			var keyResults []KeyResult
 			krPage := 0
@@ -123,7 +121,7 @@ var OKRCycleDetail = common.Shortcut{
 				krPage++
 
 				path := fmt.Sprintf("/open-apis/okr/v2/objectives/%s/key_results", obj.ID)
-				data, err := runtime.DoAPIJSON("GET", path, krQuery, nil)
+				data, err := runtime.CallAPITyped("GET", path, krQuery, nil)
 				if err != nil {
 					return err
 				}
@@ -145,7 +143,7 @@ var OKRCycleDetail = common.Shortcut{
 				if !hasMore || pageToken == "" {
 					break
 				}
-				krQuery.Set("page_token", pageToken)
+				krQuery["page_token"] = pageToken
 			}
 
 			respObj := obj.ToResp()

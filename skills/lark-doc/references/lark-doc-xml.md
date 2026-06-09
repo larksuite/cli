@@ -45,6 +45,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `<sheet>` — `<sheet type="blank"></sheet>` 空白；`<sheet sheet-id="SID" token="TOKEN"></sheet>` 复制已有
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id
+- `<sub-page-list>` — `<sub-page-list></sub-page-list>` 子页面列表块；仅 wiki 文档可插入
 - bitable、base_ref、synced_reference、synced_source、okr — 不可创建，仅支持移动
 
 # 四、块级复制与移动
@@ -54,7 +55,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 ## 复制（block_copy_insert_after）
 - **基础标签**（块级标签、容器标签、行内组件）：均支持复制
-- **资源块**：仅 img、source、whiteboard、sheet、chat_card 支持复制；task、bitable、base_ref、synced_reference、synced_source、okr 不支持复制
+- **资源块**：仅 img、source、whiteboard、sheet、chat_card、sub-page-list 支持复制；task、bitable、base_ref、synced_reference、synced_source、okr 不支持复制
 
 使用 `docs +update --command block_copy_insert_after --block-id "<锚点>" --src-block-ids "id1,id2"`。
 
@@ -166,4 +167,5 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 <task task-id="TASK_GUID"></task>
 <chat_card chat-id="CHAT_ID"></chat_card>
+<sub-page-list></sub-page-list>
 ```

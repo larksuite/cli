@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -44,7 +45,9 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	keyDef, ok := event.Lookup(opts.EventKey)
 	if !ok {
-		return fmt.Errorf("unknown EventKey: %s\nRun 'lark-cli event list' to see available keys", opts.EventKey)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown EventKey: %s", opts.EventKey).
+			WithHint("run `lark-cli event list` to see available keys")
 	}
 
 	if err := validateParams(keyDef, opts.Params); err != nil {
@@ -80,7 +83,8 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType})
 	if err != nil {
-		return fmt.Errorf("handshake failed: %w", err)
+		return errs.NewInternalError(errs.SubtypeUnknown,
+			"event bus handshake failed: %s", err).WithCause(err)
 	}
 
 	var cleanup func()
@@ -90,7 +94,11 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		}
 		cleanup, err = keyDef.PreConsume(ctx, opts.Runtime, opts.Params)
 		if err != nil {
-			return fmt.Errorf("pre-consume failed: %w", err)
+			if _, ok := errs.ProblemOf(err); ok {
+				return err
+			}
+			return errs.NewInternalError(errs.SubtypeUnknown,
+				"pre-consume failed: %s", err).WithCause(err)
 		}
 	}
 
@@ -130,7 +138,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	if !opts.Quiet {
 		fmt.Fprintln(errOut, listeningText(opts))
 		if !opts.IsTTY {
-			fmt.Fprintln(errOut, stopHintText())
+			fmt.Fprintln(errOut, stopHintText(opts))
 		}
 	}
 
@@ -152,8 +160,10 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 	for _, p := range def.Params {
 		if p.Required {
 			if _, ok := params[p.Name]; !ok {
-				return fmt.Errorf("required param %q missing for EventKey %s. Run 'lark-cli event schema %s' for details",
-					p.Name, def.Key, def.Key)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"required param %q missing for EventKey %s", p.Name, def.Key).
+					WithParam("--param").
+					WithHint("pass it as --param %s=<value>; run `lark-cli event schema %s` for details", p.Name, def.Key)
 			}
 		}
 	}
@@ -169,11 +179,15 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 			continue
 		}
 		if len(validNames) == 0 {
-			return fmt.Errorf("unknown param %q: EventKey %s accepts no params. Run 'lark-cli event schema %s' for details",
-				k, def.Key, def.Key)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"unknown param %q: EventKey %s accepts no params", k, def.Key).
+				WithParam("--param").
+				WithHint("run `lark-cli event schema %s` for details", def.Key)
 		}
-		return fmt.Errorf("unknown param %q for EventKey %s. valid params: %s. Run 'lark-cli event schema %s' for details",
-			k, def.Key, strings.Join(validNames, ", "), def.Key)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown param %q for EventKey %s. valid params: %s", k, def.Key, strings.Join(validNames, ", ")).
+			WithParam("--param").
+			WithHint("run `lark-cli event schema %s` for details", def.Key)
 	}
 	return nil
 }
@@ -213,7 +227,11 @@ func exitReason(ctx context.Context, emitted int64, opts Options) string {
 	return "signal"
 }
 
-func stopHintText() string {
+func stopHintText(opts Options) string {
+	if opts.MaxEvents > 0 || opts.Timeout > 0 {
+		return "[event] to stop gracefully: send SIGTERM (kill <pid>). " +
+			"Avoid kill -9 — it skips cleanup and may leak server-side subscriptions."
+	}
 	return "[event] to stop gracefully: send SIGTERM (kill <pid>) or close stdin. " +
 		"Avoid kill -9 — it skips cleanup and may leak server-side subscriptions."
 }

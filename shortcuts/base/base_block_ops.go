@@ -55,24 +55,24 @@ func dryRunBaseBlockDelete(_ context.Context, runtime *common.RuntimeContext) *c
 
 func validateBaseBlockCreate(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("name")) == "" {
-		return common.FlagErrorf("--name must not be blank")
+		return baseFlagErrorf("--name must not be blank")
 	}
 	if strings.TrimSpace(runtime.Str("type")) == "" {
-		return common.FlagErrorf("--type must not be blank")
+		return baseFlagErrorf("--type must not be blank")
 	}
 	return nil
 }
 
 func validateBaseBlockMove(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("before-id")) != "" && strings.TrimSpace(runtime.Str("after-id")) != "" {
-		return common.FlagErrorf("--before-id and --after-id are mutually exclusive")
+		return baseFlagErrorf("--before-id and --after-id are mutually exclusive")
 	}
 	return nil
 }
 
 func validateBaseBlockRename(runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("name")) == "" {
-		return common.FlagErrorf("--name must not be blank")
+		return baseFlagErrorf("--name must not be blank")
 	}
 	return nil
 }

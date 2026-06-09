@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,9 +17,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -249,10 +252,24 @@ func TestNotes_Validation_ExactlyOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error for no flags")
 	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
 
 	err = mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m1", "--minute-tokens", "t1", "--as", "user"}, f, nil)
 	if err == nil {
 		t.Fatal("expected validation error for two flags")
+	}
+	ve = nil
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
 	}
 }
 
@@ -1006,10 +1023,17 @@ func TestNotes_MeetingPath_BothFail_ErrorJoinedWithSemicolon(t *testing.T) {
 	reg.Register(meetingGetStub("m_bothfail", ""))
 	reg.Register(recordingErrStub("m_bothfail", 121004, "data not found"))
 
-	// Two-path failure with no payload should make the batch return ErrAPI.
+	// Two-path failure with no payload should make the batch return OutPartialFailure.
 	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m_bothfail", "--as", "user"}, f, stdout)
 	if err == nil {
 		t.Fatalf("expected batch failure error, got nil")
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("PartialFailureError.Code = %d, want ExitAPI (%d)", pfErr.Code, output.ExitAPI)
 	}
 
 	note := extractFirstNote(t, stdout)
@@ -1044,6 +1068,13 @@ func TestNotes_MeetingPath_NoteNoPermission_FriendlyHint(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected batch failure error, got nil")
 	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("PartialFailureError.Code = %d, want ExitAPI (%d)", pfErr.Code, output.ExitAPI)
+	}
 
 	note := extractFirstNote(t, stdout)
 	assertNoteFieldAbsent(t, note, "note_doc_token", "minute_token")
@@ -1052,4 +1083,250 @@ func TestNotes_MeetingPath_NoteNoPermission_FriendlyHint(t *testing.T) {
 		"no read permission for this meeting note",
 		"; ", // note + minute causes joined with semicolon
 	)
+}
+
+// ---------------------------------------------------------------------------
+// Typed-error lock: errs.ValidationError assertions
+// ---------------------------------------------------------------------------
+
+func TestNotes_BatchLimit_TypedValidationError(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	ids := make([]string, 51)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("m%d", i)
+	}
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", strings.Join(ids, ","), "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected batch limit error")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if !strings.HasPrefix(ve.Param, "--") {
+		t.Errorf("Param = %q, want prefix '--'", ve.Param)
+	}
+}
+
+func TestNotes_InvalidMinuteToken_TypedValidationError(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--minute-tokens", "INVALID_TOKEN!", "--as", "user"}, f, nil)
+	if err == nil {
+		t.Fatal("expected validation error for invalid minute token")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want SubtypeInvalidArgument", ve.Subtype)
+	}
+	if ve.Param != "--minute-tokens" {
+		t.Errorf("Param = %q, want --minute-tokens", ve.Param)
+	}
+}
+
+func TestResolveMeetingIDs_NoRelationInfo_TypedValidationError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	// mget returns empty instance_relation_infos
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_x/events/mget_instance_relation_info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{},
+			},
+		},
+	})
+
+	if err := botExec(t, "no-rel-info", f, func(_ context.Context, rctx *common.RuntimeContext) error {
+		_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_x", "cal_x", false)
+		if err == nil {
+			t.Fatal("expected error for empty instance_relation_infos")
+		}
+		var ve *errs.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+		}
+		if ve.Subtype != errs.SubtypeFailedPrecondition {
+			t.Errorf("Subtype = %q, want SubtypeFailedPrecondition", ve.Subtype)
+		}
+		if !strings.Contains(ve.Error(), "no event relation info found") {
+			t.Errorf("message = %q, want contains 'no event relation info found'", ve.Error())
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveMeetingIDs_NoMeetingIDs_TypedValidationError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	// mget returns one info entry but with no meeting_instance_ids
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_y/events/mget_instance_relation_info",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"instance_relation_infos": []interface{}{
+					map[string]interface{}{
+						"instance_id":          "evt_y",
+						"meeting_instance_ids": []interface{}{},
+					},
+				},
+			},
+		},
+	})
+
+	if err := botExec(t, "no-meeting-ids", f, func(_ context.Context, rctx *common.RuntimeContext) error {
+		_, err := resolveMeetingIDsFromCalendarEvent(rctx, "evt_y", "cal_y", false)
+		if err == nil {
+			t.Fatal("expected error for empty meeting_instance_ids")
+		}
+		var ve *errs.ValidationError
+		if !errors.As(err, &ve) {
+			t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+		}
+		if ve.Subtype != errs.SubtypeFailedPrecondition {
+			t.Errorf("Subtype = %q, want SubtypeFailedPrecondition", ve.Subtype)
+		}
+		if !strings.Contains(ve.Error(), "no associated video meeting for this event") {
+			t.Errorf("message = %q, want contains 'no associated video meeting for this event'", ve.Error())
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Typed-error lock: enrichment via errs.ProblemOf
+// ---------------------------------------------------------------------------
+
+// minuteGetErrStub returns an error stub for the minutes API.
+func minuteGetErrStub(token string, code int, msg string) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/minutes/v1/minutes/" + token,
+		Body:   map[string]any{"code": code, "msg": msg},
+	}
+}
+
+// TestMinutesReadError_ProblemOf_EnrichesMessage pins that minutesReadError
+// mutates the typed error's Message and Hint in-place via errs.ProblemOf when
+// the server returns code 2091005 (minutes no-read-permission).
+func TestMinutesReadError_ProblemOf_EnrichesMessage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(minuteGetErrStub("tokperm", minutesNoReadPermissionCode, "no permission"))
+	// artifactsStub not needed: we never reach it on error
+
+	// A single minute-token that fails on a no-read-permission code still
+	// produces a note carrying minute_token, so the batch exits 0 with the
+	// enriched error surfaced inline rather than becoming an all-fail.
+	if err := mountAndRun(t, VCNotes, []string{"+notes", "--minute-tokens", "tokperm", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// stdout carries the note with the enriched error/hint
+	var resp map[string]any
+	if parseErr := json.Unmarshal(stdout.Bytes(), &resp); parseErr != nil {
+		t.Fatalf("unmarshal stdout: %v\n%s", parseErr, stdout.String())
+	}
+	data, _ := resp["data"].(map[string]any)
+	notes, _ := data["notes"].([]any)
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note, got %d", len(notes))
+	}
+	note, _ := notes[0].(map[string]any)
+
+	errMsg, _ := note["error"].(string)
+	if !strings.Contains(errMsg, "No read permission for minute tokperm") {
+		t.Errorf("error message not enriched: %q", errMsg)
+	}
+	hint, _ := note["hint"].(string)
+	if !strings.Contains(hint, "minute file read permission") {
+		t.Errorf("hint not surfaced: %q", hint)
+	}
+}
+
+// TestFetchNoteDetail_NoteNoPermission_ProblemOf pins that fetchNoteDetail
+// returns a friendly error map when CallAPITyped returns code 121005 and
+// ProblemOf can extract it.
+func TestFetchNoteDetail_NoteNoPermission_ProblemOf(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// meeting.get returns note_id, note detail returns 121005
+	reg.Register(meetingGetStub("m_noteperm2", "note_perm2"))
+	reg.Register(noteDetailErrStub("note_perm2", noteNoPermissionCode, "no permission"))
+	reg.Register(recordingOKStub("m_noteperm2", "https://meetings.feishu.cn/minutes/obcpermtest"))
+
+	// note fails but minute_token succeeds → partial success (hasNotesPayload=true)
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m_noteperm2", "--as", "user"}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error (expected partial success): %v", err)
+	}
+	note := extractFirstNote(t, stdout)
+
+	// minute_token succeeded so hasNotesPayload=true; note error still surfaced
+	if got := note["minute_token"]; got != "obcpermtest" {
+		t.Errorf("minute_token = %v, want obcpermtest", got)
+	}
+	errMsg, _ := note["error"].(string)
+	if !strings.Contains(errMsg, "[121005]") || !strings.Contains(errMsg, "no read permission for this meeting note") {
+		t.Errorf("fetchNoteDetail permission error = %q; want contains '[121005]: no read permission for this meeting note'", errMsg)
+	}
+}
+
+// TestNotes_AllFailed_OutPartialFailure pins that when every item in the batch
+// fails (successCount == 0), Execute returns *output.PartialFailureError with
+// ExitAPI code, and stdout still carries the ok:false envelope with notes data.
+func TestNotes_AllFailed_OutPartialFailure(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// Both meetings have no note_id and recording returns 121004 (no minute file)
+	// → hasNotesPayload == false for both → successCount == 0
+	reg.Register(meetingGetStub("m_fail1", ""))
+	reg.Register(recordingErrStub("m_fail1", 121004, "not found"))
+	reg.Register(meetingGetStub("m_fail2", ""))
+	reg.Register(recordingErrStub("m_fail2", 121004, "not found"))
+
+	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m_fail1,m_fail2", "--as", "user"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected batch failure error, got nil")
+	}
+
+	// typed partial-failure exit signal
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	if pfErr.Code != output.ExitAPI {
+		t.Errorf("PartialFailureError.Code = %d, want ExitAPI (%d)", pfErr.Code, output.ExitAPI)
+	}
+
+	// stdout carries ok:false envelope with both failed notes
+	var env struct {
+		OK   bool                   `json:"ok"`
+		Data map[string]interface{} `json:"data"`
+	}
+	if parseErr := json.Unmarshal(stdout.Bytes(), &env); parseErr != nil {
+		t.Fatalf("unmarshal stdout: %v\n%s", parseErr, stdout.String())
+	}
+	if env.OK {
+		t.Errorf("ok must be false on all-fail, got ok:true")
+	}
+	notes, _ := env.Data["notes"].([]interface{})
+	if len(notes) != 2 {
+		t.Fatalf("expected 2 notes in data, got %d\nstdout: %s", len(notes), stdout.String())
+	}
 }
