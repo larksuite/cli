@@ -154,10 +154,9 @@ func TestBaseURLResolveRecordShareURL(t *testing.T) {
 			t.Fatalf("unexpected output: %#v", data)
 		}
 		hint, _ := data["hint"].(map[string]interface{})
-		record, _ := hint["record"].(map[string]interface{})
+		recordData, _ := hint["record_data"].(map[string]interface{})
 		fields, _ := hint["fields"].(map[string]interface{})
-		recordData, _ := record["data"].(map[string]interface{})
-		if hint["next_step"] != nextStepRecordList || record["record_id"] != "rec123" || recordData["fld_name(Name)"] != "Alice" || fields["total"] != float64(2) {
+		if hint["next_step"] != nextStepRecordList || recordData["fld_name(Name)"] != "Alice" || fields["total"] != float64(2) {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
 	})
@@ -180,8 +179,8 @@ func TestBaseURLResolveRecordShareURL(t *testing.T) {
 		if hint["next_step"] != nextStepRecordList {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
-		if _, ok := hint["record"]; ok {
-			t.Fatalf("record should be omitted when enrichment fails: %#v", hint)
+		if _, ok := hint["record_data"]; ok {
+			t.Fatalf("record_data should be omitted when enrichment fails: %#v", hint)
 		}
 		if _, ok := hint["fields"]; ok {
 			t.Fatalf("fields should be omitted when enrichment fails: %#v", hint)

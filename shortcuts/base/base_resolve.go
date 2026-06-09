@@ -349,7 +349,7 @@ func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string
 	hint := map[string]interface{}{}
 	if baseToken != "" && tableID != "" && recordID != "" {
 		if record, err := getResolveRecord(runtime, baseToken, tableID, recordID); err == nil {
-			hint["record"] = formatResolvedRecord(record)
+			hint["record_data"] = formatResolvedRecordData(record)
 		}
 	}
 	if baseToken != "" && tableID != "" {
@@ -366,16 +366,10 @@ func getResolveRecord(runtime *common.RuntimeContext, baseToken, tableID, record
 	return handleBaseAPIResult(result, err, "batch get records")
 }
 
-func formatResolvedRecord(record map[string]interface{}) map[string]interface{} {
-	recordIDs := common.GetSlice(record, "record_id_list")
+func formatResolvedRecordData(record map[string]interface{}) map[string]interface{} {
 	fieldIDs := common.GetSlice(record, "field_id_list")
 	fieldNames := common.GetSlice(record, "fields")
 	rows := common.GetSlice(record, "data")
-
-	out := map[string]interface{}{}
-	if len(recordIDs) > 0 {
-		out["record_id"] = fmt.Sprintf("%v", recordIDs[0])
-	}
 
 	data := map[string]interface{}{}
 	if len(rows) > 0 {
@@ -385,8 +379,7 @@ func formatResolvedRecord(record map[string]interface{}) map[string]interface{} 
 			}
 		}
 	}
-	out["data"] = data
-	return out
+	return data
 }
 
 func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) string {
