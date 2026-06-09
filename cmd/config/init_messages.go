@@ -69,10 +69,31 @@ var initMsgEn = &initMsg{
 	LangPreferenceSet:    "Language preference set to: %s",
 }
 
-// getInitMsg picks the zh/en TUI bundle; non-English falls back to zh.
+var initMsgVi = &initMsg{
+	SelectAction:         "Chọn thao tác",
+	CreateNewApp:         "Cấu hình ứng dụng nhanh (Khuyến nghị)",
+	ConfigExistingApp:    "Nhập thủ công thông tin ứng dụng",
+	Platform:             "Nền tảng",
+	SelectPlatform:       "Chọn nền tảng",
+	Feishu:               "Feishu",
+	ScanQRCode:           "\nQuét mã QR bằng Feishu/Lark:\n\n",
+	ScanOrOpenLink:       "\nHoặc mở liên kết bên dưới trong trình duyệt:\n",
+	WaitingForScan:       "Đang lấy kết quả cấu hình...",
+	OpenLinkNonTTY:       "\nMở liên kết bên dưới để cấu hình ứng dụng:\n\n",
+	WaitingForScanNonTTY: "Đang chờ cấu hình ứng dụng...",
+	DetectedLarkTenant:   "[lark-cli] Phát hiện tenant Lark, đang chuyển endpoint...",
+	AppCreated:           "Ứng dụng đã được cấu hình! App ID: %s",
+	ConfigSaved:          "Ứng dụng đã được cấu hình! App ID: %s",
+	LangPreferenceSet:    "Ngôn ngữ đã được đặt: %s",
+}
+
+// getInitMsg picks the zh/en/vi TUI bundle; non-English falls back to zh.
 func getInitMsg(lang i18n.Lang) *initMsg {
 	if lang.IsEnglish() {
 		return initMsgEn
+	}
+	if lang == i18n.LangViVN {
+		return initMsgVi
 	}
 	return initMsgZh
 }
@@ -85,8 +106,9 @@ func promptLangSelection() (i18n.Lang, error) {
 			huh.NewSelect[i18n.Lang]().
 				Title("Language / 语言").
 				Options(
-					huh.NewOption("中文", i18n.LangZhCN),
-					huh.NewOption("English", i18n.LangEnUS),
+			huh.NewOption("中文", i18n.LangZhCN),
+				huh.NewOption("English", i18n.LangEnUS),
+				huh.NewOption("Tiếng Việt", i18n.LangViVN),
 				).
 				Value(&lang),
 		),

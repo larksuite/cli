@@ -39,12 +39,26 @@ func TestGetInitMsg_DefaultsToZh(t *testing.T) {
 	}
 }
 
+func TestGetInitMsg_Vi(t *testing.T) {
+	msg := getInitMsg(i18n.LangViVN)
+	if msg != initMsgVi {
+		t.Error("expected vi message set")
+	}
+	if msg.SelectAction != "Chọn thao tác" {
+		t.Errorf("unexpected SelectAction: %s", msg.SelectAction)
+	}
+}
+
 func TestInitMsgZh_AllFieldsNonEmpty(t *testing.T) {
 	assertAllFieldsNonEmpty(t, initMsgZh, "zh")
 }
 
 func TestInitMsgEn_AllFieldsNonEmpty(t *testing.T) {
 	assertAllFieldsNonEmpty(t, initMsgEn, "en")
+}
+
+func TestInitMsgVi_AllFieldsNonEmpty(t *testing.T) {
+	assertAllFieldsNonEmpty(t, initMsgVi, "vi")
 }
 
 func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
@@ -74,7 +88,7 @@ func assertAllFieldsNonEmpty(t *testing.T, msg *initMsg, label string) {
 }
 
 func TestInitMsg_FormatStrings(t *testing.T) {
-	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS} {
+	for _, lang := range []i18n.Lang{i18n.LangZhCN, i18n.LangEnUS, i18n.LangViVN} {
 		msg := getInitMsg(lang)
 		// AppCreated and ConfigSaved should contain %s for App ID
 		got := fmt.Sprintf(msg.AppCreated, "cli_test123")
@@ -89,20 +103,20 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 }
 
 func TestGetInitMsg_BilingualCollapse(t *testing.T) {
-	// The TUI is bilingual (zh + en). Only English-bucket languages return the
-	// English struct — by canonical locale ("en_us") or legacy short ("en").
-	// Everything else (zh, the other codes, invalid, "") returns Chinese.
 	tests := []struct {
 		lang       i18n.Lang
-		shouldBeEn bool
+		wantZh     bool
+		wantEn     bool
+		wantVi     bool
 	}{
-		{i18n.LangZhCN, false},
-		{i18n.LangEnUS, true},
-		{"en", true}, // legacy short value
-		{i18n.LangJaJP, false},
-		{"fr_fr", false},
-		{"invalid", false},
-		{"", false},
+		{i18n.LangZhCN, true, false, false},
+		{i18n.LangEnUS, false, true, false},
+		{"en", false, true, false},
+		{i18n.LangJaJP, true, false, false},
+		{i18n.LangViVN, false, false, true},
+		{"fr_fr", true, false, false},
+		{"invalid", true, false, false},
+		{"", true, false, false},
 	}
 
 	for _, tt := range tests {
@@ -111,9 +125,14 @@ func TestGetInitMsg_BilingualCollapse(t *testing.T) {
 			if msg == nil {
 				t.Fatal("getInitMsg returned nil")
 			}
-			want := initMsgZh
-			if tt.shouldBeEn {
+			var want *initMsg
+			switch {
+			case tt.wantEn:
 				want = initMsgEn
+			case tt.wantVi:
+				want = initMsgVi
+			default:
+				want = initMsgZh
 			}
 			if msg != want {
 				t.Errorf("getInitMsg(%q) returned wrong struct", tt.lang)

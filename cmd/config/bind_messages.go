@@ -163,10 +163,47 @@ var bindMsgEn = &bindMsg{
 	LangPreferenceSet: "Language preference set to: %s",
 }
 
-// getBindMsg picks the zh/en TUI bundle; non-English falls back to zh.
+var bindMsgVi = &bindMsg{
+	SelectSource:      "Bạn đang chạy Agent nào?",
+	SelectSourceDesc:  "lark-cli sẽ đọc thông tin ứng dụng %s từ Agent đã chọn và tự động cấu hình.",
+	SourceOpenClaw:    "OpenClaw — cấu hình: %s",
+	SourceHermes:      "Hermes — cấu hình: %s",
+	SourceLarkChannel: "Lark Channel — cấu hình: %s",
+
+	SelectAccount: "%[1]s có nhiều ứng dụng %[2]s — hãy chọn một để tiếp tục.",
+
+	ConflictTitle:     "Phát hiện cấu hình hiện có",
+	ConflictDesc:      "lark-cli đã được cấu hình cho %q:\n  App ID:  %s\n  Nền tảng: %s\n  Cấu hình: %s",
+	ConflictForce:     "Cập nhật cấu hình",
+	ConflictCancel:    "Giữ cấu hình hiện tại",
+	ConflictCancelled: "Đã giữ cấu hình hiện tại. Không có thay đổi.",
+
+	MessageBotOnly:     "Đã liên kết ứng dụng %s với %s. Có thể sử dụng ngay với tư cách bot (%s) — tiếp tục thực hiện yêu cầu.",
+	MessageUserDefault: "Đã liên kết ứng dụng %s với %s. Tiếp theo, trong cuộc trò chuyện %s này, chạy `lark-cli auth login --recommend`. Lệnh sẽ in verification URL ra stderr rồi chờ người dùng ủy quyền; chuyển URL cho người dùng để mở trong trình duyệt (không tự mở bằng browser_navigate — trình duyệt của bạn bị sandbox và không thể hoàn tất ủy quyền). Lệnh sẽ tự động trả về sau khi ủy quyền xong.",
+
+	SelectIdentity:      "Bạn muốn AI hoạt động như thế nào?",
+	IdentityBotOnly:     "Dưới dạng bot",
+	IdentityUserDefault: "Dưới danh tính của bạn",
+	IdentityBotOnlyDesc: "Hoạt động dưới danh tính riêng trong %s. Phù hợp cho nhóm chat, thông báo nhóm, và tài liệu dùng chung.",
+	IdentityUserDefaultDesc: "Hoạt động dưới danh tính của bạn trong %s, quản lý tài liệu, tin nhắn, lịch và hơn thế nữa. Chỉ dùng cho cá nhân.\n" +
+		"⚠️  Không chia sẻ bot này cho người khác hoặc thêm vào nhóm chat. Bot có quyền truy cập dữ liệu %s cá nhân của bạn.",
+
+	BindSuccessHeader: "Hoàn tất! lark-cli đã sẵn sàng sử dụng trong %s.",
+	BindSuccessNotice: "Lưu ý: Đây là đồng bộ một lần. Để đồng bộ lại, chạy `lark-cli config bind`",
+
+	IdentityEscalationMessage: "Bạn đang chuyển từ bot sang danh tính người dùng — AI sẽ hoạt động dưới danh tính Feishu của bạn cho mọi thao tác (tài liệu, tin nhắn, lịch...). ⚠️ Không chia sẻ bot này cho người khác hoặc thêm vào nhóm chat. Bot có quyền truy cập dữ liệu Feishu cá nhân của bạn.",
+	IdentityEscalationHint:    "Nếu người dùng xác nhận chuyển đổi, chạy lại với --force: `lark-cli config bind --identity user-default --force`",
+
+	LangPreferenceSet: "Ngôn ngữ đã được đặt: %s",
+}
+
+// getBindMsg picks the zh/en/vi TUI bundle; non-English falls back to zh.
 func getBindMsg(lang i18n.Lang) *bindMsg {
 	if lang.IsEnglish() {
 		return bindMsgEn
+	}
+	if lang == i18n.LangViVN {
+		return bindMsgVi
 	}
 	return bindMsgZh
 }
@@ -181,6 +218,9 @@ func brandDisplay(brand string, lang i18n.Lang) string {
 		return "Lark"
 	}
 	if lang.IsEnglish() {
+		return "Feishu"
+	}
+	if lang == i18n.LangViVN {
 		return "Feishu"
 	}
 	return "飞书"
