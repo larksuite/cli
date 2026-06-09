@@ -29,7 +29,7 @@ var AppsSessionStop = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "session-id", Desc: "session ID", Required: true},
-		{Name: "turn-id", Desc: "turn ID to stop (from +chat / +session-read latest_turn.turnID)", Required: true},
+		{Name: "turn-id", Desc: "turn ID to stop (from +session-read latest_turn.turn_id)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
@@ -58,9 +58,9 @@ var AppsSessionStop = common.Shortcut{
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			stopped, _ := data["stopped"].(bool)
 			if stopped {
-				fmt.Fprintf(w, "stopped turn %s (state was: %v)\n", turnID, data["state"])
+				fmt.Fprintf(w, "stopped turn %s. %v\n", turnID, data["message"])
 			} else {
-				fmt.Fprintf(w, "no-op: turn %s not running (state: %v)\n", turnID, data["state"])
+				fmt.Fprintf(w, "no-op: turn %s not stopped. %v\n", turnID, data["message"])
 			}
 		})
 		return nil

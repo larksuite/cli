@@ -18,7 +18,7 @@ func TestAppsSessionStop_Success(t *testing.T) {
 		URL:    "/open-apis/spark/v1/apps/app_x/sessions/conv_x/stop",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"stopped": true, "state": "running"},
+			"data": map[string]interface{}{"stopped": true, "message": "running turn stopped"},
 		},
 	}
 	reg.Register(stub)
@@ -41,7 +41,7 @@ func TestAppsSessionStop_PrettyStopped(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_x/sessions/conv_x/stop",
-		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"stopped": true, "state": "running"}},
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"stopped": true, "message": "running turn stopped"}},
 	})
 	if err := runAppsShortcut(t, AppsSessionStop,
 		[]string{"+session-stop", "--app-id", "app_x", "--session-id", "conv_x", "--turn-id", "8421374923", "--format", "pretty", "--as", "user"},
@@ -58,7 +58,7 @@ func TestAppsSessionStop_PrettyNoOp(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_x/sessions/conv_x/stop",
-		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"stopped": false, "state": "completed"}},
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"stopped": false, "message": "turn already completed"}},
 	})
 	if err := runAppsShortcut(t, AppsSessionStop,
 		[]string{"+session-stop", "--app-id", "app_x", "--session-id", "conv_x", "--turn-id", "t1", "--format", "pretty", "--as", "user"},

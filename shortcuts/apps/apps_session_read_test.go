@@ -22,7 +22,7 @@ func sessionReadStub() *httpmock.Stub {
 				"is_streaming":       true,
 				"summary":            "正在补充...",
 				"queued_count":       1,
-				"latest_turn":        map[string]interface{}{"turnID": "8421374923", "status": "running"},
+				"latest_turn":        map[string]interface{}{"turn_id": "8421374923", "status": "running"},
 				"next_poll_after_ms": 30000,
 			},
 		},
@@ -42,7 +42,7 @@ func TestAppsSessionRead_Success(t *testing.T) {
 	}
 }
 
-func TestAppsSessionRead_PrettyReadsNestedCamelCase(t *testing.T) {
+func TestAppsSessionRead_PrettyReadsNestedSnakeCase(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(sessionReadStub())
 	if err := runAppsShortcut(t, AppsSessionRead,
@@ -52,7 +52,7 @@ func TestAppsSessionRead_PrettyReadsNestedCamelCase(t *testing.T) {
 	}
 	got := stdout.String()
 	if !strings.Contains(got, "8421374923") || !strings.Contains(got, "running") {
-		t.Fatalf("pretty must read latest_turn.turnID/status: %s", got)
+		t.Fatalf("pretty must read latest_turn.turn_id/status: %s", got)
 	}
 	if !strings.Contains(got, "30000") {
 		t.Fatalf("pretty must show next_poll_after_ms: %s", got)

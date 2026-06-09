@@ -14,10 +14,11 @@ import (
 )
 
 // AppsChat sends a user message to a session, starting/continuing a conversation.
-// Async: the message is queued and the response carries no turn_id (the turn is
-// not generated yet). Poll +session-read; once the turn runs, its handle is in
-// latest_turn.turnID.
-//
+// Async: the message is queued and the response carries no business payload (no
+// turn_id, no next_poll_after_ms — the turn is not generated yet). Poll
+// +session-read; it returns next_poll_after_ms, and once the turn runs its handle
+// is in latest_turn.turn_id.
+
 // Turn cost varies sharply by init state: the first +chat on a not-initialized
 // app runs a one-time design + first-generation pass server-side (~20-50 min);
 // chat on an already-initialized app is incremental and finishes in minutes.
@@ -65,8 +66,7 @@ var AppsChat = common.Shortcut{
 			return withAppsHint(err, "if the session_id is unknown or invalid, list this app's sessions with `lark-cli apps +session-list --app-id "+strings.TrimSpace(rctx.Str("app-id"))+"`")
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "message sent; poll +session-read after %vms for turn status\n",
-				data["next_poll_after_ms"])
+			fmt.Fprintf(w, "message sent; poll +session-read for turn status\n")
 		})
 		return nil
 	},

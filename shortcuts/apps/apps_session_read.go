@@ -54,7 +54,7 @@ var AppsSessionRead = common.Shortcut{
 			fmt.Fprintf(w, "session: %s\n", common.GetString(data, "session_id"))
 			fmt.Fprintf(w, "active: %v  streaming: %v\n", data["is_active"], data["is_streaming"])
 			if lt, ok := data["latest_turn"].(map[string]interface{}); ok {
-				fmt.Fprintf(w, "latest turn: %v (%v)\n", lt["turnID"], lt["status"])
+				fmt.Fprintf(w, "latest turn: %v (%v)\n", lt["turn_id"], lt["status"])
 			}
 			fmt.Fprintf(w, "queued: %v\n", data["queued_count"])
 			fmt.Fprintf(w, "next poll after: %vms\n", data["next_poll_after_ms"])
