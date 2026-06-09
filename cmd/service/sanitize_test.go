@@ -39,8 +39,8 @@ func TestSanitizeFieldDesc_TrimsDanglingPunctuation(t *testing.T) {
 	// joiner then renders "…获取方式：." — so dangling punctuation must go too.
 	cases := map[string]string{
 		"待查询的消息ID。ID 获取方式：\n- 调用接口获取": "待查询的消息ID。ID 获取方式",
-		"see the list below:\nitem":  "see the list below",
-		"逗号结尾，\n下一行":                 "逗号结尾",
+		"see the list below:\nitem":   "see the list below",
+		"逗号结尾，\n下一行":                  "逗号结尾",
 	}
 	for in, want := range cases {
 		if got := sanitizeFieldDesc(in); got != want {
