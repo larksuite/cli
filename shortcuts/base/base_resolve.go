@@ -26,6 +26,7 @@ var BaseURLResolve = common.Shortcut{
 	Command:     "+url-resolve",
 	Description: "Resolve a Base-related URL into Base coordinates",
 	Risk:        "read",
+	Scopes:      []string{},
 	ConditionalScopes: []string{
 		"base:field:read",
 		"base:record:read",
@@ -229,7 +230,7 @@ func resolveBaseURL(u *url.URL) map[string]interface{} {
 
 func resolveWikiBaseURL(runtime *common.RuntimeContext, u *url.URL) (map[string]interface{}, error) {
 	token := firstPathSegmentAfter(u.Path, "/wiki/")
-	data, err := runtime.CallAPI("GET", "/open-apis/wiki/v2/spaces/get_node", map[string]interface{}{"token": token}, nil)
+	data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", map[string]interface{}{"token": token}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +339,7 @@ func enrichBaseResolveHint(runtime *common.RuntimeContext, out map[string]interf
 		out["hint"] = resolveHint(tableID, nil)
 		return
 	}
-	out["hint"] = resolveHint(tableID, map[string]interface{}{"fields": fields, "total": total})
+	out["hint"] = resolveHint(tableID, map[string]interface{}{"fields": map[string]interface{}{"fields": fields, "total": total}})
 }
 
 func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string]interface{}) {
