@@ -26,7 +26,7 @@
 | `--doc-format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `--content` | 视指令 | 写入内容（`str_replace` 传空字符串可实现删除） |
 | `--pattern` | 视指令 | 匹配文本（str_replace） |
-| `--block-id` | 视指令 | 目标 block ID（block_* 操作）,-1 表示末尾 |
+| `--block-id` | 视指令 | 目标 block ID（block_* 操作），逗号分隔可批量删除，-1 表示末尾 |
 | `--src-block-ids` | 视指令 | 源 block ID（逗号分隔），用于 block_copy_insert_after / block_move_after |
 | `--revision-id` | 否 | 基准版本号，-1 = 最新（默认 `-1`） |
 
@@ -116,8 +116,9 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace 
 ### block_delete — 删除指定 block
 
 ```bash
+# 删除多个块时用逗号 "," 分隔
 lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_delete \
-  --block-id "目标 block_id"
+  --block-id "block_id_1,block_id_2,block_id_3"
 ```
 
 ### overwrite — 全文覆盖

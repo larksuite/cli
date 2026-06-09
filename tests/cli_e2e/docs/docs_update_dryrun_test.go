@@ -66,6 +66,17 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			},
 			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
 		},
+		{
+			name: "block_delete batch",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "block_delete",
+				"--block-id", "blkA,blkB,blkC",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+		},
 	}
 
 	for _, tt := range tests {
