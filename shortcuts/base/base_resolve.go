@@ -383,24 +383,17 @@ func formatResolvedRecordData(record map[string]interface{}) map[string]interfac
 }
 
 func resolvedRecordFieldKey(fieldIDs, fieldNames []interface{}, index int) string {
-	fieldID := ""
 	if index < len(fieldIDs) {
-		fieldID = strings.TrimSpace(fmt.Sprintf("%v", fieldIDs[index]))
+		if fieldID := strings.TrimSpace(fmt.Sprintf("%v", fieldIDs[index])); fieldID != "" {
+			return fieldID
+		}
 	}
-	fieldName := ""
 	if index < len(fieldNames) {
-		fieldName = strings.TrimSpace(fmt.Sprintf("%v", fieldNames[index]))
+		if fieldName := strings.TrimSpace(fmt.Sprintf("%v", fieldNames[index])); fieldName != "" {
+			return fieldName
+		}
 	}
-	switch {
-	case fieldID != "" && fieldName != "":
-		return fmt.Sprintf("%s(%s)", fieldID, fieldName)
-	case fieldID != "":
-		return fieldID
-	case fieldName != "":
-		return fieldName
-	default:
-		return fmt.Sprintf("field_%d", index+1)
-	}
+	return fmt.Sprintf("field_%d", index+1)
 }
 
 func resolveHint(tableID string, extra map[string]interface{}) map[string]interface{} {

@@ -156,7 +156,7 @@ func TestBaseURLResolveRecordShareURL(t *testing.T) {
 		hint, _ := data["hint"].(map[string]interface{})
 		recordData, _ := hint["record_data"].(map[string]interface{})
 		fields, _ := hint["fields"].(map[string]interface{})
-		if hint["next_step"] != nextStepRecordList || recordData["fld_name(Name)"] != "Alice" || fields["total"] != float64(2) {
+		if hint["next_step"] != nextStepRecordList || recordData["fld_name"] != "Alice" || fields["total"] != float64(2) {
 			t.Fatalf("unexpected hint: %#v", hint)
 		}
 	})
