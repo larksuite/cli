@@ -17,6 +17,12 @@ import (
 // Async: the message is queued and the response carries no turn_id (the turn is
 // not generated yet). Poll +session-read; once the turn runs, its handle is in
 // latest_turn.turnID.
+//
+// Turn cost varies sharply by init state: the first +chat on a not-initialized
+// app runs a one-time design + first-generation pass server-side (~20-50 min);
+// chat on an already-initialized app is incremental and finishes in minutes.
+// The init-state check and matching polling cadence live in the lark-apps
+// skill reference (references/lark-apps-cloud-dev.md) — the canonical source.
 var AppsChat = common.Shortcut{
 	Service:     appsService,
 	Command:     "+chat",
@@ -24,6 +30,7 @@ var AppsChat = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		`Example: lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message "做一个待办清单页面"`,
+		`Example: lark-cli apps +chat --app-id <app_id> --session-id <session_id> --message "把首页标题改为 我的待办"`,
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -53,7 +60,7 @@ var AppsChat = common.Shortcut{
 			Body(buildChatBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("POST", chatPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildChatBody(rctx))
+		data, err := rctx.CallAPITyped("POST", chatPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildChatBody(rctx))
 		if err != nil {
 			return withAppsHint(err, "if the session_id is unknown or invalid, list this app's sessions with `lark-cli apps +session-list --app-id "+strings.TrimSpace(rctx.Str("app-id"))+"`")
 		}

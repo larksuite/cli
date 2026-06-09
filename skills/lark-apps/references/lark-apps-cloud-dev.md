@@ -19,9 +19,27 @@ lark-cli apps +session-read --app-id app_xxx --session-id sess_xxx
 lark-cli apps +session-list --app-id app_xxx
 ```
 
+## 完成态不等于发布态
+
+云端会话的完成态和应用发布态分开判断：
+
+- `+session-read` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束。
+- 这不会自动证明最新版本已经发布部署，也不能证明用户拿到的发布态 URL 指向最新内容。
+- `+list` 的 `is_published=true` 只说明应用历史上已有发布版本；不要把它当作“最新云端生成结果已部署”的证据。
+- 若用户要“最新可访问链接”或“确认已上线”，必须先走发布链路并确认完成：全栈应用用 `+publish` -> `+publish-status`，HTML 应用用 `+html-publish`。
+
+## 链接交付
+
+云端搭建完成后，给用户区分两类链接：
+
+- 开发态链接：拿到 `app_id` 后即可拼 `https://miaoda.feishu.cn/app/{app_id}`，例如 `https://miaoda.feishu.cn/app/app_xxx`。
+- 发布态访问链接：只有在发布动作已完成时才提供。全栈应用在 `+publish-status` 返回 `finished` 时，该命令输出已含 `online_url`，直接读取（`failed` 时其输出已含 `error_logs` 给出失败原因；`+list` 仅作独立查询入口）；HTML 应用使用 `+html-publish` 返回的 `data.url`。
+
+如果只完成了云端会话、没有确认发布完成，就明确告诉用户“开发态链接可进入继续编辑，发布态是否为最新版本尚未确认”。
+
 ## 需求发送
 
-- 只有用户明确选择云端路径，或明确说“让妙搭 Agent/云端 AI 生成/迭代”时，才进入本 reference；不要因为用户只说“做个 X”或“给我链接”就默认云端。
+- 只有用户明确选择云端路径，或明确说“让妙搭 Agent / 云端 AI 生成/迭代”时，才进入本 reference；不要因为用户只说“做个 X”或“给我链接”就默认云端。
 - 进入云端路径后，极简需求也可直接发起生成，例如“做个投票工具”“做个站会小应用”。先建 `full_stack` app，再用 `+chat --message "<用户原话>"` 透传需求，不编造实体、字段或业务细节。
 - 如果需求过泛，可在 `+chat --message` 中保留原话，并只补一句“请先生成通用版本，后续可继续迭代”，不要用多轮追问阻塞生成。
 
@@ -34,15 +52,41 @@ lark-cli apps +session-list --app-id app_xxx
 | 用户说“新开一段/换个话题” | `+session-create` 后再 `+chat` |
 | 用户说“接着刚才” | 复用上下文 session_id；拿不到就 `+session-list` 让用户选 |
 
+## 初始化 vs 增量修改
+
+`+chat` 单轮的耗时差距很大，取决于目标 app 是否**已初始化**。两者的轮询节奏不同，**`+chat` 前先把状态判定清楚**，不要拿"是不是第一次发消息"当代理判断——session 是新建的不代表 app 没初始化过。
+
+### 判定规则
+
+**已初始化**（满足任一即认为已初始化）：
+
+1. 本地存在该 app 的项目目录（已 `+init` 或 clone 过），**且** git commit 数 > 2；
+2. 应用维度（云端）至少有一个已提交的版本，按以下任一信号判断：
+   - `lark-cli apps +session-read --app-id <app_id> --session-id <session_id>` 的返回里出现已提交版本信息；
+   - 在 `lark-cli apps +list`（必要时配 `--keyword <name>` 定位）的目标 app 条目里 `is_published: true`。
+
+**未初始化**（两个条件同时成立）：
+
+1. 本地不存在该 app 的项目目录；
+2. 应用维度没有任何已提交版本（即上面两路云端信号都判 false）。
+
+### 两种 `+chat` 的行为
+
+| 状态 | 服务端动作 | 单轮耗时 | 轮询建议 |
+|---|---|---|---|
+| 已初始化 → **增量修改** | 云端 Agent 在已有云端工作区上对**已提交代码**做局部修改，跳过方案设计与首次生成 | 通常分钟级 | `next_poll_after_ms` 为空时 5-10 秒一次 |
+| 未初始化 → **首次初始化 + 生成** | 服务端跑完整的应用初始化流程：需求分析、技术方案、数据模型、UI 与后端代码生成、首版代码提交到云端工作区 | 视需求复杂度，**通常 20~50 分钟** | `next_poll_after_ms` 为空时 60-120 秒一次 |
+
+初始化阶段 `+session-read` 可能长时间持续返回 `building` / `running`，是正常状态，**不要按失败处理，也不要催用户**。
+
 ## 轮询规则
 
 - `+chat` 异步，只返回 `next_poll_after_ms`，不返回 `turn_id`。
-- 等待 `next_poll_after_ms` 后调用 `+session-read`；由 agent 驱动轮询。若没有返回建议间隔，用 5-10 秒节奏轮询。
+- 等待 `next_poll_after_ms` 后调用 `+session-read`；由 agent 驱动轮询。`next_poll_after_ms` 为空时，按 [初始化 vs 增量修改](#初始化-vs-增量修改) 的判定选择节奏：增量 5-10 秒一次，初始化 60-120 秒一次。
 - 不知道已有 session 时先 `+session-list --app-id <id>`，再选最近活跃或让用户确认。
-- `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃。
+- `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃。初始化阶段单次 sleep 拉到 60-120 秒；进入 `streaming` 或属增量修改时切回 5-10 秒。
 - `is_streaming=false` 且 `latest_turn.status=completed` 表示本轮完成，可发下一条。
 - `failed` / `cancelled` 时转述错误字段或 hint，询问是否重试。
-- 预览 URL 只来自 `+session-read` 返回的明确字段；为空时不要编造链接。
 - 要中止正在运行的一轮，从 `+session-read` 的 `latest_turn.turnID` 取值，再调用：
 
 ```bash

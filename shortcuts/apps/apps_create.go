@@ -36,7 +36,7 @@ var AppsCreate = common.Shortcut{
 		if strings.TrimSpace(rctx.Str("name")) == "" {
 			return output.ErrValidation("--name is required")
 		}
-		appType := strings.TrimSpace(rctx.Str("app-type"))
+		appType := normalizedAppType(rctx)
 		if appType == "" {
 			return output.ErrValidation("--app-type is required")
 		}
@@ -52,7 +52,7 @@ var AppsCreate = common.Shortcut{
 			Body(buildAppsCreateBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("POST", apiBasePath+"/apps", nil, buildAppsCreateBody(rctx))
+		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, buildAppsCreateBody(rctx))
 		if err != nil {
 			return err
 		}
@@ -63,14 +63,21 @@ var AppsCreate = common.Shortcut{
 	},
 }
 
-// 应用类型枚举。大小写敏感精确匹配（对外统一小写）。
+// 应用类型枚举。输入经 normalizedAppType 归一化为小写后精确匹配，与服务端历史大小写兼容性对齐（对外统一小写）。
 var validAppTypes = map[string]bool{
 	"html":       true,
 	"full_stack": true,
 }
 
+// normalizedAppType returns the trimmed, lowercased --app-type value. The
+// server has historically accepted any case; the CLI canonicalizes to the
+// lowercase enum (the documented external form) before validating/sending.
+func normalizedAppType(rctx *common.RuntimeContext) string {
+	return strings.ToLower(strings.TrimSpace(rctx.Str("app-type")))
+}
+
 func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
-	appType := strings.TrimSpace(rctx.Str("app-type"))
+	appType := normalizedAppType(rctx)
 	body := map[string]interface{}{
 		"name":     strings.TrimSpace(rctx.Str("name")),
 		"app_type": appType,

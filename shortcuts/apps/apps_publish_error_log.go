@@ -51,26 +51,14 @@ var AppsPublishErrorLog = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		releaseID := strings.TrimSpace(rctx.Str("release-id"))
 		path := fmt.Sprintf(publishErrorLogPath, validate.EncodePathSegment(appID), validate.EncodePathSegment(releaseID))
-		data, err := rctx.CallAPI("GET", path, nil, nil)
+		data, err := rctx.CallAPITyped("GET", path, nil, nil)
 		if err != nil {
 			return withAppsHint(err, "if the release_id is unknown or invalid, list this app's releases with `lark-cli apps +publish-history --app-id "+appID+"`")
 		}
 		out := shapeErrorLog(data)
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "status: %v\n", out["status"])
-			logs, _ := out["error_logs"].([]interface{})
-			rows := make([]map[string]interface{}, 0, len(logs))
-			for _, l := range logs {
-				m, ok := l.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				rows = append(rows, map[string]interface{}{
-					"step":      m["step"],
-					"error_log": m["error_log"],
-				})
-			}
-			output.PrintTable(w, rows)
+			writeReleaseErrorLogTable(w, out["error_logs"])
 		})
 		return nil
 	},

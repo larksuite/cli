@@ -50,7 +50,7 @@ var AppsSessionStop = common.Shortcut{
 			Body(buildStopBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("POST", stopPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildStopBody(rctx))
+		data, err := rctx.CallAPITyped("POST", stopPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildStopBody(rctx))
 		if err != nil {
 			return err
 		}

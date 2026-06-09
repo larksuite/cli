@@ -48,7 +48,7 @@ var AppsDBEnvCreate = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPI("POST", appDbEnvCreatePath(appID), nil, buildDBEnvCreateBody(rctx))
+		data, err := rctx.CallAPITyped("POST", appDbEnvCreatePath(appID), nil, buildDBEnvCreateBody(rctx))
 		if err != nil {
 			return err
 		}

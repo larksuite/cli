@@ -45,9 +45,9 @@ var AppsAccessScopeGet = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		path := fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))
-		data, err := rctx.CallAPI("GET", path, nil, nil)
+		data, err := rctx.CallAPITyped("GET", path, nil, nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`")
 		}
 		// 原样透传 — 保留服务端字符串枚举 (All/Tenant/Range)，不合并 users/departments/chats。
 		rctx.OutFormat(data, nil, func(w io.Writer) {

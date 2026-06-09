@@ -46,7 +46,7 @@ var AppsSessionRead = common.Shortcut{
 			Desc("Read a session's status")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		data, err := rctx.CallAPI("GET", sessionPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, nil)
+		data, err := rctx.CallAPITyped("GET", sessionPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, nil)
 		if err != nil {
 			return withAppsHint(err, "if the session_id is unknown or invalid, list this app's sessions with `lark-cli apps +session-list --app-id "+strings.TrimSpace(rctx.Str("app-id"))+"`")
 		}

@@ -23,7 +23,8 @@ lark-cli apps +publish --app-id app_xxx --branch sprint/default --dry-run
 
 - 成功读取 `data.release_id` 和 `data.status`；`release_id` 是后续 `+publish-status` / `+publish-error-log` 的入参。
 - `status=publishing` 表示发布仍在进行；继续用 `+publish-status` 轮询。
+- `+publish` 返回 release 只代表发布已发起。只有 `+publish-status` 对同一个 `release_id` 返回 `finished` 后，才能说本轮最新版本已部署。
 
 ## Agent 规则
 
-发布前通常先确认本地 `git status` 干净且已 push `sprint/default`。发布后若 status 是 `publishing`，用 [`+publish-status`](lark-apps-publish-status.md) 查询。`+publish` 部署上线属高影响动作——作为别的命令的连带前置时，按 SKILL.md「失败与高影响动作」先征得用户同意再发布。
+`+publish` 部署的是远端 `sprint/default` 上已 push 的代码，不是本地工作区——本地若有你修改但未推送的改动，需要先 `git add` + `git commit` 并 `git push` 到 `sprint/default`，否则这些改动不会进入这次发布。发布后若 status 是 `publishing`，用 [`+publish-status`](lark-apps-publish-status.md) 查询。`+publish` 部署上线属高影响动作——作为别的命令的连带前置时，按 SKILL.md「高影响动作：确认与预授权」先征得用户同意再发布。

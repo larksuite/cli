@@ -29,7 +29,7 @@ lark-cli apps +db-sql --app-id app_xxx --env dev --query @./migration.sql --dry-
 
 ## Agent 规则
 
-- 读查询可直接执行；DML/DDL 先 `--dry-run` 给用户确认更稳妥。
+- 读查询可直接执行。已授权时，**不删除、不丢失既有数据且可撤回的语句**可直接执行；**会删除或丢失既有数据、或难以撤回的语句**仍先 `--dry-run` 给用户确认。
 - 多语句失败时，失败前的语句可能已经 auto-commit。不要整批重跑；按错误 detail/hint 修失败语句，并从剩余语句继续。
 - 如果需要原子性，让用户在 SQL 内显式写 `BEGIN` / `COMMIT`，不要假设 CLI 会包事务。
 - 不要把数据库连接串从 env 中取出来裸连。
