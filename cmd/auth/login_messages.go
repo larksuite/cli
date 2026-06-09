@@ -116,10 +116,49 @@ var loginMsgEn = &loginMsg{
 	HintFooter:  "  lark-cli auth login --help",
 }
 
+var loginMsgVi = &loginMsg{
+	SelectDomains:   "Chọn nghiệp vụ cần ủy quyền",
+	DomainHint:      "Space=chọn, Enter=xác nhận",
+	PermLevel:       "Mức quyền",
+	PermCommon:      "Phạm vi phổ biến",
+	PermAll:         "Tất cả phạm vi",
+	Summary:         "\nTóm tắt:\n",
+	SummaryDomains:  "  Nghiệp vụ:  %s\n",
+	SummaryPerm:     "  Mức:        %s\n",
+	SummaryScopes:   "  Scopes (%d): %s\n\n",
+	PermAllLabel:    "Tất cả phạm vi",
+	PermCommonLabel: "Phạm vi phổ biến",
+	ErrNoDomain:     "vui lòng chọn ít nhất một nghiệp vụ",
+	ConfirmAuth:     "Xác nhận ủy quyền?",
+
+	OpenURL:            "Mở link sau trong trình duyệt để xác thực:\n\n",
+	WaitingAuth:        "Đang chờ người dùng ủy quyền...",
+	AgentTimeoutHint:   "[AI agent] Lệnh này阻塞 tối đa ~10 phút trong khi chờ người dùng ủy quyền trên trình duyệt. Đảm bảo runner timeout >= 600s. Nếu harness hoặc agent tool chỉ gửi tin nhắn cuối cùng, dùng \"lark-cli auth login --no-wait --json\" để lấy device_code và verification_url, hiển thị verification_url cho người dùng dưới dạng tin nhắn cuối rồi kết thúc lượt; sau khi người dùng phản hồi đã ủy quyền, chạy \"lark-cli auth login --device-code <code>\" ở bước tiếp theo để tiếp tục polling. **KHÔNG hiển thị URL rồi ngay lập tức阻塞 trên --device-code trong cùng một lượt**, cũng không retry với timeout ngắn; mỗi lần khởi động lại sẽ vô hiệu hóa device code trước đó và khiến liên kết ủy quyền trước đó hỏng.**BẮT BUỘC tạo QR code và hiển thị:** Bạn PHẢI gọi lark-cli auth qrcode để chuyển verification_url thành QR code. Đây là bước bắt buộc, KHÔNG được bỏ qua. Ưu tiên QR PNG (--output); chỉ dùng ASCII (--ascii) khi người dùng yêu cầu rõ ràng.**QUAN TRỌNG: Bạn PHẢI bao gồm hình ảnh QR trong phản hồi.** Tạo file là chưa đủ — phải dùng thẻ hình ảnh, hình ảnh inline hoặc tệp đính kèm để hiển thị.**Thứ tự hiển thị:** Xuất URL trước, sau đó đặt hình ảnh QR bên dưới URL.**Quy tắc xuất URL:** coi verification_url là string không thể sửa đổi. KHÔNG encode/decode URL hoặc thêm khoảng trắng/dấu câu.",
+	AuthSuccess:        "Đã xác nhận ủy quyền, đang lấy thông tin người dùng và kiểm tra kết quả...",
+	LoginSuccess:       "Ủy quyền thành công! Người dùng: %s (%s)",
+	AuthorizedUser:     "Tài khoản đã ủy quyền: %s (%s)",
+	ScopeMismatch:      "kết quả ủy quyền bất thường: các scopes sau không được cấp: %s",
+	ScopeHint:          "Kết quả trên là xác nhận cuối cùng của người dùng cho yêu cầu ủy quyền này. Không thử lại liên tục. Scopes có thể không được cấp vì nhiều lý do, chẳng hạn scope bị vô hiệu hóa. Lý do cụ thể đã được hiển thị cho người dùng trên trang ủy quyền. Chạy `lark-cli auth status` để xem tất cả scopes hiện được cấp cho tài khoản.",
+	RequestedScopes:    "  Scopes yêu cầu: %s\n",
+	NewlyGrantedScopes: "  Scopes mới được cấp: %s\n",
+	NoScopes:           "(không có)",
+	StatusHint:         "Chạy `lark-cli auth status` để xem tất cả scopes hiện được cấp cho tài khoản.",
+
+	HintHeader:  "Vui lòng chỉ định scopes cần ủy quyền:\n",
+	HintCommon1: "  --recommend                     ủy quyền scopes khuyến nghị",
+	HintCommon2: "  --domain all                    ủy quyền tất cả nghiệp vụ",
+	HintCommon3: "  --domain calendar,task          ủy quyền lịch và nhiệm vụ",
+	HintCommon4: "  --domain calendar --recommend   ủy quyền scopes khuyến nghị của lịch",
+	HintFooter:  "  lark-cli auth login --help",
+}
+
 // getLoginMsg returns the login message bundle for the given language.
 func getLoginMsg(lang i18n.Lang) *loginMsg {
 	if lang.IsEnglish() {
 		return loginMsgEn
+	}
+	if lang == i18n.LangViVN {
+		return loginMsgVi
 	}
 	return loginMsgZh
 }
