@@ -9,9 +9,9 @@
 ## 命令骨架
 
 - 必填：`--app-id`、`--query`。
-- `--query` 支持内联 SQL、`@path` 读文件、`-` 读 stdin。
-  - **`@path` 只支持当前工作目录内的相对路径**（如 `@./migration.sql`），绝对路径会被拒（lark-cli 全局文件安全策略，非本命令独有）。
-  - 文件在别处 / cwd 不固定时，改用 stdin：`--query - < /abs/path/to/file.sql`（shell 负责解析绝对路径，CLI 只收到内容），无需先 `cd`。
+- `--query` 取值三选一：内联 SQL 字符串、`@<relative-path>`（读本地文件）、`-`（读 stdin）。
+  - `@` 仅接受工作目录内的相对路径（如 `@./migration.sql`）；绝对路径、或经 `..`/符号链接越出工作目录的路径会被拒绝——这是 CLI 文件访问的统一约束，非本命令特有。
+  - 文件不在工作目录内、或调用方无法确定工作目录时，经 stdin 传入：`--query - < <absolute-path>`。由 shell 解析路径、CLI 仅接收内容，无需切换目录。
 - `--env` 枚举：`dev` / `online`，默认 `online`。
 - risk 是 `write`，因为支持 DML/DDL。
 - CLI 永远传 `transactional=false`；不默认包事务。
@@ -21,7 +21,7 @@
 ```bash
 lark-cli apps +db-sql --app-id app_xxx --env dev --query "select * from orders limit 5"
 lark-cli apps +db-sql --app-id app_xxx --env dev --query @./migration.sql --dry-run
-# 绝对路径 / cwd 不固定：走 stdin，别用 @绝对路径
+# 文件在工作目录外：经 stdin 传入（@ 不接受绝对路径）
 lark-cli apps +db-sql --app-id app_xxx --env dev --query - < /Users/.../migrations/0001_init.sql
 ```
 
