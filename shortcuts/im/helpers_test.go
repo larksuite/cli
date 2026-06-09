@@ -33,6 +33,13 @@ func TestDetectIMFileType(t *testing.T) {
 	}{
 		{name: "opus", path: "voice.opus", want: "opus"},
 		{name: "ogg", path: "voice.ogg", want: "opus"},
+		{name: "mp3", path: "song.mp3", want: "mp3"},
+		{name: "mp3 uppercase", path: "song.MP3", want: "mp3"},
+		{name: "wav", path: "audio.wav", want: "wav"},
+		{name: "m4a", path: "audio.m4a", want: "m4a"},
+		{name: "aac", path: "audio.aac", want: "aac"},
+		{name: "amr", path: "voice.amr", want: "amr"},
+		{name: "wma", path: "audio.wma", want: "wma"},
 		{name: "video uppercase", path: "movie.MP4", want: "mp4"},
 		{name: "document", path: "report.docx", want: "doc"},
 		{name: "sheet", path: "data.csv", want: "xls"},

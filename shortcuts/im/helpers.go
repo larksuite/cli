@@ -1033,6 +1033,18 @@ func detectIMFileType(filePath string) string {
 	switch ext {
 	case ".opus", ".ogg":
 		return "opus"
+	case ".mp3":
+		return "mp3"
+	case ".wav":
+		return "wav"
+	case ".m4a":
+		return "m4a"
+	case ".aac":
+		return "aac"
+	case ".amr":
+		return "amr"
+	case ".wma":
+		return "wma"
 	case ".mp4", ".mov", ".avi", ".mkv", ".webm":
 		return "mp4"
 	case ".pdf":
