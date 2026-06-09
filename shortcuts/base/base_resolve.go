@@ -19,6 +19,7 @@ const (
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
+	nextStepRecordPatch       = "use +record-upsert with base_token, table_id, and record_id to update this resolved record"
 )
 
 var BaseURLResolve = common.Shortcut{
@@ -358,6 +359,7 @@ func enrichRecordShareResolveHint(runtime *common.RuntimeContext, out map[string
 		}
 	}
 	out["hint"] = resolveHint(tableID, hint)
+	common.GetMap(out, "hint")["next_step"] = nextStepRecordPatch
 }
 
 func getResolveRecord(runtime *common.RuntimeContext, baseToken, tableID, recordID string) (map[string]interface{}, error) {
