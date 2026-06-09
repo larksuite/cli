@@ -31,11 +31,16 @@ metadata:
 - Base 业务操作只使用 `lark-cli base +...` shortcut，不使用旧聚合式 `+table / +field / +record / +view / +history / +workspace`。
 - 本轮 Base 不依赖 `lark-cli schema`。SKILL 只保留路由、风险和复杂 JSON/DSL；简单命令由命令自身的参数、tips 和错误恢复承接。
 - 用户要把 Excel / CSV / `.base` 导入成 Base 时，先转 `lark-cli drive +import --type bitable`，导入完成后再回到 Base 命令。
-- 用户输入 URL 或分享链接时，先用 `lark-cli base +url-resolve --url "<url>" --as user` 判断是否为 Base 相关 URL 并解析 Base 坐标。
-- 用户输入 Base 标题、关键词或不确定名称时，用 `lark-cli base +title-resolve --query "<text>" --as user` 搜索并定位 Base。
-- 文档嵌入 Base 标签可直接用：`<bitable>` / `<base_refer>` 的 `token` → `--base-token`，`table-id` → `--table-id`，`view-id` → `--view-id`；孤立 raw token 不走 `+url-resolve`。
-- Base 命令必须先有 `base_token` 或可解析出的 Base URL。没有 token 时：用户要新建就用 `+base-create`；仍无法定位时，反问用户具体是哪一个 Base。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
+
+## 先定位 Base 坐标
+
+进入任何需要目标 Base 的 shortcut 前，必须先拿到可用的 `base_token`，以及当前任务需要的 `table_id` / `view_id` / `record_id` / `form_id` / `dashboard_id` / `workflow_id` 等真实 ID；不要把完整 URL、wiki token、workspace token 或孤立 raw token 直接当作 `--base-token`。
+
+- 用户输入 URL 或分享链接：先运行 `lark-cli base +url-resolve --url "<url>" --as user`，用返回的 `base_token` 和相关 ID 继续后续命令。
+- 用户输入 Base 标题、关键词或不确定名称：先运行 `lark-cli base +title-resolve --query "<text>" --as user`；多候选时先让用户消歧，不要猜。
+- 文档嵌入 Base 标签：直接读取 `<bitable>` / `<base_refer>` 的 `token` 作为 `--base-token`，`table-id` 作为 `--table-id`，`view-id` 作为 `--view-id`；孤立 raw token 不走 `+url-resolve`。
+- 仍无法定位且用户不是要新建 Base 时，先反问用户要操作哪一个 Base；用户要新建时才用 `+base-create`。
 
 ## 快速路由
 
@@ -115,12 +120,6 @@ metadata:
 - `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
 - 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。
 
-## Token 与链接
-
-- URL 或分享链接统一交给 `+url-resolve`；该命令会解析支持的 URL，并输出可用于后续 Base 命令的 `base_token`、`table_id`、`view_id`、`record_id` 或分享 token 等信息。
-- 标题或关键词统一交给 `+title-resolve`；多候选时先消歧，不要猜。
-- 文档内嵌 Base 标签按上文规则直接提取 `token` / `table-id` / `view-id`。
-
 ## Dashboard / Workflow / Role
 
 - Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
@@ -131,7 +130,7 @@ metadata:
 
 | 错误 / 现象 | 恢复动作 |
 |---|---|
-| `param baseToken is invalid` / `base_token invalid` | 检查是否把 wiki token、workspace token 或完整 URL 当成了 `--base-token`；按 `Token 与链接` 重新定位真实 Base token |
+| `param baseToken is invalid` / `base_token invalid` | 检查是否把 wiki token、workspace token 或完整 URL 当成了 `--base-token`；按 `先定位 Base 坐标` 重新定位真实 Base token |
 | `not found` 且输入来自 Wiki 链接 | 优先检查是否把 wiki token 当成 base token，不要立刻改走裸 API |
 | `1254045` 字段名不存在 | 重新 `+field-list`，使用真实字段名或字段 ID；注意空格、大小写和跨表字段 |
 | `1254015` 字段值类型不匹配 | 先 `+field-list`，再按 [lark-base-cell-value.md](references/lark-base-cell-value.md) 构造 CellValue |
