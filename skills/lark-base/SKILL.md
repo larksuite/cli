@@ -103,6 +103,7 @@ metadata:
 - 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
 - `+record-batch-update` 是“同值批量更新”：同一份 patch 应用到全部 `record_id_list`，不要拿它做逐行不同值映射。
 - select/multiselect 写入未知选项可能触发平台新增选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
+- Base 文本字段和说明文本中的飞书/Lark Drive 原生资源链接遵循 [`lark-shared`](../lark-shared/SKILL.md) 的「飞书资源链接写入」规则；URL 字段始终只写 URL 字符串。
 
 ## 表单与视图细节
 
@@ -141,7 +142,7 @@ metadata:
 | `not found` 且输入来自 Wiki 链接 | 优先检查是否把 wiki token 当成 base token，不要立刻改走裸 API |
 | `1254045` 字段名不存在 | 重新 `+field-list`，使用真实字段名或字段 ID；注意空格、大小写和跨表字段 |
 | `1254015` 字段值类型不匹配 | 先 `+field-list`，再按 [lark-base-cell-value.md](references/lark-base-cell-value.md) 构造 CellValue |
-| 日期 / 人员 / 超链接字段报格式错误 | 日期用 `YYYY-MM-DD HH:mm:ss`；人员用 `[{ "id": "ou_xxx" }]`；超链接用 URL 或 markdown link 字符串 |
+| 日期 / 人员 / 超链接字段报格式错误 | 日期用 `YYYY-MM-DD HH:mm:ss`；人员用 `[{ "id": "ou_xxx" }]`；超链接字段优先用 URL 字符串；仅在用户要求自定义显示文本或外部链接需要展示文本时用 Markdown 链接字符串 |
 | formula / lookup 创建失败 | 先读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)，再按 guide 重建请求 |
 | `ignored_fields` / `READONLY` | 移除只读字段，只写存储字段 |
 | `1254104` | 批量超过 200，分批调用 |

@@ -58,7 +58,7 @@ lark-cli base +form-questions-update \
 |------|------|------|
 | `id` | **是** | 问题 ID（field_id），不可修改 |
 | `title` | 否 | 新的问题标题 |
-| `description` | 否 | 新的问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`） |
+| `description` | 否 | 新的问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`）。飞书/Lark Drive 原生资源链接遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「飞书资源链接写入」规则。 |
 | `required` | 否 | 是否必填 |
 | `option_display_mode` | 否 | 选项展示方式（仅 `select` 有效）：`0`=下拉，`1`=纵向（默认），`2`=横向 |
 

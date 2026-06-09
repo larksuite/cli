@@ -8,6 +8,16 @@ description: "Use when first setting up lark-cli, running auth login, switching 
 
 本技能指导你如何通过lark-cli操作飞书资源, 以及有哪些注意事项。
 
+## 飞书资源链接写入
+
+向可直接写文本的文档正文、表格单元格、多维表格字段/说明、Wiki 页面等内容区写入飞书/Lark 云空间原生资源链接时：
+
+- 默认直接写入原始 URL，不要包成 Markdown 链接或 HTML 自定义显示文本链接。
+- 适用对象包括 Docx、Sheets、Base/bitable、Wiki 节点、云空间文件/文件夹、Slides、Minutes 等飞书/Lark 资源。
+- 原始资源 URL 通常能为飞书编辑器保留原生预览、卡片或提及的转换机会；自定义超链接可能阻止这种转换。
+
+例外：用户明确要求自定义显示文本；外部/非飞书 URL 需要展示文本或预览卡片；目标不是云空间原生资源（如记录分享、表单分享、临时下载、API callback URL）；API 字段明确要求结构化 link/rich_text 对象。
+
 ## 配置初始化
 
 首次使用需运行 `lark-cli config init` 完成应用配置。

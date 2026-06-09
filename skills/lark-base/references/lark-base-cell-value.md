@@ -18,7 +18,9 @@
 
 ### 2.1 text / phone / url
 
-用字符串。URL 字段也传 URL 字符串；普通文本里可以保留 Markdown 风格链接文本，平台会按字段类型处理。
+用字符串。URL 字段始终传 URL 字符串；外部链接也按 URL 字段的普通字符串行为写入，不写 `[文本](URL)`。
+
+飞书/Lark Drive 原生资源链接写入 text 字段时，遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「飞书资源链接写入」规则。URL 字段没有自定义显示文本能力，即使用户提供 label，也只写 URL 本身。
 
 ```json
 {

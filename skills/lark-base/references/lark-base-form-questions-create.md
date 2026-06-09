@@ -72,7 +72,7 @@ lark-cli base +form-questions-create \
 |-----------------------|------|------|
 | `title`               | **是** | 问题标题（字段名） |
 | `type`                | **是** | 题目类型：`text`、`number`、`select`、`datetime`、`user`、`attachment`、`location` |
-| `description`         | 否 | 问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`） |
+| `description`         | 否 | 问题描述（纯文本或 Markdown 链接，如 `[文本](https://example.com)`）。飞书/Lark Drive 原生资源链接遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「飞书资源链接写入」规则。 |
 | `required`            | 否 | 是否必填（true/false） |
 | `option_display_mode` | 否 | 选项展示方式（仅 `select` 有效）：`0`=下拉，`1`=纵向（默认），`2`=横向 |
 | `multiple`            | 否 | 是否多选（`select`/`user` 类型有效，bool） |

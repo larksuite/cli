@@ -8,7 +8,7 @@
 
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
-- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
+- 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。description 中的飞书/Lark Drive 原生资源链接遵循 [`lark-shared`](../../lark-shared/SKILL.md) 的「飞书资源链接写入」规则。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；这是高风险写入操作，建议先 `+field-get` 再按目标状态全量提交，并带 `--yes`。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
