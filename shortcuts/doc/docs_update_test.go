@@ -3,10 +3,15 @@
 package doc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -132,4 +137,149 @@ func newUpdateShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[
 		}
 	}
 	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+// ── Integration tests (full pipeline with mocked HTTP) ──
+
+func TestDocsUpdateV2WarnsOnPreWithoutCode(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsUpdateTestConfig(t))
+	registerDocsUpdateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"revision_id": float64(2),
+			"url":         "https://example.feishu.cn/docx/doxcnUpdateDryRun",
+		},
+		"result": "success",
+	})
+
+	err := runDocsUpdateShortcut(t, f, stdout, []string{
+		"+update",
+		"--api-version", "v2",
+		"--doc", "doxcnUpdateDryRun",
+		"--command", "block_insert_after",
+		"--block-id", "doxcnAnchor",
+		"--content", "<pre lang=\"text\">no code tag</pre>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stderrStr := stderr.String()
+	if !strings.Contains(stderrStr, "missing a <code> child element") {
+		t.Fatalf("expected stderr warning about missing <code>, got:\n%s", stderrStr)
+	}
+}
+
+func TestDocsUpdateV2BlockInsertAfterHint(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsUpdateTestConfig(t))
+	registerDocsUpdateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"revision_id": float64(2),
+			"url":         "https://example.feishu.cn/docx/doxcnUpdateDryRun",
+		},
+		"result": "success",
+	})
+
+	err := runDocsUpdateShortcut(t, f, stdout, []string{
+		"+update",
+		"--api-version", "v2",
+		"--doc", "doxcnUpdateDryRun",
+		"--command", "block_insert_after",
+		"--block-id", "doxcnAnchor",
+		"--content", "<p>hello</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to decode output: %v\nraw=%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	if data == nil {
+		t.Fatalf("missing data in output envelope: %#v", envelope)
+	}
+	hint, _ := data["_hint"].(string)
+	if hint == "" {
+		t.Fatalf("expected _hint in block_insert_after response, got: %#v", data)
+	}
+	if !strings.Contains(hint, "docs +fetch") {
+		t.Fatalf("_hint should mention docs +fetch, got: %s", hint)
+	}
+}
+
+func TestDocsUpdateV2AppendHint(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsUpdateTestConfig(t))
+	registerDocsUpdateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"revision_id": float64(2),
+			"url":         "https://example.feishu.cn/docx/doxcnUpdateDryRun",
+		},
+		"result": "success",
+	})
+
+	err := runDocsUpdateShortcut(t, f, stdout, []string{
+		"+update",
+		"--api-version", "v2",
+		"--doc", "doxcnUpdateDryRun",
+		"--command", "append",
+		"--content", "<p>hello</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("failed to decode output: %v\nraw=%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	if data == nil {
+		t.Fatalf("missing data in output envelope: %#v", envelope)
+	}
+	hint, _ := data["_hint"].(string)
+	if hint == "" {
+		t.Fatalf("expected _hint in append response, got: %#v", data)
+	}
+}
+
+// ── Helpers ──
+
+func docsUpdateTestConfig(t *testing.T) *core.CliConfig {
+	t.Helper()
+
+	replacer := strings.NewReplacer("/", "-", " ", "-")
+	suffix := replacer.Replace(strings.ToLower(t.Name()))
+	return &core.CliConfig{
+		AppID:     "test-docs-update-" + suffix,
+		AppSecret: "secret-docs-update-" + suffix,
+		Brand:     core.BrandFeishu,
+	}
+}
+
+func registerDocsUpdateAPIStub(reg *httpmock.Registry, data map[string]interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnUpdateDryRun",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": data,
+		},
+	})
+}
+
+func runDocsUpdateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, args []string) error {
+	t.Helper()
+
+	return mountAndRunDocs(t, DocsUpdate, args, f, stdout)
 }

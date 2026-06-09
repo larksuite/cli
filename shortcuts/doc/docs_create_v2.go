@@ -30,6 +30,14 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if runtime.Str("parent-token") != "" && runtime.Str("parent-position") != "" {
 		return common.FlagErrorf("--parent-token and --parent-position are mutually exclusive")
 	}
+
+	// Warn about <pre> blocks missing <code> children (silently dropped by API).
+	if runtime.Str("doc-format") == "xml" && runtime.Factory != nil {
+		if warnings := validatePreTags(runtime.Str("content")); len(warnings) > 0 {
+			emitPreWarnings(runtime.IO().ErrOut, warnings)
+		}
+	}
+
 	return nil
 }
 

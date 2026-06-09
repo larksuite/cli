@@ -308,6 +308,62 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2WarnsOnPreWithoutCode(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", "<title>test</title><p>before</p><pre lang=\"text\">no code tag</pre><p>after</p>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stderrStr := stderr.String()
+	if !strings.Contains(stderrStr, "missing a <code> child element") {
+		t.Fatalf("expected stderr warning about missing <code>, got:\n%s", stderrStr)
+	}
+}
+
+func TestDocsCreateV2NoWarningWhenPreHasCode(t *testing.T) {
+	t.Parallel()
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	registerDocsCreateAPIStub(reg, map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+			"url":         "https://example.feishu.cn/docx/doxcn_new_doc",
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", "<title>test</title><pre lang=\"go\"><code>func main() {}</code></pre>",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	stderrStr := stderr.String()
+	if strings.Contains(stderrStr, "missing a <code> child element") {
+		t.Fatalf("did not expect warning for valid pre/code, got:\n%s", stderrStr)
+	}
+}
+
 // ── Helpers ──
 
 func docsCreateTestConfig(t *testing.T, userOpenID string) *core.CliConfig {

@@ -106,6 +106,14 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			return common.FlagErrorf("--command append requires --content")
 		}
 	}
+
+	// Warn about <pre> blocks missing <code> children (silently dropped by API).
+	if runtime.Str("doc-format") == "xml" && content != "" && runtime.Factory != nil {
+		if warnings := validatePreTags(content); len(warnings) > 0 {
+			emitPreWarnings(runtime.IO().ErrOut, warnings)
+		}
+	}
+
 	return nil
 }
 
@@ -130,6 +138,17 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	data, err := doDocAPI(runtime, "PUT", apiPath, body)
 	if err != nil {
 		return err
+	}
+
+	// For block_insert_after and block_copy_insert_after, hint that users
+	// should fetch the document to discover newly created block IDs.
+	cmd := runtime.Str("command")
+	if (cmd == "block_insert_after" || cmd == "block_copy_insert_after" || cmd == "append") &&
+		common.GetString(data, "result") == "success" {
+		data["_hint"] = fmt.Sprintf(
+			"To discover newly inserted block IDs, fetch the document with: lark-cli docs +fetch --api-version v2 --doc %s --detail with-ids",
+			ref.Token,
+		)
 	}
 
 	runtime.OutRaw(data, nil)
