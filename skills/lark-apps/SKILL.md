@@ -37,9 +37,10 @@ metadata:
 
 ## 发布态与链接交付
 
+- 用户表达想要**可访问 / 线上 / 分享 / 新的链接（URL）/ 上线**，即是**发布意图**：先走下方发布链路、确认完成后再给链接。
 - 云端会话完成只代表本轮生成/迭代结束，不代表最新内容已经发布到线上。
 - `apps +list` 的 `is_published=true` 只代表该应用历史上存在发布版本；不能据此判断最新云端生成结果已部署。
-- 开发态链接只要拿到 `app_id` 就可以拼接：`https://miaoda.feishu.cn/app/{app_id}`。
+- 开发态链接只要拿到 `app_id` 就可以拼接：`https://miaoda.feishu.cn/app/{app_id}`；它**仅用于进入妙搭开发/编辑态，不能当作可访问/分享链接顶替发布**。
 - 发布态可访问链接只能在本轮发布已确认完成后给出：HTML 发布用 `+html-publish` 返回的 `data.url`；全栈发布用 `+release-get` 轮询，`finished` 时该命令输出已含 `online_url` 直接返回，`failed` 时该命令输出已含 `error_logs` 直接给出失败原因。
 
 ## 意图路由
