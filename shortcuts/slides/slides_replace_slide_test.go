@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // TestReplaceSlideBlockReplaceInjectsID is the core regression: users write
@@ -631,15 +631,15 @@ func TestReplaceSlide3350001ErrorEnrichment(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error for 3350001")
 			}
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-				t.Fatalf("expected ExitError with Detail, got %v", err)
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected a typed errs.* error, got %v", err)
 			}
-			if exitErr.Detail.Code != 3350001 {
-				t.Fatalf("expected code 3350001, got %d", exitErr.Detail.Code)
+			if p.Code != 3350001 {
+				t.Fatalf("expected code 3350001, got %d", p.Code)
 			}
-			if !strings.Contains(exitErr.Detail.Hint, tt.wantHint) {
-				t.Fatalf("hint = %q, want substring %q", exitErr.Detail.Hint, tt.wantHint)
+			if !strings.Contains(p.Hint, tt.wantHint) {
+				t.Fatalf("hint = %q, want substring %q", p.Hint, tt.wantHint)
 			}
 		})
 	}
@@ -670,17 +670,64 @@ func TestReplaceSlideNon3350001ErrorNotEnriched(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError, got %v", err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %v", err)
 	}
-	if exitErr.Detail.Code != 99991672 {
-		t.Fatalf("expected code 99991672, got %d", exitErr.Detail.Code)
+	if p.Code != 99991672 {
+		t.Fatalf("expected code 99991672, got %d", p.Code)
 	}
 	// Non-3350001 errors must not have the slides-specific hint attached.
 	// Assert the actual hint is not our 3350001 checklist, rather than a
 	// string the hint never emits.
-	if strings.Contains(exitErr.Detail.Hint, "common causes") {
-		t.Fatalf("non-3350001 error should not get slides-specific hint, got %q", exitErr.Detail.Hint)
+	if strings.Contains(p.Hint, "common causes") {
+		t.Fatalf("non-3350001 error should not get slides-specific hint, got %q", p.Hint)
+	}
+}
+
+// TestReplaceSlideValidationParam locks the structured Param on every
+// +replace-slide validation error, so callers route on the typed field
+// instead of parsing the message. Guards against a regression where the flag
+// tag is dropped from any of the --slide-id / --parts validation branches.
+func TestReplaceSlideValidationParam(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		slideID   string
+		parts     string
+		wantParam string
+	}{
+		{"slide-id empty", "", `[{"action":"block_insert","insertion":"<shape/>"}]`, "--slide-id"},
+		{"parts whitespace-only", "s", "   ", "--parts"},
+		{"parts invalid JSON", "s", "not-json", "--parts"},
+		{"parts non-string field", "s", `[{"action":123}]`, "--parts"},
+		{"parts empty array", "s", `[]`, "--parts"},
+		{"parts missing required field", "s", `[{"action":"block_insert"}]`, "--parts"},
+		{"parts str_replace rejected", "s", `[{"action":"str_replace","pattern":"a","replacement":"b"}]`, "--parts"},
+		{"parts unknown action", "s", `[{"action":"nuke","block_id":"b"}]`, "--parts"},
+		{"parts replacement without root", "s", `[{"action":"block_replace","block_id":"b","replacement":"plain text"}]`, "--parts"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesShortcut(t, f, stdout, SlidesReplaceSlide, []string{
+				"+replace-slide",
+				"--presentation", "pres_abc",
+				"--slide-id", tt.slideID,
+				"--parts", tt.parts,
+				"--as", "user",
+			})
+
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want *errs.ValidationError", err)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("Param = %q, want %q", ve.Param, tt.wantParam)
+			}
+		})
 	}
 }

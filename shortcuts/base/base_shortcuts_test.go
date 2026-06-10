@@ -577,6 +577,14 @@ func TestBaseJSONExamplesLiveInFlagDescriptions(t *testing.T) {
 		wantHelp []string
 	}{
 		{
+			name:     "base create fields",
+			shortcut: BaseBaseCreate,
+			wantHelp: []string{
+				`field JSON array for the first table schema; use with --table-name`,
+				`first table name for the custom first table schema; use with --fields`,
+			},
+		},
+		{
 			name:     "table create fields",
 			shortcut: BaseTableCreate,
 			wantHelp: []string{
@@ -983,6 +991,50 @@ func TestBaseTableValidate(t *testing.T) {
 	}
 	if err := BaseTableCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "name": "Orders", "fields": `[{"name":"Name","type":"text"}]`, "view": `{"name":"Main"}`}, nil, nil)); err != nil {
 		t.Fatalf("create validate err=%v", err)
+	}
+}
+
+func TestBaseCreateValidate(t *testing.T) {
+	ctx := context.Background()
+	if err := BaseBaseCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"name": "Demo", "table-name": "Tasks"}, nil, nil)); err != nil {
+		t.Fatalf("table-name-only should be valid, err=%v", err)
+	}
+	if err := BaseBaseCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"name": "Demo", "table-name": "Tasks", "fields": `[{"name":"Title","type":"text"}]`}, nil, nil)); err != nil {
+		t.Fatalf("create validate err=%v", err)
+	}
+}
+
+func TestBaseCreateTipsGuideFieldSchema(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseBaseCreate.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	for _, want := range []string{
+		"Before using --fields, read lark-base-field-json.md",
+		"do not invent field properties",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+}
+
+func TestBaseCreateScopesCoverFollowUpTableOperations(t *testing.T) {
+	requiredUserScopes := []string{
+		"base:app:create",
+		"base:table:read",
+		"base:table:create",
+		"base:table:update",
+		"base:table:delete",
+	}
+	if !reflect.DeepEqual(BaseBaseCreate.UserScopes, requiredUserScopes) {
+		t.Fatalf("UserScopes=%v want=%v", BaseBaseCreate.UserScopes, requiredUserScopes)
+	}
+
+	requiredBotScopes := append(append([]string{}, requiredUserScopes...), "docs:permission.member:create")
+	if !reflect.DeepEqual(BaseBaseCreate.BotScopes, requiredBotScopes) {
+		t.Fatalf("BotScopes=%v want=%v", BaseBaseCreate.BotScopes, requiredBotScopes)
 	}
 }
 

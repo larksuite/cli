@@ -12,20 +12,52 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func sheetsFlagParam(name string) string {
+	if strings.HasPrefix(name, "--") {
+		return name
+	}
+	return "--" + name
+}
+
+func sheetsInvalidParam(name, reason string) errs.InvalidParam {
+	return errs.InvalidParam{Name: sheetsFlagParam(name), Reason: reason}
+}
+
+func sheetsValidationForFlag(name, format string, args ...any) *errs.ValidationError {
+	return common.ValidationErrorf(format, args...).WithParam(sheetsFlagParam(name))
+}
+
+func sheetsValidationCauseForFlag(name string, cause error) *errs.ValidationError {
+	return common.ValidationErrorf("%v", cause).WithParam(sheetsFlagParam(name)).WithCause(cause)
+}
+
+// sheetsInputStatError wraps a local input-file stat/open failure as a typed
+// validation error tagged with the flag the path came from, so callers learn
+// which flag to fix. It reuses the shared common.WrapInputStatErrorTyped
+// classification and only adds the domain's flag param.
+func sheetsInputStatError(flag string, err error) error {
+	wrapped := common.WrapInputStatErrorTyped(err)
+	if v, ok := wrapped.(*errs.ValidationError); ok {
+		return v.WithParam(sheetsFlagParam(flag))
+	}
+	return wrapped
+}
 
 // resolveSpreadsheetToken applies the public --url / --spreadsheet-token XOR
 // pair shared by every sheets canonical shortcut and returns the resolved
 // token. Network-free, safe to call from Validate and DryRun.
 func resolveSpreadsheetToken(runtime *common.RuntimeContext) (string, error) {
-	if err := common.ExactlyOne(runtime, "url", "spreadsheet-token"); err != nil {
+	if err := common.ExactlyOneTyped(runtime, "url", "spreadsheet-token"); err != nil {
 		return "", err
 	}
 	if token := strings.TrimSpace(runtime.Str("spreadsheet-token")); token != "" {
 		if err := validate.RejectControlChars(token, "spreadsheet-token"); err != nil {
-			return "", common.FlagErrorf("%v", err)
+			return "", sheetsValidationCauseForFlag("spreadsheet-token", err)
 		}
 		return token, nil
 	}
@@ -33,10 +65,10 @@ func resolveSpreadsheetToken(runtime *common.RuntimeContext) (string, error) {
 	url := strings.TrimSpace(runtime.Str("url"))
 	token := extractSpreadsheetToken(url)
 	if token == "" || token == url {
-		return "", common.FlagErrorf("--url must be a spreadsheet URL like https://.../sheets/<token>")
+		return "", sheetsValidationForFlag("url", "--url must be a spreadsheet URL like https://.../sheets/<token>")
 	}
 	if err := validate.RejectControlChars(token, "url"); err != nil {
-		return "", common.FlagErrorf("%v", err)
+		return "", sheetsValidationCauseForFlag("url", err)
 	}
 	return token, nil
 }
@@ -64,18 +96,18 @@ func extractSpreadsheetToken(input string) string {
 // Returned tuple: (sheetID, sheetName). Exactly one is non-empty — callers
 // pass both through to the tool input; the server picks whichever fits.
 func resolveSheetSelector(runtime *common.RuntimeContext) (sheetID, sheetName string, err error) {
-	if err := common.ExactlyOne(runtime, "sheet-id", "sheet-name"); err != nil {
+	if err := common.ExactlyOneTyped(runtime, "sheet-id", "sheet-name"); err != nil {
 		return "", "", err
 	}
 	if id := strings.TrimSpace(runtime.Str("sheet-id")); id != "" {
 		if err := validate.RejectControlChars(id, "sheet-id"); err != nil {
-			return "", "", common.FlagErrorf("%v", err)
+			return "", "", sheetsValidationCauseForFlag("sheet-id", err)
 		}
 		return id, "", nil
 	}
 	name := strings.TrimSpace(runtime.Str("sheet-name"))
 	if err := validate.RejectControlChars(name, "sheet-name"); err != nil {
-		return "", "", common.FlagErrorf("%v", err)
+		return "", "", sheetsValidationCauseForFlag("sheet-name", err)
 	}
 	return "", name, nil
 }
@@ -116,18 +148,26 @@ func requireSheetSelector(sheetID, sheetName string) error {
 	sheetID = strings.TrimSpace(sheetID)
 	sheetName = strings.TrimSpace(sheetName)
 	if sheetID == "" && sheetName == "" {
-		return common.FlagErrorf("specify at least one of --sheet-id or --sheet-name")
+		return common.ValidationErrorf("specify at least one of --sheet-id or --sheet-name").
+			WithParams(
+				sheetsInvalidParam("sheet-id", "required; specify at least one"),
+				sheetsInvalidParam("sheet-name", "required; specify at least one"),
+			)
 	}
 	if sheetID != "" && sheetName != "" {
-		return common.FlagErrorf("--sheet-id and --sheet-name are mutually exclusive")
+		return common.ValidationErrorf("--sheet-id and --sheet-name are mutually exclusive").
+			WithParams(
+				sheetsInvalidParam("sheet-id", "mutually exclusive"),
+				sheetsInvalidParam("sheet-name", "mutually exclusive"),
+			)
 	}
 	if sheetID != "" {
 		if err := validate.RejectControlChars(sheetID, "sheet-id"); err != nil {
-			return common.FlagErrorf("%v", err)
+			return sheetsValidationCauseForFlag("sheet-id", err)
 		}
 	} else {
 		if err := validate.RejectControlChars(sheetName, "sheet-name"); err != nil {
-			return common.FlagErrorf("%v", err)
+			return sheetsValidationCauseForFlag("sheet-name", err)
 		}
 	}
 	return nil
@@ -152,15 +192,19 @@ func optionalSheetSelector(sheetID, sheetName, idFlagName, nameFlagName string) 
 	sheetID = strings.TrimSpace(sheetID)
 	sheetName = strings.TrimSpace(sheetName)
 	if sheetID != "" && sheetName != "" {
-		return common.FlagErrorf("--%s and --%s are mutually exclusive", idFlagName, nameFlagName)
+		return common.ValidationErrorf("--%s and --%s are mutually exclusive", idFlagName, nameFlagName).
+			WithParams(
+				sheetsInvalidParam(idFlagName, "mutually exclusive"),
+				sheetsInvalidParam(nameFlagName, "mutually exclusive"),
+			)
 	}
 	if sheetID != "" {
 		if err := validate.RejectControlChars(sheetID, idFlagName); err != nil {
-			return common.FlagErrorf("%v", err)
+			return sheetsValidationCauseForFlag(idFlagName, err)
 		}
 	} else if sheetName != "" {
 		if err := validate.RejectControlChars(sheetName, nameFlagName); err != nil {
-			return common.FlagErrorf("%v", err)
+			return sheetsValidationCauseForFlag(nameFlagName, err)
 		}
 	}
 	return nil
@@ -197,7 +241,7 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 	}
 	var out interface{}
 	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, common.FlagErrorf("--%s: invalid JSON: %v", name, err)
+		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 	}
 	// Schema-driven flag validation at the user-input boundary. Skips
 	// --properties (validated at the input-builder tail after enhance
@@ -216,11 +260,11 @@ func requireJSONObject(runtime flagView, name string) (map[string]interface{}, e
 		return nil, err
 	}
 	if v == nil {
-		return nil, common.FlagErrorf("--%s is required", name)
+		return nil, sheetsValidationForFlag(name, "--%s is required", name)
 	}
 	m, ok := v.(map[string]interface{})
 	if !ok {
-		return nil, common.FlagErrorf("--%s must be a JSON object", name)
+		return nil, sheetsValidationForFlag(name, "--%s must be a JSON object", name)
 	}
 	return m, nil
 }
@@ -232,11 +276,11 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 		return nil, err
 	}
 	if v == nil {
-		return nil, common.FlagErrorf("--%s is required", name)
+		return nil, sheetsValidationForFlag(name, "--%s is required", name)
 	}
 	a, ok := v.([]interface{})
 	if !ok {
-		return nil, common.FlagErrorf("--%s must be a JSON array", name)
+		return nil, sheetsValidationForFlag(name, "--%s must be a JSON array", name)
 	}
 	return a, nil
 }
@@ -293,7 +337,7 @@ func borderStylesFromFlag(runtime flagView) (map[string]interface{}, error) {
 	}
 	m, ok := v.(map[string]interface{})
 	if !ok {
-		return nil, common.FlagErrorf("--border-styles must be a JSON object")
+		return nil, sheetsValidationForFlag("border-styles", "--border-styles must be a JSON object")
 	}
 	return m, nil
 }
@@ -307,5 +351,10 @@ func requireAnyStyleFlag(runtime flagView) error {
 	if runtime.Str("border-styles") != "" {
 		return nil
 	}
-	return common.FlagErrorf("at least one style flag is required (e.g. --background-color, --font-weight, --border-styles)")
+	return common.ValidationErrorf("at least one style flag is required (e.g. --background-color, --font-weight, --border-styles)").
+		WithParams(
+			sheetsInvalidParam("background-color", "required; specify at least one style flag"),
+			sheetsInvalidParam("font-weight", "required; specify at least one style flag"),
+			sheetsInvalidParam("border-styles", "required; specify at least one style flag"),
+		)
 }

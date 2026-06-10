@@ -21,7 +21,6 @@ func TestCsvPutInput_RangeAliasForStartCell(t *testing.T) {
 		{"start-cell direct (unchanged)", map[string]interface{}{"csv": "a,b", "start-cell": "B2"}, "B2"},
 		{"range alias, single cell", map[string]interface{}{"csv": "a,b", "range": "B2"}, "B2"},
 		{"range alias collapses to top-left", map[string]interface{}{"csv": "a,b", "range": "A1:H17"}, "A1"},
-		{"start-cell wins when both set", map[string]interface{}{"csv": "a,b", "start-cell": "C3", "range": "A1:H17"}, "C3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -35,6 +34,21 @@ func TestCsvPutInput_RangeAliasForStartCell(t *testing.T) {
 				t.Errorf("start_cell = %q, want %q", got, tt.wantAnchor)
 			}
 		})
+	}
+}
+
+func TestCsvPutInput_RejectsStartCellAndRangeTogether(t *testing.T) {
+	fv := newMapFlagViewForCommand("+csv-put", map[string]interface{}{
+		"csv":        "a,b",
+		"start-cell": "C3",
+		"range":      "A1:H17",
+	})
+	_, err := csvPutInput(fv, "tok", "sid", "")
+	if err == nil {
+		t.Fatal("csvPutInput accepted both start-cell and range; want mutual-exclusion error")
+	}
+	if !strings.Contains(err.Error(), "--start-cell and --range are mutually exclusive") {
+		t.Errorf("error = %q, want it to mention start-cell/range mutual exclusion", err.Error())
 	}
 }
 

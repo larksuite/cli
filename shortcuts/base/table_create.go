@@ -24,7 +24,7 @@ var BaseTableCreate = common.Shortcut{
 	},
 	Tips: []string{
 		"Before using --fields, read lark-base-field-json.md or rely on the same field JSON shape used by +field-create; do not invent field properties.",
-		"The first --fields item replaces the default field.",
+		"The first --fields item becomes the primary field.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateTableCreate(runtime)

@@ -954,6 +954,8 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"shortcuts/drive/drive_search.go",
 		"shortcuts/mail/mail_send.go",
 		"shortcuts/okr/okr_progress_create.go",
+		"shortcuts/sheets/helpers.go",
+		"shortcuts/slides/slides_create.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_query.go",
 	}
@@ -1018,6 +1020,40 @@ func boom() {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/doc/docs_fetch_v2.go", src)
 	if len(v) != 2 {
 		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on doc path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSheetsPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/sheets/helpers.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on sheets path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSlidesPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/slides/slides_create.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on slides path, got %d: %+v", len(v), v)
 	}
 }
 

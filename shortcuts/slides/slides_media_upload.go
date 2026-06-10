@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -86,15 +86,15 @@ var SlidesMediaUpload = common.Shortcut{
 
 		stat, err := runtime.FileIO().Stat(filePath)
 		if err != nil {
-			return common.WrapInputStatError(err, "file not found")
+			return slidesInputStatError(err, "--file", "file not found")
 		}
 		if !stat.Mode().IsRegular() {
-			return output.ErrValidation("file must be a regular file: %s", filePath)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
 		}
 
 		if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-			return output.ErrValidation("file %s is %s, exceeds 20 MB limit for slides image upload",
-				filepath.Base(filePath), common.FormatSize(stat.Size()))
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "file %s is %s, exceeds 20 MB limit for slides image upload",
+				filepath.Base(filePath), common.FormatSize(stat.Size())).WithParam("--file")
 		}
 
 		fileName := filepath.Base(filePath)
@@ -124,7 +124,7 @@ var SlidesMediaUpload = common.Shortcut{
 // because the multipart upload API does not accept parent_type=slide_file.
 func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, presentationID string) (string, error) {
 	if fileSize > common.MaxDriveMediaUploadSinglePartSize {
-		return "", output.ErrValidation("file %s is %s, exceeds 20 MB limit for slides image upload",
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "file %s is %s, exceeds 20 MB limit for slides image upload",
 			fileName, common.FormatSize(fileSize))
 	}
 	parent := presentationID

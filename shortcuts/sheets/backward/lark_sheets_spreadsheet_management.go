@@ -13,8 +13,8 @@ import (
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -36,7 +36,7 @@ var SheetInfo = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		return nil
 	},
@@ -55,7 +55,7 @@ var SheetInfo = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 
-		spreadsheetData, err := runtime.CallAPI("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s", validate.EncodePathSegment(token)), nil, nil)
+		spreadsheetData, err := runtime.CallAPITyped("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s", validate.EncodePathSegment(token)), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -95,13 +95,13 @@ var SheetCreate = common.Shortcut{
 		if headersStr := runtime.Str("headers"); headersStr != "" {
 			var headers []interface{}
 			if err := json.Unmarshal([]byte(headersStr), &headers); err != nil {
-				return common.FlagErrorf("--headers invalid JSON, must be a 1D array")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--headers invalid JSON, must be a 1D array").WithParam("--headers")
 			}
 		}
 		if dataStr := runtime.Str("data"); dataStr != "" {
 			var rows [][]interface{}
 			if err := json.Unmarshal([]byte(dataStr), &rows); err != nil {
-				return common.FlagErrorf("--data invalid JSON, must be a 2D array")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data invalid JSON, must be a 2D array").WithParam("--data")
 			}
 		}
 		return nil
@@ -129,7 +129,7 @@ var SheetCreate = common.Shortcut{
 		if headersStr != "" {
 			var headers []interface{}
 			if err := json.Unmarshal([]byte(headersStr), &headers); err != nil {
-				return common.FlagErrorf("--headers invalid JSON, must be a 1D array")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--headers invalid JSON, must be a 1D array").WithParam("--headers")
 			}
 			if len(headers) > 0 {
 				allRows = append(allRows, any(headers))
@@ -139,7 +139,7 @@ var SheetCreate = common.Shortcut{
 		if dataStr != "" {
 			var rows []interface{}
 			if err := json.Unmarshal([]byte(dataStr), &rows); err != nil {
-				return common.FlagErrorf("--data invalid JSON, must be a 2D array")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data invalid JSON, must be a 2D array").WithParam("--data")
 			}
 			if len(rows) > 0 {
 				allRows = append(allRows, rows...)
@@ -151,7 +151,7 @@ var SheetCreate = common.Shortcut{
 			createData["folder_token"] = folderToken
 		}
 
-		data, err := runtime.CallAPI("POST", "/open-apis/sheets/v3/spreadsheets", nil, createData)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/sheets/v3/spreadsheets", nil, createData)
 		if err != nil {
 			return err
 		}
@@ -164,7 +164,7 @@ var SheetCreate = common.Shortcut{
 			if err != nil {
 				return err
 			}
-			if _, err := runtime.CallAPI("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_append", validate.EncodePathSegment(token)), nil, map[string]interface{}{
+			if _, err := runtime.CallAPITyped("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_append", validate.EncodePathSegment(token)), nil, map[string]interface{}{
 				"valueRange": map[string]interface{}{
 					"range":  appendRange,
 					"values": allRows,
@@ -211,8 +211,11 @@ var SheetExport = common.Shortcut{
 		if _, err := validateSheetManageToken(runtime); err != nil {
 			return err
 		}
+		if err := validateSheetExportOutputPath(runtime); err != nil {
+			return err
+		}
 		if runtime.Str("file-extension") == "csv" && strings.TrimSpace(runtime.Str("sheet-id")) == "" {
-			return common.FlagErrorf("--sheet-id is required when --file-extension is csv")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sheet-id is required when --file-extension is csv").WithParam("--sheet-id")
 		}
 		return nil
 	},
@@ -238,10 +241,8 @@ var SheetExport = common.Shortcut{
 		outputPath := runtime.Str("output-path")
 		sheetID := runtime.Str("sheet-id")
 
-		if outputPath != "" {
-			if _, err := runtime.ResolveSavePath(outputPath); err != nil {
-				return output.ErrValidation("unsafe output path: %s", err)
-			}
+		if err := validateSheetExportOutputPath(runtime); err != nil {
+			return err
 		}
 
 		exportData := map[string]interface{}{
@@ -253,7 +254,7 @@ var SheetExport = common.Shortcut{
 			exportData["sub_id"] = sheetID
 		}
 
-		data, err := runtime.CallAPI("POST", "/open-apis/drive/v1/export_tasks", nil, exportData)
+		data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, exportData)
 		if err != nil {
 			return err
 		}
@@ -280,7 +281,7 @@ var SheetExport = common.Shortcut{
 		}
 
 		if fileToken == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "export task timed out")
+			return errs.NewNetworkError(errs.SubtypeNetworkTimeout, "export task timed out").WithRetryable()
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Export complete: file_token=%s\n", fileToken)
@@ -298,7 +299,7 @@ var SheetExport = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/export_tasks/file/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return output.ErrNetwork("download failed: %s", err)
+			return wrapSheetsNetworkErr(err, "download failed: %s", err)
 		}
 		defer resp.Body.Close()
 
@@ -307,7 +308,7 @@ var SheetExport = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "io")
+			return common.WrapSaveErrorTyped(err)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)
@@ -320,4 +321,15 @@ var SheetExport = common.Shortcut{
 		}, nil)
 		return nil
 	},
+}
+
+func validateSheetExportOutputPath(runtime *common.RuntimeContext) error {
+	outputPath := strings.TrimSpace(runtime.Str("output-path"))
+	if outputPath == "" {
+		return nil
+	}
+	if _, err := runtime.ResolveSavePath(outputPath); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output-path").WithCause(err)
+	}
+	return nil
 }

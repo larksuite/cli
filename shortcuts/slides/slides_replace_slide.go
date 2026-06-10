@@ -6,11 +6,10 @@ package slides
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -58,7 +57,7 @@ var SlidesReplaceSlide = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("slide-id")) == "" {
-			return common.FlagErrorf("--slide-id cannot be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id cannot be empty").WithParam("--slide-id")
 		}
 		parts, err := parseReplaceParts(runtime.Str("parts"))
 		if err != nil {
@@ -153,7 +152,7 @@ var SlidesReplaceSlide = common.Shortcut{
 			"/open-apis/slides_ai/v1/xml_presentations/%s/slide/replace",
 			validate.EncodePathSegment(presentationID),
 		)
-		data, err := runtime.CallAPI("POST", url, query, body)
+		data, err := runtime.CallAPITyped("POST", url, query, body)
 		if err != nil {
 			return enrichSlidesReplaceError(err)
 		}
@@ -201,11 +200,11 @@ type replacePart struct {
 func parseReplaceParts(raw string) ([]replacePart, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return nil, common.FlagErrorf("--parts cannot be empty")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts cannot be empty").WithParam("--parts")
 	}
 	var decoded []map[string]interface{}
 	if err := json.Unmarshal([]byte(s), &decoded); err != nil {
-		return nil, common.FlagErrorf("--parts invalid JSON, must be an array of objects: %v", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts invalid JSON, must be an array of objects: %v", err).WithParam("--parts").WithCause(err)
 	}
 	out := make([]replacePart, 0, len(decoded))
 	for i, m := range decoded {
@@ -213,35 +212,35 @@ func parseReplaceParts(raw string) ([]replacePart, error) {
 		if v, ok := m["action"]; ok {
 			s, ok := v.(string)
 			if !ok {
-				return nil, common.FlagErrorf("--parts[%d].action must be a string", i)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].action must be a string", i).WithParam("--parts")
 			}
 			p.Action = s
 		}
 		if v, ok := m["replacement"]; ok {
 			s, ok := v.(string)
 			if !ok {
-				return nil, common.FlagErrorf("--parts[%d].replacement must be a string", i)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].replacement must be a string", i).WithParam("--parts")
 			}
 			p.Replacement = &s
 		}
 		if v, ok := m["block_id"]; ok {
 			s, ok := v.(string)
 			if !ok {
-				return nil, common.FlagErrorf("--parts[%d].block_id must be a string", i)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].block_id must be a string", i).WithParam("--parts")
 			}
 			p.BlockID = &s
 		}
 		if v, ok := m["insertion"]; ok {
 			s, ok := v.(string)
 			if !ok {
-				return nil, common.FlagErrorf("--parts[%d].insertion must be a string", i)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].insertion must be a string", i).WithParam("--parts")
 			}
 			p.Insertion = &s
 		}
 		if v, ok := m["insert_before_block_id"]; ok {
 			s, ok := v.(string)
 			if !ok {
-				return nil, common.FlagErrorf("--parts[%d].insert_before_block_id must be a string", i)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].insert_before_block_id must be a string", i).WithParam("--parts")
 			}
 			p.InsertBeforeBlockID = &s
 		}
@@ -261,17 +260,18 @@ const slides3350001Hint = "common causes: (1) block_id not found in current slid
 // enrichSlidesReplaceError attaches slides3350001Hint when the API returns
 // 3350001 (invalid param). Other error codes pass through untouched.
 func enrichSlidesReplaceError(err error) error {
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Code != larkCodeSlidesInvalidParam {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != larkCodeSlidesInvalidParam {
 		return err
 	}
 	// Only fall back to the generic checklist when no upstream hint is
 	// already attached — don't clobber a more specific hint set by the
-	// backend or an earlier wrapper.
-	if exitErr.Detail.Hint == "" {
-		exitErr.Detail.Hint = slides3350001Hint
+	// backend or an earlier wrapper. p points at the embedded Problem, so
+	// the mutation is reflected in the returned err.
+	if p.Hint == "" {
+		p.Hint = slides3350001Hint
 	}
-	return exitErr
+	return err
 }
 
 // validateReplaceParts enforces CLI-level invariants:
@@ -280,33 +280,33 @@ func enrichSlidesReplaceError(err error) error {
 //   - per-action required fields are present
 func validateReplaceParts(parts []replacePart) error {
 	if len(parts) == 0 {
-		return common.FlagErrorf("--parts must contain at least 1 item")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts must contain at least 1 item").WithParam("--parts")
 	}
 	if len(parts) > maxReplaceParts {
-		return common.FlagErrorf("--parts contains %d items, exceeds maximum of %d", len(parts), maxReplaceParts)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts contains %d items, exceeds maximum of %d", len(parts), maxReplaceParts).WithParam("--parts")
 	}
 	for i, p := range parts {
 		switch p.Action {
 		case "block_replace":
 			if p.BlockID == nil || strings.TrimSpace(*p.BlockID) == "" {
-				return common.FlagErrorf("--parts[%d] (block_replace) requires non-empty block_id", i)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_replace) requires non-empty block_id", i).WithParam("--parts")
 			}
 			if p.Replacement == nil || strings.TrimSpace(*p.Replacement) == "" {
-				return common.FlagErrorf("--parts[%d] (block_replace) requires non-empty replacement", i)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_replace) requires non-empty replacement", i).WithParam("--parts")
 			}
 		case "block_insert":
 			if p.Insertion == nil || strings.TrimSpace(*p.Insertion) == "" {
-				return common.FlagErrorf("--parts[%d] (block_insert) requires non-empty insertion", i)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] (block_insert) requires non-empty insertion", i).WithParam("--parts")
 			}
 		case "str_replace":
 			// Backend still accepts str_replace, but product decision is to
 			// force structural edits through the CLI. Block it up-front so
 			// users don't build tooling around an option we won't keep.
-			return common.FlagErrorf("--parts[%d] action %q is not supported by this shortcut; use block_replace or block_insert", i, p.Action)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] action %q is not supported by this shortcut; use block_replace or block_insert", i, p.Action).WithParam("--parts")
 		case "":
-			return common.FlagErrorf("--parts[%d].action is required", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].action is required", i).WithParam("--parts")
 		default:
-			return common.FlagErrorf("--parts[%d] unknown action %q, supported: block_replace, block_insert", i, p.Action)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d] unknown action %q, supported: block_replace, block_insert", i, p.Action).WithParam("--parts")
 		}
 	}
 	return nil
@@ -327,7 +327,7 @@ func injectBlockReplaceIDs(parts []replacePart) ([]map[string]interface{}, error
 		case "block_replace":
 			fixed, err := ensureXMLRootID(*p.Replacement, *p.BlockID)
 			if err != nil {
-				return nil, output.ErrValidation("--parts[%d].replacement: %v", i, err)
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--parts[%d].replacement: %v", i, err).WithParam("--parts").WithCause(err)
 			}
 			fixed = ensureShapeHasContent(fixed)
 			m["block_id"] = *p.BlockID

@@ -132,7 +132,7 @@ func parseBatchOperationsFlag(runtime *common.RuntimeContext) ([]interface{}, er
 		return nil, err
 	}
 	if v == nil {
-		return nil, common.FlagErrorf("--operations is required")
+		return nil, sheetsValidationForFlag("operations", "--operations is required")
 	}
 	if arr, ok := v.([]interface{}); ok {
 		return arr, nil
@@ -142,7 +142,7 @@ func parseBatchOperationsFlag(runtime *common.RuntimeContext) ([]interface{}, er
 			return ops, nil
 		}
 	}
-	return nil, common.FlagErrorf("--operations must be a JSON array (or { operations: [...] } envelope)")
+	return nil, sheetsValidationForFlag("operations", "--operations must be a JSON array (or { operations: [...] } envelope)")
 }
 
 // CellsBatchSetStyle stamps one style block across many sheet-prefixed
@@ -222,7 +222,7 @@ func cellsBatchSetStyleInput(runtime *common.RuntimeContext, token string) (map[
 		}
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
-			return nil, common.FlagErrorf("range %q: %v", rng, err)
+			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
@@ -386,7 +386,7 @@ var DropdownDelete = common.Shortcut{
 			return err
 		}
 		if len(ranges) > 100 {
-			return common.FlagErrorf("--ranges accepts at most 100 entries; got %d", len(ranges))
+			return sheetsValidationForFlag("ranges", "--ranges accepts at most 100 entries; got %d", len(ranges))
 		}
 		return nil
 	},
@@ -439,7 +439,7 @@ func dropdownBatchInput(runtime *common.RuntimeContext, token string, clear bool
 		}
 		rows, cols, err := rangeDimensions(sub)
 		if err != nil {
-			return nil, common.FlagErrorf("range %q: %v", rng, err)
+			return nil, sheetsValidationForFlag("range", "range %q: %v", rng, err)
 		}
 		cells := fillCellsMatrix(rows, cols, prototype)
 		ops = append(ops, map[string]interface{}{
@@ -471,21 +471,21 @@ func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
 	for i, v := range raw {
 		s, ok := v.(string)
 		if !ok {
-			return nil, common.FlagErrorf("--ranges[%d] must be a string", i)
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] must be a string", i)
 		}
 		s = strings.TrimSpace(s)
 		if !strings.Contains(s, "!") {
-			return nil, common.FlagErrorf("--ranges[%d] (%q) must include a sheet prefix", i, s)
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q) must include a sheet prefix", i, s)
 		}
 		// Validate the sheet!range shape up front so malformed entries like
 		// "!A1" (no sheet), "Sheet1!" (no range) or "Sheet1!bad" (bad ref) fail
 		// here at Validate instead of slipping through to DryRun/Execute.
 		_, sub, err := splitSheetPrefixedRange(s)
 		if err != nil {
-			return nil, common.FlagErrorf("--ranges[%d]: %v", i, err)
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d]: %v", i, err)
 		}
 		if _, _, err := rangeDimensions(sub); err != nil {
-			return nil, common.FlagErrorf("--ranges[%d] (%q): %v", i, s, err)
+			return nil, sheetsValidationForFlag("ranges", "--ranges[%d] (%q): %v", i, s, err)
 		}
 		out = append(out, s)
 	}
@@ -496,7 +496,7 @@ func validateDropdownRanges(runtime *common.RuntimeContext) ([]string, error) {
 func splitSheetPrefixedRange(rng string) (sheet, sub string, err error) {
 	idx := strings.Index(rng, "!")
 	if idx <= 0 || idx == len(rng)-1 {
-		return "", "", common.FlagErrorf("range %q must use sheet!range form", rng)
+		return "", "", sheetsValidationForFlag("range", "range %q must use sheet!range form", rng)
 	}
 	return strings.TrimSpace(rng[:idx]), strings.TrimSpace(rng[idx+1:]), nil
 }

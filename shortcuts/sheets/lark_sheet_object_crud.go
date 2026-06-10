@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -251,7 +251,7 @@ func objectUpdateInput(runtime flagView, token, sheetID, sheetName string, spec 
 		return nil, err
 	}
 	if spec.idFlag != "" && strings.TrimSpace(runtime.Str(spec.idFlag)) == "" {
-		return nil, common.FlagErrorf("--%s is required", spec.idFlag)
+		return nil, sheetsValidationForFlag(spec.idFlag, "--%s is required", spec.idFlag)
 	}
 	props, err := requireJSONObject(runtime, "properties")
 	if err != nil {
@@ -335,7 +335,7 @@ func objectDeleteInput(runtime flagView, token, sheetID, sheetName string, spec 
 		return nil, err
 	}
 	if spec.idFlag != "" && strings.TrimSpace(runtime.Str(spec.idFlag)) == "" {
-		return nil, common.FlagErrorf("--%s is required", spec.idFlag)
+		return nil, sheetsValidationForFlag(spec.idFlag, "--%s is required", spec.idFlag)
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -517,16 +517,16 @@ func validateSparklineUpdateItems(input map[string]interface{}) error {
 	}
 	arr, ok := raw.([]interface{})
 	if !ok {
-		return common.FlagErrorf("+sparkline-update properties.sparklines must be an array")
+		return sheetsValidationForFlag("properties", "+sparkline-update properties.sparklines must be an array")
 	}
 	for i, item := range arr {
 		m, _ := item.(map[string]interface{})
 		if m == nil {
-			return common.FlagErrorf("+sparkline-update properties.sparklines[%d] must be an object", i)
+			return sheetsValidationForFlag("properties", "+sparkline-update properties.sparklines[%d] must be an object", i)
 		}
 		id, _ := m["sparkline_id"].(string)
 		if strings.TrimSpace(id) == "" {
-			return common.FlagErrorf("+sparkline-update properties.sparklines[%d] missing sparkline_id (run `+sparkline-list --group-id <id>` first to read sparkline_id for each item, then echo each id back on the corresponding update entry)", i)
+			return sheetsValidationForFlag("properties", "+sparkline-update properties.sparklines[%d] missing sparkline_id (run `+sparkline-list --group-id <id>` first to read sparkline_id for each item, then echo each id back on the corresponding update entry)", i)
 		}
 	}
 	return nil
@@ -595,20 +595,44 @@ func floatImageProperties(runtime flagView, uploadedImageToken string, requireIm
 		}
 	}
 	if set == 0 && requireImageSource {
-		return nil, common.FlagErrorf("one of --image, --image-token, or --image-uri is required")
+		return nil, common.ValidationErrorf("one of --image, --image-token, or --image-uri is required").WithParams(sheetsInvalidParam("image", "required; specify one"), sheetsInvalidParam("image-token", "required; specify one"), sheetsInvalidParam("image-uri", "required; specify one"))
 	}
 	if set > 1 {
-		return nil, common.FlagErrorf("--image, --image-token, and --image-uri are mutually exclusive")
+		params := make([]errs.InvalidParam, 0, 3)
+		if img != "" {
+			params = append(params, sheetsInvalidParam("image", "mutually exclusive"))
+		}
+		if token != "" {
+			params = append(params, sheetsInvalidParam("image-token", "mutually exclusive"))
+		}
+		if uri != "" {
+			params = append(params, sheetsInvalidParam("image-uri", "mutually exclusive"))
+		}
+		return nil, common.ValidationErrorf("--image, --image-token, and --image-uri are mutually exclusive").WithParams(params...)
 	}
 	name := floatImageName(runtime)
 	if name == "" {
-		return nil, common.FlagErrorf("--image-name is required")
+		return nil, sheetsValidationForFlag("image-name", "--image-name is required")
 	}
 	if !runtime.Changed("position-row") || !runtime.Changed("position-col") {
-		return nil, common.FlagErrorf("--position-row and --position-col are required")
+		params := make([]errs.InvalidParam, 0, 2)
+		if !runtime.Changed("position-row") {
+			params = append(params, sheetsInvalidParam("position-row", "required"))
+		}
+		if !runtime.Changed("position-col") {
+			params = append(params, sheetsInvalidParam("position-col", "required"))
+		}
+		return nil, common.ValidationErrorf("--position-row and --position-col are required").WithParams(params...)
 	}
 	if !runtime.Changed("size-width") || !runtime.Changed("size-height") {
-		return nil, common.FlagErrorf("--size-width and --size-height are required")
+		params := make([]errs.InvalidParam, 0, 2)
+		if !runtime.Changed("size-width") {
+			params = append(params, sheetsInvalidParam("size-width", "required"))
+		}
+		if !runtime.Changed("size-height") {
+			params = append(params, sheetsInvalidParam("size-height", "required"))
+		}
+		return nil, common.ValidationErrorf("--size-width and --size-height are required").WithParams(params...)
 	}
 	props := map[string]interface{}{
 		"image_name": name,
@@ -626,7 +650,9 @@ func floatImageProperties(runtime flagView, uploadedImageToken string, requireIm
 		// Local file: validate path safety here so --dry-run also rejects
 		// unsafe paths; Execute uploads it and passes the real token in.
 		if _, err := validate.SafeLocalFlagPath("--image", img); err != nil {
-			return nil, output.ErrValidation("%s", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).
+				WithParam("--image").
+				WithCause(err)
 		}
 		if uploadedImageToken != "" {
 			props["image_token"] = uploadedImageToken
@@ -746,7 +772,7 @@ func uploadFloatImageIfLocal(runtime *common.RuntimeContext, spreadsheetToken st
 	}
 	info, err := runtime.FileIO().Stat(img)
 	if err != nil {
-		return "", common.WrapInputStatError(err)
+		return "", sheetsInputStatError("image", err)
 	}
 	return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 		FilePath:   img,
@@ -762,7 +788,7 @@ func floatImageWriteInput(runtime flagView, token, sheetID, sheetName, op string
 		return nil, err
 	}
 	if withIDFlag && strings.TrimSpace(runtime.Str("float-image-id")) == "" {
-		return nil, common.FlagErrorf("--float-image-id is required")
+		return nil, sheetsValidationForFlag("float-image-id", "--float-image-id is required")
 	}
 	props, err := floatImageProperties(runtime, uploadedImageToken, op == "create")
 	if err != nil {
@@ -882,7 +908,7 @@ func filterCreateInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	props := map[string]interface{}{
 		"range": strings.TrimSpace(runtime.Str("range")),
@@ -957,10 +983,10 @@ func filterUpdateInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, common.FlagErrorf("+filter-update requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-update requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	props, err := requireJSONObject(runtime, "properties")
 	if err != nil {
@@ -1031,7 +1057,7 @@ func filterDeleteInput(runtime flagView, token, sheetID, sheetName string) (map[
 		return nil, err
 	}
 	if sheetID == "" {
-		return nil, common.FlagErrorf("+filter-delete requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
+		return nil, sheetsValidationForFlag("sheet-id", "+filter-delete requires --sheet-id (filter_id must equal sheet_id; --sheet-name needs a network lookup unavailable here — call +workbook-info first or pass --sheet-id directly)")
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,

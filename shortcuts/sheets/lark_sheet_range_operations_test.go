@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -16,34 +16,35 @@ func TestAnnotateEmbeddedBlockClearErr(t *testing.T) {
 	t.Parallel()
 
 	t.Run("adds pivot-delete hint on embedded-block error", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{
-			Type:    "api",
-			Message: `tool "clear_cell_range" failed: [500] can not find embedded block`,
-		}}
-		var ee *output.ExitError
-		if !errors.As(annotateEmbeddedBlockClearErr(in), &ee) || ee.Detail == nil {
-			t.Fatal("expected ExitError with detail")
+		in := errs.NewAPIError(errs.SubtypeServerError, `tool "clear_cell_range" failed: [500] can not find embedded block`)
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
 		}
-		if !strings.Contains(ee.Detail.Hint, "+pivot-delete") {
-			t.Errorf("hint should point at +pivot-delete, got %q", ee.Detail.Hint)
+		if !strings.Contains(p.Hint, "+pivot-delete") {
+			t.Errorf("hint should point at +pivot-delete, got %q", p.Hint)
 		}
 	})
 
 	t.Run("appends to existing hint", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{
-			Message: "embedded block missing", Hint: "preexisting",
-		}}
-		out := annotateEmbeddedBlockClearErr(in).(*output.ExitError)
-		if !strings.HasPrefix(out.Detail.Hint, "preexisting; ") {
-			t.Errorf("existing hint should be preserved and appended, got %q", out.Detail.Hint)
+		in := errs.NewAPIError(errs.SubtypeServerError, "embedded block missing").WithHint("preexisting")
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
+		}
+		if !strings.HasPrefix(p.Hint, "preexisting; ") {
+			t.Errorf("existing hint should be preserved and appended, got %q", p.Hint)
 		}
 	})
 
-	t.Run("passes through unrelated ExitError untouched", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{Message: "some other failure"}}
-		out := annotateEmbeddedBlockClearErr(in).(*output.ExitError)
-		if out.Detail.Hint != "" {
-			t.Errorf("unrelated error should not gain a hint, got %q", out.Detail.Hint)
+	t.Run("passes through unrelated typed error untouched", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeServerError, "some other failure")
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
+		}
+		if p.Hint != "" {
+			t.Errorf("unrelated error should not gain a hint, got %q", p.Hint)
 		}
 	})
 

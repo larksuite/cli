@@ -23,6 +23,7 @@
 3. `docs +create --api-version v2` **只建骨架**：标题 + 开头 `<callout>` + 各级标题 + 每节一句占位摘要
    - ⚠️ **不要**一次性把完整章节内容塞进 `--content`。超长 `--content` 容易触发字符/参数限制。
    - 完整内容留到第二波，由各 Agent 用 `block_insert_after --block-id <章节标题 block_id>` 分段写入。
+   - ⚠️ **`@file` 路径限制**：`--content @file` 只接受当前工作目录下的相对路径，传绝对路径（如 `@/tmp/xxx.md`）会报 `unsafe file path`。需要落盘时，将文件写在 cwd 下，用完自行清理。
 
 ### 第二波 — 内容撰写（并行 Agent）
 

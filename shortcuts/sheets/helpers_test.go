@@ -6,11 +6,13 @@ package sheets
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -77,6 +79,71 @@ func runShortcutWithStubs(t *testing.T, sc common.Shortcut, args []string, stubs
 	parent.SetArgs(append([]string{sc.Command}, args...))
 	err := parent.Execute()
 	return stdout.String(), err
+}
+
+func TestSheetHelpersValidationMetadata(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing sheet selector reports both params", func(t *testing.T) {
+		t.Parallel()
+		err := requireSheetSelector("", "")
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+		}
+		if len(validationErr.Params) != 2 {
+			t.Fatalf("params = %#v, want two structured params", validationErr.Params)
+		}
+		if validationErr.Params[0].Name != "--sheet-id" || validationErr.Params[1].Name != "--sheet-name" {
+			t.Fatalf("params = %#v, want --sheet-id/--sheet-name", validationErr.Params)
+		}
+	})
+
+	t.Run("spreadsheet url shape reports url param", func(t *testing.T) {
+		t.Parallel()
+		cmd := &cobra.Command{Use: "sheets"}
+		cmd.Flags().String("url", "not-a-sheet-url", "")
+		cmd.Flags().String("spreadsheet-token", "", "")
+		_, err := resolveSpreadsheetToken(common.TestNewRuntimeContext(cmd, testConfig(t)))
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+		}
+		if validationErr.Param != "--url" {
+			t.Fatalf("param = %q, want --url", validationErr.Param)
+		}
+	})
+
+	t.Run("sheet selector control char keeps param and cause", func(t *testing.T) {
+		t.Parallel()
+		err := requireSheetSelector("bad\x00id", "")
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+		}
+		if validationErr.Param != "--sheet-id" {
+			t.Fatalf("param = %q, want --sheet-id", validationErr.Param)
+		}
+		if validationErr.Unwrap() == nil {
+			t.Fatalf("expected control-char validation cause to be preserved")
+		}
+	})
+
+	t.Run("invalid json flag keeps param and cause", func(t *testing.T) {
+		t.Parallel()
+		fv := newMapFlagViewForCommand("+cells-set", map[string]interface{}{"cells": "{"})
+		_, err := parseJSONFlag(fv, "cells")
+		var validationErr *errs.ValidationError
+		if !errors.As(err, &validationErr) {
+			t.Fatalf("error = %T %v, want *errs.ValidationError", err, err)
+		}
+		if validationErr.Param != "--cells" {
+			t.Fatalf("param = %q, want --cells", validationErr.Param)
+		}
+		if validationErr.Unwrap() == nil {
+			t.Fatalf("expected JSON parse cause to be preserved")
+		}
+	})
 }
 
 // parseDryRunBody runs the shortcut in --dry-run and returns the first

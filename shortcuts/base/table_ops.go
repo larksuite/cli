@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -29,10 +30,12 @@ func dryRunTableGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 }
 
 func dryRunTableCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-	return common.NewDryRunAPI().
+	body := dryRunTableCreateBody(runtime, runtime.Str("name"))
+	d := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables").
-		Body(map[string]interface{}{"name": runtime.Str("name")}).
+		Body(body).
 		Set("base_token", runtime.Str("base-token"))
+	return d
 }
 
 func dryRunTableUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -96,43 +99,21 @@ func executeTableGet(runtime *common.RuntimeContext) error {
 
 func executeTableCreate(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
-	created, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables"), nil, map[string]interface{}{"name": runtime.Str("name")})
+	pc := newParseCtx(runtime)
+	body, err := buildTableCreateBody(runtime, pc, runtime.Str("name"))
+	if err != nil {
+		return err
+	}
+	created, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables"), nil, body)
 	if err != nil {
 		return err
 	}
 	result := map[string]interface{}{"table": created}
 	tableIDValue := tableID(created)
-	pc := newParseCtx(runtime)
 	if tableIDValue != "" && runtime.Str("fields") != "" {
-		fieldItems, err := parseJSONArray(pc, runtime.Str("fields"), "fields")
-		if err != nil {
-			return err
+		if fields, ok := created["fields"]; ok {
+			result["fields"] = fields
 		}
-		defaultFields, err := listEveryField(runtime, baseToken, tableIDValue)
-		if err != nil {
-			return err
-		}
-		createdFields := []interface{}{}
-		for idx, item := range fieldItems {
-			body, ok := item.(map[string]interface{})
-			if !ok {
-				return baseValidationErrorf("--fields item %d must be an object", idx+1)
-			}
-			if idx == 0 && len(defaultFields) > 0 {
-				fieldData, err := baseV3Call(runtime, "PUT", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldID(defaultFields[0])), nil, body)
-				if err != nil {
-					return err
-				}
-				createdFields = append(createdFields, fieldData)
-				continue
-			}
-			fieldData, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields"), nil, body)
-			if err != nil {
-				return err
-			}
-			createdFields = append(createdFields, fieldData)
-		}
-		result["fields"] = createdFields
 	}
 	if tableIDValue != "" && runtime.Str("view") != "" {
 		viewItems, err := parseObjectList(pc, runtime.Str("view"), "view")
@@ -151,6 +132,40 @@ func executeTableCreate(runtime *common.RuntimeContext) error {
 	}
 	runtime.Out(result, nil)
 	return nil
+}
+
+func buildTableCreateBody(runtime *common.RuntimeContext, pc *parseCtx, tableName string) (map[string]interface{}, error) {
+	body := map[string]interface{}{"name": tableName}
+	if strings.TrimSpace(runtime.Str("fields")) == "" {
+		return body, nil
+	}
+	fieldItems, err := parseJSONArray(pc, runtime.Str("fields"), "fields")
+	if err != nil {
+		return nil, err
+	}
+	for idx, item := range fieldItems {
+		if _, ok := item.(map[string]interface{}); !ok {
+			return nil, baseValidationErrorf("--fields item %d must be an object", idx+1)
+		}
+	}
+	if len(fieldItems) > 0 {
+		body["fields"] = fieldItems
+	}
+	return body, nil
+}
+
+func dryRunTableCreateBody(runtime *common.RuntimeContext, tableName string) map[string]interface{} {
+	body := map[string]interface{}{"name": tableName}
+	if strings.TrimSpace(runtime.Str("fields")) == "" {
+		return body
+	}
+	fieldItems, err := parseJSONArray(newParseCtx(runtime), runtime.Str("fields"), "fields")
+	if err != nil {
+		body["fields"] = "<invalid_fields_json>"
+		return body
+	}
+	body["fields"] = fieldItems
+	return body
 }
 
 func listEveryField(runtime *common.RuntimeContext, baseToken, tableID string) ([]map[string]interface{}, error) {

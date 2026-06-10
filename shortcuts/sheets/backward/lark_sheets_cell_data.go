@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -15,10 +16,10 @@ import (
 func parseValues2DJSON(raw string) ([][]interface{}, error) {
 	var rows [][]interface{}
 	if err := json.Unmarshal([]byte(raw), &rows); err != nil {
-		return nil, common.FlagErrorf("--values invalid JSON, must be a 2D array")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--values invalid JSON, must be a 2D array").WithParam("--values")
 	}
 	if rows == nil {
-		return nil, common.FlagErrorf("--values invalid JSON, must be a 2D array")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--values invalid JSON, must be a 2D array").WithParam("--values")
 	}
 	return rows, nil
 }
@@ -46,7 +47,7 @@ var SheetRead = common.Shortcut{
 		}
 		if r := runtime.Str("range"); r != "" {
 			if rangeSheetID, _, ok := splitSheetRange(r); ok && runtime.Str("sheet-id") != "" && rangeSheetID != runtime.Str("sheet-id") {
-				return common.FlagErrorf("--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id"))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id")).WithParam("--range")
 			}
 		}
 		return nil
@@ -90,7 +91,7 @@ var SheetRead = common.Shortcut{
 			params["valueRenderOption"] = renderOption
 		}
 
-		data, err := runtime.CallAPI("GET", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values/%s", validate.EncodePathSegment(token), validate.EncodePathSegment(readRange)), params, nil)
+		data, err := runtime.CallAPITyped("GET", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values/%s", validate.EncodePathSegment(token), validate.EncodePathSegment(readRange)), params, nil)
 		if err != nil {
 			return err
 		}
@@ -167,7 +168,7 @@ var SheetWrite = common.Shortcut{
 			writeRange = normalizeWriteRange(runtime.Str("sheet-id"), writeRange, values)
 		}
 
-		data, err := runtime.CallAPI("PUT", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values", validate.EncodePathSegment(token)), nil, map[string]interface{}{
+		data, err := runtime.CallAPITyped("PUT", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values", validate.EncodePathSegment(token)), nil, map[string]interface{}{
 			"valueRange": map[string]interface{}{
 				"range":  writeRange,
 				"values": values,
@@ -247,7 +248,7 @@ var SheetAppend = common.Shortcut{
 			appendRange = normalizePointRange(runtime.Str("sheet-id"), appendRange)
 		}
 
-		data, err := runtime.CallAPI("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_append", validate.EncodePathSegment(token)), nil, map[string]interface{}{
+		data, err := runtime.CallAPITyped("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_append", validate.EncodePathSegment(token)), nil, map[string]interface{}{
 			"valueRange": map[string]interface{}{
 				"range":  appendRange,
 				"values": values,
@@ -288,7 +289,7 @@ var SheetFind = common.Shortcut{
 		}
 		if r := runtime.Str("range"); r != "" {
 			if rangeSheetID, _, ok := splitSheetRange(r); ok && runtime.Str("sheet-id") != "" && rangeSheetID != runtime.Str("sheet-id") {
-				return common.FlagErrorf("--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id"))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id")).WithParam("--range")
 			}
 		}
 		return nil
@@ -336,7 +337,7 @@ var SheetFind = common.Shortcut{
 			"find":           findText,
 		}
 
-		data, err := runtime.CallAPI("POST", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/%s/find", validate.EncodePathSegment(token), validate.EncodePathSegment(sheetID)), nil, reqData)
+		data, err := runtime.CallAPITyped("POST", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/%s/find", validate.EncodePathSegment(token), validate.EncodePathSegment(sheetID)), nil, reqData)
 		if err != nil {
 			return err
 		}
@@ -373,7 +374,7 @@ var SheetReplace = common.Shortcut{
 		}
 		if r := runtime.Str("range"); r != "" {
 			if rangeSheetID, _, ok := splitSheetRange(r); ok && runtime.Str("sheet-id") != "" && rangeSheetID != runtime.Str("sheet-id") {
-				return common.FlagErrorf("--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id"))
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range sheet ID %q does not match --sheet-id %q", rangeSheetID, runtime.Str("sheet-id")).WithParam("--range")
 			}
 		}
 		return nil
@@ -415,7 +416,7 @@ var SheetReplace = common.Shortcut{
 			findCondition["range"] = normalizeSheetRange(sheetID, runtime.Str("range"))
 		}
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/%s/replace",
 				validate.EncodePathSegment(token),
 				validate.EncodePathSegment(sheetID),
