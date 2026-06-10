@@ -117,6 +117,23 @@ func TestBuildSignedJWT_AlgMismatch(t *testing.T) {
 	}
 }
 
+func TestBuildSignedJWT_MarshalErrors(t *testing.T) {
+	f := newFakeSigner(t)
+	ctx := context.Background()
+
+	_, err := buildSignedJWT(ctx, f, keysigner.KeyRef{}, keysigner.AlgES256,
+		map[string]any{"bad": func() {}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "jwt: marshal header") {
+		t.Fatalf("header marshal error = %v, want prefix %q", err, "jwt: marshal header")
+	}
+
+	_, err = buildSignedJWT(ctx, f, keysigner.KeyRef{}, keysigner.AlgES256,
+		nil, map[string]any{"bad": make(chan int)})
+	if err == nil || !strings.Contains(err.Error(), "jwt: marshal claims") {
+		t.Fatalf("claims marshal error = %v, want prefix %q", err, "jwt: marshal claims")
+	}
+}
+
 func TestSignClientAssertion(t *testing.T) {
 	f := newFakeSigner(t)
 	now := time.Unix(1700000000, 0)
