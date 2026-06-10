@@ -110,3 +110,37 @@ func TestRenderPostElem(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderPostElemEmotionStyleMd covers the 3 gaps closed in design §字段补全:
+// emotion -> :emoji_type:, text.style -> Markdown emphasis (composable),
+// md -> raw passthrough, while unknown tags keep the default text fallback.
+func TestRenderPostElemEmotionStyleMd(t *testing.T) {
+	tests := []struct {
+		name string
+		el   map[string]interface{}
+		want string
+	}{
+		{name: "emotion", el: map[string]interface{}{"tag": "emotion", "emoji_type": "SMILE"}, want: ":SMILE:"},
+		{name: "emotion empty", el: map[string]interface{}{"tag": "emotion"}, want: ""},
+		{name: "md passthrough", el: map[string]interface{}{"tag": "md", "text": "# Heading\n- item"}, want: "# Heading\n- item"},
+		{name: "style bold", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"bold"}}, want: "**hi**"},
+		{name: "style italic", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"italic"}}, want: "*hi*"},
+		{name: "style underline", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"underline"}}, want: "<u>hi</u>"},
+		{name: "style lineThrough", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"lineThrough"}}, want: "~~hi~~"},
+		{name: "style composable bold+lineThrough", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"bold", "lineThrough"}}, want: "~~**hi**~~"},
+		// bold+italic collapses to ***hi*** (CommonMark-valid), not *(**hi**)*.
+		{name: "style composable bold+italic", el: map[string]interface{}{"tag": "text", "text": "hi", "style": []interface{}{"bold", "italic"}}, want: "***hi***"},
+		{name: "style empty no wrap", el: map[string]interface{}{"tag": "text", "text": "plain", "style": []interface{}{}}, want: "plain"},
+		{name: "link with style", el: map[string]interface{}{"tag": "a", "text": "doc", "href": "https://example.com", "style": []interface{}{"bold"}}, want: "**[doc](https://example.com)**"},
+		{name: "mention with style", el: map[string]interface{}{"tag": "at", "user_name": "Alice", "style": []interface{}{"italic"}}, want: "*@Alice*"},
+		{name: "unknown tag default", el: map[string]interface{}{"tag": "weird", "text": "fallback"}, want: "fallback"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := renderPostElem(tt.el); got != tt.want {
+				t.Fatalf("renderPostElem(%s) = %q, want %q", tt.name, got, tt.want)
+			}
+		})
+	}
+}

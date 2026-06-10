@@ -86,32 +86,55 @@ func unwrapPostLocale(parsed map[string]interface{}) map[string]interface{} {
 	return nil
 }
 
+// renderPostElem renders a single post (rich-text) element to its inline text
+// form: text/a/at carry their content through applyPostStyle for text.style
+// Markdown emphasis, emotion becomes :emoji_type:, md is passed through raw,
+// and unknown tags fall back to the element's text.
 func renderPostElem(el map[string]interface{}) string {
 	tag, _ := el["tag"].(string)
 	switch tag {
 	case "text":
 		text, _ := el["text"].(string)
-		return text
+		return applyPostStyle(text, el["style"])
 	case "a":
 		text, _ := el["text"].(string)
 		href, _ := el["href"].(string)
-		if href != "" && text != "" {
-			return fmt.Sprintf("[%s](%s)", escapeMDLinkText(text), href)
+		var rendered string
+		switch {
+		case href != "" && text != "":
+			rendered = fmt.Sprintf("[%s](%s)", escapeMDLinkText(text), href)
+		case href != "":
+			rendered = href
+		default:
+			rendered = text
 		}
-		if href != "" {
-			return href
-		}
-		return text
+		return applyPostStyle(rendered, el["style"])
 	case "at":
 		userId, _ := el["user_id"].(string)
-		if userId == "@_all" || userId == "all" {
-			return "@all"
+		var rendered string
+		switch {
+		case userId == "@_all" || userId == "all":
+			rendered = "@all"
+		default:
+			if name, _ := el["user_name"].(string); name != "" {
+				rendered = "@" + name
+			} else {
+				rendered = "@" + userId
+			}
 		}
-		name, _ := el["user_name"].(string)
-		if name != "" {
-			return "@" + name
+		return applyPostStyle(rendered, el["style"])
+	case "emotion":
+		// Deliberately not routed through applyPostStyle: an emoji shortcode is
+		// an atomic token, not prose, so bold/italic/strike emphasis around
+		// ":emoji:" would be meaningless (and emotion elements don't carry style).
+		emoji, _ := el["emoji_type"].(string)
+		if emoji == "" {
+			return ""
 		}
-		return "@" + userId
+		return ":" + emoji + ":"
+	case "md":
+		text, _ := el["text"].(string)
+		return text
 	case "img":
 		key, _ := el["image_key"].(string)
 		if key != "" {
@@ -137,4 +160,39 @@ func renderPostElem(el map[string]interface{}) string {
 		text, _ := el["text"].(string)
 		return text
 	}
+}
+
+// applyPostStyle wraps text with Markdown emphasis per the post element's
+// style array (bold/italic/underline/lineThrough). Styles compose from inner
+// to outer in a fixed order so output is deterministic; empty text or no
+// styles pass through unchanged.
+func applyPostStyle(text string, raw interface{}) string {
+	if text == "" {
+		return text
+	}
+	styles, _ := raw.([]interface{})
+	if len(styles) == 0 {
+		return text
+	}
+	has := func(name string) bool {
+		for _, s := range styles {
+			if v, _ := s.(string); v == name {
+				return true
+			}
+		}
+		return false
+	}
+	if has("bold") {
+		text = "**" + text + "**"
+	}
+	if has("italic") {
+		text = "*" + text + "*"
+	}
+	if has("underline") {
+		text = "<u>" + text + "</u>"
+	}
+	if has("lineThrough") {
+		text = "~~" + text + "~~"
+	}
+	return text
 }

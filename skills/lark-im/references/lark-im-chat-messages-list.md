@@ -4,7 +4,7 @@
 
 Fetch the message list for a conversation. Supports both group chats and direct messages.
 
-By default the response carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Thread replies expanded via auto-`thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+By default the response carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Thread replies expanded via auto-`thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
 This skill maps to the shortcut: `lark-cli im +chat-messages-list` (internally calls `GET /open-apis/im/v1/messages`, and automatically resolves the p2p chat_id when needed).
 
@@ -44,21 +44,26 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--sort <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
 | `--page-token <token>` | No | Pagination token |
+| `--no-reactions` | No | Skip auto-fetching the `reactions` block |
+| `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `[Image: img_xxx]`; files and videos are rendered with resource keys in the content. Resource binaries are **not** downloaded automatically by this command.
+Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `[Image: img_xxx]`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
 
-Use [lark-im-messages-resources-download](lark-im-messages-resources-download.md) when you need to download an image or file from a specific message.
+Two ways to get the binaries:
+- **In one pass:** add `--download-resources` to this command — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
+- **One at a time:** use [lark-im-messages-resources-download](lark-im-messages-resources-download.md).
 
 | Resource Type | Marker in Content | Behavior |
 |---------|-------------|------|
-| Image | `[Image: img_xxx]` | Download manually with `im +messages-resources-download --type image` |
-| File | `<file key="file_xxx" .../>` | Download manually with `im +messages-resources-download --type file` |
-| Audio | `<audio key="file_xxx" .../>` | Download manually with `im +messages-resources-download --type file` |
-| Video | `<video key="file_xxx" .../>` | Download manually with `im +messages-resources-download --type file` |
+| Image | `[Image: img_xxx]` | `--download-resources`, or manually `im +messages-resources-download --type image` |
+| File | `<file key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
+| Audio | `<audio key="file_xxx" duration="Xs"/>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
+| Video | `<video key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
+| Sticker | `[Sticker]` | Not downloadable (Feishu does not support fetching sticker resources) |
 
 ## Thread Expansion (`thread_id`)
 
