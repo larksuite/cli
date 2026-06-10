@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -447,6 +448,36 @@ func TestRequestAppRegistrationInit_ErrorOnMissingNonce(t *testing.T) {
 	}
 }
 
+// TestRequestAppRegistrationInit_EmptySupportedAuthMethods covers the older-server
+// back-compat path: an empty supported_auth_methods array parses to an empty
+// slice, so the init guard in cmd/config/init_interactive.go
+// (`len(SupportedAuthMethods) > 0 && !slices.Contains(...)`) stays false and does
+// NOT reject the requested private_key_jwt. This aligns with
+// resolveFinalAuthMethod(nil/[], private_key_jwt) == private_key_jwt
+// (see cmd/config TestResolveFinalAuthMethod).
+func TestRequestAppRegistrationInit_EmptySupportedAuthMethods(t *testing.T) {
+	var body url.Values
+	hc := captureClient(&body, `{"nonce":"n-1","supported_auth_methods":[]}`)
+
+	out, err := RequestAppRegistrationInit(context.Background(), hc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Nonce != "n-1" {
+		t.Errorf("nonce = %q, want n-1", out.Nonce)
+	}
+	if len(out.SupportedAuthMethods) != 0 {
+		t.Errorf("SupportedAuthMethods = %v, want empty", out.SupportedAuthMethods)
+	}
+	// Reproduce the init guard expression on the real parsed result: an empty
+	// slice must NOT reject private_key_jwt.
+	rejected := len(out.SupportedAuthMethods) > 0 &&
+		!slices.Contains(out.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT)
+	if rejected {
+		t.Error("empty SupportedAuthMethods must allow private_key_jwt (older-server back-compat)")
+	}
+}
+
 const beginRespJSON = `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`
 
 func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
@@ -488,7 +519,7 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var body url.Values
 			hc := captureClient(&body, tc.resp)
-			got, err := RequestAppRegistration(hc, core.BrandFeishu, AppRegistrationBeginOptions{}, nil)
+			got, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, AppRegistrationBeginOptions{}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

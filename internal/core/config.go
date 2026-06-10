@@ -311,6 +311,23 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		}
 		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
+	// Validate the auth method at resolution time so a malformed profile fails
+	// here rather than silently degrading to client_secret (unknown method) or
+	// failing later at token-signing (private_key_jwt without a key handle).
+	// Empty stays empty — downstream treats it as client_secret (back-compat).
+	switch app.AuthMethod {
+	case "", AuthMethodClientSecret, AuthMethodPrivateKeyJWT:
+	default:
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"unknown authMethod %q", app.AuthMethod).
+			WithHint("supported: %s, %s (empty defaults to %s)", AuthMethodClientSecret, AuthMethodPrivateKeyJWT, AuthMethodClientSecret)
+	}
+	if app.AuthMethod == AuthMethodPrivateKeyJWT && app.KeyRef == nil {
+		return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
+			"private_key_jwt requires a key handle (keyRef) but none is configured").
+			WithHint("re-run: lark-cli config init --new --auth-method private_key_jwt")
+	}
+
 	cfg := &CliConfig{
 		ProfileName: app.ProfileName(),
 		AppID:       app.AppId,

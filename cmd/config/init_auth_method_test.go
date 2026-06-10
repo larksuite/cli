@@ -70,6 +70,13 @@ func TestResolveFinalAuthMethod(t *testing.T) {
 	if m := resolveFinalAuthMethod(nil, core.AuthMethodPrivateKeyJWT); m != core.AuthMethodPrivateKeyJWT {
 		t.Errorf("fallback to requested when server is silent: got %q", m)
 	}
+	// Explicit empty slice (not just nil) also falls back to requested — the same
+	// len()==0 back-compat allowance the init guard relies on to let private_key_jwt
+	// proceed against an older server (see internal/auth
+	// TestRequestAppRegistrationInit_EmptySupportedAuthMethods).
+	if m := resolveFinalAuthMethod([]string{}, core.AuthMethodPrivateKeyJWT); m != core.AuthMethodPrivateKeyJWT {
+		t.Errorf("empty []string should fall back to requested private_key_jwt: got %q", m)
+	}
 	if m := resolveFinalAuthMethod(nil, ""); m != core.AuthMethodClientSecret {
 		t.Errorf("default to client_secret: got %q", m)
 	}
