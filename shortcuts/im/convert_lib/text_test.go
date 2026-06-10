@@ -93,9 +93,13 @@ func TestRenderPostElem(t *testing.T) {
 	}{
 		{name: "text", el: map[string]interface{}{"tag": "text", "text": "hello"}, want: "hello"},
 		{name: "link", el: map[string]interface{}{"tag": "a", "text": "doc", "href": "https://example.com"}, want: "[doc](https://example.com)"},
-		{name: "mention all", el: map[string]interface{}{"tag": "at", "user_id": "@_all"}, want: "@all"},
-		{name: "mention user", el: map[string]interface{}{"tag": "at", "user_name": "Alice"}, want: "@Alice"},
-		{name: "image", el: map[string]interface{}{"tag": "img", "image_key": "img_123"}, want: "[Image: img_123]"},
+		{name: "mention all", el: map[string]interface{}{"tag": "at", "user_id": "@_all"}, want: `<at user_id="all"></at>`},
+		{name: "mention user with id", el: map[string]interface{}{"tag": "at", "user_id": "ou_user_1", "user_name": "Alice"}, want: `<at user_id="ou_user_1">Alice</at>`},
+		{name: "mention user name only", el: map[string]interface{}{"tag": "at", "user_name": "Alice"}, want: "@Alice"},
+		{name: "mention user id only", el: map[string]interface{}{"tag": "at", "user_id": "@_user_1"}, want: "@@_user_1"},
+		{name: "image", el: map[string]interface{}{"tag": "img", "image_key": "img_123"}, want: "![Image](img_123)"},
+		{name: "image no key", el: map[string]interface{}{"tag": "img"}, want: "[Image]"},
+		{name: "md text", el: map[string]interface{}{"tag": "md", "text": "##### 标题\n\n<at user_id=\"ou_xxx\">Alice</at> 你好"}, want: "##### 标题\n\n<at user_id=\"ou_xxx\">Alice</at> 你好"},
 		{name: "media", el: map[string]interface{}{"tag": "media", "file_key": "file_123"}, want: "[Media: file_123]"},
 		{name: "code block", el: map[string]interface{}{"tag": "code_block", "language": "go", "text": "fmt.Println(1)"}, want: "\n```go\nfmt.Println(1)\n```\n"},
 		{name: "hr", el: map[string]interface{}{"tag": "hr"}, want: "\n---\n"},
@@ -142,5 +146,89 @@ func TestRenderPostElemEmotionStyleMd(t *testing.T) {
 				t.Fatalf("renderPostElem(%s) = %q, want %q", tt.name, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSelectContentBlocks(t *testing.T) {
+	tests := []struct {
+		name string
+		body map[string]interface{}
+		want int
+	}{
+		{
+			name: "content_v2 present and non-empty",
+			body: map[string]interface{}{
+				"content":    []interface{}{[]interface{}{map[string]interface{}{"tag": "text", "text": "old"}}},
+				"content_v2": []interface{}{[]interface{}{map[string]interface{}{"tag": "md", "text": "new"}}},
+			},
+			want: 1,
+		},
+		{
+			name: "content_v2 empty array",
+			body: map[string]interface{}{
+				"content":    []interface{}{[]interface{}{map[string]interface{}{"tag": "text", "text": "old"}}},
+				"content_v2": []interface{}{},
+			},
+			want: 1,
+		},
+		{
+			name: "content_v2 nil",
+			body: map[string]interface{}{
+				"content": []interface{}{[]interface{}{map[string]interface{}{"tag": "text", "text": "old"}}},
+			},
+			want: 1,
+		},
+		{
+			name: "content_v2 wrong type",
+			body: map[string]interface{}{
+				"content":    []interface{}{[]interface{}{map[string]interface{}{"tag": "text", "text": "old"}}},
+				"content_v2": "not_an_array",
+			},
+			want: 1,
+		},
+		{
+			name: "both missing",
+			body: map[string]interface{}{},
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := selectContentBlocks(tt.body)
+			if len(got) != tt.want {
+				t.Fatalf("selectContentBlocks() len = %d, want %d", len(got), tt.want)
+			}
+		})
+	}
+}
+
+func TestPostConverterConvertContentV2(t *testing.T) {
+	// AC-M1-H1: content_v2 present → use content_v2 blocks (md passthrough)
+	ctx := &ConvertContext{
+		RawContent: `{"content_v2":[[{"tag":"md","text":"##### 标题\n\n<at user_id=\"ou_xxx\">Alice</at> 你好"}]],"content":[[{"tag":"text","text":"old path"}]]}`,
+	}
+	want := "##### 标题\n\n<at user_id=\"ou_xxx\">Alice</at> 你好"
+	if got := (postConverter{}).Convert(ctx); got != want {
+		t.Fatalf("postConverter.Convert(content_v2) = %q, want %q", got, want)
+	}
+
+	// AC-M1-H2: no content_v2 → use content blocks with new at/img format
+	ctx2 := &ConvertContext{
+		RawContent: `{"content":[[{"tag":"at","user_id":"ou_xxx","user_name":"Bob"},{"tag":"text","text":" "},{"tag":"img","image_key":"img_123"}]]}`,
+		Mentions:   []interface{}{map[string]interface{}{"key": "ou_xxx", "id": "ou_bob", "name": "Bob"}},
+	}
+	want2 := `<at user_id="ou_xxx">Bob</at> ![Image](img_123)`
+	if got := (postConverter{}).Convert(ctx2); got != want2 {
+		t.Fatalf("postConverter.Convert(content) = %q, want %q", got, want2)
+	}
+
+	// AC-M1-E1: content_v2 empty → fallback to content
+	ctx3 := &ConvertContext{
+		RawContent: `{"content_v2":[],"content":[[{"tag":"text","text":"fallback path"}]]}`,
+	}
+	want3 := "fallback path"
+	if got := (postConverter{}).Convert(ctx3); got != want3 {
+		t.Fatalf("postConverter.Convert(empty content_v2) = %q, want %q", got, want3)
 	}
 }
