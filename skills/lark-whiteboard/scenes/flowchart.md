@@ -2,7 +2,7 @@
 
 适用于：各种业务流转图、决策树、审批流、时序控制逻辑、带条件判断的链路、系统架构拓扑等。
 
-通用字段语义详见 `references/schema.md`，通用布局原则详见 `references/layout.md`；本文件只描述流程图场景下的选型边界与范式。
+通用字段语义详见 `elements/schema.md`，通用布局原则详见 `elements/layout.md`；本文件只描述流程图场景下的选型边界与范式。
 
 > [!IMPORTANT]
 > **流程图必须走 DSL 路径，不再使用 Mermaid！**
