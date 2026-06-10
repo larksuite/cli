@@ -41,7 +41,10 @@ func TestAppsGitCredentialInitDryRun(t *testing.T) {
 	assert.Equal(t, "api-plus-local-setup", gjson.Get(result.Stdout, "mode").String())
 	assert.Equal(t, "initialize_local_git_credential", gjson.Get(result.Stdout, "action").String())
 	assert.True(t, strings.HasSuffix(gjson.Get(result.Stdout, "metadata_file").String(), filepath.Join("spark", "app_xxx", "git.json")))
+	assert.Equal(t, int64(3), gjson.Get(result.Stdout, "local_effects.#").Int())
 	assert.Equal(t, "save the issued PAT in the local system credential store", gjson.Get(result.Stdout, "local_effects.0").String())
+	assert.Equal(t, "write app-scoped git credential metadata", gjson.Get(result.Stdout, "local_effects.1").String())
+	assert.Equal(t, "configure a URL-scoped Git credential helper in global git config when possible", gjson.Get(result.Stdout, "local_effects.2").String())
 }
 
 func TestAppsGitCredentialListDryRun(t *testing.T) {
