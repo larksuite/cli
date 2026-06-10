@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: MIT
 
 // macOS non-exportable Keychain signer (build tag `keychain_signer`).
-// Ported from github.com/JackZhao10086/tee-test.
 //
 // It does NOT use the Secure Enclave / hardware TEE (which would require
 // code-signing entitlements that are unfriendly to open source). Instead it
@@ -193,7 +192,12 @@ import (
 	"path/filepath"
 	"strings"
 	"unsafe"
+
+	"github.com/larksuite/cli/internal/vfs"
 )
+
+// securityBin is invoked by absolute path so a poisoned PATH cannot hijack it.
+const securityBin = "/usr/bin/security"
 
 // keychainSigner implements Signer using a macOS non-exportable Keychain key.
 type keychainSigner struct{}
@@ -277,12 +281,12 @@ func createKeychainKey(label string) (crypto.PublicKey, error) {
 	}
 	appLabel := sha1.Sum(x509.MarshalPKCS1PublicKey(&privateKey.PublicKey))
 
-	pemFile, err := os.CreateTemp("", "lark-keysigner-*.pem")
+	pemFile, err := vfs.CreateTemp("", "lark-keysigner-*.pem")
 	if err != nil {
 		return nil, fmt.Errorf("keysigner: temp key file: %w", err)
 	}
 	pemPath := pemFile.Name()
-	defer os.Remove(pemPath)
+	defer vfs.Remove(pemPath)
 	if err := pemFile.Chmod(0600); err != nil {
 		pemFile.Close()
 		return nil, err
@@ -297,7 +301,7 @@ func createKeychainKey(label string) (crypto.PublicKey, error) {
 		return nil, err
 	}
 
-	executable, err := os.Executable()
+	executable, err := vfs.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("keysigner: resolve executable: %w", err)
 	}
@@ -306,9 +310,9 @@ func createKeychainKey(label string) (crypto.PublicKey, error) {
 		return nil, err
 	}
 	// -x: import as NON-EXTRACTABLE; the software copy (pemPath) is then removed.
-	importCmd := exec.Command("security", "import", pemPath, "-k", keychain, "-t", "priv", "-f", "openssl", "-x", "-A", "-T", executable)
+	importCmd := exec.Command(securityBin, "import", pemPath, "-k", keychain, "-t", "priv", "-f", "openssl", "-x", "-A", "-T", executable)
 	if out, err := importCmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("keysigner: import non-extractable key: %w: %s", err, string(out))
+		return nil, fmt.Errorf("keysigner: import non-extractable key: %w: %s", err, summarizeCmdOutput(out))
 	}
 	if err := setKeychainKeyLabel(appLabel[:], keychain, label); err != nil {
 		return nil, err
@@ -369,7 +373,7 @@ func readKeyMetadata(label string) (*keyMetadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+	data, err := vfs.ReadFile(path)
 	if err != nil {
 		return nil, err // preserves os.ErrNotExist for EnsureKey
 	}
@@ -381,14 +385,14 @@ func readKeyMetadata(label string) (*keyMetadata, error) {
 }
 
 func writeKeyMetadata(path string, md keyMetadata) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(md, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	return vfs.WriteFile(path, data, 0600)
 }
 
 func ensureKeychain() (string, error) {
@@ -400,11 +404,11 @@ func ensureKeychain() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(keychainPath); err != nil {
+	if _, err := vfs.Stat(keychainPath); err != nil {
 		if !os.IsNotExist(err) {
 			return "", fmt.Errorf("keysigner: stat keychain: %w", err)
 		}
-		if err := os.MkdirAll(filepath.Dir(keychainPath), 0700); err != nil {
+		if err := vfs.MkdirAll(filepath.Dir(keychainPath), 0700); err != nil {
 			return "", err
 		}
 		for _, args := range [][]string{
@@ -412,8 +416,8 @@ func ensureKeychain() (string, error) {
 			{"set-keychain-settings", keychainPath},
 			{"unlock-keychain", "-p", password, keychainPath},
 		} {
-			if out, err := exec.Command("security", args...).CombinedOutput(); err != nil {
-				return "", fmt.Errorf("keysigner: security %s: %w: %s", args[0], err, string(out))
+			if out, err := exec.Command(securityBin, args...).CombinedOutput(); err != nil {
+				return "", fmt.Errorf("keysigner: security %s: %w: %s", args[0], err, summarizeCmdOutput(out))
 			}
 		}
 	}
@@ -442,7 +446,7 @@ func keychainPassword() (string, error) {
 		return "", err
 	}
 	path := filepath.Join(dir, "keychain.pass")
-	if data, err := os.ReadFile(path); err == nil {
+	if data, err := vfs.ReadFile(path); err == nil {
 		if pw := strings.TrimSpace(string(data)); pw != "" {
 			return pw, nil
 		}
@@ -455,10 +459,10 @@ func keychainPassword() (string, error) {
 		return "", err
 	}
 	pw := hex.EncodeToString(buf)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := vfs.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
+	if err := vfs.WriteFile(path, []byte(pw+"\n"), 0600); err != nil {
 		return "", err
 	}
 	return pw, nil
@@ -471,6 +475,20 @@ func keyMetadataPath(label string) (string, error) {
 	}
 	id := sha256.Sum256([]byte(label))
 	return filepath.Join(dir, "keys", hex.EncodeToString(id[:])+".json"), nil
+}
+
+// summarizeCmdOutput bounds external command output before it is embedded in
+// an error: first line only, capped at 200 chars.
+func summarizeCmdOutput(out []byte) string {
+	s := strings.TrimSpace(string(out))
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
+	const maxLen = 200
+	if len(s) > maxLen {
+		s = s[:maxLen] + "..."
+	}
+	return s
 }
 
 func keychainError(operation string, status int) error {
