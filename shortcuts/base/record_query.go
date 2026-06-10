@@ -13,11 +13,9 @@ import (
 )
 
 const (
-	recordFilterJSONFlag  = "filter-json"
-	recordSortJSONFlag    = "sort-json"
-	recordFilterAliasFlag = "filter"
-	recordSortAliasFlag   = "sort"
-	recordSortMaxCount    = 10
+	recordFilterJSONFlag = "filter-json"
+	recordSortJSONFlag   = "sort-json"
+	recordSortMaxCount   = 10
 )
 
 func recordFilterFlag() common.Flag {
@@ -45,7 +43,7 @@ func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
 }
 
 func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) {
-	filterRaw := recordQueryFlagValue(runtime, recordFilterJSONFlag, recordFilterAliasFlag)
+	filterRaw := strings.TrimSpace(runtime.Str(recordFilterJSONFlag))
 	if filterRaw == "" {
 		return nil, nil
 	}
@@ -54,7 +52,7 @@ func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) 
 }
 
 func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
-	sortRaw := recordQueryFlagValue(runtime, recordSortJSONFlag, recordSortAliasFlag)
+	sortRaw := strings.TrimSpace(runtime.Str(recordSortJSONFlag))
 	if sortRaw == "" {
 		return nil, nil
 	}
@@ -64,14 +62,6 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 		return nil, err
 	}
 	return normalizeRecordSortValue(value, "--"+recordSortJSONFlag)
-}
-
-func recordQueryFlagValue(runtime *common.RuntimeContext, canonical string, alias string) string {
-	canonicalValue := strings.TrimSpace(runtime.Str(canonical))
-	if canonicalValue != "" {
-		return canonicalValue
-	}
-	return strings.TrimSpace(runtime.Str(alias))
 }
 
 func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, error) {
@@ -251,7 +241,6 @@ func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool
 	return recordSearchKeyword(runtime) != "" ||
 		len(runtime.StrArray("search-field")) > 0 ||
 		len(recordListFields(runtime)) > 0 ||
-		len(recordListFieldAliases(runtime)) > 0 ||
 		runtime.Str("view-id") != "" ||
 		runtime.Changed("offset") ||
 		runtime.Changed("limit")

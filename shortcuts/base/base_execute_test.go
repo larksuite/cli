@@ -1317,50 +1317,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list accepts page size alias", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		var gotLimit string
-		listStub := &httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records",
-			OnMatch: func(req *http.Request) {
-				gotLimit = req.URL.Query().Get("limit")
-			},
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"fields":         []interface{}{"Title"},
-					"field_id_list":  []interface{}{"fld_title"},
-					"record_id_list": []interface{}{"rec_1"},
-					"data":           []interface{}{[]interface{}{"Created by AI"}},
-					"has_more":       false,
-				},
-			},
-		}
-		reg.Register(listStub)
-		if err := runShortcut(
-			t,
-			BaseRecordList,
-			[]string{
-				"+record-list",
-				"--base-token", "app_x",
-				"--table-id", "tbl_x",
-				"--page-size", "20",
-				"--format", "json",
-			},
-			factory,
-			stdout,
-		); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"rec_1"`) {
-			t.Fatalf("stdout=%s", got)
-		}
-		if gotLimit != "20" {
-			t.Fatalf("limit query=%q, want 20", gotLimit)
-		}
-	})
-
 	t.Run("search with filter json file", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		tmp := t.TempDir()
@@ -1999,42 +1955,6 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		err := runShortcut(t, BaseRecordDelete, []string{"+record-delete", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_1", "--json", `{"record_id_list":["rec_2"]}`, "--yes"}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 			t.Fatalf("err=%v", err)
-		}
-	})
-
-	t.Run("share link accepts record-id alias", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		shareStub := &httpmock.Stub{
-			Method: "POST",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/share_links/batch",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{
-					"record_share_links": map[string]interface{}{
-						"rec_1": "https://example.test/rec_1",
-						"rec_2": "https://example.test/rec_2",
-					},
-				},
-			},
-		}
-		reg.Register(shareStub)
-		err := runShortcut(t, BaseRecordShareLinkCreate, []string{
-			"+record-share-link-create",
-			"--base-token", "app_x",
-			"--table-id", "tbl_x",
-			"--record-id", "rec_1",
-			"--record-id", "rec_2",
-			"--record-id", "rec_1",
-		}, factory, stdout)
-		if err != nil {
-			t.Fatalf("err=%v", err)
-		}
-		body := string(shareStub.CapturedBody)
-		if !strings.Contains(body, `"record_ids":["rec_1","rec_2"]`) {
-			t.Fatalf("request body=%s", body)
-		}
-		if got := stdout.String(); !strings.Contains(got, "rec_1") || !strings.Contains(got, "rec_2") {
-			t.Fatalf("stdout=%s", got)
 		}
 	})
 

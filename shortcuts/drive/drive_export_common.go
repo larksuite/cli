@@ -45,11 +45,6 @@ func driveExportTaskResultCommand(ticket, docToken string) string {
 // driveExportDownloadCommand prints a copy-pasteable follow-up command for
 // downloading an already-generated export artifact by file token.
 func driveExportDownloadCommand(fileToken, fileName, outputDir string, overwrite bool) string {
-	cdPrefix := ""
-	if strings.TrimSpace(outputDir) != "" && filepath.IsAbs(outputDir) {
-		cdPrefix = "cd " + strconv.Quote(outputDir) + " && "
-		outputDir = "."
-	}
 	parts := []string{
 		"lark-cli", "drive", "+export-download",
 		"--file-token", strconv.Quote(fileToken),
@@ -57,13 +52,13 @@ func driveExportDownloadCommand(fileToken, fileName, outputDir string, overwrite
 	if strings.TrimSpace(fileName) != "" {
 		parts = append(parts, "--file-name", strconv.Quote(fileName))
 	}
-	if strings.TrimSpace(outputDir) != "" && (outputDir != "." || cdPrefix != "") {
+	if strings.TrimSpace(outputDir) != "" && outputDir != "." {
 		parts = append(parts, "--output-dir", strconv.Quote(outputDir))
 	}
 	if overwrite {
 		parts = append(parts, "--overwrite")
 	}
-	return cdPrefix + strings.Join(parts, " ")
+	return strings.Join(parts, " ")
 }
 
 // driveExportStatus captures the fields needed to decide whether the export is

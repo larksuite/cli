@@ -21,15 +21,11 @@ var BaseRecordList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
-		{Name: "field-names", Type: "string_array", Hidden: true},
 		recordListViewRefFlag(),
 		recordFilterFlag(),
-		{Name: recordFilterAliasFlag, Hidden: true, Input: []string{common.File}},
 		recordSortFlag(),
-		{Name: recordSortAliasFlag, Hidden: true, Input: []string{common.File}},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
-		{Name: "page-size", Type: "int", Desc: "deprecated alias for --limit", Hidden: true},
 		recordReadFormatFlag(),
 	},
 	Tips: []string{
@@ -48,9 +44,6 @@ var BaseRecordList = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
-		}
-		if runtime.Changed("limit") && runtime.Changed("page-size") {
-			return baseFlagErrorf("--page-size is a deprecated alias for --limit; use only one")
 		}
 		return validateRecordQueryOptions(runtime)
 	},
