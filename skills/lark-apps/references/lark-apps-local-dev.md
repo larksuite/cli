@@ -55,7 +55,7 @@ lark-cli apps +release-create --app-id app_xxx
 - `sprint/default` 是工作分支；`main` 是发布态快照，由 `+release-create` 成功后服务端 fast-forward 推进；服务端护栏禁直推 `main`、拒 force-push、要求 `sprint/default` fast-forward。
 - 已拉到本地后，pull/push/diff/log 都用原生 git；云端 `sprint/default` 比本地新时，先 `git pull --rebase origin sprint/default`，解决冲突后再 push 和 publish。
 - 环境变量由脚手架在本地启动时处理；需要手动刷新时用 `+env-pull`。
-- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-sql`；不要裸连数据库或自行拼连接串。
+- DB 调试用 `+db-table-list` / `+db-table-get` / `+db-execute`；不要裸连数据库或自行拼连接串。
 - DB 分 `dev` / `online`；日常调试优先 `--env dev`。dev 的库结构变更要上线时，仍按应用发布链路走 `+release-create`，不要另造“数据库发布”步骤。
 - 存量单库应用需要 dev/online 多环境时，用 `+db-env-create --env dev`。这是不可逆 high-risk 操作。
 - 只从 `+list` 看到 `is_published=true`，不能证明本地刚推送的代码已经部署；必须有本轮 `+release-get finished`。

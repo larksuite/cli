@@ -6,6 +6,8 @@ package apps
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -13,7 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
+func TestAppsDBExecute_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -26,8 +28,8 @@ func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select 1", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -48,10 +50,10 @@ func TestAppsDBSQL_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_DryRunSendsTransactionalFalse(t *testing.T) {
+func TestAppsDBExecute_DryRunSendsTransactionalFalse(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -83,12 +85,51 @@ func TestAppsDBSQL_DryRunSendsTransactionalFalse(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_RejectsEmptyQuery(t *testing.T) {
+func TestAppsDBExecute_RejectsEmptySQL(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "   ", "--as", "user"}, factory, stdout)
-	if err == nil || !strings.Contains(err.Error(), "query") {
-		t.Fatalf("expected empty query error, got %v", err)
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "   ", "--as", "user"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--sql or --file") {
+		t.Fatalf("expected empty-sql error, got %v", err)
+	}
+}
+
+// --sql 与 --file 互斥
+func TestAppsDBExecute_RejectsSQLAndFileTogether(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "SELECT 1", "--file", "x.sql", "--as", "user"}, factory, stdout)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mutual-exclusion error, got %v", err)
+	}
+}
+
+// --file 读取相对路径 .sql 文件 → 内容进 body.sql（dry-run 验证）
+func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
+	dir := t.TempDir()
+	sqlPath := filepath.Join(dir, "m.sql")
+	if err := os.WriteFile(sqlPath, []byte("SELECT 42 AS answer;\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// 切到临时目录，使相对路径校验通过（CLI 仅接受 cwd 内相对路径）。
+	t.Chdir(dir)
+
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--app-id", "app_x", "--env", "dev", "--file", "m.sql", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		API []struct {
+			Body map[string]interface{} `json:"body"`
+		} `json:"api"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if env.API[0].Body["sql"] != "SELECT 42 AS answer;\n" {
+		t.Fatalf("body.sql = %v, want file content", env.API[0].Body["sql"])
 	}
 }
 
@@ -98,7 +139,7 @@ func TestAppsDBSQL_RejectsEmptyQuery(t *testing.T) {
 // 输入用 BOE 真实抓包数据（test_scripts/boe_e2e/run.log）。
 // ============================================================================
 
-func TestAppsDBSQL_LegacyWireSingleSelect(t *testing.T) {
+func TestAppsDBExecute_LegacyWireSingleSelect(t *testing.T) {
 	// BOE 实测：SELECT 1 AS x  →  result: "[\"[{\\\"x\\\":1}]\"]"
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -111,8 +152,8 @@ func TestAppsDBSQL_LegacyWireSingleSelect(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "SELECT 1 AS x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -129,7 +170,7 @@ func TestAppsDBSQL_LegacyWireSingleSelect(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
+func TestAppsDBExecute_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
 	// 验证 JSON envelope 也把 legacy result 正确归一化进 data.results
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -142,8 +183,8 @@ func TestAppsDBSQL_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1 AS x", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "SELECT 1 AS x", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -166,7 +207,7 @@ func TestAppsDBSQL_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_LegacyWireMultiSelect(t *testing.T) {
+func TestAppsDBExecute_LegacyWireMultiSelect(t *testing.T) {
 	// BOE 实测：SELECT 1; SELECT 2  →  result: "[\"[{\\\"?column?\\\":1}]\",\"[{\\\"?column?\\\":2}]\"]"
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -179,8 +220,8 @@ func TestAppsDBSQL_LegacyWireMultiSelect(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT 1; SELECT 2;", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "SELECT 1; SELECT 2;", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -195,7 +236,7 @@ func TestAppsDBSQL_LegacyWireMultiSelect(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_LegacyWireDDLEmptyResult(t *testing.T) {
+func TestAppsDBExecute_LegacyWireDDLEmptyResult(t *testing.T) {
 	// BOE 实测：CREATE TABLE  →  result: "" （空字符串，无 rows）
 	// 老 wire 不区分 DDL/DML/无返回，统一标 "ok"
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -209,8 +250,8 @@ func TestAppsDBSQL_LegacyWireDDLEmptyResult(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "CREATE TABLE foo (id INT)", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "CREATE TABLE foo (id INT)", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -221,7 +262,7 @@ func TestAppsDBSQL_LegacyWireDDLEmptyResult(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_LegacyWireMultiSelectWithRealTable(t *testing.T) {
+func TestAppsDBExecute_LegacyWireMultiSelectWithRealTable(t *testing.T) {
 	// BOE 实测真实表抓包（course 表第一行）：复杂 JSON 含 CJK / timestamp / uuid 字段
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -234,8 +275,8 @@ func TestAppsDBSQL_LegacyWireMultiSelectWithRealTable(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "SELECT id,title,capacity FROM course LIMIT 1", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "SELECT id,title,capacity FROM course LIMIT 1", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -249,7 +290,7 @@ func TestAppsDBSQL_LegacyWireMultiSelectWithRealTable(t *testing.T) {
 }
 
 // pretty 单 SELECT：表格输出，列间两空格，无 Statement header。
-func TestAppsDBSQL_PrettySingleSelectTable(t *testing.T) {
+func TestAppsDBExecute_PrettySingleSelectTable(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -261,8 +302,8 @@ func TestAppsDBSQL_PrettySingleSelectTable(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -279,7 +320,7 @@ func TestAppsDBSQL_PrettySingleSelectTable(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_PrettyEmptySelect(t *testing.T) {
+func TestAppsDBExecute_PrettyEmptySelect(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -291,8 +332,8 @@ func TestAppsDBSQL_PrettyEmptySelect(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "select", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -301,7 +342,7 @@ func TestAppsDBSQL_PrettyEmptySelect(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_PrettySingleDMLAndDDL(t *testing.T) {
+func TestAppsDBExecute_PrettySingleDMLAndDDL(t *testing.T) {
 	cases := []struct {
 		name    string
 		result  string
@@ -325,8 +366,8 @@ func TestAppsDBSQL_PrettySingleDMLAndDDL(t *testing.T) {
 				URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
 				Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"result": c.result}},
 			})
-			if err := runAppsShortcut(t, AppsDBSQL,
-				[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+			if err := runAppsShortcut(t, AppsDBExecute,
+				[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
 				factory, stdout); err != nil {
 				t.Fatalf("execute err=%v", err)
 			}
@@ -337,7 +378,7 @@ func TestAppsDBSQL_PrettySingleDMLAndDDL(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_PrettyMultiStatementsAllSuccess(t *testing.T) {
+func TestAppsDBExecute_PrettyMultiStatementsAllSuccess(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -353,8 +394,8 @@ func TestAppsDBSQL_PrettyMultiStatementsAllSuccess(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -371,10 +412,10 @@ func TestAppsDBSQL_PrettyMultiStatementsAllSuccess(t *testing.T) {
 	}
 }
 
-// TestAppsDBSQL_PrettyMultiStatementsDDL 钉住真机 boe 多语句 DDL 的 wire：
+// TestAppsDBExecute_PrettyMultiStatementsDDL 钉住真机 boe 多语句 DDL 的 wire：
 // CREATE_TABLE / DROP_TABLE（data="[]"、无 affected_rows）须渲染成 "✓ DDL executed"，
 // 不能落到 dmlSummary 变成 "0 rows affected"。
-func TestAppsDBSQL_PrettyMultiStatementsDDL(t *testing.T) {
+func TestAppsDBExecute_PrettyMultiStatementsDDL(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -386,8 +427,8 @@ func TestAppsDBSQL_PrettyMultiStatementsDDL(t *testing.T) {
 			},
 		},
 	})
-	if err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -406,7 +447,7 @@ func TestAppsDBSQL_PrettyMultiStatementsDDL(t *testing.T) {
 	}
 }
 
-func TestAppsDBSQL_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testing.T) {
+func TestAppsDBExecute_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -422,8 +463,8 @@ func TestAppsDBSQL_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testi
 		},
 	})
 	// pretty 失败路径：逐条 ✓/✗ 摘要照打到 stdout（人看），同时返回 typed error（exit 非 0）。
-	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--format", "pretty", "--as", "user"},
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("pretty multi-statement failure must still return a typed error; stdout:\n%s", stdout.String())
@@ -446,11 +487,11 @@ func TestAppsDBSQL_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testi
 	}
 }
 
-// TestAppsDBSQL_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → typed api_error」：
+// TestAppsDBExecute_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → typed api_error」：
 // json 默认不再打 ok:true 假成功，而是返回 *output.ExitError（type=api_error、非零 exit），
 // detail 带 statement_index / completed / rolled_back。rolled_back=false 因 CLI 永远 DBA 模式
 // （真机 boe 实证：失败前的语句已落地）。
-func TestAppsDBSQL_MultiStatementFailureReturnsTypedError(t *testing.T) {
+func TestAppsDBExecute_MultiStatementFailureReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -465,8 +506,8 @@ func TestAppsDBSQL_MultiStatementFailureReturnsTypedError(t *testing.T) {
 			},
 		},
 	})
-	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--as", "user"},
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("multi-statement failure must return a typed error; stdout:\n%s", stdout.String())
@@ -506,9 +547,9 @@ func TestAppsDBSQL_MultiStatementFailureReturnsTypedError(t *testing.T) {
 	}
 }
 
-// TestAppsDBSQL_SingleErrorReturnsTypedError 单条语句失败（server 也返 code:0 + ERROR 哨兵）
+// TestAppsDBExecute_SingleErrorReturnsTypedError 单条语句失败（server 也返 code:0 + ERROR 哨兵）
 // 同样升级成 typed error：statement_index=0、completed 空、message 标注 (at statement 1 of 1)。
-func TestAppsDBSQL_SingleErrorReturnsTypedError(t *testing.T) {
+func TestAppsDBExecute_SingleErrorReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -520,8 +561,8 @@ func TestAppsDBSQL_SingleErrorReturnsTypedError(t *testing.T) {
 			},
 		},
 	})
-	err := runAppsShortcut(t, AppsDBSQL,
-		[]string{"+db-sql", "--yes", "--app-id", "app_x", "--query", "x", "--as", "user"},
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("single ERROR sentinel must return a typed error; stdout:\n%s", stdout.String())
