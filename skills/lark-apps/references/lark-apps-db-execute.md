@@ -4,13 +4,13 @@
 
 ## 何时用
 
-用于通过妙搭服务端执行应用数据库 SQL（查询 / 临时数据修复 / 应急 DDL）。不要从环境变量里取连接串裸连数据库；本地调试也走这个 shortcut。
+用于通过妙搭服务端执行应用数据库 SQL。不要从环境变量里取连接串裸连数据库；本地调试也走这个 shortcut。
 
 ## 命令骨架
 
 - 必填：`--app-id`，以及 `--sql` / `--file` 二选一（互斥）。
 - `--sql`：内联 SQL 文本；传 `-` 时从 stdin 读。绝对路径文件经 stdin 传入：`--sql - < <absolute-path>`（shell 解析路径，CLI 仅接收内容）。
-- `--file`：`.sql` 文件路径。仅接受工作目录内的相对路径（如 `--file ./migration.sql`）；绝对路径、或经 `..`/符号链接越出工作目录的路径会被拒绝——这是 CLI 文件访问的统一约束，非本命令特有。
+- `--file`：`.sql` 文件路径，需为工作目录内的相对路径（如 `--file ./migration.sql`）；文件不在工作目录内时，改用 `--sql - < <文件路径>` 经 stdin 传入。
 - `--env` 枚举：`dev` / `online`，**默认 `dev`**；需要操作线上环境数据库时，显式指定 `--env online`。
 - risk 是 `high-risk-write`（SQL 可含 DML/DDL）：任何执行都需 `--yes`，否则返回 `confirmation_required` / exit 10。`--dry-run` 预览不需要 `--yes`。
 - CLI 永远传 `transactional=false`；不默认包事务。
