@@ -12,11 +12,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsDBSQL executes SQL against a Miaoda app database.
+// AppsDBExecute executes ad-hoc SQL against a Miaoda app database.
 //
 // POST /apps/{app_id}/sql_commands，CLI 永远带 ?transactional=false 进入 DBA 模式
 // （不默认包事务、支持 DDL、result 字符串内嵌结构化 JSON）。
@@ -37,14 +38,17 @@ import (
 // JSON envelope（成功路径）：CLI 把 server 返的 result 字符串解出来放进 `data.results` 数组。
 //
 // Risk: high-risk-write —— SQL 可含 DML/DDL，框架对所有执行强制 --yes 确认关卡（--dry-run 预览豁免）。
-var AppsDBSQL = common.Shortcut{
+//
+// SQL 来源二选一：--sql（内联文本，或 - 读 stdin）/ --file（.sql 文件路径，受 CLI 相对路径约束）。
+// --file 在 Validate 阶段读出内容、归一化到 --sql，下游统一从 rctx.Str("sql") 取。
+var AppsDBExecute = common.Shortcut{
 	Service:     appsService,
-	Command:     "+db-sql",
-	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
+	Command:     "+db-execute",
+	Description: "Execute ad-hoc SQL (SELECT / DML / DDL) against a Miaoda app database",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		`Example: lark-cli apps +db-sql --app-id <app_id> --query "SELECT * FROM orders LIMIT 10" --yes`,
-		`Example: lark-cli apps +db-sql --app-id <app_id> --env dev --query "ALTER TABLE orders ADD COLUMN priority int DEFAULT 0" --yes`,
+		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
+		`Example: lark-cli apps +db-execute --app-id <app_id> --env dev --file ./migration.sql --yes`,
 		"Tip: filter fields with --jq, e.g. -q '.data.results[].sql_type'",
 	},
 	Scopes:    []string{"spark:app:write"},
@@ -52,16 +56,31 @@ var AppsDBSQL = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-		{Name: "query", Desc: "SQL text; use @path to read a file, - to read stdin", Required: true,
-			Input: []string{common.File, common.Stdin}},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
+		{Name: "sql", Desc: "SQL text; use - to read stdin. Mutually exclusive with --file",
+			Input: []string{common.Stdin}},
+		{Name: "file", Desc: "path to a .sql file (relative to cwd). Mutually exclusive with --sql"},
+		{Name: "env", Default: "dev", Enum: []string{"dev", "online"}, Desc: "target db environment (default dev; pass --env online to hit production)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
-		if strings.TrimSpace(rctx.Str("query")) == "" {
-			return output.ErrValidation("--query is empty (no inline SQL, file, or stdin content)")
+		sql := strings.TrimSpace(rctx.Str("sql"))
+		file := strings.TrimSpace(rctx.Str("file"))
+		if sql != "" && file != "" {
+			return output.ErrValidation("--sql and --file are mutually exclusive")
+		}
+		if file != "" {
+			data, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
+			if err != nil {
+				return output.ErrValidation("--file: %v", err)
+			}
+			// 归一化：把文件内容写回 --sql，下游（DryRun/Execute）统一从 sql 取。
+			rctx.Cmd.Flags().Set("sql", string(data))
+			sql = strings.TrimSpace(string(data))
+		}
+		if sql == "" {
+			return output.ErrValidation("one of --sql or --file is required (use --sql - to read stdin)")
 		}
 		return nil
 	},
@@ -183,10 +202,10 @@ func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 }
 
-// buildDBSQLBody 构造 sql 接口的 body：仅 sql。
+// buildDBSQLBody 构造 sql 接口的 body：仅 sql（来源由 Validate 归一化到 --sql）。
 func buildDBSQLBody(rctx *common.RuntimeContext) map[string]interface{} {
 	return map[string]interface{}{
-		"sql": rctx.Str("query"),
+		"sql": rctx.Str("sql"),
 	}
 }
 
