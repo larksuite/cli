@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,7 +62,15 @@ var AppsGitCredentialInit = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET(gitCredentialIssuePath).
 			Desc("Issue a Miaoda Git repository PAT").
+			Set("mode", "api-plus-local-setup").
+			Set("action", "initialize_local_git_credential").
 			Set("app_id", appID).
+			Set("metadata_file", appKeyPath(appID, gitcred.MetadataFilename)).
+			Set("local_effects", []string{
+				"save the issued PAT in the local system credential store",
+				"write app-scoped git credential metadata",
+				"configure a URL-scoped Git credential helper in global git config when possible",
+			}).
 			Params(gitCredentialIssueParams(appID))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -124,6 +133,21 @@ var AppsGitCredentialRemove = common.Shortcut{
 		}
 		return validate.ResourceName(strings.TrimSpace(rctx.Str("app-id")), "--app-id")
 	},
+	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		appID := strings.TrimSpace(rctx.Str("app-id"))
+		return common.NewDryRunAPI().
+			Desc("Preview local Git credential cleanup (no API call; would clean up local-only state).").
+			Set("mode", "local-cleanup-only").
+			Set("action", "remove_local_git_credential").
+			Set("app_id", appID).
+			Set("metadata_file", appKeyPath(appID, gitcred.MetadataFilename)).
+			Set("effects", []string{
+				"read app-scoped git credential metadata",
+				"remove the saved PAT from the local system credential store",
+				"remove the app-scoped Git helper from global git config when present",
+				"delete the local metadata record after cleanup succeeds",
+			})
+	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		manager := newGitCredentialManager(appID, rctx.Factory.Keychain, nil)
@@ -171,6 +195,17 @@ var AppsGitCredentialList = common.Shortcut{
 	Scopes:    []string{},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
+	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
+		return common.NewDryRunAPI().
+			Desc("Preview local Git credential listing (no API call, read-only local state).").
+			Set("mode", "local-read-only").
+			Set("action", "list_local_git_credentials").
+			Set("storage_root", filepath.Join(core.GetConfigDir(), storageRoot)).
+			Set("reads", []string{
+				"scan app-scoped git credential metadata under the CLI config directory",
+				"derive per-app repository URLs and local credential status from local metadata",
+			})
+	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		records, err := listGitCredentialRecords(rctx.Factory.Keychain, time.Now)
 		if err != nil {
