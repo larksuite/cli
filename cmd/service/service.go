@@ -472,12 +472,25 @@ func unusableParamValue(v interface{}) bool {
 	return ok && s == ""
 }
 
+// missingParamHint is the recovery hint for a missing required parameter. It
+// names both input paths — the typed flag when the binder registered one, and
+// the --params fallback — plus the schema pointer. A params-only field gets
+// only the --params form: a flag with its kebab name exists but belongs to
+// something else (e.g. the output --format), and the hint must not steer
+// there. Asking the binder, not cmd.Flags(), is what tells those apart.
+func missingParamHint(opts *ServiceMethodOptions, f meta.Field) string {
+	paramsForm := fmt.Sprintf("--params '{%q: \"<value>\"}'", f.Name)
+	if opts.binder.hasTypedFlag(f.Name) {
+		return fmt.Sprintf("set --%s <value> (or %s); see: lark-cli schema %s", f.FlagName(), paramsForm, opts.SchemaPath)
+	}
+	return fmt.Sprintf("set %s; see: lark-cli schema %s", paramsForm, opts.SchemaPath)
+}
+
 // buildServiceRequest parses flags, builds the URL with path/query params, and returns a RawApiRequest.
 // When dryRun is true and a file is provided, file reading is skipped and
 // FileUploadMeta is returned instead so the caller can render dry-run output.
 func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmdutil.FileUploadMeta, error) {
 	method := opts.Method
-	schemaPath := opts.SchemaPath
 	httpMethod := method.HTTPMethod
 
 	// stdin is an io.Reader consumed at most once. Only one of --params/--data
@@ -509,7 +522,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		if !ok || unusableParamValue(val) {
 			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"missing required path parameter: %s", s.Name).
-				WithHint("lark-cli schema %s", schemaPath).
+				WithHint("%s", missingParamHint(opts, s)).
 				WithParam(s.Name)
 		}
 		valStr := fmt.Sprintf("%v", val)
@@ -530,7 +543,7 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		if s.Required && !isPaginationParam && (!exists || unusableParamValue(value)) {
 			return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"missing required query parameter: %s", s.Name).
-				WithHint("lark-cli schema %s", schemaPath).
+				WithHint("%s", missingParamHint(opts, s)).
 				WithParam(s.Name)
 		}
 		if exists && !unusableParamValue(value) {

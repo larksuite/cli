@@ -48,3 +48,14 @@ func TestSanitizeFieldDesc_TrimsDanglingPunctuation(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeFieldDesc_StripsBackquotes(t *testing.T) {
+	// pflag's UnquoteUsage takes a backquoted word in a flag's usage string as
+	// the flag's metavar: wiki space_id's description rendered the flag as
+	// "--space-id my_library" instead of "--space-id string".
+	in := "[知识空间id](https://x/wiki)，如果查询我的文档库可替换为`my_library`"
+	want := "知识空间id，如果查询我的文档库可替换为my_library"
+	if got := sanitizeFieldDesc(in); got != want {
+		t.Errorf("sanitizeFieldDesc(%q) = %q, want %q", in, got, want)
+	}
+}

@@ -83,6 +83,11 @@ func inlineClause(s, stops string, max int) string {
 		return ""
 	}
 	s = markdownLinkRe.ReplaceAllString(s, "$1")
+	// Backquotes must go: pflag's UnquoteUsage treats a backquoted word in a
+	// flag's usage string as the flag's metavar, so a description like wiki
+	// space_id's "可替换为`my_library`" would render the flag as
+	// "--space-id my_library" instead of "--space-id string".
+	s = strings.ReplaceAll(s, "`", "")
 	if i := strings.IndexAny(s, stops); i >= 0 {
 		s = s[:i]
 	}

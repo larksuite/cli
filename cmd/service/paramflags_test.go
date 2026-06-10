@@ -4,9 +4,11 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/spf13/cobra"
@@ -572,5 +574,53 @@ func TestServiceMethod_TypedFlag_HelpShowsBounds(t *testing.T) {
 	}
 	if !strings.Contains(fl.Usage, "min: 1, max: 100") {
 		t.Errorf("flag usage should carry bounds, got %q", fl.Usage)
+	}
+}
+
+// The missing-required hint must name both recovery paths — the typed flag and
+// the --params fallback — so a reader who only knows one input style can
+// proceed without a round-trip through schema.
+func TestServiceMethod_MissingRequired_HintNamesFlagAndParams(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), imChatMembersCreate(), "create", "chat.members", nil)
+	cmd.SetArgs([]string{"--data", `{"id_list":["ou_x"]}`, "--dry-run"})
+
+	err := cmd.Execute()
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	for _, want := range []string{"--chat-id", `--params '{"chat_id": "<value>"}'`, "lark-cli schema im.chat.members.create"} {
+		if !strings.Contains(ve.Hint, want) {
+			t.Errorf("hint %q should contain %q", ve.Hint, want)
+		}
+	}
+}
+
+// A params-only required field (kebab name claimed by the standard --format
+// flag) has no typed flag to offer: the hint must give only the --params form,
+// never steer the reader to the colliding flag.
+func TestServiceMethod_MissingRequired_ParamsOnlyHintSkipsFlag(t *testing.T) {
+	method := meta.FromMap(map[string]interface{}{
+		"path":       "messages",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"format": map[string]interface{}{"type": "string", "location": "query", "required": true},
+		},
+	})
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, imSpec(), method, "list", "messages", nil)
+	cmd.SetArgs([]string{"--dry-run"})
+
+	err := cmd.Execute()
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if !strings.Contains(ve.Hint, `--params '{"format": "<value>"}'`) {
+		t.Errorf("hint %q should carry the --params form", ve.Hint)
+	}
+	if strings.Contains(ve.Hint, "set --format") {
+		t.Errorf("hint %q must not steer to the colliding --format flag", ve.Hint)
 	}
 }

@@ -115,6 +115,22 @@ func (b *paramFlagBinder) paramsOnlyHelp() string {
 	return sb.String()
 }
 
+// hasTypedFlag reports whether the binder registered a typed flag for the
+// param named name. False for params-only fields — a flag with the same kebab
+// name may exist (that's the collision), but it is not this param's input.
+// Nil-safe for direct buildServiceRequest callers that have no binder.
+func (b *paramFlagBinder) hasTypedFlag(name string) bool {
+	if b == nil {
+		return false
+	}
+	for _, pf := range b.bound {
+		if pf.field.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 // overlay lets an explicit typed flag override the same key in --params
 // (--params is the base). Only changed flags apply, so the --params-only path is
 // unchanged. A nil binder or cmd is a no-op.
