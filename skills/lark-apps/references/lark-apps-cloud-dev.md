@@ -16,7 +16,7 @@
 
 ### 执行模型：异步 + 轮询
 
-`+chat` 把消息入队后立即返回，**不等生成完成**（响应 `data` 为空，不带 `turn_id`）。本轮跑到哪、能不能发下一条，全靠 `+session-get` 轮询。
+`+chat` 把消息入队后**立即返回、不等生成完成，响应不带 `turn_id`**；本轮状态与轮询节奏全靠 `+session-get` 读 `latest_turn.status` / `is_streaming` / `next_poll_after_ms`。
 
 `+session-get` 关键字段：
 
@@ -26,7 +26,16 @@
 - `latest_turn.user_message`：本轮用户发的消息。
 - `latest_turn.messages`：这一轮里妙搭 Agent 执行产生的消息列表，按时序排列、每条带 `role`（用户消息、模型回复、工具调用等都在内，role 取值如 `user` / `assistant` / `tool`）。要回看本轮做了什么、结果如何，读这个列表。
 - `queued_messages` / `queued_count`：还没开始跑、排在后面的消息。
-- `next_poll_after_ms`：建议的下次轮询间隔（毫秒，固定值）。
+- `next_poll_after_ms`：建议的下次轮询间隔（毫秒，固定值）；非空时优先用它。
+
+轮询规则：
+
+- 节奏按 [初始化 vs 增量修改](#初始化-vs-增量修改) 判定：增量 5-10 秒一次；初始化 60-120 秒一次；`next_poll_after_ms` 非空时用它。
+- `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃；初始化阶段单次 sleep 拉到 60-120 秒，进入 `streaming` 或属增量修改时切回 5-10 秒。
+- `is_streaming=false` 且 `latest_turn.status=completed` 表示本轮完成，可发下一条。
+- `failed` / `cancelled` 时转述错误字段或 hint，由用户决定是否重试，不要静默重发。
+- 不知道某 app 有哪些 session 时，先 `+session-list --app-id <id>`，再选最近活跃的或让用户确认，别直接猜 `session_id`。
+- 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turn_id` 取值，再调用 `+session-stop --turn-id <turn_id>`。
 
 ### 典型链路
 
@@ -50,21 +59,10 @@ lark-cli apps +session-list --app-id app_xxx
 
 ## 完成态不等于发布态
 
-云端会话的完成态和应用发布态分开判断：
+通用发布态判定（is_published 语义、开发态链接拼接、发布态链接来源）见 SKILL.md「发布态护栏」。本 reference 只补云端会话特有的措辞：
 
-- `+session-get` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束。
-- 这不会自动证明最新版本已经发布部署，也不能证明用户拿到的发布态 URL 指向最新内容。
-- `+list` 的 `is_published=true` 只说明应用历史上已有发布版本；不要把它当作“最新云端生成结果已部署”的证据。
-- 若用户要“最新可访问链接”或“确认已上线”，必须先走发布链路并确认完成：全栈应用用 `+release-create` 发起发布，再用 `+release-get` 轮询同一个 `release_id`；HTML 应用用 `+html-publish`。
-
-## 链接交付
-
-云端搭建完成后，给用户区分两类链接：
-
-- 开发态链接：拿到 `app_id` 后即可拼 `https://miaoda.feishu.cn/app/{app_id}`，例如 `https://miaoda.feishu.cn/app/app_xxx`；仅用于进入妙搭开发/编辑态，不能当作可访问/分享链接顶替发布。
-- 发布态访问链接：只有在发布动作已完成时才提供。全栈应用在 `+release-get` 返回 `finished` 时，该命令输出已含 `online_url`，直接读取（`failed` 时其输出已含 `error_logs` 给出失败原因；`+list` 仅作独立查询入口）；HTML 应用使用 `+html-publish` 返回的 `data.url`。
-
-如果只完成了云端会话、没有确认发布完成，就明确告诉用户“开发态链接可进入继续编辑，发布态是否为最新版本尚未确认”。
+- `+session-get` 返回 `is_streaming=false` 且 `latest_turn.status=completed`，只说明本轮云端生成/迭代结束，不等于已发布部署。
+- 如果只完成了云端会话、没有确认发布完成，就明确告诉用户“开发态链接可进入继续编辑，发布态是否为最新版本尚未确认”。
 
 ## 需求发送
 
@@ -81,12 +79,6 @@ lark-cli apps +session-list --app-id app_xxx
 | 用户说“新开一段/换个话题” | `+session-create` 后再 `+chat` |
 | 用户说“接着刚才” | 复用上下文 session_id；拿不到就 `+session-list` 让用户选 |
 | 用户问会话“进行到哪一步/当前状态/最新进展” | 用 `+session-get --session-id <sid>` 读状态。`+session-list` 只负责发现/选择会话，不含执行状态；它返回空不等于无状态可查（session_id 也可能来自上下文），别用 `+session-list`/`+release-list` 代替 `+session-get` 回答进度 |
-
-## 轮询：操作约定
-
-- 不知道某 app 有哪些 session 时，先 `+session-list --app-id <id>`，再选最近活跃的或让用户确认，别直接猜 `session_id`。
-- `latest_turn.status` 为 `failed` / `cancelled` 时，由用户决定是否重试，不要静默重发。
-- 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turn_id` 取值，再调用 `+session-stop --turn-id <turn_id>`。
 
 ## 初始化 vs 增量修改
 
@@ -115,23 +107,9 @@ lark-cli apps +session-list --app-id app_xxx
 
 初始化阶段 `+session-get` 可能长时间持续返回 `building` / `running`，是正常状态，**不要按失败处理，也不要催用户**。
 
-## 轮询规则
-
-- `+chat` 异步入队，响应不带业务载荷：不返回 `turn_id`，也不返回 `next_poll_after_ms`。
-- 调用 `+session-get` 获取 `latest_turn.status`、`is_streaming` 与 `next_poll_after_ms`；由 agent 驱动轮询。`next_poll_after_ms` 为空时，按 [初始化 vs 增量修改](#初始化-vs-增量修改) 的判定选择节奏：增量 5-10 秒一次，初始化 60-120 秒一次。
-- 不知道已有 session 时先 `+session-list --app-id <id>`，再选最近活跃或让用户确认。
-- `is_streaming=true`、`building` / `running` / `streaming` 表示仍在生成，继续轮询，不傻等也不提前放弃。初始化阶段单次 sleep 拉到 60-120 秒；进入 `streaming` 或属增量修改时切回 5-10 秒。
-- `is_streaming=false` 且 `latest_turn.status=completed` 表示本轮完成，可发下一条。
-- `failed` / `cancelled` 时转述错误字段或 hint，询问是否重试。
-- 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turn_id` 取值，再调用：
-
-```bash
-lark-cli apps +session-stop --app-id app_xxx --session-id sess_xxx --turn-id turn_xxx
-```
-
 ## 字段注意
 
-所有字段统一 snake_case，顶层和嵌套 turn 字段都一样：`session_id`、`is_active`、`is_streaming`、`next_poll_after_ms`、`latest_turn.turn_id`、`latest_turn.status`、`latest_turn.user_message`、`latest_turn.messages`。`+session-stop --turn-id` 的取值来自 `latest_turn.turn_id`.
+所有字段统一 snake_case，顶层和嵌套 turn 字段都一样：`session_id`、`is_active`、`is_streaming`、`next_poll_after_ms`、`latest_turn.turn_id`、`latest_turn.status`、`latest_turn.user_message`、`latest_turn.messages`。
 
 `+session-stop` 只停止正在运行的当前轮，不关闭会话；停完仍可继续 `+chat`。
 

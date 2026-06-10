@@ -30,7 +30,7 @@ lark-cli apps +create --name "Demo" --app-type html --dry-run
 
 ## app type 与命名
 
-- `--app-type` 取值与判定信号见 SKILL.md「模糊需求决策」，此处不重复。
+- `--app-type` 取值与判定信号见 SKILL.md「选择开发路径」，此处不重复。
 - 用户只给自然语言需求时，据此生成简洁的 `--name` 和一句 `--description` 直接创建；不满意再用 `+update` 改。
 
 创建后按用户路径继续：

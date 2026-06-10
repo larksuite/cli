@@ -10,42 +10,11 @@ metadata:
 
 # apps (v1)
 
-妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。
-
-妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）；先按下方入口判定走哪条。
-
-## 选择开发路径（入口：先做这步，再进意图路由）
-
-先分**新建**还是**修改已有**——判据是**能否指认一个已有应用**：给了 `app_id` / 应用链接、当前目录是已初始化项目（`.spark/meta.json`）、或前序对话已锁定某 app → **修改已有**；都没有且要从零做 → **新建**；像在改某个已有 app 却指认不到 → 按下方「app_id 获取」解析，查不到就问用户是哪个，**不要擅自 `+create` 新建**。
-
-### 新建应用：先定两件正交的事，再路由
-
-1. **app_type（从需求推断）**：静态展示 / 单页 / PPT/demo / 无后端状态 → `html`；登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统、工具" → `full_stack`。
-   > `app_type=html` 时跳过开发方式轴：html 没有"本地 vs 云端"之分，直接 `+create --app-type html` ，开发完成后按 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) 走（含"未提部署→先问是否发布"）。
-2. **开发方式（本地 vs 云端）——只看用户对"谁来写代码"的明确偏好，不从"做什么应用"推断**（与应用复杂度、要不要数据库无关）：
-   - 想自己写 / 用本地 IDE·code agent / 要源码拉到本地 / 交研发 → **本地全栈**，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)。
-   - 想让妙搭 AI 在云端生成、对话式做好、自己不碰代码 → **云端会话**，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)。
-   - **没表达这种偏好 → 必须先问**（问的是"谁来写"=本地代码开发 vs 云端 AI 生成，**不是**问做成什么形态/网页/小程序）："1. 在本地用代码开发后再部署；2. 让云端 AI 直接生成，发布另行确认。你想用哪种？" 选定前不擅自选边、不暗示默认，**不得以"需求不模糊 / 我知道要干嘛"为由跳过提问、直接 `+init` / `git clone` / `+session-create` / 首轮 `+chat`**。
-
-### 修改已有应用：开发方式按信号默认，不必每次问
-
-- 当前目录已是该应用本地项目（`.spark/meta.json`）→ 直接继续本地，按「意图路由」操作（改库 / 加字段走 `+db-*`；发布走 `+release-create`；可见范围走 access-scope），不必问也不必判云端。
-- 否则按开发方式偏好判（同新建第 2 条）：有云端偏好 → 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md)；没表达 → **默认本地**，需要源码时读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md)。
-- 既非本地项目、信号也判不准 → 先问。
-
-路径定了，按「意图路由」取具体命令。
-
-## 发布态与链接交付
-
-- 用户表达想要**可访问 / 线上 / 分享 / 新的链接（URL）/ 上线**，即是**发布意图**：先走下方发布链路、确认完成后再给链接。
-- 云端会话完成只代表本轮生成/迭代结束，不代表最新内容已经发布到线上。
-- `apps +list` 的 `is_published=true` 只代表该应用历史上存在发布版本；不能据此判断最新云端生成结果已部署。
-- 开发态链接只要拿到 `app_id` 就可以拼接：`https://miaoda.feishu.cn/app/{app_id}`；它**仅用于进入妙搭开发/编辑态，不能当作可访问/分享链接顶替发布**。
-- 发布态可访问链接只能在本轮发布已确认完成后给出：HTML 发布用 `+html-publish` 返回的 `data.url`；全栈发布用 `+release-get` 轮询，`finished` 时该命令输出已含 `online_url` 直接返回，`failed` 时该命令输出已含 `error_logs` 直接给出失败原因。
+妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）。
 
 ## 意图路由
 
-开发路径已在上方入口定好后，按具体操作查命令：
+按具体操作查命令（开发路径先用下方「选择开发路径」判定表定好再进来取命令）：
 
 | 用户意图 | 先用 | 按需读取 |
 |---|---|---|
@@ -54,10 +23,32 @@ metadata:
 | 改应用名或描述 | `+update` | [`lark-apps-update.md`](references/lark-apps-update.md) |
 | 发布本地 `index.html` 或静态目录为可访问 URL | `+html-publish` | [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md) |
 | 开发已有应用 / 初始化本地仓库（开发方式已定为本地后；先解析 app_id，勿 `+create` 新建） | `+init`（或手动 `+git-credential-init` + 原生 git） | [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md), [`lark-apps-init.md`](references/lark-apps-init.md), [`lark-apps-git-credential.md`](references/lark-apps-git-credential.md) |
+| 本地开发时 `.env.local` 损坏/丢失，重新拉取启动期环境变量 | `+env-pull` | [`lark-apps-env-pull.md`](references/lark-apps-env-pull.md) |
 | 看表、看 schema、跑 SQL、初始化 dev/online 多环境 DB | `+db-table-list`, `+db-table-get`, `+db-execute`, `+db-env-create` | 对应 `lark-apps-db-*.md` |
 | **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | `+release-create`（部署上线动作）, `+release-get`（轮询发布结果，finished 给 online_url / failed 给 error_logs）, `+release-list` | [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-get` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
+
+## 选择开发路径（进意图路由前先判这步）
+
+新建必先定 **app_type** 和**开发方式**两件正交的事；修改已有先按「app_id 获取」指认到 app，指认不到就问用户，不擅自 `+create`。开发方式（本地 vs 云端）只看用户对"谁来写代码"的偏好，与应用复杂度、要不要数据库无关。
+
+| 信号 | 判定 |
+|---|---|
+| 静态展示 / 单页 / PPT/demo / 无后端状态 | `app_type=html`，跳过本地/云端轴，开发完按 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)（含"未提部署→先问是否发布"） |
+| 登录 / 数据库 / 持久化 / 多人协作 / 增删改查 / 报名 / 投票 / 站会 / OKR / 泛称"系统·工具" | `app_type=full_stack` |
+| 用户要自己写 / 本地 IDE·code agent / 拉源码到本地 / 交研发 | 本地全栈，读 [`lark-apps-local-dev.md`](references/lark-apps-local-dev.md) |
+| 让妙搭 AI 云端生成 / 对话式 / 自己不碰代码 | 云端会话，读 [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
+| 未表达"谁来写"偏好 | **必须先问**（本地代码开发 vs 云端 AI 生成）；选定前不擅自选边、不暗示默认，不得以"需求不模糊"为由跳过提问直接 `+init` / `git clone` / `+session-create` / 首轮 `+chat` |
+| 修改已有 + 当前目录是 `.spark/meta.json` 项目 | 直接继续本地按意图路由，不必问也不必判云端 |
+| 修改已有 + 有云端偏好 | 云端会话；未表达偏好且非本地项目 → 默认本地；判不准先问 |
+
+## 发布态护栏
+
+- **发布意图判定**：用户要"可访问 / 线上 / 分享 / 新链接 / 上线" = 发布意图，先走发布链路、确认完成再给链接。
+- 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
+- 开发态链接 `https://miaoda.feishu.cn/app/{app_id}` 仅进编辑态，不能顶替发布当分享链接。
+- 发布态链接来源：html → `+html-publish` 的 `data.url`；全栈 → `+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`。
 
 ## app_id 获取
 
