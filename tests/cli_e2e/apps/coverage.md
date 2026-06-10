@@ -8,7 +8,7 @@
 - Live coverage: 0%
 
 ## Summary
-- `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type), and uppercase `HTML` normalization to `html` (case-insensitive input, canonical lowercase `html`/`full_stack`).
+- `TestAppsCreateDryRun`: happy path with `--app-type html`, all-fields shape, rejection paths (missing name, missing app-type, invalid app-type, legacy uppercase `HTML`). `--app-type` is a strict lowercase enum (`html`/`full_stack`); the CLI does not normalize case — legacy uppercase compatibility is a server concern.
 - `TestAppsUpdateDryRun`: partial-field PATCH semantics; `--app-id` and at-least-one-field validation.
 - `TestAppsListDryRun`: default `page_size=20`; empty `--page-token` omitted; negative size passed through to server (no client-side bound check); `--keyword`/`--ownership`/`--app-type` pass-through + empty-omission; invalid `--ownership` and legacy uppercase `--app-type` enum rejection.
 - `TestAppsAccessScopeSetDryRun`: CLI input `specific`/`public`/`tenant` -> server enum `Range`/`All`/`Tenant`; `apply_config.approvers` shape; four mutex rejection paths.

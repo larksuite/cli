@@ -28,20 +28,13 @@ var AppsCreate = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "name", Desc: "app display name", Required: true},
-		{Name: "app-type", Desc: "app type (html or full_stack)", Required: true},
+		{Name: "app-type", Desc: "app type", Required: true, Enum: []string{"html", "full_stack"}},
 		{Name: "description", Desc: "app description"},
 		{Name: "icon-url", Desc: "app icon URL (server uses default if omitted)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("name")) == "" {
 			return output.ErrValidation("--name is required")
-		}
-		appType := normalizedAppType(rctx)
-		if appType == "" {
-			return output.ErrValidation("--app-type is required")
-		}
-		if !validAppTypes[appType] {
-			return output.ErrValidation(fmt.Sprintf("--app-type %q is not supported (allowed: html, full_stack)", appType))
 		}
 		return nil
 	},
@@ -63,24 +56,13 @@ var AppsCreate = common.Shortcut{
 	},
 }
 
-// 应用类型枚举。输入经 normalizedAppType 归一化为小写后精确匹配，与服务端历史大小写兼容性对齐（对外统一小写）。
-var validAppTypes = map[string]bool{
-	"html":       true,
-	"full_stack": true,
-}
-
-// normalizedAppType returns the trimmed, lowercased --app-type value. The
-// server has historically accepted any case; the CLI canonicalizes to the
-// lowercase enum (the documented external form) before validating/sending.
-func normalizedAppType(rctx *common.RuntimeContext) string {
-	return strings.ToLower(strings.TrimSpace(rctx.Str("app-type")))
-}
-
 func buildAppsCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
-	appType := normalizedAppType(rctx)
+	// --app-type is constrained to the lowercase enum (html / full_stack) by the
+	// flag's Enum, so send it through verbatim. Legacy uppercase compatibility is
+	// a server concern and is intentionally not surfaced by the CLI.
 	body := map[string]interface{}{
 		"name":     strings.TrimSpace(rctx.Str("name")),
-		"app_type": appType,
+		"app_type": rctx.Str("app-type"),
 	}
 	if desc := strings.TrimSpace(rctx.Str("description")); desc != "" {
 		body["description"] = desc

@@ -141,15 +141,15 @@ func TestAppsCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 2)
 		msg := validateErrorMessage(result)
-		assert.Contains(t, msg, "not supported")
+		assert.Contains(t, msg, "invalid value")
 		assert.Contains(t, msg, "full_stack")
 	})
 
-	t.Run("NormalizesUppercaseAppType", func(t *testing.T) {
-		// --app-type is normalized to lowercase before validation, aligning the
-		// CLI with the server's historical case-insensitivity (the documented
-		// external form is lowercase). Uppercase "HTML" is accepted and sent as
-		// "html".
+	t.Run("RejectsLegacyUppercaseAppType", func(t *testing.T) {
+		// --app-type is a strict lowercase enum (html / full_stack); the CLI does
+		// not normalize case. Legacy uppercase "HTML" is rejected — backend
+		// compatibility for legacy values is a server concern the client does not
+		// surface.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 
@@ -163,8 +163,9 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.body.app_type").String(),
-			"uppercase --app-type HTML must be normalized to html; stdout: %s", result.Stdout)
+		result.AssertExitCode(t, 2)
+		msg := validateErrorMessage(result)
+		assert.Contains(t, msg, "invalid value")
+		assert.Contains(t, msg, "HTML")
 	})
 }

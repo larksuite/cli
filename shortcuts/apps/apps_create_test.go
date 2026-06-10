@@ -160,75 +160,25 @@ func TestAppsCreate_RequiresAppType(t *testing.T) {
 	}
 }
 
+// TestAppsCreate_RejectsInvalidAppType pins that --app-type is a strict
+// lowercase enum (html / full_stack). Unknown values and legacy uppercase are
+// both rejected by the flag's Enum — the CLI does not normalize case; legacy
+// uppercase compatibility is a server-side concern, not surfaced by the client.
 func TestAppsCreate_RejectsInvalidAppType(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsCreate,
-		[]string{"+create", "--name", "Demo", "--app-type", "spa", "--as", "user"},
-		factory, stdout)
-	if err == nil || !strings.Contains(err.Error(), "not supported") {
-		t.Fatalf("expected unsupported app-type error, got %v", err)
-	}
-	if !strings.Contains(err.Error(), "full_stack") {
-		t.Fatalf("expected allow-list error to mention \"full_stack\", got %v", err)
-	}
-}
-
-// newAppsCreateRuntime builds a RuntimeContext whose flags carry the given
-// --name / --app-type values, so Validate and buildAppsCreateBody can be
-// exercised directly without wiring a full cobra execution.
-func newAppsCreateRuntime(t *testing.T, name, appType string) *common.RuntimeContext {
-	t.Helper()
-	cmd := &cobra.Command{Use: "+create"}
-	cmd.Flags().String("name", "", "")
-	cmd.Flags().String("app-type", "", "")
-	cmd.Flags().String("description", "", "")
-	cmd.Flags().String("icon-url", "", "")
-	if err := cmd.Flags().Set("name", name); err != nil {
-		t.Fatalf("set name: %v", err)
-	}
-	if err := cmd.Flags().Set("app-type", appType); err != nil {
-		t.Fatalf("set app-type: %v", err)
-	}
-	return common.TestNewRuntimeContext(cmd, &core.CliConfig{})
-}
-
-// TestAppsCreateAppTypeNormalization verifies --app-type is normalized
-// (trimmed + lowercased) before validation and before being sent in the
-// request body. The server has historically accepted any case; the CLI
-// canonicalizes to the lowercase enum (the documented external form). Values
-// like "react" that are not in the enum still fail validation.
-func TestAppsCreateAppTypeNormalization(t *testing.T) {
-	pass := []struct {
-		input string
-		want  string
-	}{
-		{"html", "html"},
-		{"HTML", "html"},
-		{"Html", "html"},
-		{"  html  ", "html"},
-		{"FULL_STACK", "full_stack"},
-		{"full_stack", "full_stack"},
-	}
-	for _, tc := range pass {
-		t.Run("pass/"+tc.input, func(t *testing.T) {
-			rctx := newAppsCreateRuntime(t, "Demo", tc.input)
-			if err := AppsCreate.Validate(context.Background(), rctx); err != nil {
-				t.Fatalf("Validate(%q) unexpected error: %v", tc.input, err)
+	for _, appType := range []string{"spa", "HTML", "Full_Stack"} {
+		t.Run(appType, func(t *testing.T) {
+			factory, stdout, _ := newAppsExecuteFactory(t)
+			err := runAppsShortcut(t, AppsCreate,
+				[]string{"+create", "--name", "Demo", "--app-type", appType, "--as", "user"},
+				factory, stdout)
+			if err == nil || !strings.Contains(err.Error(), "invalid value") {
+				t.Fatalf("expected invalid-enum error for %q, got %v", appType, err)
 			}
-			body := buildAppsCreateBody(rctx)
-			if body["app_type"] != tc.want {
-				t.Fatalf("buildAppsCreateBody app_type = %v, want %q", body["app_type"], tc.want)
+			if !strings.Contains(err.Error(), "full_stack") {
+				t.Fatalf("expected enum error to list allowed values, got %v", err)
 			}
 		})
 	}
-
-	t.Run("reject/react", func(t *testing.T) {
-		rctx := newAppsCreateRuntime(t, "Demo", "react")
-		err := AppsCreate.Validate(context.Background(), rctx)
-		if err == nil || !strings.Contains(err.Error(), "not supported") {
-			t.Fatalf("expected unsupported app-type error for \"react\", got %v", err)
-		}
-	})
 }
 
 func TestAppsCreate_DryRun(t *testing.T) {
