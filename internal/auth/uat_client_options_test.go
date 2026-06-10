@@ -38,3 +38,23 @@ func TestNewUATCallOptions(t *testing.T) {
 		t.Error("ErrOut not set correctly")
 	}
 }
+
+// TestNewUATCallOptions_PrivateKeyJWT verifies the auth-method fields propagate
+// so the refresh path can mint a client_assertion instead of sending a secret.
+func TestNewUATCallOptions_PrivateKeyJWT(t *testing.T) {
+	cfg := &core.CliConfig{
+		AppID:      "cli_pk",
+		Brand:      core.BrandFeishu,
+		UserOpenId: "ou_test",
+		AuthMethod: core.AuthMethodPrivateKeyJWT,
+		KeyLabel:   "agent-key",
+	}
+	opts := NewUATCallOptions(cfg, &bytes.Buffer{})
+
+	if opts.AuthMethod != core.AuthMethodPrivateKeyJWT {
+		t.Errorf("AuthMethod = %q, want private_key_jwt", opts.AuthMethod)
+	}
+	if opts.KeyLabel != "agent-key" {
+		t.Errorf("KeyLabel = %q, want agent-key", opts.KeyLabel)
+	}
+}

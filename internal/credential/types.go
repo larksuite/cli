@@ -29,6 +29,8 @@ type Account struct {
 	DPoPMode            core.DPoPMode
 	CredentialSource    core.CredentialSource
 	SupportedIdentities uint8
+	AuthMethod          string // "" == client_secret; core.AuthMethodPrivateKeyJWT
+	KeyLabel            string // resolved TEE key handle for private_key_jwt
 }
 
 const runtimePlaceholderAppSecret = "__LARKSUITE_CLI_TOKEN_ONLY__"
@@ -74,6 +76,8 @@ func AccountFromCliConfig(cfg *core.CliConfig) *Account {
 		DPoPMode:            cfg.DPoPMode,
 		CredentialSource:    cfg.CredentialSource,
 		SupportedIdentities: cfg.SupportedIdentities,
+		AuthMethod:          cfg.AuthMethod,
+		KeyLabel:            cfg.KeyLabel,
 	}
 }
 
@@ -95,6 +99,8 @@ func (a *Account) ToCliConfig() *core.CliConfig {
 		DPoPMode:            a.DPoPMode,
 		CredentialSource:    a.CredentialSource,
 		SupportedIdentities: a.SupportedIdentities,
+		AuthMethod:          a.AuthMethod,
+		KeyLabel:            a.KeyLabel,
 	}
 }
 

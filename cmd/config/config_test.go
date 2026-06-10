@@ -207,7 +207,7 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 		t.Fatalf("seed config: %v", err)
 	}
 
-	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, ""); err != nil {
+	if err := saveInitConfig("", existing, f, "cli_x", core.PlainSecret("s2"), core.BrandFeishu, "", "", nil); err != nil {
 		t.Fatalf("saveInitConfig (no --lang): %v", err)
 	}
 
@@ -402,7 +402,7 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 		},
 	}
 
-	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en")
+	err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "cli_prod", "app-new", core.PlainSecret("new-secret"), core.BrandLark, "en", "", nil)
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
