@@ -4,11 +4,28 @@
 package config
 
 import (
+	"context"
+	"crypto"
 	"testing"
 
+	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 )
+
+type authMethodTestSigner struct{}
+
+func (authMethodTestSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return nil, nil
+}
+
+func (authMethodTestSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return nil, nil
+}
+
+func (authMethodTestSigner) Sign(context.Context, keysigner.KeyRef, []byte) ([]byte, string, error) {
+	return nil, "", nil
+}
 
 // TestResolveRegisterAuthMethod covers the non-interactive gating paths. No TEE
 // signer is registered in this test binary, so private_key_jwt must be rejected.
@@ -19,12 +36,24 @@ func TestResolveRegisterAuthMethod(t *testing.T) {
 		t.Errorf("client_secret: got (%q, %v), want (client_secret, nil)", m, err)
 	}
 
+	if m, err := resolveRegisterAuthMethod(f, ""); err != nil || m != core.AuthMethodClientSecret {
+		t.Errorf("default: got (%q, %v), want (client_secret, nil)", m, err)
+	}
+
 	if _, err := resolveRegisterAuthMethod(f, "bogus"); err == nil {
 		t.Error("bogus auth-method: expected error")
 	}
 
 	if _, err := resolveRegisterAuthMethod(f, core.AuthMethodPrivateKeyJWT); err == nil {
 		t.Error("private_key_jwt without a signer: expected error")
+	}
+
+	prevSigner := keysigner.Active()
+	keysigner.Register(authMethodTestSigner{})
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+
+	if m, err := resolveRegisterAuthMethod(f, core.AuthMethodPrivateKeyJWT); err != nil || m != core.AuthMethodPrivateKeyJWT {
+		t.Errorf("private_key_jwt with signer: got (%q, %v), want (private_key_jwt, nil)", m, err)
 	}
 }
 
