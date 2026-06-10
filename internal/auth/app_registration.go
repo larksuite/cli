@@ -253,7 +253,14 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 		if base == "" {
 			base = ep.Open + "/page/launcher"
 		}
-		verificationUriComplete = fmt.Sprintf("%s?user_code=%s", base, userCode)
+		// The server may return verification_uri with its own query (e.g.
+		// client_id when registering against an existing app), so join with
+		// the same ?/& logic as BuildVerificationURL.
+		sep := "?"
+		if strings.Contains(base, "?") {
+			sep = "&"
+		}
+		verificationUriComplete = base + sep + "user_code=" + url.QueryEscape(userCode)
 	}
 
 	return &AppRegistrationResponse{
