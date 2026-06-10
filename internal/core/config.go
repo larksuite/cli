@@ -36,6 +36,13 @@ type AppUser struct {
 	UserName   string `json:"userName"`
 }
 
+// Auth methods for app credentials. An empty AppConfig.AuthMethod means the
+// default, client_secret.
+const (
+	AuthMethodClientSecret  = "client_secret"   // app_id + app_secret
+	AuthMethodPrivateKeyJWT = "private_key_jwt" // TEE-signed client_assertion; no app secret
+)
+
 // AppConfig is a per-app configuration entry (stored format — secrets may be unresolved).
 type AppConfig struct {
 	Name       string      `json:"name,omitempty"`
@@ -47,6 +54,15 @@ type AppConfig struct {
 	StrictMode *StrictMode `json:"strictMode,omitempty"`
 	DPoPMode   DPoPMode    `json:"dpopMode,omitempty"`
 	Users      []AppUser   `json:"users"`
+
+	// AuthMethod selects how tokens are minted. Empty == AuthMethodClientSecret
+	// (back-compat). AuthMethodPrivateKeyJWT uses a TEE-held key (see KeyRef) to
+	// sign client_assertion JWTs instead of sending an app secret.
+	AuthMethod string `json:"authMethod,omitempty"`
+	// KeyRef references the non-exportable signing key for private_key_jwt.
+	// Source is "tee" and ID is the backend key label; the actual key never
+	// leaves the secure backend, so this is a handle, not secret material.
+	KeyRef *SecretRef `json:"keyRef,omitempty"`
 }
 
 // ProfileName returns the display name for this app config.
@@ -204,9 +220,9 @@ type CliConfig struct {
 	UserOpenId          string
 	UserName            string
 	Lang                i18n.Lang
-	DPoPMode            DPoPMode
-	CredentialSource    CredentialSource
-	SupportedIdentities uint8 `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	SupportedIdentities uint8  `json:"-"` // bitflag: 1=user, 2=bot; set by credential provider
+	AuthMethod          string // "" == client_secret; AuthMethodPrivateKeyJWT
+	KeyLabel            string // resolved TEE key handle for private_key_jwt
 }
 
 // identityBotBit is the bit flag for bot identity in SupportedIdentities.
@@ -330,14 +346,16 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		return nil, errs.NewConfigError(subtype, "%s", err.Error()).WithCause(err)
 	}
 	cfg := &CliConfig{
-		ProfileName:      app.ProfileName(),
-		AppID:            app.AppId,
-		AppSecret:        secret,
-		Brand:            ParseBrand(string(app.Brand)),
-		Lang:             app.Lang,
-		DefaultAs:        app.DefaultAs,
-		DPoPMode:         dpopMode,
-		CredentialSource: CredentialSourceLocal,
+		ProfileName: app.ProfileName(),
+		AppID:       app.AppId,
+		AppSecret:   secret,
+		Brand:       ParseBrand(string(app.Brand)),
+		Lang:        app.Lang,
+		DefaultAs:   app.DefaultAs,
+		AuthMethod:  app.AuthMethod,
+	}
+	if app.KeyRef != nil {
+		cfg.KeyLabel = app.KeyRef.ID
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId
