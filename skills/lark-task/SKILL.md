@@ -16,6 +16,8 @@ metadata:
 > **任务清单搜索技巧**：任务清单也遵循同样的判断逻辑。先区分用户是否**特地指定使用搜索 skill**，以及是否真的提供了**清单查询关键字**（例如清单名称、关键词、片段描述）。如果用户特地指定使用搜索 skill，或明确给出了清单查询关键字，则优先使用 `+tasklist-search`。如果用户没有特地指定使用搜索 skill，且意图里没有查询关键字，只有范围条件（例如“由我创建的任务清单”“今年以来创建的清单”），并且使用搜索或原生列取清单都能达到目的时，应优先使用原生 `tasklists.list` 接口列取清单（先 `schema task.tasklists.list`，再 `lark-cli task tasklists list --as user ...`），再按 `creator`、`created_at` 等字段做本地筛选和分页控制。
 > **意图区分补充**：像“搜索飞书中今年以来我关注的任务”这类表达，虽然字面带有“搜索”，但如果没有真正的查询关键字，且本质是在限定“与我相关 + 时间范围”，则应优先走 `+get-related-tasks`；像“搜索飞书中由我创建的任务清单”这类表达，如果没有清单关键字，且本质是在限定“清单范围 + 创建者”，则应优先走原生 `tasklists.list` 后筛选，而不是直接走搜索型 shortcut。
 > **用户身份识别**：在用户身份（user identity）场景下，如果用户提到了“我”（例如“分配给我”、“由我创建”），请默认获取当前登录用户的 `open_id` 作为对应的参数值。
+> **清单范围内定位任务优先**：当用户同时给出明确任务清单和任务名称（例如“把 A 清单里的 B 标记完成/更新/查看”）时，先定位清单，再调用原生 `tasklists.tasks` 在该清单内按 `summary` 精确匹配任务；不要直接用任务名称做全局 `task +search`。只有清单任务列表没有唯一命中时，才可用全局搜索兜底；兜底候选必须再 `tasks.get` 验证其 `tasklists[].tasklist_guid` 包含目标清单 GUID 后才能执行写操作。清单内或验证后的候选仍有多个同名任务时，必须让用户确认，不能默认选择第一项。
+> **清单范围内解析负责人优先**：当用户同时给出明确任务清单和负责人姓名（例如“在 A 清单里给全名为张三的用户创建待办”）时，先定位清单，再从该清单的 `owner` / `creator` / `members` 候选用户中批量回填姓名并做精确匹配；只有清单候选内没有唯一命中时，才 fallback 到全局 `contact +search-user --query`。全局搜索命中多个同名用户且下一步是创建/分配任务时，必须让用户确认，不能默认选择第一项。
 > **术语理解**：如果用户提到 “todo”（待办），应当思考其是否是指“task”（任务），并优先尝试使用本 Skill 提供的命令来处理。
 > **友好输出**：在输出任务（或清单）的执行结果给用户时，建议同时提取并输出命令返回结果中的 `url` 字段（任务链接），以便用户可以直接点击跳转查看详情。
 
@@ -123,42 +125,3 @@ lark-cli task <resource> <method> [flags] # 调用 API
 ### agent_task_step_info
 
   - `append_task_steps` — 写入任务记录。
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `tasks.create` | `task:task:write` |
-| `tasks.delete` | `task:task:write` |
-| `tasks.get` | `task:task:read` |
-| `tasks.list` | `task:task:read` |
-| `tasks.patch` | `task:task:write` |
-| `tasklists.add_members` | `task:tasklist:write` |
-| `tasklists.create` | `task:tasklist:write` |
-| `tasklists.delete` | `task:tasklist:write` |
-| `tasklists.get` | `task:tasklist:read` |
-| `tasklists.list` | `task:tasklist:read` |
-| `tasklists.patch` | `task:tasklist:write` |
-| `tasklists.remove_members` | `task:tasklist:write` |
-| `tasklists.tasks` | `task:tasklist:read` |
-| `subtasks.create` | `task:task:write` |
-| `subtasks.list` | `task:task:read` |
-| `members.add` | `task:task:write` |
-| `members.remove` | `task:task:write` |
-| `sections.create` | `task:section:write` |
-| `sections.delete` | `task:section:write` |
-| `sections.get` | `task:section:read` |
-| `sections.list` | `task:section:read` |
-| `sections.patch` | `task:section:write` |
-| `sections.tasks` | `task:section:read` |
-| `custom_fields.create` | `task:custom_field:write` |
-| `custom_fields.get` | `task:custom_field:read` |
-| `custom_fields.patch` | `task:custom_field:write` |
-| `custom_fields.list` | `task:custom_field:read` |
-| `custom_fields.add` | `task:custom_field:write` |
-| `custom_fields.remove` | `task:custom_field:write` |
-| `custom_field_options.create` | `task:custom_field:write` |
-| `custom_field_options.patch` | `task:custom_field:write` |
-| `agent.update_agent_profile` | `task:task:write` |
-| `agent.register_agent` | `task:task:write` |
-| `agent_task_step_info.append_task_steps` | `task:task:write` |
