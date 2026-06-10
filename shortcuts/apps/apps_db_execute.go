@@ -59,7 +59,7 @@ var AppsDBExecute = common.Shortcut{
 		{Name: "sql", Desc: "SQL text; use - to read stdin. Mutually exclusive with --file",
 			Input: []string{common.Stdin}},
 		{Name: "file", Desc: "path to a .sql file (relative to cwd). Mutually exclusive with --sql"},
-		{Name: "env", Default: "dev", Enum: []string{"dev", "online"}, Desc: "target db environment (default dev; pass --env online to hit production)"},
+		{Name: "env", Default: "dev", Enum: []string{"dev", "online"}, Desc: "target db environment (default dev; use --env online for the online environment)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
