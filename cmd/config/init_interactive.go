@@ -252,6 +252,11 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		if initErr != nil {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration init failed: %v", initErr).WithCause(initErr)
 		}
+		// An empty SupportedAuthMethods is intentionally treated as "older server /
+		// unknown": len()==0 makes this guard false, so the requested
+		// private_key_jwt proceeds. This mirrors resolveFinalAuthMethod's
+		// back-compat fallback to the requested method. Only an explicit list that
+		// omits private_key_jwt rejects here.
 		if len(initResp.SupportedAuthMethods) > 0 && !slices.Contains(initResp.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT) {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
 				"server does not support private_key_jwt for this app type (supported: %s)", strings.Join(initResp.SupportedAuthMethods, ", ")).

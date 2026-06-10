@@ -252,3 +252,47 @@ func TestResolveConfigFromMulti_NormalizesBrand(t *testing.T) {
 		t.Errorf("Brand = %q, want %q (normalized at ingress)", cfg.Brand, BrandLark)
 	}
 }
+
+func TestResolveConfigFromMulti_RejectsUnknownAuthMethod(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		AppSecret:  PlainSecret("my-secret"),
+		Brand:      BrandFeishu,
+		AuthMethod: "bogus_method",
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for unknown authMethod")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+}
+
+func TestResolveConfigFromMulti_PrivateKeyJWTRequiresKeyRef(t *testing.T) {
+	raw := &MultiAppConfig{Apps: []AppConfig{{
+		AppId:      "cli_abc",
+		Brand:      BrandFeishu,
+		AuthMethod: AuthMethodPrivateKeyJWT,
+	}}}
+
+	_, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err == nil {
+		t.Fatal("expected error for private_key_jwt without keyRef")
+	}
+	var configErr *errs.ConfigError
+	if !errors.As(err, &configErr) {
+		t.Fatalf("expected ConfigError, got %T: %v", err, err)
+	}
+
+	raw.Apps[0].KeyRef = &SecretRef{Source: "tee", ID: "larksuite-cli-agent"}
+	cfg, err := ResolveConfigFromMulti(raw, nil, "", ProfileFromConfig)
+	if err != nil {
+		t.Fatalf("unexpected error with keyRef present: %v", err)
+	}
+	if cfg.KeyLabel != "larksuite-cli-agent" {
+		t.Errorf("KeyLabel = %q, want larksuite-cli-agent", cfg.KeyLabel)
+	}
+}
