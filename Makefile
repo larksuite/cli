@@ -8,8 +8,12 @@ DATE     := $(shell date +%Y-%m-%d)
 LDFLAGS  := -s -w -X $(MODULE)/internal/build.Version=$(VERSION) -X $(MODULE)/internal/build.Date=$(DATE)
 PREFIX   ?= /usr/local
 
-# -race is not supported on linux/riscv64 before Go 1.26.
-RACE_FLAG := $(shell go env GOARCH | grep -qv '^riscv64$$' && echo '-race' || echo '')
+# The repository's Go 1.23 CI toolchain does not support -race on riscv64.
+# Prefer GOARCH passed to make (for example, `make GOARCH=riscv64 unit-test`)
+# over `go env GOARCH`, because command-line make variables are not visible to
+# $(shell ...).
+TEST_GOARCH := $(or $(GOARCH),$(shell go env GOARCH))
+RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
 .PHONY: all build vet fmt-check test unit-test integration-test examples-build install uninstall clean fetch_meta gitleaks
 
