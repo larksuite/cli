@@ -112,7 +112,15 @@ func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 切到临时目录，使相对路径校验通过（CLI 仅接受 cwd 内相对路径）。
-	t.Chdir(dir)
+	// 用 os.Chdir + 还原而非 t.Chdir：后者要 Go 1.24，本仓库 go.mod 为 1.23。
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBExecute,
