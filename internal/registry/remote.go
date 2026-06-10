@@ -45,10 +45,8 @@ type MergedRegistry struct {
 }
 
 // remoteResponse is the envelope returned by the remote API. Data stays raw:
-// the on-disk cache must store the server payload verbatim, and a typed
-// re-marshal would strip every field the model doesn't (yet) declare — overlay
-// entries replace embedded services wholesale, so a stripped cache written by
-// today's binary would starve a future binary that models more of the metadata.
+// the cache must store the server payload verbatim — a typed re-marshal would
+// strip every field the model doesn't (yet) declare and starve future binaries.
 type remoteResponse struct {
 	Msg  string          `json:"msg"`
 	Data json.RawMessage `json:"data"`
