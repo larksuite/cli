@@ -1,6 +1,6 @@
 # apps +db-execute
 
-经妙搭服务端在应用数据库执行 ad-hoc SQL。运行时命令事实以 `lark-cli apps +db-execute --help` 为准。
+经妙搭服务端在应用数据库执行 SQL。运行时命令事实以 `lark-cli apps +db-execute --help` 为准。
 
 ## 何时用
 

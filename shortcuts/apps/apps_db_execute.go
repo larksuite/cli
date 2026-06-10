@@ -17,7 +17,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsDBExecute executes ad-hoc SQL against a Miaoda app database.
+// AppsDBExecute executes SQL against a Miaoda app database.
 //
 // POST /apps/{app_id}/sql_commands，CLI 永远带 ?transactional=false 进入 DBA 模式
 // （不默认包事务、支持 DDL、result 字符串内嵌结构化 JSON）。
@@ -44,7 +44,7 @@ import (
 var AppsDBExecute = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-execute",
-	Description: "Execute ad-hoc SQL (SELECT / DML / DDL) against a Miaoda app database",
+	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
 	Risk:        "high-risk-write",
 	Tips: []string{
 		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
