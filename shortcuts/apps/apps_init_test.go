@@ -355,13 +355,17 @@ func TestAppsInit_EmptyRepo_EndToEnd(t *testing.T) {
 
 func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	dir := relCloneDir(t)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"app_id":"whatever"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeCommandRunner{results: map[string]fakeCallResult{}}
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(filepath.Join(abs, ".env.local"))}}
 	withFakeRunner(t, f)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
@@ -371,8 +375,21 @@ func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	if data["scaffold"] != "already_initialized" {
 		t.Errorf("scaffold=%v, want already_initialized", data["scaffold"])
 	}
-	if len(f.calls) != 0 {
-		t.Errorf("no runner calls expected on short-circuit; got %v", f.calls)
+	// short-circuit must still skip clone/checkout/scaffold/commit ...
+	for _, c := range f.calls {
+		if containsAll(c, "git", "clone") || containsAll(c, "git", "checkout") || containsAll(c, "git", "status") {
+			t.Errorf("short-circuit must not run git clone/checkout/status; got %v", f.calls)
+		}
+	}
+	// ... but now refreshes local env exactly once.
+	envPullCalls := 0
+	for _, c := range f.calls {
+		if containsAll(c, "+env-pull") {
+			envPullCalls++
+		}
+	}
+	if envPullCalls != 1 {
+		t.Errorf("short-circuit must call +env-pull exactly once; got %d (%v)", envPullCalls, f.calls)
 	}
 }
 
@@ -1333,10 +1350,7 @@ func TestAppsInit_EnvPull_NonFatal(t *testing.T) {
 	}
 }
 
-func TestAppsInit_AlreadyInitialized_SkipsEnvPull(t *testing.T) {
-	f := &fakeCommandRunner{results: map[string]fakeCallResult{}}
-	withFakeRunner(t, f)
-	factory, stdout, _ := newAppsExecuteFactory(t)
+func TestAppsInit_AlreadyInitialized_RunsEnvPull(t *testing.T) {
 	dir := relCloneDir(t)
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -1348,17 +1362,76 @@ func TestAppsInit_AlreadyInitialized_SkipsEnvPull(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(abs, metaRelPath), []byte(`{"app_id":"app_x"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	envFile := filepath.Join(abs, ".env.local")
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(envFile)}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	called := false
 	for _, c := range f.calls {
 		if containsAll(c, "+env-pull") {
-			t.Errorf("already-initialized path must NOT call +env-pull: %v", f.calls)
+			called = true
 		}
 	}
+	if !called {
+		t.Errorf("already-initialized path must call +env-pull: %v", f.calls)
+	}
 	data := parseEnvelopeData(t, stdout)
-	if _, ok := data["env_pulled"]; ok {
-		t.Errorf("already-initialized output must not carry env_pulled: %v", data)
+	if data["scaffold"] != "already_initialized" {
+		t.Errorf("scaffold=%v, want already_initialized", data["scaffold"])
+	}
+	if data["env_pulled"] != true {
+		t.Errorf("env_pulled=%v, want true", data["env_pulled"])
+	}
+	if data["env_file"] != envFile {
+		t.Errorf("env_file=%v, want %v", data["env_file"], envFile)
+	}
+	if data["committed"] != false || data["pushed"] != false {
+		t.Errorf("committed/pushed must stay false: %v", data)
+	}
+}
+
+func TestAppsInit_AlreadyInitialized_EnvPullFailure_NonFatal(t *testing.T) {
+	dir := relCloneDir(t)
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(abs, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abs, metaRelPath), []byte(`{"app_id":"app_x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeCommandRunner{results: map[string]fakeCallResult{
+		"env-pull": {
+			stderr: `{"ok":false,"error":{"type":"missing_scope","message":"need spark:app:read"}}`,
+			err:    fmt.Errorf("exit status 2"),
+		},
+	}}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("env-pull failure must be non-fatal, got: %v", err)
+	}
+	data := parseEnvelopeData(t, stdout)
+	if data["scaffold"] != "already_initialized" {
+		t.Errorf("scaffold=%v, want already_initialized", data["scaffold"])
+	}
+	if data["env_pulled"] != false {
+		t.Errorf("env_pulled=%v, want false", data["env_pulled"])
+	}
+	if data["env_pull_error"] != "missing_scope: need spark:app:read" {
+		t.Errorf("env_pull_error=%v", data["env_pull_error"])
+	}
+	if _, ok := data["env_file"]; ok {
+		t.Errorf("env_file must be absent on failure: %v", data["env_file"])
+	}
+	msg, _ := data["message"].(string)
+	if !strings.Contains(msg, "+env-pull --app-id app_x") {
+		t.Errorf("message missing retry hint: %q", msg)
 	}
 }
 
@@ -1382,5 +1455,14 @@ func TestAppsInit_DryRun_DescribesEnvPull(t *testing.T) {
 		if containsAll(c, "+env-pull") {
 			t.Errorf("dry-run must not execute +env-pull: %v", f.calls)
 		}
+	}
+}
+
+func TestAppsInit_Description_IsAboutCode(t *testing.T) {
+	if strings.Contains(strings.ToLower(AppsInit.Description), "local development repository") {
+		t.Errorf("Description should describe initializing app code, not a local dev repo: %q", AppsInit.Description)
+	}
+	if !strings.Contains(strings.ToLower(AppsInit.Description), "code") {
+		t.Errorf("Description should mention app code: %q", AppsInit.Description)
 	}
 }
