@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const dbTableListHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+
 // AppsDBTableList lists tables in a Miaoda app's database.
 //
 // GET /apps/{app_id}/tables（cursor 分页），response items[] 含 estimated_row_count /
@@ -60,7 +62,7 @@ var AppsDBTableList = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("GET", appTablesPath(appID), buildDBTableListParams(rctx), nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, dbTableListHint)
 		}
 		// 白名单投影：只把产品要求的字段组装进 dbTableListItem，替换 server 原始 items[]。
 		// server 给每张表回完整 columns[]（与 +db-table-get 同源、逐字节一致），在 list 里逐表

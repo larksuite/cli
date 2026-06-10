@@ -12,6 +12,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const dbTableGetHint = "verify --app-id and --table are correct; list tables with `lark-cli apps +db-table-list --app-id <app_id>`; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+
 // AppsDBTableGet gets one table's structure (动词对齐 +db-table-list)。
 //
 // GET /apps/{app_id}/tables/{table_name}。
@@ -62,7 +64,7 @@ var AppsDBTableGet = common.Shortcut{
 		path := appTablePath(appID, strings.TrimSpace(rctx.Str("table")))
 		data, err := rctx.CallAPITyped("GET", path, buildDBTableGetParams(rctx), nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, dbTableGetHint)
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			// pretty 模式：stdout 直接打 ddl 文本（无 trailing newline，由 server 返回的字符串决定）。

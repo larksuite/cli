@@ -54,7 +54,7 @@ var AppsUpdate = common.Shortcut{
 		path := fmt.Sprintf("%s/apps/%s", apiBasePath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("PATCH", path, nil, buildAppsUpdateBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, appIDListHint)
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "updated: %s\n", common.GetString(data, "app", "app_id"))

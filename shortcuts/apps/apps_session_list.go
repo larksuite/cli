@@ -45,7 +45,7 @@ var AppsSessionList = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		data, err := rctx.CallAPITyped("GET", sessionsPath(rctx.Str("app-id")), buildSessionListParams(rctx), nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, appIDListHint)
 		}
 		sessions, _ := data["sessions"].([]interface{})
 		rctx.OutFormat(data, nil, func(w io.Writer) {

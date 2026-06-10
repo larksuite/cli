@@ -12,6 +12,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const dbEnvCreateHint = "verify --app-id is correct; if the app is already multi-env this is a conflict — inspect current tables with `lark-cli apps +db-table-list --app-id <app_id> --env dev`"
+
 // AppsDBEnvCreate creates a DB environment for a Miaoda app（拆分单库为 dev/online 多环境）。
 //
 // 调 POST /apps/{app_id}/db_dev_init。--env 指定要创建的环境，由调用方传入，目前只支持 dev。
@@ -50,7 +52,7 @@ var AppsDBEnvCreate = common.Shortcut{
 		}
 		data, err := rctx.CallAPITyped("POST", appDbEnvCreatePath(appID), nil, buildDBEnvCreateBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, dbEnvCreateHint)
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			renderEnvCreatePretty(w, data)

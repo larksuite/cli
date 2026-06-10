@@ -29,6 +29,13 @@ func TestAppsErrorHintsCarryNoSecretsOrPII(t *testing.T) {
 		// git_credential.go gitCredentialIssueHint const (referenced directly so a
 		// rename or text change breaks the build instead of silently drifting)
 		gitCredentialIssueHint,
+		// command-governance hints added for this task (referenced by const, no drift)
+		appIDListHint,
+		sessionStopHint,
+		createHint,
+		dbEnvCreateHint,
+		dbTableGetHint,
+		dbTableListHint,
 	}
 
 	realAppID := regexp.MustCompile(`app_[a-z0-9]{6,}`)

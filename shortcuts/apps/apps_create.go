@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const createHint = "verify --app-type is html or full_stack and --name is non-empty; if this is a permission error, confirm your account can create Miaoda apps"
+
 // AppsCreate creates a new Miaoda app.
 var AppsCreate = common.Shortcut{
 	Service:     appsService,
@@ -47,7 +49,7 @@ var AppsCreate = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		data, err := rctx.CallAPITyped("POST", apiBasePath+"/apps", nil, buildAppsCreateBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, createHint)
 		}
 		rctx.OutFormat(data, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "created: %s\n", common.GetString(data, "app", "app_id"))

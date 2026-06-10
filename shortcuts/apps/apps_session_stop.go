@@ -13,6 +13,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const sessionStopHint = "verify --app-id and --session-id are correct (list sessions with `lark-cli apps +session-list --app-id <app_id>`); --turn-id must be the latest turn from `lark-cli apps +session-get --app-id <app_id> --session-id <session_id>`"
+
 // AppsSessionStop interrupts the RUNNING turn of a session. No-op if the turn
 // is queued or already finished. Does not close the session.
 var AppsSessionStop = common.Shortcut{
@@ -52,7 +54,7 @@ var AppsSessionStop = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		data, err := rctx.CallAPITyped("POST", stopPath(rctx.Str("app-id"), rctx.Str("session-id")), nil, buildStopBody(rctx))
 		if err != nil {
-			return err
+			return withAppsHint(err, sessionStopHint)
 		}
 		turnID := strings.TrimSpace(rctx.Str("turn-id"))
 		rctx.OutFormat(data, nil, func(w io.Writer) {

@@ -58,7 +58,7 @@ var AppsReleaseList = common.Shortcut{
 		path := fmt.Sprintf(releaseListPath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("GET", path, buildReleaseListQuery(status, pageSize, pageToken), nil)
 		if err != nil {
-			return err
+			return withAppsHint(err, appIDListHint)
 		}
 		releases, _ := data["releases"].([]interface{})
 		rctx.OutFormat(data, nil, func(w io.Writer) {
