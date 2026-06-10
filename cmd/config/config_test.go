@@ -220,6 +220,88 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 	}
 }
 
+func TestKeyRefFromResult_PrivateKeyJWT(t *testing.T) {
+	ref := keyRefFromResult(&configInitResult{
+		AuthMethod: core.AuthMethodPrivateKeyJWT,
+		KeyLabel:   "lark-cli-default",
+	})
+	if ref == nil {
+		t.Fatal("keyRefFromResult returned nil")
+	}
+	if ref.Source != "tee" || ref.ID != "lark-cli-default" {
+		t.Fatalf("key ref = %#v, want tee/lark-cli-default", ref)
+	}
+
+	if ref := keyRefFromResult(&configInitResult{AuthMethod: core.AuthMethodPrivateKeyJWT}); ref != nil {
+		t.Fatalf("missing key label should not persist key ref, got %#v", ref)
+	}
+	if ref := keyRefFromResult(&configInitResult{AuthMethod: core.AuthMethodClientSecret, KeyLabel: "ignored"}); ref != nil {
+		t.Fatalf("client_secret should not persist key ref, got %#v", ref)
+	}
+	if ref := keyRefFromResult(nil); ref != nil {
+		t.Fatalf("nil result should not persist key ref, got %#v", ref)
+	}
+}
+
+func TestSaveInitConfig_PrivateKeyJWTSingleAppPersistsSecretlessAuth(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	keyRef := &core.SecretRef{Source: "tee", ID: "lark-cli-default"}
+	if err := saveInitConfig("", nil, f, "cli_pkjwt", core.SecretInput{}, core.BrandFeishu, "en_us", core.AuthMethodPrivateKeyJWT, keyRef); err != nil {
+		t.Fatalf("saveInitConfig private_key_jwt single app: %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	if len(got.Apps) != 1 {
+		t.Fatalf("apps len = %d, want 1", len(got.Apps))
+	}
+	app := got.Apps[0]
+	if app.AppId != "cli_pkjwt" {
+		t.Fatalf("AppId = %q, want cli_pkjwt", app.AppId)
+	}
+	if app.AuthMethod != core.AuthMethodPrivateKeyJWT {
+		t.Fatalf("AuthMethod = %q, want private_key_jwt", app.AuthMethod)
+	}
+	if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID != "lark-cli-default" {
+		t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
+	}
+	if app.AppSecret.Ref != nil || app.AppSecret.Plain != "" {
+		t.Fatalf("private_key_jwt config must stay secretless, AppSecret=%#v", app.AppSecret)
+	}
+}
+
+func TestSaveInitConfig_PrivateKeyJWTProfilePersistsSecretlessAuth(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	keyRef := &core.SecretRef{Source: "tee", ID: "lark-cli-default"}
+	if err := saveInitConfig("prod", &core.MultiAppConfig{}, f, "cli_pkjwt", core.SecretInput{}, core.BrandLark, "en_us", core.AuthMethodPrivateKeyJWT, keyRef); err != nil {
+		t.Fatalf("saveInitConfig private_key_jwt profile: %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	app := got.FindApp("prod")
+	if app == nil {
+		t.Fatalf("profile prod not saved: %#v", got.Apps)
+	}
+	if app.AuthMethod != core.AuthMethodPrivateKeyJWT {
+		t.Fatalf("AuthMethod = %q, want private_key_jwt", app.AuthMethod)
+	}
+	if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID != "lark-cli-default" {
+		t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
+	}
+	if app.AppSecret.Ref != nil || app.AppSecret.Plain != "" {
+		t.Fatalf("private_key_jwt profile must stay secretless, AppSecret=%#v", app.AppSecret)
+	}
+}
+
 // TestConfigInitCmd_InvalidLang verifies a non-empty --lang on config init is
 // strictly validated the same way bind validates: wrong-case / typo / removed
 // codes / hyphen form all exit with ExitValidation. (Empty is a no-op.)
@@ -438,6 +520,46 @@ func TestWrapSaveConfigError_PassesTypedValidationThrough(t *testing.T) {
 	var ierr *errs.InternalError
 	if !errors.As(wrapSaveConfigError(errors.New("disk full")), &ierr) || ierr.Subtype != errs.SubtypeStorage {
 		t.Fatalf("untyped failure must become internal/storage")
+	}
+}
+
+func TestSaveAsProfile_UpdatePersistsPrivateKeyJWT(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	existing := &core.MultiAppConfig{
+		Apps: []core.AppConfig{{
+			Name:      "prod",
+			AppId:     "cli_prod",
+			AppSecret: core.PlainSecret("old-secret"),
+			Brand:     core.BrandFeishu,
+			Users:     []core.AppUser{{UserOpenId: "ou_1", UserName: "User"}},
+		}},
+	}
+	keyRef := &core.SecretRef{Source: "tee", ID: "lark-cli-default"}
+
+	if err := saveAsProfile(existing, keychain.KeychainAccess(&noopConfigKeychain{}), "prod", "cli_prod", core.SecretInput{}, core.BrandLark, "en_us", core.AuthMethodPrivateKeyJWT, keyRef); err != nil {
+		t.Fatalf("saveAsProfile update private_key_jwt: %v", err)
+	}
+
+	got, err := core.LoadMultiAppConfig()
+	if err != nil {
+		t.Fatalf("LoadMultiAppConfig: %v", err)
+	}
+	app := got.FindApp("prod")
+	if app == nil {
+		t.Fatalf("profile prod not saved: %#v", got.Apps)
+	}
+	if app.AuthMethod != core.AuthMethodPrivateKeyJWT {
+		t.Fatalf("AuthMethod = %q, want private_key_jwt", app.AuthMethod)
+	}
+	if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID != "lark-cli-default" {
+		t.Fatalf("KeyRef = %#v, want tee/lark-cli-default", app.KeyRef)
+	}
+	if app.AppSecret.Ref != nil || app.AppSecret.Plain != "" {
+		t.Fatalf("private_key_jwt update must stay secretless, AppSecret=%#v", app.AppSecret)
+	}
+	if len(app.Users) != 1 || app.Users[0].UserOpenId != "ou_1" {
+		t.Fatalf("same-app update should preserve users, Users=%#v", app.Users)
 	}
 }
 
