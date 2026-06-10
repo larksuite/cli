@@ -45,14 +45,21 @@ metadata:
 | View（视图） | 同一张 table 的一种展示配置（筛选/排序/分组等），ID `viw` 开头 |
 | Form（表单） | 收集数据的入口，提交结果写入对应 table 的记录 |
 | Workflow（工作流） | Base 内的自动化流程，ID `wkf` 开头，由 steps（trigger + action）组成 |
-| Dashboard（仪表盘） | 数据可视化容器，ID `blk` 开头——因为它本身是 Base 资源目录里的一个 block，见下方歧义说明 |
-| Chart（图表/组件） | dashboard 内的单个可视化组件（柱状图/饼图/指标卡等），其 `block_id` 是 `cht` 开头 |
+| Dashboard（仪表盘） | 数据可视化容器，ID `blk` 开头(因为它本身是 Base 资源目录里的一个 block，见下方歧义说明) |
+| Chart（图表/组件） | 又叫Dashboard block, 是 dashboard 内的单个可视化组件（柱状图/饼图/指标卡等）, ID `cht` 开头 |
+| Base block （`+base-block-*`）| Base 资源目录里的节点，table/docx/dashboard/workflow/folder 在目录层面统称 block。 “这个 Base 里有哪些东西” → `+base-block-list`|
 
-**`block` 是易混淆词，同名不同义，按命令域区分：**
+**`block` 是易混淆词，同名不同义，按命令域区分：base-block 和 dashboard-block**
 
-- **Base block**（`+base-block-*`）：Base 资源目录里的节点，table/docx/dashboard/workflow/folder 在目录层面统称 block——所以 dashboard 的 ID 是 `blk` 开头。“这个 Base 里有哪些东西” → `+base-block-list`。
-- **Dashboard block**（`+dashboard-block-*`）：仪表盘内部的图表组件（即 chart），`block_id` 为 `cht` 开头。“仪表盘里的图表/卡片” → `+dashboard-block-*`。
-- 判别：操作需要传 `--dashboard-id`（`blk` 开头）的 block 是图表组件；没有 dashboard 上下文的 block 是 Base 目录资源。
+### Base 心智模型
+
+- `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
+- 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
+- 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
+- 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
+- `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
+- 写入、分析、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
+- 跨表场景必须读取目标表结构；link 单元格中的关联 `record_id` 只是连接键，最终回答要回查并展示用户可读字段。
 
 ## 快速路由
 
@@ -60,7 +67,7 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
-| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系和 fewshot 看 `--help` |
+| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系, 适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令。 fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段；需要多表结构时先 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取多表字段，避免逐表多次调用 |
@@ -80,13 +87,17 @@ metadata:
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
 
-## 批量执行
+## 注意事项
+
+### Help 先行
 
 - 执行不熟悉的命令前先看 `--help`，不要猜参数名或 JSON 结构；本轮任务会用到多个命令时，把它们的 `--help` 合并在一条 Bash 命令里一次看完，不要一轮对话只看一个 help：
 
 ```bash
 lark-cli base +table-list --help; lark-cli base +field-list --help; lark-cli base +field-update --help
 ```
+
+### 批量执行
 
 - 优先用原生批量能力：多表字段 `+field-list-batch`；批量写记录 `+record-batch-create` / `+record-batch-update`；部分命令参数本身支持多值（如 `+record-delete --record-id` 可重复传、`+record-share-link-create --record-ids`），先看 `--help`。
 - 没有原生批量命令时，对多个对象做同类操作要在**一条 Bash 命令**里用 shell 循环完成，不要一轮对话只执行一个命令、看完结果再发下一个。
@@ -101,19 +112,7 @@ for v in vewAAA vewBBB vewCCC; do
 done
 ```
 
-## Base 心智模型
-
-- Base 曾用名 Bitable；返回字段、错误或旧文档里的 `bitable` 多为历史兼容，不代表应改走裸 API 或另一套命令。
-- `+base-block-list` 是查看一个 Base 内资源目录的新入口：它列出这个 Base 直接管理的 `folder/table/docx/dashboard/workflow`，适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令。
-- `base-block` 只负责资源目录管理，包括创建资源、移动到 folder、重命名和删除；具体资源内容仍走 table/dashboard/workflow 命令。
-- 表、字段、视图、workflow、dashboard block 的名称和 ID 必须来自真实返回，不要凭用户口述猜。
-- 存储字段可写；系统字段、`formula`、`lookup` 只读；附件字段走专用 attachment 命令。
-- 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；需要长期显示在表中时，才新增 `formula` / `lookup` 字段。
-- `formula` 适合常规计算、条件判断、文本/日期处理和长期派生指标；`lookup` 适合明确的跨表查找、筛选后取值或聚合引用。
-- 写入、分析、公式、lookup、workflow、dashboard 前，先读取真实结构：表、字段、视图、关联表和 dashboard block 名称都以命令返回为准。
-- 跨表场景必须读取目标表结构；link 单元格中的关联 `record_id` 只是连接键，最终回答要回查并展示用户可读字段。
-
-## 身份与权限降级
+### 身份与权限降级
 
 - 默认显式使用 `--as user` 操作用户资源；只有用户明确要求应用身份时，才直接用 `--as bot`。
 - user 身份报 scope/授权不足，或错误中包含 `permission_violations` / `hint`，先转 `lark-shared` 做用户授权恢复，不要直接降级 bot。
@@ -121,7 +120,7 @@ done
 - `91403` 或明确不可访问错误不要循环换身份重试。
 - `+base-create` / `+base-copy` 若用 bot 身份执行，关注返回中的 `permission_grant`，并把用户是否可打开新 Base 告知用户。
 
-## 查询与统计规则
+### 查询与统计规则
 
 涉及查询、统计或判断结论时，先阅读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)，并遵守：
 
@@ -133,7 +132,7 @@ done
 6. 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；要把结果长期显示在表里，才考虑新增 `formula` / `lookup` 字段。
 7. `+data-query` 可返回聚合结果或维度字段行，但维度行按字段组合去重且不返回 `record_id`；需要逐条记录、记录定位或完整行级字段时，再用 `+record-list` / `+record-search` / `+record-get` 回查。
 
-## 写入前置规则
+### 写入前置规则
 
 - 写记录前先读字段结构；只写存储字段。系统字段、附件字段、`formula`、`lookup` 不作为普通记录写入目标。
 - 附件上传、下载、删除走专用 `+record-*-attachment` 命令。
@@ -144,12 +143,18 @@ done
 - `+record-batch-update` 是“同值批量更新”：同一份 patch 应用到全部 `record_id_list`，不要拿它做逐行不同值映射。
 - select/multiselect 写入未知选项可能触发平台新增选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
 
-## 表单与视图细节
+### 表单与视图细节
 
 - `+form-submit` 前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
 - `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
 - 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。
+
+### Dashboard / Workflow / Role
+
+- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
+- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
+- Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## Token 与链接
 
@@ -166,12 +171,6 @@ done
 | `/base/workspace/{token}` | BaseApp / workspace 链接；暂不支持用 CLI 直接访问 |
 
 `wiki +node-get` 返回非 `bitable` 时，不继续使用 Base 命令：`docx` 转文档，`sheet` 转表格，其他云空间对象转对应 skill 或 drive。
-
-## Dashboard / Workflow / Role
-
-- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
-- Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## 常见恢复
 
