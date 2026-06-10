@@ -1020,6 +1020,24 @@ func TestBaseCreateTipsGuideFieldSchema(t *testing.T) {
 	}
 }
 
+func TestBaseCreateScopesCoverFollowUpTableOperations(t *testing.T) {
+	requiredUserScopes := []string{
+		"base:app:create",
+		"base:table:read",
+		"base:table:create",
+		"base:table:update",
+		"base:table:delete",
+	}
+	if !reflect.DeepEqual(BaseBaseCreate.UserScopes, requiredUserScopes) {
+		t.Fatalf("UserScopes=%v want=%v", BaseBaseCreate.UserScopes, requiredUserScopes)
+	}
+
+	requiredBotScopes := append(append([]string{}, requiredUserScopes...), "docs:permission.member:create")
+	if !reflect.DeepEqual(BaseBaseCreate.BotScopes, requiredBotScopes) {
+		t.Fatalf("BotScopes=%v want=%v", BaseBaseCreate.BotScopes, requiredBotScopes)
+	}
+}
+
 func TestBaseRecordValidate(t *testing.T) {
 	ctx := context.Background()
 	if BaseRecordList.Validate == nil {
