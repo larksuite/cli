@@ -319,7 +319,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 	if err != nil {
 		return err
 	}
-	authResp, err := larkauth.RequestDeviceAuthorization(httpClient, config.AppID, config.AppSecret, config.Brand, finalScope, f.IOStreams.ErrOut)
+	authResp, err := larkauth.RequestDeviceAuthorization(opts.Ctx, httpClient, larkauth.ClientAuthFromConfig(config), config.Brand, finalScope, f.IOStreams.ErrOut)
 	if err != nil {
 		if problem, ok := errs.ProblemOf(err); ok && problem.Category == errs.CategoryPolicy {
 			return err
@@ -376,7 +376,7 @@ func authLoginRun(opts *LoginOptions, resolver domainResolver) error {
 
 	// Step 3: Poll for token
 	log(msg.WaitingAuth)
-	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, larkauth.ClientAuthFromConfig(config), config.Brand,
 		authResp.DeviceCode, authResp.Interval, authResp.ExpiresIn, f.IOStreams.ErrOut)
 	if err != nil {
 		return err
@@ -473,7 +473,7 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint(recovery.RenderContext{Profile: f.Invocation.Profile}))
 	}
 	log(msg.WaitingAuth)
-	result, err := pollDeviceToken(opts.Ctx, httpClient, config.AppID, config.AppSecret, config.Brand,
+	result, err := pollDeviceToken(opts.Ctx, httpClient, larkauth.ClientAuthFromConfig(config), config.Brand,
 		opts.DeviceCode, 5, 600, f.IOStreams.ErrOut)
 	if err != nil {
 		if problem, ok := errs.ProblemOf(err); ok &&
