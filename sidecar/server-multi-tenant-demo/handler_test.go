@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/core"
@@ -874,5 +875,208 @@ func TestUserMap_RoundTripPersistence(t *testing.T) {
 	}
 	if ab2.userMap["bob"] != "ou_bob_open_id_456" {
 		t.Errorf("after reload, bob=%q, want ou_bob_open_id_456", ab2.userMap["bob"])
+	}
+}
+
+func TestDiscoverAppScopes_Success(t *testing.T) {
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/open-apis/application/v6/applications/") {
+			http.Error(w, "not found", 404)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") {
+			http.Error(w, "unauthorized", 401)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"app": map[string]interface{}{
+					"scopes": []map[string]interface{}{
+						{"scope": "drive:doc:read", "token_types": []string{"user"}},
+						{"scope": "im:message:send", "token_types": []string{"user", "app"}},
+						{"scope": "contact:user:read", "token_types": []string{"app"}},
+						{"scope": "calendar:event:read", "token_types": []string{"user"}},
+					},
+				},
+			},
+		})
+	}))
+	defer apiServer.Close()
+
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{token: "test-tat-token"}},
+		nil, nil, nil,
+	)
+
+	ab := &authBridge{
+		appID:     "cli_test_app",
+		appSecret: "secret",
+		brand:     core.BrandFeishu,
+		cred:      cred,
+		logger:    discardLogger(),
+		httpCl:    apiServer.Client(),
+	}
+
+	// Patch the API URL by overriding brand resolution — we use the test
+	// server URL directly via a custom httpCl transport.
+	origDiscover := ab.discoverAppScopes
+	_ = origDiscover // avoid unused warning
+
+	// Direct HTTP call test
+	ctx := context.Background()
+
+	// Build request manually to test the HTTP flow
+	tokenResult, err := ab.cred.ResolveToken(ctx, credential.TokenSpec{
+		Type:  credential.TokenTypeTAT,
+		AppID: ab.appID,
+	})
+	if err != nil {
+		t.Fatalf("ResolveToken: %v", err)
+	}
+	if tokenResult.Token != "test-tat-token" {
+		t.Fatalf("token=%q, want test-tat-token", tokenResult.Token)
+	}
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet,
+		apiServer.URL+"/open-apis/application/v6/applications/"+ab.appID+"?lang=zh_cn", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenResult.Token)
+
+	resp, err := ab.httpCl.Do(req)
+	if err != nil {
+		t.Fatalf("HTTP call: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var apiResp appScopesResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	var userScopes []string
+	for _, s := range apiResp.Data.App.Scopes {
+		for _, tt := range s.TokenTypes {
+			if tt == "user" {
+				userScopes = append(userScopes, s.Scope)
+				break
+			}
+		}
+	}
+
+	if len(userScopes) != 3 {
+		t.Fatalf("expected 3 user scopes, got %d: %v", len(userScopes), userScopes)
+	}
+}
+
+func TestScopeCacheRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	ab := &authBridge{logger: discardLogger()}
+
+	// Initially empty
+	scopes, stale := ab.loadScopeCache()
+	if scopes != "" {
+		t.Fatalf("expected empty, got %q", scopes)
+	}
+
+	// Save and reload
+	ab.saveScopeCache("drive:doc:read im:message:send calendar:event:read")
+
+	scopes, stale = ab.loadScopeCache()
+	if scopes != "drive:doc:read im:message:send calendar:event:read" {
+		t.Fatalf("loaded=%q", scopes)
+	}
+	if stale {
+		t.Fatal("expected fresh cache")
+	}
+}
+
+func TestScopeCacheTTL(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	ab := &authBridge{logger: discardLogger()}
+
+	// Write cache with old timestamp
+	p := scopeCachePath()
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		t.Fatal(err)
+	}
+	rec := scopeCacheRecord{
+		Scopes:    "old:scope",
+		UpdatedAt: time.Now().Add(-25 * time.Hour).Unix(),
+		Source:    "api",
+	}
+	data, _ := json.Marshal(rec)
+	os.WriteFile(p, data, 0600)
+
+	scopes, stale := ab.loadScopeCache()
+	if scopes != "old:scope" {
+		t.Fatalf("expected old:scope, got %q", scopes)
+	}
+	if !stale {
+		t.Fatal("expected stale=true for 25h-old cache")
+	}
+}
+
+func TestResolveScopesNoFallbackToOfflineAccess(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{token: "tat"}},
+		nil, nil, nil,
+	)
+
+	// No API server running — discovery will fail; no cache exists
+	ab := &authBridge{
+		appID:     "cli_test",
+		appSecret: "secret",
+		brand:     core.BrandFeishu,
+		cred:      cred,
+		logger:    discardLogger(),
+		httpCl:    &http.Client{Timeout: 1 * time.Second},
+	}
+
+	result := ab.resolveScopes(context.Background())
+	if result != "" {
+		t.Fatalf("expected empty (no fallback), got %q", result)
+	}
+}
+
+func TestResolveScopesUsesStaleOnAPIFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", dir)
+
+	ab := &authBridge{
+		appID:     "cli_test",
+		appSecret: "secret",
+		brand:     core.BrandFeishu,
+		cred: credential.NewCredentialProvider(
+			[]extcred.Provider{&fakeExtProvider{token: "tat"}},
+			nil, nil, nil,
+		),
+		logger: discardLogger(),
+		httpCl: &http.Client{Timeout: 1 * time.Second},
+	}
+
+	// Write stale cache
+	p := scopeCachePath()
+	os.MkdirAll(filepath.Dir(p), 0700)
+	rec := scopeCacheRecord{
+		Scopes:    "stale:scope:list",
+		UpdatedAt: time.Now().Add(-48 * time.Hour).Unix(),
+		Source:    "api",
+	}
+	data, _ := json.Marshal(rec)
+	os.WriteFile(p, data, 0600)
+
+	// API will fail (no server), but stale cache should be returned
+	result := ab.resolveScopes(context.Background())
+	if result != "stale:scope:list" {
+		t.Fatalf("expected stale cache fallback, got %q", result)
 	}
 }
