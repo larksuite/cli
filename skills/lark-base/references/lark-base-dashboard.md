@@ -26,6 +26,14 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 - 删除并用 `+dashboard-get` 复核 `not_found` 后，用户只回复“确认/好的/收到”视为结束，不要再次创建或保留同名/正式版仪表盘。
 - 用户只说“更新标题”但未给新标题时，可基于原名生成一次新标题；先用 `+dashboard-list` 避开已存在名称，遇同名冲突换名更新，不要创建新仪表盘。
 
+## 执行要点
+
+- 创建/改图前先用 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取多表字段，不要逐表多次 `+field-list`，多余调用会显著抬高 token。
+- 布局/重排/撑满/排列美观直接用 `+dashboard-arrange`，不要尝试用 `+dashboard-block-update` 修改 layout，layout 不是 `data_config`。
+- block 换图表类型或换数据源表（`table_name`）时，删除旧 block 后用 `+dashboard-block-create` 新建；`+dashboard-block-update` 只适合同一数据源内改 `series/filter/group_by/name`。
+- 删除具名图表：`+dashboard-list` → `+dashboard-block-list` 精确匹配名称 → `+dashboard-block-delete`；长 `block_id` 用变量传参，避免手抄截断。
+- 完整 dashboard 用例（从需求到逐组件落地）按需读 [lark-base-dashboard-usecase.md](lark-base-dashboard-usecase.md)。
+
 ## 典型场景工作流
 
 ### 场景 1：从 0 到 1 创建仪表盘

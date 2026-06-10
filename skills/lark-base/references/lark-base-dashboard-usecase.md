@@ -15,7 +15,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 你想做什么 | 用这些命令 | 关键文档 |
 |------|-----------|---------|
 | 创建/删除/改名称 | `+dashboard-create/delete/update` | 本页下方「仪表盘管理」 |
-| 在仪表盘里添加组件 | `+dashboard-block-create` | 先用 `+table-list` 拿表，再用 `+field-list --table-id <表1> --table-id <表2>` 批量拿字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
+| 在仪表盘里添加组件 | `+dashboard-block-create` | 先用 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 批量拿字段，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 构造 `data_config` |
 | 修改组件 | `+dashboard-block-update` | 先读 block 现状，再读 [dashboard-block-data-config.md](dashboard-block-data-config.md) 决定替换哪些顶层 key |
 | 查看仪表盘有哪些组件 | `+dashboard-get` 或 `+dashboard-block-list` | 本页下方「查看仪表盘」 |
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |

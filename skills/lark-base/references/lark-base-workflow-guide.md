@@ -6,6 +6,8 @@
 > - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
 > - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
 
+> **阅读节奏**：list/get/enable/disable 等查询启停场景不需要读本文档和 schema。创建/更新时也不要整篇读入 schema——先确定要用的 trigger/action 类型，再按类型名分段检索 [lark-base-workflow-schema.md](lark-base-workflow-schema.md) 中对应小节。
+
 ---
 
 ## 快速开始

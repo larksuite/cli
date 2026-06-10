@@ -855,7 +855,7 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
-	t.Run("list multiple tables", func(t *testing.T) {
+	t.Run("list batch multiple tables", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
@@ -877,11 +877,32 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 				}, "total": 1},
 			},
 		})
-		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "tbl_a", "--table-id", "tbl_b"}, factory, stdout); err != nil {
+		if err := runShortcut(t, BaseFieldListBatch, []string{"+field-list-batch", "--base-token", "app_x", "--table-id", "tbl_a", "--table-id", "tbl_b", "--compact"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 		got := stdout.String()
-		if !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"options": [`) || !strings.Contains(got, `"Todo"`) || strings.Contains(got, `"style"`) || strings.Contains(got, `"color"`) {
+		if !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"options": [`) || !strings.Contains(got, `"Todo"`) || !strings.Contains(got, `"style"`) || strings.Contains(got, `"color"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list batch default keeps full fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_b", "name": "Status", "type": "select", "options": []interface{}{map[string]interface{}{"name": "Todo", "color": "red"}}},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldListBatch, []string{"+field-list-batch", "--base-token", "app_x", "--table-id", "tbl_b"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"color": "red"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})

@@ -16,8 +16,21 @@ func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	return common.NewDryRunAPI().
+		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
+		Params(map[string]interface{}{"offset": offset, "limit": limit}).
+		Set("base_token", runtime.Str("base-token")).
+		Set("table_id", baseTableID(runtime))
+}
+
+func dryRunFieldListBatch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	offset := runtime.Int("offset")
+	if offset < 0 {
+		offset = 0
+	}
+	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	dry := common.NewDryRunAPI()
-	for _, tableIDValue := range fieldListTableRefs(runtime) {
+	for _, tableIDValue := range runtime.StrArray("table-id") {
 		dry.GET(baseV3Path("bases", runtime.Str("base-token"), "tables", tableIDValue, "fields")).
 			Params(map[string]interface{}{"offset": offset, "limit": limit}).
 			Set("base_token", runtime.Str("base-token")).
@@ -122,23 +135,28 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	tableRefs := fieldListTableRefs(runtime)
-	if len(tableRefs) == 1 {
-		fields, total, err := listAllFields(runtime, runtime.Str("base-token"), tableRefs[0], offset, limit)
-		if err != nil {
-			return err
-		}
-		if total == 0 {
-			total = len(fields)
-		}
-		if !runtime.Bool("full") {
-			fields = compactFields(fields)
-		}
-		runtime.Out(map[string]interface{}{"fields": fields, "total": total}, nil)
-		return nil
+	fields, total, err := listAllFields(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
+	if err != nil {
+		return err
 	}
+	if total == 0 {
+		total = len(fields)
+	}
+	if runtime.Bool("compact") {
+		fields = compactFields(fields)
+	}
+	runtime.Out(map[string]interface{}{"fields": fields, "total": total}, nil)
+	return nil
+}
 
+func executeFieldListBatch(runtime *common.RuntimeContext) error {
+	offset := runtime.Int("offset")
+	if offset < 0 {
+		offset = 0
+	}
+	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	baseToken := runtime.Str("base-token")
+	tableRefs := runtime.StrArray("table-id")
 	results := make([]map[string]interface{}, 0, len(tableRefs))
 	for _, tableRef := range tableRefs {
 		fields, total, err := listAllFields(runtime, baseToken, tableRef, offset, limit)
@@ -148,7 +166,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 		if total == 0 {
 			total = len(fields)
 		}
-		if !runtime.Bool("full") {
+		if runtime.Bool("compact") {
 			fields = compactFields(fields)
 		}
 		results = append(results, map[string]interface{}{
@@ -161,23 +179,12 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 	return nil
 }
 
-func fieldListTableRefs(runtime *common.RuntimeContext) []string {
-	refs := runtime.StrArray("table-id")
-	if len(refs) == 0 {
-		ref := baseTableID(runtime)
-		if ref != "" {
-			refs = []string{ref}
-		}
-	}
-	return refs
-}
-
 // compactFields projects each field to the keys an agent needs for selection
-// (id / name / type, plus select option names), dropping verbose display style,
-// formula expressions and lookup internals that bloat agent context. Full detail
-// stays available via `+field-list --full` or `+field-get`.
+// (id / name / type / style, plus select option names), dropping formula
+// expressions and lookup internals that bloat agent context. Opt-in via
+// `--compact`; the default output keeps full field objects.
 func compactFields(fields []map[string]interface{}) []map[string]interface{} {
-	keep := []string{"id", "name", "type", "is_primary", "ui_type", "description"}
+	keep := []string{"id", "name", "type", "is_primary", "ui_type", "description", "style"}
 	out := make([]map[string]interface{}, 0, len(fields))
 	for _, f := range fields {
 		c := map[string]interface{}{}
