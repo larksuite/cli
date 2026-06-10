@@ -27,7 +27,7 @@ func TestAppsDBEnvCreate_WithYesPostsSyncData(t *testing.T) {
 	}
 	reg.Register(stub)
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "true", "--yes", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "--yes", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -44,7 +44,7 @@ func TestAppsDBEnvCreate_WithYesPostsSyncData(t *testing.T) {
 	}
 }
 
-// --sync-data false（默认）→ body.sync_data=false
+// 不传 --sync-data（默认）→ body.sync_data=false
 func TestAppsDBEnvCreate_SyncDataFalseByDefault(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	stub := &httpmock.Stub{
@@ -82,7 +82,7 @@ func TestAppsDBEnvCreate_PrettyEmitsAllFourLines(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "true", "--yes", "--format", "pretty", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "--yes", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}

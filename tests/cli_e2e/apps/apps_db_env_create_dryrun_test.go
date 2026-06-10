@@ -40,7 +40,7 @@ func TestAppsDBEnvCreateDryRun(t *testing.T) {
 		t.Cleanup(cancel)
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"apps", "+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "true", "--dry-run"},
+			Args:      []string{"apps", "+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "--dry-run"},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)

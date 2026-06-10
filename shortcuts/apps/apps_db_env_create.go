@@ -22,7 +22,7 @@ var AppsDBEnvCreate = common.Shortcut{
 	Description: "Create a DB environment (split single-env DB into dev/online, irreversible)",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +db-env-create --env dev --sync-data true --app-id <app_id> --yes",
+		"Example: lark-cli apps +db-env-create --env dev --sync-data --app-id <app_id> --yes",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -30,7 +30,7 @@ var AppsDBEnvCreate = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "env", Default: "dev", Enum: []string{"dev"}, Desc: "environment to create (only dev supported for now)"},
-		{Name: "sync-data", Default: "false", Enum: []string{"true", "false"}, Desc: "copy existing online data into the new environment (true/false)"},
+		{Name: "sync-data", Type: "bool", Desc: "copy existing online data into the new environment (default off)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		_, err := requireAppID(rctx.Str("app-id"))
@@ -59,11 +59,11 @@ var AppsDBEnvCreate = common.Shortcut{
 	},
 }
 
-// buildDBEnvCreateBody 构造 db 环境创建 body：sync_data（true/false 字符串折算成 bool）。
+// buildDBEnvCreateBody 构造 db 环境创建 body：sync_data（bool）。
 // --env 目前只支持 dev、服务端接口本身即创建 dev 环境，故不下发 env 字段（仅做 CLI 入参校验/前向兼容）。
 func buildDBEnvCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	return map[string]interface{}{
-		"sync_data": rctx.Str("sync-data") == "true",
+		"sync_data": rctx.Bool("sync-data"),
 	}
 }
 
