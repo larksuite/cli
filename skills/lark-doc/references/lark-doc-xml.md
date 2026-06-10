@@ -96,7 +96,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
   | 高亮框填充 `<callout background-color>` | `gray` + `light-{色}` + `medium-{色}` |                                                                                                                                              
   | 单元格背景 `<th/td background-color>` | 同文字背景 |                                                                                                                                                                           
   | 按钮背景 `<button background-color>` | 同文字背景 |
-- 常用 emoji： 💡(默认)✅❌⚠️📝❓❗👍❤️📌🏁⭐
+- 常用 emoji： 💡(默认)✅❌📝❓❗👍❤️📌🏁⭐
 
 # 七、**重要规则**
 ## 转义规则：标签本身 **禁止转义**，只有标签内部的文本内容才需要转义
