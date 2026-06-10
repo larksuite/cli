@@ -335,7 +335,7 @@ func SyncSkills(opts SyncOptions) *SyncResult {
 		UpdatedSkills:        plan.ToUpdate,
 		AddedOfficialSkills:  plan.Added,
 		SkippedDeletedSkills: plan.SkippedDeleted,
-		UpdatedAt:            opts.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:            opts.Now().Format(time.RFC3339),
 	}
 	if err := WriteState(state); err != nil {
 		result.Action = "failed"
@@ -428,7 +428,7 @@ func fallbackFullInstall(opts SyncOptions, reason string, official []string) *Sy
 		UpdatedSkills:        official,
 		AddedOfficialSkills:  official,
 		SkippedDeletedSkills: []string{},
-		UpdatedAt:            opts.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:            opts.Now().Format(time.RFC3339),
 	}
 	if writeErr := WriteState(state); writeErr != nil {
 		return &SyncResult{

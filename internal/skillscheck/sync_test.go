@@ -339,7 +339,9 @@ func TestSyncSkills_WritesStateAndDoesNotWriteStamp(t *testing.T) {
 	result := SyncSkills(SyncOptions{
 		Version: "1.0.33",
 		Runner:  runner,
-		Now:     func() time.Time { return time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC) },
+		Now: func() time.Time {
+			return time.Date(2026, 5, 18, 12, 0, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+		},
 	})
 
 	if result.Err != nil {
@@ -361,6 +363,9 @@ func TestSyncSkills_WritesStateAndDoesNotWriteStamp(t *testing.T) {
 	assertStrings(t, state.UpdatedSkills, []string{"lark-calendar", "lark-new"})
 	assertStrings(t, state.AddedOfficialSkills, []string{"lark-new"})
 	assertStrings(t, state.SkippedDeletedSkills, []string{"lark-mail"})
+	if state.UpdatedAt != "2026-05-18T12:00:00+08:00" {
+		t.Errorf("state.UpdatedAt = %q, want local RFC3339 timestamp", state.UpdatedAt)
+	}
 	if _, err := os.Stat(filepath.Join(dir, "skills.stamp")); !os.IsNotExist(err) {
 		t.Fatalf("skills.stamp exists or stat failed with unexpected err: %v", err)
 	}
@@ -584,7 +589,13 @@ func TestSyncSkills_ParseEmptyLocalListsFallBackToFullInstall(t *testing.T) {
 		globalOut:        "Some unrecognized output format\n",
 	}
 
-	result := SyncSkills(SyncOptions{Version: "1.0.33", Runner: runner, Now: time.Now})
+	result := SyncSkills(SyncOptions{
+		Version: "1.0.33",
+		Runner:  runner,
+		Now: func() time.Time {
+			return time.Date(2026, 5, 18, 12, 0, 0, 0, time.FixedZone("UTC-7", -7*60*60))
+		},
+	})
 	if result.Action != "fallback_synced" {
 		t.Fatalf("SyncSkills() action = %q, want fallback_synced", result.Action)
 	}
@@ -593,6 +604,13 @@ func TestSyncSkills_ParseEmptyLocalListsFallBackToFullInstall(t *testing.T) {
 	}
 	if runner.installedAll != 1 {
 		t.Fatalf("installedAll = %d, want 1", runner.installedAll)
+	}
+	state, readable, err := ReadState()
+	if err != nil || !readable {
+		t.Fatalf("ReadState() = (_, %v, %v), want readable", readable, err)
+	}
+	if state.UpdatedAt != "2026-05-18T12:00:00-07:00" {
+		t.Errorf("state.UpdatedAt = %q, want local RFC3339 timestamp", state.UpdatedAt)
 	}
 }
 
