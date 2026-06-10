@@ -467,6 +467,38 @@ func TestRequestAppRegistration_BeginDefaultsToClientSecret(t *testing.T) {
 	}
 }
 
+func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
+	cases := []struct {
+		name string
+		resp string
+		want string
+	}{
+		{
+			name: "bare verification_uri",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify","expires_in":300,"interval":5}`,
+			want: "https://example/verify?user_code=uc",
+		},
+		{
+			name: "verification_uri with existing query",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?client_id=cli_x","expires_in":300,"interval":5}`,
+			want: "https://example/verify?client_id=cli_x&user_code=uc",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var body url.Values
+			hc := captureClient(&body, tc.resp)
+			got, err := RequestAppRegistration(hc, core.BrandFeishu, AppRegistrationBeginOptions{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.VerificationUriComplete != tc.want {
+				t.Errorf("VerificationUriComplete = %q, want %q", got.VerificationUriComplete, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseAuthMethods(t *testing.T) {
 	if got := parseAuthMethods([]interface{}{"private_key_jwt", "client_secret"}); len(got) != 2 || got[0] != "private_key_jwt" {
 		t.Errorf("array form = %v", got)

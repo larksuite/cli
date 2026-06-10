@@ -74,7 +74,6 @@ func AlgForKey(pub crypto.PublicKey) (string, error) {
 
 // EncodePublicKey marshals pub to PKIX DER and base64-encodes it (std encoding),
 // matching the public-key form the registration backend binds to the app.
-// Ported from the tee-test reference implementation.
 func EncodePublicKey(pub crypto.PublicKey) (string, error) {
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
