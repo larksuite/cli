@@ -13,8 +13,12 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/keysigner"
+	"github.com/larksuite/cli/internal/auth"
+	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -144,4 +148,79 @@ func tatRetryAfterSeconds(header http.Header) int {
 		}
 	}
 	return 0
+}
+
+// FetchTATWithAssertion mints a tenant access token for a private_key_jwt app via
+// the RFC 7523 jwt-bearer grant: it signs a short-lived client_assertion with the
+// TEE-held key and posts it to the unified OAuth token endpoint, replacing the
+// app_secret entirely.
+//
+// The unified v2 token endpoint returns the minted token as access_token
+// (tenant_access_token is accepted as a fallback).
+func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
+	if signer == nil {
+		return "", fmt.Errorf("private_key_jwt requires a key signer, but none is available on this build")
+	}
+	ep := core.ResolveEndpoints(brand)
+	endpoint := ep.Open + auth.PathOAuthTokenV2
+
+	assertion, err := jwt.SignClientAssertion(ctx, signer, keysigner.KeyRef{Label: keyLabel}, clientID, core.OpenAPIAudience(brand), time.Now())
+	if err != nil {
+		return "", err
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
+	form.Set("client_id", clientID)
+	form.Set("client_assertion_type", jwt.ClientAssertionType)
+	form.Set("client_assertion", assertion)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read token response: %w", err)
+	}
+
+	var result struct {
+		Code              int    `json:"code"`
+		Msg               string `json:"msg"`
+		Error             string `json:"error"`
+		ErrorDescription  string `json:"error_description"`
+		AccessToken       string `json:"access_token"`
+		TenantAccessToken string `json:"tenant_access_token"`
+	}
+	_ = json.Unmarshal(body, &result) // best-effort; error body may not be JSON
+
+	token := result.AccessToken
+	if token == "" {
+		token = result.TenantAccessToken
+	}
+	if resp.StatusCode == http.StatusOK && token != "" && result.Error == "" && result.Code == 0 {
+		return token, nil
+	}
+
+	// Surface the server's reason, preferring the OAuth `error` code (e.g.
+	// unauthorized_client) which is more diagnostic than the description alone.
+	detail := result.ErrorDescription
+	if detail == "" {
+		detail = result.Msg
+	}
+	if detail == "" {
+		detail = strings.TrimSpace(string(body))
+	}
+	if result.Error != "" {
+		return "", fmt.Errorf("token endpoint HTTP %d (%s): %s", resp.StatusCode, result.Error, detail)
+	}
+	return "", fmt.Errorf("token endpoint HTTP %d (code=%d): %s", resp.StatusCode, result.Code, detail)
 }

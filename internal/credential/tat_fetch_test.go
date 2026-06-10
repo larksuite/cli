@@ -5,14 +5,23 @@ package credential
 
 import (
 	"context"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/core"
 )
 
@@ -360,4 +369,106 @@ func (r *urlRewriteRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	req2.Header = req.Header
 	return http.DefaultTransport.RoundTrip(req2)
+}
+
+// fakeTATSigner is a real in-memory ECDSA P-256 signer for assertion tests.
+type fakeTATSigner struct{ key *ecdsa.PrivateKey }
+
+func newFakeTATSigner(t *testing.T) *fakeTATSigner {
+	t.Helper()
+	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &fakeTATSigner{key: k}
+}
+
+func (f *fakeTATSigner) EnsureKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return f.key.Public(), nil
+}
+func (f *fakeTATSigner) PublicKey(context.Context, keysigner.KeyRef) (crypto.PublicKey, error) {
+	return f.key.Public(), nil
+}
+func (f *fakeTATSigner) Sign(_ context.Context, _ keysigner.KeyRef, in []byte) ([]byte, string, error) {
+	h := sha256.Sum256(in)
+	r, s, err := ecdsa.Sign(rand.Reader, f.key, h[:])
+	if err != nil {
+		return nil, "", err
+	}
+	sig := make([]byte, 64)
+	r.FillBytes(sig[:32])
+	s.FillBytes(sig[32:])
+	return sig, keysigner.AlgES256, nil
+}
+
+func TestFetchTATWithAssertion_Success(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"t-jwt","token_type":"Bearer","expires_in":7200}`}
+	hc := &http.Client{Transport: rt}
+
+	token, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "agent-key")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "t-jwt" {
+		t.Errorf("token = %q, want t-jwt", token)
+	}
+	if rt.gotReq.URL.String() != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
+		t.Errorf("url = %s", rt.gotReq.URL.String())
+	}
+
+	form, err := url.ParseQuery(rt.gotBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if form.Get("grant_type") != "urn:ietf:params:oauth:grant-type:jwt-bearer" {
+		t.Errorf("grant_type = %q", form.Get("grant_type"))
+	}
+	if form.Get("client_assertion_type") != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		t.Errorf("client_assertion_type = %q", form.Get("client_assertion_type"))
+	}
+	if form.Get("client_assertion") == "" {
+		t.Error("client_assertion is empty")
+	}
+	if form.Has("client_secret") {
+		t.Error("client_secret must NOT be sent for private_key_jwt")
+	}
+
+	// The assertion's aud must be the bare Open host per the App Authentication
+	// JWT spec — not the full token endpoint URL.
+	jwtParts := strings.Split(form.Get("client_assertion"), ".")
+	if len(jwtParts) != 3 {
+		t.Fatalf("malformed client_assertion: %q", form.Get("client_assertion"))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(jwtParts[1])
+	if err != nil {
+		t.Fatalf("assertion payload not base64url: %v", err)
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatal(err)
+	}
+	if claims["aud"] != "open.feishu.cn" {
+		t.Errorf("client_assertion aud = %v, want open.feishu.cn", claims["aud"])
+	}
+	if claims["iss"] != "cli_app" || claims["sub"] != "cli_app" {
+		t.Errorf("client_assertion iss/sub = %v/%v, want cli_app", claims["iss"], claims["sub"])
+	}
+	if form.Get("client_id") != "cli_app" {
+		t.Errorf("client_id = %q", form.Get("client_id"))
+	}
+}
+
+func TestFetchTATWithAssertion_NilSigner(t *testing.T) {
+	hc := &http.Client{Transport: &stubRoundTripper{respCode: 200, respBody: `{}`}}
+	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "k"); err == nil {
+		t.Fatal("expected error when signer is nil")
+	}
+}
+
+func TestFetchTATWithAssertion_ServerError(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"invalid_client","error_description":"unknown key"}`}
+	hc := &http.Client{Transport: rt}
+	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k"); err == nil {
+		t.Fatal("expected error for invalid_client response")
+	}
 }
