@@ -10,14 +10,14 @@
 
 - 必填：`--app-id`。
 - `--env`：要创建的环境，由调用方传入，目前只支持 `dev`（默认 `dev`）。
-- `--sync-data`：`true` / `false`（默认 `false`），是否把现有 online 数据复制到新环境。
+- `--sync-data`：bool 开关，传 `--sync-data` 则把现有 online 数据复制到新环境；不传则不复制（默认）。
 - risk 是 `high-risk-write`；单库拆成 dev/online 后不可逆。
 
 ## 示例
 
 ```bash
 lark-cli apps +db-env-create --app-id app_xxx --env dev --dry-run
-lark-cli apps +db-env-create --app-id app_xxx --env dev --sync-data true --yes
+lark-cli apps +db-env-create --app-id app_xxx --env dev --sync-data --yes
 ```
 
 ## 输出契约
