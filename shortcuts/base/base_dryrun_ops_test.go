@@ -28,6 +28,14 @@ func TestDryRunTableOps(t *testing.T) {
 	rt := newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_1", "name": "Orders"}, nil, nil)
 	assertDryRunContains(t, dryRunTableGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1")
 	assertDryRunContains(t, dryRunTableCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables")
+
+	tableCreateWithFieldsRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "name": "Orders", "fields": `[{"name":"Title","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunTableCreate(ctx, tableCreateWithFieldsRT), "POST /open-apis/base/v3/bases/app_x/tables", `"fields":[{"name":"Title","type":"text"}]`)
+
 	assertDryRunContains(t, dryRunTableUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1")
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
@@ -264,6 +272,51 @@ func TestDryRunBaseOps(t *testing.T) {
 		nil,
 	)
 	assertDryRunContains(t, dryRunBaseCreate(ctx, createRT), "POST /open-apis/base/v3/bases")
+
+	createWithFieldsRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "table-name": "Tasks", "fields": `[{"name":"Title","type":"text"},{"name":"Status","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithFieldsRT),
+		"POST /open-apis/base/v3/bases",
+		"GET /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables?limit=100&offset=0",
+		"POST /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables",
+		`"name":"Tasks"`,
+		`"fields":[{"name":"Title","type":"text"},{"name":"Status","type":"text"}]`,
+		"DELETE /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+	)
+
+	createWithFieldsDefaultNameRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "fields": `[{"name":"Title","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithFieldsDefaultNameRT),
+		"POST /open-apis/base/v3/bases",
+		"POST /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables",
+		`"name":"Table 1"`,
+		`"fields":[{"name":"Title","type":"text"}]`,
+		"DELETE /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+	)
+
+	createWithTableNameRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "table-name": "Tasks"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithTableNameRT),
+		"POST /open-apis/base/v3/bases",
+		"GET /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables?limit=100&offset=0",
+		"PATCH /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+		`"name":"Tasks"`,
+	)
 }
 
 func TestDryRunDashboardOps(t *testing.T) {
