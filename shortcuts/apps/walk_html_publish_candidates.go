@@ -56,10 +56,9 @@ func walkHTMLPublishCandidates(fio fileio.FileIO, rootPath string) ([]htmlPublis
 		if walkErr != nil {
 			return walkErr
 		}
-		// 排除 git 仓库内部目录/指针文件：名为 .git 的目录整棵子树跳过，
-		// 名为 .git 的普通文件（submodule/worktree 的 gitdir 指针）也跳过。
-		// 精确等值匹配，.github / .gitignore / .gitattributes 等不受影响。
-		// git 内部内容对发布的静态站点无用，且会泄露 remote URL / 历史快照。
+		// Skip a stray git repo: a directory named .git skips the whole subtree,
+		// and a .git file (the gitdir pointer used by submodules/worktrees) is
+		// skipped too.
 		if d.Name() == ".git" {
 			if d.IsDir() {
 				return filepath.SkipDir
