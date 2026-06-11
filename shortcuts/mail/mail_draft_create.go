@@ -195,7 +195,7 @@ var MailDraftCreate = common.Shortcut{
 			return err
 		}
 		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
-			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments)
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
 		if err != nil {
 			return err
 		}
@@ -251,13 +251,19 @@ func buildRawEMLForDraftCreate(
 	mailboxID, templateID string,
 	templateInlineAttachments []templateInlineRef,
 	templateSmallAttachments []templateAttachmentRef,
+	senderEmailHint string,
 ) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
 	// Initialise lint findings as empty (non-nil) slices so callers can
 	// surface them through the envelope unconditionally even on the
 	// plain-text branch.
 	lintApplied, lintBlocked = emptyLintFindings()
 
-	senderEmail := resolveComposeSenderEmail(runtime)
+	// Use the pre-resolved senderEmail when available (avoids a duplicate
+	// profile API call when Execute already fetched it for auto-resolve).
+	senderEmail := senderEmailHint
+	if senderEmail == "" {
+		senderEmail = resolveComposeSenderEmail(runtime)
+	}
 	if senderEmail == "" {
 		return "", lintApplied, lintBlocked, mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 	}
