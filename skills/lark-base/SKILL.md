@@ -89,21 +89,13 @@ metadata:
 
 ## 注意事项
 
-### Help 先行
-
-- 参数不确定、要构造复杂 JSON、或命令带批量/隐藏选项时，先看 `--help`，不要猜参数名或 JSON 结构；`+table-list` / `+base-create` 这类参数显而易见的简单命令直接执行，报参数错误再查 help，不要为它单花一轮。
-- 需要看多个命令的 `--help` 时，合并在一条 Bash 命令里一次看完，不要一轮对话只看一个：
-
-```bash
-lark-cli base +table-list --help; lark-cli base +field-list --help; lark-cli base +field-update --help
-```
-
 ### 批量执行
 
+能批量的操作尽量批量，不要一轮对话只处理一个对象。
+
 - 优先用原生批量能力：多表字段 `+field-list-batch`；批量写记录 `+record-batch-create` / `+record-batch-update`；部分命令参数本身支持多值（如 `+record-delete --record-id` 可重复传、`+record-share-link-create --record-ids`），先看 `--help`。
-- 没有原生批量命令时，对多个对象做同类操作要在**一条 Bash 命令**里用 shell 循环完成，不要一轮对话只执行一个命令、看完结果再发下一个。
-- 循环内先 `echo` 对象标识再执行，失败可定位到具体对象；写同一张表保持串行；只读命令可用 `--jq` 收窄输出，避免无关字段灌入上下文。
-- 脚本输出只打印计数、ID 和失败项，不要回显完整 payload 或原始返回。
+- 没有原生批量命令时，对多个对象做同类操作在**一条 Bash 命令**里用 shell 循环完成。
+- 只读命令可用 `--jq` 收窄输出，避免无关字段灌入上下文。脚本输出只打印计数、ID 和失败项，不要回显完整 payload 或原始返回
 
 示例——一次取多个视图的配置：
 
@@ -113,6 +105,11 @@ for v in vewAAA vewBBB vewCCC; do
   lark-cli base +view-get --base-token <base_token> --table-id <table_id> --view-id "$v" --as user
 done
 ```
+
+### 善用 help
+
+- 参数不确定、要构造复杂 JSON、或命令带批量/隐藏选项时，先看对应reference或 `--help`，不要猜参数名或 JSON 结构；`+table-list` / `+base-create` 这类参数显而易见的简单命令直接执行，报参数错误再查 help，不要为它单花一轮。
+- 需要看多个命令的 help 时，合并在一条 Bash 命令里一次看完。
 
 ### 身份与权限降级
 

@@ -19,6 +19,7 @@ var BaseDashboardBlockGetData = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
+		{Name: "dashboard-id", Hidden: true},
 		blockIDFlag(true),
 	},
 	Tips: []string{

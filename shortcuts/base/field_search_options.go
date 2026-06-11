@@ -23,6 +23,7 @@ var BaseFieldSearchOptions = common.Shortcut{
 		fieldRefFlag(false),
 		{Name: "field-name", Hidden: true},
 		{Name: "keyword", Desc: "keyword for option query"},
+		{Name: "query", Hidden: true},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, default 30"},
 	},
@@ -34,6 +35,9 @@ var BaseFieldSearchOptions = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(fieldSearchOptionsRef(runtime)) == "" {
 			return baseFlagErrorf("--field-id is required")
+		}
+		if strings.TrimSpace(runtime.Str("keyword")) != "" && strings.TrimSpace(runtime.Str("query")) != "" {
+			return baseFlagErrorf("--query is a deprecated alias for --keyword; use only one")
 		}
 		return nil
 	},

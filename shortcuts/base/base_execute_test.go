@@ -1408,19 +1408,28 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list legacy fields flag rejected", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+	t.Run("list fields alias projects columns", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=Name&limit=100&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
 		}
 	})
 
-	t.Run("list legacy fields flag rejected in dry-run", func(t *testing.T) {
+	t.Run("list fields alias works in dry-run", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, "field_id=Name") {
+			t.Fatalf("stdout=%s", got)
 		}
 	})
 

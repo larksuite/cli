@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
@@ -45,11 +46,11 @@ func validateRecordSelection(runtime *common.RuntimeContext) error {
 }
 
 func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, error) {
-	recordIDs := runtime.StrArray("record-id")
-	fieldIDs := runtime.StrArray("field-id")
+	recordIDs := recordIDFlags(runtime)
+	fieldIDs := recordFieldFlags(runtime)
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
-		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
+		return recordSelection{}, baseFlagErrorf("--record-id/--record-ids and --json are mutually exclusive")
 	}
 	if jsonRaw != "" {
 		pc := newParseCtx(runtime)
@@ -143,6 +144,78 @@ func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
 		allowNil:      true,
 		allowEmpty:    true,
 	})
+}
+
+func recordIDFlags(runtime *common.RuntimeContext) []string {
+	return mergeReferenceSources(
+		runtime.StrArray("record-id"),
+		normalizePluralReferenceValues(runtime.StrArray("record-ids"), "rec"),
+	)
+}
+
+func recordFieldFlags(runtime *common.RuntimeContext) []string {
+	return mergeReferenceSources(
+		runtime.StrArray("field-id"),
+		normalizePluralReferenceValues(runtime.StrArray("field-names"), "fld"),
+		normalizePluralReferenceValues(runtime.StrArray("fields"), "fld"),
+	)
+}
+
+// mergeReferenceSources concatenates flag sources, dropping values from later
+// sources that an earlier source already provided — so the same reference
+// passed through both a canonical flag and its plural alias is sent only once.
+// Duplicates inside a single source are kept on purpose: repeating a value on
+// one flag is a user mistake that downstream validation should keep rejecting.
+func mergeReferenceSources(sources ...[]string) []string {
+	var out []string
+	seenBefore := map[string]struct{}{}
+	for _, source := range sources {
+		for _, value := range source {
+			if _, ok := seenBefore[value]; ok {
+				continue
+			}
+			out = append(out, value)
+		}
+		for _, value := range source {
+			seenBefore[value] = struct{}{}
+		}
+	}
+	return out
+}
+
+func normalizePluralReferenceValues(values []string, idPrefix string) []string {
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if strings.HasPrefix(value, "[") {
+			var parsed []string
+			if err := json.Unmarshal([]byte(value), &parsed); err == nil {
+				out = append(out, parsed...)
+				continue
+			}
+		}
+		if strings.Contains(value, ",") {
+			parts := strings.Split(value, ",")
+			allIDs := true
+			trimmed := make([]string, 0, len(parts))
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				trimmed = append(trimmed, part)
+				if !strings.HasPrefix(part, idPrefix) {
+					allIDs = false
+				}
+			}
+			if allIDs {
+				out = append(out, trimmed...)
+				continue
+			}
+		}
+		out = append(out, value)
+	}
+	return out
 }
 
 func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([]string, error) {
@@ -375,7 +448,7 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 }
 
 func recordListFields(runtime *common.RuntimeContext) []string {
-	return runtime.StrArray("field-id")
+	return recordFieldFlags(runtime)
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {

@@ -5,6 +5,7 @@ package base
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -21,9 +22,14 @@ var BaseRecordList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
+		{Name: "field-names", Type: "string_array", Hidden: true},
+		{Name: "fields", Type: "string_array", Hidden: true},
 		recordListViewRefFlag(),
 		recordFilterFlag(),
+		recordFilterAliasFlag(),
 		recordSortFlag(),
+		recordSortAliasFlag(),
+		{Name: "json", Hidden: true},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
 		recordReadFormatFlag(),
@@ -44,6 +50,9 @@ var BaseRecordList = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
+		}
+		if strings.TrimSpace(runtime.Str("json")) != "" {
+			return baseFlagErrorf("+record-list does not support --json; use --filter-json for filters and --sort-json for sorting")
 		}
 		return validateRecordQueryOptions(runtime)
 	},

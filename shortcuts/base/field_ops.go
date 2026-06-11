@@ -85,7 +85,7 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 	if params["limit"].(int) <= 0 {
 		params["limit"] = 30
 	}
-	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+	if keyword := strings.TrimSpace(fieldSearchOptionsKeyword(runtime)); keyword != "" {
 		params["query"] = keyword
 	}
 	return common.NewDryRunAPI().
@@ -274,6 +274,13 @@ func fieldSearchOptionsRef(runtime *common.RuntimeContext) string {
 	return fieldRef
 }
 
+func fieldSearchOptionsKeyword(runtime *common.RuntimeContext) string {
+	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+		return keyword
+	}
+	return strings.TrimSpace(runtime.Str("query"))
+}
+
 func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
@@ -285,7 +292,7 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	if params["limit"].(int) <= 0 {
 		params["limit"] = 30
 	}
-	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+	if keyword := strings.TrimSpace(fieldSearchOptionsKeyword(runtime)); keyword != "" {
 		params["query"] = keyword
 	}
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef, "options"), params, nil)
@@ -300,7 +307,7 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	runtime.Out(map[string]interface{}{
 		"field_id":   fieldRef,
 		"field_name": fieldRef,
-		"keyword":    strings.TrimSpace(runtime.Str("keyword")),
+		"keyword":    fieldSearchOptionsKeyword(runtime),
 		"options":    options,
 		"total":      total,
 	}, nil)

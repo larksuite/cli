@@ -26,12 +26,20 @@ func recordFilterFlag() common.Flag {
 	}
 }
 
+func recordFilterAliasFlag() common.Flag {
+	return common.Flag{Name: "filter", Hidden: true, Input: []string{common.File}}
+}
+
 func recordSortFlag() common.Flag {
 	return common.Flag{
 		Name:  recordSortJSONFlag,
 		Desc:  `sort JSON array or @file, e.g. [{"field":"Updated","desc":true}]; also accepts {"sort_config":[...]}; order is priority; max 10`,
 		Input: []string{common.File},
 	}
+}
+
+func recordSortAliasFlag() common.Flag {
+	return common.Flag{Name: "sort", Hidden: true, Input: []string{common.File}}
 }
 
 func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
@@ -43,7 +51,10 @@ func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
 }
 
 func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) {
-	filterRaw := strings.TrimSpace(runtime.Str(recordFilterJSONFlag))
+	filterRaw, err := recordQueryFlagValue(runtime, recordFilterJSONFlag, "filter")
+	if err != nil {
+		return nil, err
+	}
 	if filterRaw == "" {
 		return nil, nil
 	}
@@ -52,7 +63,10 @@ func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) 
 }
 
 func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
-	sortRaw := strings.TrimSpace(runtime.Str(recordSortJSONFlag))
+	sortRaw, err := recordQueryFlagValue(runtime, recordSortJSONFlag, "sort")
+	if err != nil {
+		return nil, err
+	}
 	if sortRaw == "" {
 		return nil, nil
 	}
@@ -62,6 +76,18 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 		return nil, err
 	}
 	return normalizeRecordSortValue(value, "--"+recordSortJSONFlag)
+}
+
+func recordQueryFlagValue(runtime *common.RuntimeContext, canonical string, alias string) (string, error) {
+	canonicalRaw := strings.TrimSpace(runtime.Str(canonical))
+	aliasRaw := strings.TrimSpace(runtime.Str(alias))
+	if canonicalRaw != "" && aliasRaw != "" {
+		return "", baseFlagErrorf("--%s is a deprecated alias for --%s; use only one", alias, canonical)
+	}
+	if canonicalRaw != "" {
+		return canonicalRaw, nil
+	}
+	return aliasRaw, nil
 }
 
 func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, error) {

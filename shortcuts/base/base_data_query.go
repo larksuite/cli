@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -20,6 +21,7 @@ var BaseDataQuery = common.Shortcut{
 	AuthTypes:   authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
+		{Name: "table-id", Hidden: true},
 		{Name: "dsl", Desc: "query JSON DSL; read lark-base-data-query-guide.md first, then lark-base-data-query.md for the full DSL SSOT", Required: true},
 	},
 	Tips: []string{
@@ -28,6 +30,9 @@ var BaseDataQuery = common.Shortcut{
 		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if strings.TrimSpace(runtime.Str("table-id")) != "" {
+			return baseFlagErrorf("+data-query does not support --table-id; put table names/fields inside --dsl (read lark-base-data-query-guide.md)")
+		}
 		var dsl map[string]interface{}
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))
 		dec.UseNumber()
