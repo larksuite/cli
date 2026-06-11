@@ -1,7 +1,7 @@
 ---
 name: lark-minutes
 version: 1.0.0
-description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下载妙记音视频文件、上传音视频生成妙记、更新妙记标题、替换说话人。当需要获取、操作或者生成妙记时使用。也支持将本地音视频文件转成纪要和逐字稿（优先使用本 skill，不要用 ffmpeg/whisper 本地转写）。不负责：获取会议关联妙记、纪要/逐字稿内容获取走 lark-vc"
+description: "飞书妙记：搜索妙记列表、查看妙记基础信息、下载妙记音视频文件、上传音视频生成妙记、更新妙记标题、替换说话人。当需要获取、操作或者生成妙记时使用。也支持将本地音视频文件转成纪要和逐字稿（优先使用本 skill，不要用 ffmpeg/whisper 本地转写）。不负责：获取会议关联妙记；只有自然语言纪要标题时不要走本 skill"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -45,6 +45,7 @@ metadata:
 | "重命名妙记/改妙记标题" | 本 skill（`+update`） |
 | "替换说话人/把 A 的发言改成 B" | 本 skill（`+speaker-replace`） |
 | "这个妙记的逐字稿/总结/待办/章节" | [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
+| "xx 纪要的逐字稿/原始记录/谁说了什么" 且没有 `minute_token` / 妙记 URL / 本地音视频文件 | 不走本 skill；路由到 [lark-drive](../lark-drive/SKILL.md) / [lark-doc](../lark-doc/SKILL.md)，必要时再到 [lark-note](../lark-note/SKILL.md) |
 | "把音视频文件转成纪要/逐字稿/文字稿" | 先本 skill（`+upload`），再 [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
 | 用户同时提到"会议/开会"和"妙记" | 先 [lark-vc](../lark-vc/SKILL.md)（`+search` → `+recording`），再本 skill |
 
@@ -166,6 +167,7 @@ Minutes (妙记) ← minute_token 标识
 > - 用户只是想看"我的妙记 / 某段时间内的妙记 / 妙记列表"，不要先走 [lark-vc](../lark-vc/SKILL.md)，而应直接使用本 skill
 > - 用户如果同时提到"会议 / 会 / 开会 / 某场会"，即使也提到了"妙记"，也应优先走 [lark-vc](../lark-vc/SKILL.md) 先定位会议，再通过 [vc +recording](../lark-vc/references/lark-vc-recording.md) 获取 `minute_token`
 > - 用户如果要的是妙记基础信息，拿到 `minute_token` 后用 `minutes minutes get`；用户如果要**读取**逐字稿、文字稿、撰写文字、总结、待办、章节，再走 `vc +notes --minute-tokens`
+> - 用户只给自然语言纪要标题并说"查 xx 纪要的逐字稿 / 原始记录 / 谁说了什么"时，不要因为出现"逐字稿"就走 `minutes +search` 或 `vc +notes --minute-tokens`；这不是妙记入口，应先搜索纪要文档并 fetch 正文。有 `vc-node-id` 再进入 Note 域，否则读取正文中明确给出的“文字记录/逐字稿” Docx 链接
 > - “我的妙记”“参与的妙记”等自然语言映射细则，以 [minutes +search](references/lark-minutes-search.md) 为准
 > - 结果有多页时，使用 `page_token` 持续翻页，直到确认没有更多结果
 > - `minutes +search` 单次最多返回 `200` 条；结果总数没有固定上限
@@ -179,6 +181,12 @@ Minutes (妙记) ← minute_token 标识
 > - 用户说"重命名妙记 / 改妙记标题 / 修改妙记名字" → `minutes +update`
 > - 用户说"替换说话人 / 把 A 的发言改成 B / 重新归属发言人" → `minutes +speaker-replace`
 > - 用户说"批量替换逐字稿关键词" → `minutes +word-replace`
+>
+> **Note 域边界（禁止规则）**：`minute_token` 是妙记文件标识，**不是** `note_id`。
+> - 不要把 `minute_token` 传给 `note +detail` 或 `note +transcript`。
+> - 不在本 skill 处理 Note 详情或 unified transcript。
+> - 已有 `minute_token` 且需要纪要产物索引（含 `note_id` / `note_display_type`）时，走 `vc +notes --minute-tokens`；拿到 `note_id` 后再切到 [lark-note](../lark-note/SKILL.md)。
+> - 只有自然语言纪要标题时，先搜索纪要文档并 fetch 正文；有 `vc-node-id` 才进入 Note 域，否则读取正文中明确给出的“文字记录/逐字稿” Docx 链接，不要从 Minutes 反查。
 
 ## Shortcuts（推荐优先使用）
 
@@ -218,6 +226,7 @@ lark-cli minutes <resource> <method> [flags]
 
 ## 不在本 skill 范围
 
-- 纪要/逐字稿/总结/待办/章节内容获取 → [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`）
+- 已有 `minute_token` 的纪要/逐字稿/总结/待办/章节内容获取 → [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`）
+- 只有自然语言纪要标题的逐字稿查询 → 先搜索纪要文档并 fetch 正文；有 `vc-node-id` 才进入 [lark-note](../lark-note/SKILL.md)，否则读取正文中明确给出的“文字记录/逐字稿” Docx 链接
 - 搜索历史会议记录 → [lark-vc](../lark-vc/SKILL.md)
 - 查询未来的会议日程 → [lark-calendar](../lark-calendar/SKILL.md)

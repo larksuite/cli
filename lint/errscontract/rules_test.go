@@ -953,6 +953,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 	paths := []string{
 		"shortcuts/doc/docs_fetch_v2.go",
 		"shortcuts/drive/drive_search.go",
+		"shortcuts/im/im_messages_send.go",
 		"shortcuts/mail/mail_send.go",
 		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_progress_create.go",
@@ -984,6 +985,18 @@ common.` + helper + `()
 					t.Errorf("message should name helper %s: %s", helper, v[0].Message)
 				}
 			})
+		}
+	}
+}
+
+func TestMigratedCommonHelperPaths_CoverMigratedEnvelopePaths(t *testing.T) {
+	commonPaths := make(map[string]struct{}, len(migratedCommonHelperPaths))
+	for _, path := range migratedCommonHelperPaths {
+		commonPaths[path] = struct{}{}
+	}
+	for _, path := range migratedEnvelopePaths {
+		if _, ok := commonPaths[path]; !ok {
+			t.Fatalf("migratedEnvelopePaths contains %q but migratedCommonHelperPaths does not", path)
 		}
 	}
 }

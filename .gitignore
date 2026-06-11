@@ -35,6 +35,8 @@ tests/mail/reports/
 # Generated / test artifacts
 .hammer/
 .lark-slides/
+/notes/
+/minutes/
 internal/registry/meta_data.json
 cmd/api/download.bin
 app.log
