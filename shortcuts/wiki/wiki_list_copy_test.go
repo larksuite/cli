@@ -351,6 +351,7 @@ func TestWikiNodeCopyRequiresTargetSpaceOrParent(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "--target-space-id or --target-parent-node-token") {
 		t.Fatalf("expected target validation error, got %v", err)
 	}
+	requireWikiValidationParams(t, err, "--target-space-id", "--target-parent-node-token")
 }
 
 func TestWikiNodeCopyRejectsBothTargetFlags(t *testing.T) {
@@ -365,6 +366,7 @@ func TestWikiNodeCopyRejectsBothTargetFlags(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Fatalf("expected mutually exclusive error, got %v", err)
 	}
+	requireWikiValidationParams(t, err, "--target-space-id", "--target-parent-node-token")
 }
 
 // TestWikiNodeCopyDeclaredHighRiskWrite pins down the high-risk-write

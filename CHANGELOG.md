@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.51] - 2026-06-10
+
+### Features
+
+- **apps**: Support multi dev modes (#1175)
+- **im**: Complete audio/post rendering and add opt-in `--download-resources` (#1245)
+- **base**: Configure initial base table schema (#1377)
+- **vc**: Add recording event support (#1369)
+- **minutes**: Replace words for transcript (#1372)
+- **markdown**: Emit typed error envelopes across the markdown domain (#1347)
+- **sheets**: Emit typed error envelopes across the sheets domain (#1348)
+- **slides**: Emit typed error envelopes across the slides domain (#1349)
+
+### Documentation
+
+- **skills**: Warn about `@file` absolute path restriction in lark-doc skills (#1375)
+- **skills**: Remove unsupported ⚠️ from callout emoji list (#1374)
+
 ## [v1.0.50] - 2026-06-09
 
 ### Features
@@ -1088,6 +1106,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51
 [v1.0.50]: https://github.com/larksuite/cli/releases/tag/v1.0.50
 [v1.0.49]: https://github.com/larksuite/cli/releases/tag/v1.0.49
 [v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48

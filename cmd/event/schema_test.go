@@ -96,6 +96,79 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
+	const syntheticKey = "test.evt_sub"
+	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
+
+	eventlib.RegisterKey(eventlib.KeyDefinition{
+		Key:       syntheticKey,
+		EventType: syntheticKey,
+		Params: []eventlib.ParamDef{
+			{Name: "mailbox", SubscriptionKey: true, Description: "subscription id source"},
+			{Name: "folders", Description: "filter only"},
+		},
+		Schema: eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
+	})
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	if err := runSchema(f, syntheticKey, false); err != nil {
+		t.Fatalf("runSchema: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "SUB-KEY") {
+		t.Errorf("missing SUB-KEY column header in:\n%s", out)
+	}
+
+	// Find the mailbox row and verify "yes" is present
+	var mailboxRow string
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, "mailbox") && !strings.Contains(ln, "NAME") {
+			mailboxRow = ln
+			break
+		}
+	}
+	if !strings.Contains(mailboxRow, "yes") {
+		t.Errorf("mailbox row missing yes SUB-KEY marker: %q", mailboxRow)
+	}
+
+	// Find the folders row and verify "no" is present
+	var foldersRow string
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, "folders") && !strings.Contains(ln, "NAME") {
+			foldersRow = ln
+			break
+		}
+	}
+	if !strings.Contains(foldersRow, "no") {
+		t.Errorf("folders row missing no SUB-KEY marker: %q", foldersRow)
+	}
+}
+
+func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
+	const syntheticKey = "test.evt_json"
+	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
+
+	eventlib.RegisterKey(eventlib.KeyDefinition{
+		Key:       syntheticKey,
+		EventType: syntheticKey,
+		Params:    []eventlib.ParamDef{{Name: "mailbox", SubscriptionKey: true}},
+		Schema:    eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
+	})
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	if err := runSchema(f, syntheticKey, true); err != nil {
+		t.Fatalf("runSchema json: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `"subscription_key"`) {
+		t.Errorf("JSON output missing subscription_key field: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `true`) {
+		t.Errorf("JSON output missing subscription_key: true value: %s", stdout.String())
+	}
+}
+
 func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	const syntheticKey = "t.custom.overlay"
 	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })

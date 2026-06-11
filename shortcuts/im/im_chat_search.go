@@ -31,6 +31,7 @@ var ImChatSearch = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "query", Desc: "search keyword (max 64 chars)"},
 		{Name: "search-types", Desc: "chat types, comma-separated (private, external, public_joined, public_not_joined)"},
+		{Name: "chat-modes", Desc: "filter by chat mode, comma-separated (group, topic)"},
 		{Name: "member-ids", Desc: "filter by member open_ids, comma-separated"},
 		{Name: "is-manager", Type: "bool", Desc: "only show chats you created or manage"},
 		{Name: "disable-search-by-user", Type: "bool", Desc: "disable search-by-member-name (default: search by member name first, then group name)"},
@@ -69,6 +70,13 @@ var ImChatSearch = common.Shortcut{
 			for _, item := range common.SplitCSV(st) {
 				if _, ok := allowed[item]; !ok {
 					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --search-types value %q: expected one of private, external, public_joined, public_not_joined", item).WithParam("--search-types")
+				}
+			}
+		}
+		if cm := runtime.Str("chat-modes"); cm != "" {
+			for _, mode := range common.SplitCSV(cm) {
+				if mode != "group" && mode != "topic" {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --chat-modes value %q: expected one of group, topic", mode).WithParam("--chat-modes")
 				}
 			}
 		}
@@ -216,6 +224,24 @@ func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} 
 	filter := map[string]interface{}{}
 	if st := runtime.Str("search-types"); st != "" {
 		filter["search_types"] = common.SplitCSV(st)
+	}
+	// chat_modes is a server-side filter. The CLI exposes group/topic; the wire
+	// expects default/thread. Map and dedupe (the API caps the list at 2, and
+	// there are only 2 distinct modes) while preserving the user's order.
+	if cm := runtime.Str("chat-modes"); cm != "" {
+		seen := map[string]bool{}
+		var modes []string
+		for _, mode := range common.SplitCSV(cm) {
+			wire := map[string]string{"group": "default", "topic": "thread"}[mode]
+			if wire == "" || seen[wire] {
+				continue
+			}
+			seen[wire] = true
+			modes = append(modes, wire)
+		}
+		if len(modes) > 0 {
+			filter["chat_modes"] = modes
+		}
 	}
 	if mi := runtime.Str("member-ids"); mi != "" {
 		filter["member_ids"] = common.SplitCSV(mi)

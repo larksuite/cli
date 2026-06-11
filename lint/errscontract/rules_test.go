@@ -960,6 +960,7 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"shortcuts/slides/slides_create.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_query.go",
+		"shortcuts/wiki/wiki_node_get.go",
 	}
 	for _, path := range paths {
 		for _, helper := range helpers {
@@ -1073,6 +1074,23 @@ func boom() {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/markdown/markdown_fetch.go", src)
 	if len(v) != 2 {
 		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on markdown path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversWikiPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/wiki/wiki_node_get.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on wiki path, got %d: %+v", len(v), v)
 	}
 }
 

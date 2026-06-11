@@ -56,6 +56,15 @@ func walkHTMLPublishCandidates(fio fileio.FileIO, rootPath string) ([]htmlPublis
 		if walkErr != nil {
 			return walkErr
 		}
+		// Skip a stray git repo: a directory named .git skips the whole subtree,
+		// and a .git file (the gitdir pointer used by submodules/worktrees) is
+		// skipped too.
+		if d.Name() == ".git" {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if d.IsDir() {
 			return nil
 		}

@@ -9,7 +9,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -44,10 +44,18 @@ var WikiNodeCopy = common.Shortcut{
 		targetSpaceID := strings.TrimSpace(runtime.Str("target-space-id"))
 		targetParent := strings.TrimSpace(runtime.Str("target-parent-node-token"))
 		if targetSpaceID == "" && targetParent == "" {
-			return output.ErrValidation("at least one of --target-space-id or --target-parent-node-token is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "at least one of --target-space-id or --target-parent-node-token is required").
+				WithParams(
+					errs.InvalidParam{Name: "--target-space-id", Reason: "provide --target-space-id or --target-parent-node-token"},
+					errs.InvalidParam{Name: "--target-parent-node-token", Reason: "provide --target-space-id or --target-parent-node-token"},
+				)
 		}
 		if targetSpaceID != "" && targetParent != "" {
-			return output.ErrValidation("--target-space-id and --target-parent-node-token are mutually exclusive; provide only one")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-space-id and --target-parent-node-token are mutually exclusive; provide only one").
+				WithParams(
+					errs.InvalidParam{Name: "--target-space-id", Reason: "mutually exclusive with --target-parent-node-token"},
+					errs.InvalidParam{Name: "--target-parent-node-token", Reason: "mutually exclusive with --target-space-id"},
+				)
 		}
 		if err := validateOptionalResourceName(targetSpaceID, "--target-space-id"); err != nil {
 			return err
@@ -72,7 +80,7 @@ var WikiNodeCopy = common.Shortcut{
 		fmt.Fprintf(runtime.IO().ErrOut, "Copying wiki node %s from space %s\n",
 			common.MaskToken(nodeToken), common.MaskToken(spaceID))
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes/%s/copy",
 				validate.EncodePathSegment(spaceID),
 				validate.EncodePathSegment(nodeToken)),

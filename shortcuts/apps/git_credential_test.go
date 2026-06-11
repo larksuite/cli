@@ -45,6 +45,11 @@ func TestAppsGitCredentialInitDryRunRequestShape(t *testing.T) {
 			Params map[string]interface{} `json:"params"`
 			Body   interface{}            `json:"body"`
 		} `json:"api"`
+		Mode         string   `json:"mode"`
+		Action       string   `json:"action"`
+		AppID        string   `json:"app_id"`
+		MetadataFile string   `json:"metadata_file"`
+		LocalEffects []string `json:"local_effects"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
@@ -65,6 +70,107 @@ func TestAppsGitCredentialInitDryRunRequestShape(t *testing.T) {
 	if call.Body != nil {
 		t.Fatalf("body = %#v, want nil", call.Body)
 	}
+	if payload.Mode != "api-plus-local-setup" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "initialize_local_git_credential" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if payload.AppID != "app_xxx" {
+		t.Fatalf("app_id = %q", payload.AppID)
+	}
+	if !strings.HasSuffix(payload.MetadataFile, filepath.Join("spark", "app_xxx", "git.json")) {
+		t.Fatalf("metadata_file = %q", payload.MetadataFile)
+	}
+	assertStringSliceEqual(t, payload.LocalEffects, []string{
+		"save the issued PAT in the local system credential store",
+		"write app-scoped git credential metadata",
+		"configure a URL-scoped Git credential helper in global git config when possible",
+	})
+}
+
+func TestAppsGitCredentialListDryRunDescribesLocalReads(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsGitCredentialList,
+		[]string{"+git-credential-list", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var payload struct {
+		Description string        `json:"description"`
+		API         []interface{} `json:"api"`
+		Mode        string        `json:"mode"`
+		Action      string        `json:"action"`
+		StorageRoot string        `json:"storage_root"`
+		Reads       []string      `json:"reads"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	if payload.Description != "Preview local Git credential listing (no API call, read-only local state)." {
+		t.Fatalf("description = %q", payload.Description)
+	}
+	if len(payload.API) != 0 {
+		t.Fatalf("api len = %d, want 0", len(payload.API))
+	}
+	if payload.Mode != "local-read-only" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "list_local_git_credentials" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if !strings.HasSuffix(payload.StorageRoot, filepath.Join("spark")) {
+		t.Fatalf("storage_root = %q", payload.StorageRoot)
+	}
+	assertStringSliceEqual(t, payload.Reads, []string{
+		"scan app-scoped git credential metadata under the CLI config directory",
+		"derive per-app repository URLs and local credential status from local metadata",
+	})
+}
+
+func TestAppsGitCredentialRemoveDryRunDescribesLocalCleanup(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsGitCredentialRemove,
+		[]string{"+git-credential-remove", "--app-id", "app_xxx", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var payload struct {
+		Description  string        `json:"description"`
+		API          []interface{} `json:"api"`
+		Mode         string        `json:"mode"`
+		Action       string        `json:"action"`
+		AppID        string        `json:"app_id"`
+		MetadataFile string        `json:"metadata_file"`
+		Effects      []string      `json:"effects"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	if payload.Description != "Preview local Git credential cleanup (no API call; would clean up local-only state)." {
+		t.Fatalf("description = %q", payload.Description)
+	}
+	if len(payload.API) != 0 {
+		t.Fatalf("api len = %d, want 0", len(payload.API))
+	}
+	if payload.Mode != "local-cleanup-only" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "remove_local_git_credential" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if payload.AppID != "app_xxx" {
+		t.Fatalf("app_id = %q", payload.AppID)
+	}
+	if !strings.HasSuffix(payload.MetadataFile, filepath.Join("spark", "app_xxx", "git.json")) {
+		t.Fatalf("metadata_file = %q", payload.MetadataFile)
+	}
+	assertStringSliceEqual(t, payload.Effects, []string{
+		"read app-scoped git credential metadata",
+		"remove the saved PAT from the local system credential store",
+		"remove the app-scoped Git helper from global git config when present",
+		"delete the local metadata record after cleanup succeeds",
+	})
 }
 
 func TestAppsGitCredentialInitRequiresAppID(t *testing.T) {
@@ -576,6 +682,18 @@ func TestAppsGitCredentialRemoveReturnsStoreError(t *testing.T) {
 	err := runAppsShortcut(t, AppsGitCredentialRemove, []string{"+git-credential-remove", "--app-id", "app_xxx", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "invalid git.json") {
 		t.Fatalf("expected remove store error, got %v", err)
+	}
+}
+
+func assertStringSliceEqual(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("slice len = %d, want %d; got %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("slice[%d] = %q, want %q; got %#v", i, got[i], want[i], got)
+		}
 	}
 }
 

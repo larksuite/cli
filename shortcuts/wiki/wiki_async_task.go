@@ -5,12 +5,11 @@ package wiki
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -95,7 +94,7 @@ func (s wikiAsyncTaskStatus) StatusLabel() string {
 }
 
 // wikiAsyncTaskFetcher returns the latest status for taskID. Implementations
-// translate from runtime.CallAPI responses or test fakes.
+// translate from runtime.CallAPITyped responses or test fakes.
 type wikiAsyncTaskFetcher func(ctx context.Context, taskID string) (wikiAsyncTaskStatus, error)
 
 // parseWikiAsyncTaskStatus normalizes an /wiki/v2/tasks/{task_id} payload.
@@ -103,7 +102,7 @@ type wikiAsyncTaskFetcher func(ctx context.Context, taskID string) (wikiAsyncTas
 // "simple_task_result" for delete-node).
 func parseWikiAsyncTaskStatus(taskID string, task map[string]interface{}, resultKey string) (wikiAsyncTaskStatus, error) {
 	if task == nil {
-		return wikiAsyncTaskStatus{}, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+		return wikiAsyncTaskStatus{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
 	}
 
 	result := common.GetMap(task, resultKey)
@@ -167,7 +166,7 @@ func pollWikiAsyncTask(
 			return status, true, nil
 		}
 		if status.Failed() {
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "wiki %s task %s failed: %s", label, taskID, status.StatusLabel())
+			return status, false, errs.NewAPIError(errs.SubtypeServerError, "wiki %s task %s failed: %s", label, taskID, status.StatusLabel())
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Wiki %s status %d/%d: %s\n", label, attempt, attempts, status.StatusLabel())
@@ -178,29 +177,18 @@ func pollWikiAsyncTask(
 			"the wiki %s task was created but every status poll failed (task_id=%s)\nretry status lookup with: %s",
 			label, taskID, nextCommand,
 		)
-		var exitErr *output.ExitError
-		if errors.As(lastErr, &exitErr) && exitErr.Detail != nil {
-			if strings.TrimSpace(exitErr.Detail.Hint) != "" {
-				hint = exitErr.Detail.Hint + "\n" + hint
+		// The poll error comes from a typed CallAPITyped path; append the resume
+		// hint in place so the original category / subtype / code / log_id
+		// survives a fully failed poll (per ERROR_CONTRACT.md "propagate typed
+		// errors unchanged"), matching wrapWikiNodeDeleteAPIError.
+		if p, ok := errs.ProblemOf(lastErr); ok {
+			if strings.TrimSpace(p.Hint) != "" {
+				hint = p.Hint + "\n" + hint
 			}
-			// ErrWithHint rebuilds the error and drops the upstream Lark
-			// Detail.Code / ConsoleURL / Risk / nested Detail. Build the
-			// ExitError by hand so the original API code survives a fully
-			// failed poll, matching wrapWikiNodeDeleteAPIError.
-			return lastStatus, false, &output.ExitError{
-				Code: exitErr.Code,
-				Detail: &output.ErrDetail{
-					Type:       exitErr.Detail.Type,
-					Code:       exitErr.Detail.Code,
-					Message:    exitErr.Detail.Message,
-					Hint:       hint,
-					ConsoleURL: exitErr.Detail.ConsoleURL,
-					Risk:       exitErr.Detail.Risk,
-					Detail:     exitErr.Detail.Detail,
-				},
-			}
+			p.Hint = hint
+			return lastStatus, false, lastErr
 		}
-		return lastStatus, false, output.ErrWithHint(output.ExitAPI, "api_error", lastErr.Error(), hint)
+		return lastStatus, false, errs.NewInternalError(errs.SubtypeUnknown, "%s", lastErr.Error()).WithHint("%s", hint).WithCause(lastErr)
 	}
 
 	return lastStatus, false, nil

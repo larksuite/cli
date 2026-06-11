@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -242,12 +243,17 @@ func writeStatusText(out io.Writer, statuses []appStatus) {
 				s.PID, (time.Duration(s.UptimeSec) * time.Second).String())
 			fmt.Fprintf(out, "  Active consumers: %d\n", s.Active)
 			if len(s.Consumers) > 0 {
-				headers := []string{"CONSUMER", "EVENT KEY", "RECEIVED", "DROPPED"}
+				headers := []string{"CONSUMER", "EVENT KEY", "SUB", "RECEIVED", "DROPPED"}
 				rows := make([][]string, 0, len(s.Consumers))
 				for _, c := range s.Consumers {
+					subDisplay := "-"
+					if c.SubscriptionID != "" && c.SubscriptionID != c.EventKey {
+						subDisplay = strings.TrimPrefix(c.SubscriptionID, c.EventKey+":")
+					}
 					rows = append(rows, []string{
 						fmt.Sprintf("pid=%d", c.PID),
 						c.EventKey,
+						subDisplay,
 						fmt.Sprintf("%d", c.Received),
 						fmt.Sprintf("%d", c.Dropped),
 					})

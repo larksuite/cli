@@ -27,7 +27,7 @@ func TestDoHello_ReadDeadline(t *testing.T) {
 	start := time.Now()
 	done := make(chan error, 1)
 	go func() {
-		_, _, err := doHello(client, "im.msg", []string{"im.msg"})
+		_, _, err := doHello(client, "im.msg", []string{"im.msg"}, "")
 		done <- err
 	}()
 
