@@ -31,8 +31,9 @@ import (
 //   - 多语句部分失败：`Statement K: ✗ <message> [<code>]` + 末尾「前序语句已落地」提示
 //
 // 失败语义：server 多语句失败仍返 code:0，把失败语句标成 ERROR 哨兵塞进 result。Execute 检测到哨兵
-// 后升级成 typed api_error（exit 非 0、detail 带 statement_index / completed / rolled_back），
-// 避免 agent 误判 ok:true 假成功。CLI 永远 DBA 模式（transactional=false），失败前的语句已 auto-commit
+// 后按 partial failure 上报（exit 非 0）：stdout 输出 ok:false 数据，带 results /
+// statement_index / error_code / error_message / rolled_back / note，避免 agent 误判
+// ok:true 假成功。CLI 永远 DBA 模式（transactional=false），失败前的语句已 auto-commit
 // 落地，故 rolled_back=false（真机 boe 实证）。
 //
 // JSON envelope（成功路径）：CLI 把 server 返的 result 字符串解出来放进 `data.results` 数组。
@@ -68,19 +69,27 @@ var AppsDBExecute = common.Shortcut{
 		sql := strings.TrimSpace(rctx.Str("sql"))
 		file := strings.TrimSpace(rctx.Str("file"))
 		if sql != "" && file != "" {
-			return output.ErrValidation("--sql and --file are mutually exclusive")
+			return appsValidationError("--sql and --file are mutually exclusive").
+				WithParams(
+					appsInvalidParam("--sql", "mutually exclusive with --file"),
+					appsInvalidParam("--file", "mutually exclusive with --sql"),
+				)
 		}
 		if file != "" {
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
 			if err != nil {
-				return output.ErrValidation("--file: %v", err)
+				return appsValidationParamError("--file", "--file: %v", err).WithCause(err)
 			}
 			// 归一化：把文件内容写回 --sql，下游（DryRun/Execute）统一从 sql 取。
 			rctx.Cmd.Flags().Set("sql", string(data))
 			sql = strings.TrimSpace(string(data))
 		}
 		if sql == "" {
-			return output.ErrValidation("one of --sql or --file is required (use --sql - to read stdin)")
+			return appsValidationError("one of --sql or --file is required (use --sql - to read stdin)").
+				WithParams(
+					appsInvalidParam("--sql", "one of --sql or --file is required"),
+					appsInvalidParam("--file", "one of --sql or --file is required"),
+				)
 		}
 		return nil
 	},
@@ -113,13 +122,15 @@ var AppsDBExecute = common.Shortcut{
 		data := map[string]interface{}{"results": stmts}
 
 		// 多语句 / 单语句失败：server 仍返 code:0，把失败语句标成 ERROR 哨兵塞进 result。
-		// 升级成 typed api_error（exit 非 0），别让 agent 误判 ok:true 假成功。
-		// pretty 模式仍把逐条 ✓/✗ 摘要打到 stdout（人看），再返回 error（envelope→stderr）。
+		// 已落地的前序语句 + 失败语句构成 partial failure：逐条结果作为 ok:false 数据
+		// 留在 stdout（机器可读）+ 非零退出信号，别让 agent 误判 ok:true 假成功。
+		// pretty 模式 stdout 只打逐条 ✓/✗ 摘要（不再叠一份 JSON envelope），仅返回退出信号。
 		if errIdx, errStmt, failed := findErrorSentinel(stmts); failed {
 			if rctx.Format == "pretty" {
 				renderSQLPretty(rctx.IO().Out, stmts)
+				return output.PartialFailure(output.ExitAPI)
 			}
-			return sqlStatementError(stmts, errIdx, errStmt)
+			return rctx.OutPartialFailure(sqlStatementFailurePayload(stmts, errIdx, errStmt), nil)
 		}
 
 		rctx.OutFormat(data, nil, func(w io.Writer) {
@@ -140,31 +151,28 @@ func findErrorSentinel(stmts []map[string]interface{}) (int, map[string]interfac
 	return 0, nil, false
 }
 
-// sqlStatementError 把 ERROR 哨兵升级成 typed api_error。
+// sqlStatementFailurePayload 把 ERROR 哨兵整理成 partial-failure 的 stdout 数据。
 //
 // CLI 永远 DBA 模式（transactional=false），真机 boe 实证：失败语句之前的语句已逐条 auto-commit
-// 落地，不存在外层事务回滚。因此 rolled_back=false、completed 列出已落地的前序语句，hint 提示用户
-// 别整批重跑（否则会重复写入）。
-func sqlStatementError(stmts []map[string]interface{}, errIdx int, errStmt map[string]interface{}) error {
+// 落地，不存在外层事务回滚。因此 rolled_back=false、results 含全部逐条结果（ERROR 哨兵在
+// 失败位置），note 提示用户别整批重跑（否则会重复写入）。
+func sqlStatementFailurePayload(stmts []map[string]interface{}, errIdx int, errStmt map[string]interface{}) map[string]interface{} {
 	code, msg := parseErrorSentinel(common.GetString(errStmt, "data"))
 	stmtNo := errIdx + 1 // 1-based 给人看
-	fullMsg := fmt.Sprintf("%s (at statement %d of %d)", msg, stmtNo, len(stmts))
-
-	apiErr := output.ErrAPI(code, fullMsg, map[string]interface{}{
-		"statement_index": errIdx,
-		"completed":       stmts[:errIdx],
-		"rolled_back":     false,
-	})
-	if apiErr.Detail != nil {
-		if errIdx > 0 {
-			apiErr.Detail.Hint = fmt.Sprintf(
-				"statements 1-%d were already applied (DBA mode auto-commits each statement); fix statement %d and re-run only the remaining statements.",
-				errIdx, stmtNo)
-		} else {
-			apiErr.Detail.Hint = "no statements were applied; fix the SQL and re-run."
-		}
+	note := "no statements were applied; fix the SQL and re-run."
+	if errIdx > 0 {
+		note = fmt.Sprintf(
+			"statements 1-%d were already applied (DBA mode auto-commits each statement); fix statement %d and re-run only the remaining statements.",
+			errIdx, stmtNo)
 	}
-	return apiErr
+	return map[string]interface{}{
+		"results":         stmts,
+		"statement_index": errIdx,
+		"error_code":      code,
+		"error_message":   fmt.Sprintf("%s (at statement %d of %d)", msg, stmtNo, len(stmts)),
+		"rolled_back":     false,
+		"note":            note,
+	}
 }
 
 // parseErrorSentinel 解析 ERROR 哨兵的 data（`{code,message}` JSON），返回数值 code 与 message。

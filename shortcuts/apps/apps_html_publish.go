@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -35,11 +35,11 @@ var AppsHTMLPublish = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		path := strings.TrimSpace(rctx.Str("path"))
 		if path == "" {
-			return output.ErrValidation("--path is required")
+			return appsValidationParamError("--path", "--path is required")
 		}
 		// Block well-known credential files in the publish payload unless the
 		// caller explicitly opts in. Lives in Validate (not DryRun) so that
@@ -150,9 +150,9 @@ func sensitiveCandidatesError(hits []string) error {
 		sample = strings.Join(hits[:maxSensitiveListInError], ", ") +
 			fmt.Sprintf(" (and %d more)", len(hits)-maxSensitiveListInError)
 	}
-	return output.ErrWithHint(output.ExitValidation, "validation",
-		fmt.Sprintf("--path contains %d credential file(s) that should not be published: %s", len(hits), sample),
-		"remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
+	return appsValidationParamError("--path",
+		"--path contains %d credential file(s) that should not be published: %s", len(hits), sample).
+		WithHint("remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
 // maxHTMLPublishTarballBytes 是 client 端 tar.gz 包体上限，对齐 OAPI 设计 20MB 约束。
@@ -178,15 +178,14 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 			return nil
 		}
 	}
-	return output.ErrWithHint(output.ExitAPI, "validation",
-		"--path 中缺少 index.html",
-		"妙搭以 index.html 作为应用入口；目录形态把首页放在根目录命名 index.html，单文件形态把文件命名为 index.html")
+	return appsFailedPreconditionParamError("--path", "--path is missing index.html").
+		WithHint("Miaoda uses index.html as the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
 	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
 	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "io", "scan --path %s: %v", spec.Path, err)
+		return nil, err
 	}
 	if err := ensureIndexHTML(candidates); err != nil {
 		return nil, err
@@ -196,24 +195,24 @@ func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPubli
 		rawTotal += c.Size
 	}
 	if rawTotal > maxHTMLPublishRawBytes {
-		return nil, output.ErrWithHint(output.ExitAPI, "validation",
-			fmt.Sprintf("--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes),
-			"在 tar+gzip 进入内存前拦截，避免 OOM；精简 --path 内容或选择更小的子目录")
+		return nil, appsValidationParamError("--path",
+			"--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes).
+			WithHint("reduce --path contents or choose a smaller subdirectory before packaging")
 	}
 	tarball, err := buildHTMLPublishTarball(fio, candidates)
 	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "io", "pack: %v", err)
+		return nil, err
 	}
 
 	if tarball.Size > maxHTMLPublishTarballBytes {
-		return nil, output.ErrWithHint(output.ExitAPI, "validation",
-			fmt.Sprintf("packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes),
-			"请精简 --path 目录（去掉无关大文件 / 压缩资源）后重试；本期接口上限 20MB")
+		return nil, appsValidationParamError("--path",
+			"packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes).
+			WithHint("reduce --path contents, remove unrelated large files, then retry")
 	}
 
-	resp, err := client.HTMLPublish(ctx, spec.AppID, tarball)
+	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
 	if err != nil {
-		return nil, err
+		return nil, client.WrapDoAPIError(err)
 	}
 
 	out := map[string]interface{}{}

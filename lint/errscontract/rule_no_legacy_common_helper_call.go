@@ -18,6 +18,7 @@ var migratedCommonHelperPaths = []string{
 	"cmd/event/",
 	"events/",
 	"internal/event/consume/",
+	"shortcuts/apps/",
 	"shortcuts/base/",
 	"shortcuts/calendar/",
 	"shortcuts/contact/",

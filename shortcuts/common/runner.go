@@ -298,6 +298,14 @@ func (ctx *RuntimeContext) CallAPITyped(method, url string, params map[string]in
 // carry fields a caller needs on failure (e.g. the file_token an overwrite
 // returned, for token-stability handling).
 func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[string]interface{}, error) {
+	return ClassifyAPIResponseWith(resp, ctx.APIClassifyContext())
+}
+
+// ClassifyAPIResponseWith is the RuntimeContext-free form of
+// ClassifyAPIResponse for callers that drive the request outside a running
+// shortcut (e.g. a cobra command holding only a factory) and supply their own
+// classification context.
+func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext) (map[string]interface{}, error) {
 	logID, _ := logIDFromHeader(resp)["log_id"].(string)
 
 	result, parseErr := client.ParseJSONResponse(resp)
@@ -321,7 +329,7 @@ func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[stri
 		}
 	}
 	out, _ := resultMap["data"].(map[string]interface{})
-	if apiErr := errclass.BuildAPIError(resultMap, ctx.APIClassifyContext()); apiErr != nil {
+	if apiErr := errclass.BuildAPIError(resultMap, cc); apiErr != nil {
 		return out, apiErr
 	}
 	if resp.StatusCode >= 400 {

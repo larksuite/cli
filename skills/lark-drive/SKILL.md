@@ -1,7 +1,7 @@
 ---
 name: lark-drive
 version: 1.0.0
-description: "飞书云空间（云盘/云存储）：管理云空间（云盘/云存储）中的文件和文件夹。上传和下载文件、创建文件夹、复制/移动/删除文件、查看文件元数据、管理文档评论、管理文档权限、订阅用户评论变更事件、修改文件标题（docx、sheet、bitable、file、folder、wiki）；也负责把本地 Word/Markdown/Excel/CSV/PPTX 以及 Base 快照（.base）导入为飞书在线云文档（docx、sheet、bitable、slides）。当用户需要上传或下载文件、整理云空间（云盘/云存储）目录、查看文件详情、管理评论、管理文档权限、修改文件标题、订阅用户评论变更事件，或要把本地文件导入成新版文档、电子表格、多维表格/Base/幻灯片 时使用。\"云空间\"、\"云盘\"和\"云存储\"是同一概念，用户说\"云盘\"、\"云存储\"、\"网盘\"、\"我的空间\"时均路由到本 skill。当用户给出 doubao.com 的云空间资源 URL/token，或明确提到豆包里的 file/folder/docx/sheet/bitable/wiki 资源时，也应直接使用本 skill，不要因为域名不是飞书而回退到 WebFetch；路由依据是资源类型、URL 路径模式和 token，而不是域名。"
+description: "飞书云空间（云盘/云存储）：管理 Drive 文件和文件夹，包含上传/下载、创建文件夹、复制/移动/删除、查看元数据、评论/权限/订阅、标题、版本和本地文件导入。用户需要整理云盘目录、处理云空间资源 URL/token，或导入 Word/Markdown/Excel/CSV/PPTX/.base 为 docx/sheet/bitable/slides 时使用；doubao.com 云空间 URL/token 也按资源路径和 token 路由，不回退 WebFetch。不负责：文档内容编辑（走 lark-doc）、表格/Base 表内数据操作（走 lark-sheets/lark-base）、知识空间节点/成员管理（走 lark-wiki）、原生 Markdown 文件读写/patch/diff（走 lark-markdown）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -12,7 +12,7 @@ metadata:
 
 **CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
 
-> **术语说明：** 飞书云空间也常被称为"云盘"或"云存储"，三者指的是同一个产品，是飞书官方的云端文件存储与管理中心。
+> **术语说明：** 飞书云空间也常被称为"云盘"、"云存储"、"网盘"或"我的空间"，这些说法通常指的是同一个产品，是飞书官方的云端文件存储与管理中心。
 
 > **导入分流规则：** 如果用户要把本地 Excel / CSV / `.base` 快照导入成 Base / 多维表格 / bitable，必须优先使用 `lark-cli drive +import --type bitable`。不要先切到 `lark-base`；`lark-base` 只负责导入完成后的表内操作。
 
@@ -21,6 +21,7 @@ metadata:
 - 用户要**整理云盘 / 文件夹 / 文档库 / 知识库 / 个人文档库**，或要“盘点目录结构、找出未归档/临时/重复/空目录、生成整理方案”，必须先阅读 [`references/lark-drive-workflow-knowledge-organize.md`](references/lark-drive-workflow-knowledge-organize.md)。默认只生成方案；创建目录、移动资源、申请权限都必须单独确认。
 - 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间（云盘/云存储）对象**，优先使用 `lark-cli drive +search`。自然语言里"最近我编辑过的"、"我创建的"（→ `--mine`，实为 owner 语义）、"最近一周我打开过的 xxx"、"某人 owner 的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。
 - 用户要**根据文档评论定位正文位置**，例如 根据评论 review 文档、根据评论内容回看文档、区分多处相同引用文本时，对于 docx 类型（`file_type=docx`）的文档支持通过 `need_relation=true` 返回评论位置，其他类型暂不支持，具体用法需要先阅读 [`references/lark-drive-comment-location.md`](references/lark-drive-comment-location.md) 了解。
+- 用户给出 doubao.com 的云空间资源 URL/token，或明确提到豆包里的 file/folder/docx/sheet/bitable/wiki 资源时，仍按资源类型、URL 路径和 token 路由到本 skill；不要因为域名不是飞书而回退到 WebFetch。
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.pptx` 导入成飞书幻灯片，使用 `lark-cli drive +import --type slides`；当前 PPTX 导入上限是 500MB。
@@ -51,88 +52,17 @@ metadata:
 |----------|---------------------------------------------------------|-----------|----------|
 | `/docx/` | `https://example.larksuite.com/docx/doxcnxxxxxxxxx`    | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/doc/` | `https://example.larksuite.com/doc/doccnxxxxxxxxx`     | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
-| `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | ⚠️ **不能直接使用**，需要先查询获取真实的 `obj_token` |
+| `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | 不能直接当底层 `file_token`；优先用 `drive +inspect` 解包获取 `obj_token` |
 | `/sheets/` | `https://example.larksuite.com/sheets/shtcnxxxxxxxxx`  | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/drive/folder/` | `https://example.larksuite.com/drive/folder/fldcnxxxx` | `folder_token` | URL 路径中的 token 作为文件夹 token 使用 |
 
-### Wiki 链接特殊处理（关键！）
-
-知识库链接（`/wiki/TOKEN`）背后可能是云文档、电子表格、多维表格等不同类型的文档。**不能直接假设 URL 中的 token 就是 file_token**，必须先查询实际类型和真实 token。
-
-#### 处理流程
-
-**推荐方式：使用 `drive +inspect` 自动解包**
+### Wiki 链接特殊处理
 
 ```bash
 lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 ```
 
-返回结果包含 `type`（底层文档类型）、`token`（真实 file_token）、`title`、`url` 等字段，直接用于后续操作。
-
-**手动方式：使用 `wiki.spaces.get_node` 查询节点信息**
-
-1. **使用 `wiki.spaces.get_node` 查询节点信息**
-   ```bash
-   lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
-   ```
-
-2. **从返回结果中提取关键信息**
-   - `node.obj_type`：文档类型（docx/doc/sheet/bitable/slides/file/mindnote）
-   - `node.obj_token`：**真实的文档 token**（用于后续操作）
-   - `node.title`：文档标题
-
-3. **根据 `obj_type` 使用对应的 API**
-
-   | obj_type | 说明 | 使用的 API |
-   |----------|------|-----------|
-   | `docx` | 新版云文档 | `drive file.comments.*`、`docx.*` |
-   | `doc` | 旧版云文档 | `drive file.comments.*` |
-   | `sheet` | 电子表格 | `sheets.*` |
-   | `bitable` | 多维表格 | `bitable.*` |
-   | `slides` | 幻灯片 | `drive.*` |
-   | `file` | 文件 | `drive.*` |
-   | `mindnote` | 思维导图 | `drive.*` |
-
-#### 查询示例
-
-```bash
-# 查询 wiki 节点
-lark-cli wiki spaces get_node --params '{"token":"wiki_token"}'
-```
-
-返回结果示例：
-```json
-{
-  "node": {
-    "obj_type": "docx",
-    "obj_token": "xxxx",
-    "title": "标题",
-    "node_type": "origin",
-    "space_id": "12345678910"
-  }
-}
-```
-
-### 资源关系
-
-```
-Wiki Space (知识空间)
-└── Wiki Node (知识库节点)
-    ├── obj_type: docx (新版文档)
-    │   └── obj_token (真实文档 token)
-    ├── obj_type: doc (旧版文档)
-    │   └── obj_token (真实文档 token)
-    ├── obj_type: sheet (电子表格)
-    │   └── obj_token (真实文档 token)
-    ├── obj_type: bitable (多维表格)
-    │   └── obj_token (真实文档 token)
-    └── obj_type: file/slides/mindnote
-        └── obj_token (真实文档 token)
-
-Drive Folder (云空间/云盘/云存储文件夹)
-└── File (文件/文档)
-    └── file_token (直接使用)
-```
+知识库链接背后可能是 docx、sheet、bitable、slides、file 等不同对象。后续要做评论、下载、导出或内容读取时，优先用 `drive +inspect` 拿到 `type`、`token`、`title`、`url`；完整手动解析和跨 skill 路由见共享文档 [`lark-wiki-token-routing.md`](../lark-shared/references/lark-wiki-token-routing.md)。不要只根据 `/wiki/<token>` 猜底层类型。
 
 ### 常见操作 Token 需求
 
@@ -145,84 +75,12 @@ Drive Folder (云空间/云盘/云存储文件夹)
 | 上传文件 | `folder_token` / `wiki_node_token` | 目标位置的 token |
 | 列出文档评论 | `file_token` | 同添加评论 |
 
-### 评论能力边界（关键！）
+### 评论能力入口
 
-- `drive +add-comment` 支持两种模式。
-- 全文评论：未传 `--block-id` 时默认启用，也可显式传 `--full-comment`；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL。
-- 局部评论：传 `--block-id` 时启用；`docx` 支持文本定位或 block id，`sheet` 支持 `<sheetId>!<cell>`，`slides` 支持 `<slide-block-type>!<xml-id>`，wiki URL 解析到这些类型时也支持对应局部评论。Drive file 本次只支持全文评论，不支持局部评论。
-- Drive file 评论仅支持白名单扩展名：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。`.pdf`、`.docx`、`.xlsx` 等未在白名单内的普通文件暂不支持，CLI 会直接报错提示当前还不支持这种类型的评论。
-- Review / 审阅 / 校对 / 逐条指出问题场景优先使用局部评论，不要把多个可定位问题汇总成一条全文评论；具体参数和定位方式见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
-- `drive +add-comment` 的 `--content` 需要传 `reply_elements` JSON 数组字符串，例如 `--content '[{"type":"text","text":"正文"}]'`。
-- `slides` 评论要求显式传 `--block-id <slide-block-type>!<xml-id>`；CLI 会将其拆分后写入 `anchor.block_id` 和 `anchor.slide_block_type`。其中 `<xml-id>` 是 PPT XML 协议中的元素 `id`；不支持 `--selection-with-ellipsis` 和 `--full-comment`。
-
-- 评论写入内容（添加评论、回复评论、编辑回复）里的文本不能直接出现 `<`、`>`；提交前必须先转义：`<` -> `&lt;`，`>` -> `&gt;`。
-- 使用 `drive +add-comment` 时，shortcut 会对 `type=text` 的文本元素自动做上述转义兜底；如果直接调用 `drive file.comments create_v2`、`drive file.comment.replys create`、`drive file.comment.replys update`，则需要在请求里自行传入已转义的内容。
-- 如果 wiki 解析后不是 `doc`/`docx`/`file`/`sheet`/`slides`，不要用 `+add-comment`。
-- 如果需要更底层地直接调用评论 V2 协议，再走原生 API：先执行 `lark-cli schema drive.file.comments.create_v2`，再执行 `lark-cli drive file.comments create_v2 ...`。全文评论省略 `anchor`，局部评论传 `anchor.block_id`。
-
-### 评论查询与统计口径（关键！）
-
-**强制规则**：`drive file.comments list` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
-
-**正确示例：**
-
-```bash
-# 默认查询：仅未解决评论（推荐）
-lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
-
-# 查询所有评论（用户未明确要求包含已解决评论）
-lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx", "is_solved": false}'
-
-# 包含已解决评论（需用户明确要求）
-lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
-```
-
-**错误示例：**
-
-```bash
-# 不推荐：用户未明确要求但查询所有评论
-lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "docx"}'
-```
-
-- 查询文档评论时，使用 `drive file.comments list`。
-- `drive file.comments list` 返回的 `items` 应理解为"评论卡片"列表，每个 `item` 对应用户界面里看到的一张评论卡片，而不是平铺的互动消息列表。
-- 服务端语义上，创建第一条评论时会同时创建该卡片里的第一条 reply；因此真正承载正文的是每个 `item.reply_list.replies`，其中第一条 reply 在用户视角下就是这张卡片里的"评论本身"。
-- 当用户要统计"评论数"或"评论卡片数"时，统计 `items` 的长度即可；如果是全量统计，则对所有评论分页返回的 `items` 长度累加。
-- 当用户要统计"回复数"时，按用户视角应排除每张评论卡片里的首条评论，统计口径是所有 `item.reply_list.replies` 的长度之和减去 `items` 的长度。
-- 当用户要统计"总互动数"时，统计所有 `item.reply_list.replies` 的长度之和即可；这个口径包含每张评论卡片里的首条评论。
-- 如果某个 `item.has_more=true`，说明该评论卡片下还有更多回复未包含在当前返回中；此时需要继续调用 `drive file.comment.replys list` 拉全后，再做全量回复数 / 总互动数统计。
-
-### 评论业务特性与引导（关键！）
-
-#### Review 场景评论落点
-- 默认策略是“能局部就局部”：用户说 review、审阅、检查文档、标注问题、给修改建议、逐条评论时，优先创建局部评论。
-- 多个独立问题应分别创建多条局部评论；不要为了省调用次数把 review 发现的问题合并到全文评论。
-- 只有在目标类型支持全文评论，且出现以下任一情况时，才退回全文评论：用户明确要求全文/总体评论、评论内容确实是文档级总结、目标类型不支持局部评论，或无法稳定定位到具体位置；否则应说明限制并请求用户提供可定位位置。
-- 具体参数、定位方式和不同文档类型的约束见 [`drive +add-comment` 行为说明](references/lark-drive-add-comment.md#行为说明)。
-
-#### 评论排序引导
-- 一个文档通常有多个评论，评论按 `create_time`（创建时间）排序。
-- **重要**：只有当用户明确提到"最新评论"、"最后评论"、"最早评论"时，才需要根据 `create_time` 进行排序：
-  - **必须先获取所有评论（处理分页拉完所有数据）**，不能只获取一页就排序
-  - "最新评论" / "最后评论"：按 `create_time` 降序排列，取第一条
-  - "最早评论"：按 `create_time` 升序排列，取第一条
-- 如果用户只说"第一条评论"，直接使用 `drive file.comments list` 返回的第一条即可，不需要额外排序。
-
-#### 评论回复限制
-- **添加评论回复前先检查是否存在以下限制**
-- **全文评论不支持回复**：`is_whole=true` 的评论（全文评论）无法添加回复，遇到此类评论应提示用户"全文评论不支持回复"。
-- **已解决评论不支持回复**：`is_solved=true` 的评论无法添加回复，遇到此类评论应提示用户"该评论已被解决，无法回复"。
-- **注意**：当用户要回复某条评论但该评论因上述限制不能回复时，只提示不能回复即可，**不要自动帮用户找其他可以回复的评论**，避免不符合用户预期。
-
-#### 批量查询与列表查询的选择
-- 使用 `drive file.comments batch_query` 是**已知评论 ID 后**的批量查询，需要传入具体的评论 ID 列表。
-- 使用 `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论，或获取"最新/最后 N 条评论"等场景。
-
-#### 评论定位字段
-- 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `docs +fetch` 的 block），先确认目标是 `file_type=docx`，再阅读 [评论定位字段说明](references/lark-drive-comment-location.md)，其他文档类型暂不支持返回定位字段。
-
-#### Reaction / 表情场景
-- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
+- 添加评论优先使用 [`+add-comment`](references/lark-drive-add-comment.md)：review / 审阅 / 校对场景默认尽量创建局部评论，不要把多个可定位问题合并为一条全文评论。
+- 评论查询、统计、排序、回复限制，先读 [`lark-drive-comments-guide.md`](references/lark-drive-comments-guide.md)。
+- 需要根据评论定位正文位置时，先确认目标是 `file_type=docx`，再读 [`lark-drive-comment-location.md`](references/lark-drive-comment-location.md)；其他文档类型暂不支持返回定位字段。
+- reaction / 表情相关操作先读 [`lark-drive-reactions.md`](references/lark-drive-reactions.md)；只有用户明确需要 reaction 信息时才带 `need_reaction=true`。
 
 ### 典型错误与解决方案
 
@@ -232,70 +90,52 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides） |
 
-#### `permission.public.patch` 错误码引导
+### 权限能力入口
 
-调用 `lark-cli drive permission.public patch` 更新文档公开权限失败时，如果返回以下错误码，按表格给用户明确下一步。不要把这些错误简单归类为缺少 scope；它们通常表示租户、对外分享或文档密级策略拦截。
+- 用户要管理 Drive 文档/文件协作者、公开权限、授权当前应用访问文档，或处理 `permission.public.patch` 的 `91009` / `91010` / `91011` / `91012` 错误时，先读 [`lark-drive-permission-guide.md`](references/lark-drive-permission-guide.md)。
+- 用户只是没有访问权限并希望向 owner 申请访问，优先使用 [`+apply-permission`](references/lark-drive-apply-permission.md)。
+- 普通 scope、身份或登录问题仍按 [`lark-shared`](../lark-shared/SKILL.md) 处理；不要把租户安全策略、对外分享、密级拦截简单归类为缺 scope。
 
-| 错误码 | 含义                     | 给用户的引导 |
-|--------|------------------------|--------------|
-| `91009` | 对外分享被租户安全策略管控，当前用户无法开启 | 提示用户：对外分享能力被租户安全策略统一管控，无法通过 API 或当前用户直接开启；需要联系租户管理员调整组织级对外分享策略。 |
-| `91010` | 文档对外分享未打开              | 提示用户：当前文档尚未打开对外分享，请先在文档权限设置中打开对外分享，再重试 `permission.public.patch`。 |
-| `91011` | 对外分享被文档密级管控            | 提示用户：对外分享被密级策略拦截，需要打开目标文档，在文档内发起密级豁免或进行密级降级后再重试；回复中必须给出目标文档 URL。 |
-| `91012` | 权限设置被文档密级管控            | 提示用户：该权限设置被密级策略拦截，需要打开目标文档，在文档内发起密级豁免或进行密级降级后再重试；回复中必须给出目标文档 URL。 |
+## 不在本 skill 范围
 
-当用户最初提供的是文档 URL，遇到 `91011` 或 `91012` 时直接把该 URL 原样返回给用户作为操作入口；如果上下文只有 token，需要先尽量通过已有上下文、搜索结果或元数据恢复目标文档 URL，再给出可点击的文档 URL。
-
-### 授权当前应用访问文档
-
-当需要将文档权限授予**当前应用（bot）自身**时，先通过 bot info 接口获取应用的 open_id，再调用权限接口授权：
-
-```bash
-# 1. 获取当前应用的 open_id
-lark-cli api GET /open-apis/bot/v3/info --as bot
-# 从返回值中取 bot.open_id
-
-# 2. 授权当前应用访问文档
-lark-cli drive permission.members create \
-  --params '{"token":"<doc_token>","type":"<resource_type>"}' \
-  --data '{"member_type":"openid","member_id":"<bot_open_id>","perm":"view","type":"user"}'
-```
-
-> **注意**：此方式仅适用于需要授权给**当前应用**的场景。授权给其他用户时，直接使用对方的 open_id 即可，无需调用 bot info 接口。
-
-`<resource_type>` 可选值：`doc`、`docx`、`sheet`、`bitable`、`file`、`folder`、`wiki`、`slides`。
+- 文档正文读取、总结、创建、编辑、图片/附件插入或下载：使用 [`lark-doc`](../lark-doc/SKILL.md)。
+- 电子表格单元格、筛选、公式、样式等表内操作：使用 [`lark-sheets`](../lark-sheets/SKILL.md)。
+- Base / 多维表格内部的表、字段、记录、视图、仪表盘等操作：使用 [`lark-base`](../lark-base/SKILL.md)。
+- 知识空间、Wiki 节点层级、空间成员管理：使用 [`lark-wiki`](../lark-wiki/SKILL.md)；上传本地文件到 wiki 节点仍用 `drive +upload --wiki-token`。
+- 原生 Markdown 文件读取、写入、patch、diff：使用 [`lark-markdown`](../lark-markdown/SKILL.md)；把 Markdown 导入成在线 docx 才用 `drive +import --type docx`。
 
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）。有 Shortcut 的操作优先使用。
 
-| Shortcut | 说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [`+search`](references/lark-drive-search.md) | Search Lark docs, Wiki, and spreadsheet files with flat filter flags. Natural-language-friendly: `--edited-since`, `--mine`, `--doc-types`, etc.                                                                                                                                                                                                                                                                                                                                                                                   |
-| [`+upload`](references/lark-drive-upload.md) | Upload a local file to a Drive folder or wiki node                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| [`+create-folder`](references/lark-drive-create-folder.md) | Create a Drive folder, optionally under a parent folder, with bot auto-grant support                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| [`+download`](references/lark-drive-download.md) | Download a file from Drive to local                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| [`+preview`](references/lark-drive-preview.md) | List or download available preview artifacts for a Drive file; explicit `--type` required for downloads |
-| [`+cover`](references/lark-drive-cover.md) | List or download stable built-in cover presets for a Drive file; download-time HTTP 404 means the file has no artifact for that cover spec |
-| [`+status`](references/lark-drive-status.md) | Compare a local directory with a Drive folder by exact SHA-256 hash by default, or use `--quick` for a best-effort modified-time diff that skips remote downloads; reports `new_local` / `new_remote` / `modified` / `unchanged` plus `detection=exact` or `detection=quick`. Duplicate remote `rel_path` conflicts fail fast with `error.type=duplicate_remote_path` and list every conflicting entry; do not proceed as if one was chosen. `--local-dir` 必须是 cwd 内的相对路径，越界路径 CLI 会直接拒绝；目标在 cwd 外时引导用户切换 agent 工作目录，不要私自 `cd` 绕过。 |
-| [`+pull`](references/lark-drive-pull.md) | File-level Drive → local mirror. Duplicate remote `rel_path` conflicts fail by default; for duplicate files, `rename` downloads all copies with stable hashed suffixes, while `newest` / `oldest` pick one. `--if-exists` supports `overwrite` / `smart` / `skip` (`smart` is a best-effort modified-time incremental mode for repeat syncs). `--delete-local` requires `--yes`, only removes regular files, and is skipped after item failures. `--local-dir` must stay inside cwd.                                               |
-| `+sync` | Two-way local ↔ Drive sync. Reuses `+status` diff buckets, pulls `new_remote`, pushes `new_local`, and resolves `modified` via `--on-conflict=remote-wins|local-wins|keep-both|ask`. `--quick` enables best-effort modified-time diffing (timestamp mismatches can still trigger real pull/push actions), `--on-duplicate-remote` supports `fail|newest|oldest`, and the command is intentionally non-destructive (no delete on either side). |
-| [`+create-shortcut`](references/lark-drive-create-shortcut.md) | Create a shortcut to an existing Drive file in another folder                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| [`+add-comment`](references/lark-drive-add-comment.md) | Add a comment to doc/docx/file/sheet/slides, also supports wiki URL resolving to doc/docx/file/sheet/slides; file targets support selected extensions and full comments only                                                                                                                                                                                                                                                                                                                                                       |
-| [`+export`](references/lark-drive-export.md) | Export a doc/docx/sheet/bitable/slides to a local file with limited polling; supports `--file-name` for local naming                                                                                                                                                                                                                                                                                                                                                                                                               |
-| [`+export-download`](references/lark-drive-export-download.md) | Download an exported file by file_token                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| [`+import`](references/lark-drive-import.md) | Import a local file to Drive as a cloud document (docx, sheet, bitable, slides)                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| [`+version-history`](references/lark-drive-version-history.md) | List historical versions of a file with only_tag=true and cursor-based pagination                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| [`+version-get`](references/lark-drive-version-get.md) | Download a specific historical version of a file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| [`+version-revert`](references/lark-drive-version-revert.md) | Revert a file to a specific historical version                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| [`+version-delete`](references/lark-drive-version-delete.md) | Delete a specific historical version of a file                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| [`+move`](references/lark-drive-move.md) | Move a file or folder to another location in Drive                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| [`+delete`](references/lark-drive-delete.md) | Delete a Drive file or folder with limited polling for folder deletes                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| [`+push`](references/lark-drive-push.md) | File-level local → Drive mirror. Duplicate remote `rel_path` conflicts fail by default; `newest` / `oldest` only apply to duplicate files when you explicitly want to target one remote file. `--if-exists` supports `skip` / `smart` / `overwrite` (`smart` skips files whose remote `modified_time` is already up to date, but falls through to the same overwrite path when the remote is older, so it inherits overwrite's rollout caveat). `--delete-remote` requires `--yes`. `--local-dir` must stay inside cwd.            |
-| [`+task_result`](references/lark-drive-task-result.md) | Poll async task result for import, export, move, or delete operations                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| [`+inspect`](references/lark-drive-inspect.md) | Inspect a Lark document URL to get its type, title, and canonical token; auto-unwraps wiki URLs to the underlying document                                                                                                                                                                                                                                                                                                                                                                                                         |
-| [`+apply-permission`](references/lark-drive-apply-permission.md) | Apply to the document owner for view/edit access (user-only; 5/day per document)                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| [`+secure-label-list`](references/lark-drive-secure-label.md) | List secure labels available to the current user |
-| [`+secure-label-update`](references/lark-drive-secure-label.md) | Update a Drive file/document secure label; downgrade approval errors require opening the document UI |
+| Shortcut | 说明 |
+|----------|----------|
+| [`+search`](references/lark-drive-search.md) | 搜索文档、Wiki、表格、文件夹等云空间对象；支持 `--edited-since`、`--mine`、`--doc-types` 等扁平 flag。 |
+| [`+upload`](references/lark-drive-upload.md) | 上传本地文件到 Drive 文件夹或 wiki 节点。 |
+| [`+create-folder`](references/lark-drive-create-folder.md) | 新建 Drive 文件夹，支持父文件夹与 bot 创建后自动授权。 |
+| [`+download`](references/lark-drive-download.md) | 下载 Drive 文件到本地。 |
+| [`+preview`](references/lark-drive-preview.md) | 查看或下载文件的 PDF / HTML / 文本 / 图片等预览产物。 |
+| [`+cover`](references/lark-drive-cover.md) | 查看或下载文件封面图规格。 |
+| [`+status`](references/lark-drive-status.md) | 比较本地目录与 Drive 文件夹差异；默认按 SHA-256 精确比较，`--quick` 使用修改时间近似比较。 |
+| [`+pull`](references/lark-drive-pull.md) | 从 Drive 拉取文件到本地目录，支持重复远端路径处理和增量模式。 |
+| `+sync` | 双向同步本地目录与 Drive 文件夹：拉取 `new_remote`、推送 `new_local`，`modified` 按 `--on-conflict=remote-wins\|local-wins\|keep-both\|ask` 处理；`--quick` 用修改时间近似比较；`--on-duplicate-remote` 支持 `fail` / `newest` / `oldest`；只同步 `type=file`，跳过在线文档和 shortcut，且不会删除两端多余文件。 |
+| [`+push`](references/lark-drive-push.md) | 将本地目录推送到 Drive 文件夹，支持 skip / smart / overwrite 与确认后删除远端。 |
+| [`+create-shortcut`](references/lark-drive-create-shortcut.md) | 在另一个文件夹里创建现有 Drive 文件的快捷方式。 |
+| [`+add-comment`](references/lark-drive-add-comment.md) | 给 doc/docx/file/sheet/slides 添加评论；评论统计、回复和 reaction 细则见 [`lark-drive-comments-guide.md`](references/lark-drive-comments-guide.md)。 |
+| [`+export`](references/lark-drive-export.md) | 将 doc/docx/sheet/bitable/slides 导出为本地文件。 |
+| [`+export-download`](references/lark-drive-export-download.md) | 根据导出产物的 file_token 下载文件。 |
+| [`+import`](references/lark-drive-import.md) | 将本地文件导入为飞书在线文档、表格、多维表格或幻灯片。 |
+| [`+version-history`](references/lark-drive-version-history.md) | 查看文件历史版本。 |
+| [`+version-get`](references/lark-drive-version-get.md) | 下载指定历史版本。 |
+| [`+version-revert`](references/lark-drive-version-revert.md) | 回滚到指定历史版本。 |
+| [`+version-delete`](references/lark-drive-version-delete.md) | 删除指定历史版本。 |
+| [`+move`](references/lark-drive-move.md) | 移动 Drive 文件或文件夹；Wiki 层级移动走 `lark-wiki`。 |
+| [`+delete`](references/lark-drive-delete.md) | 删除 Drive 文件或文件夹，文件夹删除会轮询异步任务。 |
+| [`+task_result`](references/lark-drive-task-result.md) | 查询 import/export/move/delete 等异步任务结果。 |
+| [`+inspect`](references/lark-drive-inspect.md) | 检视 URL 的类型、标题和 canonical token；wiki URL 会自动解包到底层文档。 |
+| [`+apply-permission`](references/lark-drive-apply-permission.md) | 以 user 身份向文档 owner 申请访问权限。 |
+| [`+secure-label-list`](references/lark-drive-secure-label.md) | 列出当前用户可用的密级标签。 |
+| [`+secure-label-update`](references/lark-drive-secure-label.md) | 更新 Drive 文件或文档的密级标签。 |
 
 ## API Resources
 
@@ -362,35 +202,3 @@ lark-cli drive <resource> <method> [flags] # 调用 API
   - `get` — 获取当前用户的容量信息，包含各业务使用量、租户配额是否超限、用户配额、所在部门配额
     - 仅支持 `--as user`，不要使用默认的 bot 身份
     - `quota_detail_id` 传当前用户的 `user_id`
-
-## 权限表
-
-| 方法                                             | 所需 scope                             |
-|------------------------------------------------|--------------------------------------|
-| `files.copy`                                   | `docs:document:copy`                 |
-| `files.create_folder`                          | `space:folder:create`                |
-| `files.list`                                   | `space:document:retrieve`            |
-| `files.patch`                                  | `docx:document:write_only`           |
-| `file.comments.batch_query`                    | `docs:document.comment:read`         |
-| `file.comments.create_v2`                      | `docs:document.comment:create`       |
-| `file.comments.list`                           | `docs:document.comment:read`         |
-| `file.comments.patch`                          | `docs:document.comment:update`       |
-| `file.comment.replys.create`                   | `docs:document.comment:create`       |
-| `file.comment.replys.delete`                   | `docs:document.comment:delete`       |
-| `file.comment.replys.list`                     | `docs:document.comment:read`         |
-| `file.comment.replys.update`                   | `docs:document.comment:update`       |
-| `permission.members.auth`                      | `docs:permission.member:auth`        |
-| `permission.members.create`                    | `docs:permission.member:create`      |
-| `permission.members.transfer_owner`            | `docs:permission.member:transfer`    |
-| `permission.public.get`                        | `docs:permission.setting:read`       |
-| `permission.public.patch`                      | `docs:permission.setting:write_only` |
-| `metas.batch_query`                            | `drive:drive.metadata:readonly`      |
-| `user.remove_subscription`                     | `docs:event:subscribe`               |
-| `user.subscription`                            | `docs:event:subscribe`               |
-| `user.subscription_status`                     | `docs:event:subscribe`               |
-| `file.statistics.get`                          | `drive:drive.metadata:readonly`      |
-| `file.view_records.list`                       | `drive:file:view_record:readonly`    |
-| `file.comment.reply.reactions.update_reaction` | `docs:document.comment:create`       |
-| `quota_details.get`                            | `drive:quota_detail:read_one`        |
-
-> `quota_details.get` 是 user-only OpenAPI：调用时必须显式传 `--as user`，且 `quota_detail_id` 应填写当前用户的 `user_id`。

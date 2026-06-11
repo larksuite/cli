@@ -28,7 +28,7 @@ lark-cli apps +db-execute --app-id app_xxx --env dev --sql - --yes < /Users/.../
 
 - 成功默认 JSON 读取 `data.results[]`；每个元素对应一条 SQL，常见字段有 `sql_type`、`data`、`record_count`、`affected_rows`。
 - pretty 会按 SELECT/DML/DDL 自适应渲染；多语句会逐条显示 Statement 摘要。
-- 失败可能仍有前序语句已执行；看 `error.detail.statement_index`、`completed`、`rolled_back` 和 `hint` 决定从哪条继续。
+- 失败可能仍有前序语句已执行；此时 stdout 输出 `ok:false` 的 envelope（exit 非 0），从 `data` 读 `results[]`（全部逐条结果，失败语句 `sql_type` 为 `ERROR`）、`statement_index`、`error_code`、`error_message`、`rolled_back` 和 `note`，决定从哪条继续。
 
 ## Agent 规则
 
