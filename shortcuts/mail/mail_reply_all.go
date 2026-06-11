@@ -43,6 +43,7 @@ var MailReplyAll = common.Shortcut{
 		{Name: "subject", Desc: "Optional. Override the auto-generated Re: subject. When set, the shortcut uses this value verbatim instead of prefixing the original subject."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are appended to the reply-derived values (no de-duplication; see warning in Execute output)."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -94,7 +95,7 @@ var MailReplyAll = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+		if err := validateNoSignatureConflict(runtime.Bool("no-signature"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
 		if err := validateEventFlags(runtime); err != nil {
@@ -131,12 +132,7 @@ var MailReplyAll = common.Shortcut{
 			return err
 		}
 
-		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
-		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, runtime.Str("from"))
-		if sigErr != nil {
-			return sigErr
-		}
 		sourceMsg, err := fetchComposeSourceMessage(runtime, mailboxID, messageId)
 		if err != nil {
 			return mailDecorateProblemMessage(err, "failed to fetch original message")
@@ -156,6 +152,19 @@ var MailReplyAll = common.Shortcut{
 		senderEmail := resolvedSender
 		if senderEmail == "" {
 			senderEmail = orig.headTo
+		}
+
+		// Resolve signature after senderEmail is finalised so DefaultReplyID matches the correct usage.
+		signatureID := runtime.Str("signature-id")
+		noSignature := runtime.Bool("no-signature")
+		if noSignature {
+			signatureID = ""
+		} else if signatureID == "" {
+			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, true /*isReply*/)
+		}
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		if sigErr != nil {
+			return sigErr
 		}
 
 		var removeList []string
@@ -316,7 +325,7 @@ var MailReplyAll = common.Shortcut{
 				return err
 			}
 		} else {
-			composedTextBody = bodyStr + quoted
+			composedTextBody = injectPlainTextSignature(bodyStr, sigResult) + quoted
 			bld = bld.TextBody([]byte(composedTextBody))
 		}
 		// Embed template SMALL non-inline attachments regardless of body mode.

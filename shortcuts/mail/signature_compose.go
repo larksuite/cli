@@ -5,6 +5,7 @@ package mail
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -23,6 +25,56 @@ import (
 var signatureFlag = common.Flag{
 	Name: "signature-id",
 	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
+}
+
+// noSignatureFlag is shared by all 5 compose shortcuts.
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Skip automatic default signature insertion. Mutually exclusive with --signature-id.",
+}
+
+// validateNoSignatureConflict returns a structured validation error when
+// --no-signature and --signature-id are both set; they are mutually exclusive.
+// Uses output.ErrValidation (not fmt.Errorf) so callers/scripts get a stable
+// structured parameter error, consistent with the other mail validators.
+func validateNoSignatureConflict(noSignature bool, signatureID string) error {
+	if noSignature && signatureID != "" {
+		return output.ErrValidation("--no-signature and --signature-id are mutually exclusive")
+	}
+	return nil
+}
+
+// autoResolveSignatureID resolves the default signature ID for the given mailbox/sender.
+// isReply=true uses DefaultReplyID (+reply/+reply-all/+forward);
+// isReply=false uses DefaultSendID (+send/+draft-create).
+// Returns "" on API failure (writes stderr warning) or when no default is configured.
+func autoResolveSignatureID(runtime *common.RuntimeContext, mailboxID, senderEmail string, isReply bool) string {
+	resp, err := signature.ListAll(runtime, mailboxID)
+	if err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut,
+			"warning: failed to fetch default signature: %v; sending without signature\n", err)
+		return ""
+	}
+	if isReply {
+		return signature.DefaultReplyID(resp.Usages, senderEmail)
+	}
+	return signature.DefaultSendID(resp.Usages, senderEmail)
+}
+
+// injectPlainTextSignature appends a plain-text rendering of the signature to a
+// plain-text body. The HTML signature (sig.RenderedContent) is converted via
+// draftpkg.PlainTextFromHTML; inline images are dropped (plain text has none).
+// Returns textBody unchanged when sig is nil.
+func injectPlainTextSignature(textBody string, sig *signatureResult) string {
+	if sig == nil {
+		return textBody
+	}
+	sigText := strings.TrimRight(draftpkg.PlainTextFromHTML(sig.RenderedContent), "\n")
+	if sigText == "" {
+		return textBody
+	}
+	return textBody + "\n\n" + sigText
 }
 
 // signatureResult holds the pre-processed signature data ready for HTML injection.
@@ -244,14 +296,3 @@ func signatureCIDs(sig *signatureResult) []string {
 	return cids
 }
 
-// validateSignatureWithPlainText returns an error if both --plain-text and --signature-id are set.
-func validateSignatureWithPlainText(plainText bool, signatureID string) error {
-	if plainText && signatureID != "" {
-		return mailValidationError("--plain-text and --signature-id are mutually exclusive: signatures require HTML mode").
-			WithParams(
-				mailInvalidParam("--plain-text", "mutually exclusive with --signature-id"),
-				mailInvalidParam("--signature-id", "requires HTML mode"),
-			)
-	}
-	return nil
-}
