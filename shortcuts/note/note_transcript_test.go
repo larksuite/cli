@@ -343,6 +343,40 @@ func TestNoteTranscriptRejectsCursorCycle(t *testing.T) {
 	}
 }
 
+func TestTranscriptContextErrorPreservesCause(t *testing.T) {
+	tests := []struct {
+		name    string
+		err     error
+		subtype errs.Subtype
+	}{
+		{
+			name:    "canceled",
+			err:     context.Canceled,
+			subtype: errs.SubtypeNetworkTransport,
+		},
+		{
+			name:    "deadline",
+			err:     context.DeadlineExceeded,
+			subtype: errs.SubtypeNetworkTimeout,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := transcriptContextError(tt.err)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("errors.Is(%v) = false", tt.err)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed error, got %T", err)
+			}
+			if problem.Category != errs.CategoryNetwork || problem.Subtype != tt.subtype {
+				t.Fatalf("category/subtype = %v/%v, want Network/%v", problem.Category, problem.Subtype, tt.subtype)
+			}
+		})
+	}
+}
+
 func noteShortcutTestFactory(t *testing.T) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer, *httpmock.Registry) {
 	t.Helper()
 	config := &core.CliConfig{

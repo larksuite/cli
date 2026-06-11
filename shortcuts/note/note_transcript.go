@@ -10,6 +10,7 @@ package note
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -172,7 +173,7 @@ func fetchUnifiedTranscript(ctx context.Context, runtime *common.RuntimeContext,
 	seenCursors := map[string]bool{}
 	for page := 1; ; page++ {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, transcriptContextError(err)
 		}
 		if page > maxTranscriptPages {
 			return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "transcript exceeded %d pages; aborting to avoid an unbounded loop", maxTranscriptPages)
@@ -212,7 +213,7 @@ func fetchUnifiedTranscript(ctx context.Context, runtime *common.RuntimeContext,
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, ctx.Err()
+			return nil, transcriptContextError(ctx.Err())
 		case <-timer.C:
 		}
 	}
@@ -221,6 +222,17 @@ func fetchUnifiedTranscript(ctx context.Context, runtime *common.RuntimeContext,
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "transcript is empty for note %s in %s format; aborting to avoid saving an empty transcript", noteID, transcriptFormat)
 	}
 	return buf.Bytes(), nil
+}
+
+func transcriptContextError(err error) error {
+	if err == nil {
+		return nil
+	}
+	subtype := errs.SubtypeNetworkTransport
+	if errors.Is(err, context.DeadlineExceeded) {
+		subtype = errs.SubtypeNetworkTimeout
+	}
+	return errs.NewNetworkError(subtype, "transcript fetch interrupted: %s", err).WithCause(err)
 }
 
 // defaultTranscriptPath builds the default save path for a note transcript.

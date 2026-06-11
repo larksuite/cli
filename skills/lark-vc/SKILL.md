@@ -47,7 +47,7 @@ lark-cli vc +search --query "站会" --start-time ...
 | 查"昨天的会议""上周的会""已结束的会议" | 本 skill（`+search`，含即时会议） |
 | 查日历/日程或未来时间的会议 | [lark-calendar](../lark-calendar/SKILL.md) |
 | 查"今天有哪些会议" | `vc +search`（已结束）+ lark-calendar（未开始），合并展示 |
-| 只按自然语言标题查"xx 纪要的逐字稿 / 原始记录 / 谁说了什么" | [lark-drive](../lark-drive/SKILL.md) / [lark-doc](../lark-doc/SKILL.md)，必要时再到 [lark-note](../lark-note/SKILL.md) |
+| 只按自然语言标题查"xx 纪要的逐字稿 / 原始记录 / 谁说了什么" | 先到 [lark-drive](../lark-drive/SKILL.md) / [lark-doc](../lark-doc/SKILL.md)；仅在已拿到 `note_id` / `vc-node-id` 后再到 [lark-note](../lark-note/SKILL.md) |
 | Agent 真实入会/离会、会中实时事件 | [lark-vc-agent](../lark-vc-agent/SKILL.md) |
 | 本地音视频文件转纪要/逐字稿 | 先走 [lark-minutes](../lark-minutes/SKILL.md) 上传，再回 `vc +notes --minute-tokens` |
 
