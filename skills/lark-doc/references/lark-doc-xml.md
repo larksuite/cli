@@ -78,6 +78,12 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
    ```
 
 
+## 用户名写入规则
+
+- 当从 IM 消息、日历、审批、任务等来源获取到用户的 `open_id` 时，写入文档**必须**使用 `<cite type="user" user-id="open_id">` 标签，而非纯文本名字。这样文档中会渲染为可点击的 @人。
+- 典型场景：IM 消息的 `sender`、`mentions`、reactions 的 `operator`、卡片消息中引用的用户、系统消息中的用户名、合并转发中的用户名。
+- 当只有纯文本名字而没有 `open_id` 时（如系统消息、合并转发内容），先通过 `lark-cli contact +search-user --query "名字" --as user` 反查 `open_id`，再写入 cite 标签。
+
 ## 表格扩展
 标准 HTML table 结构不变，扩展点：
 - `<colgroup>` / `<col>` 定义列宽，紧跟 `<table>` 之后：`<col span="2" width="100"/>`
