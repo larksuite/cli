@@ -49,11 +49,15 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	}
 	cmdutil.DisableAuthCheck(cmd)
 
-	// Tolerated for agent compatibility; ignored — schema only emits the JSON envelope.
+	// Tolerated for agent compatibility; ignored — schema only emits the JSON
+	// envelope, and its output is identity-independent (strict-mode filtering
+	// comes from ResolveStrictMode, never from --as).
 	cmd.Flags().String("format", "json", "")
 	cmd.Flags().Bool("json", true, "")
+	cmd.Flags().String("as", "", "")
 	_ = cmd.Flags().MarkHidden("format")
 	_ = cmd.Flags().MarkHidden("json")
+	_ = cmd.Flags().MarkHidden("as")
 
 	cmd.ValidArgsFunction = completeSchemaPath(f)
 	cmdutil.SetRisk(cmd, cmdutil.RiskRead)

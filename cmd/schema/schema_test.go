@@ -31,9 +31,10 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 }
 
 func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
-	// Agents are habituated to --format/--json from api/service commands. schema
-	// must accept them without erroring and always emit the JSON envelope — its
-	// output is structured JSON, so the values have no alternative rendering.
+	// Agents are habituated to --format/--json/--as from api/service commands.
+	// schema must accept them without erroring and always emit the JSON envelope —
+	// its output is structured JSON and identity-independent, so the values have
+	// no effect.
 	argSets := [][]string{
 		{"--format", "json"},
 		{"--format", "pretty"},
@@ -41,6 +42,9 @@ func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
 		{"--format", "csv"},
 		{"--json"},
 		{"--json", "--format", "ndjson"},
+		{"--as", "user"},
+		{"--as", "bot"},
+		{"--as", "user", "--json"},
 	}
 	for _, extra := range argSets {
 		f, stdout, _, _ := cmdutil.TestFactory(t, nil)
