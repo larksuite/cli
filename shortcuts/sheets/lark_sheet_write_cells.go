@@ -44,7 +44,9 @@ var CellsSet = common.Shortcut{
 	Command:     "+cells-set",
 	Description: "Write values / formulas / styles / comments / data validation / embed-image to a cell range.",
 	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only"},
+	// contact.* scopes power @-mention resolution: open_id / union_id / email
+	// mention tokens are translated to the tenant user_id the snapshot stores.
+	Scopes:      []string{"sheets:spreadsheet:write_only", "contact:contact.base:readonly", "contact:user.employee_id:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-set"),
@@ -67,6 +69,11 @@ var CellsSet = common.Shortcut{
 		input, err := cellsSetInput(runtime, token, sheetID, sheetName)
 		if err != nil {
 			return err
+		}
+		if cells, ok := input["cells"].([]interface{}); ok {
+			if err := resolveMentionTokensForWrite(runtime, cells); err != nil {
+				return err
+			}
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "set_cell_range", input)
 		if err != nil {

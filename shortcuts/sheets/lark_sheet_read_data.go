@@ -35,7 +35,9 @@ var CellsGet = common.Shortcut{
 	Command:     "+cells-get",
 	Description: "Read one or more cell ranges with values, formulas, and optional styles / comments / data validation.",
 	Risk:        "read",
-	Scopes:      []string{"sheets:spreadsheet:read"},
+	// contact.* scopes power @-mention resolution: the stored tenant user_id in
+	// a mention token is translated back to an open_id for the caller.
+	Scopes:      []string{"sheets:spreadsheet:read", "contact:contact.base:readonly", "contact:user.employee_id:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-get"),
@@ -69,6 +71,7 @@ var CellsGet = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		resolveMentionTokensForRead(runtime, out)
 		runtime.Out(out, nil)
 		return nil
 	},

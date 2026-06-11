@@ -44,7 +44,9 @@ var BatchUpdate = common.Shortcut{
 	Command:     "+batch-update",
 	Description: "Execute a batch of write shortcuts as a single atomic request (rolls back on failure by default).",
 	Risk:        "high-risk-write",
-	Scopes:      []string{"sheets:spreadsheet:write_only"},
+	// contact.* scopes power @-mention resolution for set_cell_range sub-ops
+	// (open_id / union_id mention tokens → tenant user_id).
+	Scopes:      []string{"sheets:spreadsheet:write_only", "contact:contact.base:readonly", "contact:user.employee_id:readonly"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+batch-update"),
@@ -73,6 +75,9 @@ var BatchUpdate = common.Shortcut{
 		}
 		input, err := batchUpdateInput(runtime, token)
 		if err != nil {
+			return err
+		}
+		if err := resolveMentionTokensInBatchOps(runtime, input["operations"]); err != nil {
 			return err
 		}
 		out, err := callTool(ctx, runtime, token, ToolKindWrite, "batch_update", input)
