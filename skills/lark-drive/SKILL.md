@@ -222,7 +222,7 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 - 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `docs +fetch` 的 block），先确认目标是 `file_type=docx`，再阅读 [评论定位字段说明](references/lark-drive-comment-location.md)，其他文档类型暂不支持返回定位字段。
 
 #### Reaction / 表情场景
-- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](../../skills/lark-drive/references/lark-drive-reactions.md) 了解如何使用**。
+- 遇到评论 / 回复上的 reaction（表情、各表情数量、谁点了什么、添加/删除表情）相关问题时，**先阅读 [lark-drive-reactions.md](references/lark-drive-reactions.md) 了解如何使用**。
 
 ### 典型错误与解决方案
 
