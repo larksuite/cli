@@ -191,11 +191,23 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 }
 
 func TestSafeUploadPath_RejectsNonTempAbsolutePath(t *testing.T) {
-	// GIVEN: an absolute path outside the temp directory
-	// WHEN / THEN: SafeUploadPath rejects it
-	_, err := SafeInputPath("/etc/passwd")
-	if err == nil {
-		t.Error("expected error for absolute non-temp path, got nil")
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{"absolute path unix", "/etc/passwd"},
+		{"absolute path windows drive", `C:\Users\agent\secret.txt`},
+		{"absolute path windows drive slash", "C:/Users/agent/secret.txt"},
+		{"absolute path windows rooted", `\Users\agent\secret.txt`},
+		{"absolute path windows unc", `\\server\share\secret.txt`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// WHEN / THEN: SafeInputPath rejects absolute paths on every platform.
+			_, err := SafeInputPath(tt.input)
+			if err == nil {
+				t.Errorf("expected error for absolute path %q, got nil", tt.input)
+			}
+		})
 	}
 }
 
