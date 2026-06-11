@@ -130,10 +130,12 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 
 - `automation_send_disable_reason`：发送被邮箱自动化设置拦截时返回的原因
 - `automation_send_disable_reference`：发送被拦截时的草稿打开链接
+- `recall_available` / `recall_tip`：发送成功后若返回可撤回提示，按需参考 [lark-mail-recall](lark-mail-recall.md)
 
 字段语义：
 
 - 若返回中包含 `automation_send_disable_reason` / `automation_send_disable_reference`，说明邮件未真正发出，而是被邮箱设置拦截。此时应直接向用户展示原因和草稿打开链接，不要继续假设已经发送成功
+- 若返回中包含 `recall_available: true`，说明该邮件支持撤回；仅当用户明确要求撤回时，读取 [lark-mail-recall](lark-mail-recall.md) 并执行撤回流程
 
 ## 典型场景
 
