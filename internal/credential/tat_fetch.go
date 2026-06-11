@@ -62,6 +62,7 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		AccessToken      string `json:"access_token"`
 		Error            string `json:"error"`
 		ErrorDescription string `json:"error_description"`
+		Msg              string `json:"msg"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
 		// An unparseable body is ambiguous (covers non-JSON error pages and
@@ -85,5 +86,12 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		return "", fmt.Errorf("TAT response missing access_token (HTTP %d)", resp.StatusCode)
 	}
 
-	return "", classifyTATResponseCode(result.Code, result.Error, result.ErrorDescription, string(brand), appID)
+	// Prefer the OAuth error_description; fall back to the legacy Lark `msg` so a
+	// gateway-level {code, msg} response (carrying no OAuth fields) still yields a
+	// non-empty typed message instead of a bare "API error: [code]".
+	desc := result.ErrorDescription
+	if desc == "" {
+		desc = result.Msg
+	}
+	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
 }

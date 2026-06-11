@@ -139,6 +139,25 @@ func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
 	}
 }
 
+// A gateway-style {code, msg} error (no OAuth error / error_description fields)
+// must still surface its msg on the typed error, not degrade to a generic
+// "API error: [code]". Guards the legacy-msg fallback in FetchTAT.
+func TestFetchTAT_LarkStyleMsg_FallsBackOnTypedError(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":99999,"msg":"app ticket invalid"}`}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected error for {code, msg} response")
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "app ticket invalid") {
+		t.Errorf("typed error must carry the Lark msg, got: %v", err)
+	}
+}
+
 // Transient server-side failures (5xx / server_error) are NOT deterministic
 // credential rejections — they must stay UNTYPED so a probe caller treats them
 // as upstream noise and stays silent (and retryers can back off).
