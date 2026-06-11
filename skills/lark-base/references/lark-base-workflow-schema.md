@@ -1,12 +1,13 @@
 # Workflow steps JSON SSOT
 
-本文档是 Workflow steps 的按需读取入口。不要整篇读旧 schema；先确认要处理的 step type，再打开对应小文件。
+本文档是 Workflow steps 的按需读取入口。先读 [lark-base-workflow-guide.md](lark-base-workflow-guide.md) 确定任务路径；只有需要具体 step 字段时，再按 type 打开对应小文件。
 
 ## 读取顺序
 
-1. 查询、启停 workflow：只用 `+workflow-list/get/enable/disable --help` 和命令返回，不读本目录。
-2. 创建或更新 workflow：先读本文件的基础结构和 step 路由表。
-3. 只打开会用到的 step type 文件；需要 value/ref/filter 条件时再读 [common-types-and-refs.md](workflow-steps/common-types-and-refs.md)。
+1. 查询、启停 workflow：只用 `+workflow-list/get/enable/disable` 和命令返回，不读本目录，也不要默认看 help。
+2. 创建或更新 workflow：先读 guide；如果 guide 的场景表不足以构造 step，再读本文件的基础结构和 step 路由表。
+3. 先确定本次 workflow 会用到的完整 step type 集合，去重后一次性打开对应 step md 文件；不要每确定一个节点就读一次文件。
+4. 需要 value/ref/filter 条件时，把 [common-types-and-refs.md](workflow-steps/common-types-and-refs.md) 加入同一批读取；不需要这些结构时不要读。
 
 ## WorkflowStep 基础结构
 
@@ -94,4 +95,4 @@
 ## 参考
 
 - Workflow 创建/更新入口路由：[lark-base-workflow-guide.md](lark-base-workflow-guide.md)
-- 命令参数以 `lark-cli base +workflow-create --help` / `+workflow-update --help` 为准。
+- 命令参数以 `lark-cli base +workflow-create --help` / `+workflow-update --help` 为准；只有参数不确定或命令报错时才读取 help。

@@ -67,10 +67,10 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
-| 查看 Base 内资源目录 | `+base-block-list` | 先判断 Base 里有什么（table/docx/dashboard/workflow/folder），再决定走哪类命令；fewshot 看 `--help` |
+| 查看 Base 内资源目录 | `+base-block-list` | 先判断 Base 里有什么（table/docx/dashboard/workflow/folder），再决定走哪类命令 |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
-| 列/查/删字段 | `+field-list/get/delete/search-options` | 写入/删除前用 list/get 确认字段类型、选项、ID；多表结构用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取齐，不要逐表调用 |
+| 列/查/删字段 | `+field-list/get/delete/search-options` | 字段发现默认用 `+field-list --compact`；需要 formula/lookup 细节或完整字段 JSON 再用 `+field-get` / 不带 compact 的 list；多表结构用 `+field-list-batch --compact --table-id <表1> --table-id <表2>` 一次取齐，不要逐表调用 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
@@ -84,7 +84,7 @@ metadata:
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md) |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
-| Workflow | `+workflow-*` | 创建/更新或理解 steps 时先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，再读 schema 路由 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；只打开涉及的 `workflow-steps/*.md` 小文件，公共 `value/ref/condition` 才读 [common-types-and-refs.md](references/workflow-steps/common-types-and-refs.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
+| Workflow | `+workflow-*` | 先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)：它包含查询/启停/创建/修改的最短路径和常见 step 组合；只有创建/更新复杂 steps 时才继续读 schema 小文件；list/get/enable/disable 不读 schema |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界）；权限 JSON 再读 [role-config.md](references/role-config.md) |
 
 ## 注意事项
@@ -141,7 +141,7 @@ done
 ### Dashboard / Workflow / Role
 
 - Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等操作要点见 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的「执行要点」。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps`：按快速路由 Workflow 行的阅读链取文档；创建后 `+workflow-get` 回读验证。
+- Workflow 的复杂点是 `steps`：先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，用其中的最短路径和场景表完成查询/启停/常见创建修改；需要具体 step 字段再按需读 schema 小文件；创建后 `+workflow-get` 回读验证。
 - Role 的复杂点是权限 JSON：先读 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界），权限 JSON SSOT 读 [role-config.md](references/role-config.md)；删除角色、关闭高级权限前确认目标和影响。
 
 ## Token 与链接
