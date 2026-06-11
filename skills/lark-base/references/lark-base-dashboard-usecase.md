@@ -34,7 +34,7 @@ lark-cli base +dashboard-create --base-token xxx --name "销售数据分析"
 
 # 第 2 步：获取数据源信息
 lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
-lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
+lark-cli base +field-list-batch --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 3 步：规划应该创建哪些组件（根据用户需求确定组件类型和数量）
 # 例如：总销售额（指标卡）、月度趋势（折线图）、品类占比（饼图）
@@ -81,7 +81,7 @@ lark-cli base +dashboard-get --base-token xxx --dashboard-id blk_xxx
 
 # 第 3 步：获取数据源信息
 lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
-lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
+lark-cli base +field-list-batch --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 4 步：顺序创建每个新组件（必须串行执行，不能并发）
 # 重要：先确定 dashboard_id、组件 name/type 和真实表字段
@@ -115,7 +115,7 @@ lark-cli base +dashboard-block-get --base-token xxx --dashboard-id blk_xxx --blo
 # 第 4 步：根据用户编辑诉求准备更新
 # 如果编辑诉求涉及数据源变更，需要先获取数据源信息
 lark-cli base +table-list --base-token xxx  # 先拿表名/table_id
-lark-cli base +field-list --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
+lark-cli base +field-list-batch --base-token xxx --table-id tbl_a --table-id tbl_b  # 再一次批量拿相关表字段
 
 # 第 5 步：执行更新
 # 重要：先读取当前 block 的 name/type/data_config

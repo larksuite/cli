@@ -21,11 +21,6 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 | 读取图表计算结果 | `+dashboard-block-get-data` | 返回图表最终数据协议；需要 block 元数据先用 `+dashboard-block-get` |
 | 智能重排组件布局 | `+dashboard-arrange` | 只在用户明确要求重排时执行；无法指定精确位置 |
 
-硬规则：
-
-- 删除并用 `+dashboard-get` 复核 `not_found` 后，用户只回复“确认/好的/收到”视为结束，不要再次创建或保留同名/正式版仪表盘。
-- 用户只说“更新标题”但未给新标题时，可基于原名生成一次新标题；先用 `+dashboard-list` 避开已存在名称，遇同名冲突换名更新，不要创建新仪表盘。
-
 ## 执行要点
 
 - 创建/改图前先用 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取多表字段，不要逐表多次 `+field-list`，多余调用会显著抬高 token。
