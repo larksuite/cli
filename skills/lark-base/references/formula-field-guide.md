@@ -34,11 +34,11 @@ When creating a formula field, the Agent should:
 
 This is the foundation of formula logic. You must determine this before writing any formula.
 
-| Syntax                | Meaning                                      | Return type            | Example                                      |
-| --------------------- | -------------------------------------------- | ---------------------- | -------------------------------------------- |
-| `[Field]`             | Value of this field in the current row       | Scalar (single value)  | `[Name]` → `"Alice"`                         |
+| Syntax | Meaning | Return type | Example |
+|---|---|---|---|
+| `[Field]` | Value of this field in the current row | Scalar (single value) | `[Name]` → `"Alice"` |
 | `[TableName].[Field]` | All values of this field in the target table | List (multiple values) | `[Employees].[Name]` → `["Alice","Bob",...]` |
-| `[TableName]`         | The target table (entire table)              | Table reference        | Used as data range for FILTER/COUNTIF etc.   |
+| `[TableName]` | The target table (entire table) | Table reference | Used as data range for FILTER/COUNTIF etc. |
 
 **Rules**:
 
@@ -59,7 +59,7 @@ This is the foundation of formula logic. You must determine this before writing 
 ### Field storage types
 
 | Type | Description | Supported operations |
-|------|-------------|----------------------|
+|---|---|---|
 | `number` | Stored as numeric value | Math operations, comparisons, auto-converts to string for concatenation |
 | `text` | Stored as string | String operations; can participate in math if content is numeric, otherwise errors |
 | `datetime` | Date object | Date functions, add/subtract with numbers; auto-converts to default format string when using `&` — use TEXT to format first for controlled output |
@@ -69,13 +69,13 @@ This is the foundation of formula logic. You must determine this before writing 
 
 ### Implicit type conversion
 
-| Scenario                     | Conversion rule                                                                                             |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Number + Float               | → Float                                                                                                     |
-| Date + Number                | → Date (adds/subtracts days). Use `+`/`-` for whole days, use `DURATION()` for hour/minute/second precision |
-| Date - Date                  | → Duration                                                                                                  |
-| Boolean compared with Number | Boolean auto-converts to number (TRUE=1, FALSE=0)                                                           |
-| `&` concatenation            | Both sides auto-convert to string                                                                           |
+| Scenario | Conversion rule |
+|---|---|
+| Number + Float | → Float |
+| Date + Number | → Date (adds/subtracts days). Use `+`/`-` for whole days, use `DURATION()` for hour/minute/second precision |
+| Date - Date | → Duration |
+| Boolean compared with Number | Boolean auto-converts to number (TRUE=1, FALSE=0) |
+| `&` concatenation | Both sides auto-convert to string |
 
 ### Type consistency in comparisons
 
@@ -97,12 +97,12 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 ### CurrentValue meaning in different contexts
 
-| Data range type              | CurrentValue represents | Access pattern              | Example                                                   |
-| ---------------------------- | ----------------------- | --------------------------- | --------------------------------------------------------- |
-| Entire table `[TableName]`   | A row in the table      | `CurrentValue.[FieldName]`  | `[Orders].FILTER(CurrentValue.[Amount] > 100).[Customer]` |
-| Column `[TableName].[Field]` | A single field value    | Use `CurrentValue` directly | `[Orders].[Amount].FILTER(CurrentValue > 100)`            |
+| Data range type | CurrentValue represents | Access pattern | Example |
+|---|---|---|---|
+| Entire table `[TableName]` | A row in the table | `CurrentValue.[FieldName]` | `[Orders].FILTER(CurrentValue.[Amount] > 100).[Customer]` |
+| Column `[TableName].[Field]` | A single field value | Use `CurrentValue` directly | `[Orders].[Amount].FILTER(CurrentValue > 100)` |
 | `select` (`multiple=true`) field `[Tags]` | One option | Use `CurrentValue` directly | `[Tags].FILTER(CurrentValue = "Important")` |
-| LIST-generated list          | One element             | Use `CurrentValue` directly | `LIST(1,2,3).MAP(CurrentValue * 2)`                       |
+| LIST-generated list | One element | Use `CurrentValue` directly | `LIST(1,2,3).MAP(CurrentValue * 2)` |
 
 ### Key rules
 
@@ -113,11 +113,11 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 ### Anti-patterns
 
-| Wrong                                          | Reason                                                                            | Correct                                                |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| `[Table].[Col].FILTER(CurrentValue.[Col] > 0)` | Data range is a column; CurrentValue is a scalar, cannot use `.` to access fields | `[Table].[Col].FILTER(CurrentValue > 0)`               |
-| `[Table].FILTER(CurrentValue > 100)`           | Data range is a table; CurrentValue is a row, cannot compare directly             | `[Table].FILTER(CurrentValue.[Amount] > 100).[Amount]` |
-| `CurrentValue + 1` (at top level)              | CurrentValue can only be used inside iteration functions                          | Use inside MAP/FILTER etc.                             |
+| Wrong | Reason | Correct |
+|---|---|---|
+| `[Table].[Col].FILTER(CurrentValue.[Col] > 0)` | Data range is a column; CurrentValue is a scalar, cannot use `.` to access fields | `[Table].[Col].FILTER(CurrentValue > 0)` |
+| `[Table].FILTER(CurrentValue > 100)` | Data range is a table; CurrentValue is a row, cannot compare directly | `[Table].FILTER(CurrentValue.[Amount] > 100).[Amount]` |
+| `CurrentValue + 1` (at top level) | CurrentValue can only be used inside iteration functions | Use inside MAP/FILTER etc. |
 
 ---
 
@@ -125,12 +125,12 @@ When using comparison operators (`>`, `>=`, `<`, `<=`, `=`, `!=`), **both sides 
 
 Base formulas **only allow** the following operators. `like`, `in`, `<>`, `**`, `^` etc. are prohibited.
 
-| Category      | Operators                  | Description                                                                |
-| ------------- | -------------------------- | -------------------------------------------------------------------------- |
-| Arithmetic    | `+` `-` `*` `/` `%`        | Add, subtract, multiply, divide, modulo (`%` is equivalent to `MOD()`)     |
-| Comparison    | `>` `>=` `<` `<=` `=` `!=` | Greater than, greater or equal, less than, less or equal, equal, not equal |
-| Logical       | `&&` `\|\|`                | AND, OR                                                                    |
-| Concatenation | `&`                        | Text concatenation; non-text values auto-convert to string                 |
+| Category | Operators | Description |
+|---|---|---|
+| Arithmetic | `+` `-` `*` `/` `%` | Add, subtract, multiply, divide, modulo (`%` is equivalent to `MOD()`) |
+| Comparison | `>` `>=` `<` `<=` `=` `!=` | Greater than, greater or equal, less than, less or equal, equal, not equal |
+| Logical | `&&` `\|\|` | AND, OR |
+| Concatenation | `&` | Text concatenation; non-text values auto-convert to string |
 
 **Important**:
 
@@ -174,10 +174,10 @@ Retrieves the target field values for all linked records as a list. Supports con
 
 ### Two calling styles
 
-| Style      | Format             | Description                         |
-| ---------- | ------------------ | ----------------------------------- |
-| Functional | `FUNC(arg1, arg2)` | Works for all functions             |
-| Chained    | `arg1.FUNC(arg2)`  | Moves the first argument before `.` |
+| Style | Format | Description |
+|---|---|---|
+| Functional | `FUNC(arg1, arg2)` | Works for all functions |
+| Chained | `arg1.FUNC(arg2)` | Moves the first argument before `.` |
 
 **Rules**:
 
@@ -228,175 +228,139 @@ After the result column, it's recommended to flatten with `.LISTCOMBINE()` first
 
 ---
 
-## Section 8: Complete Function Reference
+## Section 8: Function Reference (common functions)
+
+> 本表覆盖常用函数（含评测与真实负载中 100% 出现过的函数）。三角/双曲/随机数/进制转换等罕见函数的签名在 [formula-functions-extended.md](formula-functions-extended.md)，仅当用户明确要求这些函数时再读。
 
 ### 8.1 Logic functions
 
-| Function      | Signature                                                          | Return type          | Description                                                                                  |
-| ------------- | ------------------------------------------------------------------ | -------------------- | -------------------------------------------------------------------------------------------- |
-| IF            | `IF(condition, true_val, [false_val])`                             | Matches branch type  | Returns true_val when TRUE, false_val otherwise; omitting false_val returns false (not null) |
-| IFS           | `IFS(cond1, val1, cond2, val2, ...)`                               | Matches branch type  | Multi-condition branching; returns value for the first TRUE condition                        |
-| SWITCH        | `SWITCH(expr, match1, result1, [match2, result2, ...], [default])` | Matches branch type  | Matches expression value and returns corresponding result                                    |
-| IFERROR       | `IFERROR(expr, fallback)`                                          | Matches branch type  | Returns fallback when expression errors                                                      |
-| IFBLANK       | `IFBLANK(expr, fallback)`                                          | Matches branch type  | Returns fallback when expression is blank (blank = NULL/empty string/empty list)             |
-| AND           | `AND(cond1, cond2, ...)`                                           | Boolean              | TRUE when all conditions are TRUE                                                            |
-| OR            | `OR(cond1, cond2, ...)`                                            | Boolean              | TRUE when any condition is TRUE                                                              |
-| NOT           | `NOT(condition)`                                                   | Boolean              | Logical negation                                                                             |
-| ISBLANK       | `ISBLANK(value)`                                                   | Boolean              | Tests if blank (NULL/empty string/empty list are blank; 0 and FALSE are not)                 |
-| ISNULL        | `ISNULL(value)`                                                    | Boolean              | Tests if NULL (only NULL is true; empty string is not)                                       |
-| ISERROR       | `ISERROR(expr)`                                                    | Boolean              | Tests if expression errors                                                                   |
-| ISNUMBER      | `ISNUMBER(value)`                                                  | Boolean              | Tests if value is a number                                                                   |
-| CONTAIN       | `CONTAIN(search_range, value, ...)`                                | Boolean              | Tests if a list or `select` (`multiple=true`) contains the value; **does NOT do text substring matching** |
-| CONTAINSALL   | `CONTAINSALL(search_range, value, ...)`                            | Boolean              | Tests if a list or `select` (`multiple=true`) contains all specified values |
-| CONTAINSONLY  | `CONTAINSONLY(search_range, value, ...)`                           | Boolean              | Tests if a list or `select` (`multiple=true`) contains only the specified values |
-| TRUE          | `TRUE()`                                                           | Boolean              | Returns TRUE                                                                                 |
-| FALSE         | `FALSE()`                                                          | Boolean              | Returns FALSE                                                                                |
-| RECORD_ID     | `RECORD_ID()`                                                      | Text                 | Returns the current row's record ID                                                          |
-| RANDOMBETWEEN | `RANDOMBETWEEN(min_int, max_int, [keep_updating])`                 | Number               | Random integer in the specified range                                                        |
-| RANDOMITEM    | `RANDOMITEM(list, [keep_updating])`                                | Matches element type | Randomly picks one element from a list                                                       |
+| Function | Signature | Return type | Description |
+|---|---|---|---|
+| IF | `IF(condition, true_val, [false_val])` | Matches branch type | Returns true_val when TRUE, false_val otherwise; omitting false_val returns false (not null) |
+| IFS | `IFS(cond1, val1, cond2, val2, ...)` | Matches branch type | Multi-condition branching; returns value for the first TRUE condition |
+| SWITCH | `SWITCH(expr, match1, result1, [match2, result2, ...], [default])` | Matches branch type | Matches expression value and returns corresponding result |
+| IFERROR | `IFERROR(expr, fallback)` | Matches branch type | Returns fallback when expression errors |
+| IFBLANK | `IFBLANK(expr, fallback)` | Matches branch type | Returns fallback when expression is blank (blank = NULL/empty string/empty list) |
+| AND | `AND(cond1, cond2, ...)` | Boolean | TRUE when all conditions are TRUE |
+| OR | `OR(cond1, cond2, ...)` | Boolean | TRUE when any condition is TRUE |
+| NOT | `NOT(condition)` | Boolean | Logical negation |
+| ISBLANK | `ISBLANK(value)` | Boolean | Tests if blank (NULL/empty string/empty list are blank; 0 and FALSE are not) |
+| ISNULL | `ISNULL(value)` | Boolean | Tests if NULL (only NULL is true; empty string is not) |
+| CONTAIN | `CONTAIN(search_range, value, ...)` | Boolean | Tests if a list or `select` (`multiple=true`) contains the value; **does NOT do text substring matching** |
+| RECORD_ID | `RECORD_ID()` | Text | Returns the current row's record ID |
 
 ### 8.2 Numeric functions
 
-| Function                                                          | Signature                                | Return type | Description                                                                                                                                                                                                                                                |
-| --- | --- | --- | --- |
-| SUM                                                               | `SUM(val1, val2, ...)`                   | Number      | Sum; accepts multiple values or a list                                                                                                                                                                                                                     |
-| AVERAGE                                                           | `AVERAGE(val1, val2, ...)`               | Number      | Average                                                                                                                                                                                                                                                    |
-| MAX                                                               | `MAX(val1, val2, ...)`                   | Number      | Maximum                                                                                                                                                                                                                                                    |
-| MIN                                                               | `MIN(val1, val2, ...)`                   | Number      | Minimum                                                                                                                                                                                                                                                    |
-| MEDIAN                                                            | `MEDIAN(val1, val2, ...)`                | Number      | Median                                                                                                                                                                                                                                                     |
-| COUNTA                                                            | `COUNTA(val1, val2, ...)`                | Number      | Count of non-blank values                                                                                                                                                                                                                                  |
-| COUNTIF                                                           | `COUNTIF(data_range, condition)`         | Number      | Count matching items. Data range can be a **table** (CurrentValue is a row, use `CurrentValue.[Field]`) or a **column** (CurrentValue is a scalar value)                                                                                                   |
-| SUMIF                                                             | `SUMIF(data_range, condition)`           | Number      | Sum matching values. Data range **must be a numeric column** (e.g. `[Table].[NumField]`); CurrentValue is each value in that column (scalar), cannot use `CurrentValue.[Field]` to access other fields. For cross-field conditions, use FILTER+SUM instead |
-| ROUND                                                             | `ROUND(number, digits)`                  | Number      | Round. digits: 1=one decimal, 0=integer, -1=tens place                                                                                                                                                                                                     |
-| ROUNDUP                                                           | `ROUNDUP(number, digits)`                | Number      | Round away from zero. Same digits semantics as ROUND                                                                                                                                                                                                       |
-| ROUNDDOWN                                                         | `ROUNDDOWN(number, digits)`              | Number      | Round toward zero. Same digits semantics as ROUND                                                                                                                                                                                                          |
-| FLOOR                                                             | `FLOOR(number, [base])`                  | Number      | Round down to nearest multiple of base (default 1)                                                                                                                                                                                                         |
-| CEILING                                                           | `CEILING(number, [base])`                | Number      | Round up to nearest multiple of base (default 1)                                                                                                                                                                                                           |
-| ABS                                                               | `ABS(number)`                            | Number      | Absolute value                                                                                                                                                                                                                                             |
-| INT                                                               | `INT(number)`                            | Integer     | Truncate to integer                                                                                                                                                                                                                                        |
-| MOD                                                               | `MOD(dividend, divisor)`                 | Number      | Modulo                                                                                                                                                                                                                                                     |
-| POWER                                                             | `POWER(base, exponent)`                  | Number      | Exponentiation                                                                                                                                                                                                                                             |
-| QUOTIENT                                                          | `QUOTIENT(dividend, divisor)`            | Number      | Integer division                                                                                                                                                                                                                                           |
-| VALUE                                                             | `VALUE(text)`                            | Number      | Convert text to number                                                                                                                                                                                                                                     |
-| ISODD                                                             | `ISODD(number)`                          | Boolean     | Tests if number is odd                                                                                                                                                                                                                                     |
-| RANK                                                              | `RANK(value, search_range, [ascending])` | Number      | Rank of value in range; default descending                                                                                                                                                                                                                 |
-| SEQUENCE                                                          | `SEQUENCE(start, end, [step])`           | List        | Generate number sequence                                                                                                                                                                                                                                   |
-| PI                                                                | `PI()`                                   | Number      | Pi constant                                                                                                                                                                                                                                                |
-| SIN/COS/TAN/ASIN/ACOS/ATAN/ATAN2/SINH/COSH/TANH/ASINH/ACOSH/ATANH | `func(radians_or_value)`                 | Number      | Trigonometric and hyperbolic functions; arguments in radians                                                                                                                                                                                               |
+| Function | Signature | Return type | Description |
+|---|---|---|---|
+| SUM | `SUM(val1, val2, ...)` | Number | Sum; accepts multiple values or a list |
+| AVERAGE | `AVERAGE(val1, val2, ...)` | Number | Average |
+| MAX | `MAX(val1, val2, ...)` | Number | Maximum |
+| MIN | `MIN(val1, val2, ...)` | Number | Minimum |
+| COUNTA | `COUNTA(val1, val2, ...)` | Number | Count of non-blank values |
+| COUNTIF | `COUNTIF(data_range, condition)` | Number | Count matching items. Data range can be a **table** (CurrentValue is a row, use `CurrentValue.[Field]`) or a **column** (CurrentValue is a scalar value) |
+| SUMIF | `SUMIF(data_range, condition)` | Number | Sum matching values. Data range **must be a numeric column** (e.g. `[Table].[NumField]`); CurrentValue is each value in that column (scalar), cannot use `CurrentValue.[Field]` to access other fields. For cross-field conditions, use FILTER+SUM instead |
+| ROUND | `ROUND(number, digits)` | Number | Round. digits: 1=one decimal, 0=integer, -1=tens place |
+| ABS | `ABS(number)` | Number | Absolute value |
+| INT | `INT(number)` | Integer | Truncate to integer |
+| MOD | `MOD(dividend, divisor)` | Number | Modulo |
+| VALUE | `VALUE(text)` | Number | Convert text to number |
 
 ### 8.3 Text functions
 
-| Function        | Signature                                            | Return type | Description                                                                                              |
-| --------------- | ---------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
-| CONCATENATE     | `CONCATENATE(text1, text2, ...)`                     | Text        | Concatenate multiple texts; supports lists as input                                                      |
-| LEN             | `LEN(text)`                                          | Number      | Character count                                                                                          |
-| LEFT            | `LEFT(text, [count])`                                | Text        | Extract from left; default 1                                                                             |
-| RIGHT           | `RIGHT(text, [count])`                               | Text        | Extract from right; default 1                                                                            |
-| MID             | `MID(text, start, count)`                            | Text        | Extract from middle                                                                                      |
-| FIND            | `FIND(search_val, search_range, [start])`            | Number      | Find substring position (case-sensitive); returns -1 if not found                                        |
-| REPLACE         | `REPLACE(text, start, count, new_text)`              | Text        | Replace by position                                                                                      |
-| SUBSTITUTE      | `SUBSTITUTE(text, old_text, new_text, [occurrence])` | Text        | Replace by content; can specify which occurrence                                                         |
-| UPPER           | `UPPER(text)`                                        | Text        | Convert to uppercase                                                                                     |
-| LOWER           | `LOWER(text)`                                        | Text        | Convert to lowercase                                                                                     |
-| TRIM            | `TRIM(text)`                                         | Text        | Remove leading/trailing spaces                                                                           |
-| TEXT            | `TEXT(value, format)`                                | Text        | Format output. Date formats: `"YYYY-MM-DD"`, `"YYYY/MM/DD hh:mm:ss"`; number formats: `"00"`, `"000.00"` |
-| CONTAINTEXT     | `CONTAINTEXT(text, search_text)`                     | Boolean     | Tests if text contains substring (text substring matching)                                               |
-| SPLIT           | `SPLIT(text, delimiter)`                             | List        | Split text by delimiter                                                                                  |
-| TODATE          | `TODATE(value)`                                      | Date        | Convert date string to date type                                                                         |
-| CHAR            | `CHAR(number)`                                       | Text        | ASCII code to character                                                                                  |
-| FORMAT          | `FORMAT(template, [val1, val2, ...])`                | Text        | Template string formatting; use `{1}`, `{2}` as placeholders                                             |
-| HYPERLINK       | `HYPERLINK(url, [display_text])`                     | Hyperlink   | Create a hyperlink                                                                                       |
-| ENCODEURL       | `ENCODEURL(text)`                                    | Text        | URL encode                                                                                               |
-| REGEXMATCH      | `REGEXMATCH(text, regex)`                            | Boolean     | Regex match test                                                                                         |
-| REGEXEXTRACT    | `REGEXEXTRACT(text, regex)`                          | List        | Extract first match's capture groups                                                                     |
-| REGEXEXTRACTALL | `REGEXEXTRACTALL(text, regex)`                       | 2D List     | Extract all matches                                                                                      |
-| REGEXREPLACE    | `REGEXREPLACE(text, regex, replacement)`             | Text        | Regex replace                                                                                            |
+| Function | Signature | Return type | Description |
+|---|---|---|---|
+| CONCATENATE | `CONCATENATE(text1, text2, ...)` | Text | Concatenate multiple texts; supports lists as input |
+| LEN | `LEN(text)` | Number | Character count |
+| LEFT | `LEFT(text, [count])` | Text | Extract from left; default 1 |
+| RIGHT | `RIGHT(text, [count])` | Text | Extract from right; default 1 |
+| MID | `MID(text, start, count)` | Text | Extract from middle |
+| REPLACE | `REPLACE(text, start, count, new_text)` | Text | Replace by position |
+| SUBSTITUTE | `SUBSTITUTE(text, old_text, new_text, [occurrence])` | Text | Replace by content; can specify which occurrence |
+| UPPER | `UPPER(text)` | Text | Convert to uppercase |
+| LOWER | `LOWER(text)` | Text | Convert to lowercase |
+| TRIM | `TRIM(text)` | Text | Remove leading/trailing spaces |
+| TEXT | `TEXT(value, format)` | Text | Format output. Date formats: `"YYYY-MM-DD"`, `"YYYY/MM/DD hh:mm:ss"`; number formats: `"00"`, `"000.00"` |
+| CONTAINTEXT | `CONTAINTEXT(text, search_text)` | Boolean | Tests if text contains substring (text substring matching) |
+| SPLIT | `SPLIT(text, delimiter)` | List | Split text by delimiter |
 
 ### 8.4 Date functions
 
-| Function    | Signature                                       | Return type | Description                                                                                             |
-| ----------- | ----------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------- |
-| NOW         | `NOW()`                                         | Date        | Current date and time                                                                                   |
-| TODAY       | `TODAY()`                                       | Date        | Current date (midnight)                                                                                 |
-| DATE        | `DATE(year, month, day)`                        | Date        | Construct a date                                                                                        |
-| YEAR        | `YEAR(date)`                                    | Number      | Extract year                                                                                            |
-| MONTH       | `MONTH(date)`                                   | Number      | Extract month                                                                                           |
-| DAY         | `DAY(date)`                                     | Number      | Extract day                                                                                             |
-| HOUR        | `HOUR(date)`                                    | Number      | Extract hour                                                                                            |
-| MINUTE      | `MINUTE(date)`                                  | Number      | Extract minute                                                                                          |
-| SECOND      | `SECOND(date)`                                  | Number      | Extract second                                                                                          |
-| WEEKDAY     | `WEEKDAY(date, [type])`                         | Number      | Day of week                                                                                             |
-| WEEKNUM     | `WEEKNUM(date, [type])`                         | Number      | Week number                                                                                             |
-| DAYS        | `DAYS(end_date, start_date)`                    | Number      | Days between two dates (end - start), includes decimals. **Note parameter order: end date comes first** |
-| DATEDIF     | `DATEDIF(start_date, end_date, [unit])`         | Number      | Whole days/months/years between dates. Unit: `"D"`(default)/`"M"`/`"Y"`. **Start must be before end**   |
-| DURATION    | `DURATION(days, [hours], [minutes], [seconds])` | Duration    | Create a duration for date arithmetic                                                                   |
-| EDATE       | `EDATE(date, months)`                           | Date        | Date N months later                                                                                     |
-| EOMONTH     | `EOMONTH(date, [months])`                       | Date        | End of month N months later; months default 0                                                           |
-| WORKDAY     | `WORKDAY(start_date, days, [holidays])`         | Date        | Date N workdays later (skips weekends and holidays)                                                     |
-| NETWORKDAYS | `NETWORKDAYS(start_date, end_date, [holidays])` | Number      | Workdays between dates (inclusive)                                                                      |
+| Function | Signature | Return type | Description |
+|---|---|---|---|
+| NOW | `NOW()` | Date | Current date and time |
+| TODAY | `TODAY()` | Date | Current date (midnight) |
+| DATE | `DATE(year, month, day)` | Date | Construct a date |
+| YEAR | `YEAR(date)` | Number | Extract year |
+| MONTH | `MONTH(date)` | Number | Extract month |
+| DAY | `DAY(date)` | Number | Extract day |
+| HOUR | `HOUR(date)` | Number | Extract hour |
+| MINUTE | `MINUTE(date)` | Number | Extract minute |
+| SECOND | `SECOND(date)` | Number | Extract second |
+| WEEKDAY | `WEEKDAY(date, [type])` | Number | Day of week |
+| WEEKNUM | `WEEKNUM(date, [type])` | Number | Week number |
+| DAYS | `DAYS(end_date, start_date)` | Number | Days between two dates (end - start), includes decimals. **Note parameter order: end date comes first** |
+| DATEDIF | `DATEDIF(start_date, end_date, [unit])` | Number | Whole days/months/years between dates. Unit: `"D"`(default)/`"M"`/`"Y"`. **Start must be before end** |
+| NETWORKDAYS | `NETWORKDAYS(start_date, end_date, [holidays])` | Number | Workdays between dates (inclusive) |
 
 ### 8.5 List functions
 
-| Function    | Signature                                                                    | Return type | Description                                                                                                                                                                                                      |
-| --- | --- | --- | --- |
-| LIST        | `LIST(val1, val2, ...)`                                                      | List        | Create a list                                                                                                                                                                                                    |
-| FIRST       | `FIRST(list)`                                                                | Scalar      | First element                                                                                                                                                                                                    |
-| LAST        | `LAST(list)`                                                                 | Scalar      | Last element                                                                                                                                                                                                     |
-| NTH         | `NTH(list, index)`                                                           | Scalar      | Nth element (1-based)                                                                                                                                                                                            |
-| FILTER      | `[Table].FILTER(condition).[ResultCol]` or `[Table].[Col].FILTER(condition)` | List        | Filter by condition. When data range is a table, result column is **required**; when it's a column/list, it's not needed. Use CurrentValue in conditions. Add `.LISTCOMBINE()` when result column is multi-value |
-| MAP         | `data_range.MAP(mapping_expr)`                                               | List        | Apply mapping to each element. Use CurrentValue in mapping                                                                                                                                                       |
-| SORT        | `SORT(list, [ascending])`                                                    | List        | Sort; default ascending (TRUE)                                                                                                                                                                                   |
-| SORTBY      | `[Table].SORTBY([Table].[SortCol], [ascending]).[OutputCol]`                 | List        | Sort by column then extract output column. **Chain-only, must include output column**                                                                                                                            |
-| UNIQUE      | `UNIQUE(list)`                                                               | List        | Deduplicate                                                                                                                                                                                                      |
-| ARRAYJOIN   | `ARRAYJOIN(list, [delimiter])`                                               | Text        | Join list elements as text; default comma-separated                                                                                                                                                              |
-| LISTCOMBINE | `LISTCOMBINE(val1, [val2, ...])` or `list.LISTCOMBINE()`                     | List        | Two uses: (1) merge values/lists into one list; (2) chained call to flatten 2D array (commonly used when FILTER result column is a multi-value field)                                                            |
-| DISTANCE    | `DISTANCE(location1, location2)`                                             | Number      | Distance between two geographic locations (km)                                                                                                                                                                   |
+| Function | Signature | Return type | Description |
+|---|---|---|---|
+| FIRST | `FIRST(list)` | Scalar | First element |
+| LAST | `LAST(list)` | Scalar | Last element |
+| FILTER | `[Table].FILTER(condition).[ResultCol]` or `[Table].[Col].FILTER(condition)` | List | Filter by condition. When data range is a table, result column is **required**; when it's a column/list, it's not needed. Use CurrentValue in conditions. Add `.LISTCOMBINE()` when result column is multi-value |
+| MAP | `data_range.MAP(mapping_expr)` | List | Apply mapping to each element. Use CurrentValue in mapping |
+| SORT | `SORT(list, [ascending])` | List | Sort; default ascending (TRUE) |
+| SORTBY | `[Table].SORTBY([Table].[SortCol], [ascending]).[OutputCol]` | List | Sort by column then extract output column. **Chain-only, must include output column** |
+| UNIQUE | `UNIQUE(list)` | List | Deduplicate |
+| ARRAYJOIN | `ARRAYJOIN(list, [delimiter])` | Text | Join list elements as text; default comma-separated |
+| LISTCOMBINE | `LISTCOMBINE(val1, [val2, ...])` or `list.LISTCOMBINE()` | List | Two uses: (1) merge values/lists into one list; (2) chained call to flatten 2D array (commonly used when FILTER result column is a multi-value field) |
 
 ---
-
 ## Section 9: Commonly Confused Functions
 
 ### CONTAIN vs CONTAINTEXT
 
-|             | CONTAIN                                                        | CONTAINTEXT                                                |
-| ----------- | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| Purpose     | Tests if a **list / `select` (`multiple=true`)** contains a value | Tests if **text** contains a substring                     |
-| Example     | `[Tags].CONTAIN("Urgent")`                                     | `[Notes].CONTAINTEXT("completed")`                         |
+| | CONTAIN | CONTAINTEXT |
+|---|---|---|
+| Purpose | Tests if a **list / `select` (`multiple=true`)** contains a value | Tests if **text** contains a substring |
+| Example | `[Tags].CONTAIN("Urgent")` | `[Notes].CONTAINTEXT("completed")` |
 | Wrong usage | `CONTAIN([Notes], "completed")` — cannot do substring matching | `CONTAINTEXT([Tags], "Urgent")` — Tags is a list, not text |
 
 ### ISBLANK vs ISNULL
 
-|                   | ISBLANK | ISNULL |
-| ----------------- | ------- | ------ |
-| NULL              | TRUE    | TRUE   |
-| `""` empty string | TRUE    | FALSE  |
-| Empty list `[]`   | TRUE    | FALSE  |
-| `0`               | FALSE   | FALSE  |
-| `FALSE`           | FALSE   | FALSE  |
+| | ISBLANK | ISNULL |
+|---|---|---|
+| NULL | TRUE | TRUE |
+| `""` empty string | TRUE | FALSE |
+| Empty list `[]` | TRUE | FALSE |
+| `0` | FALSE | FALSE |
+| `FALSE` | FALSE | FALSE |
 
 ### DAYS vs DATEDIF
 
-|                 | DAYS                                                         | DATEDIF                                   |
-| --------------- | ------------------------------------------------------------ | ----------------------------------------- |
-| Parameter order | `DAYS(end, start)` — end first                               | `DATEDIF(start, end, unit)` — start first |
-| Precision       | Includes decimals (hours/minutes/seconds as fractional days) | Integer only (whole days/months/years)    |
-| Negative values | Returns negative when start is after end                     | **Errors** when start is after end        |
+| | DAYS | DATEDIF |
+|---|---|---|
+| Parameter order | `DAYS(end, start)` — end first | `DATEDIF(start, end, unit)` — start first |
+| Precision | Includes decimals (hours/minutes/seconds as fractional days) | Integer only (whole days/months/years) |
+| Negative values | Returns negative when start is after end | **Errors** when start is after end |
 
 ### SUM vs SUMIF
 
-|           | SUM                                            | SUMIF                                                          |
-| --------- | ---------------------------------------------- | -------------------------------------------------------------- |
-| Purpose   | Sum all values                                 | Sum values **matching a condition**                            |
-| Arguments | `SUM(val1, val2, ...)` or `SUM([Table].[Col])` | `SUMIF(data_range, condition)` with CurrentValue in condition  |
-| Example   | `SUM([Orders].[Amount])` — sum all             | `SUMIF([Orders].[Amount], CurrentValue > 100)` — sum only >100 |
+| | SUM | SUMIF |
+|---|---|---|
+| Purpose | Sum all values | Sum values **matching a condition** |
+| Arguments | `SUM(val1, val2, ...)` or `SUM([Table].[Col])` | `SUMIF(data_range, condition)` with CurrentValue in condition |
+| Example | `SUM([Orders].[Amount])` — sum all | `SUMIF([Orders].[Amount], CurrentValue > 100)` — sum only >100 |
 
 ### FILTER+aggregation vs COUNTIF/SUMIF
 
-|             | FILTER+aggregation                                    | COUNTIF/SUMIF                                                                  |
-| ----------- | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Nature      | Filter then aggregate (two steps)                     | One-step (syntactic sugar)                                                     |
-| Equivalence | `[Table].FILTER(cond).[Col].LISTCOMBINE().SUM()`      | `SUMIF([Table].[Col], cond)` (only when condition involves only column values) |
-| When to use | Conditions span multiple fields, or multi-step needed | Conditions only involve column values (e.g. `CurrentValue > 100`)              |
+| | FILTER+aggregation | COUNTIF/SUMIF |
+|---|---|---|
+| Nature | Filter then aggregate (two steps) | One-step (syntactic sugar) |
+| Equivalence | `[Table].FILTER(cond).[Col].LISTCOMBINE().SUM()` | `SUMIF([Table].[Col], cond)` (only when condition involves only column values) |
+| When to use | Conditions span multiple fields, or multi-step needed | Conditions only involve column values (e.g. `CurrentValue > 100`) |
 
 ---
 
@@ -612,119 +576,11 @@ Reason: NOW, TODAY, PI and other zero-argument functions must include parenthese
 
 ---
 
-## Section 13: Complete Examples
+## Section 13: Examples
 
-### Example 1: Employee sales summary
+完整示例与"自然语言需求 → 公式"翻译规则按需读 [formula-examples.md](formula-examples.md)。
 
-**Table structure** (from `+table-get`):
-
-- Employees: EmployeeID (Text), Name (Text), Department (Text)
-- Sales: ContractID (Number), SalespersonID (Text), Quantity (Number), Total (Number)
-
-**Current table**: Employees
-
-**Requirement**: For each employee, output "Sold XX orders" if they have sales records, otherwise "No sales records".
-
-**Formula**:
-
-```
-IF(
-  [Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) >= 1,
-  "Sold " & [Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) & " orders",
-  "No sales records"
-)
-```
-
-**Field JSON**:
-
-```json
-{
-  "type": "formula",
-  "name": "Sales Summary",
-  "expression": "IF([Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) >= 1, \"Sold \" & [Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) & \" orders\", \"No sales records\")"
-}
-```
-
-**Explanation**: `[Sales].COUNTIF(...)` uses the entire Sales table as data range. CurrentValue represents each row in Sales, accessing `CurrentValue.[SalespersonID]` for that row's salesperson. `[EmployeeID]` refers to the current row in the Employees table (where the formula lives).
-
-### Example 2: Chained cross-table access via link fields
-
-**Table structure**:
-
-- Orders: ID (`auto_number`), OrderItems (`link` [target: OrderItems, foreign key: ID])
-- OrderItems: ID (`auto_number`), Product (`link` [target: Products, foreign key: ID])
-- Products: ID (`auto_number`), ProductName (`text`)
-
-**Current table**: Orders
-
-**Requirement**: Deduplicate and comma-join all product names from linked order items.
-
-**Formula**:
-
-```
-[OrderItems].[Product].[ProductName].UNIQUE().ARRAYJOIN(",")
-```
-
-**Field JSON**:
-
-```json
-{
-  "type": "formula",
-  "name": "Product List",
-  "expression": "[OrderItems].[Product].[ProductName].UNIQUE().ARRAYJOIN(\",\")"
-}
-```
-
-**Explanation**: `[OrderItems]` gets linked order item records, `.[Product]` expands to each item's linked product, `.[ProductName]` gets all product names, `.UNIQUE()` deduplicates, `.ARRAYJOIN(",")` joins with commas.
-
-### Example 3: Cross-table filter + sort
-
-**Table structure**:
-
-- Projects: ProjectName (Text), Status (Text), Owner (Text)
-- Tasks: TaskName (Text), Project (Text), Priority (Number), DueDate (Date)
-
-**Current table**: Projects
-
-**Requirement**: Find the highest-priority (lowest number) task name for the current project.
-
-**Formula**:
-
-```
-FIRST(
-  [Tasks].FILTER(CurrentValue.[Project] = [ProjectName]).SORTBY([Tasks].[Priority], TRUE).[TaskName]
-)
-```
-
-**Field JSON**:
-
-```json
-{
-  "type": "formula",
-  "name": "Top Priority Task",
-  "expression": "FIRST([Tasks].FILTER(CurrentValue.[Project] = [ProjectName]).SORTBY([Tasks].[Priority], TRUE).[TaskName])"
-}
-```
-
-**Explanation**: `[Tasks].FILTER(CurrentValue.[Project] = [ProjectName])` filters tasks belonging to the current project. `.SORTBY([Tasks].[Priority], TRUE)` sorts by priority ascending. `.[TaskName]` extracts task names. `FIRST(...)` gets the first one (highest priority).
-
----
-
-## Section 14: Translating User Requirements to Formulas
-
-When the user describes their formula need in natural language, follow these rules to convert it into a precise expression:
-
-1. **Numbers must use precise values**: "less than 80%" → field value less than `0.8`. "above 1000" → `>= 1000`.
-2. **Interval boundaries**: "above/below/within" = closed (inclusive); "less than/more than/outside" = open (exclusive).
-3. **Branching logic** must be organized as an ordered list with a fallback branch. Each branch has a condition and output.
-   - Example: "return risk level for 1-3" → `IFS([Value] = 1, "low", [Value] = 2, "medium", [Value] = 3, "high")` with an `IFERROR` or trailing empty-string fallback.
-4. **Multi-level branches must be flattened** to a single level. Nested if-else chains → flat IFS.
-5. **Branch conditions must be mutually exclusive**. If the user's conditions overlap, rewrite to eliminate ambiguity.
-6. **Reorder branches by logical priority** if the user's order is illogical (e.g., check specific conditions before catch-all).
-
----
-
-## Section 15: Constraint Summary
+## Section 14: Constraint Summary
 
 - Request body must include `"type": "formula"` — this field is required
 - Only use functions and operators listed in this document

@@ -1,5 +1,7 @@
 # ChangeRecordTrigger
 
+记录满足条件时触发，**新增和修改都会触发**。"修改为 X 或新增 X 时执行动作"这类需求用本触发器 + `condition_list`，一条工作流即可表达，不要拆成 AddRecordTrigger 和 SetRecordTrigger 两条。
+
 ```json
 {
   "table_name": "任务表",

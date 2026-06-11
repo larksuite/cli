@@ -15,7 +15,7 @@
 
 1. 调用命令前先看 `--help`，不要猜参数名或 JSON 结构。
 2. 先确认真实 Base、表、字段、视图和用户/群 ID；不要凭口述猜字段名或 field ID。
-3. 选择一个 trigger；新增记录用 `AddRecordTrigger`，只监听修改用 `SetRecordTrigger`，新增或修改都触发/拿不准用 `ChangeRecordTrigger`。
+3. 选择一个 trigger；新增记录用 `AddRecordTrigger`，只监听修改用 `SetRecordTrigger`，新增或修改都触发/拿不准用 `ChangeRecordTrigger`。用户描述"修改为 X **或** 新增 X 时"这类同条件多来源需求，是 `ChangeRecordTrigger` 的典型场景：**一条工作流 + condition_list 即可，不要拆成 AddRecordTrigger 和 SetRecordTrigger 两条工作流**。
 4. 选择 action/branch/system step，打开对应 schema 文件。
 5. 需要 `value_type`、`ref`、条件、字段值或输出引用时，再读 [common-types-and-refs.md](workflow-steps/common-types-and-refs.md)。
 6. 组装 `title/status/steps` 后用 `+workflow-create` 或 `+workflow-update`。

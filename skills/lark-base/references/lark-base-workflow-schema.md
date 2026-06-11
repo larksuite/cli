@@ -63,7 +63,7 @@
 | `ButtonTrigger` | 按钮点击触发 | [trigger-button.md](workflow-steps/trigger-button.md) |
 | `LarkMessageTrigger` | 接收飞书消息触发 | [trigger-lark-message.md](workflow-steps/trigger-lark-message.md) |
 
-触发器选型：新增记录用 `AddRecordTrigger`；只监听修改用 `SetRecordTrigger`；新增或修改都触发、或拿不准时用 `ChangeRecordTrigger`。
+触发器选型：新增记录用 `AddRecordTrigger`；只监听修改用 `SetRecordTrigger`；新增或修改都触发、或拿不准时用 `ChangeRecordTrigger`。"新增或修改满足同一条件就触发"（如"改为 X 或新增 X 时通知"）是单个 `ChangeRecordTrigger` 的典型场景，不要拆成两条工作流。
 
 ### Action
 

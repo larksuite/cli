@@ -13,6 +13,9 @@
 - 一次 payload 里同一字段只用一种 key（字段名或字段 ID），不要重复。
 - 写入前先 `+field-list` 获取字段 `type/style/multiple`，再构造值。
 - 需要清空字段时优先传 `null`（字段允许清空时）。
+- 只写存储字段：系统字段、`formula`、`lookup` 只读；附件字段不走 CellValue，用 `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment`。
+- 批量写入单批最多 200 条（超出报 `1254104`）；同一张表串行写，遇 `1254291` 并发冲突短暂等待后重试。
+- select/multiselect 写入未知选项会触发平台新增该选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
 
 ## 2. 各类型 CellValue
 

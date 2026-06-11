@@ -7,7 +7,10 @@
 // carrying their own copy.
 package suggest
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Levenshtein computes the classic edit distance between two strings. It is
 // rune-aware, so it is correct for multi-byte input.
@@ -51,22 +54,29 @@ func Levenshtein(a, b string) int {
 // signal of intent that raw edit distance misses.
 func Closest(typed string, candidates []string, maxN int) []string {
 	type scored struct {
-		name   string
-		prefix int
-		dist   int
+		name    string
+		contain bool
+		prefix  int
+		dist    int
 	}
 	limit := editLimit(typed)
 	ranked := make([]scored, 0, len(candidates))
 	for _, c := range candidates {
 		p := sharedPrefixLen(typed, c)
 		d := Levenshtein(typed, c)
-		// Keep only plausible matches: a meaningful shared prefix, or an edit
-		// distance within budget. Drop everything else so the hint stays short.
-		if p >= 3 || d <= limit {
-			ranked = append(ranked, scored{name: c, prefix: p, dist: d})
+		ct := containsSegment(typed, c)
+		// Keep only plausible matches: a meaningful shared prefix, an edit
+		// distance within budget, or one name containing the other (a missing
+		// namespace prefix like "+block-list" vs "+base-block-list"). Drop
+		// everything else so the hint stays short.
+		if p >= 3 || d <= limit || ct {
+			ranked = append(ranked, scored{name: c, contain: ct, prefix: p, dist: d})
 		}
 	}
 	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].contain != ranked[j].contain {
+			return ranked[i].contain
+		}
 		if ranked[i].prefix != ranked[j].prefix {
 			return ranked[i].prefix > ranked[j].prefix
 		}
@@ -92,6 +102,21 @@ func editLimit(s string) int {
 		return l
 	}
 	return 2
+}
+
+// containsSegment reports whether one name contains the other as a substring
+// after stripping the "+"/"--" sigils. It catches hallucinated names that drop
+// a namespace prefix (e.g. "+block-list" for "+base-block-list"), which share
+// almost no prefix and sit far beyond the edit-distance budget. The shorter
+// side must be at least 5 runes so generic fragments like "list" do not match
+// half the catalog.
+func containsSegment(a, b string) bool {
+	a = strings.TrimLeft(a, "+-")
+	b = strings.TrimLeft(b, "+-")
+	if len([]rune(a)) > len([]rune(b)) {
+		a, b = b, a
+	}
+	return len([]rune(a)) >= 5 && strings.Contains(b, a)
 }
 
 func sharedPrefixLen(a, b string) int {

@@ -67,10 +67,10 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
-| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系, 适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令。 fewshot 看 `--help` |
+| 查看 Base 内资源目录 | `+base-block-list` | 先判断 Base 里有什么（table/docx/dashboard/workflow/folder），再决定走哪类命令；fewshot 看 `--help` |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
-| 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段；需要多表结构时先 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取多表字段，避免逐表多次调用 |
+| 列/查/删字段 | `+field-list/get/delete/search-options` | 写入/删除前用 list/get 确认字段类型、选项、ID；多表结构用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取齐，不要逐表调用 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
@@ -85,13 +85,14 @@ metadata:
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
 | Workflow | `+workflow-*` | 创建/更新或理解 steps 时先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，再读 schema 路由 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；只打开涉及的 `workflow-steps/*.md` 小文件，公共 `value/ref/condition` 才读 [common-types-and-refs.md](references/workflow-steps/common-types-and-refs.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
-| 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
+| 高级权限与角色 | `+advperm-*` / `+role-*` | 先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界）；权限 JSON 再读 [role-config.md](references/role-config.md) |
 
 ## 注意事项
 
 ### Help 先行
 
-- 执行不熟悉的命令前先看 `--help`，不要猜参数名或 JSON 结构；本轮任务会用到多个命令时，把它们的 `--help` 合并在一条 Bash 命令里一次看完，不要一轮对话只看一个 help：
+- 参数不确定、要构造复杂 JSON、或命令带批量/隐藏选项时，先看 `--help`，不要猜参数名或 JSON 结构；`+table-list` / `+base-create` 这类参数显而易见的简单命令直接执行，报参数错误再查 help，不要为它单花一轮。
+- 需要看多个命令的 `--help` 时，合并在一条 Bash 命令里一次看完，不要一轮对话只看一个：
 
 ```bash
 lark-cli base +table-list --help; lark-cli base +field-list --help; lark-cli base +field-update --help
@@ -102,6 +103,7 @@ lark-cli base +table-list --help; lark-cli base +field-list --help; lark-cli bas
 - 优先用原生批量能力：多表字段 `+field-list-batch`；批量写记录 `+record-batch-create` / `+record-batch-update`；部分命令参数本身支持多值（如 `+record-delete --record-id` 可重复传、`+record-share-link-create --record-ids`），先看 `--help`。
 - 没有原生批量命令时，对多个对象做同类操作要在**一条 Bash 命令**里用 shell 循环完成，不要一轮对话只执行一个命令、看完结果再发下一个。
 - 循环内先 `echo` 对象标识再执行，失败可定位到具体对象；写同一张表保持串行；只读命令可用 `--jq` 收窄输出，避免无关字段灌入上下文。
+- 脚本输出只打印计数、ID 和失败项，不要回显完整 payload 或原始返回。
 
 示例——一次取多个视图的配置：
 
@@ -120,41 +122,27 @@ done
 - `91403` 或明确不可访问错误不要循环换身份重试。
 - `+base-create` / `+base-copy` 若用 bot 身份执行，关注返回中的 `permission_grant`，并把用户是否可打开新 Base 告知用户。
 
-### 查询与统计规则
+### 查询与统计
 
-涉及查询、统计或判断结论时，先阅读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)，并遵守：
+- 涉及筛选、排序、Top/Bottom N、聚合、分组、多表关联或任何全局结论时，先读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) 并按其 Hard Rules 执行。
+- 两条红线随时生效：能由 Base 云端表达的筛选/排序/聚合不要拉原始记录到本地手工处理；`has_more=true` 等分页信号未消除前，不能基于当前页下全局结论。
 
-1. `+record-list` 的默认页、固定 `--limit` 和本地 `jq` 只能证明已读取范围内的事实，不能直接支撑全局最值、全量计数、Top/Bottom N、异常识别或分组结论。
-2. 能由 Base 表达的筛选、排序、投影、聚合、分组和限制，应在 Base 云端查询能力中执行；不要先拉原始记录到本地上下文再手工筛选排序。
-3. `has_more=true` 或等价分页信号表示当前结果不是全量；除非用户只要样例/前 N 条，不能基于该页回答全局问题。
-4. 多表查询必须先确认关系字段和连接键；link 单元格里的 `record_id` 是关系键，不是用户可读答案。
-5. 最终答案必须能追溯到真实表、真实字段、查询范围、筛选/排序/聚合条件和必要的连接键。
-6. 一次性原始记录查询优先用 `+record-list` / `+record-search` 的 filter/sort；聚合分析优先用 `+data-query`；要把结果长期显示在表里，才考虑新增 `formula` / `lookup` 字段。
-7. `+data-query` 可返回聚合结果或维度字段行，但维度行按字段组合去重且不返回 `record_id`；需要逐条记录、记录定位或完整行级字段时，再用 `+record-list` / `+record-search` / `+record-get` 回查。
+### 写入前置
 
-### 写入前置规则
+- 写记录/字段前先读真实结构；表名、字段名、视图名必须来自真实返回，跨表场景还要读目标表结构。
+- 复杂 JSON 按快速路由读对应 reference：字段读 [lark-base-field-json.md](references/lark-base-field-json.md)，记录读 [lark-base-cell-value.md](references/lark-base-cell-value.md)（写入红线：只写存储字段、批量上限、并发冲突等，见其顶层规则）。
+- 删除、角色更新、字段更新等高风险操作遵循 CLI 的 confirmation gate；目标不明确先用 get/list 消歧；workflow/role 等复杂写操作创建后用 get 回读确认，必要时先 `--dry-run` 预演。
 
-- 写记录前先读字段结构；只写存储字段。系统字段、附件字段、`formula`、`lookup` 不作为普通记录写入目标。
-- 附件上传、下载、删除走专用 `+record-*-attachment` 命令。
-- 写字段前先读 [lark-base-field-json.md](references/lark-base-field-json.md)；涉及 `formula` / `lookup` 时必须读 [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)。
-- 表名、字段名、视图名、workflow 配置中的名称必须来自真实返回；跨表场景还要读取目标表结构。
-- 删除、角色更新、字段更新等高风险操作遵循 CLI 的 confirmation gate；目标不明确时先用 get/list 消歧。
-- 批量写入单批最多 200 条；连续写同一表时串行执行，遇到 `1254291` 按短暂等待后重试处理。
-- `+record-batch-update` 是“同值批量更新”：同一份 patch 应用到全部 `record_id_list`，不要拿它做逐行不同值映射。
-- select/multiselect 写入未知选项可能触发平台新增选项；不是要新增时，先用 `+field-list` 或 `+field-search-options` 确认可选值。
+### 表单与视图
 
-### 表单与视图细节
-
-- `+form-submit` 前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
-- 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
-- `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
-- 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。
+- `+form-submit` 前必须先 `+form-detail`；提交规则（filter 隐藏题不填、附件写在 `attachments` 并带 `--base-token`）见 [lark-base-form-submit.md](references/lark-base-form-submit.md)。
+- 视图配置先用对应 get 命令读现状，只替换要变更的部分；一次性筛选/排序先用 `+record-list` / `+record-search` 验证，再按需沉淀为持久视图。
 
 ### Dashboard / Workflow / Role
 
-- Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，再读 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) 的 step 路由表；只打开涉及的 `workflow-steps/*.md`，需要 `ValueInfo/ref/Condition` 时再读 [common-types-and-refs.md](references/workflow-steps/common-types-and-refs.md)。enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
-- Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
+- Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等操作要点见 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的「执行要点」。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
+- Workflow 的复杂点是 `steps`：按快速路由 Workflow 行的阅读链取文档；创建后 `+workflow-get` 回读验证。
+- Role 的复杂点是权限 JSON：先读 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界），权限 JSON SSOT 读 [role-config.md](references/role-config.md)；删除角色、关闭高级权限前确认目标和影响。
 
 ## Token 与链接
 
@@ -165,10 +153,7 @@ done
 | `/base/{token}?table={id}` | `table` 参数用于定位 Base 内对象：`tbl` 开头是数据表 `--table-id`；`blk` 开头是 dashboard ID；`wkf` 开头是 workflow ID |
 | `/base/{token}?view={id}` | `view` 参数用于定位表视图，提取为 `--view-id`；通常还需要确认 `table` 参数或先查表结构 |
 | `/share/base/form/{shareToken}` | 表单分享链接；这是表单 share token，走 `+form-detail` / `+form-submit --share-token <shareToken>` |
-| `/share/base/view/{shareToken}` | 视图分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
-| `/share/base/dashboard/{shareToken}` | 仪表盘分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
-| `/record/{shareToken}` | 记录分享链接；暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开。若用户想生成现有记录的分享链接，用 `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-ids <record_id>` |
-| `/base/workspace/{token}` | BaseApp / workspace 链接；暂不支持用 CLI 直接访问 |
+| `/share/base/view/...` / `/share/base/dashboard/...` / `/record/...` / `/base/workspace/...` | 分享链接与 workspace 链接，暂不支持用 CLI 直接访问，引导用户在飞书客户端打开；要生成记录分享链接用 `+record-share-link-create` |
 
 `wiki +node-get` 返回非 `bitable` 时，不继续使用 Base 命令：`docx` 转文档，`sheet` 转表格，其他云空间对象转对应 skill 或 drive。
 
@@ -186,18 +171,3 @@ done
 | `1254104` | 批量超过 200，分批调用 |
 | `1254291` | 并发写冲突，串行写入并在批次间短暂等待 |
 | `91403` | 无权限访问该 Base，按 `lark-shared` 权限流程处理，不要盲目重试 |
-
-## 保留 Reference
-
-- [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md)：查询/统计/全局结论的选路 SOP
-- [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md) / [lark-base-data-query.md](references/lark-base-data-query.md)：聚合查询入口 fewshot 与 DSL SSOT
-- [lark-base-cell-value.md](references/lark-base-cell-value.md)：记录 CellValue 构造
-- [lark-base-field-json.md](references/lark-base-field-json.md)：字段 JSON 构造
-- [formula-field-guide.md](references/formula-field-guide.md) / [lookup-field-guide.md](references/lookup-field-guide.md)：公式与 lookup 字段
-- [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md)：字段创建/更新命令级补充
-- [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) / [lark-base-record-history-list.md](references/lark-base-record-history-list.md)：记录写入 JSON 与历史返回解释
-- [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)：视图筛选 JSON
-- [lark-base-form-detail.md](references/lark-base-form-detail.md) / [lark-base-form-submit.md](references/lark-base-form-submit.md) / [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md)：表单详情、提交和复杂 JSON
-- [lark-base-dashboard.md](references/lark-base-dashboard.md) / [dashboard-block-data-config.md](references/dashboard-block-data-config.md) / [lark-base-dashboard-block-get-data.md](references/lark-base-dashboard-block-get-data.md) / [lark-base-dashboard-usecase.md](references/lark-base-dashboard-usecase.md)：仪表盘、组件配置、图表结果协议与完整用例
-- [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) / [workflow-steps/](references/workflow-steps/)：workflow 入口、steps 路由和按 step type 拆分的 schema 小文件
-- [lark-base-role-guide.md](references/lark-base-role-guide.md) / [role-config.md](references/role-config.md)：角色入口与权限 JSON SSOT
