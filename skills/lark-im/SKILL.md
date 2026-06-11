@@ -53,6 +53,29 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 
 The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) automatically attach a `reactions` block and (for edited messages) `update_time` to each returned message — no separate `im.reactions.batch_query` call is needed. Pass `--no-reactions` to opt out. For the full contract (output shape, the `im:message.reactions:read` scope requirement, and the "missing field ≠ fetch failure" data rules), read [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
 
+### Writing Messages to Lark Documents
+
+When writing IM messages into a Lark document (via `lark-doc`), you **must** preserve user identities using `<cite type="user" user-id="open_id">` tags instead of plain text names. This ensures names render as clickable @mentions in the document.
+
+**Fields that carry open_id and must be preserved:**
+
+| Message field | Path | Usage |
+|--------------|------|-------|
+| Sender | `sender.id` | `<cite type="user" user-id="ou_xxx"></cite>` |
+| Mentions | `mentions[].id` | `<cite type="user" user-id="ou_xxx"></cite>` |
+| Reaction operators | `reactions[].details[].operator.operator_id` | `<cite type="user" user-id="ou_xxx"></cite>` |
+| Card-referenced users | Card content | `<cite type="user" user-id="ou_xxx"></cite>` |
+
+**When only plain text names are available** (e.g. system messages like "XXX invited YYY", or merge_forward content), resolve open_id first:
+
+```bash
+lark-cli contact +search-user --query "Name" --as user
+```
+
+Match by department to confirm the correct user, then use the `open_id` in the cite tag.
+
+For full rules, see [`lark-doc-xml.md`](../lark-doc/references/lark-doc-xml.md) → 用户名写入规则.
+
 ### Card Messages (Interactive)
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.

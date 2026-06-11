@@ -45,6 +45,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `<sheet>` — `<sheet type="blank"></sheet>` 空白；`<sheet sheet-id="SID" token="TOKEN"></sheet>` 复制已有
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id
+- `<sub-page-list>` — `<sub-page-list></sub-page-list>` 子页面列表块；仅 wiki 文档可插入
 - bitable、base_ref、synced_reference、synced_source、okr — 不可创建，仅支持移动
 
 # 四、块级复制与移动
@@ -54,7 +55,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 ## 复制（block_copy_insert_after）
 - **基础标签**（块级标签、容器标签、行内组件）：均支持复制
-- **资源块**：仅 img、source、whiteboard、sheet、chat_card 支持复制；task、bitable、base_ref、synced_reference、synced_source、okr 不支持复制
+- **资源块**：仅 img、source、whiteboard、sheet、chat_card、sub-page-list 支持复制；task、bitable、base_ref、synced_reference、synced_source、okr 不支持复制
 
 使用 `docs +update --command block_copy_insert_after --block-id "<锚点>" --src-block-ids "id1,id2"`。
 
@@ -75,6 +76,50 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
      <li>第二项</li>
    </ul>
    ```
+
+## 用户名写入规则
+
+### 核心原则
+
+- 当从 IM 消息、日历、审批、任务等来源获取到用户的 `open_id` 时，写入文档**必须**使用 `<cite type="user" user-id="open_id">` 标签，而非纯文本名字。这样文档中会渲染为可点击的 @人。
+- 当只有用户名字而没有 `open_id` 时，**必须**先通过 `lark-cli contact +search-user --query "名字" --as user` 反查 `open_id`，再使用 `<cite type="user">` 标签写入。
+
+### 各场景覆盖
+
+以下场景中出现的用户名**必须**使用 `<cite type="user">` 标签：
+
+| 场景 | 必须使用 cite 的字段 | 说明 |
+|------|---------------------|------|
+| 普通消息 | `sender.id`、`mentions[].id` | 消息发送者和被 @ 的人 |
+| 消息表情 (reactions) | `reactions[].details[].operator.operator_id` | 点赞/表情的操作者 |
+| 卡片消息 (interactive) | 卡片内容中引用的用户 | 如卡片中 @ 的人 |
+| 系统消息 | 消息文本中的用户名 | 如「XXX invited YYY to the chat」中的 XXX 和 YYY |
+| 合并转发 (merge_forward) | 转发内容中的用户名 | 转发内容为纯文本，需先通过 `lark-contact +search-user` 反查 `open_id` |
+
+### 典型示例
+
+将 IM 群聊消息写入文档时：
+
+```xml
+<!-- 消息发送者 + @ 人 -->
+<p><cite type="user" user-id="ou_xxx"></cite>：@<cite type="user" user-id="ou_yyy"></cite> 你好</p>
+
+<!-- 表情操作者 -->
+<p>👍 <cite type="user" user-id="ou_xxx"></cite></p>
+
+<!-- 系统消息 -->
+<p><cite type="user" user-id="ou_xxx"></cite> invited <cite type="user" user-id="ou_yyy"></cite> to the chat.</p>
+```
+
+### 名字反查 open_id
+
+当数据源只提供纯文本名字（如合并转发消息、系统消息文本）时，使用 `lark-contact` 反查：
+
+```bash
+lark-cli contact +search-user --query "张三" --as user
+```
+
+从返回结果中匹配部门信息确认正确用户，取 `open_id` 后写入 `<cite type="user" user-id="open_id">` 标签。
 
 
 ## 表格扩展
@@ -166,4 +211,5 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 
 <task task-id="TASK_GUID"></task>
 <chat_card chat-id="CHAT_ID"></chat_card>
+<sub-page-list></sub-page-list>
 ```
