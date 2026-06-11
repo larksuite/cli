@@ -67,10 +67,10 @@ metadata:
 |---|---|---|
 | 查 Base 本体 | `+base-get` | 用返回确认 Base 名称、owner、权限和可继续操作的 token |
 | 创建/复制 Base | `+base-create` / `+base-copy` | 写入后报告新 Base 标识；注意返回中的 `permission_grant` |
-| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系, 适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令。 fewshot 看 `--help` |
+| 查看 Base 内资源目录 | `+base-block-list` | 想先了解一个 Base 里有哪些 table/docx/dashboard/workflow/folder 时优先用它；返回 ID 关系，适合先判断 Base 里有什么，再决定走 table、dashboard、workflow 或 docx 命令 |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
-| 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段；需要多表结构时先 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` 一次取多表字段，避免逐表多次调用 |
+| 列/查/删字段 | `+field-list/get/delete/search-options` | 字段发现默认用 `+field-list --compact`；只有需要 formula/lookup 细节或完整字段 JSON 时再用 `+field-get` / 不带 compact 的 list；需要多表结构时先 `+table-list` 拿表，再用 `+field-list-batch --compact --table-id <表1> --table-id <表2>` 一次取多表字段 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
@@ -84,7 +84,7 @@ metadata:
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md) |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
-| Workflow | `+workflow-*` | 创建/更新或理解 steps 时先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，再读 schema 路由 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；只打开涉及的 `workflow-steps/*.md` 小文件，公共 `value/ref/condition` 才读 [common-types-and-refs.md](references/workflow-steps/common-types-and-refs.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
+| Workflow | `+workflow-*` | 先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)：它包含查询/启停/创建/修改的最短路径和常见 step 组合；只有创建/更新复杂 steps 时才继续读 schema 小文件；list/get/enable/disable 不读 schema |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
 
 ## 注意事项
@@ -153,7 +153,7 @@ done
 ### Dashboard / Workflow / Role
 
 - Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，再读 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) 的 step 路由表；只打开涉及的 `workflow-steps/*.md`，需要 `ValueInfo/ref/Condition` 时再读 [common-types-and-refs.md](references/workflow-steps/common-types-and-refs.md)。enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
+- Workflow 的复杂点是 `steps` 结构。先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，用其中的最短路径和场景表完成查询/启停/常见创建修改；只有需要具体 step 字段时，再按需读 [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) 和对应 `workflow-steps/*.md`。enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## Token 与链接
