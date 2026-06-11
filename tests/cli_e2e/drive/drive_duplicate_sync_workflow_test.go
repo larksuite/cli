@@ -161,7 +161,7 @@ func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
 		time.Sleep(1200 * time.Millisecond)
 		_ = uploadNamedFile(t, workDir, folderToken, "_push_dup_second.txt", "dup.txt", "remote-second")
 
-		pushResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		pushResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 			Args: []string{
 				"drive", "+push",
 				"--local-dir", "local",
@@ -173,7 +173,7 @@ func TestDrive_DuplicateRemoteWorkflow(t *testing.T) {
 			},
 			WorkDir:   workDir,
 			DefaultAs: "bot",
-		})
+		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		pushResult.AssertExitCode(t, 0)
 		pushResult.AssertStdoutStatus(t, true)
