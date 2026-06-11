@@ -60,11 +60,11 @@ func safePath(raw, flagName string) (string, error) {
 		return "", err
 	}
 
-	path := filepath.Clean(raw)
-
-	if filepath.IsAbs(path) {
+	if isAbsolutePath(raw) {
 		return "", fmt.Errorf("%s must be a relative path within the current directory, got %q (hint: cd to the target directory first, or use a relative path like ./filename)", flagName, raw)
 	}
+
+	path := filepath.Clean(raw)
 
 	cwd, err := vfs.Getwd()
 	if err != nil {
@@ -112,6 +112,21 @@ func resolveNearestAncestor(path string) (string, error) {
 		tail = append([]string{filepath.Base(cur)}, tail...)
 		cur = parent
 	}
+}
+
+func isAbsolutePath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	if filepath.IsAbs(path) || strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) {
+		return true
+	}
+	if len(path) >= 3 && path[1] == ':' && (path[2] == '/' || path[2] == '\\') {
+		drive := path[0]
+		return ('A' <= drive && drive <= 'Z') || ('a' <= drive && drive <= 'z')
+	}
+	return false
 }
 
 func isUnderDir(child, parent string) bool {

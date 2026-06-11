@@ -34,6 +34,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		// ── GIVEN: absolute paths → THEN: rejected ──
 		{"absolute path unix", "/etc/passwd", true},
 		{"absolute path root", "/tmp/evil", true},
+		{"absolute path windows drive", `C:\Users\agent\secret.txt`, true},
+		{"absolute path windows drive slash", "C:/Users/agent/secret.txt", true},
+		{"absolute path windows rooted", `\Users\agent\secret.txt`, true},
+		{"absolute path windows unc", `\\server\share\secret.txt`, true},
 
 		// ── GIVEN: control characters in path → THEN: rejected ──
 		{"null byte", "file\x00.txt", true},
