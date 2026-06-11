@@ -500,22 +500,23 @@ func TestCanonicalSelectAndCompareHelpers(t *testing.T) {
 
 func TestNormalizePluralReferenceValues(t *testing.T) {
 	cases := []struct {
-		name   string
-		in     []string
-		prefix string
-		want   []string
+		name string
+		in   []string
+		want []string
 	}{
-		{"repeated single values", []string{"fldA", "fldB"}, "fld", []string{"fldA", "fldB"}},
-		{"json array", []string{`["fldA","fldB"]`}, "fld", []string{"fldA", "fldB"}},
-		{"comma separated ids", []string{"fldA, fldB"}, "fld", []string{"fldA", "fldB"}},
-		{"comma inside name kept whole", []string{"销售额,utf"}, "fld", []string{"销售额,utf"}},
-		{"mixed forms", []string{`["fldA"]`, "fldB,fldC", "Name"}, "fld", []string{"fldA", "fldB", "fldC", "Name"}},
-		{"invalid json kept literal", []string{`[fldA`}, "fld", []string{`[fldA`}},
-		{"blank dropped", []string{"  ", "fldA"}, "fld", []string{"fldA"}},
+		{"repeated single values", []string{"fldA", "fldB"}, []string{"fldA", "fldB"}},
+		{"json array", []string{`["fldA","fldB"]`}, []string{"fldA", "fldB"}},
+		{"comma separated ids", []string{"fldA, fldB"}, []string{"fldA", "fldB"}},
+		{"comma separated names", []string{"商品名称,SKU,单价"}, []string{"商品名称", "SKU", "单价"}},
+		{"trailing comma ignored", []string{"recA,recB,"}, []string{"recA", "recB"}},
+		{"fullwidth comma kept whole", []string{"销售额，单价"}, []string{"销售额，单价"}},
+		{"mixed forms", []string{`["fldA"]`, "fldB,fldC", "Name"}, []string{"fldA", "fldB", "fldC", "Name"}},
+		{"invalid json kept literal", []string{`[fldA`}, []string{`[fldA`}},
+		{"blank dropped", []string{"  ", "fldA"}, []string{"fldA"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := normalizePluralReferenceValues(tc.in, tc.prefix); !reflect.DeepEqual(got, tc.want) {
+			if got := normalizePluralReferenceValues(tc.in); !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got=%v want=%v", got, tc.want)
 			}
 		})

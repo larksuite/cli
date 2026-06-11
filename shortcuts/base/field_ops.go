@@ -10,6 +10,12 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+type fieldListTableRef struct {
+	input string
+	id    string
+	name  string
+}
+
 func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -135,7 +141,12 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	fields, total, err := listAllFields(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
+	baseToken := runtime.Str("base-token")
+	tableRef, err := resolveFieldListTableRefs(runtime, baseToken, []string{baseTableID(runtime)})
+	if err != nil {
+		return err
+	}
+	fields, total, err := listAllFields(runtime, baseToken, tableRef[0].id, offset, limit)
 	if err != nil {
 		return err
 	}
@@ -156,10 +167,13 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	baseToken := runtime.Str("base-token")
-	tableRefs := runtime.StrArray("table-id")
+	tableRefs, err := resolveFieldListTableRefs(runtime, baseToken, runtime.StrArray("table-id"))
+	if err != nil {
+		return err
+	}
 	results := make([]map[string]interface{}, 0, len(tableRefs))
 	for _, tableRef := range tableRefs {
-		fields, total, err := listAllFields(runtime, baseToken, tableRef, offset, limit)
+		fields, total, err := listAllFields(runtime, baseToken, tableRef.id, offset, limit)
 		if err != nil {
 			return err
 		}
@@ -169,14 +183,66 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 		if runtime.Bool("compact") {
 			fields = compactFields(fields)
 		}
-		results = append(results, map[string]interface{}{
-			"table_id": tableRef,
+		result := map[string]interface{}{
+			"table_id": tableRef.id,
 			"fields":   fields,
 			"total":    total,
-		})
+		}
+		if tableRef.input != tableRef.id {
+			result["table_ref"] = tableRef.input
+		}
+		if tableRef.name != "" {
+			result["table_name"] = tableRef.name
+		}
+		results = append(results, result)
 	}
 	runtime.Out(map[string]interface{}{"tables": results, "total": len(results)}, nil)
 	return nil
+}
+
+func resolveFieldListTableRefs(runtime *common.RuntimeContext, baseToken string, refs []string) ([]fieldListTableRef, error) {
+	if len(refs) == 0 {
+		return nil, baseValidationErrorf("--table-id is required")
+	}
+	resolved := make([]fieldListTableRef, 0, len(refs))
+	needsTableList := false
+	for _, raw := range refs {
+		ref := strings.TrimSpace(raw)
+		if ref == "" {
+			return nil, baseValidationErrorf("--table-id must not be empty")
+		}
+		if !isBaseTableID(ref) {
+			needsTableList = true
+		}
+		resolved = append(resolved, fieldListTableRef{input: ref, id: ref})
+	}
+	if !needsTableList {
+		return resolved, nil
+	}
+	tables, err := listEveryTable(runtime, baseToken)
+	if err != nil {
+		return nil, err
+	}
+	for i, tableRef := range resolved {
+		if isBaseTableID(tableRef.input) {
+			continue
+		}
+		table, err := resolveTableRef(tables, tableRef.input)
+		if err != nil {
+			return nil, baseValidationErrorf("table %q not found; run +table-list to verify the table name or pass the tbl... ID", tableRef.input)
+		}
+		tableIDValue := tableID(table)
+		if tableIDValue == "" {
+			return nil, baseValidationErrorf("table %q resolved without a table ID; run +table-list and pass the tbl... ID", tableRef.input)
+		}
+		resolved[i].id = tableIDValue
+		resolved[i].name = tableNameFromMap(table)
+	}
+	return resolved, nil
+}
+
+func isBaseTableID(ref string) bool {
+	return strings.HasPrefix(strings.TrimSpace(ref), "tbl")
 }
 
 // compactFields projects each field to the keys an agent needs for selection

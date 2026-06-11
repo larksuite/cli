@@ -149,15 +149,15 @@ func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
 func recordIDFlags(runtime *common.RuntimeContext) []string {
 	return mergeReferenceSources(
 		runtime.StrArray("record-id"),
-		normalizePluralReferenceValues(runtime.StrArray("record-ids"), "rec"),
+		normalizePluralReferenceValues(runtime.StrArray("record-ids")),
 	)
 }
 
 func recordFieldFlags(runtime *common.RuntimeContext) []string {
 	return mergeReferenceSources(
 		runtime.StrArray("field-id"),
-		normalizePluralReferenceValues(runtime.StrArray("field-names"), "fld"),
-		normalizePluralReferenceValues(runtime.StrArray("fields"), "fld"),
+		normalizePluralReferenceValues(runtime.StrArray("field-names")),
+		normalizePluralReferenceValues(runtime.StrArray("fields")),
 	)
 }
 
@@ -183,7 +183,14 @@ func mergeReferenceSources(sources ...[]string) []string {
 	return out
 }
 
-func normalizePluralReferenceValues(values []string, idPrefix string) []string {
+// normalizePluralReferenceValues expands each raw value of a plural alias flag
+// (--field-names / --fields / --record-ids) into individual references. Plural
+// flags carry list semantics, so an ASCII comma is always a separator (eval
+// traces show comma-joined values are exclusively lists, mostly field names);
+// a JSON string array is also accepted. Names that contain a literal ASCII
+// comma must use the singular flag (--field-id), which never splits. Fullwidth
+// "，" and "、" are untouched, so ordinary Chinese names are safe here too.
+func normalizePluralReferenceValues(values []string) []string {
 	var out []string
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -197,23 +204,11 @@ func normalizePluralReferenceValues(values []string, idPrefix string) []string {
 				continue
 			}
 		}
-		if strings.Contains(value, ",") {
-			parts := strings.Split(value, ",")
-			allIDs := true
-			trimmed := make([]string, 0, len(parts))
-			for _, part := range parts {
-				part = strings.TrimSpace(part)
-				trimmed = append(trimmed, part)
-				if !strings.HasPrefix(part, idPrefix) {
-					allIDs = false
-				}
-			}
-			if allIDs {
-				out = append(out, trimmed...)
-				continue
+		for _, part := range strings.Split(value, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
 			}
 		}
-		out = append(out, value)
 	}
 	return out
 }

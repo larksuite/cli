@@ -172,6 +172,24 @@ func listEveryField(runtime *common.RuntimeContext, baseToken, tableID string) (
 	return items, nil
 }
 
+func listEveryTable(runtime *common.RuntimeContext, baseToken string) ([]map[string]interface{}, error) {
+	const pageLimit = 100
+	offset := 0
+	items := []map[string]interface{}{}
+	for {
+		batch, total, err := listAllTables(runtime, baseToken, offset, pageLimit)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, batch...)
+		if len(batch) == 0 || len(batch) < pageLimit || (total > 0 && len(items) >= total) {
+			break
+		}
+		offset += len(batch)
+	}
+	return items, nil
+}
+
 func listEveryView(runtime *common.RuntimeContext, baseToken, tableID string) ([]map[string]interface{}, error) {
 	const pageLimit = 100
 	offset := 0
