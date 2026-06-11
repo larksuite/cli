@@ -4,46 +4,60 @@
 package credential
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/internal/core"
 )
 
-// FetchTAT performs a single HTTP POST to mint a tenant access token with the
-// given credentials. It does not read configuration or keychain, so callers
-// that already hold plaintext credentials (e.g. the post-`config init` probe)
-// can validate them without a second keychain round-trip.
+// FetchTAT performs a single HTTP POST to mint a tenant access token via the
+// unified OAuth 2.0 Token Endpoint ({accounts}/oauth/v3/token) using the
+// client_credentials grant with client_secret_post authentication. It does not
+// read configuration or keychain, so callers that already hold plaintext
+// credentials (e.g. the post-`config init` probe) can validate them without a
+// second keychain round-trip.
 //
-// A non-zero TAT response code means the server inspected the payload and
-// rejected the credentials; FetchTAT returns the canonical typed error from
-// classifyTATResponseCode — the SAME classification doResolveTAT (and thus
-// every token-resolving command) produces, so callers see one consistent
-// envelope (CategoryConfig / SubtypeInvalidClient for 10003 / 10014, etc.).
-// Transport, HTTP-status and JSON-parse failures are returned raw (untyped),
-// leaving them ambiguous; a caller can use errs.IsTyped to tell a deterministic
-// credential rejection apart from upstream/transport noise.
+// A deterministic client-side rejection (e.g. invalid_client) returns the
+// canonical typed error from classifyTATResponseCode — the SAME classification
+// doResolveTAT (and thus every token-resolving command) produces, so callers
+// see one consistent envelope. Transport failures, unreadable/unparseable
+// bodies, and transient server-side failures (5xx / server_error) are returned
+// raw (untyped), leaving them ambiguous; a caller can use errs.IsTyped to tell a
+// deterministic credential rejection apart from upstream/transport noise.
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
-	ep := core.ResolveEndpoints(brand)
-	url := ep.Open + "/open-apis/auth/v3/tenant_access_token/internal"
+	return fetchTAT(ctx, httpClient, brand, appID, appSecret, "")
+}
 
-	body, err := json.Marshal(map[string]string{
-		"app_id":     appID,
-		"app_secret": appSecret,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal TAT request: %w", err)
+// fetchTAT is FetchTAT with an optional space-separated scope list. An empty
+// scope mints the default unscoped TAT (current behavior); a non-empty scope
+// requests a scope-bound TAT (Agent Employee hybrid token carrying the app's
+// granted scopes, used by the missing-scope auto-retry). The server rejects the
+// whole request (invalid_scope) if any requested scope is not granted, so
+// callers must pass only granted scopes.
+func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret, scope string) (string, error) {
+	ep := core.ResolveEndpoints(brand)
+	endpoint := ep.Accounts + core.OAuthTokenV3Path
+
+	form := url.Values{}
+	form.Set("grant_type", "client_credentials")
+	form.Set("client_id", appID)
+	form.Set("client_secret", appSecret)
+	if scope != "" {
+		form.Set("scope", scope)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
@@ -51,20 +65,38 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("TAT API returned HTTP %d", resp.StatusCode)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("failed to read TAT response: %w", err)
 	}
 
 	var result struct {
-		Code              int    `json:"code"`
-		Msg               string `json:"msg"`
-		TenantAccessToken string `json:"tenant_access_token"`
+		Code             int    `json:"code"`
+		AccessToken      string `json:"access_token"`
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("failed to parse TAT response: %w", err)
+	if err := json.Unmarshal(body, &result); err != nil {
+		// An unparseable body is ambiguous (covers non-JSON error pages and
+		// truncated payloads); stay untyped so probe callers treat it as noise.
+		return "", fmt.Errorf("failed to parse TAT response (HTTP %d): %w", resp.StatusCode, err)
 	}
-	if result.Code != 0 {
-		return "", classifyTATResponseCode(result.Code, result.Msg, string(brand), appID)
+
+	if result.Code == 0 && result.AccessToken != "" {
+		return result.AccessToken, nil
 	}
-	return result.TenantAccessToken, nil
+
+	// Transient/server-side failures stay untyped so probe callers stay silent
+	// and retryers can back off; only deterministic client rejections are typed.
+	if resp.StatusCode >= 500 || result.Error == "server_error" || result.Error == "temporarily_unavailable" {
+		return "", fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
+			resp.StatusCode, result.Code, result.Error, result.ErrorDescription)
+	}
+
+	// A 2xx with neither token nor error is a malformed success — ambiguous, untyped.
+	if result.Code == 0 && result.Error == "" {
+		return "", fmt.Errorf("TAT response missing access_token (HTTP %d)", resp.StatusCode)
+	}
+
+	return "", classifyTATResponseCode(result.Code, result.Error, result.ErrorDescription, string(brand), appID)
 }

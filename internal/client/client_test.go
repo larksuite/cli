@@ -660,3 +660,31 @@ func TestCallAPI_ParseJSONFailureWrapsAsAPI(t *testing.T) {
 		t.Errorf("ExitCodeOf = %d, want %d (internal)", output.ExitCodeOf(err), output.ExitInternal)
 	}
 }
+
+// respMissingScope detects the 99991679 (missing_scope) business error that
+// triggers the Agent Employee hybrid-TAT scope auto-retry. Other codes (incl.
+// success and unrelated errors) must not trigger it.
+func TestRespMissingScope(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"missing_scope", `{"code":99991679,"msg":"unauthorized"}`, true},
+		{"success", `{"code":0,"data":{}}`, false},
+		{"other_error", `{"code":99991663,"msg":"forbidden"}`, false},
+		{"empty_body", ``, false},
+		{"not_json", `not json`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &larkcore.ApiResp{RawBody: []byte(tc.body)}
+			if got := respMissingScope(resp); got != tc.want {
+				t.Errorf("respMissingScope(%q) = %v, want %v", tc.body, got, tc.want)
+			}
+		})
+	}
+	if respMissingScope(nil) {
+		t.Error("respMissingScope(nil) must be false")
+	}
+}

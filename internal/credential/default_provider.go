@@ -19,22 +19,25 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 )
 
-// classifyTATResponseCode wraps a non-zero TAT endpoint response code into the
-// canonical typed error. The TAT mint endpoint reports invalid credentials
-// with two distinct codes:
+// classifyTATResponseCode wraps a deterministic (non-transient) failure from the
+// unified Token Endpoint into the canonical typed errs.* error. The v3 endpoint
+// reports failures using the OAuth 2.0 model — an `error` string plus an
+// optional numeric `code` — instead of the legacy `{code, msg}` shape.
 //
-//   - 10003: bad app_id format or non-existent app_id ("invalid param")
-//   - 10014: invalid app_secret ("app secret invalid")
-//
-// Both surface as CategoryConfig/InvalidClient from the user's perspective —
-// the configured credentials cannot mint a tenant access token. 10014 is
-// globally mapped in codemeta (TAT-mint-specific variant of OAuth 99991543).
-// 10003 is NOT globally mapped because in other Lark endpoints it carries
-// unrelated semantics (e.g. task API uses 10003 for permission denied), so
-// the override stays local to this TAT call site instead of leaking into the
-// shared codemeta table.
-func classifyTATResponseCode(code int, msg, brand, appID string) error {
-	if code == 10003 {
+// invalid_client / unauthorized_client mean the configured app_id/app_secret
+// cannot mint a token; from the user's perspective that is the same actionable
+// CategoryConfig/InvalidClient failure the legacy 10003/10014 codes produced.
+// Every other deterministic error falls through to BuildAPIError, which still
+// yields a typed error so probe callers (errs.IsTyped) surface it rather than
+// swallowing it. Transient/server-side failures (5xx / server_error) are
+// filtered out by FetchTAT before this is called, so they stay untyped.
+func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) error {
+	msg := errDesc
+	if msg == "" {
+		msg = oauthErr
+	}
+	switch oauthErr {
+	case "invalid_client", "unauthorized_client":
 		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
 			WithCode(code).
 			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
@@ -117,7 +120,7 @@ func (p *DefaultTokenProvider) ResolveToken(ctx context.Context, req TokenSpec) 
 	case TokenTypeUAT:
 		return p.resolveUAT(ctx)
 	case TokenTypeTAT:
-		return p.resolveTAT(ctx)
+		return p.resolveTAT(ctx, req.Scopes)
 	default:
 		return nil, fmt.Errorf("unsupported token type: %s", req.Type)
 	}
@@ -146,16 +149,22 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
-// resolveTAT resolves a tenant access token. Result is cached after first call.
-// NOTE: Uses sync.Once — only the context from the first call is used.
-func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
+// resolveTAT resolves a tenant access token. The default (unscoped) result is
+// cached after first call via sync.Once — only the context from the first call
+// is used. A scoped request (scopes != "") always mints fresh and is NOT cached:
+// it is the rare missing-scope auto-retry path, and the caller (APIClient) holds
+// its own cache for the resulting full-scope token.
+func (p *DefaultTokenProvider) resolveTAT(ctx context.Context, scopes string) (*TokenResult, error) {
+	if scopes != "" {
+		return p.doResolveTAT(ctx, scopes)
+	}
 	p.tatOnce.Do(func() {
-		p.tatResult, p.tatErr = p.doResolveTAT(ctx)
+		p.tatResult, p.tatErr = p.doResolveTAT(ctx, "")
 	})
 	return p.tatResult, p.tatErr
 }
 
-func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, error) {
+func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context, scopes string) (*TokenResult, error) {
 	acct, err := p.defaultAcct.ResolveAccount(ctx)
 	if err != nil {
 		return nil, err
@@ -164,9 +173,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	if err != nil {
 		return nil, err
 	}
-	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
+	token, err := fetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret, scopes)
 	if err != nil {
 		return nil, err
 	}
-	return &TokenResult{Token: token}, nil
+	return &TokenResult{Token: token, Scopes: scopes}, nil
 }

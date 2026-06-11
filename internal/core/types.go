@@ -22,6 +22,12 @@ func ParseBrand(value string) LarkBrand {
 	return BrandFeishu
 }
 
+// OAuthTokenV3Path is the unified OAuth 2.0 Token Endpoint path on the accounts
+// domain. It serves every grant type (client_credentials for TAT,
+// authorization_code / device_code / refresh_token for UAT) and replaces the
+// legacy per-token endpoints (e.g. /open-apis/auth/v3/tenant_access_token/internal).
+const OAuthTokenV3Path = "/oauth/v3/token"
+
 // Endpoints holds resolved endpoint URLs for different Lark services.
 type Endpoints struct {
 	Open     string // e.g. "https://open.feishu.cn"
