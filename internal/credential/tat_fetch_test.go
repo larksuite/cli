@@ -119,6 +119,26 @@ func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
 	}
 }
 
+// A deterministic OAuth error that arrives WITHOUT a numeric code (code defaults to
+// 0) must still surface as a non-nil typed error — never the ("", nil) success pair.
+// Guards the code-0 backstop in classifyTATResponseCode: BuildAPIError returns nil
+// for code 0, which would otherwise swallow this rejection into an empty-token success.
+func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_scope","error_description":"the requested scope is not granted"}`}
+	hc := &http.Client{Transport: rt}
+
+	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected non-nil error for code-0 invalid_scope (must not return empty token + nil error)")
+	}
+	if tok != "" {
+		t.Errorf("token = %q, want empty", tok)
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+}
+
 // Transient server-side failures (5xx / server_error) are NOT deterministic
 // credential rejections — they must stay UNTYPED so a probe caller treats them
 // as upstream noise and stays silent (and retryers can back off).

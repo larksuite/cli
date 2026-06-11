@@ -42,13 +42,21 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 			WithCode(code).
 			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
 	}
-	return errclass.BuildAPIError(map[string]any{
+	if err := errclass.BuildAPIError(map[string]any{
 		"code": code,
 		"msg":  msg,
 	}, errclass.ClassifyContext{
 		Brand: brand,
 		AppID: appID,
-	})
+	}); err != nil {
+		return err
+	}
+	// BuildAPIError returns nil for code 0 (Feishu's success convention), but this
+	// function is only reached once fetchTAT has ruled out success — a non-credential
+	// OAuth error (e.g. invalid_scope) can arrive with code 0 and is still a
+	// deterministic rejection. Back it with a typed APIError so callers never receive
+	// the ("", nil) "empty token, no error" pair.
+	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).WithCode(code)
 }
 
 // DefaultAccountProvider resolves account from config.json via keychain.

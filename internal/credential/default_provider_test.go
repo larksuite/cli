@@ -72,3 +72,23 @@ func TestClassifyTATResponseCode_OtherErrorFallsThrough(t *testing.T) {
 		t.Fatalf("invalid_scope must not be classified as ConfigError, got %T", err)
 	}
 }
+
+// TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped pins the code-0
+// backstop: a non-credential OAuth error (e.g. invalid_scope) that arrives with no
+// numeric code (code 0) must still produce a non-nil typed error. BuildAPIError
+// returns nil for code 0 (Feishu's success convention); without the backstop,
+// fetchTAT would surface this deterministic rejection as ("", nil) — an empty token
+// with no error.
+func TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped(t *testing.T) {
+	err := classifyTATResponseCode(0, "invalid_scope", "the requested scope is not granted", "feishu", "cli_app_x")
+	if err == nil {
+		t.Fatal("expected non-nil error for code-0 invalid_scope (must not be swallowed as success)")
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+	var cfgErr *errs.ConfigError
+	if errors.As(err, &cfgErr) {
+		t.Fatalf("code-0 invalid_scope must not be a ConfigError, got %T", err)
+	}
+}
