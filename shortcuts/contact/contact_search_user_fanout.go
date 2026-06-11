@@ -45,6 +45,7 @@ type fanoutResult struct {
 	Query   string
 	Users   []searchUser
 	HasMore bool
+	Notice  string
 	ErrMsg  string // empty = success
 	Err     error  // original failure, kept for typed all-failed propagation
 }
@@ -94,7 +95,7 @@ func runOneQuery(ctx context.Context, runtime *common.RuntimeContext, index int,
 	}
 
 	users, hasMore := projectUsers(respData, runtime.Str("lang"), runtime.Config.Brand)
-	return fanoutResult{Index: index, Query: query, Users: users, HasMore: hasMore}
+	return fanoutResult{Index: index, Query: query, Users: users, HasMore: hasMore, Notice: respData.Notice}
 }
 
 func fanoutErrorResult(index int, query string, err error) fanoutResult {
@@ -113,11 +114,13 @@ type querySummary struct {
 	Query   string `json:"query"`
 	Error   string `json:"error,omitempty"`
 	HasMore bool   `json:"has_more"`
+	Notice  string `json:"notice,omitempty"`
 }
 
 type fanoutResponse struct {
 	Users   []fanoutUser   `json:"users"`
 	Queries []querySummary `json:"queries"`
+	Notice  string         `json:"notice,omitempty"`
 }
 
 // buildFanoutResponse walks results by Index (input order), flattens users[]
@@ -142,6 +145,7 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 			Query:   queries[i],
 			Error:   r.ErrMsg,
 			HasMore: r.HasMore,
+			Notice:  r.Notice,
 		})
 		if r.ErrMsg != "" {
 			failed++
@@ -151,6 +155,9 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 				firstErr = r.Err
 			}
 			continue
+		}
+		if out.Notice == "" {
+			out.Notice = r.Notice
 		}
 		for _, u := range r.Users {
 			out.Users = append(out.Users, fanoutUser{searchUser: u, MatchedQuery: queries[i]})

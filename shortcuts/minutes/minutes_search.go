@@ -308,6 +308,9 @@ var MinutesSearch = common.Shortcut{
 			"has_more":   data["has_more"],
 			"page_token": data["page_token"],
 		}
+		if notice, _ := data["notice"].(string); notice != "" {
+			outData["notice"] = notice
+		}
 
 		runtime.OutFormat(outData, &output.Meta{Count: len(rows)}, func(w io.Writer) {
 			if len(rows) == 0 {

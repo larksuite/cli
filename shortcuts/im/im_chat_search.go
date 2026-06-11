@@ -142,6 +142,9 @@ var ImChatSearch = common.Shortcut{
 			"has_more":   hasMore,
 			"page_token": pageToken,
 		}
+		if notice, _ := resData["notice"].(string); notice != "" {
+			outData["notice"] = notice
+		}
 		if mfOut.Meta.Applied != "" {
 			outData["filter"] = MuteFilterMetaToMap(mfOut.Meta)
 		}

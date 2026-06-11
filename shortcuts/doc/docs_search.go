@@ -74,6 +74,9 @@ var DocsSearch = common.Shortcut{
 			"page_token": data["page_token"],
 			"results":    normalizedItems,
 		}
+		if notice, _ := data["notice"].(string); notice != "" {
+			resultData["notice"] = notice
+		}
 
 		runtime.OutFormat(resultData, &output.Meta{Count: len(normalizedItems)}, func(w io.Writer) {
 			if len(normalizedItems) == 0 {

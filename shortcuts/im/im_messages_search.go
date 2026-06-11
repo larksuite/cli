@@ -91,7 +91,7 @@ var ImMessagesSearch = common.Shortcut{
 			return err
 		}
 
-		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, err := searchMessages(runtime, req)
+		rawItems, hasMore, nextPageToken, truncatedByLimit, pageLimit, notice, err := searchMessages(runtime, req)
 		if err != nil {
 			return err
 		}
@@ -102,6 +102,9 @@ var ImMessagesSearch = common.Shortcut{
 				"total":      0,
 				"has_more":   hasMore,
 				"page_token": nextPageToken,
+			}
+			if notice != "" {
+				outData["notice"] = notice
 			}
 			runtime.OutFormat(outData, nil, func(w io.Writer) {
 				fmt.Fprintln(w, "No matching messages found.")
@@ -130,6 +133,9 @@ var ImMessagesSearch = common.Shortcut{
 				"has_more":    hasMore,
 				"page_token":  nextPageToken,
 				"note":        "failed to fetch message details, returning ID list only",
+			}
+			if notice != "" {
+				outData["notice"] = notice
 			}
 			runtime.OutFormat(outData, nil, func(w io.Writer) {
 				fmt.Fprintf(w, "Found %d messages (failed to fetch details):\n", len(messageIds))
@@ -205,6 +211,9 @@ var ImMessagesSearch = common.Shortcut{
 			"total":      len(enriched),
 			"has_more":   hasMore,
 			"page_token": nextPageToken,
+		}
+		if notice != "" {
+			outData["notice"] = notice
 		}
 		runtime.OutFormat(outData, nil, func(w io.Writer) {
 			if len(enriched) == 0 {
@@ -392,7 +401,7 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 	return autoPaginate, pageLimit
 }
 
-func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, error) {
+func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 	pageToken := ""
 	if tokens := req.params["page_token"]; len(tokens) > 0 {
@@ -410,6 +419,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 		lastPageToken    string
 		truncatedByLimit bool
 		pageCount        int
+		notice           string
 	)
 
 	for {
@@ -423,9 +433,12 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 
 		searchData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages/search", params, req.body)
 		if err != nil {
-			return nil, false, "", false, pageLimit, err
+			return nil, false, "", false, pageLimit, "", err
 		}
 
+		if notice == "" {
+			notice, _ = searchData["notice"].(string)
+		}
 		items, _ := searchData["items"].([]interface{})
 		allItems = append(allItems, items...)
 		lastHasMore, lastPageToken = common.PaginationMeta(searchData)
@@ -441,7 +454,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 		pageToken = lastPageToken
 	}
 
-	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, nil
+	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, notice, nil
 }
 
 func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {

@@ -1480,12 +1480,13 @@ func boolPtr(v bool) *bool { return &v }
 
 func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 	tests := []struct {
-		name      string
-		mailbox   string
-		format    string
-		args      []string
-		register  func(*httpmock.Registry, string)
-		wantCount int
+		name       string
+		mailbox    string
+		format     string
+		args       []string
+		register   func(*httpmock.Registry, string)
+		wantCount  int
+		wantNotice string
 	}{
 		{
 			name:    "list json default mailbox",
@@ -1522,9 +1523,10 @@ func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 			register: func(reg *httpmock.Registry, mailbox string) {
 				registerMailTriageSearchStub(reg, mailbox, []interface{}{
 					mailTriageSearchItem("search_pub_001", "Shared search"),
-				}, false, "")
+				}, false, "", "The query is too long and has been truncated to the first 50 characters for search.")
 			},
-			wantCount: 1,
+			wantCount:  1,
+			wantNotice: "The query is too long and has been truncated to the first 50 characters for search.",
 		},
 		{
 			name:    "empty list json keeps top-level mailbox",
@@ -1558,6 +1560,9 @@ func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 			data := decodeMailTriageJSONOutput(t, stdout)
 			if data["mailbox_id"] != tt.mailbox {
 				t.Fatalf("top-level mailbox_id mismatch: got %v, want %q", data["mailbox_id"], tt.mailbox)
+			}
+			if tt.wantNotice != "" && data["notice"] != tt.wantNotice {
+				t.Fatalf("notice mismatch: got %v, want %q", data["notice"], tt.wantNotice)
 			}
 			messages := mailTriageMessagesFromOutput(t, data)
 			if len(messages) != tt.wantCount {
@@ -1715,13 +1720,16 @@ func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, message
 	})
 }
 
-func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string) {
+func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string, notices ...string) {
 	data := map[string]interface{}{
 		"items":    items,
 		"has_more": hasMore,
 	}
 	if pageToken != "" {
 		data["page_token"] = pageToken
+	}
+	if len(notices) > 0 && notices[0] != "" {
+		data["notice"] = notices[0]
 	}
 	reg.Register(&httpmock.Stub{
 		Method: "POST",

@@ -85,6 +85,7 @@ type searchUserAPIData struct {
 	Items     []searchUserAPIItem `json:"items"`
 	HasMore   bool                `json:"has_more"`
 	PageToken string              `json:"page_token"`
+	Notice    string              `json:"notice"`
 }
 
 type searchUserAPIItem struct {
@@ -126,6 +127,7 @@ type searchUser struct {
 type searchUserResponse struct {
 	Users   []searchUser `json:"users"`
 	HasMore bool         `json:"has_more"`
+	Notice  string       `json:"notice,omitempty"`
 }
 
 var ContactSearchUser = common.Shortcut{
@@ -222,7 +224,7 @@ func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext
 	}
 
 	users, hasMore := projectUsers(respData, runtime.Str("lang"), runtime.Config.Brand)
-	out := searchUserResponse{Users: users, HasMore: hasMore}
+	out := searchUserResponse{Users: users, HasMore: hasMore, Notice: respData.Notice}
 
 	runtime.OutFormat(out, &output.Meta{Count: len(users)}, func(w io.Writer) {
 		if len(users) == 0 {

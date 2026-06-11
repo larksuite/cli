@@ -569,6 +569,7 @@ func searchUserStub() *httpmock.Stub {
 		Body: map[string]interface{}{
 			"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
+				"notice": "The query is too long and has been truncated to the first 50 characters for search.",
 				"items": []interface{}{
 					map[string]interface{}{
 						"id": "ou_a",
@@ -630,6 +631,9 @@ func TestSearchUser_Integration_JSONStructuredFields(t *testing.T) {
 	data, ok := got["data"].(map[string]interface{})
 	if !ok {
 		t.Fatalf("envelope.data: expected object, got %v\nraw=%s", got["data"], stdout.String())
+	}
+	if data["notice"] != "The query is too long and has been truncated to the first 50 characters for search." {
+		t.Fatalf("data.notice = %v", data["notice"])
 	}
 	users, _ := data["users"].([]interface{})
 	if len(users) != 1 {
@@ -1406,6 +1410,7 @@ func TestFanout_PartialFailure_ExitZero(t *testing.T) {
 		BodyFilter: func(b []byte) bool { return strings.Contains(string(b), `"alice"`) },
 		Body: map[string]interface{}{"code": 0, "msg": "ok",
 			"data": map[string]interface{}{
+				"notice":   "The query is too long and has been truncated to the first 50 characters for search.",
 				"items":    []interface{}{map[string]interface{}{"id": "ou_a"}},
 				"has_more": false,
 			}},
@@ -1432,9 +1437,16 @@ func TestFanout_PartialFailure_ExitZero(t *testing.T) {
 	if len(users) != 1 {
 		t.Errorf("users: expected 1 (alice), got %d; stdout=%s", len(users), stdout.String())
 	}
+	if data["notice"] != "The query is too long and has been truncated to the first 50 characters for search." {
+		t.Fatalf("data.notice = %v", data["notice"])
+	}
 	queries := data["queries"].([]interface{})
 	if len(queries) != 2 {
 		t.Fatalf("queries: expected 2, got %d", len(queries))
+	}
+	q0 := queries[0].(map[string]interface{})
+	if q0["notice"] != "The query is too long and has been truncated to the first 50 characters for search." {
+		t.Fatalf("queries[0].notice = %v", q0["notice"])
 	}
 	q1 := queries[1].(map[string]interface{})
 	if !strings.HasPrefix(q1["error"].(string), "HTTP 500") {
