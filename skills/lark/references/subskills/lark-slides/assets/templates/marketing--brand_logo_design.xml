@@ -1,0 +1,1347 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>品牌标志设计</title>
+  <theme>
+    <textStyles>
+      <title/>
+      <headline/>
+      <sub-headline/>
+      <body fontColor="#000000FF"/>
+      <caption fontColor="rgba(155, 157, 160, 1)" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="Nz5gb0JwQoKtbWxj6vScCVdlnDg" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="206" height="62" topLeftX="60" topLeftY="413" type="slides-full-round-rect">
+        <border color="rgba(0, 0, 0, 1)" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="124" height="41" topLeftX="82" topLeftY="424" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="14">April XX, 2026</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <line startX="215" startY="445" endX="245" endY="445">
+        <border lineCap="square" lineJoin="miter" miterLimit="10"/>
+        <endArrow type="arrow"/>
+      </line>
+      <shape width="157" height="42" topLeftX="60" topLeftY="170" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(203, 205, 208, 1)">
+          <p letterSpacing="1">
+            <span color="rgba(203, 205, 208, 1)">XX 品牌</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="454" height="110" topLeftX="46" topLeftY="211" type="text">
+        <content textType="title" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="60" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="60">品牌标志设计</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="132" height="41" topLeftX="85" topLeftY="54" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(31, 35, 41, 1)" bold="false">
+          <p>
+            <span color="rgba(31, 35, 41, 1)" fontSize="14" bold="false">YOUR LOGO</span>
+          </p>
+        </content>
+      </shape>
+      <img src="DD33b3w3XovpT9xFZpqco0TynEe" width="12" height="25" topLeftX="60" topLeftY="62" alpha="0.9">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="DD33b3w3XovpT9xFZpqco0TynEe" width="12" height="25" topLeftX="74" topLeftY="62" alpha="0.9">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="124" height="38" topLeftX="787" topLeftY="57" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(0, 0, 0, 1)" bold="false" textAlign="right">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="12" bold="false">YOUR TEAM</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(28, 102, 246, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="DYM4b6dzCoMD5gx4sn4cdPYlnxg" width="312" height="402" topLeftX="0" topLeftY="0" rotation="180">
+        <crop type="rect" leftOffset="0" rightOffset="86" topOffset="0" bottomOffset="186" presetHandlers="0"/>
+      </img>
+      <img src="ILOUbaURToeRBCx5VxicLMsKnsb" width="432" height="203" topLeftX="528" topLeftY="0">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="K8w1bqqEzoTR1bxSqC2cZaQKnmM" width="216" height="337" topLeftX="744" topLeftY="203">
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="95" presetHandlers="0"/>
+      </img>
+      <shape width="357" height="44" topLeftX="471" topLeftY="371" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="16">品牌标志方案二</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="357" height="44" topLeftX="471" topLeftY="308" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="16">品牌标志方案一</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="357" height="44" topLeftX="471" topLeftY="246" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="16">设计目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="357" height="44" topLeftX="471" topLeftY="181" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="16">品牌背景</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="57" height="56" topLeftX="414" topLeftY="365" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="57" height="56" topLeftX="414" topLeftY="302" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="57" height="56" topLeftX="414" topLeftY="240" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="57" height="56" topLeftX="414" topLeftY="175" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="24" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>01</p>
+        </content>
+      </shape>
+      <shape width="355" height="83" topLeftX="47" topLeftY="163" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="42" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.949)" fontSize="42">目录</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(251, 251, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="960" height="540" topLeftX="0" topLeftY="0" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(306deg,rgba(255, 255, 255, 1) 0%,rgba(255, 255, 255, 1) 26%,rgba(230, 241, 255, 0.1) 63%,rgba(8, 120, 255, 0.11) 100%)"/>
+        </fill>
+      </shape>
+      <img src="CfGzbrtZQogLbGxoQ6NcBVgTnud" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="311" height="291" topLeftX="-10" topLeftY="239" rotation="270" alpha="0.4" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(90deg,rgba(19, 123, 255, 0) 0%,rgba(173, 230, 253, 0.4) 100%)"/>
+        </fill>
+      </shape>
+      <img src="FW7dbP5C1ol5nXxuNxEcNewknTd" width="210" height="295" topLeftX="250" topLeftY="-43" rotation="90" alpha="0.12">
+        <crop type="rect" leftOffset="50" rightOffset="0" topOffset="0" bottomOffset="87" presetHandlers="0"/>
+      </img>
+      <img src="I8dFbBRi4o5BJCx4XgycfspKnxI" width="362" height="540" topLeftX="0" topLeftY="0" exposure="12" contrast="-11" saturation="22" temperature="-82">
+        <crop type="rect" leftOffset="13" rightOffset="31" topOffset="7" bottomOffset="62" presetHandlers="0"/>
+      </img>
+      <shape width="106" height="106" topLeftX="302" topLeftY="105" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="4" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <icon width="64" height="64" topLeftX="322" topLeftY="126" iconType="iconpark/Abstract/graphic-stitching.svg">
+        <border color="rgba(255, 255, 255, 1)" width="3" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="235" height="77" topLeftX="451" topLeftY="118" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="38">品牌背景</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="44" topLeftX="453" topLeftY="203" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">背景一</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="62" topLeftX="453" topLeftY="233" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(155, 157, 160, 1)" textAlign="left">
+          <p>
+            <span color="rgba(155, 157, 160, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="44" topLeftX="453" topLeftY="313" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="left">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">背景二</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="332" height="62" topLeftX="453" topLeftY="343" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(155, 157, 160, 1)" textAlign="left">
+          <p>
+            <span color="rgba(155, 157, 160, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillColor color="rgba(251, 251, 251, 1)"/>
+      </fill>
+    </style>
+    <data>
+      <img src="V3PFbTK7oo0k82x2N1Rcu5x0nBc" width="344" height="412" topLeftX="0" topLeftY="0" alpha="0.15">
+        <crop type="rect" leftOffset="81" rightOffset="0" topOffset="172" bottomOffset="43" presetHandlers="0"/>
+      </img>
+      <img src="X9O3bMXTQoPTsSxLF9XciJtwnAf" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <img src="PT8Vb5020oH4AjxP0hacPvwDnhq" width="540" height="960" topLeftX="455" topLeftY="510" rotation="270" alpha="0.5">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="249" height="77" topLeftX="47" topLeftY="150" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="38">设计目标</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="244" height="83" topLeftX="52" topLeftY="227" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)" textAlign="left">
+          <p>
+            <span color="rgba(121, 124, 129, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="236" height="44" topLeftX="683" topLeftY="174" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">目标二</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="684" topLeftY="207" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)">
+          <p>
+            <span color="rgba(121, 124, 129, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="78" height="78" topLeftX="683" topLeftY="91" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <icon width="40" height="40" topLeftX="702" topLeftY="110" iconType="iconpark/Charts/chart-proportion.svg">
+        <border color="linear-gradient(141deg,rgba(243, 249, 255, 1) 0%,rgba(244, 248, 253, 1) 27%,rgba(245, 246, 246, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="236" height="44" topLeftX="683" topLeftY="401" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">目标四</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="684" topLeftY="434" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)">
+          <p>
+            <span color="rgba(121, 124, 129, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="78" height="78" topLeftX="683" topLeftY="318" type="ellipse">
+        <fill>
+          <fillColor color="rgba(16, 117, 239, 1)"/>
+        </fill>
+      </shape>
+      <icon width="40" height="40" topLeftX="702" topLeftY="337" iconType="iconpark/Abstract/triangular-pyramid.svg">
+        <border color="linear-gradient(141deg,rgba(243, 249, 255, 1) 0%,rgba(244, 248, 253, 1) 27%,rgba(245, 246, 246, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="236" height="44" topLeftX="396" topLeftY="401" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">目标三</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="397" topLeftY="434" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)">
+          <p>
+            <span color="rgba(121, 124, 129, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="78" height="78" topLeftX="396" topLeftY="318" type="ellipse">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <icon width="40" height="40" topLeftX="415" topLeftY="337" iconType="iconpark/Operate/color-filter.svg">
+        <border color="linear-gradient(141deg,rgba(243, 249, 255, 1) 0%,rgba(244, 248, 253, 1) 27%,rgba(245, 246, 246, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <line startX="653" startY="91" endX="653" endY="502">
+        <border color="rgba(203, 205, 208, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="370" startY="292" endX="905" endY="292">
+        <border color="rgba(203, 205, 208, 1)" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="236" height="44" topLeftX="396" topLeftY="174" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">目标一</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="236" height="74" topLeftX="397" topLeftY="207" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)">
+          <p>
+            <span color="rgba(121, 124, 129, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="78" height="78" topLeftX="396" topLeftY="91" type="ellipse">
+        <fill>
+          <fillColor color="rgba(16, 117, 239, 1)"/>
+        </fill>
+      </shape>
+      <icon width="40" height="40" topLeftX="415" topLeftY="110" iconType="iconpark/Base/system.svg">
+        <border color="linear-gradient(141deg,rgba(243, 249, 255, 1) 0%,rgba(244, 248, 253, 1) 27%,rgba(245, 246, 246, 1) 100%)" width="2" lineJoin="miter" miterLimit="10"/>
+      </icon>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="BsaXbZFhXosMIaxe1q3cwVGinxh" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="318" startY="298" endX="642" endY="298">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="879" height="41" topLeftX="40" topLeftY="308" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(78, 86, 102, 1)" textAlign="center">
+          <p letterSpacing="1">
+            <span color="rgba(78, 86, 102, 1)" fontSize="14">副标题信息</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="879" height="83" topLeftX="40" topLeftY="210" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="42" color="rgba(0, 0, 0, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="42">品牌标志方案一</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="U9PNbCv3Loi5WNxYxvjclLXmn3e" width="241" height="540" topLeftX="-2" topLeftY="0" flipY="true" exposure="18" contrast="-7" saturation="14" temperature="-69">
+        <crop type="rect" leftOffset="15" rightOffset="14" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="-2" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="21" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="-2" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(255, 255, 255, 0.8) 0%,rgba(255, 255, 255, 0.4) 59%,rgba(255, 255, 255, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="21" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(0, 0, 0, 1)" bold="true">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="31" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="21" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(0, 0, 0, 1)">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="GRNXbSx7OoO9Lhx1YEBctcvunKc" width="241" height="540" topLeftX="480" topLeftY="0" rotation="180" exposure="9" temperature="-42">
+        <crop type="rect" leftOffset="150" rightOffset="150" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="480" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="503" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="480" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(255, 255, 255, 0.8) 0%,rgba(255, 255, 255, 0.4) 59%,rgba(255, 255, 255, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="503" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(0, 0, 0, 1)" bold="true">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="513" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="503" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(0, 0, 0, 1)">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="Jys9bL5AYoTbL7xxuGFcddJvnzz" width="241" height="540" topLeftX="719" topLeftY="0" exposure="14" contrast="-5" saturation="11" temperature="-26">
+        <crop type="rect" leftOffset="15" rightOffset="14" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="719" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="742" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="719" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(0, 0, 0, 0.8) 0%,rgba(0, 0, 0, 0.4) 59%,rgba(0, 0, 0, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="742" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="751" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(243, 244, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="742" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="HNMDbk5Afo4U9cx6RFec78s4npm" width="241" height="540" topLeftX="239" topLeftY="0" exposure="20" contrast="5" saturation="11" temperature="-20">
+        <crop type="rect" leftOffset="15" rightOffset="14" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="194" height="56" topLeftX="263" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="56" topLeftX="262" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="105" topLeftX="239" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="194" height="56" topLeftX="263" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="239" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(0, 0, 0, 0.8) 0%,rgba(0, 0, 0, 0.4) 59%,rgba(0, 0, 0, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="262" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="271" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(243, 244, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="262" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="192" height="44" topLeftX="852" topLeftY="717" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="480" height="540" topLeftX="480" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="218" height="218" topLeftX="611" topLeftY="161" type="ellipse">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="218" height="218" topLeftX="611" topLeftY="161" presetHandlers="16" type="round-rect">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="161" height="161" topLeftX="639" topLeftY="189" presetHandlers="16" type="round-rect">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="551" startY="270" endX="889" endY="270">
+        <border color="rgba(203, 205, 208, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="720" startY="127" endX="720" endY="413">
+        <border color="rgba(203, 205, 208, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="183" height="183" topLeftX="629" topLeftY="179" iconType="iconpark/Abstract/two-ellipses.svg">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(251, 251, 251, 1)" width="9" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="480" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="217" height="217" topLeftX="130" topLeftY="163" type="ellipse">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="217" height="217" topLeftX="130" topLeftY="163" presetHandlers="16" type="round-rect">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="161" height="161" topLeftX="158" topLeftY="191" presetHandlers="16" type="round-rect">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="70" startY="271" endX="408" endY="271">
+        <border color="rgba(129, 132, 135, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="239" startY="128" endX="239" endY="414">
+        <border color="rgba(129, 132, 135, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="182" height="182" topLeftX="148" topLeftY="180" iconType="iconpark/Abstract/two-ellipses.svg">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="9" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="389" height="56" topLeftX="522" topLeftY="445" rotation="360" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)" textAlign="left">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="389" height="53" topLeftX="45" topLeftY="445" rotation="360" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(243, 244, 246, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="22">设计方案一</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="V4dIb4GvwoHVZ3xEqMmcvcMfnPc" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="303" height="83" topLeftX="52" topLeftY="229" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(251, 251, 251, 1)" textAlign="left">
+          <p>
+            <span color="rgba(251, 251, 251, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="V3PFbTK7oo0k82x2N1Rcu5x0nBc" width="344" height="412" topLeftX="0" topLeftY="0" alpha="0.15">
+        <crop type="rect" leftOffset="81" rightOffset="0" topOffset="172" bottomOffset="43" presetHandlers="0"/>
+      </img>
+      <img src="X9O3bMXTQoPTsSxLF9XciJtwnAf" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="864" height="62" topLeftX="47" topLeftY="411" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)" textAlign="left">
+          <p>
+            <span color="rgba(121, 124, 129, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。它们有多种用途，是演讲和教学的有力工具。如果您想在演示文稿中展现内容，可以选择多种可以选择多种方式。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="296" height="263" topLeftX="47" topLeftY="125" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="160" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="false">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="160" fontFamily="Arial Black" bold="false">Aa</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="492" height="51" topLeftX="415" topLeftY="192" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="false">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Arial Black" bold="false">Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="492" height="51" topLeftX="415" topLeftY="239" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="false" letterSpacing="8">
+          <p letterSpacing="8">
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Arial Black" bold="false">1234567890</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="492" height="51" topLeftX="415" topLeftY="286" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="false" letterSpacing="8">
+          <p letterSpacing="8">
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Arial Black">(&lt;!</span>
+            </strong>
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Arial Black" bold="false">#$&amp;?]}</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="355" startY="191" endX="355" endY="338">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="V3PFbTK7oo0k82x2N1Rcu5x0nBc" width="344" height="412" topLeftX="0" topLeftY="0" alpha="0.15">
+        <crop type="rect" leftOffset="81" rightOffset="0" topOffset="172" bottomOffset="43" presetHandlers="0"/>
+      </img>
+      <img src="X9O3bMXTQoPTsSxLF9XciJtwnAf" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="146" height="146" topLeftX="717" topLeftY="103" type="ellipse">
+        <fill>
+          <fillColor color="rgba(134, 219, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.949)" fontSize="28">25%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="717" topLeftY="249" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#86DBFF</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="717" topLeftY="314" type="ellipse">
+        <fill>
+          <fillColor color="rgba(198, 231, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="28">5%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="717" topLeftY="460" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#C6E7FF</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="509" topLeftY="103" type="ellipse">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="30" color="rgba(251, 251, 251, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(251, 251, 251, 1)" fontSize="30">60%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="509" topLeftY="249" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#1C66F6</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="509" topLeftY="314" type="ellipse">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.949)" fontSize="28">10%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="509" topLeftY="460" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#000000</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="249" height="77" topLeftX="47" topLeftY="150" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="38">色彩方案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="360" height="104" topLeftX="52" topLeftY="227" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)" textAlign="left">
+          <p>
+            <span color="rgba(121, 124, 129, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。它们有多种用途，是演讲和教学的有力工具。如果您想在演示文稿中展现内容，可以选择多种可以选择多种方式。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="W9b6bRk6xoEMZJxK9SicuaaLnKp" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="318" startY="298" endX="642" endY="298">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <shape width="879" height="41" topLeftX="40" topLeftY="308" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(78, 86, 102, 1)" textAlign="center">
+          <p letterSpacing="1">
+            <span color="rgba(78, 86, 102, 1)" fontSize="14">副标题信息</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="879" height="83" topLeftX="40" topLeftY="210" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="42" color="rgba(0, 0, 0, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(0, 0, 0, 1)" fontSize="42">品牌标志方案二</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="KXVybTHCGoY3Gjxsnb5clEdbnud" width="241" height="540" topLeftX="0" topLeftY="0" exposure="18" temperature="-100">
+        <crop type="rect" leftOffset="15" rightOffset="26" topOffset="23" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="0" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="23" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="0" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(255, 255, 255, 0.8) 0%,rgba(255, 255, 255, 0.4) 59%,rgba(255, 255, 255, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="23" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(0, 0, 0, 1)" bold="true">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="33" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="23" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(0, 0, 0, 1)">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="AyzzbZ5KUoncRaxxMwecWRHAnOd" width="241" height="540" topLeftX="480" topLeftY="0" exposure="-7" contrast="-12" saturation="15" temperature="-16">
+        <crop type="rect" leftOffset="15" rightOffset="14" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="480" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="503" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="480" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(255, 255, 255, 0.8) 0%,rgba(255, 255, 255, 0.4) 59%,rgba(255, 255, 255, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="503" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(0, 0, 0, 1)" bold="true">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="513" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="503" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(0, 0, 0, 1)">
+          <p>
+            <span color="rgba(0, 0, 0, 1)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="EiPVblC7pomjKlxdqo1cXl89nBg" width="241" height="540" topLeftX="239" topLeftY="0" rotation="180" flipX="true" flipY="true" saturation="-22">
+        <crop type="rect" leftOffset="31" rightOffset="31" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="194" height="56" topLeftX="262" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="195" height="56" topLeftX="262" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="105" topLeftX="239" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="194" height="56" topLeftX="263" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="239" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(0, 0, 0, 0.8) 0%,rgba(0, 0, 0, 0.4) 59%,rgba(0, 0, 0, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="262" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="271" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(243, 244, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="262" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+      <img src="G3sIb7p4Qounv7xEwkMcuqfRnid" width="241" height="540" topLeftX="719" topLeftY="0" rotation="180" exposure="38" contrast="-8" saturation="9" temperature="-80">
+        <crop type="rect" leftOffset="31" rightOffset="31" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <shape width="241" height="105" topLeftX="719" topLeftY="435" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="56" topLeftX="742" topLeftY="459" alpha="0.9" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="241" height="248" topLeftX="719" topLeftY="0" alpha="0.5" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(0, 0, 0, 0.8) 0%,rgba(0, 0, 0, 0.4) 59%,rgba(0, 0, 0, 0) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="59" topLeftX="742" topLeftY="78" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="26" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="26">风格语言</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="42" height="6" topLeftX="751" topLeftY="66" type="rect">
+        <fill>
+          <fillColor color="rgba(243, 244, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="195" height="38" topLeftX="742" topLeftY="128" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(255, 255, 255, 0.949)">
+          <p>
+            <span color="rgba(255, 255, 255, 0.949)" fontSize="12">演示文稿是一种实用的工具。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <shape width="480" height="540" topLeftX="480" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(28, 102, 246, 1)"/>
+        </fill>
+      </shape>
+      <shape width="218" height="218" topLeftX="611" topLeftY="161" type="ellipse">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="218" height="218" topLeftX="611" topLeftY="161" presetHandlers="16" type="round-rect">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="161" height="161" topLeftX="639" topLeftY="189" presetHandlers="16" type="round-rect">
+        <border color="rgba(143, 156, 180, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="551" startY="270" endX="889" endY="270">
+        <border color="rgba(203, 205, 208, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="720" startY="127" endX="720" endY="413">
+        <border color="rgba(203, 205, 208, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="183" height="183" topLeftX="629" topLeftY="179" iconType="iconpark/Abstract/api-app.svg">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(251, 251, 251, 1)" width="9" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="480" height="540" topLeftX="0" topLeftY="0" presetHandlers="0" type="rect">
+        <fill>
+          <fillColor color="rgba(31, 35, 41, 1)"/>
+        </fill>
+      </shape>
+      <shape width="217" height="217" topLeftX="130" topLeftY="163" type="ellipse">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="217" height="217" topLeftX="130" topLeftY="163" presetHandlers="16" type="round-rect">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <shape width="161" height="161" topLeftX="158" topLeftY="191" presetHandlers="16" type="round-rect">
+        <border color="rgba(62, 63, 65, 1)" dashArray="dash" width="1" lineJoin="miter" miterLimit="10"/>
+      </shape>
+      <line startX="70" startY="271" endX="408" endY="271">
+        <border color="rgba(129, 132, 135, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <line startX="239" startY="128" endX="239" endY="414">
+        <border color="rgba(129, 132, 135, 1)" dashArray="dash" width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+      <icon width="182" height="182" topLeftX="148" topLeftY="180" iconType="iconpark/Abstract/api-app.svg">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="9" lineJoin="miter" miterLimit="10"/>
+      </icon>
+      <shape width="389" height="56" topLeftX="522" topLeftY="445" rotation="360" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="12" color="rgba(243, 244, 246, 1)" textAlign="left">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="12">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="389" height="53" topLeftX="45" topLeftY="445" rotation="360" type="text">
+        <content textType="sub-headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="22" color="rgba(243, 244, 246, 1)" bold="true" textAlign="left">
+          <p>
+            <span color="rgba(243, 244, 246, 1)" fontSize="22">设计方案二</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="132" height="41" topLeftX="85" topLeftY="54" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="false">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" bold="false">YOUR LOGO</span>
+          </p>
+        </content>
+      </shape>
+      <img src="KQ6ubZ4VJoHxRSxjPGecHsdHnNb" width="12" height="25" topLeftX="60" topLeftY="62">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Zte9b4vHRo6CjpxVGRvceHwtnWf" width="12" height="25" topLeftX="74" topLeftY="62">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="124" height="38" topLeftX="787" topLeftY="57" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(251, 251, 251, 1)" bold="false" textAlign="right">
+          <p>
+            <span color="rgba(251, 251, 251, 1)" fontSize="12" bold="false">YOUR TEAM</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="V3PFbTK7oo0k82x2N1Rcu5x0nBc" width="344" height="412" topLeftX="0" topLeftY="0" alpha="0.15">
+        <crop type="rect" leftOffset="81" rightOffset="0" topOffset="172" bottomOffset="43" presetHandlers="0"/>
+      </img>
+      <img src="X9O3bMXTQoPTsSxLF9XciJtwnAf" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="864" height="62" topLeftX="47" topLeftY="411" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)" textAlign="left">
+          <p>
+            <span color="rgba(121, 124, 129, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。它们有多种用途，是演讲和教学的有力工具。如果您想在演示文稿中展现内容，可以选择多种可以选择多种方式。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="296" height="263" topLeftX="47" topLeftY="125" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="160" fontFamily="Trebuchet MS" color="rgba(43, 47, 54, 1)" bold="false" letterSpacing="8">
+          <p letterSpacing="8">
+            <span color="rgba(43, 47, 54, 1)" fontSize="160" fontFamily="Trebuchet MS" bold="false">Aa</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="407" height="51" topLeftX="506" topLeftY="192" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Trebuchet MS" color="rgba(43, 47, 54, 1)" bold="false">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Trebuchet MS" bold="false">Aa Bb Cc Dd Ee Ff Gg Hh Ii Jj Kk Ll Mm Nn</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="407" height="51" topLeftX="506" topLeftY="239" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Trebuchet MS" color="rgba(43, 47, 54, 1)" bold="false" letterSpacing="8">
+          <p letterSpacing="8">
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Trebuchet MS" bold="false">1234567890</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="407" height="51" topLeftX="506" topLeftY="286" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="20" fontFamily="Trebuchet MS" color="rgba(43, 47, 54, 1)" bold="false" letterSpacing="8">
+          <p letterSpacing="8">
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Trebuchet MS">(&lt;!</span>
+            </strong>
+            <span color="rgba(43, 47, 54, 1)" fontSize="20" fontFamily="Trebuchet MS" bold="false">#$&amp;?]}</span>
+          </p>
+        </content>
+      </shape>
+      <line startX="374" startY="197" endX="374" endY="343">
+        <border width="1" lineCap="square" lineJoin="miter" miterLimit="10"/>
+      </line>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style/>
+    <data>
+      <img src="V3PFbTK7oo0k82x2N1Rcu5x0nBc" width="344" height="412" topLeftX="0" topLeftY="0" alpha="0.15">
+        <crop type="rect" leftOffset="81" rightOffset="0" topOffset="172" bottomOffset="43" presetHandlers="0"/>
+      </img>
+      <img src="X9O3bMXTQoPTsSxLF9XciJtwnAf" width="219" height="219" topLeftX="741" topLeftY="321" alpha="0.25">
+        <crop type="rect" leftOffset="63" rightOffset="149" topOffset="38" bottomOffset="175" presetHandlers="0"/>
+      </img>
+      <shape width="146" height="146" topLeftX="717" topLeftY="103" type="ellipse">
+        <fill>
+          <fillColor color="rgba(41, 185, 246, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.949)" fontSize="28">25%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="717" topLeftY="249" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#86DBFF</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="717" topLeftY="314" type="ellipse">
+        <fill>
+          <fillColor color="rgba(225, 234, 255, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>
+            <strong>
+              <span fontSize="28">5%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="717" topLeftY="460" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#C6E7FF</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="509" topLeftY="103" type="ellipse">
+        <fill>
+          <fillColor color="rgba(0, 145, 227, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="30" color="rgba(251, 251, 251, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(251, 251, 251, 1)" fontSize="30">60%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="509" topLeftY="249" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#1C66F6</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="146" topLeftX="509" topLeftY="314" type="ellipse">
+        <fill>
+          <fillColor color="rgba(0, 0, 0, 1)"/>
+        </fill>
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="28" color="rgba(255, 255, 255, 0.949)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 0.949)" fontSize="28">10%</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="146" height="44" topLeftX="509" topLeftY="460" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="16" color="rgba(31, 35, 41, 1)" bold="true" textAlign="center">
+          <p>
+            <strong>
+              <span color="rgba(31, 35, 41, 1)" fontSize="16">#000000</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="360" height="77" topLeftX="47" topLeftY="150" type="text">
+        <content textType="headline" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="38" color="rgba(43, 47, 54, 1)" bold="true">
+          <p>
+            <span color="rgba(43, 47, 54, 1)" fontSize="38">色彩方案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="360" height="104" topLeftX="52" topLeftY="227" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(121, 124, 129, 1)" textAlign="left">
+          <p>
+            <span color="rgba(121, 124, 129, 1)">演示文稿是一种实用的工具，可以是演示，演讲，报告等。大部分时间，它们都是在为观众服务。它们有多种用途，是演讲和教学的有力工具。如果您想在演示文稿中展现内容，可以选择多种可以选择多种方式。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="WsnNbo3j8oXqnWxynaZcVz6knrd" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <shape width="132" height="41" topLeftX="85" topLeftY="54" type="text">
+        <content paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(255, 255, 255, 1)" bold="false">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14" bold="false">YOUR LOGO</span>
+          </p>
+        </content>
+      </shape>
+      <img src="CCJxbunFoosXKRxZiSwcrHKNnXe" width="12" height="25" topLeftX="60" topLeftY="62">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Um3Qb2dr1of3Swxw73Ec5hGlnyb" width="12" height="25" topLeftX="74" topLeftY="62">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="124" height="38" topLeftX="787" topLeftY="57" type="text">
+        <content textType="caption" paddingTop="10" paddingBottom="10" paddingLeft="10" paddingRight="10" fontSize="14" color="rgba(251, 251, 251, 1)" bold="false" textAlign="right">
+          <p>
+            <span color="rgba(251, 251, 251, 1)" fontSize="12" bold="false">YOUR TEAM</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>

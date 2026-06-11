@@ -1,0 +1,2047 @@
+<presentation xmlns="http://www.larkoffice.com/sml/2.0" width="960" height="540">
+  <title>个人简历</title>
+  <theme>
+    <textStyles>
+      <headline fontColor="rgba(31, 35, 41, 1)"/>
+      <sub-headline fontColor="rgba(31, 35, 41, 1)"/>
+      <body fontColor="rgba(31, 35, 41, 1)"/>
+      <caption fontColor="rgba(155, 158, 162, 1)" fontSize="14"/>
+    </textStyles>
+  </theme>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="VLg4b8LG6oAAVqxswv0cLf8znAg" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="LZI4bTrYNouYsQxtF56c7vT9nw5" width="960" height="540" topLeftX="0" topLeftY="0">
+        <crop type="rect" leftOffset="10" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="0"/>
+      </img>
+      <img src="Xm9Tb2nsfomTfixcGh6cZrHZnsQ" width="224" height="255" topLeftX="790" topLeftY="363">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="306">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="217" height="24" topLeftX="272" topLeftY="475" type="text">
+        <content fontSize="16" fontFamily="Arial" color="rgba(222, 224, 227, 1)" bold="false">
+          <p>
+            <span fontFamily="Arial" bold="false">Tel：123456789</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="217" height="24" topLeftX="494" topLeftY="475" type="text">
+        <content fontSize="16" fontFamily="Arial" color="rgba(222, 224, 227, 1)" bold="false" textAlign="center">
+          <p textAlign="center">
+            <span fontFamily="Arial">Mail：</span>
+            <span fontFamily="Arial">xxx.com</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="484" height="120" topLeftX="50" topLeftY="18" type="text">
+        <content fontSize="80" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="80" fontFamily="Arial Black">PERSONAL</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="381" height="120" topLeftX="50" topLeftY="106" type="text">
+        <content fontSize="80" fontFamily="Arial Black" color="rgba(253, 151, 51, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(253, 151, 51, 1)" fontSize="80" fontFamily="Arial Black">PROFILE</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="176" height="24" topLeftX="55" topLeftY="240" type="text">
+        <content fontSize="16" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <strong>
+              <span color="rgba(255, 255, 255, 1)" fontSize="16">我｜的｜个｜人｜简｜历</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <shape width="279" height="63" topLeftX="55" topLeftY="316" alpha="0.8" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">关于你的一些介绍文案，关于你的一些介绍文案，关于你的一些介绍文案，关于你的一些介绍文案</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="20" height="6" topLeftX="48" topLeftY="286" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="56" topLeftY="286" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="64" topLeftY="286" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="71" topLeftY="286" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" textAlign="right">
+          <p textAlign="right">
+            <span color="rgba(255, 255, 255, 1)" fontFamily="Arial Black">2026</span>
+          </p>
+          <p textAlign="right">
+            <span color="rgba(255, 255, 255, 1)" fontFamily="Arial Black">/</span>
+          </p>
+          <p textAlign="right">
+            <span color="rgba(255, 255, 255, 1)" fontFamily="Arial Black">2027</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="20" height="6" topLeftX="890" topLeftY="188" rotation="360" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="890" topLeftY="181" rotation="360" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="890" topLeftY="173" rotation="360" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="890" topLeftY="165" rotation="360" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="217" height="24" topLeftX="50" topLeftY="475" type="text">
+        <content fontSize="16" fontFamily="Arial" color="rgba(222, 224, 227, 1)" bold="false">
+          <p>
+            <span fontFamily="Arial" bold="false">Name：xx</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="WTIwbyyhZoAL6RxFm6mckAAlnlb" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="94" height="16" topLeftX="437" topLeftY="81" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="85" height="90" topLeftX="437" topLeftY="26" type="text">
+        <content textType="title" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="60" fontFamily="Arial Black">01</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="94" height="16" topLeftX="437" topLeftY="314" type="rect">
+        <fill>
+          <fillColor color="rgba(76, 241, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="85" height="90" topLeftX="437" topLeftY="258" type="text">
+        <content textType="title" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="60" fontFamily="Arial Black">02</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="94" height="16" topLeftX="658" topLeftY="140" type="rect">
+        <fill>
+          <fillColor color="rgba(76, 241, 29, 1)"/>
+        </fill>
+      </shape>
+      <shape width="85" height="90" topLeftX="658" topLeftY="84" type="text">
+        <content textType="title" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="60" fontFamily="Arial Black">03</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="94" height="16" topLeftX="658" topLeftY="370" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="85" height="90" topLeftX="658" topLeftY="314" type="text">
+        <content textType="title" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="60" fontFamily="Arial Black">04</span>
+          </p>
+        </content>
+      </shape>
+      <img src="M0uxbwv11orsaax0bA8c1SNMnKb" width="263" height="310" topLeftX="349" topLeftY="431" rotation="180" flipX="true">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="L4sqbDAenogCR5xfASCcOrvqn1f" width="27" height="27" topLeftX="516" topLeftY="363" flipX="true">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="NNTrbhULToQzu8xONlKcHmIHnm1" width="15" height="15" topLeftX="429" topLeftY="268" flipX="true">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="CGYmb49F8oObx6xE4pKcsDmanXb" width="21" height="21" topLeftX="459" topLeftY="192" rotation="180" flipX="true">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="180" height="54" topLeftX="658" topLeftY="440" type="text">
+        <content textType="sub-headline" fontSize="12" fontFamily="思源黑体" color="rgba(255, 255, 255, 0.659)" bold="false">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="658" topLeftY="404" type="text">
+        <content textType="sub-headline" fontSize="18" fontFamily="思源黑体" color="rgba(253, 151, 51, 1)" bold="true">
+          <p>未来规划</p>
+        </content>
+      </shape>
+      <shape width="180" height="54" topLeftX="658" topLeftY="211" type="text">
+        <content textType="sub-headline" fontSize="12" fontFamily="思源黑体" color="rgba(255, 255, 255, 0.659)" bold="false">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="658" topLeftY="174" type="text">
+        <content textType="sub-headline" fontSize="18" fontFamily="思源黑体" color="rgba(76, 241, 29, 1)" bold="true">
+          <p>项目展示</p>
+        </content>
+      </shape>
+      <shape width="180" height="54" topLeftX="437" topLeftY="384" type="text">
+        <content textType="sub-headline" fontSize="12" fontFamily="思源黑体" color="rgba(255, 255, 255, 0.659)" bold="false">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="437" topLeftY="348" type="text">
+        <content textType="sub-headline" fontSize="18" fontFamily="思源黑体" color="rgba(76, 241, 29, 1)" bold="true">
+          <p>个人经历</p>
+        </content>
+      </shape>
+      <shape width="180" height="54" topLeftX="437" topLeftY="153" type="text">
+        <content textType="sub-headline" fontSize="12" fontFamily="思源黑体" color="rgba(255, 255, 255, 0.659)" bold="false">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+        </content>
+      </shape>
+      <shape width="180" height="27" topLeftX="437" topLeftY="116" type="text">
+        <content textType="sub-headline" fontSize="18" fontFamily="思源黑体" color="rgba(253, 151, 51, 1)" bold="true">
+          <p>自我介绍</p>
+        </content>
+      </shape>
+      <shape width="350" height="75" topLeftX="50" topLeftY="232" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>CONTENTS</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="UYmobcl7foXr7RxaLbec8v2OnZe" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KPZbbHtkCofl0Hxkewwc0DZVnFL" width="263" height="310" topLeftX="349" topLeftY="115">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WMG5baPsbobtsFxIRSKcdA2dnbf" width="27" height="27" topLeftX="592" topLeftY="355">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="IiyNbgOoEo2eUIxtVFxcKAVYn0d" width="15" height="15" topLeftX="691" topLeftY="261">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="ExZJbF4OVoDiRlxdp8Zc7mfOnZe" width="21" height="21" topLeftX="459" topLeftY="165">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="190" height="12" topLeftX="385" topLeftY="301" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="334" height="75" topLeftX="313" topLeftY="226" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p list="none">自我介绍</p>
+        </content>
+      </shape>
+      <shape width="145" height="90" topLeftX="50" topLeftY="107" type="text">
+        <content textType="sub-headline" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>01</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="Jtx3bkWIsoJdL6xDWyFccXxYnIc" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="XZb8bUstMoBM9mx5JVcchZCenf5" width="598" height="682" topLeftX="292" topLeftY="-281" alpha="0.04">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="XkfjbCezMouz9AxHCtLcHCjJnLf" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>自我介绍</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <img src="GutOb3qzSokIDzxbHk5c3fnknTe" width="221" height="294" topLeftX="594" topLeftY="48">
+        <shadow angle="90"/>
+        <crop type="round-rect" leftOffset="37" rightOffset="37" topOffset="0" bottomOffset="0" presetHandlers="30"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="144" height="84" topLeftX="50" topLeftY="238" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="bullet">
+          <ul>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">性别：女</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">年龄：24</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">学历：硕士</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">毕业学校：某大学</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="124" height="30" topLeftX="50" topLeftY="198" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20" fontFamily="思源黑体" italic="false" strikethrough="false" underline="false">基本信息</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="IpZQbujV4oa5OwxXcM5cNd1dnwe" width="18" height="20" topLeftX="133" topLeftY="203">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="184" height="120" topLeftX="613" topLeftY="367" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" list="bullet" textAlign="left">
+          <ul>
+            <li>
+              <p textAlign="left">
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">Tel：123456789</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p textAlign="left">
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">Mail：</span>
+                </strong>
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">xxx.com</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p textAlign="left">
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">Blog：</span>
+                </strong>
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">xxx.com</span>
+                </strong>
+              </p>
+            </li>
+            <li>
+              <p textAlign="left">
+                <strong>
+                  <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20">GitHub：xxx.com</span>
+                </strong>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="207" height="84" topLeftX="281" topLeftY="238" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="bullet">
+          <ul>
+            <li>
+              <p>求职意向：工程师</p>
+            </li>
+            <li>
+              <p>到岗时间：随时</p>
+            </li>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">工作地点：北京</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span color="rgba(119, 119, 119, 1)" fontSize="14">期望薪资：面议</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="124" height="30" topLeftX="281" topLeftY="198" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20" fontFamily="思源黑体" italic="false" strikethrough="false" underline="false">求职意向</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="VJQSbxmOGoG98Jxjqrsc48lrnjl" width="18" height="20" topLeftX="364" topLeftY="203">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="311" height="84" topLeftX="50" topLeftY="406" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul>
+            <li>
+              <p>2020.09 - 2024.06 某大学 xxx专业（本科）</p>
+            </li>
+            <li>
+              <p>2020.09 - 2024.06 某大学 xxx专业（本科）</p>
+            </li>
+            <li>
+              <p>2020.09 - 2024.06 某大学 xxx专业（本科）</p>
+            </li>
+            <li>
+              <p>2020.09 - 2024.06 某大学 xxx专业（本科）</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="124" height="30" topLeftX="50" topLeftY="363" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">
+            <strong>
+              <span color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" fontSize="20" fontFamily="思源黑体" italic="false" strikethrough="false" underline="false">教育背景</span>
+            </strong>
+          </p>
+        </content>
+      </shape>
+      <img src="Wo2MbuFNFohbVCxte7ocbYtpnNb" width="18" height="20" topLeftX="133" topLeftY="368">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Qbugb1tgZoJrHGxGBjxcm4MgnWd" width="53" height="53" topLeftX="786" topLeftY="402" alpha="0.4">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="G4Y9bCaUMo8hb5xfjm0cnmVanyc" width="22" height="22" topLeftX="822" topLeftY="400" alpha="0.4">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="GAB9bdkZyoYxaHxAOPHcACiYnqg" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="I633bhMJko1nrvxlqGyc51g3nzh" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="UAHXbev8FoCTEsxB47Bc8kEAnyf" width="224" height="255" topLeftX="790" topLeftY="363" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="273" height="167" topLeftX="44" topLeftY="152" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(52, 195, 125, 1) 0%,rgba(113, 230, 147, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="84" topLeftX="79" topLeftY="175" type="text">
+        <content textType="title" fontSize="56" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="56" fontFamily="Arial Black">“</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="273" height="167" topLeftX="344" topLeftY="152" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(43, 47, 54, 1) 0%,rgba(114, 116, 124, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="84" topLeftX="378" topLeftY="175" type="text">
+        <content textType="title" fontSize="56" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="56" fontFamily="Arial Black">“</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="273" height="167" topLeftX="643" topLeftY="152" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(251, 152, 60, 1) 0%,rgba(255, 214, 140, 1) 100%)"/>
+        </fill>
+      </shape>
+      <shape width="29" height="84" topLeftX="678" topLeftY="175" type="text">
+        <content textType="title" fontSize="56" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>
+            <span color="rgba(255, 255, 255, 1)" fontSize="56" fontFamily="Arial Black">“</span>
+          </p>
+        </content>
+      </shape>
+      <img src="IwzgbRPPjoUtGWxHy7rc7hm5nVh" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="EasnbONnvoJoFyxiueicEm3Zn6d" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="273" height="126" topLeftX="644" topLeftY="343" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="273" height="126" topLeftX="344" topLeftY="343" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="273" height="126" topLeftX="44" topLeftY="343" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="200" height="36" topLeftX="678" topLeftY="241" type="text">
+        <content textType="sub-headline" fontSize="24" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>技能关键词三</p>
+        </content>
+      </shape>
+      <shape width="200" height="36" topLeftX="378" topLeftY="241" type="text">
+        <content textType="sub-headline" fontSize="24" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>技能关键词二</p>
+        </content>
+      </shape>
+      <shape width="200" height="36" topLeftX="75" topLeftY="241" type="text">
+        <content textType="sub-headline" fontSize="24" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>技能关键词一</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>个人技能</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="UYmobcl7foXr7RxaLbec8v2OnZe" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KPZbbHtkCofl0Hxkewwc0DZVnFL" width="263" height="310" topLeftX="349" topLeftY="115">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WMG5baPsbobtsFxIRSKcdA2dnbf" width="27" height="27" topLeftX="592" topLeftY="355">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="IiyNbgOoEo2eUIxtVFxcKAVYn0d" width="15" height="15" topLeftX="691" topLeftY="261">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="ExZJbF4OVoDiRlxdp8Zc7mfOnZe" width="21" height="21" topLeftX="459" topLeftY="165">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="190" height="12" topLeftX="385" topLeftY="301" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="334" height="75" topLeftX="313" topLeftY="226" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p list="none">个人经历</p>
+        </content>
+      </shape>
+      <shape width="145" height="90" topLeftX="50" topLeftY="107" type="text">
+        <content textType="sub-headline" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>02</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="ZTceb4CE7oVUtAxFCz5cvEBunxb" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="JTgybQsAwoWvcUxxe98c7vqkn0e" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="PKp8bNRQKoml6Ux0Iz2crvH2nob" width="207" height="207" topLeftX="-1195" topLeftY="522" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Moqabl7gcobNToxT6spc87zNn1d" width="85" height="85" topLeftX="-1054" topLeftY="517" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="UPlbbHBpro0zCPxEEjFcx1p4nWc" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Fo9KbWEgwoB0uwxorjAcXMDYnPf" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>项目经历</p>
+        </content>
+      </shape>
+      <shape width="277" height="30" topLeftX="496" topLeftY="115" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">项目名称一（2025.8-至今）</p>
+        </content>
+      </shape>
+      <img src="Z0jIbii4BobqVzx8OLtciVvRnYb" width="21" height="20" topLeftX="764" topLeftY="120">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="339" height="105" topLeftX="496" topLeftY="156" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="bullet">
+          <ul>
+            <li>
+              <p>
+                <span fontSize="14">项目简介：描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+              </p>
+            </li>
+            <li>
+              <p>
+                <span fontSize="14">岗位职责：描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。</span>
+              </p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <img src="YBV3b2lT4o7Nbyx3CjUc00Kcnfd" width="227" height="340" topLeftX="49" topLeftY="152">
+        <shadow angle="90"/>
+        <crop type="round-rect" leftOffset="57" rightOffset="57" topOffset="0" bottomOffset="0" presetHandlers="30"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="UTBlbxUvXoihA3x7AuBcLcaQn2b" width="163" height="245" topLeftX="297" topLeftY="67">
+        <shadow angle="90"/>
+        <crop type="round-rect" leftOffset="41" rightOffset="41" topOffset="0" bottomOffset="0" presetHandlers="30"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="IVGxbX90PoZ85kxWZ4UcoiJ4nrh" width="160" height="160" topLeftX="299" topLeftY="332">
+        <shadow angle="90"/>
+        <crop type="round-rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="30"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="276" height="30" topLeftX="496" topLeftY="295" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">项目名称二（2025.8-至今）</p>
+        </content>
+      </shape>
+      <img src="XtoHbm650o1iZfxaqbxcadwHnRd" width="21" height="20" topLeftX="764" topLeftY="300">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="339" height="105" topLeftX="496" topLeftY="336" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="bullet">
+          <ul>
+            <li>
+              <p>项目简介：描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+            </li>
+            <li>
+              <p>岗位职责：描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。描述相关的信息以解释你的标题。现在就开始打字吧。</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="EXctb1E3doblDDxpeZucW82xn4c" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="TlJWbC3XwoshRyxkCj1cFVVJn9g" width="598" height="682" topLeftX="181" topLeftY="40" alpha="0.04">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="EM1Vb7GgkoN5CPxZ4MIc08abnGd" width="224" height="255" topLeftX="368" topLeftY="367" alpha="0.2">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="TeKmbVm1oocRMCx9E72cisgXnHf" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="JT9Wb6wZvoJAdnxVQcUcSqkPnAd" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="CF9UbZRICoH54PxagP9cRzysnnh" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WsXOba2PeoVwaixv6FKcx9Z7nCg" width="190" height="135" topLeftX="720" topLeftY="189">
+        <shadow angle="90"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="28" bottomOffset="27" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="Fqz9bTwPJoFAh4xpI1Jcr4Iynkh" width="190" height="135" topLeftX="496" topLeftY="95">
+        <shadow angle="90"/>
+        <crop type="rect" leftOffset="25" rightOffset="25" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="Id3mbksxxolZndxSwtJcgG8qnxe" width="190" height="135" topLeftX="273" topLeftY="95">
+        <shadow angle="90"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="28" bottomOffset="27" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="ZjWYba6q0oYPuWxW9DocYbSgnoc" width="190" height="135" topLeftX="50" topLeftY="189">
+        <shadow angle="90"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="28" bottomOffset="27" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="48" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="32" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)" bold="true">
+          <p>证书荣誉</p>
+        </content>
+      </shape>
+      <shape width="190" height="30" topLeftX="720" topLeftY="342" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">《xx荣誉》</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="720" topLeftY="378" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+      <shape width="190" height="30" topLeftX="496" topLeftY="248" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">《xx荣誉》</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="496" topLeftY="285" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+      <shape width="190" height="30" topLeftX="273" topLeftY="248" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">《xx荣誉》</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="273" topLeftY="285" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+      <shape width="190" height="30" topLeftX="50" topLeftY="342" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">《xx荣誉》</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="50" topLeftY="378" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="UYmobcl7foXr7RxaLbec8v2OnZe" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KPZbbHtkCofl0Hxkewwc0DZVnFL" width="263" height="310" topLeftX="349" topLeftY="115">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WMG5baPsbobtsFxIRSKcdA2dnbf" width="27" height="27" topLeftX="592" topLeftY="355">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="IiyNbgOoEo2eUIxtVFxcKAVYn0d" width="15" height="15" topLeftX="691" topLeftY="261">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="ExZJbF4OVoDiRlxdp8Zc7mfOnZe" width="21" height="21" topLeftX="459" topLeftY="165">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="190" height="12" topLeftX="385" topLeftY="301" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="334" height="75" topLeftX="313" topLeftY="226" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>项目展示</p>
+        </content>
+      </shape>
+      <shape width="145" height="90" topLeftX="50" topLeftY="107" type="text">
+        <content textType="sub-headline" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>03</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="CzsObYpFnoNfFnx0RM2cxmdGnld" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="WBJeb9LKyoTjpmx2wricpFGynsd" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="RaDTbEM21omyGIxvDRPcoYOMnkf" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="NogYb7AoZoimsjxF2O2cuiMsnNg" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="R0vjbPKQkoywSLxW1ZNcbtmGn4g" width="40" height="40" topLeftX="288" topLeftY="199" rotation="180" alpha="0.6">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="308" startY="190" endX="308" endY="98" alpha="0.6">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+      </line>
+      <img src="K7DNbxxPCoHGS6xoLkscnNoEnKb" width="40" height="40" topLeftX="637" topLeftY="-118" rotation="360" flipX="true" flipY="true" alpha="0.6">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="657" startY="-127" endX="657" endY="-219" alpha="0.6">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+      </line>
+      <img src="Tgu1bLjYyoQH6nxnjIZcfwWwn9b" width="40" height="40" topLeftX="460" topLeftY="270" rotation="270" alpha="0.6">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="CutfbrBcAomkoRxrmGecyW9mnFg" width="178" height="178" topLeftX="489" topLeftY="302">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="69" rightOffset="69" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="LTEUbgzHvovRDJx8v34c3gs7nQd" width="178" height="178" topLeftX="293" topLeftY="302">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="V7EKbEXNxoct8ExCpFFcobLWnWg" width="178" height="178" topLeftX="489" topLeftY="106">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="IPv9bTtjIonQnfxXWsscEcc3nFd" width="178" height="178" topLeftX="293" topLeftY="106">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>项目背景</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="190" height="30" topLeftX="694" topLeftY="341" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">背景关键词四</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="694" topLeftY="378" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="left"/>
+      </shape>
+      <shape width="190" height="30" topLeftX="694" topLeftY="139" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">背景关键词三</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="694" topLeftY="176" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="left"/>
+      </shape>
+      <shape width="190" height="30" topLeftX="81" topLeftY="341" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="right">
+          <p list="none">背景关键词二</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="81" topLeftY="378" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="right"/>
+      </shape>
+      <shape width="190" height="30" topLeftX="81" topLeftY="139" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="right">
+          <p list="none">背景关键词一</p>
+        </content>
+      </shape>
+      <shape width="190" height="63" topLeftX="81" topLeftY="176" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="right"/>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="Q5igbqt1qo67nbxfcRPckrSAnpg" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="HIWWbgfi1olsujxZs0McOWizndh" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="MaYebg87ko0Zl1xFzVdcVigInjh" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="U7ImbFEjioZC5LxTSrEcXVR0nMf" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Uk98bzc8mohu6QxAE7hcl8lVnmh" width="172" height="196" topLeftX="679" topLeftY="-97" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="273" height="365" topLeftX="44" topLeftY="137" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(52, 195, 125, 1) 0%,rgba(113, 230, 147, 1) 100%)"/>
+        </fill>
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="63" topLeftY="202" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="63" topLeftY="298" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="63" topLeftY="395" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="273" height="365" topLeftX="344" topLeftY="137" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(43, 47, 54, 1) 0%,rgba(114, 116, 124, 1) 100%)"/>
+        </fill>
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="363" topLeftY="202" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="363" topLeftY="298" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="363" topLeftY="395" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="273" height="365" topLeftX="643" topLeftY="137" presetHandlers="30" type="round-rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(251, 152, 60, 1) 0%,rgba(255, 214, 140, 1) 100%)"/>
+        </fill>
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="663" topLeftY="202" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="663" topLeftY="298" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="235" height="84" topLeftX="663" topLeftY="395" presetHandlers="16" type="round-rect">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 0.6)"/>
+        </fill>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </shape>
+      <shape width="205" height="24" topLeftX="679" topLeftY="414" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="679" topLeftY="442" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="679" topLeftY="317" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="679" topLeftY="346" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="679" topLeftY="219" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="679" topLeftY="248" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="378" topLeftY="414" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="378" topLeftY="442" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="378" topLeftY="317" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="378" topLeftY="346" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="378" topLeftY="219" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="378" topLeftY="248" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="76" topLeftY="414" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="76" topLeftY="442" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="76" topLeftY="317" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="76" topLeftY="346" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="205" height="24" topLeftX="76" topLeftY="219" type="text">
+        <content textType="caption" fontSize="16" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="left">
+          <p list="none">关键词</p>
+        </content>
+      </shape>
+      <shape width="205" height="18" topLeftX="76" topLeftY="248" type="text">
+        <content textType="caption" fontSize="12" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p list="none">描述相关的信息以解释你的标题。</p>
+        </content>
+      </shape>
+      <shape width="235" height="30" topLeftX="663" topLeftY="157" type="text">
+        <content textType="sub-headline" fontSize="20" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>策略关键词三</p>
+        </content>
+      </shape>
+      <shape width="235" height="30" topLeftX="363" topLeftY="156" type="text">
+        <content textType="sub-headline" fontSize="20" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>策略关键词二</p>
+        </content>
+      </shape>
+      <shape width="235" height="30" topLeftX="63" topLeftY="156" type="text">
+        <content textType="sub-headline" fontSize="20" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="left">
+          <p>策略关键词一</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>产品策略</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="YOgtbfnnDoX66hxfgbAcPYeKnHc" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="M6CcbFTL1odX3KxkQfmcIAsOnRf" width="598" height="682" topLeftX="181" topLeftY="-71" alpha="0.04">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Tg3BbzQUloT17Mxvu7PcTwbznwf" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="FwqAbLi01oiccaxc23HcWwjjnnh" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="TUNwbNNKuoRfeNxLF9TcebITnmb" width="40" height="40" topLeftX="318" topLeftY="354" alpha="0.6">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="338" startY="404" endX="338" endY="495" alpha="0.6">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+      </line>
+      <img src="X84Gbvu6kohOR3xeplDcBEWEnpd" width="40" height="40" topLeftX="918" topLeftY="354" alpha="0.6">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="938" startY="404" endX="938" endY="495" alpha="0.6">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+      </line>
+      <img src="Nf0DbwIOVoGyU4xwF85cVUL7nsd" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Cfoqb14pXo5y2Yxj8HHcfNICnNd" width="266" height="200" topLeftX="644" topLeftY="162">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="33" bottomOffset="33" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="DbHqbMfyZondyPxWHYccndNUnDe" width="266" height="200" topLeftX="347" topLeftY="162">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="33" bottomOffset="33" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="ZhBkbvabAoPqFgxQsmVc6wyNn9h" width="266" height="200" topLeftX="50" topLeftY="162">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="0" rightOffset="0" topOffset="33" bottomOffset="33" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p list="none">产品展示</p>
+        </content>
+      </shape>
+      <shape width="266" height="30" topLeftX="646" topLeftY="388" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">关键词三</p>
+        </content>
+      </shape>
+      <shape width="266" height="42" topLeftX="646" topLeftY="425" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+      <shape width="266" height="30" topLeftX="347" topLeftY="388" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">关键词二</p>
+        </content>
+      </shape>
+      <shape width="266" height="42" topLeftX="347" topLeftY="425" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+      <shape width="266" height="30" topLeftX="50" topLeftY="388" type="text">
+        <content textType="caption" fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" list="none" textAlign="center">
+          <p list="none">关键词一</p>
+        </content>
+      </shape>
+      <shape width="266" height="42" topLeftX="50" topLeftY="425" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="Ekprb2YuOoA1bQxuWUEcFMeSnSg" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="A3ssbXoSEoHUmsxzqAxc698lnSg" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Qe59bSBDBoMGFcx66yQcLtA1ntc" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="UAfrbn5LjoJEYyxWjFBcgpDvnih" width="40" height="40" topLeftX="605" topLeftY="-87" rotation="360" flipX="true" flipY="true">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="625" startY="-96" endX="625" endY="-233">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+      </line>
+      <img src="FQhGb35zeoCrxxxPOUiceWnined" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>产品数据</p>
+        </content>
+      </shape>
+      <shape width="190" height="21" topLeftX="674" topLeftY="227" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>数据字段名称</p>
+        </content>
+      </shape>
+      <shape width="190" height="75" topLeftX="674" topLeftY="152" type="text">
+        <content textType="title" fontSize="50" fontFamily="Arial Black" color="linear-gradient(180deg,rgba(52, 195, 125, 1) 0%,rgba(113, 230, 147, 1) 100%)" bold="true" textAlign="center">
+          <p>90%</p>
+        </content>
+      </shape>
+      <img src="UVg5bbsWdoWpZFxtu7scEehInif" width="280" height="331" topLeftX="356" topLeftY="152">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="26" rightOffset="25" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <img src="VnE5bMFHNoLCxqxlkaIcXBrbnHc" width="280" height="331" topLeftX="50" topLeftY="152">
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+        <crop type="rect" leftOffset="25" rightOffset="25" topOffset="0" bottomOffset="0" presetHandlers="20"/>
+        <border color="rgba(255, 255, 255, 1)" width="1"/>
+      </img>
+      <shape width="190" height="21" topLeftX="674" topLeftY="409" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)" list="none" textAlign="center">
+          <p>数据字段名称</p>
+        </content>
+      </shape>
+      <shape width="190" height="75" topLeftX="674" topLeftY="337" type="text">
+        <content textType="title" fontSize="50" fontFamily="Arial Black" color="linear-gradient(180deg,rgba(251, 152, 60, 1) 0%,rgba(255, 214, 140, 1) 100%)" bold="true" textAlign="center">
+          <p>116%</p>
+        </content>
+      </shape>
+      <shape width="280" height="119" topLeftX="50" topLeftY="364" presetHandlers="20" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(43, 47, 54, 1) 0%,rgba(114, 116, 124, 1) 100%)"/>
+        </fill>
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+      </shape>
+      <shape width="226" height="63" topLeftX="77" topLeftY="388" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+      <shape width="280" height="119" topLeftX="356" topLeftY="364" presetHandlers="20" type="rect">
+        <fill>
+          <fillColor color="linear-gradient(180deg,rgba(52, 195, 125, 1) 0%,rgba(113, 230, 147, 1) 100%)"/>
+        </fill>
+        <shadow angle="90" color="rgba(0, 0, 0, 0.1)"/>
+      </shape>
+      <shape width="226" height="63" topLeftX="383" topLeftY="388" type="text">
+        <content fontSize="14" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" textAlign="left">
+          <p textAlign="left">
+            <span color="rgba(255, 255, 255, 1)" fontSize="14">描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容。</span>
+          </p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="UYmobcl7foXr7RxaLbec8v2OnZe" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="KPZbbHtkCofl0Hxkewwc0DZVnFL" width="263" height="310" topLeftX="349" topLeftY="115">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WMG5baPsbobtsFxIRSKcdA2dnbf" width="27" height="27" topLeftX="592" topLeftY="355">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="IiyNbgOoEo2eUIxtVFxcKAVYn0d" width="15" height="15" topLeftX="691" topLeftY="261">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="ExZJbF4OVoDiRlxdp8Zc7mfOnZe" width="21" height="21" topLeftX="459" topLeftY="165">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="190" height="12" topLeftX="385" topLeftY="301" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="334" height="75" topLeftX="313" topLeftY="226" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="思源黑体" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>未来规划</p>
+        </content>
+      </shape>
+      <shape width="145" height="90" topLeftX="50" topLeftY="107" type="text">
+        <content textType="sub-headline" fontSize="60" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>04</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="QdnybQoaeojCkhxeEBZcFV8onYc" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="LLsTbxb76oFs7QxyclzcvKU4n4f" width="152" height="152" topLeftX="42" topLeftY="0" exposure="1" contrast="100">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="EOyCbbTFIoQztcxzvVCcxJXynRh" width="16" height="16" topLeftX="164" topLeftY="25" rotation="16">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="IE21boNvroeuxlxomPYcIwOvnIf" width="30" height="30" topLeftX="39" topLeftY="95" rotation="343">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(43, 47, 54, 1)"/>
+        </fill>
+      </shape>
+      <img src="PU2CbQlNyomLN7xGkHCcPBZLnbf" width="771" height="315" topLeftX="38" topLeftY="103" alpha="0.2">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="90" height="30" topLeftX="254" topLeftY="674" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">
+            <span color="rgba(43, 47, 54, 1)">短期规划</span>
+          </p>
+        </content>
+      </shape>
+      <img src="Quk7brbdMoOrTbxhsA8cbVk5nHg" width="21" height="20" topLeftX="347" topLeftY="680">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="166" startY="416" endX="166" endY="203">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+        <startArrow type="solid-circle"/>
+        <endArrow type="solid-triangle"/>
+      </line>
+      <shape width="90" height="30" topLeftX="1007" topLeftY="492" type="text">
+        <content fontSize="20" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" backgroundColor="rgba(0, 0, 0, 0)" bold="true" italic="false" underline="false" strikethrough="false" textAlign="left">
+          <p list="none" textAlign="left">长期规划</p>
+        </content>
+      </shape>
+      <img src="GWO8bQA7UoDlfpxzzDhcnaCsnCd" width="21" height="20" topLeftX="1100" topLeftY="498">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="524" startY="319" endX="524" endY="86">
+        <border color="rgba(76, 241, 29, 1)" width="1"/>
+        <startArrow type="solid-circle"/>
+        <endArrow type="solid-triangle"/>
+      </line>
+      <img src="Y3jpbG3ltoo8sEx3RWgcBQc0n3L" width="203" height="203" topLeftX="565" topLeftY="350" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="KufOb8DJAoRPbGxgV1WcdXiRndd" width="83" height="83" topLeftX="703" topLeftY="345" alpha="0.12">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <shape width="236" height="21" topLeftX="543" topLeftY="95" type="text">
+        <content textType="caption" fontSize="14" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p>2027</p>
+        </content>
+      </shape>
+      <shape width="236" height="126" topLeftX="543" topLeftY="122" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="236" height="21" topLeftX="187" topLeftY="203" type="text">
+        <content textType="caption" fontSize="14" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" list="none" textAlign="left">
+          <p>2026</p>
+        </content>
+      </shape>
+      <shape width="236" height="126" topLeftX="187" topLeftY="230" type="text">
+        <content textType="caption" fontSize="14" fontFamily="思源黑体" color="rgba(119, 119, 119, 1)">
+          <ul listStyle="circle-hollow-square">
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+            <li>
+              <p>描述相关的信息以解释你的标题。现在就开始打字吧。写任何你想表达的内容</p>
+            </li>
+          </ul>
+        </content>
+      </shape>
+      <shape width="200" height="45" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="30" fontFamily="思源黑体" color="rgba(43, 47, 54, 1)" bold="true" textAlign="left">
+          <p>未来规划</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(43, 47, 54, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+  <slide>
+    <style>
+      <fill>
+        <fillImg src="OcZob9NETo0U3gxTRnVcgmuunkd" alpha="1" rotateWithShape="false"/>
+      </fill>
+    </style>
+    <data>
+      <img src="VP5SbRgmFoUKWjxu2Phca6XmnBQ" width="263" height="310" topLeftX="349" topLeftY="115">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="Oihcbc4ZuoG6tGx3T8hc4bMQnCh" width="27" height="27" topLeftX="592" topLeftY="355">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="WYFRbJuHhoWl1Ox3qPPcNvUcnve" width="15" height="15" topLeftX="691" topLeftY="261">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <img src="JUrlbMoLMoycNux01CZcFLCinOe" width="21" height="21" topLeftX="459" topLeftY="165">
+        <crop leftOffset="0" rightOffset="0" topOffset="0" bottomOffset="0"/>
+      </img>
+      <line startX="900" startY="234" endX="900" endY="490">
+        <border color="rgba(222, 224, 227, 1)" width="1"/>
+      </line>
+      <shape width="20" height="6" topLeftX="793" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="785" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="777" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="769" topLeftY="-641" rotation="270" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="308" height="12" topLeftX="326" topLeftY="301" type="rect">
+        <fill>
+          <fillColor color="rgba(253, 151, 51, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="25" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="33" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="41" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="20" height="6" topLeftX="49" topLeftY="668" rotation="90" type="triangle">
+        <fill>
+          <fillColor color="rgba(255, 255, 255, 1)"/>
+        </fill>
+      </shape>
+      <shape width="334" height="75" topLeftX="313" topLeftY="226" type="text">
+        <content textType="sub-headline" fontSize="50" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="center">
+          <p>Thank You</p>
+        </content>
+      </shape>
+      <shape width="350" height="24" topLeftX="50" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true">
+          <p>PERSONAL PROFILE</p>
+        </content>
+      </shape>
+      <shape width="52" height="72" topLeftX="858" topLeftY="50" type="text">
+        <content textType="sub-headline" fontSize="16" fontFamily="Arial Black" color="rgba(255, 255, 255, 1)" bold="true" textAlign="right">
+          <p>2026</p>
+          <p>/</p>
+          <p>2027</p>
+        </content>
+      </shape>
+    </data>
+    <note>
+      <content/>
+    </note>
+  </slide>
+</presentation>
