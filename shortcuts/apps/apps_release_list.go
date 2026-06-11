@@ -14,11 +14,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsReleaseList lists a Miaoda app's release history (most recent first).
+// AppsReleaseList lists an app's release history (most recent first).
 var AppsReleaseList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+release-list",
-	Description: "List a Miaoda app's release history (most recent first)",
+	Description: "List an app's release history (most recent first)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +release-list --app-id <app_id>",
@@ -28,7 +28,7 @@ var AppsReleaseList = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "status", Enum: []string{"publishing", "finished", "failed"}, Desc: "filter by release status: publishing | finished | failed"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (max 500)"},
 		{Name: "page-token", Desc: "pagination cursor from a previous response"},

@@ -27,7 +27,7 @@ var AppsReleaseGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {

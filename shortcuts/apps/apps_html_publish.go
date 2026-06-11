@@ -19,7 +19,7 @@ import (
 var AppsHTMLPublish = common.Shortcut{
 	Service:     appsService,
 	Command:     "+html-publish",
-	Description: "Publish HTML to a Miaoda app (single multipart POST returns the access URL)",
+	Description: "Publish HTML to an app (single multipart POST returns the access URL)",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
@@ -29,7 +29,7 @@ var AppsHTMLPublish = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "path", Desc: "path to HTML file or directory", Required: true},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / .aws/credentials / etc. in the publish payload)"},
 	},

@@ -457,19 +457,19 @@ func defaultUsername(username string) string {
 
 func validateIssuedCredential(appID, normalizedURL string, issued *IssuedCredential, now int64) error {
 	if issued == nil {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: empty credential")
+		return output.Errorf(output.ExitAPI, "api_error", "Issue app Git credential: empty credential")
 	}
 	if issued.AppID != "" && issued.AppID != appID {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
+		return output.Errorf(output.ExitAPI, "api_error", "Issue app Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
 	}
 	if normalizedURL == "" {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing gitURL")
+		return output.Errorf(output.ExitAPI, "api_error", "Issue app Git credential: response missing gitURL")
 	}
 	if strings.TrimSpace(issued.PAT) == "" {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing token")
+		return output.Errorf(output.ExitAPI, "api_error", "Issue app Git credential: response missing token")
 	}
 	if issued.ExpiresAt <= now {
-		return output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response expiredTime must be in the future")
+		return output.Errorf(output.ExitAPI, "api_error", "Issue app Git credential: response expiredTime must be in the future")
 	}
 	return nil
 }

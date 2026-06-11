@@ -63,7 +63,7 @@ func parseHTMLPublishResponse(raw []byte) (*htmlPublishResponse, error) {
 	return &htmlPublishResponse{URL: envelope.Data.URL}, nil
 }
 
-// OAPI business error codes returned by the Miaoda
+// OAPI business error codes returned by the app
 // /apps/{id}/upload_and_release_html_code endpoint. Owned by the backend
 // service; update when new codes are documented in the OAPI spec.
 const (
