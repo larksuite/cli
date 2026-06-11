@@ -123,10 +123,6 @@ func ParseTokenType(s string) (TokenType, bool) {
 type TokenSpec struct {
 	Type  TokenType
 	AppID string // identifies which app (multi-account); not sensitive
-	// Scopes, when non-empty, requests a scope-bound TAT (space-separated).
-	// Used by the Agent Employee (hybrid TAT) missing-scope auto-retry to mint
-	// a token carrying the app's granted scopes. Empty = default unscoped mint.
-	Scopes string
 }
 
 // TokenResult is the output of TokenProvider.ResolveToken.

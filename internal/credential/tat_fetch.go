@@ -32,16 +32,6 @@ import (
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
-	return fetchTAT(ctx, httpClient, brand, appID, appSecret, "")
-}
-
-// fetchTAT is FetchTAT with an optional space-separated scope list. An empty
-// scope mints the default unscoped TAT (current behavior); a non-empty scope
-// requests a scope-bound TAT (Agent Employee hybrid token carrying the app's
-// granted scopes, used by the missing-scope auto-retry). The server rejects the
-// whole request (invalid_scope) if any requested scope is not granted, so
-// callers must pass only granted scopes.
-func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret, scope string) (string, error) {
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Accounts + core.OAuthTokenV3Path
 
@@ -49,9 +39,6 @@ func fetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	form.Set("grant_type", "client_credentials")
 	form.Set("client_id", appID)
 	form.Set("client_secret", appSecret)
-	if scope != "" {
-		form.Set("scope", scope)
-	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {

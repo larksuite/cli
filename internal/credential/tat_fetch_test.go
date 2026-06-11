@@ -224,36 +224,6 @@ func TestFetchTAT_BrandRouting(t *testing.T) {
 	}
 }
 
-// A scoped mint (fetchTAT with a non-empty scope) must send scope= in the form
-// body; the default FetchTAT (unscoped) must NOT send scope at all.
-func TestFetchTAT_Scoped_SendsScope(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t-x","token_type":"Bearer","scope":"calendar:calendar:readonly"}`}
-	hc := &http.Client{Transport: rt}
-
-	tok, err := fetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x", "calendar:calendar:readonly")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if tok != "t-x" {
-		t.Errorf("token = %q, want t-x", tok)
-	}
-	if !strings.Contains(rt.gotBody, "scope=calendar%3Acalendar%3Areadonly") {
-		t.Errorf("request body missing url-encoded scope: %s", rt.gotBody)
-	}
-}
-
-func TestFetchTAT_Unscoped_OmitsScope(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer"}`}
-	hc := &http.Client{Transport: rt}
-
-	if _, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "a", "b"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if strings.Contains(rt.gotBody, "scope=") {
-		t.Errorf("unscoped FetchTAT must not send scope, got body: %s", rt.gotBody)
-	}
-}
-
 func TestFetchTAT_ContextCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-r.Context().Done()

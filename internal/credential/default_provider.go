@@ -52,7 +52,7 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 		return err
 	}
 	// BuildAPIError returns nil for code 0 (Feishu's success convention), but this
-	// function is only reached once fetchTAT has ruled out success — a non-credential
+	// function is only reached once FetchTAT has ruled out success — a non-credential
 	// OAuth error (e.g. invalid_scope) can arrive with code 0 and is still a
 	// deterministic rejection. Back it with a typed APIError so callers never receive
 	// the ("", nil) "empty token, no error" pair.
@@ -128,7 +128,7 @@ func (p *DefaultTokenProvider) ResolveToken(ctx context.Context, req TokenSpec) 
 	case TokenTypeUAT:
 		return p.resolveUAT(ctx)
 	case TokenTypeTAT:
-		return p.resolveTAT(ctx, req.Scopes)
+		return p.resolveTAT(ctx)
 	default:
 		return nil, fmt.Errorf("unsupported token type: %s", req.Type)
 	}
@@ -157,22 +157,16 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
-// resolveTAT resolves a tenant access token. The default (unscoped) result is
-// cached after first call via sync.Once — only the context from the first call
-// is used. A scoped request (scopes != "") always mints fresh and is NOT cached:
-// it is the rare missing-scope auto-retry path, and the caller (APIClient) holds
-// its own cache for the resulting full-scope token.
-func (p *DefaultTokenProvider) resolveTAT(ctx context.Context, scopes string) (*TokenResult, error) {
-	if scopes != "" {
-		return p.doResolveTAT(ctx, scopes)
-	}
+// resolveTAT resolves a tenant access token. The result is cached after the first
+// call via sync.Once — only the context from the first call is used.
+func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
 	p.tatOnce.Do(func() {
-		p.tatResult, p.tatErr = p.doResolveTAT(ctx, "")
+		p.tatResult, p.tatErr = p.doResolveTAT(ctx)
 	})
 	return p.tatResult, p.tatErr
 }
 
-func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context, scopes string) (*TokenResult, error) {
+func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, error) {
 	acct, err := p.defaultAcct.ResolveAccount(ctx)
 	if err != nil {
 		return nil, err
@@ -181,9 +175,9 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context, scopes string) 
 	if err != nil {
 		return nil, err
 	}
-	token, err := fetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret, scopes)
+	token, err := FetchTAT(ctx, httpClient, acct.Brand, acct.AppID, acct.AppSecret)
 	if err != nil {
 		return nil, err
 	}
-	return &TokenResult{Token: token, Scopes: scopes}, nil
+	return &TokenResult{Token: token}, nil
 }

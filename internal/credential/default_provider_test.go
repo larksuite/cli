@@ -77,7 +77,7 @@ func TestClassifyTATResponseCode_OtherErrorFallsThrough(t *testing.T) {
 // backstop: a non-credential OAuth error (e.g. invalid_scope) that arrives with no
 // numeric code (code 0) must still produce a non-nil typed error. BuildAPIError
 // returns nil for code 0 (Feishu's success convention); without the backstop,
-// fetchTAT would surface this deterministic rejection as ("", nil) — an empty token
+// FetchTAT would surface this deterministic rejection as ("", nil) — an empty token
 // with no error.
 func TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped(t *testing.T) {
 	err := classifyTATResponseCode(0, "invalid_scope", "the requested scope is not granted", "feishu", "cli_app_x")

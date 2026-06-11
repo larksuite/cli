@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -46,24 +45,9 @@ type APIClient struct {
 	HTTP       *http.Client // Only for non-Lark API (OAuth, MCP, etc.)
 	ErrOut     io.Writer    // debug/progress output
 	Credential *credential.CredentialProvider
-
-	// botScopedTok caches a full-granted-scope bot (hybrid) TAT minted lazily
-	// after a 99991679 missing_scope rejection, so subsequent bot calls in this
-	// process reuse it instead of re-triggering the miss. See DoSDKRequest.
-	botScopedMu  sync.Mutex
-	botScopedTok string
 }
 
 func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (string, error) {
-	// Prefer the cached full-scope bot token once a prior call minted it.
-	if as.IsBot() {
-		c.botScopedMu.Lock()
-		cached := c.botScopedTok
-		c.botScopedMu.Unlock()
-		if cached != "" {
-			return cached, nil
-		}
-	}
 	result, err := c.Credential.ResolveToken(ctx, credential.NewTokenSpec(as, c.Config.AppID))
 	if err != nil {
 		var unavailableErr *credential.TokenUnavailableError
@@ -169,132 +153,7 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 	if err != nil {
 		return nil, WrapDoAPIError(err)
 	}
-
-	// Agent Employee (hybrid TAT) missing-scope auto-retry: a bot call that hits
-	// 99991679 can succeed if the TAT carries the required scopes. The hybrid
-	// token only carries scopes requested at mint time, and the current TAT was
-	// minted unscoped — so re-mint with the app's full granted scope set and
-	// retry once. (Requesting only granted scopes avoids invalid_scope; the
-	// server rejects the whole mint if any scope is not granted.)
-	//
-	// Safe to re-issue req — including non-idempotent writes with a body:
-	//   - 99991679 is a pre-execution authorization rejection, so the first
-	//     attempt performed no side effect (nothing was created/modified).
-	//   - larkcore reproduces the body on each Do: value bodies are re-marshaled
-	//     from req.Body, and *Formdata caches its bytes after the first build, so
-	//     req.Body is never consumed by the first attempt.
-	if as.IsBot() && respMissingScope(resp) {
-		if scoped, ok := c.fullScopeBotToken(ctx); ok && scoped != token {
-			req.SupportedAccessTokenTypes = []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant}
-			retryOpts := append([]larkcore.RequestOptionFunc{larkcore.WithTenantAccessToken(scoped)}, extraOpts...)
-			if resp2, err2 := c.SDK.Do(ctx, req, retryOpts...); err2 == nil {
-				return resp2, nil
-			}
-		}
-	}
 	return resp, nil
-}
-
-// respMissingScope reports whether resp is a 99991679 (missing_scope) business
-// error, i.e. the caller's token lacks a scope the API requires.
-func respMissingScope(resp *larkcore.ApiResp) bool {
-	if resp == nil || len(resp.RawBody) == 0 {
-		return false
-	}
-	var body struct {
-		Code int `json:"code"`
-	}
-	if err := json.Unmarshal(resp.RawBody, &body); err != nil {
-		return false
-	}
-	return body.Code == output.LarkErrUserScopeInsufficient
-}
-
-// fullScopeBotToken returns a bot (hybrid) TAT minted with the app's full set of
-// granted user-type scopes, caching it for reuse this process. Returns ok=false
-// when the app's granted scopes cannot be resolved or the scoped mint fails, in
-// which case the caller keeps the original (unscoped) response.
-func (c *APIClient) fullScopeBotToken(ctx context.Context) (string, bool) {
-	// Fast path: return the cached token if a prior call already minted it.
-	// The lock is held only around cache access — never across the network
-	// calls below, which themselves take the lock via resolveAccessToken.
-	c.botScopedMu.Lock()
-	cached := c.botScopedTok
-	c.botScopedMu.Unlock()
-	if cached != "" {
-		return cached, true
-	}
-
-	scopes, err := c.appGrantedScopes(ctx)
-	if err != nil || len(scopes) == 0 {
-		return "", false
-	}
-	spec := credential.NewTokenSpec(core.AsBot, c.Config.AppID)
-	spec.Scopes = strings.Join(scopes, " ")
-	result, err := c.Credential.ResolveToken(ctx, spec)
-	if err != nil || result == nil || result.Token == "" {
-		return "", false
-	}
-
-	c.botScopedMu.Lock()
-	if c.botScopedTok == "" {
-		c.botScopedTok = result.Token
-	}
-	tok := c.botScopedTok
-	c.botScopedMu.Unlock()
-	return tok, true
-}
-
-// appGrantedScopes fetches the app's granted user-type scopes via the
-// application info API, using the base (unscoped) bot token. It calls SDK.Do
-// directly (not DoSDKRequest) so it never re-enters the missing-scope retry.
-func (c *APIClient) appGrantedScopes(ctx context.Context) ([]string, error) {
-	token, err := c.resolveAccessToken(ctx, core.AsBot)
-	if err != nil {
-		return nil, err
-	}
-	qp := make(larkcore.QueryParams)
-	qp.Set("lang", "zh_cn")
-	req := &larkcore.ApiReq{
-		HttpMethod:                http.MethodGet,
-		ApiPath:                   internalauth.ApplicationInfoPath(c.Config.AppID),
-		QueryParams:               qp,
-		SupportedAccessTokenTypes: []larkcore.AccessTokenType{larkcore.AccessTokenTypeTenant},
-	}
-	resp, err := c.SDK.Do(ctx, req, larkcore.WithTenantAccessToken(token))
-	if err != nil {
-		return nil, err
-	}
-	var body struct {
-		Code int `json:"code"`
-		Data struct {
-			App struct {
-				Scopes []struct {
-					Scope      string   `json:"scope"`
-					TokenTypes []string `json:"token_types"`
-				} `json:"scopes"`
-			} `json:"app"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(resp.RawBody, &body); err != nil {
-		return nil, err
-	}
-	if body.Code != 0 {
-		return nil, fmt.Errorf("application info returned code %d", body.Code)
-	}
-	var scopes []string
-	for _, s := range body.Data.App.Scopes {
-		if s.Scope == "" {
-			continue
-		}
-		for _, tt := range s.TokenTypes {
-			if tt == "user" {
-				scopes = append(scopes, s.Scope)
-				break
-			}
-		}
-	}
-	return scopes, nil
 }
 
 // DoStream executes a streaming HTTP request against the Lark OpenAPI endpoint.
