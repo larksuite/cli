@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -211,6 +212,12 @@ func TestGetShortcutOnlyDomainNames_HaveDescriptions(t *testing.T) {
 		if enDesc == "" {
 			t.Errorf("missing en description for shortcut-only domain %q", name)
 		}
+	}
+}
+
+func TestGetShortcutOnlyDomainNames_IncludesNote(t *testing.T) {
+	if !slices.Contains(getShortcutOnlyDomainNames(), "note") {
+		t.Fatal("shortcut-only domains must include note so auth login can select vc:note:read")
 	}
 }
 
