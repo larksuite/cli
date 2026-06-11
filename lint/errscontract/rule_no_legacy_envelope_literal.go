@@ -26,11 +26,9 @@ var migratedEnvelopePaths = []string{
 	"shortcuts/doc/",
 	"shortcuts/drive/",
 	"shortcuts/event/",
-	"shortcuts/im/",
 	"shortcuts/mail/",
 	"shortcuts/markdown/",
 	"shortcuts/minutes/",
-	"shortcuts/note/",
 	"shortcuts/okr/",
 	"shortcuts/sheets/",
 	"shortcuts/slides/",
@@ -38,6 +36,7 @@ var migratedEnvelopePaths = []string{
 	"shortcuts/vc/",
 	"shortcuts/whiteboard/",
 	"shortcuts/wiki/",
+	"shortcuts/im/",
 }
 
 // legacyOutputImportPath is the import path of the package that declares the

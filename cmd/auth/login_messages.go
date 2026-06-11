@@ -128,5 +128,5 @@ func getLoginMsg(lang i18n.Lang) *loginMsg {
 // (not backed by from_meta service specs). Descriptions are now centralized in
 // service_descriptions.json.
 func getShortcutOnlyDomainNames() []string {
-	return []string{"base", "contact", "docs", "markdown", "apps", "note"}
+	return []string{"base", "contact", "docs", "markdown", "apps"}
 }

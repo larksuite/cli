@@ -27,7 +27,7 @@
 | 产物 | Token 字段 | 本质 | 说明 |
 |------|-----------|------|------|
 | 智能纪要 | `note_doc_token` | 飞书文档 | AI 生成的会议总结与待办 |
-| 逐字稿 | `verbatim_doc_token` | 飞书文档 | 完整的逐句发言记录（含说话人、时间戳）— **仅 `note_display_type=normal` 时是可读的独立文档**；`unified` 纪要的逐字稿用 `note +transcript --note-id <note_id>` 拉取（见下方 [Note 域](#note-域)） |
+| 逐字稿 | `verbatim_doc_token` | 飞书文档 | 完整的逐句发言记录（含说话人、时间戳） |
 | 共享文档 | `shared_doc_token` | 飞书文档 | 会中投屏共享的文档信息 |
 
 此外，还存在**用户会议纪要（MeetingNotes）**，对应 `meeting_notes` 字段。这是用户主动绑定到会议的纪要文档，通常用于会前记录会议相关内容，与智能纪要文档相互独立。仅通过 `+notes --calendar-event-ids` 路径返回。
@@ -58,7 +58,7 @@
 
 #### 逐字稿与文字记录的格式
 
-智能纪要的逐字稿（`normal` 纪要的 `verbatim_doc_token` 文档、`unified` 纪要的 `note +transcript` 输出）和妙记的文字记录（Transcript）都记录了用户原始对话内容，格式一致：
+智能纪要的逐字稿（`verbatim_doc_token`）和妙记的文字记录（Transcript）都记录了用户原始对话内容，格式一致：
 
 ```
 发言人名称 相对时间戳
@@ -81,8 +81,6 @@
 
 根据关键字、组织者、参与人、会议室等条件搜索会议，获取会议列表。
 
-> **不要把纪要标题当会议线索：** 如果用户说“查询 xx 纪要的逐字稿 / 原始记录 / 谁说了什么”，且没有 `meeting_id`、`calendar_event_id`、会议号、参会人或时间范围，先用 `drive +search --query <标题>` 搜索纪要文档，拿到 Docx URL/token 后再 `docs +fetch --api-version v2`。若返回 `<vc-transcribe-tab vc-node-id="...">`，提取 `note_id` 后进入 Note 域判断 `normal` / `unified`；若没有该 block，但有“文字记录/逐字稿” Docx 链接，直接用 `docs +fetch --api-version v2` 读取该链接。
-
 ```bash
 lark-cli vc +search --start "<YYYY-MM-DD>" --end "<YYYY-MM-DD>" --format json
 ```
@@ -98,9 +96,8 @@ lark-cli vc +notes --meeting-ids '<meeting_id1>,<meeting_id2>'
 ```
 
 可获取会议的所有产物信息，包括：
-- 纪要标识（`note_id`）与展示类型（`note_display_type`：`unknown` / `normal` / `unified`）— 决定逐字稿走哪条路由
 - 智能纪要（`note_doc_token`）— AI 生成的总结和待办信息
-- 逐字稿（`verbatim_doc_token`）— 完整的会中发言记录（仅 `normal` 纪要可直接读取该文档）
+- 逐字稿（`verbatim_doc_token`）— 完整的会中发言记录
 - 共享文档（`shared_doc_token`）— 会中投屏共享的文档
 - 妙记 Token（`minute_token`）— 如存在录制产物则返回
 
@@ -114,78 +111,25 @@ lark-cli vc +notes --minute-tokens '<minute_token1>,<minute_token2>'
 
 可获取妙记的总结、待办、章节、文字记录等信息。详细用法请阅读 [`lark-vc-notes.md`](lark-vc-notes.md)。
 
-#### Step 3: 按 `note_display_type` 拉取正文 / 逐字稿
+#### Step 3: Doc 域拉取文档内容
 
-智能纪要（`note_doc_token`）是飞书文档，使用 `docs +fetch --api-version v2` 读取正文内容；**逐字稿的读取方式由 `note_display_type` 决定**：
+智能纪要和逐字稿都是飞书文档，需使用 `docs +fetch` 读取正文内容：
 
 ```bash
-# 纪要正文（两种展示类型都适用）
-lark-cli docs +fetch --api-version v2 --doc <note_doc_token> --doc-format markdown
-
-# note_display_type=normal：逐字稿是独立文档
-lark-cli docs +fetch --api-version v2 --doc <verbatim_doc_token> --doc-format markdown
-
-# note_display_type=unified：逐字稿不是独立文档，按 note_id 拉取
-lark-cli note +transcript --note-id <note_id>
+lark-cli docs +fetch --api-version v2 --doc <doc_token> --doc-format markdown
 ```
 
-详细用法请参考 [lark-doc](../../lark-doc/SKILL.md) 与 [lark-note](../../lark-note/SKILL.md) skill。
+详细用法请参考 [lark-doc](../../lark-doc/SKILL.md) skill。
 
 #### Step 4: 判断用户需要的产物内容
 
 - 根据用户诉求（总结/待办/章节/完整发言记录等），选择合适的产物进行分析和信息提取
 - 如果两种产物都不存在或没有权限，需如实告知用户
 
-## Note 域
-
-- **lark-note skill** 负责**已知 `note_id`** 时的纪要直查：纪要详情、展示类型、关联文档 token，以及 unified 纪要的原始逐字记录。
-- **入口边界**：Note 域只接受 `note_id`。只有 `meeting_id` / `calendar_event_id` / `minute_token` 等会议线索时，先用 `lark-vc` 的 `+notes` 定位 `note_id`；只有自然语言纪要标题时，先用 `drive +search --query <标题>` 搜索纪要文档，拿到 Docx URL/token 后再 `docs +fetch --api-version v2`。返回中的 `<vc-transcribe-tab vc-node-id="..."></vc-transcribe-tab>` 表示 VC 原始记录 block，其中 `vc-node-id` 属性值就是 `note_id`；拿到显式 `note_id` 后再进入 Note 域。若没有该 block，但有“文字记录/逐字稿” Docx 链接，说明是普通纪要的独立逐字稿文档，继续走 Doc 域读取。
-- **展示类型（`note_display_type`）决定逐字稿路由**：
-  - `normal`：逐字稿是独立文档（`verbatim_doc_token`），用 `docs +fetch --api-version v2` 读取。
-  - `unknown` 且 `verbatim_doc_token` 非空：先按独立文档处理，用 `docs +fetch --api-version v2` 读取；不要猜成 unified。
-  - `unknown` 且无可用逐字稿 token：先 `note +detail --note-id` 复核展示类型。
-  - `unified`：逐字稿不是独立文档，用 `note +transcript --note-id` 拉取原始记录。
-- **判别键是 `note_display_type`，不是 `verbatim_doc_token` 是否为空**：unified 纪要也可能返回非空 `verbatim_doc_token`，但逐字稿仍以 `note +transcript` 为准（输出更结构化）。
-
-### 资源关系
-
-```text
-Meeting
-├── meeting_id
-├── calendar_event_id  → meeting relation
-├── minute_token       → Minutes
-└── note_id            → Note
-
-Note
-├── note_display_type  (unknown / normal / unified)
-├── note_doc_token     → Docs
-├── verbatim_doc_token → Docs (normal 路径的逐字稿文档)
-└── unified transcript → note +transcript (unified 原始记录)
-
-Docs
-├── doc_token / Docx URL → docs +fetch --api-version v2
-└── <vc-transcribe-tab vc-node-id="..."> from docs +fetch --api-version v2 → note_id → Note
-
-Minutes
-├── minute_token → 基础信息
-└── media        → minutes +download
-```
-
-### 边界判断表（按用户已有输入选第一入口）
-
-| 用户输入 | 第一入口 | 后续入口 |
-|---------|---------|---------|
-| `meeting_id` | `lark-vc` | `lark-note` / `lark-doc` |
-| `calendar_event_id` | `lark-vc` | `lark-note` / `lark-doc` |
-| `minute_token` | `lark-vc`（纪要产物索引）/ `lark-minutes`（妙记基础信息、媒体） | `lark-note` / `lark-doc` |
-| `note_id` | `lark-note` | `lark-doc` |
-| 自然语言纪要标题 + 逐字稿意图 | `lark-drive`（文档搜索） | `lark-doc`（正文读取）；有 `vc-node-id` 时再进入 `lark-note`；不要先走 `lark-vc` / `lark-minutes` |
-| `doc_token` / Docx URL | `lark-doc` | 如果 `docs +fetch --api-version v2` 返回 `<vc-transcribe-tab vc-node-id="...">`，用 `vc-node-id` 属性值作为 `note_id` 进入 `lark-note`；否则不反推 Note |
-
 ## Doc 域
 
 - **lark-doc skill** 负责飞书云文档管理，包括获取文档元信息、读取文档内容、创建和编辑文档等操作。
-- **会议产物的文档本质**：智能纪要（`note_doc_token`）和 `normal` 纪要的逐字稿（`verbatim_doc_token`）都是飞书文档，需要通过 `lark-doc` 的 API（如 `docs +fetch --api-version v2`）查询其内容和元信息；`unified` 纪要的逐字稿不是独立文档，用 `note +transcript` 拉取（[lark-note](../../lark-note/SKILL.md)）。
+- **会议产物的文档本质**：智能纪要（`note_doc_token`）、逐字稿（`verbatim_doc_token`）都是飞书文档，需要通过 `lark-doc` 的 API（如 `docs +fetch`）查询其内容和元信息。
 - **文档元信息查询**：获取文档名称、URL 等基本信息时，使用 `drive metas batch_query`；获取文档正文内容时，使用 `docs +fetch --api-version v2`。
 
 ## 三域关联总览

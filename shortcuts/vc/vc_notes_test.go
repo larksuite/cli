@@ -23,7 +23,6 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
-	"github.com/larksuite/cli/shortcuts/note"
 )
 
 // ---------------------------------------------------------------------------
@@ -120,21 +119,6 @@ func noteDetailStub(noteID string) *httpmock.Stub {
 	}
 }
 
-func noteDetailDisplayOnlyStub(noteID string, displayType int) *httpmock.Stub {
-	return &httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/vc/v1/notes/" + noteID,
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"note": map[string]interface{}{
-					"note_display_type": displayType,
-				},
-			},
-		},
-	}
-}
-
 func artifactsStub(token, transcript string) *httpmock.Stub {
 	data := map[string]interface{}{
 		"summary":         "Test summary content",
@@ -194,9 +178,68 @@ func TestSanitizeDirName(t *testing.T) {
 	}
 }
 
-// Note-detail parsing helpers (parseArtifactType/extractArtifactTokens/
-// extractDocTokens) moved to the note domain; their tests live in
-// shortcuts/note/note_test.go.
+func TestParseArtifactType(t *testing.T) {
+	tests := []struct {
+		input any
+		want  int
+	}{
+		{float64(1), 1},
+		{float64(2), 2},
+		{json.Number("3"), 3},
+		{"unknown", 0},
+		{nil, 0},
+	}
+	for _, tt := range tests {
+		got := parseArtifactType(tt.input)
+		if got != tt.want {
+			t.Errorf("parseArtifactType(%v) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestExtractArtifactTokens(t *testing.T) {
+	artifacts := []any{
+		map[string]any{"doc_token": "main_doc", "artifact_type": float64(1)},
+		map[string]any{"doc_token": "verbatim_doc", "artifact_type": float64(2)},
+		map[string]any{"doc_token": "unknown_doc", "artifact_type": float64(99)},
+		nil,
+	}
+	noteDoc, verbatimDoc := extractArtifactTokens(artifacts)
+	if noteDoc != "main_doc" {
+		t.Errorf("noteDoc = %q, want %q", noteDoc, "main_doc")
+	}
+	if verbatimDoc != "verbatim_doc" {
+		t.Errorf("verbatimDoc = %q, want %q", verbatimDoc, "verbatim_doc")
+	}
+}
+
+func TestExtractArtifactTokens_Empty(t *testing.T) {
+	noteDoc, verbatimDoc := extractArtifactTokens(nil)
+	if noteDoc != "" || verbatimDoc != "" {
+		t.Errorf("expected empty tokens for nil input, got %q, %q", noteDoc, verbatimDoc)
+	}
+}
+
+func TestExtractDocTokens(t *testing.T) {
+	refs := []any{
+		map[string]any{"doc_token": "shared1"},
+		map[string]any{"doc_token": "shared2"},
+		map[string]any{"doc_token": ""},
+		map[string]any{},
+		nil,
+	}
+	tokens := extractDocTokens(refs)
+	if len(tokens) != 2 || tokens[0] != "shared1" || tokens[1] != "shared2" {
+		t.Errorf("extractDocTokens = %v, want [shared1 shared2]", tokens)
+	}
+}
+
+func TestExtractDocTokens_Empty(t *testing.T) {
+	tokens := extractDocTokens(nil)
+	if tokens != nil {
+		t.Errorf("expected nil for nil input, got %v", tokens)
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Integration tests: +notes with mocked HTTP
@@ -316,6 +359,25 @@ func TestNotes_BatchLimit(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "too many IDs") {
 		t.Errorf("expected 'too many IDs' error, got: %v", err)
+	}
+}
+
+func TestParseArtifactType_AllBranches(t *testing.T) {
+	// cover json.Number branch
+	if got := parseArtifactType(json.Number("1")); got != 1 {
+		t.Errorf("json.Number: got %d, want 1", got)
+	}
+	// cover float64 branch
+	if got := parseArtifactType(float64(2)); got != 2 {
+		t.Errorf("float64: got %d, want 2", got)
+	}
+	// cover default branch
+	if got := parseArtifactType("str"); got != 0 {
+		t.Errorf("default: got %d, want 0", got)
+	}
+	// cover nil
+	if got := parseArtifactType(nil); got != 0 {
+		t.Errorf("nil: got %d, want 0", got)
 	}
 }
 
@@ -533,33 +595,6 @@ func TestNotes_CalendarPath_FallbackWhenMeetingChainFails(t *testing.T) {
 	}
 }
 
-func TestNotes_CalendarPath_KeepsNoteIDOnlyDetail(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-
-	calID := "cal_test"
-	reg.Register(primaryCalendarStub(calID))
-	reg.Register(calendarRelationStub(calID, "evt_note_only", []string{"m_note_only"}, nil))
-	reg.Register(meetingGetStub("m_note_only", "note_only"))
-	reg.Register(noteDetailDisplayOnlyStub("note_only", 2))
-	reg.Register(recordingErrStub("m_note_only", 121004, "not found"))
-
-	err := mountAndRun(t, VCNotes, []string{"+notes", "--calendar-event-ids", "evt_note_only", "--as", "user"}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	note := extractFirstNote(t, stdout)
-	if got := note["note_id"]; got != "note_only" {
-		t.Fatalf("note_id = %v, want note_only; note=%#v", got, note)
-	}
-	if got := note["note_display_type"]; got != "unified" {
-		t.Fatalf("note_display_type = %v, want unified; note=%#v", got, note)
-	}
-	if got := note["calendar_event_id"]; got != "evt_note_only" {
-		t.Fatalf("calendar_event_id = %v, want evt_note_only; note=%#v", got, note)
-	}
-}
-
 func TestNotes_CalendarPath_NeedNotes_RequestBody(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	warmTokenCache(t)
@@ -610,26 +645,6 @@ func TestNotes_CalendarPath_NeedNotes_RequestBody(t *testing.T) {
 	}
 	if _, ok := body["need_ai_meeting_notes"]; ok {
 		t.Errorf("need_ai_meeting_notes should not be requested")
-	}
-}
-
-func TestNotes_TableOutputIncludesNoteRoutingFields(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
-
-	reg.Register(meetingGetStub("m_table", "note_table"))
-	reg.Register(noteDetailDisplayOnlyStub("note_table", 2))
-	reg.Register(recordingErrStub("m_table", 121004, "not found"))
-
-	err := mountAndRun(t, VCNotes, []string{"+notes", "--meeting-ids", "m_table", "--format", "table", "--as", "user"}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "note_table") {
-		t.Fatalf("table output missing note_id:\n%s", out)
-	}
-	if !strings.Contains(out, "unified") {
-		t.Fatalf("table output missing note_display_type:\n%s", out)
 	}
 }
 
@@ -741,9 +756,7 @@ func TestHasNotesPayload(t *testing.T) {
 		{"nil", nil, false},
 		{"empty", map[string]any{}, false},
 		{"only meta", map[string]any{"meeting_id": "m1", "error": "fail"}, false},
-		{"empty values", map[string]any{"note_doc_token": "", "minute_token": "", "note_id": ""}, false},
-		{"only note_id", map[string]any{"note_id": "note1"}, true},
-		{"note_id with display type", map[string]any{"note_id": "note1", "note_display_type": "unified", "note_doc_token": ""}, true},
+		{"empty values", map[string]any{"note_doc_token": "", "minute_token": ""}, false},
 		{"has note_doc_token", map[string]any{"note_doc_token": "doc1"}, true},
 		{"has verbatim_doc_token", map[string]any{"verbatim_doc_token": "v1"}, true},
 		{"has minute_token", map[string]any{"minute_token": "obc"}, true},
@@ -1253,7 +1266,7 @@ func TestFetchNoteDetail_NoteNoPermission_ProblemOf(t *testing.T) {
 
 	// meeting.get returns note_id, note detail returns 121005
 	reg.Register(meetingGetStub("m_noteperm2", "note_perm2"))
-	reg.Register(noteDetailErrStub("note_perm2", note.NoNoteReadPermissionCode, "no permission"))
+	reg.Register(noteDetailErrStub("note_perm2", noteNoPermissionCode, "no permission"))
 	reg.Register(recordingOKStub("m_noteperm2", "https://meetings.feishu.cn/minutes/obcpermtest"))
 
 	// note fails but minute_token succeeds → partial success (hasNotesPayload=true)
@@ -1270,29 +1283,6 @@ func TestFetchNoteDetail_NoteNoPermission_ProblemOf(t *testing.T) {
 	errMsg, _ := note["error"].(string)
 	if !strings.Contains(errMsg, "[121005]") || !strings.Contains(errMsg, "no read permission for this meeting note") {
 		t.Errorf("fetchNoteDetail permission error = %q; want contains '[121005]: no read permission for this meeting note'", errMsg)
-	}
-}
-
-func TestFetchNoteDetail_EmptyDetailKeepsLegacyError(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/vc/v1/notes/note_empty_detail",
-		Body: map[string]any{
-			"code": 0,
-			"data": map[string]any{},
-		},
-	})
-
-	if err := botExec(t, "empty-note-detail", f, func(ctx context.Context, rctx *common.RuntimeContext) error {
-		got := fetchNoteDetail(ctx, rctx, "note_empty_detail")
-		if got["error"] != "note detail is empty" {
-			t.Fatalf("error = %#v, want legacy empty-detail text", got["error"])
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
