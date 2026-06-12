@@ -4,11 +4,18 @@
 package mail
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
@@ -172,4 +179,112 @@ func TestAddSignatureImagesToBuilderWithImages(t *testing.T) {
 	// Should not panic; empty CID entry is silently skipped.
 	got := addSignatureImagesToBuilder(bld, sig)
 	_ = got
+}
+
+// newSigTestRuntime creates a RuntimeContext backed by an httpmock.Registry for
+// tests that exercise signature API code paths (autoResolveSignatureID, resolveSignature).
+func newSigTestRuntime(t *testing.T) (*common.RuntimeContext, *httpmock.Registry) {
+	t.Helper()
+	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_sigtest"}
+	f, _, _, reg := cmdutil.TestFactory(t, cfg)
+	rt := common.TestNewRuntimeContextForAPI(context.Background(), &cobra.Command{Use: "+test"}, cfg, f, core.AsUser)
+	return rt, reg
+}
+
+// stubSigListResponse registers a signatures list stub for the given mailboxID.
+func stubSigListResponse(reg *httpmock.Registry, mailboxID string, sigs []map[string]interface{}, usages []map[string]interface{}) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/" + mailboxID + "/settings/signatures",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"signatures": sigs,
+				"usages":     usages,
+			},
+		},
+	})
+}
+
+func TestAutoResolveSignatureID_APIFailureReturnsEmpty(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/mail/v1/user_mailboxes/mbx-api-fail/settings/signatures",
+		Status: 500,
+		Body:   map[string]interface{}{"code": 500, "msg": "internal server error"},
+	})
+	got := autoResolveSignatureID(rt, "mbx-api-fail", "user@example.com", false)
+	if got != "" {
+		t.Fatalf("expected empty string on API failure, got %q", got)
+	}
+}
+
+func TestAutoResolveSignatureID_NoDefaultConfigured(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-no-default", nil, []map[string]interface{}{
+		{"email_address": "other@example.com", "send_mail_signature_id": "sig-other"},
+	})
+	got := autoResolveSignatureID(rt, "mbx-no-default", "user@example.com", false)
+	if got != "" {
+		t.Fatalf("expected empty string when no default configured for sender, got %q", got)
+	}
+}
+
+func TestAutoResolveSignatureID_ReturnsSendID(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-send-id", nil, []map[string]interface{}{
+		{"email_address": "user@example.com", "send_mail_signature_id": "sig-send-42", "reply_signature_id": "sig-reply-42"},
+	})
+	got := autoResolveSignatureID(rt, "mbx-send-id", "user@example.com", false)
+	if got != "sig-send-42" {
+		t.Fatalf("expected send default sig ID %q, got %q", "sig-send-42", got)
+	}
+}
+
+func TestAutoResolveSignatureID_ReturnsReplyID(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-reply-id", nil, []map[string]interface{}{
+		{"email_address": "user@example.com", "send_mail_signature_id": "sig-send-42", "reply_signature_id": "sig-reply-42"},
+	})
+	got := autoResolveSignatureID(rt, "mbx-reply-id", "user@example.com", true)
+	if got != "sig-reply-42" {
+		t.Fatalf("expected reply default sig ID %q, got %q", "sig-reply-42", got)
+	}
+}
+
+func TestResolveSignature_EmptyIDReturnsNil(t *testing.T) {
+	rt, _ := newSigTestRuntime(t)
+	result, err := resolveSignature(context.Background(), rt, "mbx-empty", "", "user@example.com", false, false)
+	if err != nil {
+		t.Fatalf("unexpected error for empty signatureID: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result for empty signatureID, got %+v", result)
+	}
+}
+
+func TestResolveSignature_StaleIDAutoDegradesGracefully(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	// API returns an empty list — stale ID not found → ValidationError in Get.
+	stubSigListResponse(reg, "mbx-stale-auto", nil, nil)
+	result, err := resolveSignature(context.Background(), rt, "mbx-stale-auto", "sig-stale", "user@example.com", false, false)
+	if err != nil {
+		t.Fatalf("expected graceful degradation (nil error), got: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result for stale auto-resolved ID, got %+v", result)
+	}
+}
+
+func TestResolveSignature_StaleIDUserExplicitFails(t *testing.T) {
+	rt, reg := newSigTestRuntime(t)
+	stubSigListResponse(reg, "mbx-stale-explicit", nil, nil)
+	_, err := resolveSignature(context.Background(), rt, "mbx-stale-explicit", "sig-stale", "user@example.com", true, false)
+	if err == nil {
+		t.Fatal("expected error for stale ID with userExplicit=true, got nil")
+	}
+	if !errs.IsValidation(err) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
 }
