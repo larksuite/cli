@@ -18,6 +18,7 @@ import (
 // ListOptions holds all inputs for auth list.
 type ListOptions struct {
 	Factory *cmdutil.Factory
+	JSON    bool
 }
 
 // NewCmdAuthList creates the auth list subcommand.
@@ -34,6 +35,7 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 			return authListRun(opts)
 		},
 	}
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmdutil.SetRisk(cmd, "read")
 
 	return cmd

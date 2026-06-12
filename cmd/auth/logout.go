@@ -18,6 +18,7 @@ import (
 // LogoutOptions holds all inputs for auth logout.
 type LogoutOptions struct {
 	Factory *cmdutil.Factory
+	JSON    bool
 }
 
 // NewCmdAuthLogout creates the auth logout subcommand.
@@ -34,6 +35,7 @@ func NewCmdAuthLogout(f *cmdutil.Factory, runF func(*LogoutOptions) error) *cobr
 			return authLogoutRun(opts)
 		},
 	}
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmdutil.SetRisk(cmd, "write")
 
 	return cmd
