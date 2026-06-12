@@ -57,6 +57,9 @@ var AppsReleaseGet = common.Shortcut{
 		out := data
 		if release, ok := data["release"].(map[string]interface{}); ok {
 			out = release
+			if el, ok := data["error_logs"]; ok {
+				out["error_logs"] = el
+			}
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",
