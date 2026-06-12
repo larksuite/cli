@@ -522,8 +522,8 @@ func fetchNoteDetail(ctx context.Context, runtime *common.RuntimeContext, noteID
 		if problem, ok := errs.ProblemOf(err); ok && problem.Code == note.NoNoteReadPermissionCode {
 			return map[string]any{"error": fmt.Sprintf("[%v]: no read permission for this meeting note", problem.Code)}
 		}
-		if problem, ok := errs.ProblemOf(err); ok && problem.Subtype == errs.SubtypeInvalidResponse && problem.Message == "note detail is empty" {
-			return map[string]any{"error": problem.Message}
+		if errors.Is(err, note.ErrEmptyDetail) {
+			return map[string]any{"error": note.ErrEmptyDetail.Error()}
 		}
 		return map[string]any{"error": fmt.Sprintf("failed to query note detail: %v", err)}
 	}

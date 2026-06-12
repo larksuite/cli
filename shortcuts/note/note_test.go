@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
 // These tests were relocated from shortcuts/vc/vc_notes_test.go together with
@@ -229,6 +230,36 @@ func TestMapNoteError_Passthrough(t *testing.T) {
 	err := errors.New("boom")
 	if got := mapNoteError(err); got != err {
 		t.Fatalf("mapNoteError passthrough = %v, want original", got)
+	}
+}
+
+func TestNoteDetailEmptyDetailPreservesSentinelCause(t *testing.T) {
+	factory, stdout, _, reg := noteShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/notes/note_empty_detail",
+		Body: map[string]any{
+			"code": 0,
+			"data": map[string]any{},
+		},
+	})
+
+	err := runNoteShortcut(t, NoteDetail, []string{"+detail", "--note-id", "note_empty_detail", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected empty detail to fail")
+	}
+	if !errors.Is(err, ErrEmptyDetail) {
+		t.Fatalf("errors.Is(ErrEmptyDetail) = false for %T: %v", err, err)
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T", err)
+	}
+	if problem.Category != errs.CategoryInternal || problem.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("category/subtype = %v/%v, want Internal/InvalidResponse", problem.Category, problem.Subtype)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
 	}
 }
 

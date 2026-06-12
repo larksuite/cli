@@ -10,6 +10,7 @@ package note
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -23,6 +24,10 @@ import (
 // NoNoteReadPermissionCode is returned when the caller lacks read permission
 // for the requested note.
 const NoNoteReadPermissionCode = 121005
+
+// ErrEmptyDetail identifies note detail responses that do not contain a note
+// object. Callers should use errors.Is instead of matching the display message.
+var ErrEmptyDetail = errors.New("note detail is empty")
 
 // artifact_type enum from the note detail API.
 const (
@@ -58,7 +63,7 @@ func FetchDetail(_ context.Context, runtime *common.RuntimeContext, noteID strin
 	}
 	noteObj, _ := data["note"].(map[string]any)
 	if noteObj == nil {
-		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "note detail is empty")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "note detail is empty").WithCause(ErrEmptyDetail)
 	}
 	noteDoc, verbatimDoc := extractArtifactTokens(common.GetSlice(noteObj, "artifacts"))
 	return &Detail{
