@@ -162,7 +162,8 @@ var MailReplyAll = common.Shortcut{
 		} else if signatureID == "" {
 			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, true /*isReply*/)
 		}
-		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
+			runtime.Str("signature-id") != "", !plainText)
 		if sigErr != nil {
 			return sigErr
 		}

@@ -204,7 +204,8 @@ var MailSend = common.Shortcut{
 			}
 		}
 
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
+			runtime.Str("signature-id") != "", !plainText)
 		if err != nil {
 			return err
 		}
