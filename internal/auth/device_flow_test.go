@@ -25,7 +25,6 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
-
 // TestResolveOAuthEndpoints_Lark validates endpoints for the Lark brand.
 func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandLark)
