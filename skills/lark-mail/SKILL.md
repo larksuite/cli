@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
+description: "飞书邮箱：搜索/阅读邮件、写草稿、发送/回复/转发、附件、模板、签名、收信规则、已读回执。Use for mail, inbox, draft, send, reply, forward, thread, template, rule, receipt. Do not use for non-mail docs/sheets/calendar, auth setup, pure contact lookup, or IM/chat tasks unless sharing a mail card."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,9 +10,9 @@ metadata:
 
 # mail (v1)
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
+不要预先读取 `../lark-shared/SKILL.md`；只有认证、profile 切换、权限恢复或 `_notice` 处理时再读取。
 
-**CRITICAL - 编辑邮件内容前 MUST 先用 Read 工具读取 [references/lark-mail-html.md](references/lark-mail-html.md)，其中包含邮件书写规范**
+不要预先读取 `references/lark-mail-html.md`；简单 HTML 正文可直接写，复杂 HTML、本地图片或不确定安全性时再读取或运行 `+lint-html`。
 
 ## 核心概念
 
@@ -114,9 +114,9 @@ metadata:
 - 若用户需要，再继续帮他修改草稿或执行发送
 - 若本次产出了草稿且不是直接发信，则优先展示草稿打开链接；若当前输出没有链接，则静默处理
 
-### CRITICAL — 首次使用任何命令前先查 `-h`
+### 参数不确定时先查 `-h`
 
-无论是 Shortcut（`+triage`、`+send` 等）还是原生 API，**首次调用前必须先运行 `-h` 查看可用参数**，不要猜测参数名称：
+已有明确示例或已确认 flag 时可直接执行；参数、资源名或 raw API 结构不确定时，先运行 `-h` 查看可用参数，不要猜测参数名称：
 
 ```bash
 # Shortcut
@@ -127,7 +127,7 @@ lark-cli mail +send -h
 lark-cli mail user_mailbox.messages -h
 ```
 
-`-h` 输出即可用 flag 的权威来源。reference 文档中的参数表可辅助理解语义，但实际 flag 名称以 `-h` 为准。
+`-h` 输出是可用 flag 的权威来源。reference 文档可辅助理解语义，但实际 flag 名称以 `-h` 为准。
 
 ### 收件人搜索：查找邮箱地址
 
@@ -238,89 +238,9 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 
 **取消后邮件会变回草稿**，可继续编辑或在之后重新发送。
 
-### 撤回邮件
+### 低频操作
 
-发送成功后，若响应中包含 `recall_available: true`，说明该邮件支持撤回（24 小时内已投递的邮件）。
-
-**撤回操作：**
-```bash
-lark-cli mail user_mailbox.sent_messages recall --as user \
-  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
-```
-
-- 返回 `recall_status: available` 表示撤回请求已受理（异步执行）
-- 返回 `recall_status: unavailable` 表示不可撤回，`recall_restriction_reason` 说明原因
-
-**查询撤回进度：**
-```bash
-lark-cli mail user_mailbox.sent_messages get_recall_detail --as user \
-  --params '{"user_mailbox_id":"me","message_id":"<message_id>"}'
-```
-
-- `recall_status: in_progress` — 撤回进行中，可稍后再查
-- `recall_status: done` — 撤回完成，查看 `recall_result`（`all_success` / `all_fail` / `some_fail`）和每个收件人的详情
-
-**注意：** 撤回是异步操作，`recall` 返回成功仅表示请求已受理，实际结果需通过 `get_recall_detail` 查询。若响应中无 `recall_available` 字段，说明该邮件或应用不支持撤回，不要主动提及撤回。
-
-### 分享邮件到 IM
-
-将邮件以卡片形式分享到飞书群聊或个人会话。
-
-**依赖 Scope：** `mail:user_mailbox.message:readonly`、`im:message`、`im:message.send_as_user`
-
-1. 分享单封邮件到群聊（默认 `--receive-id-type chat_id`）：
-   ```bash
-   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id oc_xxx
-   ```
-
-2. 分享整个会话到群聊：
-   ```bash
-   lark-cli mail +share-to-chat --thread-id <会话ID> --receive-id oc_xxx
-   ```
-
-3. 通过邮箱分享给个人：
-   ```bash
-   lark-cli mail +share-to-chat --message-id <邮件ID> --receive-id user@example.com --receive-id-type email
-   ```
-
-4. 如果不知道群聊 ID，先搜索：
-   ```bash
-   lark-cli im +chat-search --query "群名关键词"
-   ```
-   从结果中获取 `chat_id`，然后执行分享。
-
-**注意：**
-- 分享需要用户在目标会话中有发消息权限
-- 需要同时授权 mail 和 im 两个域的 scope
-- 分享的卡片包含邮件摘要信息，收件人可点击查看
-
-### 发送日程邀请邮件
-
-在邮件中嵌入日程邀请（`text/calendar`），收件人收信后可直接接受或拒绝日程。`To`/`Cc` 收件人自动成为参会人（ATTENDEE），发件人自动成为组织者（ORGANIZER）。
-
-```bash
-# 发送带日程邀请的新邮件（先保存草稿，确认后发送）
-lark-cli mail +send --as user \
-    --to alice@example.com --cc bob@example.com \
-    --subject '产品评审' \
-    --body '<p>请参加本次产品评审会议。</p>' \
-    --event-summary '产品评审' \
-    --event-start '2026-05-10T14:00+08:00' \
-    --event-end '2026-05-10T15:00+08:00' \
-    --event-location '5F 大会议室' \
-    --confirm-send
-```
-
-**参数说明：**
-- `--event-summary`：日程标题，设置此参数即开启日程邀请模式，需同时设置 `--event-start` 和 `--event-end`
-- `--event-start` / `--event-end`：ISO 8601 格式时间，如 `2026-05-10T14:00+08:00`
-- `--event-location`：可选，日程地点
-
-**约束：**
-- `--event-*` 与 `--send-time`（定时发送）互斥，不可同时使用
-- `Bcc` 收件人不会成为日程参会人；如果邮件同时包含 Bcc 和日程，后端在发送时会拒绝该请求
-
-读取含日程邀请的邮件时，`calendar_event` 字段包含日程详情（`method`、`summary`、`start`、`end`、`organizer`、`attendees` 等）。
+撤回邮件用 `user_mailbox.sent_messages recall/get_recall_detail`，分享邮件用 `+share-to-chat`，日程邀请用 `+send --event-*`。这些低频流程先查对应命令 `-h` 或 schema，不在入口保留长示例。
 
 ### 正文格式：优先使用 HTML
 
@@ -341,7 +261,7 @@ lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 
 ## 邮件书写规范
 
-- 写信时**必须**遵守 [邮件 HTML 写法规范](references/lark-mail-html.md) — **CRITICAL** 飞书邮箱已验证的最纯净美观写法集合
+- 复杂 HTML、本地图片或安全不确定时再读取 [邮件 HTML 写法规范](references/lark-mail-html.md)；简单正文直接使用常规 `<p>` / `<ul><li>` 即可
 - [`+lint-html` 用法](references/lark-mail-lint-html.md) — 创建草稿前自检 / 修复 HTML 输出
 - **官方模板库** [`assets/templates/`](assets/templates/) — 提供部分场景模板，可供参考
 
@@ -373,6 +293,11 @@ lark-cli mail +message --message-id <id>
 
 **套用模板（5 个发信 shortcut）**：`+send` / `+draft-create` / `+reply` / `+reply-all` / `+forward` 均支持 `--template-id <id>`。`--template-id` 必须是**十进制整数字符串**。
 
+**创建模板后立即发信 checklist**：
+1. `+template-create --as user --name <name> --subject <subject> --template-content <html>`，捕获真实 `template_id`
+2. 用户要求发送时不要停在模板或草稿：`+send --as user --to <email> --template-id <template_id> --confirm-send`；只有需要覆盖模板主题时再传 `--subject`
+3. 返回 `message_id` 后调用 `user_mailbox.messages send_status` 汇报投递状态
+
 合并规则（与 `lark/desktop` 对齐）：
 
 | # | 场景 | 合并策略 |
@@ -391,7 +316,7 @@ lark-cli mail +message --message-id <id>
 
 ## 原生 API 调用规则
 
-没有 Shortcut 覆盖的操作才使用原生 API。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
+没有 Shortcut 覆盖的操作才使用原生 API。调用步骤以本节为准；资源和 method 用 `lark-cli mail -h` / `lark-cli mail <resource> -h` 发现，不在入口保留完整资源表。
 
 ### Step 1 — 用 `-h` 确定要调用的 API（必须，不可跳过）
 
@@ -460,6 +385,25 @@ lark-cli mail user_mailbox.folders create \
 - `user_mailbox_id` 几乎所有邮箱 API 都需要，一般传 `"me"` 代表当前用户
 - 列表接口支持 `--page-all` 自动翻页，无需手动处理 `page_token`
 
+### 收信规则速查：主题包含文本 → 添加标签
+
+只用真实 `label_id` / `rule_id`，不要猜。用户在同一请求中要求创建、验证、删除规则时，视为本流程已授权，可使用 `--yes` 通过 CLI 确认门。
+
+```bash
+lark-cli mail user_mailbox.labels list --as user \
+  --params '{"user_mailbox_id":"me","page_size":20}' --page-all
+
+lark-cli mail user_mailbox.rules create --as user --yes \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"name":"<rule_name>","is_enable":true,"ignore_the_rest_of_rules":false,"condition":{"match_type":1,"items":[{"type":2,"operator":2,"input":"<subject_text>"}]},"action":{"items":[{"type":2,"input":"<label_id>"}]}}'
+
+lark-cli mail user_mailbox.rules list --as user --params '{"user_mailbox_id":"me"}'
+lark-cli mail user_mailbox.rules delete --as user --yes \
+  --params '{"user_mailbox_id":"me","rule_id":"<rule_id>"}'
+```
+
+Quick codes above: condition `type=2` = subject, `operator=2` = contains, action `type=2` = add label.
+
 ## Shortcuts（推荐优先使用）
 
 Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）。有 Shortcut 的操作优先使用。
@@ -485,176 +429,6 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
 | [`+lint-html`](references/lark-mail-lint-html.md) | Lint mail HTML body for compatibility / safety / Feishu-native rules. Returns warnings/errors and (default) auto-fixed HTML. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change, or as a CI gate for static HTML templates. |
 
-## API Resources
+## Raw API Discovery
 
-```bash
-lark-cli schema mail.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli mail <resource> <method> [flags] # 调用 API
-```
-
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
-
-### multi_entity
-
-  - `search` — 适用于写信联系人搜索
-
-### user_mailboxes
-
-  - `accessible_mailboxes` — 列出可访问的邮箱
-  - `profile` — 获取用户邮箱信息
-  - `search` — 搜索邮件
-
-### user_mailbox.drafts
-
-  - `cancel_scheduled_send` — 取消定时发送
-  - `create` — 创建草稿
-  - `delete` — 删除草稿
-  - `get` — 获取草稿内容
-  - `list` — 列出草稿列表
-  - `send` — 发送草稿
-  - `update` — 更新草稿
-
-### user_mailbox.event
-
-  - `subscribe` — 订阅事件
-  - `subscription` — 获取订阅状态
-  - `unsubscribe` — 取消订阅
-
-### user_mailbox.folders
-
-  - `create` — 创建邮箱文件夹
-  - `delete` — 删除邮箱文件夹
-  - `get` — 获取邮箱文件夹信息
-  - `list` — 列出邮箱文件夹
-  - `patch` — 修改邮箱文件夹
-
-### user_mailbox.labels
-
-  - `create` — 创建标签
-  - `delete` — 删除标签
-  - `get` — 获取标签信息
-  - `list` — 列出标签
-  - `patch` — 更新标签
-
-### user_mailbox.mail_contacts
-
-  - `create` — 创建邮箱联系人
-  - `delete` — 删除邮箱联系人
-  - `list` — 列出邮箱联系人
-  - `patch` — 修改邮箱联系人信息
-
-### user_mailbox.message.attachments
-
-  - `download_url` — 获取附件下载链接
-
-### user_mailbox.messages
-
-  - `batch_get` — 批量获取邮件详情
-  - `batch_modify` — 批量修改邮件
-  - `batch_trash` — 批量删除邮件
-  - `get` — 获取邮件详情
-  - `list` — 列出邮件
-  - `modify` — 修改邮件
-  - `send_status` — 查询邮件发送状态
-  - `trash` — 删除邮件
-
-### user_mailbox.rules
-
-  - `create` — 创建收信规则
-  - `delete` — 删除收信规则
-  - `list` — 列出收信规则
-  - `reorder` — 对收信规则进行排序
-  - `update` — 更新收信规则
-
-### user_mailbox.sent_messages
-
-  - `get_recall_detail` — 查询邮件撤回进度
-  - `recall` — 撤回已发送的邮件
-
-### user_mailbox.settings
-
-  - `send_as` — 列出可发信邮箱
-
-### user_mailbox.template.attachments
-
-  - `download_url` — 获取模板附件下载链接
-
-### user_mailbox.templates
-
-  - `create` — 创建个人邮件模板
-  - `delete` — 删除指定邮件模板
-  - `get` — 获取指定邮件模板详情
-  - `list` — 列出指定邮箱下的全部个人邮件模板（不分页，仅返回 id 与 name）
-  - `update` — 全量替换指定邮件模板内容
-
-### user_mailbox.threads
-
-  - `batch_modify` — 批量修改邮件会话
-  - `batch_trash` — 批量删除邮件会话
-  - `get` — 获取邮件会话详情
-  - `list` — 列出邮件会话
-  - `modify` — 修改邮件会话
-  - `trash` — 删除邮件会话
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `multi_entity.search` | `mail:user_mailbox:readonly` |
-| `user_mailboxes.accessible_mailboxes` | `mail:user_mailbox:readonly` |
-| `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
-| `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.drafts.cancel_scheduled_send` | `mail:user_mailbox.message:send` |
-| `user_mailbox.drafts.create` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.drafts.delete` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.drafts.get` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.drafts.list` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.drafts.send` | `mail:user_mailbox.message:send` |
-| `user_mailbox.drafts.update` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.event.subscribe` | `mail:event` |
-| `user_mailbox.event.subscription` | `mail:event` |
-| `user_mailbox.event.unsubscribe` | `mail:event` |
-| `user_mailbox.folders.create` | `mail:user_mailbox.folder:write` |
-| `user_mailbox.folders.delete` | `mail:user_mailbox.folder:write` |
-| `user_mailbox.folders.get` | `mail:user_mailbox.folder:read` |
-| `user_mailbox.folders.list` | `mail:user_mailbox.folder:read` |
-| `user_mailbox.folders.patch` | `mail:user_mailbox.folder:write` |
-| `user_mailbox.labels.create` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.labels.delete` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.labels.get` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.labels.list` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.labels.patch` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.mail_contacts.create` | `mail:user_mailbox.mail_contact:write` |
-| `user_mailbox.mail_contacts.delete` | `mail:user_mailbox.mail_contact:write` |
-| `user_mailbox.mail_contacts.list` | `mail:user_mailbox.mail_contact:read` |
-| `user_mailbox.mail_contacts.patch` | `mail:user_mailbox.mail_contact:write` |
-| `user_mailbox.message.attachments.download_url` | `mail:user_mailbox.message.body:read` |
-| `user_mailbox.messages.batch_get` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.messages.batch_modify` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.messages.batch_trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.messages.get` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.messages.list` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.messages.modify` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.messages.send_status` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.messages.trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.rules.create` | `mail:user_mailbox.rule:write` |
-| `user_mailbox.rules.delete` | `mail:user_mailbox.rule:write` |
-| `user_mailbox.rules.list` | `mail:user_mailbox.rule:read` |
-| `user_mailbox.rules.reorder` | `mail:user_mailbox.rule:write` |
-| `user_mailbox.rules.update` | `mail:user_mailbox.rule:write` |
-| `user_mailbox.sent_messages.get_recall_detail` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.sent_messages.recall` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.settings.send_as` | `mail:user_mailbox:readonly` |
-| `user_mailbox.template.attachments.download_url` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.templates.create` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.delete` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.get` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.list` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.templates.update` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.threads.batch_modify` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.threads.batch_trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.threads.get` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
+调用未覆盖的原生 API 时，先用 `lark-cli mail -h` 和 `lark-cli mail <resource> -h` 找 resource/method，再用 `lark-cli schema mail.<resource>.<method>` 获取 `--params` / `--data` 结构。不要把完整资源表或 scope 表保留在常驻上下文；权限失败时按错误 hint 或 `lark-shared` 处理。
