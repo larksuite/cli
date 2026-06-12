@@ -719,6 +719,193 @@ func TestServiceMethod_FileUpload_DryRun(t *testing.T) {
 	}
 }
 
+// ── path parameter auto-flags ──
+
+func calendarEventDeleteSpec() map[string]interface{} {
+	return map[string]interface{}{
+		"name":        "calendar",
+		"servicePath": "/open-apis/calendar/v4",
+	}
+}
+
+func calendarEventDeleteMethod() map[string]interface{} {
+	return map[string]interface{}{
+		"path":       "calendars/{calendar_id}/events/{event_id}",
+		"httpMethod": "DELETE",
+		"parameters": map[string]interface{}{
+			"calendar_id": map[string]interface{}{
+				"type": "string", "location": "path", "required": true,
+				"description": "calendar id",
+			},
+			"event_id": map[string]interface{}{
+				"type": "string", "location": "path", "required": true,
+				"description": "event id",
+			},
+			"need_notification": map[string]interface{}{
+				"type": "boolean", "location": "query",
+			},
+		},
+	}
+}
+
+func TestServiceMethod_PathParamFlagsRegistered(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, calendarEventDeleteSpec(), calendarEventDeleteMethod(), "delete", "events", nil)
+
+	for _, name := range []string{"calendar-id", "event-id"} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("expected --%s flag to be auto-registered for path parameter", name)
+		}
+	}
+	// Query params must NOT be auto-registered as flags — they continue to flow through --params.
+	if cmd.Flags().Lookup("need-notification") != nil {
+		t.Error("--need-notification must not be auto-registered: it is a query parameter, not a path parameter")
+	}
+}
+
+func TestServiceMethod_PathParamFlagsAcceptedInDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, calendarEventDeleteSpec(), calendarEventDeleteMethod(), "delete", "events", nil)
+	cmd.SetArgs([]string{
+		"--calendar-id", "cal_abc",
+		"--event-id", "evt_xyz_0",
+		"--params", `{"need_notification":false}`,
+		"--dry-run",
+		"--as", "bot",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("expected --calendar-id / --event-id to be accepted, got: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/calendar/v4/calendars/cal_abc/events/evt_xyz_0") {
+		t.Errorf("expected URL with substituted path params, got:\n%s", out)
+	}
+	if !strings.Contains(out, "need_notification") {
+		t.Errorf("expected query param need_notification preserved, got:\n%s", out)
+	}
+}
+
+func TestServiceMethod_PathParamFlags_ParamsJSONStillSupported(t *testing.T) {
+	// Backward compatibility: callers who already worked around the bug by
+	// passing path params through --params JSON must keep working unchanged.
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, calendarEventDeleteSpec(), calendarEventDeleteMethod(), "delete", "events", nil)
+	cmd.SetArgs([]string{
+		"--params", `{"calendar_id":"cal_abc","event_id":"evt_xyz_0","need_notification":false}`,
+		"--dry-run",
+		"--as", "bot",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "/open-apis/calendar/v4/calendars/cal_abc/events/evt_xyz_0") {
+		t.Errorf("expected --params JSON path values to drive URL, got:\n%s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PathParamFlags_ParamsJSONTakesPrecedence(t *testing.T) {
+	// If a value is provided in BOTH --calendar-id and --params, the JSON
+	// value wins. This keeps `--params` as the canonical "I know exactly
+	// what I'm doing" escape hatch.
+	f, stdout, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, calendarEventDeleteSpec(), calendarEventDeleteMethod(), "delete", "events", nil)
+	cmd.SetArgs([]string{
+		"--calendar-id", "cal_FROM_FLAG",
+		"--event-id", "evt_FROM_FLAG",
+		"--params", `{"calendar_id":"cal_FROM_JSON","event_id":"evt_FROM_JSON"}`,
+		"--dry-run",
+		"--as", "bot",
+	})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "cal_FROM_JSON") || !strings.Contains(out, "evt_FROM_JSON") {
+		t.Errorf("expected --params JSON to win over flags, got:\n%s", out)
+	}
+	if strings.Contains(out, "cal_FROM_FLAG") || strings.Contains(out, "evt_FROM_FLAG") {
+		t.Errorf("expected flag values to be overridden by --params JSON, got:\n%s", out)
+	}
+}
+
+func TestServiceMethod_PathParamFlags_RejectInvalid(t *testing.T) {
+	// Path-traversal rejection still applies regardless of which input
+	// channel (flag vs --params) supplied the value.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	cmd := NewCmdServiceMethod(f, calendarEventDeleteSpec(), calendarEventDeleteMethod(), "delete", "events", nil)
+	cmd.SetArgs([]string{
+		"--calendar-id", "../admin",
+		"--event-id", "evt_ok",
+		"--dry-run",
+		"--as", "bot",
+	})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected validation error for path traversal in --calendar-id")
+	}
+	if !strings.Contains(err.Error(), "path traversal") {
+		t.Errorf("expected 'path traversal' error, got: %v", err)
+	}
+}
+
+func TestServiceMethod_PathParamFlags_NotRegisteredWhenAbsent(t *testing.T) {
+	// Methods without path parameters must not gain spurious auto-flags.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{
+		"path": "items", "httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"q": map[string]interface{}{"location": "query"},
+		},
+	}
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	if cmd.Flags().Lookup("q") != nil {
+		t.Error("query-only methods must not produce path-param flags")
+	}
+}
+
+func TestServiceMethod_PathParamFlags_DoNotShadowReservedFlags(t *testing.T) {
+	// A path parameter named "format" or "data" must not clobber the
+	// command's built-in flags. The collision-detection branch in the
+	// registration loop should silently skip the auto-flag and keep the
+	// reserved flag's behavior intact.
+	f, _, _, _ := cmdutil.TestFactory(t, testConfig)
+	spec := map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"}
+	method := map[string]interface{}{
+		"path":       "items/{format}",
+		"httpMethod": "GET",
+		"parameters": map[string]interface{}{
+			"format": map[string]interface{}{"location": "path", "required": true},
+		},
+	}
+	cmd := NewCmdServiceMethod(f, spec, method, "get", "items", nil)
+	formatFlag := cmd.Flags().Lookup("format")
+	if formatFlag == nil {
+		t.Fatal("built-in --format flag must remain registered")
+	}
+	if formatFlag.Usage == "URL path parameter format" {
+		t.Error("auto-registration must not overwrite the built-in --format flag")
+	}
+}
+
+func TestPathParamFlagName(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"calendar_id", "calendar-id"},
+		{"event_id", "event-id"},
+		{"file_token", "file-token"},
+		{"already-kebab", "already-kebab"}, // no-op
+		{"single", "single"},
+	}
+	for _, tt := range tests {
+		if got := pathParamFlagName(tt.in); got != tt.want {
+			t.Errorf("pathParamFlagName(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestDetectFileFields(t *testing.T) {
 	tests := []struct {
 		name   string

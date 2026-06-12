@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -123,6 +124,56 @@ type ServiceMethodOptions struct {
 	DryRun     bool
 	File       string   // --file flag value
 	FileFields []string // auto-detected file field names from metadata
+
+	// PathParamFlags holds pointers to string values for auto-generated
+	// path-parameter flags (e.g. --calendar-id, --event-id). The map key is
+	// the original parameter name (snake_case, as used in the URL template).
+	// Populated at command registration time and read by buildServiceRequest.
+	PathParamFlags map[string]*string
+}
+
+// pathParamFlagName converts a snake_case path-parameter name (e.g. "calendar_id")
+// into the matching kebab-case CLI flag name (e.g. "calendar-id").
+func pathParamFlagName(name string) string {
+	return strings.ReplaceAll(name, "_", "-")
+}
+
+// reservedServiceFlags lists the flag names that the service-method command
+// always registers itself; auto-generated path-parameter flags must not
+// collide with any of them.
+var reservedServiceFlags = map[string]bool{
+	"params":     true,
+	"data":       true,
+	"as":         true,
+	"output":     true,
+	"page-all":   true,
+	"page-limit": true,
+	"page-delay": true,
+	"format":     true,
+	"jq":         true,
+	"dry-run":    true,
+	"file":       true,
+	"yes":        true,
+	"help":       true,
+}
+
+// collectPathParamNames returns the path-location parameter names declared by
+// the method metadata, sorted alphabetically for deterministic flag order.
+func collectPathParamNames(method map[string]interface{}) []string {
+	parameters, _ := method["parameters"].(map[string]interface{})
+	if len(parameters) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(parameters))
+	for name, param := range parameters {
+		p, _ := param.(map[string]interface{})
+		if registry.GetStrFromMap(p, "location") != "path" {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // detectFileFields delegates to the shared cmdutil.DetectFileFields helper.
@@ -194,6 +245,31 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 		switch httpMethod {
 		case "POST", "PUT", "PATCH", "DELETE":
 			cmd.Flags().StringVar(&opts.File, "file", "", "file to upload ([field=]path, supports - for stdin)")
+		}
+	}
+
+	// Auto-register --<kebab-case> flags for every path-location parameter so
+	// that callers do not have to hand-craft URL params via --params JSON
+	// (matches the convention used by `+create`, `+update` and other shortcuts).
+	if names := collectPathParamNames(method); len(names) > 0 {
+		opts.PathParamFlags = make(map[string]*string, len(names))
+		parameters, _ := method["parameters"].(map[string]interface{})
+		for _, name := range names {
+			flagName := pathParamFlagName(name)
+			if reservedServiceFlags[flagName] || cmd.Flags().Lookup(flagName) != nil {
+				// Collision with a built-in or already-registered flag: fall
+				// back to passing the value via --params JSON.
+				continue
+			}
+			pVal := new(string)
+			opts.PathParamFlags[name] = pVal
+
+			p, _ := parameters[name].(map[string]interface{})
+			desc := registry.GetStrFromMap(p, "description")
+			if desc == "" {
+				desc = fmt.Sprintf("URL path parameter %s", name)
+			}
+			cmd.Flags().StringVar(pVal, flagName, "", desc)
 		}
 	}
 	cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
@@ -386,6 +462,20 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
 	if err != nil {
 		return client.RawApiRequest{}, nil, err
+	}
+
+	// Merge in values from auto-generated path-parameter flags (e.g.
+	// --calendar-id). Explicit JSON values in --params take precedence so
+	// that the long-standing workaround of stuffing all path/query params
+	// into --params keeps working.
+	for name, pVal := range opts.PathParamFlags {
+		if pVal == nil || *pVal == "" {
+			continue
+		}
+		if _, exists := params[name]; exists {
+			continue
+		}
+		params[name] = *pVal
 	}
 
 	url := registry.GetStrFromMap(spec, "servicePath") + "/" + registry.GetStrFromMap(method, "path")
