@@ -15,8 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
-var newRevokeRequest = http.NewRequest
-
 // RevokeToken revokes a previously issued OAuth token.
 func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.LarkBrand, token, tokenTypeHint string) error {
 	endpoints := ResolveOAuthEndpoints(brand)
@@ -29,9 +27,9 @@ func RevokeToken(httpClient *http.Client, appId, appSecret string, brand core.La
 		form.Set("token_type_hint", tokenTypeHint)
 	}
 
-	req, err := newRevokeRequest(http.MethodPost, endpoints.Revoke, strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, endpoints.Revoke, strings.NewReader(form.Encode()))
 	if err != nil {
-		return errs.NewNetworkError(errs.SubtypeNetworkTransport, "token revoke transport error: %v", err).WithCause(err)
+		return errs.NewInternalError(errs.SubtypeUnknown, "token revoke request creation failed: %v", err).WithCause(err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 

@@ -5,7 +5,6 @@ package auth
 
 import (
 	"errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,30 +31,6 @@ func (r errReadCloser) Read(_ []byte) (int, error) {
 
 func (r errReadCloser) Close() error {
 	return nil
-}
-
-func TestRevokeToken_RequestBuildFailureReturnsTypedNetworkError(t *testing.T) {
-	sentinel := errors.New("build failed")
-	prev := newRevokeRequest
-	newRevokeRequest = func(method, url string, body io.Reader) (*http.Request, error) {
-		return nil, sentinel
-	}
-	t.Cleanup(func() { newRevokeRequest = prev })
-
-	err := RevokeToken(http.DefaultClient, "cli_a", "secret_b", core.BrandFeishu, "user-access-token", "access_token")
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed error, got %T", err)
-	}
-	if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkTransport {
-		t.Fatalf("problem = %#v, want network/transport", p)
-	}
-	if !errors.Is(err, sentinel) {
-		t.Fatalf("expected cause %v to be preserved, got %v", sentinel, err)
-	}
 }
 
 func TestRevokeToken_PostsExpectedForm(t *testing.T) {

@@ -25,6 +25,20 @@ func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return fn(req)
 }
 
+// TestResolveOAuthEndpoints_Feishu validates endpoints for the Feishu brand.
+func TestResolveOAuthEndpoints_Feishu(t *testing.T) {
+	ep := ResolveOAuthEndpoints(core.BrandFeishu)
+	if ep.DeviceAuthorization != "https://accounts.feishu.cn/oauth/v1/device_authorization" {
+		t.Errorf("DeviceAuthorization = %q", ep.DeviceAuthorization)
+	}
+	if ep.Revoke != "https://accounts.feishu.cn/oauth/v1/revoke" {
+		t.Errorf("Revoke = %q", ep.Revoke)
+	}
+	if ep.Token != "https://open.feishu.cn/open-apis/authen/v2/oauth/token" {
+		t.Errorf("Token = %q", ep.Token)
+	}
+}
+
 // TestResolveOAuthEndpoints_Lark validates endpoints for the Lark brand.
 func TestResolveOAuthEndpoints_Lark(t *testing.T) {
 	ep := ResolveOAuthEndpoints(core.BrandLark)
