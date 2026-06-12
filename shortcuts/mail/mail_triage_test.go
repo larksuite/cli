@@ -1647,8 +1647,14 @@ func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 			if got := strings.Contains(errOut, "--mailbox "+quotedMailbox); got != tt.wantMailboxHint {
 				t.Fatalf("mailbox hint presence mismatch: got %v, want %v\nstderr:\n%s", got, tt.wantMailboxHint, errOut)
 			}
-			if !strings.Contains(errOut, "mail +message") {
-				t.Fatalf("stderr should contain mail +message tip, got:\n%s", errOut)
+			for _, want := range []string{"single message -> mail +message", "multiple messages -> mail +messages"} {
+				if !strings.Contains(errOut, want) {
+					t.Fatalf("stderr should contain %q tip, got:\n%s", want, errOut)
+				}
+			}
+			oldTip := "tip: use mail +message --message-id <id>" + " to read full content"
+			if strings.Contains(errOut, oldTip) {
+				t.Fatalf("stderr should not contain old mail +message-only tip, got:\n%s", errOut)
 			}
 		})
 	}

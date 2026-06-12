@@ -23,14 +23,14 @@ type mailMessagesOutput struct {
 var MailMessages = common.Shortcut{
 	Service:     "mail",
 	Command:     "+messages",
-	Description: "Use when reading full content for multiple emails by message ID. Prefer this shortcut over calling raw mail user_mailbox.messages batch_get directly, because it base64url-decodes body fields and returns normalized per-message output that is easier to consume.",
+	Description: "Use when reading full content for multiple emails by message ID. This shortcut sends at most 20 IDs per batch_get request and merges output; current backend raw request validation rejects more than 50 IDs.",
 	Risk:        "read",
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
-		{Name: "message-ids", Desc: `Required. Comma-separated email message IDs. Example: "id1,id2,id3"`, Required: true},
+		{Name: "message-ids", Desc: `Required. Comma-separated email message IDs. This shortcut sends at most 20 IDs per batch_get request and merges output; current backend raw request validation rejects more than 50 IDs. Example: "id1,id2,id3"`, Required: true},
 		{Name: "html", Type: "bool", Default: "true", Desc: "Whether to return HTML body (false returns plain text only to save bandwidth)"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference (run this first to learn field names before parsing output)"},
 	},
@@ -52,7 +52,7 @@ var MailMessages = common.Shortcut{
 			body["message_ids"] = messageIDs
 		}
 		return common.NewDryRunAPI().
-			Desc("Fetch multiple emails via messages.batch_get (auto-chunked in batches of 20 IDs during execution)").
+			Desc("Fetch multiple emails via messages.batch_get; execution auto-chunks at most 20 IDs per request and merges output. Current backend raw request validation rejects more than 50 IDs per raw request.").
 			POST(mailboxPath(mailboxID, "messages", "batch_get")).
 			Body(body)
 	},

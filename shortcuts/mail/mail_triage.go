@@ -322,9 +322,9 @@ var MailTriage = common.Shortcut{
 				fmt.Fprintln(runtime.IO().ErrOut, hint.String())
 			}
 			if mailbox != "me" {
-				fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --mailbox "+shellQuote(mailbox)+" --message-id <id> to read full content")
+				fmt.Fprintln(runtime.IO().ErrOut, "tip: read full content: single message -> mail +message --mailbox "+shellQuote(mailbox)+" --message-id <id>; multiple messages -> mail +messages --mailbox "+shellQuote(mailbox)+" --message-ids <id1,id2,...>")
 			} else {
-				fmt.Fprintln(runtime.IO().ErrOut, "tip: use mail +message --message-id <id> to read full content")
+				fmt.Fprintln(runtime.IO().ErrOut, "tip: read full content: single message -> mail +message --message-id <id>; multiple messages -> mail +messages --message-ids <id1,id2,...>")
 			}
 		}
 		return nil

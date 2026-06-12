@@ -14,9 +14,11 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-func TestMailMessagesExecuteChunksMoreThanTwentyIDs(t *testing.T) {
+func TestMailMessagesExecuteChunksByTwentyAndMergesOutput(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
-	ids := make([]string, 21)
+	defer reg.Verify(t)
+
+	ids := make([]string, 41)
 	for i := range ids {
 		ids[i] = base64.URLEncoding.EncodeToString([]byte(fmt.Sprintf("biz-%03d", i)))
 	}
@@ -30,8 +32,14 @@ func TestMailMessagesExecuteChunksMoreThanTwentyIDs(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method:     "POST",
 		URL:        "/user_mailboxes/me/messages/batch_get",
-		BodyFilter: requestMessageIDsEqual(ids[20:]),
-		Body:       batchGetMessagesResponse(ids[20:]),
+		BodyFilter: requestMessageIDsEqual(ids[20:40]),
+		Body:       batchGetMessagesResponse(ids[20:40]),
+	})
+	reg.Register(&httpmock.Stub{
+		Method:     "POST",
+		URL:        "/user_mailboxes/me/messages/batch_get",
+		BodyFilter: requestMessageIDsEqual(ids[40:]),
+		Body:       batchGetMessagesResponse(ids[40:]),
 	})
 
 	err := runMountedMailShortcut(t, MailMessages, []string{

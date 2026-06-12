@@ -2,7 +2,9 @@
 
 > **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-读取指定邮件的完整内容，包括邮件头、正文（纯文本 + 可选 HTML）以及统一的 `attachments` 列表（涵盖普通附件和内嵌图片）。
+读取单封指定邮件的完整内容，包括邮件头、正文（纯文本 + 可选 HTML）以及统一的 `attachments` 列表（涵盖普通附件和内嵌图片）。
+
+`mail +message` 只适合单个 `message_id`。如果已经有多个 `message_id`，使用 [`mail +messages`](./lark-mail-messages.md) 一次性读取，不要用 shell loop 或多次调用 `mail +message` 逐封读取。
 
 CLI 分两阶段构建最终 JSON：
 - 安全的邮件元数据字段直接透传
@@ -14,7 +16,7 @@ CLI 分两阶段构建最终 JSON：
 ## 命令
 
 ```bash
-# 读取一封邮件（默认包含 HTML 正文）
+# 读取单封邮件（默认包含 HTML 正文）
 lark-cli mail +message --message-id <message-id>
 
 # 仅纯文本正文（更小的负载，适合 AI 处理）
@@ -34,7 +36,7 @@ lark-cli mail +message --message-id <message-id> --dry-run
 
 | 参数 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--message-id <id>` | 是 | — | 邮件 ID |
+| `--message-id <id>` | 是 | — | 单封邮件 ID。多个 ID 请改用 `mail +messages --message-ids <id1,id2,...>`，不要循环调用 `mail +message` |
 | `--mailbox <email>` | 否 | 当前用户 | 邮箱地址（`user_mailbox_id`） |
 | `--html` | 否 | true | 是否返回 HTML 正文（`false` 仅返回纯文本，减少带宽） |
 | `--format <mode>` | 否 | json | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
@@ -157,6 +159,7 @@ lark-cli mail +message --message-id <message-id> --dry-run
 - **JSON 输出可直接使用** — 默认输出合法 UTF-8 JSON，可直接读取，无需额外编码转换。
 - JSON 输出中 `body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +message` 默认不再获取附件/图片下载 URL。这样可以保持邮件详情读取更轻量，调用方可按需单独请求 URL。
+- 多个 `message_id` 不要用 `for` 循环逐个调用 `mail +message`；改用 `mail +messages --message-ids <id1,id2,...>`，由 shortcut 批量读取并合并输出。
 - 查看原始 HTML：
 
 ```bash

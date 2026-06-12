@@ -101,7 +101,7 @@ lark-cli mail +triage --page-size 10
 }
 ```
 
-- `mailbox_id`：当前邮箱标识，用于传递给 `mail +message --mailbox` 以保持公共邮箱上下文
+- `mailbox_id`：当前邮箱标识，用于传递给 `mail +message --mailbox` 或 `mail +messages --mailbox` 以保持公共邮箱上下文
 - `has_more`：是否还有下一页
 - `page_token`：传入 `--page-token` 可获取下一页；为空字符串表示已到末尾
 - token 前缀 `search:` / `list:` 标识来源 API 路径，不可混用
@@ -112,13 +112,13 @@ lark-cli mail +triage --page-size 10
 ```text
 15 message(s)
 next page: mail +triage --query '合同审批' --page-token 'search:abc123...'
-tip: use mail +message --message-id <id> to read full content
+tip: read full content: single message -> mail +message --message-id <id>; multiple messages -> mail +messages --message-ids <id1,id2,...>
 ```
 
 公共邮箱场景下，`--mailbox` 会自动出现在续页和 tip 中：
 ```text
 next page: mail +triage --mailbox 'shared@example.com' --query '合同审批' --page-token 'search:abc123...'
-tip: use mail +message --mailbox 'shared@example.com' --message-id <id> to read full content
+tip: read full content: single message -> mail +message --mailbox 'shared@example.com' --message-id <id>; multiple messages -> mail +messages --mailbox 'shared@example.com' --message-ids <id1,id2,...>
 ```
 
 ### 搜索分页注意事项

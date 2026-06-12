@@ -6,14 +6,17 @@
 
 本 shortcut 是 `mail +message` 的批量版本。每个返回的 `messages[]` 项使用与 `+message` 相同的归一化结构：安全元数据字段直接透传，正文和辅助字段由 shortcut 派生。
 
+执行时 CLI 每次 `messages.batch_get` 请求最多发送 20 个 `message_id`；超过 20 个 ID 时自动拆成多次请求，并把结果按输入顺序合并输出。当前后端 raw `batch_get` 请求校验上限是 50 个 ID；CLI 的 20 是客户端分批阈值，不是 shortcut 输入上限。
+
 优先使用本 shortcut 而非原生 `mail user_mailbox.messages batch_get` API，因为：
 - 正文字段已 base64url 解码
 - 每条邮件的输出结构已归一化
 - 不可用的 message ID 会被显式列出
 
 本 skill 对应 shortcut `lark-cli mail +messages`，内部步骤：
-1. `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/messages/batch_get` — 批量获取邮件
+1. 按每批最多 20 个 `message_id` 调用 `POST /open-apis/mail/v1/user_mailboxes/{mailbox}/messages/batch_get`
 2. 对每条返回的邮件使用与 `+message` 相同的规则归一化输出
+3. 按请求 ID 顺序合并多批结果，并把未返回的 ID 放入 `unavailable_message_ids`
 
 ## 命令
 
@@ -38,7 +41,7 @@ lark-cli mail +messages --message-ids <id1>,<id2> --dry-run
 
 | 参数 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| `--message-ids <id1,id2,...>` | 是 | — | 逗号分隔的邮件 ID 列表 |
+| `--message-ids <id1,id2,...>` | 是 | — | 逗号分隔的邮件 ID 列表。CLI 每次 `batch_get` 最多发送 20 个 ID 并合并输出；当前后端 raw 请求校验上限是 50 个 ID |
 | `--mailbox <email>` | 否 | 当前用户 | 邮箱地址（`user_mailbox_id`） |
 | `--html` | 否 | true | 是否返回 HTML 正文（`false` 仅返回纯文本，减少带宽） |
 | `--format <mode>` | 否 | json | 输出格式：`json`（默认）/ `pretty` / `table` / `ndjson` / `csv` |
@@ -74,7 +77,8 @@ lark-cli mail +messages --message-ids <id1>,<id2> --dry-run
 
 - **JSON 输出可直接使用**，可直接读取，无需额外编码转换。
 - 只需读取一封邮件时请使用 `+message`。
-- `--message-ids` 无硬性上限；shortcut 内部会自动将大列表拆分为多次批量 API 调用。
+- `--message-ids` 无 shortcut 硬性上限；shortcut 内部会自动将大列表按 20 个 ID 一批拆分为多次批量 API 调用并合并输出。
+- 当前后端 raw `messages.batch_get` 请求校验上限是 50 个 ID；不要把这个上限当成 CLI 输入上限，因为 CLI 会先按 20 分批。
 - JSON 输出中 `messages[].body_html` 里的 `<` / `>` 可能显示为 `\u003c` / `\u003e`（JSON 安全转义，内容不变，`jq -r` 可还原）。
 - `mail +messages` 仅返回附件元数据。如后续步骤需要下载 URL，请针对特定的 `message_id` 和 `attachment_ids` 调用原生附件 URL API。
 - 与 `+message` 一样，普通附件和内嵌图片都出现在 `messages[].attachments[]` 中，使用同一个 `user_mailbox.message.attachments download_url` API。
