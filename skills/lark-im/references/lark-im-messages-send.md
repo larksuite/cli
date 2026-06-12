@@ -68,11 +68,12 @@ This makes `--markdown` the simplest path for lightweight formatted messages.
     - `##` to `######` are normalized to `#####` when the content contains H1-H3
 - Consecutive headings are separated with blank lines after heading normalization.
 - Block spacing and line breaks may be normalized during conversion.
-- Code blocks are preserved as code blocks.
-- Excess blank lines are compressed.
+- Fenced code blocks (``` or ~~~, including longer fences and unclosed fences) are fully protected: content inside fences is never rewritten — headings, table spacing, blank lines, and image syntax inside fences are preserved byte-for-byte.
+- Only top-level fences (indented at most 3 spaces) are recognized. A fence nested inside a list item or blockquote (indented 4+ spaces) is treated as plain text, and consecutive blank lines inside it may be compressed — avoid blank-line-sensitive code blocks inside list items.
+- Excess blank lines outside code fences are compressed.
 - Already-uploaded `img_xxx` image keys are the most reliable Markdown image input.
 - Local paths in Markdown image syntax like `![x](./a.png)` are **not** supported and will not be auto-uploaded.
-- Remote URLs (`https://...`) will be auto-downloaded and uploaded at runtime; if the download or upload fails, the image is removed with a warning.
+- Remote URLs (`https://...`) outside code fences will be auto-downloaded and uploaded at runtime; if the download or upload fails, the original Markdown image text is kept as-is with a warning and renders as literal text.
 
 If you need a title, multiple locales, cards, unsupported rich structures, or byte-for-byte post JSON control, use `--content` and provide the final JSON yourself.
 
@@ -245,4 +246,4 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the message is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT) and requires the `im:message:send_as_bot` scope
 - When sending as a bot, the app must already be in the target group or already have a direct-message relationship with the target user
-- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported
+- When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the original Markdown image text is kept as-is with a warning; local paths are not auto-uploaded and stay as literal text
