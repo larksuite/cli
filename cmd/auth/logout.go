@@ -46,12 +46,28 @@ func authLogoutRun(opts *LogoutOptions) error {
 
 	multi, _ := core.LoadMultiAppConfig()
 	if multi == nil || len(multi.Apps) == 0 {
+		if opts.JSON {
+			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+				"ok":        true,
+				"loggedOut": false,
+				"reason":    "not_configured",
+			})
+			return nil
+		}
 		fmt.Fprintln(f.IOStreams.ErrOut, "No configuration found.")
 		return nil
 	}
 
 	app := multi.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil || len(app.Users) == 0 {
+		if opts.JSON {
+			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+				"ok":        true,
+				"loggedOut": false,
+				"reason":    "not_logged_in",
+			})
+			return nil
+		}
 		fmt.Fprintln(f.IOStreams.ErrOut, "Not logged in.")
 		return nil
 	}
@@ -64,6 +80,13 @@ func authLogoutRun(opts *LogoutOptions) error {
 	app.Users = []core.AppUser{}
 	if err := core.SaveMultiAppConfig(multi); err != nil {
 		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+	}
+	if opts.JSON {
+		output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+			"ok":        true,
+			"loggedOut": true,
+		})
+		return nil
 	}
 	output.PrintSuccess(f.IOStreams.ErrOut, "Logged out")
 	return nil
