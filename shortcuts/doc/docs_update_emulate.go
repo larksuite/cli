@@ -4,6 +4,7 @@
 package doc
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -141,6 +142,87 @@ func indexEmulatedBlocks(xml string) map[string]emulatedBlock {
 	return byID
 }
 
+// topLevelBlock is one direct child of the document root, with the set of
+// id-carrying descendant ids it contains. Used to verify, after the insert,
+// that the rebuilt blocks landed immediately after the anchor — and nothing
+// else (e.g. a concurrent collaborator's edit) is mistaken for our insert.
+type topLevelBlock struct {
+	tag   string
+	start int
+	ids   map[string]bool // ids of this block and every descendant
+}
+
+// indexTopLevelBlocks returns the document's outermost blocks in order. Lark's
+// DocxXML export is flat — top-level blocks are siblings at the root with no
+// wrapping <page>/<body> element — so "top level" means a block that opens
+// while no other block is still open. List containers (<ul>/<ol>) carry no id
+// of their own, so each entry also records the ids in its subtree, which lets
+// the caller decide whether a top-level block is newly inserted (no
+// pre-existing id) or an untouched original.
+func indexTopLevelBlocks(xml string) []topLevelBlock {
+	var out []topLevelBlock
+	depth := 0 // number of currently-open (non-self-closing) blocks
+	var cur *topLevelBlock
+
+	for _, idx := range emulateXMLTagRE.FindAllStringSubmatchIndex(xml, -1) {
+		group := func(n int) string {
+			if idx[2*n] < 0 {
+				return ""
+			}
+			return xml[idx[2*n]:idx[2*n+1]]
+		}
+		closeTag, name, attrs, selfClose := group(1), group(2), group(3), group(4)
+
+		recordID := func() {
+			if cur == nil {
+				return
+			}
+			if m := emulateBlockIDRE.FindStringSubmatch(attrs); m != nil {
+				cur.ids[m[1]] = true
+			}
+		}
+
+		switch {
+		case closeTag == "/":
+			if depth > 0 {
+				depth--
+			}
+			if depth == 0 && cur != nil {
+				// Closing the outermost block: flush it.
+				out = append(out, *cur)
+				cur = nil
+			}
+		case selfClose == "/":
+			if depth == 0 {
+				// A self-closing top-level block (e.g. <img/>).
+				out = append(out, topLevelBlock{tag: name, start: idx[0], ids: idAttrSet(attrs)})
+			} else {
+				recordID()
+			}
+		default:
+			if depth == 0 {
+				cur = &topLevelBlock{tag: name, start: idx[0], ids: idAttrSet(attrs)}
+			} else {
+				recordID()
+			}
+			depth++
+		}
+	}
+	// Flush any unclosed trailing block (defensive; well-formed XML closes all).
+	if cur != nil {
+		out = append(out, *cur)
+	}
+	return out
+}
+
+func idAttrSet(attrs string) map[string]bool {
+	ids := map[string]bool{}
+	if m := emulateBlockIDRE.FindStringSubmatch(attrs); m != nil {
+		ids[m[1]] = true
+	}
+	return ids
+}
+
 func xmlAttrValue(attrs, name string) (string, bool) {
 	re := regexp.MustCompile(`(?:^|\s)` + regexp.QuoteMeta(name) + `="([^"]*)"`)
 	m := re.FindStringSubmatch(attrs)
@@ -208,20 +290,30 @@ func sanitizeEmulatedBlockXML(xml string) (string, error) {
 }
 
 // buildEmulatedBlockContent produces the block_insert_after payload for one
-// source block, rejecting block types a text-level rebuild would corrupt.
-func buildEmulatedBlockContent(b emulatedBlock) (string, error) {
+// source block plus the top-level tag the rebuilt block will carry once
+// inserted (used by anchor-scoped verification). It rejects block types a
+// text-level rebuild would corrupt. Rejections name --src-block-ids in Param
+// so the command layer can surface which source block failed.
+func buildEmulatedBlockContent(b emulatedBlock) (content, insertedTag string, err error) {
 	if !emulableBlockTags[b.tag] {
-		return "", errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		return "", "", errs.NewValidationError(errs.SubtypeFailedPrecondition,
 			"cannot emulate move/copy of block %s: <%s> blocks carry server-side tokens or state that a client-side rebuild would corrupt", b.id, b.tag).
+			WithParam("--src-block-ids").
 			WithHint("supported block types: %s; move other block types in the editor instead", strings.Join(emulableBlockTagList, ", "))
 	}
 	inner, err := sanitizeEmulatedBlockXML(b.outer)
 	if err != nil {
-		return "", err
+		// rebuildEmulatedImgTag may reject (missing href); tag the failing flag.
+		var ve *errs.ValidationError
+		if errors.As(err, &ve) && ve.Param == "" {
+			ve.WithParam("--src-block-ids")
+		}
+		return "", "", err
 	}
 	if b.tag == "li" {
 		// A bare li is invalid insert content; wrap it in the nearest ancestor
-		// list type so ordered items stay ordered.
+		// list type so ordered items stay ordered. The inserted top-level block
+		// is therefore the list container, not the li.
 		listTag := "ul"
 		for i := len(b.parents) - 1; i >= 0; i-- {
 			if b.parents[i] == "ul" || b.parents[i] == "ol" {
@@ -229,9 +321,9 @@ func buildEmulatedBlockContent(b emulatedBlock) (string, error) {
 				break
 			}
 		}
-		return fmt.Sprintf("<%s>%s</%s>", listTag, inner, listTag), nil
+		return fmt.Sprintf("<%s>%s</%s>", listTag, inner, listTag), listTag, nil
 	}
-	return inner, nil
+	return inner, b.tag, nil
 }
 
 func splitSrcBlockIDs(raw string) []string {
@@ -304,6 +396,85 @@ func emulateUpdateDoc(runtime *common.RuntimeContext, token, command string, fie
 	return nil
 }
 
+// isNewTopLevelBlock reports whether a post-insert top-level block is one we
+// just inserted: a rebuilt block carries only server-assigned ids that did not
+// exist before (list containers themselves have no id, so an all-new or empty
+// id set both qualify). A block that contains any pre-existing id is an
+// untouched original, not our insert.
+func isNewTopLevelBlock(b topLevelBlock, beforeIDs map[string]bool) bool {
+	for id := range b.ids {
+		if beforeIDs[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// anchorRunStart returns the index in the after-insert top-level slice where
+// our run of runLen rebuilt blocks must begin:
+//   - "-1": document end, so the run occupies the final runLen slots.
+//   - page id (the document_id): document start, so the run starts at index 0.
+//   - a block id: the top-level block whose subtree contains that id; the run
+//     starts right after it.
+//
+// The second return value is false when the anchor cannot be located among the
+// post-insert top-level blocks, which forces the caller to fail conservatively.
+func anchorRunStart(after []topLevelBlock, anchor, docID string, runLen int) (start int, ok bool) {
+	if anchor == "-1" {
+		// Inserted at document end: the rebuilt blocks are the final runLen.
+		start = len(after) - runLen
+		if start < 0 {
+			return 0, false
+		}
+		return start, true
+	}
+	if anchor == docID {
+		return 0, true
+	}
+	for i, b := range after {
+		if b.ids[anchor] {
+			return i + 1, true
+		}
+	}
+	return 0, false
+}
+
+// verifyEmulatedInsert confirms the rebuilt blocks landed contiguously right
+// after the anchor with the expected count and tag sequence, and returns their
+// ids. It is deliberately strict: a plain "any new block id appeared" check
+// would, in a shared document, treat a concurrent collaborator's edit as proof
+// of our insert and green-light deleting the originals. When the run after the
+// anchor does not match expectations it returns an error so the caller keeps
+// the originals (leaving a recoverable duplicate rather than risking data loss).
+func verifyEmulatedInsert(after []topLevelBlock, beforeIDs map[string]bool, anchor, docID string, expectedTags []string, srcList string) ([]string, error) {
+	conservativeFail := func() ([]string, error) {
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"could not confirm the rebuilt blocks landed after anchor %s; the original blocks %s were NOT deleted", anchor, srcList).
+			WithHint("inspect the document manually: the rebuilt blocks may have been inserted, but verification could not match them anchor-side (e.g. a concurrent edit), so the originals were left in place")
+	}
+
+	start, ok := anchorRunStart(after, anchor, docID, len(expectedTags))
+	if !ok {
+		return conservativeFail()
+	}
+	if start+len(expectedTags) > len(after) {
+		return conservativeFail()
+	}
+
+	var newIDs []string
+	for i, wantTag := range expectedTags {
+		b := after[start+i]
+		if b.tag != wantTag || !isNewTopLevelBlock(b, beforeIDs) {
+			return conservativeFail()
+		}
+		for id := range b.ids {
+			newIDs = append(newIDs, id)
+		}
+	}
+	sort.Strings(newIDs)
+	return newIDs, nil
+}
+
 var emulateSemanticDifferences = []string{
 	"rebuilt blocks were assigned new block ids; the original ids are gone",
 	"comments and #block_id anchor links on the original blocks are not migrated",
@@ -334,18 +505,21 @@ func executeUpdateEmulated(runtime *common.RuntimeContext, ref documentRef, comm
 
 	// Step 2: validate sources and build the rebuilt payload. Every check
 	// happens before the first write so a rejection leaves the document
-	// untouched.
+	// untouched. expectedTags records the top-level tag each rebuilt block
+	// will carry once inserted, used by anchor-scoped verification below.
 	pieces := make([]string, 0, len(srcIDs))
+	expectedTags := make([]string, 0, len(srcIDs))
 	for _, id := range srcIDs {
 		b, ok := blocks[id]
 		if !ok {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "source block %s not found in document %s", id, docID).WithParam("--src-block-ids")
 		}
-		piece, err := buildEmulatedBlockContent(b)
+		piece, insertedTag, err := buildEmulatedBlockContent(b)
 		if err != nil {
 			return err
 		}
 		pieces = append(pieces, piece)
+		expectedTags = append(expectedTags, insertedTag)
 	}
 	if _, ok := blocks[anchor]; !ok && anchor != "-1" && anchor != docID {
 		fmt.Fprintf(errOut, "note: anchor block %s is not in the fetched block index (normal when it is the page id); the server will validate it\n", anchor)
@@ -364,26 +538,25 @@ func executeUpdateEmulated(runtime *common.RuntimeContext, ref documentRef, comm
 		return err
 	}
 
-	// Step 4: re-fetch and confirm new blocks actually appeared before
-	// deleting anything.
+	// Step 4: re-fetch and confirm the rebuilt blocks landed contiguously
+	// right after the anchor — with the expected count and tag sequence —
+	// before deleting anything. Anchor-scoped (not "any new block appeared")
+	// so a concurrent collaborator's edit in a shared document can't be
+	// mistaken for our insert and trigger an erroneous delete.
 	fmt.Fprintf(errOut, "[4/4] Verifying rebuilt blocks\n")
 	_, afterXML, err := emulateFetchDocumentXML(runtime, ref.Token, false)
 	if err != nil {
 		fmt.Fprintf(errOut, "verification fetch failed AFTER the insert: the rebuilt blocks may now exist alongside the originals %s; inspect the document before retrying\n", srcList)
 		return err
 	}
-	afterBlocks := indexEmulatedBlocks(afterXML)
-	var newIDs []string
-	for id, b := range afterBlocks {
-		if _, existed := blocks[id]; !existed {
-			newIDs = append(newIDs, b.id)
-		}
+	beforeIDs := make(map[string]bool, len(blocks))
+	for id := range blocks {
+		beforeIDs[id] = true
 	}
-	sort.Slice(newIDs, func(i, j int) bool { return afterBlocks[newIDs[i]].start < afterBlocks[newIDs[j]].start })
-	if len(newIDs) == 0 {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse,
-			"block_insert_after reported success but the re-fetch shows no new blocks; the original blocks %s were NOT deleted", srcList).
-			WithHint("inspect the document manually before retrying")
+	newIDs, err := verifyEmulatedInsert(indexTopLevelBlocks(afterXML), beforeIDs, anchor, docID, expectedTags, srcList)
+	if err != nil {
+		fmt.Fprintf(errOut, "verification could not match the rebuilt blocks after anchor %s; leaving the originals %s in place\n", anchor, srcList)
+		return err
 	}
 
 	srcDeleted := false
