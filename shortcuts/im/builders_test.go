@@ -822,7 +822,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"markdown":   "![alt](https://example.com/a.png)",
 		}, nil)
 		got := mustMarshalDryRun(t, ImMessagesReply.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"description":"dry-run uses placeholder image keys for markdown image URLs; execution downloads and uploads them before sending"`) ||
+		if !strings.Contains(got, `"description":"dry-run uses placeholder image keys for markdown image URLs; execution downloads and uploads them before sending (originals are kept with a warning on failure)"`) ||
 			!strings.Contains(got, `"msg_type":"post"`) ||
 			!strings.Contains(got, `img_dryrun_1`) {
 			t.Fatalf("ImMessagesReply.DryRun() = %s", got)

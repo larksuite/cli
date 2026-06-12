@@ -312,9 +312,9 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 			want:  "a\n\nb",
 		},
 		{
-			name:  "strip invalid image keep img_key",
-			input: "![alt](img_abc123) ![bad](https://example.com/x.png)",
-			want:  "![alt](img_abc123) ",
+			name:  "non-img_ image refs kept as literal text",
+			input: "![alt](img_abc123) ![bad](https://example.com/x.png) ![local](./a.png)",
+			want:  "![alt](img_abc123) ![bad](https://example.com/x.png) ![local](./a.png)",
 		},
 		{
 			name:  "empty input",
@@ -329,6 +329,226 @@ func TestOptimizeMarkdownStyle(t *testing.T) {
 				t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestOptimizeMarkdownStyleFenceProtection covers the "fence-piercing" bug family:
+// nothing inside a fenced code block may be rewritten, and fence content must not
+// influence rewriting decisions for text outside the fence.
+func TestOptimizeMarkdownStyleFenceProtection(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string // empty means "must equal input"
+	}{
+		{
+			// BUG-5: blank-line compression must not reach inside fences
+			name:  "blank lines inside fence preserved",
+			input: "```\nline1\n\n\n\nline2\n```",
+		},
+		{
+			// BUG-5: outside fences compression still applies
+			name:  "blank lines outside fence still compressed",
+			input: "a\n\n\n\nb\n```\nx\n\n\n\ny\n```",
+			want:  "a\n\nb\n```\nx\n\n\n\ny\n```",
+		},
+		{
+			// BUG-6: a "# comment" line inside a fence must not trigger heading
+			// downgrade for headings outside the fence
+			name:  "heading trigger not leaked from fence content",
+			input: "#### Note\n```sh\n# just a comment\necho ok\n```",
+		},
+		{
+			// BUG-7: tilde fences are valid CommonMark and must be protected too
+			name:  "tilde fence protected",
+			input: "before\n~~~\n# not a heading\n| a | b |\n~~~\nafter",
+		},
+		{
+			// BUG-7: four-backtick fence wrapping markdown source (incl. inner ```)
+			name:  "longer fence protects nested triple backticks",
+			input: "````\n# title\n```go\nfmt.Println(1)\n```\n- item\n````",
+		},
+		{
+			// BUG-7: unclosed fence protects through end of input
+			name:  "unclosed fence protects to end",
+			input: "intro\n```\n# x\n\n\n\ny",
+		},
+		{
+			// BUG-2: image syntax inside a fence is literal text
+			name:  "image refs inside fence preserved",
+			input: "```\n![x](https://example.com/a.png)\n![y](./local.png)\n```",
+		},
+		{
+			// Multiple fences must be protected independently: outside text is
+			// normalized while every fence keeps its blank lines.
+			name:  "multiple fences each protected independently",
+			input: "```\na\n\n\n\nb\n```\nmid\n\n\n\nmid2\n```\nc\n\n\n\nd\n```",
+			want:  "```\na\n\n\n\nb\n```\nmid\n\nmid2\n```\nc\n\n\n\nd\n```",
+		},
+		{
+			// CommonMark: backtick fence info strings may not contain backticks,
+			// so an inline code span like "``` `x` ```" is not a fence opener and
+			// the text after it is still normalized.
+			name:  "inline triple backticks with backtick info are not fences",
+			input: "``` `x` ```\n\n\n\nend",
+			want:  "``` `x` ```\n\nend",
+		},
+		{
+			// CommonMark: tilde fence info strings may contain backticks.
+			name:  "tilde fence info string may contain backticks",
+			input: "~~~ with ` backtick\n# x\n~~~",
+		},
+		{
+			// Fences indented 1-3 spaces are valid CommonMark fences.
+			name:  "indented fence recognized and protected",
+			input: "  ```\n# x\n\n\n\ny\n  ```\n#### Note",
+		},
+		{
+			// A closing fence must be at least as long as the opener: the inner
+			// ``` does not close the ```` fence, and content after the real
+			// close is still normalized.
+			name:  "shorter closing fence does not close",
+			input: "````\ncode\n```\nnot closed yet\n````\n#### After\n\n\n\nend",
+			want:  "````\ncode\n```\nnot closed yet\n````\n#### After\n\nend",
+		},
+		{
+			// CRLF fences round-trip byte-for-byte and still shield content;
+			// text after the fence is normalized as usual.
+			name:  "CRLF fence protected and round-trips",
+			input: "```\r\n# x\r\n\r\n\r\n\r\ny\r\n```\r\nafter\n\n\n\nend",
+			want:  "```\r\n# x\r\n\r\n\r\n\r\ny\r\n```\r\nafter\n\nend",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := tt.want
+			if want == "" {
+				want = tt.input
+			}
+			if got := optimizeMarkdownStyle(tt.input); got != want {
+				t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, want)
+			}
+		})
+	}
+}
+
+// TestOptimizeMarkdownStylePlaceholderCollision covers BUG-3: literal ___CB_N___
+// text in user content must not be confused with internal fence placeholders.
+func TestOptimizeMarkdownStylePlaceholderCollision(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "literal placeholder before fence",
+			input: "literal ___CB_0___ first\n```go\ncode\n```\nend",
+		},
+		{
+			// Forces multiple marker-growth rounds: the 13-underscore run
+			// contains both the initial "___CB_" marker and its first grown
+			// form, so a single growth step would still collide.
+			name:  "marker collision requiring multiple growth rounds",
+			input: "_____________CB_0___ literal\n```\nx\n\n\n\ny\n```",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := optimizeMarkdownStyle(tt.input); got != tt.input {
+				t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, tt.input)
+			}
+		})
+	}
+}
+
+// TestOptimizeMarkdownStyleManyFences pins placeholder index handling: with 12
+// fences, placeholder(1) must never be confused with placeholder(11) and every
+// block must be restored at its own position.
+func TestOptimizeMarkdownStyleManyFences(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 12; i++ {
+		fmt.Fprintf(&b, "```\nblock%d\n\n\n\nx\n```\ntext%d\n", i, i)
+	}
+	input := b.String()
+	if got := optimizeMarkdownStyle(input); got != input {
+		t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, input)
+	}
+}
+
+// TestOptimizeMarkdownStyleCRLFTable covers the CRLF table regression: tables
+// with \r\n line endings get the same blank-line normalization as LF tables,
+// with every \r preserved.
+func TestOptimizeMarkdownStyleCRLFTable(t *testing.T) {
+	input := "intro\r\n| h1 | h2 |\r\n| --- | --- |\r\n| a | b |\r\ntail\r\n"
+	want := "intro\r\n\n| h1 | h2 |\r\n| --- | --- |\r\n| a | b |\r\n\ntail\r\n"
+	if got := optimizeMarkdownStyle(input); got != want {
+		t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, want)
+	}
+}
+
+// TestOptimizeMarkdownStylePipelineNotTable covers BUG-4: shell pipelines whose
+// lines start with | are not markdown tables — no blank-line injection, no
+// mid-line split.
+func TestOptimizeMarkdownStylePipelineNotTable(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{
+			name:  "backslash continuation pipeline",
+			input: "cat access.log \\\n| grep ERROR | wc -l",
+		},
+		{
+			name:  "pipe line with trailing content",
+			input: "排查命令:\n| grep ERROR | wc -l\ndone",
+		},
+		{
+			name:  "ascii art box without separator row",
+			input: "+------+------+\n| col1 | col2 |\n| v1   | v2   |\n+------+------+",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := optimizeMarkdownStyle(tt.input); got != tt.input {
+				t.Errorf("optimizeMarkdownStyle():\n got: %q\nwant: %q", got, tt.input)
+			}
+		})
+	}
+}
+
+// TestWrapMarkdownAsPostForDryRunFenceImages covers dry-run parity for BUG-1:
+// image URLs inside fences must not be rewritten to placeholder keys.
+func TestWrapMarkdownAsPostForDryRunFenceImages(t *testing.T) {
+	content, _ := wrapMarkdownAsPostForDryRun("```\n![in](https://example.com/in.png)\n```\n![out](https://example.com/out.png)")
+	if !strings.Contains(content, `![in](https://example.com/in.png)`) {
+		t.Fatalf("dry-run rewrote image inside fence: %s", content)
+	}
+	if !strings.Contains(content, `![out](img_dryrun_1)`) {
+		t.Fatalf("dry-run did not rewrite image outside fence: %s", content)
+	}
+}
+
+// TestResolveMarkdownAsPostFenceImagesNoNetwork covers BUG-1: image URLs inside
+// fences must not trigger downloads. runtime is nil, so any download attempt
+// would panic.
+func TestResolveMarkdownAsPostFenceImagesNoNetwork(t *testing.T) {
+	input := "```\n![in](https://example.com/in.png)\n```"
+	got := resolveMarkdownAsPost(context.Background(), nil, input)
+	if !strings.Contains(got, `![in](https://example.com/in.png)`) {
+		t.Fatalf("resolveMarkdownAsPost() rewrote fenced image: %s", got)
+	}
+}
+
+// TestResolveMarkdownImageURLsFailureKeepsOriginal covers BUG-1 failure mode:
+// when download fails, the original image markup is kept (with a warning)
+// instead of being silently deleted.
+func TestResolveMarkdownImageURLsFailureKeepsOriginal(t *testing.T) {
+	rt := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("dial blocked")
+	}))
+	input := "before ![a](https://example.com/a.png) after"
+	got := resolveMarkdownImageURLs(context.Background(), rt, input)
+	if got != input {
+		t.Fatalf("resolveMarkdownImageURLs(failure) = %q, want original kept %q", got, input)
 	}
 }
 

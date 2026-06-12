@@ -808,67 +808,146 @@ func readMp4Duration(f fileio.File, fileSize int64) int64 {
 	return 0
 }
 
-// optimizeMarkdownStyle optimizes markdown text for Feishu post rendering.
-// Ported from an internal markdown-style implementation.
+// Markdown style normalization for Feishu post rendering.
 //
-// Steps:
-//  1. Extract code blocks with placeholders to protect them
-//  2. Downgrade headings: H1 → H4, H2~H6 → H5 (only when H1~H3 present)
-//  3. Normalize spacing between consecutive headings and tables with blank lines
-//  4. Restore code blocks
-//  5. Compress excess blank lines
-//  6. Strip invalid image references (keep only img_xxx keys)
+// Pipeline contract: fenced code blocks (``` or ~~~) are extracted into
+// placeholders FIRST and restored LAST, so no rewriting step — heading
+// downgrade, table spacing, blank-line compression, or image resolution —
+// ever touches fence content or is influenced by it.
 var (
-	reH2toH6     = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
-	reH1         = regexp.MustCompile(`(?m)^# (.+)$`)
-	reHasH1toH3  = regexp.MustCompile(`(?m)^#{1,3} `)
-	reConsecH    = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
-	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|)`)
-	reTableAfter = regexp.MustCompile(`(?m)((?:^\|.+\|[^\S\n]*\n?)+)`)
+	reH2toH6    = regexp.MustCompile(`(?m)^#{2,6} (.+)$`)
+	reH1        = regexp.MustCompile(`(?m)^# (.+)$`)
+	reHasH1toH3 = regexp.MustCompile(`(?m)^#{1,3} `)
+	reConsecH   = regexp.MustCompile(`(?m)^(#{4,5} .+)\n{1,2}(#{4,5} )`)
+	// A markdown table is only recognized as a header row immediately followed
+	// by a delimiter row (e.g. "| --- | --- |"). Plain text whose lines merely
+	// start with "|" (shell pipelines, ASCII-art boxes) must not match.
+	// Line endings tolerate an optional \r so CRLF tables are normalized too.
+	reTableNoGap = regexp.MustCompile(`(?m)^([^|\n].*)\n(\|.+\|[ \t]*\r?\n[ \t]*\|[ \t:\-|]*-[ \t:\-|]*\|[ \t]*\r?(?:\n|$))`)
+	reTableAfter = regexp.MustCompile(`(?m)(^\|.+\|[ \t]*\r?\n[ \t]*\|[ \t:\-|]*-[ \t:\-|]*\|[ \t]*\r?(?:\n|$)(?:^\|.+\|[ \t]*\r?(?:\n|$))*)`)
 	reExcessNL   = regexp.MustCompile(`\n{3,}`)
-	reInvalidImg = regexp.MustCompile(`!\[[^\]]*\]\(([^)\s]+)\)`)
-	reCodeBlock  = regexp.MustCompile("```[\\s\\S]*?```")
+	reFenceOpen  = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 )
 
-func optimizeMarkdownStyle(text string) string {
-	const mark = "___CB_"
-	var codeBlocks []string
-	r := reCodeBlock.ReplaceAllStringFunc(text, func(m string) string {
-		idx := len(codeBlocks)
-		codeBlocks = append(codeBlocks, m)
-		return fmt.Sprintf("%s%d___", mark, idx)
-	})
+// markdownFenceProtector holds extracted fenced code blocks and the
+// collision-proof placeholder marker used to shield them from rewriting.
+type markdownFenceProtector struct {
+	marker string
+	blocks []string
+}
 
-	// Only downgrade when original text has H1~H3; order matters (H2~H6 first).
-	if reHasH1toH3.MatchString(text) {
+func (p *markdownFenceProtector) placeholder(i int) string {
+	return p.marker + strconv.Itoa(i) + "___"
+}
+
+func (p *markdownFenceProtector) restore(text string) string {
+	for i, block := range p.blocks {
+		text = strings.Replace(text, p.placeholder(i), block, 1)
+	}
+	return text
+}
+
+// protectMarkdownCodeBlocks replaces fenced code blocks with placeholders.
+// Fences follow CommonMark: a line whose first non-space (≤3 spaces) characters
+// are 3+ backticks or tildes opens a fence (backtick info strings may not
+// contain backticks, so inline spans like "```x```" are not openers); a line
+// with at least as many of the same character and nothing else closes it; an
+// unclosed fence runs to the end of input. The placeholder marker is grown
+// until it does not occur in the input, so literal placeholder-looking text in
+// user content can never be confused with a real placeholder.
+func protectMarkdownCodeBlocks(text string) (string, *markdownFenceProtector) {
+	p := &markdownFenceProtector{marker: "___CB_"}
+	if !strings.Contains(text, "```") && !strings.Contains(text, "~~~") {
+		return text, p
+	}
+	// Grow the underscore prefix geometrically so pathological inputs (long
+	// runs of underscores before "CB_") settle in O(log n) scans, not O(n).
+	for underscores := 3; strings.Contains(text, p.marker); {
+		underscores *= 2
+		p.marker = strings.Repeat("_", underscores) + "CB_"
+	}
+
+	var out, block strings.Builder
+	var fenceChar byte
+	fenceLen := 0
+	for _, line := range strings.SplitAfter(text, "\n") {
+		content := strings.TrimRight(line, "\r\n")
+		if fenceChar == 0 {
+			if m := reFenceOpen.FindString(content); m != "" {
+				fence := strings.TrimLeft(m, " ")
+				// Backtick fence info strings may not contain backticks
+				// (CommonMark); such lines are inline code spans, not fences.
+				if fence[0] == '~' || !strings.Contains(content[len(m):], "`") {
+					fenceChar, fenceLen = fence[0], len(fence)
+					block.Reset()
+					block.WriteString(line)
+					continue
+				}
+			}
+			out.WriteString(line)
+			continue
+		}
+		if isFenceClose(content, fenceChar, fenceLen) {
+			// Keep the closing line's newline outside the block so the
+			// placeholder occupies the same line position the fence did.
+			block.WriteString(content)
+			out.WriteString(p.placeholder(len(p.blocks)))
+			out.WriteString(line[len(content):])
+			p.blocks = append(p.blocks, block.String())
+			fenceChar, fenceLen = 0, 0
+			continue
+		}
+		block.WriteString(line)
+	}
+	if fenceChar != 0 { // unclosed fence: protect through end of input
+		out.WriteString(p.placeholder(len(p.blocks)))
+		p.blocks = append(p.blocks, block.String())
+	}
+	return out.String(), p
+}
+
+// isFenceClose reports whether a line (without trailing newline) closes a fence
+// opened with fenceLen repetitions of fenceChar: ≤3 spaces of indentation, at
+// least fenceLen fence characters, and nothing else but spaces/tabs.
+func isFenceClose(content string, fenceChar byte, fenceLen int) bool {
+	s := strings.TrimLeft(content, " ")
+	if len(content)-len(s) > 3 {
+		return false
+	}
+	n := 0
+	for n < len(s) && s[n] == fenceChar {
+		n++
+	}
+	return n >= fenceLen && strings.TrimRight(s[n:], " \t") == ""
+}
+
+// applyMarkdownStyleRules normalizes markdown whose code fences have already
+// been replaced by placeholders:
+//  1. Downgrade headings: H1 → H4, H2~H6 → H5 (only when H1~H3 present)
+//  2. Normalize spacing around consecutive headings and tables
+//  3. Compress excess blank lines
+//
+// Image references are left untouched: the Feishu md tag renders unsupported
+// image syntax as literal text, which is preferable to silent content loss.
+func applyMarkdownStyleRules(r string) string {
+	// Only downgrade when the fence-protected text has H1~H3; order matters
+	// (H2~H6 first). Checking the protected text keeps "# comment" lines inside
+	// code fences from triggering downgrades outside them.
+	if reHasH1toH3.MatchString(r) {
 		r = reH2toH6.ReplaceAllString(r, "##### $1")
 		r = reH1.ReplaceAllString(r, "#### $1")
 	}
 
 	r = reConsecH.ReplaceAllString(r, "$1\n\n$2")
-
 	r = reTableNoGap.ReplaceAllString(r, "$1\n\n$2")
 	r = reTableAfter.ReplaceAllString(r, "$1\n")
-
-	for i, block := range codeBlocks {
-		r = strings.Replace(r, fmt.Sprintf("%s%d___", mark, i), block, 1)
-	}
-
 	r = reExcessNL.ReplaceAllString(r, "\n\n")
-
-	if strings.Contains(r, "![") {
-		r = reInvalidImg.ReplaceAllStringFunc(r, func(m string) string {
-			// Extract the URL from ![alt](URL) — it starts after "(" and ends before ")"
-			start := strings.LastIndex(m, "(")
-			end := strings.LastIndex(m, ")")
-			if start >= 0 && end > start && strings.HasPrefix(m[start+1:end], "img_") {
-				return m
-			}
-			return ""
-		})
-	}
-
 	return r
+}
+
+func optimizeMarkdownStyle(text string) string {
+	protected, prot := protectMarkdownCodeBlocks(text)
+	return prot.restore(applyMarkdownStyleRules(protected))
 }
 
 // wrapMarkdownAsPost wraps markdown text into Feishu post format JSON (no network).
@@ -881,43 +960,47 @@ func wrapMarkdownAsPost(markdown string) string {
 
 var reMarkdownImage = regexp.MustCompile(`!\[[^\]]*\]\((https?://[^)\s]+)\)`)
 
-// wrapMarkdownAsPostForDryRun rewrites remote markdown images to placeholder img_ keys
-// so the preview matches the shape of the real request body.
+// wrapMarkdownAsPostForDryRun rewrites remote markdown images outside code
+// fences to placeholder img_ keys so the preview matches the shape of the real
+// request body. Fence content is preserved byte-for-byte, mirroring Execute.
 func wrapMarkdownAsPostForDryRun(markdown string) (content, desc string) {
+	protected, prot := protectMarkdownCodeBlocks(markdown)
 	imageIndex := 0
-	rewritten := reMarkdownImage.ReplaceAllStringFunc(markdown, func(m string) string {
+	rewritten := reMarkdownImage.ReplaceAllStringFunc(protected, func(m string) string {
 		imageIndex++
-		sub := reMarkdownImage.FindStringSubmatch(m)
 		altStart := strings.Index(m, "[")
 		altEnd := strings.Index(m, "]")
 		alt := ""
 		if altStart >= 0 && altEnd > altStart {
 			alt = m[altStart+1 : altEnd]
 		}
-		if len(sub) < 2 {
-			return fmt.Sprintf("![%s](img_dryrun_%d)", alt, imageIndex)
-		}
 		return fmt.Sprintf("![%s](img_dryrun_%d)", alt, imageIndex)
 	})
 
 	desc = ""
 	if imageIndex > 0 {
-		desc = "dry-run uses placeholder image keys for markdown image URLs; execution downloads and uploads them before sending"
+		desc = "dry-run uses placeholder image keys for markdown image URLs; execution downloads and uploads them before sending (originals are kept with a warning on failure)"
 	}
-	return wrapMarkdownAsPost(rewritten), desc
+	restored := prot.restore(applyMarkdownStyleRules(rewritten))
+	inner, _ := json.Marshal(restored)
+	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`, desc
 }
 
-// resolveMarkdownAsPost resolves image URLs in markdown, applies style optimization,
-// and wraps as post format JSON. Used by Execute (makes network calls).
+// resolveMarkdownAsPost resolves image URLs in markdown (outside code fences
+// only), applies style optimization, and wraps as post format JSON. Used by
+// Execute (makes network calls).
 func resolveMarkdownAsPost(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
-	resolved := resolveMarkdownImageURLs(ctx, runtime, markdown)
-	optimized := optimizeMarkdownStyle(resolved)
+	protected, prot := protectMarkdownCodeBlocks(markdown)
+	resolved := resolveMarkdownImageURLs(ctx, runtime, protected)
+	optimized := prot.restore(applyMarkdownStyleRules(resolved))
 	inner, _ := json.Marshal(optimized)
 	return `{"zh_cn":{"content":[[{"tag":"md","text":` + string(inner) + `}]]}}`
 }
 
 // resolveMarkdownImageURLs finds ![alt](https://...) in markdown, downloads each URL,
-// uploads as image, and replaces with ![alt](img_xxx). Failed uploads are stripped.
+// uploads as image, and replaces with ![alt](img_xxx). On download or upload
+// failure the original markup is kept (with a warning) — the Feishu md tag
+// renders it as literal text, which beats silently deleting user content.
 func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContext, markdown string) string {
 	if !strings.Contains(markdown, "![") {
 		return markdown
@@ -931,16 +1014,16 @@ func resolveMarkdownImageURLs(ctx context.Context, runtime *common.RuntimeContex
 
 		rc, _, err := downloadURLToReader(ctx, runtime, imgURL, maxImageUploadSize, "--markdown")
 		if err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
-			return ""
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to download image %s, keeping original markup: %v\n", sanitizeURLForDisplay(imgURL), err)
+			return m
 		}
 		defer rc.Close()
 
 		fmt.Fprintf(runtime.IO().ErrOut, "uploading image from URL: %s\n", sanitizeURLForDisplay(imgURL))
 		imgKey, err := uploadImageFromReader(ctx, runtime, rc, "message")
 		if err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to upload image %s: %v\n", sanitizeURLForDisplay(imgURL), err)
-			return ""
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to upload image %s, keeping original markup: %v\n", sanitizeURLForDisplay(imgURL), err)
+			return m
 		}
 
 		// Reconstruct ![alt](img_xxx)
