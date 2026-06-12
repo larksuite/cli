@@ -337,8 +337,8 @@ func TestAuthLogoutRun_RevokeFailureStillClearsLocalState(t *testing.T) {
 	}
 
 	gotErr := stderr.String()
-	if !strings.Contains(gotErr, "failed to revoke token for ou_user") {
-		t.Fatalf("stderr = %q, want revoke warning", gotErr)
+	if strings.Contains(gotErr, "failed to revoke token for ou_user") {
+		t.Fatalf("stderr = %q, want no revoke warning", gotErr)
 	}
 	if !strings.Contains(gotErr, "Logged out") {
 		t.Fatalf("stderr = %q, want Logged out", gotErr)

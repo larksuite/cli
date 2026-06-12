@@ -85,22 +85,13 @@ func authLogoutRun(opts *LogoutOptions) error {
 					tokenTypeHint = "access_token"
 				}
 				if revokeToken != "" {
-					if err := larkauth.RevokeToken(httpClient, app.AppId, appSecret, app.Brand, revokeToken, tokenTypeHint); err != nil {
-						fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to revoke token for %s: %v\n", user.UserOpenId, err)
-					}
+					_ = larkauth.RevokeToken(httpClient, app.AppId, appSecret, app.Brand, revokeToken, tokenTypeHint)
 				}
 			}
 		}
 		if err := larkauth.RemoveStoredToken(app.AppId, user.UserOpenId); err != nil {
 			fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to remove token for %s: %v\n", user.UserOpenId, err)
 		}
-	}
-
-	if httpErr != nil {
-		fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to initialize HTTP client for token revoke: %v\n", httpErr)
-	}
-	if secretErr != nil {
-		fmt.Fprintf(f.IOStreams.ErrOut, "Warning: failed to resolve app secret for token revoke: %v\n", secretErr)
 	}
 
 	app.Users = []core.AppUser{}
