@@ -179,7 +179,7 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 		}
 	}
 	return appsFailedPreconditionParamError("--path", "--path is missing index.html").
-		WithHint("Miaoda uses index.html as the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
+		WithHint("index.html is the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
 }
 
 func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
