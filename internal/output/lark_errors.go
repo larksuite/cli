@@ -35,9 +35,12 @@ const (
 	LarkErrAppNotInUse     = 99991662 // app is disabled in this tenant
 	LarkErrAppUnauthorized = 99991673 // app status unavailable; check installation
 
-	// TAT-endpoint variant of the "wrong app credentials" condition.
-	// /open-apis/auth/v3/tenant_access_token/internal returns code 10014
-	// ("app secret invalid") instead of 99991543 when the secret is wrong.
+	// "Wrong app credentials" code from the LEGACY TAT endpoint
+	// (/open-apis/auth/v3/tenant_access_token/internal returns 10014, "app secret
+	// invalid", instead of 99991543). Since the OAuth v3 migration the CLI mints
+	// TAT via accounts/oauth/v3/token and reports this as the OAuth invalid_client
+	// error, so it no longer emits 10014 itself; the constant + codemeta mapping
+	// are retained as a defensive fallback should 10014 still arrive.
 	LarkErrTATInvalidSecret = 10014
 
 	// Rate limit.

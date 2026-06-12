@@ -174,6 +174,34 @@ func TestFetchTAT_ServerError_Untyped(t *testing.T) {
 	}
 }
 
+// Rate-limiting is transient, not a deterministic credential rejection — an HTTP
+// 429 (even with a parseable OAuth body) and the OAuth slow_down error must both
+// stay UNTYPED so a rate-limited probe stays silent and retryers can back off.
+func TestFetchTAT_RateLimit_Untyped(t *testing.T) {
+	cases := []struct {
+		name string
+		code int
+		body string
+	}{
+		{"http 429", 429, `{"code":99991400,"error":"too_many_requests","error_description":"rate limit exceeded"}`},
+		{"oauth slow_down", 200, `{"error":"slow_down","error_description":"polling too fast"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &stubRoundTripper{respCode: tc.code, respBody: tc.body}
+			hc := &http.Client{Transport: rt}
+
+			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+			if err == nil {
+				t.Fatal("expected error for rate-limit")
+			}
+			if errs.IsTyped(err) {
+				t.Errorf("rate-limit must be UNTYPED (transient), got typed %T %v", err, err)
+			}
+		})
+	}
+}
+
 // Non-2xx HTTP with a non-JSON body is ambiguous (not a structured OAuth
 // rejection) — it must stay UNTYPED so a probe caller treats it as upstream
 // noise and stays silent.

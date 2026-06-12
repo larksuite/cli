@@ -74,9 +74,14 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		return result.AccessToken, nil
 	}
 
-	// Transient/server-side failures stay untyped so probe callers stay silent
-	// and retryers can back off; only deterministic client rejections are typed.
-	if resp.StatusCode >= 500 || result.Error == "server_error" || result.Error == "temporarily_unavailable" {
+	// Transient/server-side failures stay untyped so probe callers stay silent and
+	// retryers can back off; only deterministic client rejections are typed. Covers
+	// 5xx, HTTP 429 rate-limit, and the OAuth transient error strings (server_error,
+	// temporarily_unavailable, slow_down) — matching the legacy "non-2xx is noise"
+	// behavior so a rate-limited probe is not surfaced as a hard credential error.
+	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests ||
+		result.Error == "server_error" || result.Error == "temporarily_unavailable" ||
+		result.Error == "slow_down" {
 		return "", fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
 			resp.StatusCode, result.Code, result.Error, result.ErrorDescription)
 	}
