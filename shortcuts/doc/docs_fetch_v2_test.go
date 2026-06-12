@@ -75,8 +75,71 @@ func TestDocsFetchDryRunDefaultsToV2Endpoint(t *testing.T) {
 	if got, want := dry.API[0].URL, "/open-apis/docs_ai/v1/documents/doxcnFetchDryRun/fetch"; got != want {
 		t.Fatalf("dry-run URL = %q, want %q", got, want)
 	}
-	if got, want := dry.API[0].Body["format"], "xml"; got != want {
+	if got, want := dry.API[0].Body["format"], "markdown"; got != want {
 		t.Fatalf("dry-run format = %#v, want %q", got, want)
+	}
+}
+
+func TestDocsFetchDetailWithIdsAutoUpgradesFormatToXml(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		setFlags map[string]string
+		wantFmt  string
+		wantErr  bool
+	}{
+		{
+			name:     "with-ids without explicit doc-format auto-upgrades to xml",
+			setFlags: map[string]string{"detail": "with-ids"},
+			wantFmt:  "xml",
+		},
+		{
+			name:     "full without explicit doc-format auto-upgrades to xml",
+			setFlags: map[string]string{"detail": "full"},
+			wantFmt:  "xml",
+		},
+		{
+			name:     "with-ids with explicit xml stays xml",
+			setFlags: map[string]string{"detail": "with-ids", "doc-format": "xml"},
+			wantFmt:  "xml",
+		},
+		{
+			name:     "with-ids with explicit markdown errors",
+			setFlags: map[string]string{"detail": "with-ids", "doc-format": "markdown"},
+			wantErr:  true,
+		},
+		{
+			name:     "simple detail keeps markdown default",
+			setFlags: map[string]string{"detail": "simple"},
+			wantFmt:  "markdown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchShortcutTestRuntime(t, "", tt.setFlags)
+			err := validateFetchV2(context.Background(), runtime)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected validation error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateFetchV2() error = %v", err)
+			}
+			if got := runtime.Str("doc-format"); got != tt.wantFmt {
+				t.Fatalf("doc-format = %q, want %q", got, tt.wantFmt)
+			}
+
+			dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
+			if got := dry.API[0].Body["format"]; got != tt.wantFmt {
+				t.Fatalf("dry-run format = %#v, want %q", got, tt.wantFmt)
+			}
+		})
 	}
 }
 

@@ -17,7 +17,7 @@ import (
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export", Default: "markdown", Enum: []string{"xml", "markdown"}},
 		{Name: "detail", Desc: "detail level; simple for reading, with-ids for block references, full for styles and edit metadata", Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
 		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
 		{Name: "scope", Desc: "read scope; full reads whole doc, outline lists headings, section expands from heading anchor, range uses block ids, keyword searches text", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
@@ -147,14 +147,25 @@ func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
 }
 
 // validateFetchDetail 非 xml 格式（markdown）不承载 block_id 与样式属性，拒绝 with-ids/full。
+// When --detail with-ids or --detail full is used without an explicit --doc-format,
+// auto-upgrade the format to xml since block ids and style attributes are only
+// available in XML output. This preserves backward compatibility after the default
+// format changed from xml to markdown.
 func validateFetchDetail(runtime *common.RuntimeContext) error {
 	format := strings.TrimSpace(runtime.Str("doc-format"))
 	detail := strings.TrimSpace(runtime.Str("detail"))
-	if format == "" || format == "xml" {
-		return nil
-	}
 	if detail == "with-ids" || detail == "full" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format).WithParam("--detail")
+		// If the user didn't explicitly set --doc-format, upgrade to xml since
+		// markdown cannot carry block ids or style attributes.
+		if format == "" || format == "markdown" {
+			if !runtime.Cmd.Flags().Changed("doc-format") {
+				if err := runtime.Cmd.Flags().Set("doc-format", "xml"); err != nil {
+					return err
+				}
+			} else if format == "markdown" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format).WithParam("--detail")
+			}
+		}
 	}
 	return nil
 }
