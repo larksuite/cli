@@ -1,4 +1,38 @@
 {
+  "+changeset-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "start-revision",
+        "kind": "own",
+        "type": "int",
+        "required": "required",
+        "desc": "Start version (CS revision); the 'before' baseline for review (must be >= 1)"
+      },
+      {
+        "name": "end-revision",
+        "kind": "own",
+        "type": "int",
+        "required": "optional",
+        "desc": "End version (CS revision); defaults to the latest revision. Gap (end-start+1) must be <= 20",
+        "default": "-1"
+      }
+    ]
+  },
   "+formula-verify": {
     "risk": "read",
     "flags": [

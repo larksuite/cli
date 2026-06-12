@@ -95,6 +95,9 @@ func shortcutList() []common.Shortcut {
 		DimUngroup,
 		DimMove,
 
+		// lark_sheet_changeset
+		ChangesetGet,
+
 		// lark_sheet_read_data
 		CellsGet,
 		CsvGet,
