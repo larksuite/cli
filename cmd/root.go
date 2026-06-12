@@ -55,12 +55,12 @@ AI AGENT SKILLS:
     lark-cli pairs with AI agent skills (Claude Code, etc.) that
     teach the agent Lark API patterns, best practices, and workflows.
 
-    Install all skills:
+    Install the default single entry skill:
         npx skills add larksuite/cli -g -y
 
-    Or pick specific domains:
-        npx skills add larksuite/cli -s lark-calendar -y
-        npx skills add larksuite/cli -s lark-im -y
+    Advanced: install legacy domain skills directly:
+        npx skills add larksuite/cli --full-depth -s lark-calendar -y
+        npx skills add larksuite/cli --full-depth -s lark-im -y
 
     Learn more: https://github.com/larksuite/cli#agent-skills
 

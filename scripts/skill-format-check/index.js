@@ -22,10 +22,15 @@ function checkSkillFormat() {
 
   let skills;
   try {
-    skills = fs
+    skills = [];
+    if (fs.existsSync(path.join(SKILLS_DIR, 'SKILL.md'))) {
+      skills.push('.');
+    }
+    skills.push(...fs
       .readdirSync(SKILLS_DIR, { withFileTypes: true })
       .filter(entry => entry.isDirectory())
-      .map(entry => entry.name);
+      .filter(entry => fs.existsSync(path.join(SKILLS_DIR, entry.name, 'SKILL.md')))
+      .map(entry => entry.name));
   } catch (err) {
     console.error(`Failed to enumerate skills directory: ${err.message}`);
     process.exit(1);
@@ -40,7 +45,7 @@ function checkSkillFormat() {
         return;
     }
 
-    const skillPath = path.join(SKILLS_DIR, skill);
+    const skillPath = skill === '.' ? SKILLS_DIR : path.join(SKILLS_DIR, skill);
     const skillFile = path.join(skillPath, 'SKILL.md');
 
     if (!fs.existsSync(skillFile)) {

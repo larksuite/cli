@@ -6,14 +6,14 @@
 
 [中文版](./README.zh.md) | [English](./README.md)
 
-飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令及 26 个 AI Agent [Skills](./skills/)。
+飞书官方 CLI 工具，由 [larksuite](https://github.com/larksuite) 团队维护 — 让人类和 AI Agent 都能在终端中操作飞书。覆盖消息、文档、多维表格、电子表格、幻灯片、日历、邮箱、任务、会议、Markdown 等核心业务域，提供 200+ 命令和一个 AI Agent 入口 [Skill](./SKILL.md)，按需路由到版本匹配的领域文档。
 
 [安装](#安装与快速开始) · [AI Agent Skills](#agent-skills) · [认证](#认证) · [命令](#三层命令调用) · [进阶用法](#进阶用法) · [安全](#安全与风险提示使用前必读) · [贡献](#贡献)
 
 ## 为什么选 lark-cli？
 
-- **为 Agent 原生设计** — 26 个 [Skills](./skills/) 开箱即用，适配主流 AI 工具，Agent 无需额外适配即可操作飞书
-- **覆盖面广** — 18 大业务域、200+ 精选命令、26 个 AI Agent [Skills](./skills/)
+- **为 Agent 原生设计** — 一个精简入口 [Skill](./SKILL.md) 加版本匹配的领域文档，适配主流 AI 工具，Agent 无需额外适配即可操作飞书
+- **覆盖面广** — 18 大业务域、200+ 精选命令，以及按需读取的内嵌领域指引
 - **AI 友好调优** — 每条命令经过 Agent 实测验证，提供更友好的参数、智能默认值和结构化输出，大幅提升 Agent 调用成功率
 - **开源零门槛** — MIT 协议，开箱即用，`npm install` 即可使用
 - **三分钟上手** — 一键创建应用、交互式登录授权，从安装到第一次 API 调用只需三步
@@ -75,7 +75,7 @@ git clone https://github.com/larksuite/cli.git
 cd cli
 make install
 
-# 安装 CLI SKILL（必需）
+# 安装默认 CLI Skill（必需）
 npx skills add larksuite/cli -y -g
 ```
 
@@ -127,32 +127,24 @@ lark-cli auth status
 
 ## Agent Skills
 
-| Skill                           | 说明                                        |
-| --------------------------------- |-------------------------------------------|
-| `lark-shared`                   | 应用配置、认证登录、身份切换、权限管理、安全规则（所有其他 skill 自动加载） |
-| `lark-calendar`                 | 日历日程（创建/更新）、议程查看、忙闲查询、时间建议、会议室查找、回复邀请       |
-| `lark-im`                       | 发送/回复消息、群聊管理、消息搜索、上传下载图片与文件、表情回复          |
-| `lark-doc`                      | 创建、读取、更新、搜索文档（基于 Markdown）                |
-| `lark-drive`                    | 上传、下载文件，管理权限与评论                           |
-| `lark-markdown`                 | 创建、读取、局部 patch、覆盖更新 Drive 中的原生 Markdown 文件   |
-| `lark-sheets`                   | 创建、读取、写入、追加、查找、导出电子表格                     |
-| `lark-slides`                   | 创建和管理演示文稿、读取演示文稿内容，以及新增或删除幻灯片页面 |
-| `lark-base`                     | 多维表格、字段、记录、视图、仪表盘、数据聚合分析                  |
-| `lark-task`                     | 任务、任务清单、子任务、提醒、成员分配                       |
-| `lark-mail`                     | 浏览、搜索、阅读邮件，发送、回复、转发，草稿管理，监听新邮件            |
-| `lark-contact`                  | 按姓名/邮箱/手机号搜索用户，获取用户信息                     |
-| `lark-wiki`                     | 知识空间、节点、文档                                |
-| `lark-event`                    | 实时事件订阅（WebSocket），支持正则路由与 Agent 友好格式      |
-| `lark-vc`                       | 搜索会议记录、查询会议纪要产物（总结、待办、逐字稿）                |
-| `lark-whiteboard`               | 画板/图表 DSL 渲染                              |
-| `lark-minutes`                  | 妙记元数据与 AI 产物（总结、待办、章节），上传音视频生成妙记，下载音视频文件 |
-| `lark-openapi-explorer`         | 从官方文档探索底层 API                             |
-| `lark-skill-maker`              | 自定义 skill 创建框架                            |
-| `lark-attendance`               | 查询个人考勤打卡记录                                |
-| `lark-approval`                 | 审批任务查询、同意/拒绝/转交审批任务、撤回与抄送审批实例             |
-| `lark-workflow-meeting-summary` | 工作流：会议纪要汇总与结构化报告                          |
-| `lark-workflow-standup-report`  | 工作流：日程待办摘要                                |
-| `lark-okr`                      | 查询、创建、更新 OKR，管理目标、关键结果、对齐、指标和进展记录         |
+仓库默认只暴露一个 [`lark-suite`](./SKILL.md) 入口 Skill，避免全局技能搜索被每个飞书领域刷屏。安装命令：
+
+```bash
+npx skills add larksuite/cli -y -g
+```
+
+入口 Skill 会引导 Agent 按需读取与当前 `lark-cli` 二进制版本匹配的领域文档：
+
+```bash
+lark-cli skills read lark-im
+lark-cli skills read lark-doc references/lark-doc-fetch.md
+```
+
+高级用户如果仍想直接安装嵌套的领域 Skill，可以显式启用深度发现：
+
+```bash
+npx skills add larksuite/cli --full-depth -s lark-im -y -g
+```
 
 ## 认证
 

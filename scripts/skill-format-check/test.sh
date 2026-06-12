@@ -73,6 +73,7 @@ run_negative_test() {
 run_positive_test "good-skill"
 run_positive_test "good-skill-minimal"
 run_positive_test "good-skill-complex"
+run_positive_test "good-root-skill"
 
 # Run negative tests
 run_negative_test "bad-skill"

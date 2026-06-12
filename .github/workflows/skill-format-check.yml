@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
     paths:
+      - "SKILL.md"
       - "skills/**"
       - "scripts/skill-format-check/**"
       - ".github/workflows/skill-format-check.yml"
   pull_request:
     branches: [main]
     paths:
+      - "SKILL.md"
       - "skills/**"
       - "scripts/skill-format-check/**"
       - ".github/workflows/skill-format-check.yml"
@@ -29,4 +31,6 @@ jobs:
           node-version: '20'
 
       - name: Run Skill Format Check
-        run: node scripts/skill-format-check/index.js
+        run: |
+          node scripts/skill-format-check/index.js .
+          node scripts/skill-format-check/index.js skills
