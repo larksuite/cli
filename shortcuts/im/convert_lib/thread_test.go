@@ -68,6 +68,118 @@ func TestExpandThreadReplies(t *testing.T) {
 	}
 }
 
+// TestExpandThreadRepliesResources verifies that when extractResources is on,
+// each thread reply gets its own resources block with ref message_id equal to
+// the reply's own message_id.
+func TestExpandThreadRepliesResources(t *testing.T) {
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.URL.Path, "/open-apis/im/v1/messages") {
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+		return convertlibJSONResponse(200, map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"has_more": false,
+				"items": []interface{}{
+					map[string]interface{}{
+						"message_id":  "om_reply_img",
+						"msg_type":    "image",
+						"create_time": "1710500000",
+						"thread_id":   "omt_1",
+						"sender":      map[string]interface{}{"name": "Alice"},
+						"body":        map[string]interface{}{"content": `{"image_key":"img_reply"}`},
+					},
+				},
+			},
+		}), nil
+	}))
+
+	messages := []map[string]interface{}{
+		{"message_id": "om_root_1", "thread_id": "omt_1"},
+	}
+
+	ExpandThreadRepliesWithResources(runtime, messages, map[string]string{}, 10, 50, true)
+
+	replies, _ := messages[0]["thread_replies"].([]map[string]interface{})
+	if len(replies) != 1 {
+		t.Fatalf("thread_replies len = %d, want 1", len(replies))
+	}
+	resources, ok := replies[0]["resources"].([]map[string]interface{})
+	if !ok || len(resources) != 1 {
+		t.Fatalf("reply resources = %#v, want 1 ref", replies[0]["resources"])
+	}
+	r := resources[0]
+	if r["message_id"] != "om_reply_img" || r["key"] != "img_reply" || r["type"] != "image" {
+		t.Fatalf("reply resource ref = %#v, want {om_reply_img,img_reply,image}", r)
+	}
+}
+
+// TestThreadReplyMergeForwardNested verifies that when a thread reply is itself
+// a merge_forward, its sub-item resources fold into that reply's resources
+// block, each ref carrying the merge_forward CONTAINER's message_id (the
+// download API rejects sub-item ids with 234003 File not in msg).
+func TestThreadReplyMergeForwardNested(t *testing.T) {
+	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		// merge_forward sub-message prefetch: GET /messages/{id} (no container_id query).
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages/om_reply_mf"):
+			return convertlibJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"items": []interface{}{
+						map[string]interface{}{
+							"message_id":  "sub_in_mf",
+							"msg_type":    "file",
+							"create_time": "1710500000",
+							"sender":      map[string]interface{}{"name": "Bob"},
+							"body":        map[string]interface{}{"content": `{"file_key":"file_in_mf"}`},
+						},
+					},
+				},
+			}), nil
+		// thread replies fetch: GET /messages?container_id=...
+		case strings.Contains(req.URL.Path, "/open-apis/im/v1/messages"):
+			return convertlibJSONResponse(200, map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"has_more": false,
+					"items": []interface{}{
+						map[string]interface{}{
+							"message_id":  "om_reply_mf",
+							"msg_type":    "merge_forward",
+							"create_time": "1710500000",
+							"thread_id":   "omt_1",
+							"sender":      map[string]interface{}{"name": "Alice"},
+							"body":        map[string]interface{}{"content": "[Merged forward]"},
+						},
+					},
+				},
+			}), nil
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+	}))
+
+	messages := []map[string]interface{}{
+		{"message_id": "om_root_1", "thread_id": "omt_1"},
+	}
+
+	ExpandThreadRepliesWithResources(runtime, messages, map[string]string{}, 10, 50, true)
+
+	replies, _ := messages[0]["thread_replies"].([]map[string]interface{})
+	if len(replies) != 1 {
+		t.Fatalf("thread_replies len = %d, want 1", len(replies))
+	}
+	resources, ok := replies[0]["resources"].([]map[string]interface{})
+	if !ok || len(resources) != 1 {
+		t.Fatalf("nested merge_forward reply resources = %#v, want 1 ref", replies[0]["resources"])
+	}
+	r := resources[0]
+	if r["message_id"] != "om_reply_mf" || r["key"] != "file_in_mf" || r["type"] != "file" {
+		t.Fatalf("nested resource ref = %#v, want {om_reply_mf,file_in_mf,file}", r)
+	}
+}
+
 func TestFetchThreadRepliesError(t *testing.T) {
 	runtime := newBotConvertlibRuntime(t, convertlibRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		switch {

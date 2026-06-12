@@ -40,8 +40,8 @@
 | `block_replace` | 替换指定 block（同一 block 仅限一次） | `--block-id` `--content` |
 | `block_delete` | 删除指定 block（逗号分隔可批量） | `--block-id` |
 | `overwrite` | ⚠️ 清空文档后全文重写（可能丢失图片、评论） | `--content` |
-| `append` | 在文档末尾追加内容（等价于 `block_insert_after --block-id -1`） | `--content` |
-| `block_move_after` | 移动已有 block 到指定位置 | `--block-id` + (`--content` 或 `--src-block-ids`) |
+| `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after --block-id -1`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `--block-id` | `--content` |
+| `block_move_after` | 移动已有 block 到指定位置 | `--block-id` `--src-block-ids` |
 
 ## 指令示例
 

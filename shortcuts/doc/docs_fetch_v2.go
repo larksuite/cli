@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -37,7 +38,7 @@ func validateFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
-		return common.FlagErrorf("invalid --doc: %v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc: %v", err).WithParam("--doc")
 	}
 	if err := validateFetchDetail(runtime); err != nil {
 		return err
@@ -153,7 +154,7 @@ func validateFetchDetail(runtime *common.RuntimeContext) error {
 		return nil
 	}
 	if detail == "with-ids" || detail == "full" {
-		return common.FlagErrorf("--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format).WithParam("--detail")
 	}
 	return nil
 }
@@ -166,13 +167,13 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	}
 
 	if v := runtime.Int("context-before"); v < 0 {
-		return common.FlagErrorf("--context-before must be >= 0, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--context-before must be >= 0, got %d", v).WithParam("--context-before")
 	}
 	if v := runtime.Int("context-after"); v < 0 {
-		return common.FlagErrorf("--context-after must be >= 0, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--context-after must be >= 0, got %d", v).WithParam("--context-after")
 	}
 	if v := runtime.Int("max-depth"); v < -1 {
-		return common.FlagErrorf("--max-depth must be >= -1, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--max-depth must be >= -1, got %d", v).WithParam("--max-depth")
 	}
 
 	switch mode {
@@ -181,20 +182,23 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	case "range":
 		if strings.TrimSpace(runtime.Str("start-block-id")) == "" &&
 			strings.TrimSpace(runtime.Str("end-block-id")) == "" {
-			return common.FlagErrorf("range mode requires --start-block-id or --end-block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "range mode requires --start-block-id or --end-block-id").WithParams(
+				errs.InvalidParam{Name: "--start-block-id", Reason: "provide --start-block-id or --end-block-id for range mode"},
+				errs.InvalidParam{Name: "--end-block-id", Reason: "provide --start-block-id or --end-block-id for range mode"},
+			)
 		}
 		return nil
 	case "keyword":
 		if strings.TrimSpace(runtime.Str("keyword")) == "" {
-			return common.FlagErrorf("keyword mode requires --keyword")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "keyword mode requires --keyword").WithParam("--keyword")
 		}
 		return nil
 	case "section":
 		if strings.TrimSpace(runtime.Str("start-block-id")) == "" {
-			return common.FlagErrorf("section mode requires --start-block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "section mode requires --start-block-id").WithParam("--start-block-id")
 		}
 		return nil
 	default:
-		return common.FlagErrorf("invalid --scope %q", mode)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --scope %q", mode).WithParam("--scope")
 	}
 }

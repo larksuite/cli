@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	eventlib "github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/schemas"
@@ -39,12 +40,14 @@ func resolveSchemaJSON(def *eventlib.KeyDefinition) (json.RawMessage, []string, 
 	if len(def.Schema.FieldOverrides) > 0 {
 		var parsed map[string]interface{}
 		if err := json.Unmarshal(base, &parsed); err != nil {
-			return nil, nil, err
+			return nil, nil, errs.NewInternalError(errs.SubtypeUnknown,
+				"parse base schema for field overrides: %s", err).WithCause(err)
 		}
 		orphans := schemas.ApplyFieldOverrides(parsed, def.Schema.FieldOverrides)
 		out, err := json.Marshal(parsed)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, errs.NewInternalError(errs.SubtypeUnknown,
+				"serialize schema with field overrides: %s", err).WithCause(err)
 		}
 		return out, orphans, nil
 	}
@@ -73,7 +76,7 @@ func renderSpec(s *eventlib.SchemaSpec) (json.RawMessage, error) {
 		copy(buf, s.Raw)
 		return buf, nil
 	}
-	return nil, fmt.Errorf("schemaSpec has neither Type nor Raw")
+	return nil, errs.NewInternalError(errs.SubtypeUnknown, "schemaSpec has neither Type nor Raw")
 }
 
 func NewCmdSchema(f *cmdutil.Factory) *cobra.Command {
@@ -131,11 +134,15 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 	if len(def.Params) > 0 {
 		fmt.Fprintf(out, "\nParameters:\n")
 		w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-		fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tDEFAULT\tDESCRIPTION\n")
+		fmt.Fprintf(w, "  NAME\tTYPE\tREQUIRED\tSUB-KEY\tDEFAULT\tDESCRIPTION\n")
 		for _, p := range def.Params {
 			required := "no"
 			if p.Required {
 				required = "yes"
+			}
+			subKey := "no"
+			if p.SubscriptionKey {
+				subKey = "yes"
 			}
 			defaultVal := p.Default
 			if defaultVal == "" {
@@ -145,7 +152,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 			if desc == "" {
 				desc = "-"
 			}
-			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, required, defaultVal, desc)
+			fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\t%s\n", p.Name, p.Type, required, subKey, defaultVal, desc)
 		}
 		w.Flush()
 
@@ -165,7 +172,7 @@ func runSchema(f *cmdutil.Factory, key string, asJSON bool) error {
 
 	resolved, _, err := resolveSchemaJSON(def)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "resolve schema: %v", err)
+		return err
 	}
 	if resolved != nil {
 		fmt.Fprintf(out, "\nOutput Schema:\n")

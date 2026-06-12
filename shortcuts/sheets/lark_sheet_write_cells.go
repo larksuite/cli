@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -82,7 +82,7 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	cells, err := requireJSONArray(runtime, "cells")
 	if err != nil {
@@ -156,11 +156,11 @@ func cellsSetStyleInput(runtime flagView, token, sheetID, sheetName string) (map
 	}
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	if rangeStr == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	rows, cols, err := rangeDimensions(rangeStr)
 	if err != nil {
-		return nil, common.FlagErrorf("--range %q: %v", rangeStr, err)
+		return nil, sheetsValidationForFlag("range", "--range %q: %v", rangeStr, err)
 	}
 	if err := requireAnyStyleFlag(runtime); err != nil {
 		return nil, err
@@ -218,8 +218,14 @@ var CsvPut = common.Shortcut{
 			delete(fl.Annotations, cobra.BashCompOneRequiredFlag)
 		}
 		cmd.MarkFlagsOneRequired("start-cell", "range")
+		cmd.MarkFlagsMutuallyExclusive("start-cell", "range")
 	},
-	Validate: validateViaInput(csvPutInput),
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if err := guardCSVValueIsNotFilePath(runtime); err != nil {
+			return err
+		}
+		return validateViaInput(csvPutInput)(ctx, runtime)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -295,12 +301,45 @@ func csvPutWriteRangeFromInput(input map[string]interface{}) (string, bool) {
 	return fmt.Sprintf("%s:%s%d", anchor, endCol, endRow), true
 }
 
+// guardCSVValueIsNotFilePath catches the common slip of passing a CSV file path
+// to --csv without the "@" that reads it (e.g. `--csv data.csv` instead of
+// `--csv @data.csv`). Because any string is a valid one-cell CSV, the mistake
+// would otherwise be written silently as the literal text "data.csv". It runs
+// in +csv-put's Validate, after resolveInputFlags — so an @file / stdin value is
+// already its contents (a real CSV blob, never a path) and only a bare value
+// reaches here unchanged. It flags the value only when it actually names an
+// existing file in the cwd subtree; checking real existence (not name shape)
+// means inline content that merely ends in a filename ("see config.json") is
+// never misjudged. Fails open: any Stat error or a directory leaves the value
+// untouched. Scoped to --csv only — no other flag is affected.
+func guardCSVValueIsNotFilePath(runtime *common.RuntimeContext) error {
+	raw := strings.TrimSpace(runtime.Str("csv"))
+	if raw == "" {
+		return nil
+	}
+	fio := runtime.FileIO()
+	if fio == nil {
+		return nil
+	}
+	info, err := fio.Stat(raw)
+	if err != nil || info == nil || info.IsDir() {
+		return nil //nolint:nilerr // fail-open: a missing/unreadable path is treated as inline content, not a forgotten @
+	}
+	return sheetsValidationForFlag("csv",
+		"--csv value %q is an existing file, not inline CSV; to read it use --csv @%s, or pass the literal text via stdin (--csv -)",
+		raw, raw,
+	)
+}
+
 func csvPutInput(runtime flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if err := requireSheetSelector(sheetID, sheetName); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("csv")) == "" {
-		return nil, common.FlagErrorf("--csv is required")
+		return nil, sheetsValidationForFlag("csv", "--csv is required")
+	}
+	if runtime.Changed("start-cell") && runtime.Changed("range") {
+		return nil, common.ValidationErrorf("--start-cell and --range are mutually exclusive").WithParams(sheetsInvalidParam("start-cell", "mutually exclusive"), sheetsInvalidParam("range", "mutually exclusive"))
 	}
 	anchor := strings.TrimSpace(runtime.Str("start-cell"))
 	// --range is accepted as an alias for --start-cell. +csv-get and +cells-set
@@ -311,23 +350,27 @@ func csvPutInput(runtime flagView, token, sheetID, sheetName string) (map[string
 	// collapses to its top-left cell; +csv-put pastes from the anchor and
 	// auto-expands, so the range's lower-right bound is irrelevant.
 	//
-	// Standalone enforces "one of --start-cell / --range" via cobra's
-	// MarkFlagsOneRequired (see PostMount). A +batch-update sub-op never runs
-	// cobra, so without an explicit check the default "A1" silently wins and the
-	// paste lands at A1 instead of failing like the standalone command. Mirror
-	// the standalone contract: when --start-cell is absent, --range is mandatory.
+	// Standalone enforces exactly one of --start-cell / --range via cobra's
+	// flag groups (see PostMount). A +batch-update sub-op never runs cobra, so
+	// without explicit checks the default "A1" silently wins and the paste lands
+	// at A1 instead of failing like the standalone command. Mirror the
+	// standalone contract: double-set is invalid, and when --start-cell is
+	// absent, --range is mandatory.
 	if !runtime.Changed("start-cell") {
 		rng := strings.TrimSpace(runtime.Str("range"))
 		if rng == "" {
-			return nil, common.FlagErrorf("--start-cell or --range is required")
+			return nil, common.ValidationErrorf("--start-cell or --range is required").WithParams(sheetsInvalidParam("start-cell", "required; specify exactly one"), sheetsInvalidParam("range", "required; specify exactly one"))
 		}
 		anchor = strings.TrimSpace(strings.SplitN(rng, ":", 2)[0])
+		if idx := strings.Index(anchor, "!"); idx >= 0 {
+			anchor = anchor[idx+1:]
+		}
 	}
 	if anchor == "" {
-		return nil, common.FlagErrorf("--start-cell is required")
+		return nil, sheetsValidationForFlag("start-cell", "--start-cell is required")
 	}
 	if _, _, ok := splitCellRef(anchor); !ok {
-		return nil, common.FlagErrorf("--start-cell %q must be a single cell ref (e.g. A1)", anchor)
+		return nil, sheetsValidationForFlag("start-cell", "--start-cell %q must be a single cell ref (e.g. A1)", anchor)
 	}
 	input := map[string]interface{}{
 		"excel_id":   token,
@@ -398,11 +441,11 @@ func dropdownSetInput(runtime flagView, token, sheetID, sheetName string) (map[s
 	}
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	if rangeStr == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	rows, cols, err := rangeDimensions(rangeStr)
 	if err != nil {
-		return nil, common.FlagErrorf("--range %q: %v", rangeStr, err)
+		return nil, sheetsValidationForFlag("range", "--range %q: %v", rangeStr, err)
 	}
 	validation, err := buildDropdownValidation(runtime)
 	if err != nil {
@@ -461,7 +504,7 @@ func buildDropdownValidation(runtime flagView) (map[string]interface{}, error) {
 			return nil, err
 		}
 		if len(colors) > sourceSize {
-			return nil, common.FlagErrorf("--colors length (%d) must not exceed dropdown source size (%d)", len(colors), sourceSize)
+			return nil, sheetsValidationForFlag("colors", "--colors length (%d) must not exceed dropdown source size (%d)", len(colors), sourceSize)
 		}
 		dv["highlight_colors"] = colors
 	}
@@ -483,9 +526,9 @@ func dropdownTypeAndItems(runtime flagView) (int, map[string]interface{}, error)
 	sourceRange := strings.TrimSpace(runtime.Str("source-range"))
 	switch {
 	case optsRaw != "" && sourceRange != "":
-		return 0, nil, common.FlagErrorf("--options and --source-range are mutually exclusive; pass exactly one")
+		return 0, nil, common.ValidationErrorf("--options and --source-range are mutually exclusive; pass exactly one").WithParams(sheetsInvalidParam("options", "mutually exclusive"), sheetsInvalidParam("source-range", "mutually exclusive"))
 	case optsRaw == "" && sourceRange == "":
-		return 0, nil, common.FlagErrorf("one of --options (inline list) or --source-range (listFromRange) is required")
+		return 0, nil, common.ValidationErrorf("one of --options (inline list) or --source-range (listFromRange) is required").WithParams(sheetsInvalidParam("options", "required; specify exactly one"), sheetsInvalidParam("source-range", "required; specify exactly one"))
 	case optsRaw != "":
 		options, err := requireJSONArray(runtime, "options")
 		if err != nil {
@@ -498,7 +541,7 @@ func dropdownTypeAndItems(runtime flagView) (int, map[string]interface{}, error)
 	default: // sourceRange != ""
 		rows, cols, err := rangeDimensions(sourceRange)
 		if err != nil {
-			return 0, nil, common.FlagErrorf("--source-range %q: %v", sourceRange, err)
+			return 0, nil, sheetsValidationForFlag("source-range", "--source-range %q: %v", sourceRange, err)
 		}
 		return rows * cols, map[string]interface{}{
 			"type":  "listFromRange",
@@ -523,7 +566,7 @@ func validateDropdownSourceOrOptions(runtime flagView) (int, error) {
 			return 0, err
 		}
 		if len(colors) > sourceSize {
-			return 0, common.FlagErrorf("--colors length (%d) must not exceed dropdown source size (%d)", len(colors), sourceSize)
+			return 0, sheetsValidationForFlag("colors", "--colors length (%d) must not exceed dropdown source size (%d)", len(colors), sourceSize)
 		}
 	}
 	return sourceSize, nil
@@ -696,18 +739,18 @@ var CellsSetImage = common.Shortcut{
 		}
 		r := strings.TrimSpace(runtime.Str("range"))
 		if r == "" {
-			return common.FlagErrorf("--range is required")
+			return sheetsValidationForFlag("range", "--range is required")
 		}
 		rows, cols, err := rangeDimensions(r)
 		if err != nil {
-			return common.FlagErrorf("--range %q: %v", r, err)
+			return sheetsValidationForFlag("range", "--range %q: %v", r, err)
 		}
 		if rows != 1 || cols != 1 {
-			return common.FlagErrorf("--range %q must be exactly one cell (got %d×%d)", r, rows, cols)
+			return sheetsValidationForFlag("range", "--range %q must be exactly one cell (got %d×%d)", r, rows, cols)
 		}
 		imgPath := strings.TrimSpace(runtime.Str("image"))
 		if imgPath == "" {
-			return common.FlagErrorf("--image is required")
+			return sheetsValidationForFlag("image", "--image is required")
 		}
 		// Validate path safety here (not just at Execute) so --dry-run also
 		// rejects unsafe paths instead of giving a false-positive preview.
@@ -715,7 +758,9 @@ var CellsSetImage = common.Shortcut{
 		// not existence, so legitimate relative paths still dry-run cleanly;
 		// the Execute-time Stat below still reports a missing/unreadable file.
 		if _, err := validate.SafeLocalFlagPath("--image", imgPath); err != nil {
-			return output.ErrValidation("%s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).
+				WithParam("--image").
+				WithCause(err)
 		}
 		return nil
 	},
@@ -771,16 +816,18 @@ var CellsSetImage = common.Shortcut{
 		}
 		info, err := runtime.FileIO().Stat(imgPath)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return sheetsInputStatError("image", err)
 		}
 		imgFile, err := runtime.FileIO().Open(imgPath)
 		if err != nil {
-			return common.WrapInputStatError(err)
+			return sheetsInputStatError("image", err)
 		}
 		imgCfg, _, err := image.DecodeConfig(imgFile)
 		imgFile.Close()
 		if err != nil {
-			return fmt.Errorf("decode image dimensions: %w", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "decode image dimensions: %s", err).
+				WithParam("--image").
+				WithCause(err)
 		}
 		fileToken, err := common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   imgPath,
@@ -809,7 +856,7 @@ var CellsSetImage = common.Shortcut{
 		sheetSelectorForToolInput(setCellInput, sheetID, sheetName)
 		setCellOut, err := callTool(ctx, runtime, token, ToolKindWrite, "set_cell_range", setCellInput)
 		if err != nil {
-			return fmt.Errorf("image uploaded (file_token=%s) but cell write failed: %w", fileToken, err)
+			return wrapCellsSetImageWriteError(err, fileToken)
 		}
 		runtime.Out(map[string]interface{}{
 			"file_token":     fileToken,
@@ -821,4 +868,19 @@ var CellsSetImage = common.Shortcut{
 	Tips: []string{
 		"--range must be a single cell. The uploaded image becomes a cell-internal embed; use +float-image-create for floating images.",
 	},
+}
+
+func wrapCellsSetImageWriteError(err error, fileToken string) error {
+	hint := fmt.Sprintf("image was uploaded as file_token=%s; retry only the cell write with that token or remove the uploaded media", fileToken)
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint += "\n" + hint
+		} else {
+			p.Hint = hint
+		}
+		return err
+	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "image uploaded (file_token=%s) but cell write failed: %s", fileToken, err).
+		WithHint(hint).
+		WithCause(err)
 }

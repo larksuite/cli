@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -49,7 +48,7 @@ var MarkdownPatch = common.Shortcut{
 		}
 		if spec.Regex {
 			if _, err := regexp.Compile(spec.Pattern); err != nil {
-				return output.ErrValidation("invalid --pattern regex: %s", err)
+				return markdownValidationParamError("--pattern", "invalid --pattern regex: %s", err).WithCause(err)
 			}
 		}
 		return nil
@@ -122,7 +121,7 @@ var MarkdownPatch = common.Shortcut{
 
 		payload, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return output.ErrNetwork("download failed: %s", err)
+			return wrapMarkdownDownloadError(err)
 		}
 		original := string(payload)
 		patched, matchCount, err := applyMarkdownPatch(original, spec)
@@ -192,16 +191,16 @@ func newMarkdownPatchSpec(runtime *common.RuntimeContext) markdownPatchSpec {
 
 func validateMarkdownPatchSpec(runtime *common.RuntimeContext, spec markdownPatchSpec) error {
 	if err := validate.ResourceName(spec.FileToken, "--file-token"); err != nil {
-		return output.ErrValidation("%s", err)
+		return markdownValidationParamError("--file-token", "%s", err).WithCause(err)
 	}
 	if !runtime.Changed("pattern") {
-		return common.FlagErrorf("--pattern is required")
+		return markdownValidationParamError("--pattern", "--pattern is required")
 	}
 	if spec.Pattern == "" {
-		return output.ErrValidation("--pattern cannot be empty")
+		return markdownValidationParamError("--pattern", "--pattern cannot be empty")
 	}
 	if !spec.ContentSet {
-		return common.FlagErrorf("--content is required")
+		return markdownValidationParamError("--content", "--content is required")
 	}
 	return nil
 }
@@ -212,7 +211,7 @@ func applyMarkdownPatch(original string, spec markdownPatchSpec) (string, int, e
 	}
 	re, err := regexp.Compile(spec.Pattern)
 	if err != nil {
-		return "", 0, output.ErrValidation("invalid --pattern regex: %s", err)
+		return "", 0, markdownValidationParamError("--pattern", "invalid --pattern regex: %s", err).WithCause(err)
 	}
 	matches := re.FindAllStringIndex(original, -1)
 	return re.ReplaceAllString(original, spec.Content), len(matches), nil

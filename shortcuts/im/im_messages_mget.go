@@ -30,6 +30,7 @@ var ImMessagesMGet = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "message-ids", Desc: "message IDs, comma-separated (om_xxx,om_yyy)", Required: true},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		downloadResourcesFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		ids := common.SplitCSV(runtime.Str("message-ids"))
@@ -37,6 +38,9 @@ var ImMessagesMGet = common.Shortcut{
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned messages in batches of up to 20 to attach the reactions block (operator, action_time, counts). Pass --no-reactions to skip.")
+		}
+		if runtime.Bool("download-resources") {
+			d = d.Desc(downloadResourcesDryRunDesc)
 		}
 		return d
 	},
@@ -74,17 +78,21 @@ var ImMessagesMGet = common.Shortcut{
 		// contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
 
+		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch))
+			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
 		}
 
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)
 		convertlib.AttachSenderNames(messages, nameCache)
-		convertlib.ExpandThreadReplies(runtime, messages, nameCache, convertlib.ThreadRepliesPerThread, convertlib.ThreadRepliesTotalLimit)
+		convertlib.ExpandThreadRepliesWithResources(runtime, messages, nameCache, convertlib.ThreadRepliesPerThread, convertlib.ThreadRepliesTotalLimit, downloadResources)
 		if !runtime.Bool("no-reactions") {
 			convertlib.EnrichReactions(runtime, messages)
+		}
+		if downloadResources {
+			enrichMessageResourceDownloads(runtime, messages)
 		}
 
 		outData := map[string]interface{}{

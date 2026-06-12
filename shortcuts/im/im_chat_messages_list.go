@@ -36,6 +36,7 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "page-size", Default: "50", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		downloadResourcesFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		d := common.NewDryRunAPI()
@@ -60,6 +61,9 @@ var ImChatMessageList = common.Shortcut{
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned messages (including thread_replies expanded inline) in batches of up to 20. Pass --no-reactions to skip.")
+		}
+		if runtime.Bool("download-resources") {
+			d = d.Desc(downloadResourcesDryRunDesc)
 		}
 		return d
 	},
@@ -127,18 +131,22 @@ var ImChatMessageList = common.Shortcut{
 		// serial contact requests during the FormatMessageItem loop.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
 
+		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch))
+			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
 		}
 
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
 		convertlib.ResolveSenderNames(runtime, messages, nameCache)
 		convertlib.AttachSenderNames(messages, nameCache)
-		convertlib.ExpandThreadReplies(runtime, messages, nameCache, convertlib.ThreadRepliesPerThread, convertlib.ThreadRepliesTotalLimit)
+		convertlib.ExpandThreadRepliesWithResources(runtime, messages, nameCache, convertlib.ThreadRepliesPerThread, convertlib.ThreadRepliesTotalLimit, downloadResources)
 		if !runtime.Bool("no-reactions") {
 			convertlib.EnrichReactions(runtime, messages)
+		}
+		if downloadResources {
+			enrichMessageResourceDownloads(runtime, messages)
 		}
 
 		outData := map[string]interface{}{

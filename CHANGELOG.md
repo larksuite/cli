@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.52] - 2026-06-11
+
+### Features
+
+- **events**: Per-resource subscription identity + Match hook (#1185)
+- **apps**: Emit typed error envelopes across the apps domain (#1288)
+- **wiki**: Emit typed error envelopes across the wiki domain (#1350)
+- **im**: Add `--chat-modes` filter to chat search (#1317)
+- **apps**: Exclude `.git` directory from `+html-publish` package (#1396)
+- **build**: Support riscv64 prebuilt binaries in release and install pipeline
+
+### Bug Fixes
+
+- **apps**: Support git credential dry-run (#1390)
+- **whiteboard**: Fix parsing empty whiteboard content (#1391)
+- **build**: Make `-race` flag arch-conditional to support riscv64
+
+### Documentation
+
+- **im**: Document `chat.user_setting` batch_query/batch_update (#1339)
+- **im**: Document `chat.managers` and `chat.moderation` API resources (#1294)
+- **skills**: Optimize lark-drive skill routing (#1284)
+- **skills**: Expand cite user guidance and fix typos (#1394)
+
+## [v1.0.51] - 2026-06-10
+
+### Features
+
+- **apps**: Support multi dev modes (#1175)
+- **im**: Complete audio/post rendering and add opt-in `--download-resources` (#1245)
+- **base**: Configure initial base table schema (#1377)
+- **vc**: Add recording event support (#1369)
+- **minutes**: Replace words for transcript (#1372)
+- **markdown**: Emit typed error envelopes across the markdown domain (#1347)
+- **sheets**: Emit typed error envelopes across the sheets domain (#1348)
+- **slides**: Emit typed error envelopes across the slides domain (#1349)
+
+### Documentation
+
+- **skills**: Warn about `@file` absolute path restriction in lark-doc skills (#1375)
+- **skills**: Remove unsupported ⚠️ from callout emoji list (#1374)
+
+## [v1.0.50] - 2026-06-09
+
+### Features
+
+- **doc**: Emit typed error envelopes across the doc domain (#1346)
+- **event**: Emit typed error envelopes across the event domain (#1289)
+- **contact**: Emit typed error envelopes across the contact domain (#1287)
+- **sheets**: Guard `+csv-put --csv` against a path passed without `@` (#1337)
+- **cli**: Adjust agent timeout hint output conditions (#1328)
+
+### Bug Fixes
+
+- **drive**: Add `@file`/stdin support to `+add-comment --content` (#1343)
+- **slides**: Build create URL locally instead of drive metas call (#1329)
+- **cli**: Clarify `--block-id` supports comma-separated batch delete in help text (#1336)
+
+### Documentation
+
+- **doc**: Replace append with `block_insert_after` in skeleton workflow guidance (#1340)
+- **doc**: Document `<folder-manager>` resource block (#1168)
+- **drive**: Add drive comment location guidance (#1258)
+
 ## [v1.0.49] - 2026-06-08
 
 ### Features
@@ -1066,6 +1130,9 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.52]: https://github.com/larksuite/cli/releases/tag/v1.0.52
+[v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51
+[v1.0.50]: https://github.com/larksuite/cli/releases/tag/v1.0.50
 [v1.0.49]: https://github.com/larksuite/cli/releases/tag/v1.0.49
 [v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48
 [v1.0.47]: https://github.com/larksuite/cli/releases/tag/v1.0.47

@@ -111,6 +111,22 @@ func TestRegisterShortcutsMountsBaseCommands(t *testing.T) {
 	}
 }
 
+func TestRegisterShortcutsMountsHiddenAppsGitCredentialHelper(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	helperCmd, _, err := program.Find([]string{"apps", "git-credential-helper"})
+	if err != nil {
+		t.Fatalf("find apps git credential helper: %v", err)
+	}
+	if helperCmd == nil || helperCmd.Name() != "git-credential-helper" {
+		t.Fatalf("apps git credential helper not mounted: %#v", helperCmd)
+	}
+	if !helperCmd.Hidden {
+		t.Fatalf("apps git credential helper must be hidden")
+	}
+}
+
 // Service-level cobra commands created by RegisterShortcuts must carry
 // the cmdmeta.Domain annotation so plugin Selectors (platform.ByDomain)
 // and Rule.Allow path-globs can resolve a command's business domain.

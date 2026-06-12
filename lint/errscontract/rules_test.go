@@ -620,6 +620,7 @@ func boom() error {
 
 func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnMigratedShortcutPaths(t *testing.T) {
 	for _, path := range []string{
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_image_upload.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_update.go",
@@ -813,6 +814,8 @@ func boom() error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnDrivePath(t *testing.T) {
 	src := `package drive
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -833,6 +836,8 @@ func boom(runtime *common.RuntimeContext) error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnTaskPath(t *testing.T) {
 	src := `package task
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -852,6 +857,8 @@ func boom(runtime *common.RuntimeContext) error {
 
 func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
 	src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.DoAPIJSONWithLogID("POST", "/x", nil, nil)
@@ -944,11 +951,16 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"HandleApiResult",
 	}
 	paths := []string{
+		"shortcuts/doc/docs_fetch_v2.go",
 		"shortcuts/drive/drive_search.go",
 		"shortcuts/mail/mail_send.go",
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_progress_create.go",
+		"shortcuts/sheets/helpers.go",
+		"shortcuts/slides/slides_create.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_query.go",
+		"shortcuts/wiki/wiki_node_get.go",
 	}
 	for _, path := range paths {
 		for _, helper := range helpers {
@@ -994,6 +1006,91 @@ func boom() {
 	}
 	if !strings.Contains(v[0].Suggestion, "common.RejectDangerousCharsTyped") {
 		t.Errorf("suggestion should name typed replacement, got: %s", v[0].Suggestion)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversDocPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/doc/docs_fetch_v2.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on doc path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSheetsPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/sheets/helpers.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on sheets path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSlidesPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/slides/slides_create.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on slides path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversMarkdownPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/markdown/markdown_fetch.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on markdown path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversWikiPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/wiki/wiki_node_get.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on wiki path, got %d: %+v", len(v), v)
 	}
 }
 
@@ -1074,5 +1171,25 @@ func boom() error {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
 	if len(v) != 1 {
 		t.Fatalf("expected 1 violation for function-value reference, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_SkipsNonCommonReceiver(t *testing.T) {
+	// The event domain's APIClient interface has a same-named CallAPI method
+	// whose implementation classifies into typed errs.* errors; without the
+	// shortcuts/common import the call cannot be the legacy RuntimeContext
+	// helper and must not fire.
+	src := `package vc
+
+import "github.com/larksuite/cli/internal/event"
+
+func boom(rt event.APIClient) error {
+	_, err := rt.CallAPI(nil, "POST", "/x", nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("events/vc/preconsume.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-common CallAPI receiver must not fire, got: %+v", v)
 	}
 }

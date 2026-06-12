@@ -73,8 +73,10 @@ var ImMessagesResourcesDownload = common.Shortcut{
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe output path: %s", err).WithParam("--output").WithCause(err)
 		}
 
-		userSpecifiedOutput := runtime.Str("output") != ""
-		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath, userSpecifiedOutput)
+		// With an explicit --output, keep that basename (append only an
+		// extension); without it, adopt the server's original filename.
+		preserveBasename := runtime.Str("output") != ""
+		finalPath, sizeBytes, err := downloadIMResourceToPath(ctx, runtime, messageId, fileKey, fileType, relPath, preserveBasename)
 		if err != nil {
 			return err
 		}
@@ -264,7 +266,7 @@ func initialIMResourceDownloadHeaders(fileType string) map[string]string {
 	}
 }
 
-func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string, userSpecifiedOutput bool) (string, int64, error) {
+func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContext, messageID, fileKey, fileType, outputPath string, preserveBasename bool) (string, int64, error) {
 	downloadResp, err := doIMResourceDownloadRequest(ctx, runtime, messageID, fileKey, fileType, initialIMResourceDownloadHeaders(fileType))
 	if err != nil {
 		return "", 0, err
@@ -278,7 +280,7 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 		return "", 0, downloadResponseError(downloadResp)
 	}
 
-	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"), downloadResp.Header.Get("Content-Disposition"), userSpecifiedOutput)
+	finalPath := resolveIMResourceDownloadPath(outputPath, downloadResp.Header.Get("Content-Type"), downloadResp.Header.Get("Content-Disposition"), preserveBasename)
 
 	var (
 		body      io.ReadCloser
@@ -321,20 +323,32 @@ func downloadIMResourceToPath(ctx context.Context, runtime *common.RuntimeContex
 	return savedPath, result.Size(), nil
 }
 
-func resolveIMResourceDownloadPath(safePath, contentType, contentDisposition string, userSpecifiedOutput bool) string {
+// resolveIMResourceDownloadPath decides the on-disk path for a downloaded
+// resource. preserveBasename controls how a server-provided
+// Content-Disposition filename is used when safePath has no extension:
+//   - false: adopt the server's original filename (replace the basename) — the
+//     friendly single-file behavior for an explicit `+messages-resources-download`
+//     with no --output.
+//   - true: keep safePath's basename and only borrow the extension. Used both
+//     when the user pinned --output and for batch --download-resources, where
+//     safePath is keyed by the unique (file_key) and the basename MUST stay
+//     unique — otherwise two resources whose servers return the same
+//     Content-Disposition filename (e.g. download.bin) would resolve to the
+//     same path and clobber each other concurrently.
+func resolveIMResourceDownloadPath(safePath, contentType, contentDisposition string, preserveBasename bool) string {
 	if filepath.Ext(safePath) != "" {
 		return safePath
 	}
 	if cdFilename := parseContentDispositionFilename(contentDisposition); cdFilename != "" {
-		if !userSpecifiedOutput {
-			// No --output flag: use the original filename from the server.
+		if !preserveBasename {
+			// Adopt the server's original filename.
 			dir := filepath.Dir(safePath)
 			if dir == "." {
 				return cdFilename
 			}
 			return filepath.Join(dir, cdFilename)
 		}
-		// User specified a path without extension: append the extension from the CD filename.
+		// Keep the basename; only append the extension from the CD filename.
 		if ext := filepath.Ext(cdFilename); ext != "" {
 			return safePath + ext
 		}

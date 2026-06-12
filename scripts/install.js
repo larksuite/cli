@@ -30,6 +30,7 @@ const PLATFORM_MAP = {
 const ARCH_MAP = {
   x64: "amd64",
   arm64: "arm64",
+  riscv64: "riscv64",
 };
 
 const platform = PLATFORM_MAP[process.platform];

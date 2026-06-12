@@ -1,114 +1,40 @@
 # apps +create
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
+创建妙搭应用。运行时命令事实以 `lark-cli apps +create --help` 为准。
 
-创建一个新的妙搭应用。一次 `POST /apps` 调用，返回新建应用的元信息。
+## 何时用
 
-## 命令
+用来创建应用资产并拿到 `app_id`。它不负责把自然语言需求交给云端 Agent：用户要“帮我生成/迭代应用”时，先创建 `full_stack` app，再进入 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md) 用 `+session-create` / `+chat` 提交需求。
 
-```bash
-# 最小调用
-lark-cli apps +create --name "客户调研问卷" --app-type HTML
+## 命令骨架
 
-# 全参数
-lark-cli apps +create \
-  --name "客户调研问卷" \
-  --app-type HTML \
-  --description "本季度客户满意度调研" \
-  --icon-url "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg"
+- 必填：`--name`、`--app-type`。
+- app type 语义取值为 `html` / `full_stack`；CLI 会把输入归一成小写后校验。
+- 可选：`--description`、`--icon-url`。
 
-# Dry-run（仅打印请求，不执行）
-lark-cli apps +create --name "Demo" --app-type HTML --dry-run
-```
-
-## 参数
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--name <str>` | ✅ | 应用显示名 |
-| `--app-type <enum>` | ✅ | 应用类型，当前可选值：`HTML`（区分大小写；未来会扩展） |
-| `--description <str>` | ❌ | 应用描述 |
-| `--icon-url <url>` | ❌ | 应用图标 URL；不传服务端给默认图标 |
-
-## 返回值
-
-**成功：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "app": {
-      "app_id": "app_4k5jepcbjmv6m",
-      "name": "客户调研问卷",
-      "description": "本季度客户满意度调研",
-      "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
-      "created_at": "2026-05-18T10:00:00Z"
-    }
-  }
-}
-```
-
-**失败：**
-
-```json
-{
-  "ok": false,
-  "error": {
-    "type": "api",
-    "code": 99991400,
-    "message": "...",
-    "hint": "可执行的修复建议（可能为空）"
-  }
-}
-```
-
-## 字段语义
-
-- `app_type` 是应用类型枚举，**区分大小写**，当前只允许 `HTML`，未来会扩展（如 `SPA`、`NATIVE` 等）；不在白名单的取值 CLI 端会直接拒绝
-- `created_at` 是 ISO 8601 UTC 时间字符串
-- `error.hint` 是 CLI 给出的可执行修复建议，**优先**转述给用户；hint 为空时退回 `error.message`
-- 不要原样把 envelope JSON 复述给用户
-
-## 典型场景
-
-### 场景 1：用户说"创建一个妙搭应用，名字叫 X"
-
-目前只支持 HTML 类型，统一传 `--app-type HTML`（用户没说类型时不要追问，直接用大写 HTML，区分大小写）：
+## 示例
 
 ```bash
-lark-cli apps +create --name "X" --app-type HTML
+lark-cli apps +create --name "客户调研问卷" --app-type html
+
+lark-cli apps +create --name "审批系统" --app-type full_stack \
+  --description "部门审批系统，支持登录、提交申请、多级审批"
+
+lark-cli apps +create --name "Demo" --app-type html --dry-run
 ```
 
-向用户报告：
+## 输出契约
 
-> 应用「{name}」已创建（ID: `{app_id}`）。
+- 成功默认 JSON envelope 中读取 `data.app.app_id`，同时可用 `data.app.name` / `description` 向用户确认结果。
+- pretty 输出只适合人看；后续命令需要 app_id 时，用 JSON 或 `--jq '.data.app.app_id'`。
 
-可选建议下一步：
+## app type 与命名
 
-> 接下来用 `apps +html-publish --app-id {app_id} --path <你的 HTML 目录>` 发布内容。
+- `--app-type` 取值与判定信号见 SKILL.md「选择开发路径」，此处不重复。
+- 用户只给自然语言需求时，据此生成简洁的 `--name` 和一句 `--description` 直接创建；不满意再用 `+update` 改。
 
-### 场景 2：用户提供完整元信息
+创建后按用户路径继续：
 
-```bash
-lark-cli apps +create --name "Q4 调研" --app-type HTML --description "..."
-```
-
-返回后同场景 1。
-
-### 场景 3：失败处理
-
-转述 `error.hint`（优先）或 `error.message`，**不要**原样输出 envelope JSON。
-
-## 协同命令
-
-| 场景 | 命令 |
-|---|---|
-| 修改应用名 / 描述 | `apps +update` |
-| 发布 HTML | `apps +html-publish` |
-| 拿现有应用 ID | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
-
-## 参考
-
-- [lark-apps](../SKILL.md) — 妙搭应用全部命令
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+- 发布现成 HTML/静态目录：读 [`lark-apps-html-publish.md`](lark-apps-html-publish.md)。
+- 本地全栈开发：读 [`lark-apps-local-dev.md`](lark-apps-local-dev.md)。
+- 云端 Agent 生成/迭代：读 [`lark-apps-cloud-dev.md`](lark-apps-cloud-dev.md)。

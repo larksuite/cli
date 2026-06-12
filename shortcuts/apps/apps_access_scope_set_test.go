@@ -8,8 +8,61 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+func testRuntimeAccessScope(t *testing.T, scope, targets, approver string, applyEnabled, requireLogin bool) *common.RuntimeContext {
+	t.Helper()
+	cmd := &cobra.Command{Use: "access-scope-set"}
+	cmd.Flags().String("scope", scope, "")
+	cmd.Flags().String("targets", targets, "")
+	cmd.Flags().String("approver", approver, "")
+	cmd.Flags().Bool("apply-enabled", applyEnabled, "")
+	cmd.Flags().Bool("require-login", requireLogin, "")
+	return common.TestNewRuntimeContext(cmd, nil)
+}
+
+func TestBuildAccessScopeBody_Branches(t *testing.T) {
+	t.Run("invalid scope", func(t *testing.T) {
+		if _, err := buildAccessScopeBody(testRuntimeAccessScope(t, "bogus", "", "", false, false)); err == nil {
+			t.Error("unknown scope must error")
+		}
+	})
+	t.Run("specific with all target kinds and approver", func(t *testing.T) {
+		body, err := buildAccessScopeBody(testRuntimeAccessScope(t,
+			"specific",
+			`[{"type":"user","id":"u1"},{"type":"department","id":"d1"},{"type":"chat","id":"c1"}]`,
+			"ou_appr", true, false))
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if body["scope"] != "Range" {
+			t.Errorf("scope=%v want Range", body["scope"])
+		}
+		for _, k := range []string{"users", "departments", "chats", "apply_config"} {
+			if _, ok := body[k]; !ok {
+				t.Errorf("missing %q in body=%v", k, body)
+			}
+		}
+	})
+	t.Run("specific with invalid targets JSON", func(t *testing.T) {
+		if _, err := buildAccessScopeBody(testRuntimeAccessScope(t, "specific", "{bad", "", false, false)); err == nil {
+			t.Error("invalid targets JSON must error")
+		}
+	})
+	t.Run("public sets require_login", func(t *testing.T) {
+		body, err := buildAccessScopeBody(testRuntimeAccessScope(t, "public", "", "", false, true))
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if body["scope"] != "All" || body["require_login"] != true {
+			t.Errorf("public body=%v", body)
+		}
+	})
+}
 
 func TestAppsAccessScopeSet_Specific(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -199,5 +252,46 @@ func TestAppsAccessScopeSet_TrimsAppIDInPath(t *testing.T) {
 		"--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
+	}
+}
+
+func TestSplitAccessScopeTargets_Partitions(t *testing.T) {
+	users, departments, chats := splitAccessScopeTargets([]map[string]interface{}{
+		{"type": "user", "id": "u1"},
+		{"type": "department", "id": "d1"},
+		{"type": "chat", "id": "c1"},
+		{"type": "user", "id": "  "},   // empty id skipped
+		{"type": "unknown", "id": "x"}, // unknown type skipped
+	})
+	if len(users) != 1 || users[0] != "u1" {
+		t.Errorf("users=%v want [u1]", users)
+	}
+	if len(departments) != 1 || departments[0] != "d1" {
+		t.Errorf("departments=%v want [d1]", departments)
+	}
+	if len(chats) != 1 || chats[0] != "c1" {
+		t.Errorf("chats=%v want [c1]", chats)
+	}
+}
+
+func TestValidateTargetsJSON_Cases(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{"invalid json", "{not json", true},
+		{"empty array", "[]", true},
+		{"bad type", `[{"type":"role","id":"r1"}]`, true},
+		{"empty id", `[{"type":"user","id":"  "}]`, true},
+		{"valid", `[{"type":"user","id":"u1"}]`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateTargetsJSON(c.in)
+			if (err != nil) != c.wantErr {
+				t.Errorf("validateTargetsJSON(%q) err=%v wantErr=%v", c.in, err, c.wantErr)
+			}
+		})
 	}
 }

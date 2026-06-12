@@ -162,7 +162,7 @@ func fetchReactionsBatch(runtime *common.RuntimeContext, batchIDs []string, idIn
 		map[string]interface{}{"queries": queries},
 	)
 	if err != nil {
-		warnReactionsf(stderrMu, runtime.IO().ErrOut, "warning: reactions_batch_query_failed: %v\n", err)
+		warnSyncf(stderrMu, runtime.IO().ErrOut, "warning: reactions_batch_query_failed: %v\n", err)
 		markReactionsError(batchIDs, idIndex)
 		return
 	}
@@ -204,7 +204,7 @@ func fetchReactionsBatch(runtime *common.RuntimeContext, batchIDs []string, idIn
 			}
 		}
 		if len(failedIDs) > 0 {
-			warnReactionsf(stderrMu, runtime.IO().ErrOut,
+			warnSyncf(stderrMu, runtime.IO().ErrOut,
 				"warning: reactions_partial_failed: %d message(s) failed (%v)\n",
 				len(failedIDs), failedIDs)
 			markReactionsError(failedIDs, idIndex)
@@ -212,11 +212,12 @@ func fetchReactionsBatch(runtime *common.RuntimeContext, batchIDs []string, idIn
 	}
 }
 
-// warnReactionsf writes a stderr warning under the supplied mutex when one is
-// provided (multi-batch concurrent path), so concurrent goroutines can't
-// interleave partial lines. mu == nil means the caller is on the single-batch
-// fast path where no synchronization is needed.
-func warnReactionsf(mu *sync.Mutex, w io.Writer, format string, args ...interface{}) {
+// warnSyncf writes a stderr warning under the supplied mutex when one is
+// provided (multi-batch / multi-download concurrent paths), so concurrent
+// goroutines can't interleave partial lines. mu == nil means the caller is on a
+// single-item fast path where no synchronization is needed. It is domain-neutral
+// — shared by reactions batch query and resource download enrichment.
+func warnSyncf(mu *sync.Mutex, w io.Writer, format string, args ...interface{}) {
 	if mu != nil {
 		mu.Lock()
 		defer mu.Unlock()

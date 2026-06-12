@@ -9,10 +9,9 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"io"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 )
 
@@ -26,7 +25,7 @@ type htmlPublishTarball struct {
 
 func buildHTMLPublishTarball(fio fileio.FileIO, candidates []htmlPublishCandidate) (*htmlPublishTarball, error) {
 	if len(candidates) == 0 {
-		return nil, errors.New("no files to pack")
+		return nil, appsValidationParamError("--path", "no files to pack")
 	}
 
 	var buf bytes.Buffer
@@ -45,10 +44,10 @@ func buildHTMLPublishTarball(fio fileio.FileIO, candidates []htmlPublishCandidat
 
 	if err := tw.Close(); err != nil {
 		_ = gz.Close()
-		return nil, fmt.Errorf("tar close: %w", err)
+		return nil, appsFileIOError(err, "tar close: %v", err)
 	}
 	if err := gz.Close(); err != nil {
-		return nil, fmt.Errorf("gzip close: %w", err)
+		return nil, appsFileIOError(err, "gzip close: %v", err)
 	}
 
 	return &htmlPublishTarball{
@@ -60,12 +59,12 @@ func buildHTMLPublishTarball(fio fileio.FileIO, candidates []htmlPublishCandidat
 
 func writeHTMLPublishTarEntry(fio fileio.FileIO, tw *tar.Writer, c htmlPublishCandidate) error {
 	if isUnsafeRelPath(c.RelPath) {
-		return fmt.Errorf("invalid tar entry name %q", c.RelPath)
+		return errs.NewInternalError(errs.SubtypeUnknown, "invalid tar entry name %q", c.RelPath)
 	}
 
 	src, err := fio.Open(c.AbsPath)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", c.AbsPath, err)
+		return appsInputPathEntryError(c.AbsPath, err)
 	}
 	defer src.Close()
 
@@ -76,10 +75,10 @@ func writeHTMLPublishTarEntry(fio fileio.FileIO, tw *tar.Writer, c htmlPublishCa
 		Typeflag: tar.TypeReg,
 	}
 	if err := tw.WriteHeader(hdr); err != nil {
-		return fmt.Errorf("write header %s: %w", c.RelPath, err)
+		return appsFileIOError(err, "write header %s: %v", c.RelPath, err)
 	}
 	if _, err := io.Copy(tw, src); err != nil {
-		return fmt.Errorf("copy %s: %w", c.RelPath, err)
+		return appsFileIOError(err, "copy %s: %v", c.RelPath, err)
 	}
 	return nil
 }

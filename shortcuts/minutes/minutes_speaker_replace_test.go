@@ -33,27 +33,27 @@ func TestMinutesSpeakerReplace_Validate(t *testing.T) {
 		},
 		{
 			name:    "missing from",
-			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--to-user-id", "ou_b", "--as", "user"},
+			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--to-user-id", "ou_b", "--as", "user"},
 			wantErr: "required flag(s) \"from-user-id\" not set",
 		},
 		{
 			name:    "missing to",
-			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_a", "--as", "user"},
+			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "ou_a", "--as", "user"},
 			wantErr: "required flag(s) \"to-user-id\" not set",
 		},
 		{
 			name:    "invalid from prefix",
-			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
+			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
 			wantErr: "invalid user ID format",
 		},
 		{
 			name:    "invalid to prefix",
-			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_a", "--to-user-id", "u_b", "--as", "user"},
+			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "ou_a", "--to-user-id", "u_b", "--as", "user"},
 			wantErr: "invalid user ID format",
 		},
 		{
 			name:    "from equals to",
-			args:    []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_same", "--to-user-id", "ou_same", "--as", "user"},
+			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "ou_same", "--to-user-id", "ou_same", "--as", "user"},
 			wantErr: "must be different",
 		},
 	}
@@ -87,12 +87,12 @@ func TestMinutesSpeakerReplace_ValidateTyped(t *testing.T) {
 	}{
 		{
 			name:      "invalid from prefix",
-			args:      []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
+			args:      []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "u_a", "--to-user-id", "ou_b", "--as", "user"},
 			wantParam: "--from-user-id",
 		},
 		{
 			name:      "from equals to",
-			args:      []string{"+speaker-replace", "--minute-token", "obcn123456", "--from-user-id", "ou_same", "--to-user-id", "ou_same", "--as", "user"},
+			args:      []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--from-user-id", "ou_same", "--to-user-id", "ou_same", "--as", "user"},
 			wantParam: "--to-user-id",
 		},
 	}

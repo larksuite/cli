@@ -38,10 +38,20 @@ func (fileConverter) Convert(ctx *ConvertContext) string {
 
 type audioMsgConverter struct{}
 
+// Convert renders an audio message: when body.content carries a file_key it
+// emits <audio key="..." duration="Xs"/> (duration omitted when absent);
+// otherwise it falls back to [Voice: Xs] (duration only) or [Voice].
 func (audioMsgConverter) Convert(ctx *ConvertContext) string {
 	parsed, err := ParseJSONObject(ctx.RawContent)
 	if err != nil {
 		return invalidJSONPlaceholder("audio")
+	}
+	if key, _ := parsed["file_key"].(string); key != "" {
+		result := fmt.Sprintf(`<audio key="%s"`, cardEscapeAttr(key))
+		if dur, ok := parsed["duration"].(float64); ok && dur > 0 {
+			result += fmt.Sprintf(` duration="%.0fs"`, dur/1000)
+		}
+		return result + "/>"
 	}
 	if dur, ok := parsed["duration"].(float64); ok && dur > 0 {
 		return fmt.Sprintf("[Voice: %.0fs]", dur/1000)

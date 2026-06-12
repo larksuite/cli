@@ -111,6 +111,7 @@ type alwaysFailSubscriber struct {
 }
 
 func (s *alwaysFailSubscriber) EventKey() string         { return s.eventKey }
+func (s *alwaysFailSubscriber) SubscriptionID() string   { return s.eventKey }
 func (s *alwaysFailSubscriber) EventTypes() []string     { return s.eventTypes }
 func (s *alwaysFailSubscriber) SendCh() chan interface{} { return s.sendCh }
 func (s *alwaysFailSubscriber) PID() int                 { return 0 }
@@ -153,6 +154,7 @@ func newRaceSubscriber(key string, types []string, capacity int) *raceSubscriber
 }
 
 func (s *raceSubscriber) EventKey() string         { return s.eventKey }
+func (s *raceSubscriber) SubscriptionID() string   { return s.eventKey }
 func (s *raceSubscriber) EventTypes() []string     { return s.eventTypes }
 func (s *raceSubscriber) SendCh() chan interface{} { return s.sendCh }
 func (s *raceSubscriber) PID() int                 { return s.pid }

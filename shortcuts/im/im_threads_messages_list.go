@@ -35,6 +35,7 @@ var ImThreadsMessagesList = common.Shortcut{
 		{Name: "page-size", Default: "50", Desc: "page size (1-500)"},
 		{Name: "page-token", Desc: "page token"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
+		downloadResourcesFlag,
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
@@ -74,6 +75,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned thread messages in batches of up to 20. Pass --no-reactions to skip.")
+		}
+		if runtime.Bool("download-resources") {
+			d = d.Desc(downloadResourcesDryRunDesc)
 		}
 		return d
 	},
@@ -129,10 +133,11 @@ var ImThreadsMessagesList = common.Shortcut{
 		// in one batched contact API call.
 		mergePrefetch := convertlib.PrefetchMergeForwardSubItems(runtime, rawItems, nameCache)
 
+		downloadResources := runtime.Bool("download-resources")
 		messages := make([]map[string]interface{}, 0, len(rawItems))
 		for _, item := range rawItems {
 			m, _ := item.(map[string]interface{})
-			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetch(m, runtime, nameCache, mergePrefetch))
+			messages = append(messages, convertlib.FormatMessageItemWithMergePrefetchOpts(m, runtime, nameCache, mergePrefetch, downloadResources))
 		}
 
 		// Enrich: resolve sender names for outer messages (reuses cache from merge_forward)
@@ -140,6 +145,9 @@ var ImThreadsMessagesList = common.Shortcut{
 		convertlib.AttachSenderNames(messages, nameCache)
 		if !runtime.Bool("no-reactions") {
 			convertlib.EnrichReactions(runtime, messages)
+		}
+		if downloadResources {
+			enrichMessageResourceDownloads(runtime, messages)
 		}
 
 		outData := map[string]interface{}{

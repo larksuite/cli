@@ -4,9 +4,14 @@
 package sheets
 
 import (
+	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -389,6 +394,92 @@ func TestWorkbookExport_DryRun(t *testing.T) {
 			t.Errorf("expected sheet-id guard; got=%s|%s|%v", stdout, stderr, err)
 		}
 	})
+}
+
+func TestWorkbookExportDownloadErrorClassification(t *testing.T) {
+	t.Parallel()
+
+	t.Run("preserves typed request errors", func(t *testing.T) {
+		t.Parallel()
+		in := errs.NewAPIError(errs.SubtypeServerError, "typed upstream").WithCode(123)
+		got := sheetsDownloadRequestError(in)
+		if got != in {
+			t.Fatalf("typed error was not preserved: got %T %v", got, got)
+		}
+	})
+
+	t.Run("wraps raw request errors as network transport", func(t *testing.T) {
+		t.Parallel()
+		got := sheetsDownloadRequestError(errors.New("dial refused"))
+		p, ok := errs.ProblemOf(got)
+		if !ok {
+			t.Fatalf("expected typed problem, got %T %v", got, got)
+		}
+		if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkTransport {
+			t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, errs.CategoryNetwork, errs.SubtypeNetworkTransport)
+		}
+	})
+
+	tests := []struct {
+		name          string
+		status        int
+		wantCategory  errs.Category
+		wantSubtype   errs.Subtype
+		wantRetryable bool
+	}{
+		{
+			name:          "5xx is retryable network server error",
+			status:        http.StatusBadGateway,
+			wantCategory:  errs.CategoryNetwork,
+			wantSubtype:   errs.SubtypeNetworkServer,
+			wantRetryable: true,
+		},
+		{
+			name:         "404 is API not found",
+			status:       http.StatusNotFound,
+			wantCategory: errs.CategoryAPI,
+			wantSubtype:  errs.SubtypeNotFound,
+		},
+		{
+			name:          "429 is retryable API rate limit",
+			status:        http.StatusTooManyRequests,
+			wantCategory:  errs.CategoryAPI,
+			wantSubtype:   errs.SubtypeRateLimit,
+			wantRetryable: true,
+		},
+		{
+			name:         "other 4xx is API unknown",
+			status:       http.StatusForbidden,
+			wantCategory: errs.CategoryAPI,
+			wantSubtype:  errs.SubtypeUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := sheetsDownloadHTTPStatusError(&larkcore.ApiResp{
+				StatusCode: tt.status,
+				RawBody:    []byte("body"),
+				Header:     http.Header{larkcore.HttpHeaderKeyLogId: []string{"log123"}},
+			})
+			p, ok := errs.ProblemOf(got)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T %v", got, got)
+			}
+			if p.Category != tt.wantCategory || p.Subtype != tt.wantSubtype {
+				t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, tt.wantCategory, tt.wantSubtype)
+			}
+			if p.Code != tt.status {
+				t.Fatalf("code = %d, want %d", p.Code, tt.status)
+			}
+			if p.LogID != "log123" {
+				t.Fatalf("log_id = %q, want log123", p.LogID)
+			}
+			if p.Retryable != tt.wantRetryable {
+				t.Fatalf("retryable = %v, want %v", p.Retryable, tt.wantRetryable)
+			}
+		})
+	}
 }
 
 // assertInputEquals compares the decoded tool input map against the wanted

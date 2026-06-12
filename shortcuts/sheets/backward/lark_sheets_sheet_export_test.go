@@ -76,6 +76,23 @@ func TestSheetExportDryRunIncludesSubIDForCSV(t *testing.T) {
 	}
 }
 
+func TestSheetExportDryRunRejectsUnsafeOutputPath(t *testing.T) {
+	t.Parallel()
+
+	f, _, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+	err := mountAndRunSheets(t, SheetExport, []string{
+		"+export",
+		"--spreadsheet-token", "shtTOKEN",
+		"--file-extension", "xlsx",
+		"--output-path", "../escape.xlsx",
+		"--dry-run",
+		"--as", "user",
+	}, f, nil)
+	if err == nil || !strings.Contains(err.Error(), "unsafe output path") {
+		t.Fatalf("expected unsafe output-path validation error, got: %v", err)
+	}
+}
+
 func TestSheetExportCommandRejectsInvalidFileExtension(t *testing.T) {
 	t.Parallel()
 

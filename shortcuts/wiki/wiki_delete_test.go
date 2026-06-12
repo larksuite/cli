@@ -6,7 +6,6 @@ package wiki
 import (
 	"bytes"
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,11 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -266,19 +266,18 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	withSingleWikiDeleteSpacePoll(t)
 
 	runtime, stderr := newWikiDeleteSpaceRuntimeWithScopes(t, core.AsUser, "")
-	// Seed an error that carries an upstream Lark Detail.Code so the test
+	// Seed a typed error that carries an upstream Lark code and hint so the test
 	// pins that structured fields survive a fully failed poll (not just the
-	// hint). ErrWithHint drops Detail.Code, which is exactly what we fixed.
+	// hint): the poll-exhaustion path must propagate the typed error in place.
+	seeded := errclass.BuildAPIError(
+		map[string]any{"code": float64(131006), "msg": "poll failed"},
+		errclass.ClassifyContext{},
+	)
+	if p, ok := errs.ProblemOf(seeded); ok {
+		p.Hint = "retry original"
+	}
 	client := &fakeWikiDeleteSpaceClient{
-		taskErrs: []error{&output.ExitError{
-			Code: output.ExitAPI,
-			Detail: &output.ErrDetail{
-				Type:    "api_error",
-				Code:    131006,
-				Message: "poll failed",
-				Hint:    "retry original",
-			},
-		}},
+		taskErrs: []error{seeded},
 	}
 
 	status, ready, err := pollWikiDeleteSpaceTask(context.Background(), client, runtime, "task_123")
@@ -291,15 +290,15 @@ func TestPollWikiDeleteSpaceTaskWrapsPollFailuresWithHint(t *testing.T) {
 	if status.TaskID != "task_123" {
 		t.Fatalf("status.TaskID = %q, want %q", status.TaskID, "task_123")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %T %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "retry original") || !strings.Contains(exitErr.Detail.Hint, wikiDeleteSpaceTaskResultCommand("task_123", core.AsUser)) {
-		t.Fatalf("hint = %q, want original hint and resume command", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiDeleteSpaceTaskResultCommand("task_123", core.AsUser)) {
+		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
-	if exitErr.Detail.Code != 131006 {
-		t.Fatalf("Detail.Code = %d, want 131006 preserved through poll exhaustion", exitErr.Detail.Code)
+	if p.Code != 131006 {
+		t.Fatalf("Code = %d, want 131006 preserved through poll exhaustion", p.Code)
 	}
 	if !strings.Contains(stderr.String(), "Wiki delete-space status attempt 1/1 failed") {
 		t.Fatalf("stderr = %q, want poll failure log", stderr.String())

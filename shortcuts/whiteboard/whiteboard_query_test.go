@@ -849,11 +849,6 @@ func TestFetchWhiteboardNodes_InvalidResponseTypedError(t *testing.T) {
 		data  map[string]interface{}
 	}{
 		{
-			name:  "missing nodes",
-			token: "test-token-missing-nodes",
-			data:  map[string]interface{}{},
-		},
-		{
 			name:  "nodes not array",
 			token: "test-token-bad-nodes",
 			data:  map[string]interface{}{"nodes": "not-an-array"},
@@ -877,6 +872,32 @@ func TestFetchWhiteboardNodes_InvalidResponseTypedError(t *testing.T) {
 			err := runShortcut(t, WhiteboardQuery, args, factory, stdout)
 			assertInvalidResponse(t, err)
 		})
+	}
+}
+
+// TestFetchWhiteboardNodes_MissingNodesIsEmpty verifies that a response with
+// missing nodes field is treated as an empty whiteboard (success), not an error.
+// This matches the behavior introduced in commit 4b39b037.
+func TestFetchWhiteboardNodes_MissingNodesIsEmpty(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/board/v1/whiteboards/test-token-missing-nodes/nodes",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	args := []string{"+query", "--whiteboard-token", "test-token-missing-nodes", "--output_as", "raw"}
+	if err := runShortcut(t, WhiteboardQuery, args, factory, stdout); err != nil {
+		t.Fatalf("expected success for missing nodes (empty whiteboard), got err=%v", err)
+	}
+
+	if !strings.Contains(stdout.String(), "whiteboard is empty") {
+		t.Fatalf("stdout missing empty whiteboard message: %s", stdout.String())
 	}
 }
 

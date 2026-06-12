@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -30,7 +30,7 @@ type presentationRef struct {
 func parsePresentationRef(input string) (presentationRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
-		return presentationRef{}, output.ErrValidation("--presentation cannot be empty")
+		return presentationRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--presentation cannot be empty").WithParam("--presentation")
 	}
 	// URL inputs: parse properly and only honor /slides/ or /wiki/ when they
 	// appear as a prefix of the URL path. Substring matching previously let
@@ -38,7 +38,7 @@ func parsePresentationRef(input string) (presentationRef, error) {
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
 		if err != nil || u.Path == "" {
-			return presentationRef{}, output.ErrValidation("unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw)
+			return presentationRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw).WithParam("--presentation")
 		}
 		if token, ok := tokenAfterPathPrefix(u.Path, "/slides/"); ok {
 			return presentationRef{Kind: "slides", Token: token}, nil
@@ -46,13 +46,13 @@ func parsePresentationRef(input string) (presentationRef, error) {
 		if token, ok := tokenAfterPathPrefix(u.Path, "/wiki/"); ok {
 			return presentationRef{Kind: "wiki", Token: token}, nil
 		}
-		return presentationRef{}, output.ErrValidation("unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw)
+		return presentationRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw).WithParam("--presentation")
 	}
 	// Non-URL input must be a bare token — anything with path/query/fragment
 	// chars is rejected so partial-path inputs like `tmp/wiki/wikcn123` don't
 	// get silently accepted.
 	if strings.ContainsAny(raw, "/?#") {
-		return presentationRef{}, output.ErrValidation("unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw)
+		return presentationRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --presentation input %q: use an xml_presentation_id, a /slides/ URL, or a /wiki/ URL", raw).WithParam("--presentation")
 	}
 	return presentationRef{Kind: "slides", Token: raw}, nil
 }
@@ -82,7 +82,7 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 	case "slides":
 		return ref.Token, nil
 	case "wiki":
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"GET",
 			"/open-apis/wiki/v2/spaces/get_node",
 			map[string]interface{}{"token": ref.Token},
@@ -95,14 +95,18 @@ func resolvePresentationID(runtime *common.RuntimeContext, ref presentationRef) 
 		objType := common.GetString(node, "obj_type")
 		objToken := common.GetString(node, "obj_token")
 		if objType == "" || objToken == "" {
-			return "", output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
 		}
 		if objType != "slides" {
-			return "", output.ErrValidation("wiki resolved to %q, but slides shortcuts require a slides presentation", objType)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but slides shortcuts require a slides presentation", objType).WithParam("--presentation")
 		}
 		return objToken, nil
 	default:
-		return "", output.ErrValidation("unsupported presentation ref kind %q", ref.Kind)
+		// Unreachable: ref.Kind is set only by parsePresentationRef, which
+		// emits exclusively "slides" or "wiki". A hit here means an internal
+		// invariant broke (e.g. a new kind added without updating this switch),
+		// not bad user input — classify as internal, not validation.
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "unsupported presentation ref kind %q", ref.Kind)
 	}
 }
 
@@ -191,7 +195,7 @@ var xmlIdAttrRegex = regexp.MustCompile(`(?s)(?:^|\s)id\s*=\s*(["'])(.*?)(["'])`
 func ensureXMLRootID(xmlFragment, want string) (string, error) {
 	m := xmlRootOpenTagRegex.FindStringSubmatchIndex(xmlFragment)
 	if m == nil {
-		return "", fmt.Errorf("no root element found in XML fragment")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "no root element found in XML fragment")
 	}
 	prefix := xmlFragment[m[2]:m[3]]
 	tagName := xmlFragment[m[4]:m[5]]

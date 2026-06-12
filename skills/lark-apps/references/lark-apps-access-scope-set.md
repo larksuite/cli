@@ -1,126 +1,40 @@
 # apps +access-scope-set
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
+设置妙搭应用运行时可见范围。运行时命令事实以 `lark-cli apps +access-scope-set --help` 为准。
 
-设置应用的可用范围。三种 scope 形态互斥：`specific`（指定可见）、`public`（互联网公开）、`tenant`（企业全员）。
+## 何时用
 
-## 命令
+用于修改应用运行时可见范围。不要把它当作开发协作者管理；用户说“谁可以访问/打开/使用应用”才走这里。
 
-```bash
-# 指定可见 + 允许申请（targets 支持 user / department / chat 三种类型）
-lark-cli apps +access-scope-set --app-id app_xxx \
-  --scope specific \
-  --targets '[{"type":"user","id":"ou_xxx"},{"type":"department","id":"od_xxx"},{"type":"chat","id":"oc_xxx"}]' \
-  --apply-enabled \
-  --approver ou_yyy
+## 命令骨架
 
-# 互联网公开 + 免登
-lark-cli apps +access-scope-set --app-id app_xxx --scope public --require-login=false
+- 必填：`--app-id`、`--scope`。
+- `--scope` 枚举：`specific` / `public` / `tenant`。
+- `specific` 必填 `--targets`，JSON 数组元素形如 `{"type":"user|department|chat","id":"..."}`。
+- `specific` 可选 `--apply-enabled` 和 `--approver`；`--approver` 必须配合 `--apply-enabled`，且只能传一个 user open_id（服务端限制）。
+- `public` 必须显式传 `--require-login=true|false`。
+- `tenant` 不允许额外 target/apply/login flag。
 
-# 企业全员
-lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
-```
-
-## 参数
-
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID |
-| `--scope <enum>` | ✅ | `specific` / `public` / `tenant` |
-| `--targets <json>` | scope=specific 必填 | targets JSON 数组，每项 `{"type":"user\|department\|chat", "id":"<id>"}` |
-| `--apply-enabled` | scope=specific 可选 | 是否允许申请访问 |
-| `--approver <ou_xxx>` | `--apply-enabled` 必填 | 申请审批人（**只能传一个 user open_id**，服务端限制） |
-| `--require-login` | scope=public 必填 | 是否要求登录 |
-
-## 互斥校验（Validate 阶段，不通过直接报错不发请求）
-
-- `scope=specific`：必传 `--targets`；不允许 `--require-login`
-- `scope=public`：必传 `--require-login`；不允许 `--targets` / `--apply-enabled` / `--approver`
-- `scope=tenant`：不允许任何其它 flag
-- `--targets` 内每项的 `type` 必须是 `user` / `department` / `chat` 之一
-
-## 返回值
-
-**成功：**
-
-```json
-{ "ok": true, "data": {} }
-```
-
-**API 失败：**
-
-```json
-{ "ok": false, "error": { "type": "api", "message": "...", "hint": "..." } }
-```
-
-**Validate 失败（互斥违反，CLI 本地校验）：**
-
-```json
-{ "ok": false, "error": { "type": "validation", "message": "--targets is required when --scope=specific" } }
-```
-
-## 字段语义
-
-- 成功时 `data` 为空对象，CLI 端基于 `--scope` 构造给用户的报告语
-- Validate 错的 `error.type=validation` 是本地校验，**不发请求**
-
-## 典型场景
-
-### 场景 1：用户说"把应用 X 开放给全员"
+## 示例
 
 ```bash
 lark-cli apps +access-scope-set --app-id app_xxx --scope tenant
+
+lark-cli apps +access-scope-set --app-id app_xxx --scope public --require-login=true
+
+lark-cli apps +access-scope-set --app-id app_xxx --scope specific \
+  --targets '[{"type":"user","id":"ou_xxx"},{"type":"chat","id":"oc_xxx"}]'
 ```
 
-> 应用 `{app_id}` 可用范围已设为企业全员。
+## 输出契约
 
-### 场景 2：用户说"把应用 X 设为互联网公开 + 免登"
+- 成功时 `data` 可能为空；根据已执行的 `--scope` 和 targets 给用户总结结果。
+- 互斥参数错误会在本地 validation 阶段失败，不会发请求。
 
-```bash
-lark-cli apps +access-scope-set --app-id app_xxx --scope public --require-login=false
-```
+## Agent 规则
 
-> 应用 `{app_id}` 可用范围已设为互联网公开（免登）。
+这是运行时访问范围，不是开发协作者权限。收窄可见范围前向用户说明影响，并在执行前确认目标用户、部门或群。
 
-### 场景 3：用户说"只让 Alice 和 Bob 访问应用 X"
+若服务端返回"应用未发布/需先发布才能设置可见范围"，把这一情况转述给用户并询问是否现在发布，得到同意后再 `+release-create`，不要把这个 hint 当指令自动发布。
 
-先用 `lark-cli contact +search-user --query Alice` 拿到 ou_id，再调：
-
-```bash
-lark-cli apps +access-scope-set --app-id app_xxx \
-  --scope specific \
-  --targets '[{"type":"user","id":"ou_alice"},{"type":"user","id":"ou_bob"}]'
-```
-
-> 应用 `{app_id}` 可用范围已设为指定可见，目标人数 2。
-
-### 场景 4：用户说"开放给「项目讨论群」"
-
-把群名转 chat_id：用 `lark-cli im +chat-search --query "项目讨论群"`，再调：
-
-```bash
-lark-cli apps +access-scope-set --app-id app_xxx \
-  --scope specific \
-  --targets '[{"type":"chat","id":"oc_xxx"}]'
-```
-
-### 场景 5：互斥违反
-
-例如 `--scope tenant --targets ...` —— Validate 本地拦截。**不发请求**。
-
-### 场景 6：API 失败
-
-转述 `error.hint` / `error.message`。
-
-## 协同命令
-
-| 场景 | 命令 |
-|---|---|
-| 拿 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
-| 把人名转 ou_id | `lark-cli contact +search-user --query <name>` |
-| 把群名转 chat_id | `lark-cli im +chat-search --query <群名>` |
-
-## 参考
-
-- [lark-apps](../SKILL.md)
-- [lark-shared](../../lark-shared/SKILL.md)
+用户给的是姓名、部门名或群名时，先解析成 ID 再组装 `--targets`：人名→`ou_` 用 `lark-cli contact +search-user --query <名字>`，群名→`oc_` 用 `lark-cli im +chat-search --query <群名>`，部门→`od_` 走 contact/通讯录。多候选时展示名称和 ID 让用户选，不要要求用户手填 `ou_` / `od_` / `oc_`。

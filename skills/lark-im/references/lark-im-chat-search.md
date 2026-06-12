@@ -15,6 +15,9 @@ lark-cli im +chat-search --query "project"
 # Restrict by search types
 lark-cli im +chat-search --query "project" --search-types "private,public_joined"
 
+# Filter by chat mode (group = regular group, topic = topic/thread group)
+lark-cli im +chat-search --query "project" --chat-modes "topic"
+
 # Filter by member open_ids (with keyword)
 lark-cli im +chat-search --query "project" --member-ids "ou_xxx,ou_yyy"
 
@@ -43,6 +46,7 @@ lark-cli im +chat-search --query "project" --dry-run
 |------|------|------|------|
 | `--query <keyword>` | No (at least one of `--query` / `--member-ids` required) | Max 64 characters | Search keyword. Supports matching localized chat names, member names, multilingual search, pinyin, and prefix fuzzy search. If the query contains `-`, it is automatically wrapped in quotes |
 | `--search-types <types>` | No | Comma-separated: `private`, `external`, `public_joined`, `public_not_joined` | Restrict the visible chat types returned by search |
+| `--chat-modes <modes>` | No | Comma-separated: `group`, `topic` | Filter by chat mode (server-side): `group` = regular group, `topic` = topic/thread group |
 | `--member-ids <ids>` | No (at least one of `--query` / `--member-ids` required) | Up to 50, format `ou_xxx` | Filter by member open_ids; can be used alone or combined with `--query` |
 | `--is-manager` | No | - | Only show chats you created or manage |
 | `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |

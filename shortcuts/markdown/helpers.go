@@ -6,7 +6,6 @@ package markdown
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,7 +18,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -85,16 +83,18 @@ func (spec markdownUploadSpec) Target() markdownUploadTarget {
 func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpec, requireName bool) error {
 	switch {
 	case spec.ContentSet && spec.FileSet:
-		return common.FlagErrorf("--content and --file are mutually exclusive")
+		return markdownValidationError("--content and --file are mutually exclusive").
+			WithParams(markdownInvalidParam("--content", "mutually exclusive"), markdownInvalidParam("--file", "mutually exclusive"))
 	case !spec.ContentSet && !spec.FileSet:
-		return common.FlagErrorf("specify exactly one of --content or --file")
+		return markdownValidationError("specify exactly one of --content or --file").
+			WithParams(markdownInvalidParam("--content", "required; specify exactly one"), markdownInvalidParam("--file", "required; specify exactly one"))
 	}
 
 	if markdownFlagExplicitlyEmpty(runtime, "folder-token") {
-		return common.FlagErrorf("--folder-token cannot be empty; omit it to upload into Drive root folder")
+		return markdownValidationParamError("--folder-token", "--folder-token cannot be empty; omit it to upload into Drive root folder")
 	}
 	if markdownFlagExplicitlyEmpty(runtime, "wiki-token") {
-		return common.FlagErrorf("--wiki-token cannot be empty; provide a valid wiki node token or omit the flag entirely")
+		return markdownValidationParamError("--wiki-token", "--wiki-token cannot be empty; provide a valid wiki node token or omit the flag entirely")
 	}
 	targets := 0
 	if spec.FolderToken != "" {
@@ -104,22 +104,23 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 		targets++
 	}
 	if targets > 1 {
-		return common.FlagErrorf("--folder-token and --wiki-token are mutually exclusive")
+		return markdownValidationError("--folder-token and --wiki-token are mutually exclusive").
+			WithParams(markdownInvalidParam("--folder-token", "mutually exclusive"), markdownInvalidParam("--wiki-token", "mutually exclusive"))
 	}
 	if spec.FolderToken != "" {
 		if err := validate.ResourceName(spec.FolderToken, "--folder-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return markdownValidationParamError("--folder-token", "%s", err).WithCause(err)
 		}
 	}
 	if spec.WikiToken != "" {
 		if err := validate.ResourceName(spec.WikiToken, "--wiki-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return markdownValidationParamError("--wiki-token", "%s", err).WithCause(err)
 		}
 	}
 
 	if requireName && spec.ContentSet {
 		if strings.TrimSpace(spec.FileName) == "" {
-			return common.FlagErrorf("--name is required when using --content")
+			return markdownValidationParamError("--name", "--name is required when using --content")
 		}
 		if err := validateMarkdownFileName(spec.FileName, "--name"); err != nil {
 			return err
@@ -128,10 +129,10 @@ func validateMarkdownSpec(runtime *common.RuntimeContext, spec markdownUploadSpe
 
 	if spec.FileSet {
 		if strings.TrimSpace(spec.FilePath) == "" {
-			return common.FlagErrorf("--file cannot be empty")
+			return markdownValidationParamError("--file", "--file cannot be empty")
 		}
 		if _, err := validate.SafeInputPath(spec.FilePath); err != nil {
-			return output.ErrValidation("unsafe file path: %s", err)
+			return markdownValidationParamError("--file", "unsafe file path: %s", err).WithCause(err)
 		}
 		if err := validateMarkdownFileName(filepath.Base(spec.FilePath), "--file"); err != nil {
 			return err
@@ -154,10 +155,10 @@ func markdownFlagExplicitlyEmpty(runtime *common.RuntimeContext, flagName string
 func validateMarkdownFileName(name, flagName string) error {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
-		return common.FlagErrorf("%s cannot be empty", flagName)
+		return markdownValidationParamError(flagName, "%s cannot be empty", flagName)
 	}
 	if !strings.HasSuffix(strings.ToLower(trimmed), ".md") {
-		return common.FlagErrorf("%s must end with .md", flagName)
+		return markdownValidationParamError(flagName, "%s must end with .md", flagName)
 	}
 	return nil
 }
@@ -201,22 +202,9 @@ func openMarkdownDownload(ctx context.Context, runtime *common.RuntimeContext, f
 	return resp, nil
 }
 
-func wrapMarkdownDownloadError(err error) error {
-	// Preserve any already-classified error: legacy *output.ExitError or any
-	// typed errs.* error. Only un-classified errors get wrapped as network.
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
-		return err
-	}
-	if _, ok := errs.ProblemOf(err); ok {
-		return err
-	}
-	return output.ErrNetwork("download failed: %s", err)
-}
-
 func validateNonEmptyMarkdownSize(size int64) error {
 	if size == 0 {
-		return output.ErrValidation("%s", markdownEmptyContentError)
+		return markdownValidationError("%s", markdownEmptyContentError)
 	}
 	return nil
 }
@@ -227,12 +215,12 @@ func markdownSourceSize(runtime *common.RuntimeContext, spec markdownUploadSpec)
 		size = int64(len(spec.Content))
 	} else {
 		if strings.TrimSpace(spec.FilePath) == "" {
-			return 0, common.FlagErrorf("--file cannot be empty")
+			return 0, markdownValidationParamError("--file", "--file cannot be empty")
 		}
 
 		info, err := runtime.FileIO().Stat(spec.FilePath)
 		if err != nil {
-			return 0, common.WrapInputStatError(err)
+			return 0, withMarkdownFileParam(common.WrapInputStatErrorTyped(err), "--file")
 		}
 		size = info.Size()
 	}
@@ -424,7 +412,7 @@ func uploadMarkdownFileAll(runtime *common.RuntimeContext, spec markdownUploadSp
 	return withMarkdownUploadRetryResult(runtime, markdownUploadAllAction, func() (markdownUploadResult, error) {
 		fileReader, err := openReader()
 		if err != nil {
-			return markdownUploadResult{}, common.WrapInputStatErrorTyped(err)
+			return markdownUploadResult{}, withMarkdownFileParam(common.WrapInputStatErrorTyped(err), "--file")
 		}
 		defer fileReader.Close()
 
@@ -491,7 +479,7 @@ func uploadMarkdownFileMultipart(runtime *common.RuntimeContext, spec markdownUp
 
 	fileReader, err := openReader()
 	if err != nil {
-		return markdownUploadResult{}, common.WrapInputStatErrorTyped(err)
+		return markdownUploadResult{}, withMarkdownFileParam(common.WrapInputStatErrorTyped(err), "--file")
 	}
 	defer fileReader.Close()
 
@@ -563,7 +551,7 @@ func uploadMarkdownMultipartParts(runtime *common.RuntimeContext, fileReader io.
 
 		n, readErr := io.ReadFull(fileReader, buffer[:int(chunkSize)])
 		if readErr != nil {
-			return output.ErrValidation("cannot read file: %s", readErr)
+			return markdownValidationParamError("--file", "cannot read file: %s", readErr).WithCause(readErr)
 		}
 
 		fd := larkcore.NewFormdata()

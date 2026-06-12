@@ -5,11 +5,10 @@ package backward
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -21,63 +20,63 @@ func sheetBatchUpdatePath(token string) string {
 }
 
 func validateSheetManageToken(runtime *common.RuntimeContext) (string, error) {
-	if err := common.ExactlyOne(runtime, "url", "spreadsheet-token"); err != nil {
+	if err := common.ExactlyOneTyped(runtime, "url", "spreadsheet-token"); err != nil {
 		return "", err
 	}
 	if token := strings.TrimSpace(runtime.Str("spreadsheet-token")); token != "" {
 		if err := validate.RejectControlChars(token, "spreadsheet-token"); err != nil {
-			return "", common.FlagErrorf("%v", err)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--spreadsheet-token").WithCause(err)
 		}
 		return token, nil
 	}
 
 	url := strings.TrimSpace(runtime.Str("url"))
 	if url == "" {
-		return "", common.FlagErrorf("specify --url or --spreadsheet-token")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 	}
 
 	token := extractSpreadsheetToken(url)
 	if token == "" || token == url {
-		return "", common.FlagErrorf("--url must be a spreadsheet URL like https://.../sheets/<token>")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--url must be a spreadsheet URL like https://.../sheets/<token>").WithParam("--url")
 	}
 	if err := validate.RejectControlChars(token, "url"); err != nil {
-		return "", common.FlagErrorf("%v", err)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--url").WithCause(err)
 	}
 	return token, nil
 }
 
 func validateSheetID(flagName, sheetID string) error {
 	if strings.TrimSpace(sheetID) == "" {
-		return common.FlagErrorf("specify --%s", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --%s", flagName).WithParam("--" + flagName)
 	}
 	if err := validate.RejectControlChars(sheetID, flagName); err != nil {
-		return common.FlagErrorf("%v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--" + flagName).WithCause(err)
 	}
 	return nil
 }
 
 func validateSheetTitle(flagName, title string) error {
 	if title == "" {
-		return common.FlagErrorf("--%s must not be empty", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must not be empty", flagName).WithParam("--" + flagName)
 	}
 	if strings.ContainsAny(title, "\t\r\n") {
-		return common.FlagErrorf("--%s must not contain tabs or line breaks", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must not contain tabs or line breaks", flagName).WithParam("--" + flagName)
 	}
 	if err := validate.RejectControlChars(title, flagName); err != nil {
-		return common.FlagErrorf("%v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--" + flagName).WithCause(err)
 	}
 	if len([]rune(title)) > 100 {
-		return common.FlagErrorf("--%s must be <= 100 characters", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must be <= 100 characters", flagName).WithParam("--" + flagName)
 	}
 	if strings.ContainsAny(title, `/\?*[]:`) || strings.Contains(title, `\`) {
-		return common.FlagErrorf("--%s must not contain any of / \\ ? * [ ] :", flagName)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must not contain any of / \\ ? * [ ] :", flagName).WithParam("--" + flagName)
 	}
 	return nil
 }
 
 func validateNonNegativeInt(flagName string, value int) error {
 	if value < 0 {
-		return common.FlagErrorf("--%s must be >= 0, got %d", flagName, value)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must be >= 0, got %d", flagName, value).WithParam("--" + flagName)
 	}
 	return nil
 }
@@ -287,36 +286,18 @@ func mergeSheetOutputs(base, overlay map[string]interface{}) map[string]interfac
 	return out
 }
 
-func mergeSheetErrorDetail(detail interface{}, overlay map[string]interface{}) interface{} {
-	if len(overlay) == 0 {
-		return detail
-	}
-	if detail == nil {
-		return overlay
-	}
-	if existing, ok := detail.(map[string]interface{}); ok {
-		merged := map[string]interface{}{}
-		for k, v := range existing {
-			merged[k] = v
-		}
-		for k, v := range overlay {
-			merged[k] = v
-		}
-		return merged
-	}
-
-	merged := map[string]interface{}{}
-	for k, v := range overlay {
-		merged[k] = v
-	}
-	merged["cause_detail"] = detail
-	return merged
-}
-
 func copySheetMoveRetryCommand(token, sheetID string, index int) string {
 	return fmt.Sprintf("lark-cli sheets +update-sheet --spreadsheet-token %s --sheet-id %s --index %d", token, sheetID, index)
 }
 
+// wrapCopySheetMoveError reports a +copy-sheet that created the new sheet but
+// then failed to move it to the requested index. The copy already succeeded, so
+// the recovery is to retry only the move (not the whole +copy-sheet, which would
+// duplicate the sheet) — that guard and the exact retry command go into the
+// hint. The underlying move error is already a typed errs.* error from
+// CallAPITyped; its category/subtype/code/log_id are preserved in place
+// (mirroring drive's enrichDriveSearchError) so the failure stays accurately
+// classified, with only the partial-success context folded into message and hint.
 func wrapCopySheetMoveError(err error, token, sheetID string, index int) error {
 	if strings.TrimSpace(sheetID) == "" {
 		return err
@@ -329,46 +310,22 @@ func wrapCopySheetMoveError(err error, token, sheetID string, index int) error {
 		sheetID,
 		retryCommand,
 	)
-	detail := map[string]interface{}{
-		"partial_success":   true,
-		"failed_step":       "move_copied_sheet",
-		"spreadsheet_token": token,
-		"sheet_id":          sheetID,
-		"requested_index":   index,
-		"retry_command":     retryCommand,
+
+	if p, ok := errs.ProblemOf(err); ok {
+		if upstream := strings.TrimSpace(p.Message); upstream != "" {
+			p.Message = fmt.Sprintf("%s: %s", msg, upstream)
+		} else {
+			p.Message = msg
+		}
+		if upstreamHint := strings.TrimSpace(p.Hint); upstreamHint != "" {
+			p.Hint = upstreamHint + "\n" + hint
+		} else {
+			p.Hint = hint
+		}
+		return err
 	}
 
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		if upstreamHint := strings.TrimSpace(exitErr.Detail.Hint); upstreamHint != "" {
-			hint = upstreamHint + "\n" + hint
-		}
-		return &output.ExitError{
-			Code: exitErr.Code,
-			Detail: &output.ErrDetail{
-				Type:       exitErr.Detail.Type,
-				Code:       exitErr.Detail.Code,
-				Message:    fmt.Sprintf("%s: %s", msg, exitErr.Detail.Message),
-				Hint:       hint,
-				ConsoleURL: exitErr.Detail.ConsoleURL,
-				Risk:       exitErr.Detail.Risk,
-				Detail:     mergeSheetErrorDetail(exitErr.Detail.Detail, detail),
-			},
-			Err: err,
-			Raw: exitErr.Raw,
-		}
-	}
-
-	return &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "api_error",
-			Message: fmt.Sprintf("%s: %v", msg, err),
-			Hint:    hint,
-			Detail:  detail,
-		},
-		Err: err,
-	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "%s: %v", msg, err).WithHint(hint).WithCause(err)
 }
 
 func validateUpdateSheetFlags(runtime *common.RuntimeContext) error {
@@ -397,7 +354,7 @@ func validateUpdateSheetFlags(runtime *common.RuntimeContext) error {
 	}
 	if runtime.Changed("lock-info") {
 		if err := validate.RejectControlChars(runtime.Str("lock-info"), "lock-info"); err != nil {
-			return common.FlagErrorf("%v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).WithParam("--lock-info").WithCause(err)
 		}
 	}
 
@@ -405,24 +362,24 @@ func validateUpdateSheetFlags(runtime *common.RuntimeContext) error {
 	if hasProtectConfig {
 		lock := runtime.Str("lock")
 		if !runtime.Changed("lock") {
-			return common.FlagErrorf("specify --lock when updating protection settings")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --lock when updating protection settings").WithParam("--lock")
 		}
 		if runtime.Changed("lock-info") && lock != "LOCK" {
-			return common.FlagErrorf("--lock-info requires --lock LOCK")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--lock-info requires --lock LOCK").WithParam("--lock-info")
 		}
 		if runtime.Changed("user-ids") {
 			if lock != "LOCK" {
-				return common.FlagErrorf("--user-ids requires --lock LOCK")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-ids requires --lock LOCK").WithParam("--user-ids")
 			}
 			if runtime.Str("user-id-type") == "" {
-				return common.FlagErrorf("--user-ids requires --user-id-type")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-ids requires --user-id-type").WithParam("--user-id-type")
 			}
 			userIDs, err := parseJSONStringArray("user-ids", runtime.Str("user-ids"))
 			if err != nil {
 				return err
 			}
 			if len(userIDs) == 0 {
-				return common.FlagErrorf("--user-ids must not be empty")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-ids must not be empty").WithParam("--user-ids")
 			}
 		}
 	}
@@ -434,7 +391,7 @@ func validateUpdateSheetFlags(runtime *common.RuntimeContext) error {
 		runtime.Changed("frozen-col-count") ||
 		hasProtectConfig
 	if !hasUpdate {
-		return common.FlagErrorf("specify at least one of --title, --index, --hidden, --frozen-row-count, --frozen-col-count, --lock, --lock-info, or --user-ids")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --title, --index, --hidden, --frozen-row-count, --frozen-col-count, --lock, --lock-info, or --user-ids").WithParams(errs.InvalidParam{Name: "--title", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--index", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--hidden", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--frozen-row-count", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--frozen-col-count", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--lock", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--lock-info", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--user-ids", Reason: "required; specify at least one"})
 	}
 
 	return nil
@@ -530,7 +487,7 @@ var SheetCreateSheet = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
-		data, err := runtime.CallAPI("POST", sheetBatchUpdatePath(token), nil, buildCreateSheetBody(runtime))
+		data, err := runtime.CallAPITyped("POST", sheetBatchUpdatePath(token), nil, buildCreateSheetBody(runtime))
 		if err != nil {
 			return err
 		}
@@ -593,7 +550,7 @@ var SheetCopySheet = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
-		data, err := runtime.CallAPI("POST", sheetBatchUpdatePath(token), nil, buildCopySheetBody(runtime))
+		data, err := runtime.CallAPITyped("POST", sheetBatchUpdatePath(token), nil, buildCopySheetBody(runtime))
 		if err != nil {
 			return err
 		}
@@ -604,7 +561,7 @@ var SheetCopySheet = common.Shortcut{
 		}
 		if runtime.Changed("index") {
 			copiedSheetID, _ := out["sheet_id"].(string)
-			moveResp, err := runtime.CallAPI("POST", sheetBatchUpdatePath(token), nil, buildMoveCopiedSheetBody(copiedSheetID, runtime.Int("index")))
+			moveResp, err := runtime.CallAPITyped("POST", sheetBatchUpdatePath(token), nil, buildMoveCopiedSheetBody(copiedSheetID, runtime.Int("index")))
 			if err != nil {
 				return wrapCopySheetMoveError(err, token, copiedSheetID, runtime.Int("index"))
 			}
@@ -644,7 +601,7 @@ var SheetDeleteSheet = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
-		data, err := runtime.CallAPI("POST", sheetBatchUpdatePath(token), nil, buildDeleteSheetBody(runtime.Str("sheet-id")))
+		data, err := runtime.CallAPITyped("POST", sheetBatchUpdatePath(token), nil, buildDeleteSheetBody(runtime.Str("sheet-id")))
 		if err != nil {
 			return err
 		}
@@ -707,7 +664,7 @@ var SheetUpdateSheet = common.Shortcut{
 			params = map[string]interface{}{"user_id_type": userIDType}
 		}
 
-		data, err := runtime.CallAPI("POST", sheetBatchUpdatePath(token), params, body)
+		data, err := runtime.CallAPITyped("POST", sheetBatchUpdatePath(token), params, body)
 		if err != nil {
 			return err
 		}

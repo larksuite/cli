@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	eventlib "github.com/larksuite/cli/internal/event"
@@ -95,6 +96,79 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
+	const syntheticKey = "test.evt_sub"
+	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
+
+	eventlib.RegisterKey(eventlib.KeyDefinition{
+		Key:       syntheticKey,
+		EventType: syntheticKey,
+		Params: []eventlib.ParamDef{
+			{Name: "mailbox", SubscriptionKey: true, Description: "subscription id source"},
+			{Name: "folders", Description: "filter only"},
+		},
+		Schema: eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
+	})
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	if err := runSchema(f, syntheticKey, false); err != nil {
+		t.Fatalf("runSchema: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "SUB-KEY") {
+		t.Errorf("missing SUB-KEY column header in:\n%s", out)
+	}
+
+	// Find the mailbox row and verify "yes" is present
+	var mailboxRow string
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, "mailbox") && !strings.Contains(ln, "NAME") {
+			mailboxRow = ln
+			break
+		}
+	}
+	if !strings.Contains(mailboxRow, "yes") {
+		t.Errorf("mailbox row missing yes SUB-KEY marker: %q", mailboxRow)
+	}
+
+	// Find the folders row and verify "no" is present
+	var foldersRow string
+	for _, ln := range strings.Split(out, "\n") {
+		if strings.Contains(ln, "folders") && !strings.Contains(ln, "NAME") {
+			foldersRow = ln
+			break
+		}
+	}
+	if !strings.Contains(foldersRow, "no") {
+		t.Errorf("folders row missing no SUB-KEY marker: %q", foldersRow)
+	}
+}
+
+func TestSchema_JSON_IncludesSubscriptionKey(t *testing.T) {
+	const syntheticKey = "test.evt_json"
+	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
+
+	eventlib.RegisterKey(eventlib.KeyDefinition{
+		Key:       syntheticKey,
+		EventType: syntheticKey,
+		Params:    []eventlib.ParamDef{{Name: "mailbox", SubscriptionKey: true}},
+		Schema:    eventlib.SchemaDef{Native: &eventlib.SchemaSpec{Type: reflect.TypeOf(struct{ X string }{})}},
+	})
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+	if err := runSchema(f, syntheticKey, true); err != nil {
+		t.Fatalf("runSchema json: %v", err)
+	}
+
+	if !strings.Contains(stdout.String(), `"subscription_key"`) {
+		t.Errorf("JSON output missing subscription_key field: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `true`) {
+		t.Errorf("JSON output missing subscription_key: true value: %s", stdout.String())
+	}
+}
+
 func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	const syntheticKey = "t.custom.overlay"
 	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })
@@ -127,5 +201,40 @@ func TestResolveSchemaJSON_CustomWithOverlay(t *testing.T) {
 	got := parsed["properties"].(map[string]interface{})["sender_id"].(map[string]interface{})["format"]
 	if got != "open_id" {
 		t.Errorf("overlay format = %v, want open_id", got)
+	}
+}
+
+func TestRenderSpec_EmptySpecIsTypedInternalError(t *testing.T) {
+	_, err := renderSpec(&eventlib.SchemaSpec{})
+	if err == nil {
+		t.Fatal("expected error for spec with neither Type nor Raw")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal {
+		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
+	}
+}
+
+func TestResolveSchemaJSON_InvalidBaseWithOverridesIsTypedInternalError(t *testing.T) {
+	def := &eventlib.KeyDefinition{
+		Key: "synthetic.invalid.base",
+		Schema: eventlib.SchemaDef{
+			Custom:         &eventlib.SchemaSpec{Raw: json.RawMessage("{not json")},
+			FieldOverrides: map[string]schemas.FieldMeta{"x": {}},
+		},
+	}
+	_, _, err := resolveSchemaJSON(def)
+	if err == nil {
+		t.Fatal("expected error for unparsable base schema")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal {
+		t.Errorf("category = %s, want %s", p.Category, errs.CategoryInternal)
 	}
 }

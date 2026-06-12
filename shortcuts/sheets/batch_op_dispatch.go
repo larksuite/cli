@@ -5,8 +5,6 @@ package sheets
 
 import (
 	"strings"
-
-	"github.com/larksuite/cli/shortcuts/common"
 )
 
 // ─── +batch-update sub-op dispatch ─────────────────────────────────────
@@ -198,7 +196,7 @@ var batchOpDispatch = map[string]batchOpMapping{
 // turned into a file_token. Callers must pass --image-token / --image-uri.
 func rejectLocalImageInBatch(fv flagView) error {
 	if strings.TrimSpace(fv.Str("image")) != "" {
-		return common.FlagErrorf("--image (local upload) is not supported inside +batch-update; pass --image-token or --image-uri instead")
+		return sheetsValidationForFlag("image", "--image (local upload) is not supported inside +batch-update; pass --image-token or --image-uri instead")
 	}
 	return nil
 }
@@ -208,23 +206,23 @@ func rejectLocalImageInBatch(fv flagView) error {
 // auto-derives sheet_id / source_index, so both must be supplied explicitly.
 func sheetMoveBatchInput(fv flagView, token, sheetID, sheetName string) (map[string]interface{}, error) {
 	if sheetID == "" {
-		return nil, common.FlagErrorf("+sheet-move in +batch-update requires sheet_id (sheet_name needs a network lookup unavailable mid-batch)")
+		return nil, sheetsValidationForFlag("sheet-id", "+sheet-move in +batch-update requires sheet_id (sheet_name needs a network lookup unavailable mid-batch)")
 	}
 	if !fv.Changed("source-index") {
-		return nil, common.FlagErrorf("+sheet-move in +batch-update requires source_index (auto-derive needs a network lookup unavailable mid-batch)")
+		return nil, sheetsValidationForFlag("source-index", "+sheet-move in +batch-update requires source_index (auto-derive needs a network lookup unavailable mid-batch)")
 	}
 	if fv.Int("source-index") < 0 {
-		return nil, common.FlagErrorf("--source-index must be >= 0")
+		return nil, sheetsValidationForFlag("source-index", "--source-index must be >= 0")
 	}
 	// Standalone +sheet-move requires --index (see SheetMove.Validate). A batch
 	// sub-op skips that path, and mapFlagView falls back to the flag default (0),
 	// which would silently move the sheet to the front. Require it explicitly so
 	// the batch contract matches the standalone one.
 	if !fv.Changed("index") {
-		return nil, common.FlagErrorf("+sheet-move in +batch-update requires index")
+		return nil, sheetsValidationForFlag("index", "+sheet-move in +batch-update requires index")
 	}
 	if fv.Int("index") < 0 {
-		return nil, common.FlagErrorf("--index must be >= 0")
+		return nil, sheetsValidationForFlag("index", "--index must be >= 0")
 	}
 	return map[string]interface{}{
 		"excel_id":     token,
@@ -254,19 +252,20 @@ var reservedSubOpKeys = []string{"excel_id", "spreadsheet_token", "url"}
 func translateBatchOp(raw interface{}, token string, index int) (map[string]interface{}, error) {
 	op, ok := raw.(map[string]interface{})
 	if !ok {
-		return nil, common.FlagErrorf("operations[%d] must be a JSON object", index)
+		return nil, sheetsValidationForFlag("operations", "operations[%d] must be a JSON object", index)
 	}
 	scRaw, present := op["shortcut"]
 	if !present {
-		return nil, common.FlagErrorf("operations[%d]: 'shortcut' field is required", index)
+		return nil, sheetsValidationForFlag("operations", "operations[%d]: 'shortcut' field is required", index)
 	}
 	sc, ok := scRaw.(string)
 	if !ok || sc == "" {
-		return nil, common.FlagErrorf("operations[%d]: 'shortcut' must be a non-empty string (got %T)", index, scRaw)
+		return nil, sheetsValidationForFlag("operations", "operations[%d]: 'shortcut' must be a non-empty string (got %T)", index, scRaw)
 	}
 	mapping, ok := batchOpDispatch[sc]
 	if !ok {
-		return nil, common.FlagErrorf(
+		return nil, sheetsValidationForFlag(
+			"operations",
 			"operations[%d]: shortcut %q not allowed in +batch-update "+
 				"(read ops / fan-out wrappers like +batch-update / +cells-batch-set-style / +cells-batch-clear / +dropdown-{update,delete} are excluded; "+
 				"run `lark-cli sheets +batch-update --print-schema --flag-name operations` to see the full enum)",
@@ -280,12 +279,13 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	} else {
 		input, ok = inputRaw.(map[string]interface{})
 		if !ok {
-			return nil, common.FlagErrorf("operations[%d] (%s): 'input' must be a JSON object (got %T)", index, sc, inputRaw)
+			return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): 'input' must be a JSON object (got %T)", index, sc, inputRaw)
 		}
 	}
 	// 禁手填 operation —— 由 shortcut 名表达，手填易与 shortcut 不一致。
 	if _, has := input["operation"]; has {
-		return nil, common.FlagErrorf(
+		return nil, sheetsValidationForFlag(
+			"operations",
 			"operations[%d] (%s): do not pass input.operation manually — it is implied by the shortcut name",
 			index, sc,
 		)
@@ -293,7 +293,8 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	// 禁在 sub-op 重复填 spreadsheet 定位 —— 由 +batch-update 顶层 --url/--token 统一提供。
 	for _, k := range reservedSubOpKeys {
 		if _, has := input[k]; has {
-			return nil, common.FlagErrorf(
+			return nil, sheetsValidationForFlag(
+				"operations",
 				"operations[%d] (%s): do not pass input.%s — it is already set from +batch-update top-level --url / --token",
 				index, sc, k,
 			)
@@ -302,7 +303,7 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	// 拒绝任何额外的 sub-op 顶层 key（防御未来 schema drift / 用户笔误）。
 	for k := range op {
 		if k != "shortcut" && k != "input" {
-			return nil, common.FlagErrorf("operations[%d] (%s): unknown top-level key %q (expected only 'shortcut' and 'input')", index, sc, k)
+			return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): unknown top-level key %q (expected only 'shortcut' and 'input')", index, sc, k)
 		}
 	}
 	fv := newMapFlagViewForCommand(sc, input)
@@ -310,14 +311,14 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 	// sub-op's scalar fields here before the translator reads them via
 	// Int/Bool/Float64 (which would otherwise coerce a wrong type to zero).
 	if err := fv.validateRawTypes(); err != nil {
-		return nil, common.FlagErrorf("operations[%d] (%s): %v", index, sc, err)
+		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
 	}
 	sheetIDFlag, sheetNameFlag := sheetSelectorFlagsForSubOp(sc)
 	sheetID := strings.TrimSpace(fv.Str(sheetIDFlag))
 	sheetName := strings.TrimSpace(fv.Str(sheetNameFlag))
 	body, err := mapping.translate(fv, token, sheetID, sheetName)
 	if err != nil {
-		return nil, common.FlagErrorf("operations[%d] (%s): %v", index, sc, err)
+		return nil, sheetsValidationForFlag("operations", "operations[%d] (%s): %v", index, sc, err)
 	}
 	return map[string]interface{}{
 		"tool_name": mapping.mcpToolName,
@@ -328,7 +329,7 @@ func translateBatchOp(raw interface{}, token string, index int) (map[string]inte
 // translateBatchOperations 翻译整个 ops 数组；fail-fast，遇错立即返回。
 func translateBatchOperations(rawOps []interface{}, token string) ([]interface{}, error) {
 	if len(rawOps) == 0 {
-		return nil, common.FlagErrorf("--operations must be a non-empty JSON array")
+		return nil, sheetsValidationForFlag("operations", "--operations must be a non-empty JSON array")
 	}
 	out := make([]interface{}, 0, len(rawOps))
 	for i, raw := range rawOps {

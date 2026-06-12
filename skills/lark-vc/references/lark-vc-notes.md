@@ -95,7 +95,7 @@ lark-cli vc +notes --meeting-ids 69xxxxxxxxxxxxx28 --dry-run
 | 字段 | 说明 |
 |------|------|
 | `artifacts.summary` | AI 总结（JSON 内联） |
-| `artifacts.todos` | 待办事项（JSON 内联） |
+| `artifacts.todos` | 待办事项（JSON 内联，**只读**）；每条含 `content`、`is_done` 及 `todo_id`。`todo_id` 仅供 [`minutes +todo`](../../lark-minutes/references/lark-minutes-todo.md) 更新/删除待办时使用，不必展示给用户。**新建**妙记内待办请用 `minutes +todo`，不要用 lark-task |
 | `artifacts.chapters` | 章节纪要（JSON 内联） |
 | `artifacts.keywords` | 妙记推荐关键词（JSON 内联） |
 | `artifacts.transcript_file` | 逐字稿本地文件路径。默认落到 `./minutes/{minute_token}/transcript.txt`（与 `minutes +download` 聚合）；显式 `--output-dir` 时走旧布局 `./{output-dir}/artifact-{title}-{token}/transcript.txt` |

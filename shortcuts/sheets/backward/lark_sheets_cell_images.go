@@ -11,8 +11,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -38,7 +38,7 @@ var SheetWriteImage = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		if err := validateSheetRangeInput(runtime.Str("sheet-id"), runtime.Str("range")); err != nil {
 			return err
@@ -91,7 +91,7 @@ var SheetWriteImage = common.Shortcut{
 
 		imageBytes, err := io.ReadAll(imageFile)
 		if err != nil {
-			return output.ErrValidation("cannot read image file: %s", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot read image file: %s", err).WithParam("--image").WithCause(err)
 		}
 
 		imageName := runtime.Str("name")
@@ -101,7 +101,7 @@ var SheetWriteImage = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Writing image: %s (%d bytes) → %s\n", imageName, stat.Size(), pointRange)
 
-		data, err := runtime.CallAPI("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_image", validate.EncodePathSegment(token)), nil, map[string]interface{}{
+		data, err := runtime.CallAPITyped("POST", fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/values_image", validate.EncodePathSegment(token)), nil, map[string]interface{}{
 			"range": pointRange,
 			"image": imageBytes,
 			"name":  imageName,
@@ -116,35 +116,35 @@ var SheetWriteImage = common.Shortcut{
 
 func validateSheetWriteImageFile(fio fileio.FileIO, imagePath string) (fileio.FileInfo, error) {
 	if fio == nil {
-		return nil, output.ErrValidation("no file I/O provider registered")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "no file I/O provider registered")
 	}
 	stat, err := fio.Stat(imagePath)
 	if err != nil {
 		return nil, wrapSheetWriteImageStatError(err, imagePath)
 	}
 	if stat.IsDir() || !stat.Mode().IsRegular() {
-		return nil, output.ErrValidation("image must be a regular file: %s", imagePath)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "image must be a regular file: %s", imagePath).WithParam("--image")
 	}
 	const maxImageSize int64 = 20 * 1024 * 1024
 	if stat.Size() > maxImageSize {
-		return nil, output.ErrValidation("image %.1fMB exceeds 20MB limit", float64(stat.Size())/1024/1024)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "image %.1fMB exceeds 20MB limit", float64(stat.Size())/1024/1024).WithParam("--image")
 	}
 	return stat, nil
 }
 
 func wrapSheetWriteImageStatError(err error, imagePath string) error {
 	if errors.Is(err, fileio.ErrPathValidation) {
-		return output.ErrValidation("unsafe image path: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe image path: %s", err).WithParam("--image").WithCause(err)
 	}
 	if os.IsNotExist(err) {
-		return output.ErrValidation("image file not found: %s", imagePath)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "image file not found: %s", imagePath).WithParam("--image").WithCause(err)
 	}
-	return output.ErrValidation("cannot stat image file: %s", err)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot stat image file: %s", err).WithParam("--image").WithCause(err)
 }
 
 func wrapSheetWriteImageOpenError(err error) error {
 	if errors.Is(err, fileio.ErrPathValidation) {
-		return output.ErrValidation("unsafe image path: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "unsafe image path: %s", err).WithParam("--image").WithCause(err)
 	}
-	return output.ErrValidation("cannot read image file: %s", err)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot read image file: %s", err).WithParam("--image").WithCause(err)
 }

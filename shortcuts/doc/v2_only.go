@@ -6,6 +6,7 @@ package doc
 import (
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -65,7 +66,7 @@ func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyF
 	switch apiVersion := strings.TrimSpace(runtime.Str("api-version")); apiVersion {
 	case "", "v1", "v2":
 	default:
-		return docsV2OnlyError(shortcut, "--api-version is deprecated and only accepts v1 or v2; both values execute the v2 API")
+		return docsV2OnlyError(shortcut, "--api-version is deprecated and only accepts v1 or v2; both values execute the v2 API", "--api-version")
 	}
 
 	var used []string
@@ -87,11 +88,12 @@ func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyF
 	if len(replacements) > 0 {
 		detail += "; " + strings.Join(replacements, "; ")
 	}
-	return docsV2OnlyError(shortcut, detail)
+	return docsV2OnlyError(shortcut, detail, used[0])
 }
 
-func docsV2OnlyError(shortcut, detail string) error {
-	return common.FlagErrorf(
+func docsV2OnlyError(shortcut, detail, param string) error {
+	err := errs.NewValidationError(
+		errs.SubtypeInvalidArgument,
 		"docs %s is v2-only; %s. Run `%s` for the current schema and examples. AI agents MUST read `%s` (XML) or `%s` (Markdown) and follow the latest format rules there. MUST NOT grep/open local SKILL.md files to discover this guidance; use `lark-cli skills read ...` so content stays version-matched with this CLI. Run `%s` for the latest command flags",
 		shortcut,
 		detail,
@@ -100,4 +102,8 @@ func docsV2OnlyError(shortcut, detail string) error {
 		docsMDSkillReadCommand,
 		docsHelpCommandForShortcut(shortcut),
 	)
+	if param != "" {
+		err = err.WithParam(param)
+	}
+	return err
 }

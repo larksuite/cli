@@ -122,7 +122,7 @@ func fetchWikiMembers(runtime *common.RuntimeContext, spaceID string) ([]map[str
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		data, err := runtime.CallAPI("GET", apiPath, params, nil)
+		data, err := runtime.CallAPITyped("GET", apiPath, params, nil)
 		if err != nil {
 			return nil, false, "", err
 		}

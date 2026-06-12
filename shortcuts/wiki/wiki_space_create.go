@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -60,14 +60,14 @@ var WikiSpaceCreate = common.Shortcut{
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating wiki space %q...\n", spec.Name)
 
-		data, err := runtime.CallAPI("POST", wikiSpacesAPIPath, nil, spec.RequestBody())
+		data, err := runtime.CallAPITyped("POST", wikiSpacesAPIPath, nil, spec.RequestBody())
 		if err != nil {
 			return err
 		}
 
 		raw := common.GetMap(data, "space")
 		if raw == nil {
-			return output.Errorf(output.ExitAPI, "api_error", "wiki space create returned no space")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki space create returned no space")
 		}
 
 		out := wikiSpaceCreateOutput(raw)
@@ -100,7 +100,7 @@ func readWikiSpaceCreateSpec(runtime *common.RuntimeContext) (wikiSpaceCreateSpe
 		Description: strings.TrimSpace(runtime.Str("description")),
 	}
 	if spec.Name == "" {
-		return wikiSpaceCreateSpec{}, output.ErrValidation("--name is required and cannot be blank")
+		return wikiSpaceCreateSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--name is required and cannot be blank").WithParam("--name")
 	}
 	return spec, nil
 }

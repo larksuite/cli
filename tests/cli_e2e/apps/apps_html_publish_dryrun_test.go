@@ -87,9 +87,11 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		assert.Equal(t, "page.html", gjson.Get(result.Stdout, "files.0").String())
 	})
 
-	t.Run("HiddenFilesIncluded", func(t *testing.T) {
-		// Walker MUST NOT silently filter .git / .DS_Store — that's an explicit
-		// design decision so users pass clean ./dist trees, not source repos.
+	t.Run("HiddenFilesIncludedExceptGit", func(t *testing.T) {
+		// The walker filters the .git directory (and a .git gitdir pointer file)
+		// so a stray repo under --path doesn't ship its history / remote URL to a
+		// public share URL. Generic hidden files like .DS_Store are NOT filtered —
+		// only .git is — so users still see everything else they pointed --path at.
 		dir := t.TempDir()
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "dist"), 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "dist", "index.html"), []byte("<html/>"), 0o644))
@@ -112,8 +114,17 @@ func TestAppsHTMLPublishDryRun(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		assert.Equal(t, int64(3), gjson.Get(result.Stdout, "file_count").Int(),
-			"walker must include hidden files; got: %s", result.Stdout)
+		// index.html + .DS_Store kept; .git/HEAD filtered out → 2 files.
+		assert.Equal(t, int64(2), gjson.Get(result.Stdout, "file_count").Int(),
+			"walker must keep non-.git hidden files but drop .git; got: %s", result.Stdout)
+		names := gjson.Get(result.Stdout, "files").Array()
+		var got []string
+		for _, n := range names {
+			got = append(got, n.String())
+		}
+		assert.Contains(t, got, "index.html")
+		assert.Contains(t, got, ".DS_Store")
+		assert.NotContains(t, got, ".git/HEAD", "walker must exclude .git contents")
 	})
 
 	t.Run("EmptyDir_ManifestEmpty", func(t *testing.T) {

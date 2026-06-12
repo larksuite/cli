@@ -68,6 +68,15 @@ const threadRepliesFetchConcurrency = 8
 // thread — in exchange for preserving the original "every thread that fits
 // gets its data" guarantee.
 func ExpandThreadReplies(runtime *common.RuntimeContext, messages []map[string]interface{}, nameCache map[string]string, perThread, totalLimit int) {
+	ExpandThreadRepliesWithResources(runtime, messages, nameCache, perThread, totalLimit, false)
+}
+
+// ExpandThreadRepliesWithResources is ExpandThreadReplies with an explicit
+// extractResources gate, threaded through to each reply's formatting so that
+// (when on) every reply — including a reply that is itself a merge_forward —
+// gets its own resources block. extractResources=false reproduces the original
+// behavior exactly.
+func ExpandThreadRepliesWithResources(runtime *common.RuntimeContext, messages []map[string]interface{}, nameCache map[string]string, perThread, totalLimit int, extractResources bool) {
 	if runtime == nil {
 		return
 	}
@@ -205,7 +214,7 @@ func ExpandThreadReplies(runtime *common.RuntimeContext, messages []map[string]i
 		}
 		replies := make([]map[string]interface{}, 0, len(r.rawReplies))
 		for _, raw := range r.rawReplies {
-			replies = append(replies, FormatMessageItemWithMergePrefetch(raw, runtime, nameCache, mergePrefetch))
+			replies = append(replies, FormatMessageItemWithMergePrefetchOpts(raw, runtime, nameCache, mergePrefetch, extractResources))
 		}
 		preparedReplies[i] = replies
 	}

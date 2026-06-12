@@ -22,7 +22,7 @@ import (
 )
 
 // consumeLoop reads events and dispatches to workers; cancels on terminal sink errors.
-func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *event.KeyDefinition, opts Options, lastForKey *bool, emitted *atomic.Int64) error {
+func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *event.KeyDefinition, opts Options, subscriptionID string, lastForKey *bool, emitted *atomic.Int64) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -185,7 +185,7 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 		close(stopReader)
 		<-readerDone
 		conn.SetReadDeadline(time.Time{})
-		*lastForKey = checkLastForKey(conn, opts.EventKey)
+		*lastForKey = checkLastForKey(conn, opts.EventKey, subscriptionID)
 		conn.Close()
 	case <-allDone:
 		// bus-side close; can't query, assume last
@@ -199,13 +199,19 @@ func consumeLoop(ctx context.Context, conn net.Conn, br *bufio.Reader, keyDef *e
 
 // processAndOutput returns (wrote, err); err non-nil only for sink.Write failures.
 func processAndOutput(ctx context.Context, keyDef *event.KeyDefinition, evt *protocol.Event, opts Options, sink Sink, jqCode *gojq.Code) (bool, error) {
+	raw := &event.RawEvent{
+		EventType: evt.EventType,
+		Payload:   evt.Payload,
+	}
+
+	// Synchronous Match filter runs before any work (Process / sink write).
+	if keyDef.Match != nil && !keyDef.Match(raw, opts.Params) {
+		return false, nil
+	}
+
 	var result json.RawMessage
 
 	if keyDef.Process != nil {
-		raw := &event.RawEvent{
-			EventType: evt.EventType,
-			Payload:   evt.Payload,
-		}
 		var err error
 		result, err = keyDef.Process(ctx, opts.Runtime, raw, opts.Params)
 		if err != nil {

@@ -16,16 +16,26 @@ import (
 // call sites must return a typed errs.* error instead. Future domains opt in by
 // appending their path prefix here.
 var migratedEnvelopePaths = []string{
+	"cmd/event/",
+	"events/",
+	"internal/event/consume/",
+	"shortcuts/apps/",
 	"shortcuts/base/",
 	"shortcuts/calendar/",
 	"shortcuts/contact/",
+	"shortcuts/doc/",
 	"shortcuts/drive/",
+	"shortcuts/event/",
 	"shortcuts/mail/",
+	"shortcuts/markdown/",
 	"shortcuts/minutes/",
 	"shortcuts/okr/",
+	"shortcuts/sheets/",
+	"shortcuts/slides/",
 	"shortcuts/task/",
 	"shortcuts/vc/",
 	"shortcuts/whiteboard/",
+	"shortcuts/wiki/",
 	"shortcuts/im/",
 }
 

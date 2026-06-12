@@ -298,6 +298,14 @@ func (ctx *RuntimeContext) CallAPITyped(method, url string, params map[string]in
 // carry fields a caller needs on failure (e.g. the file_token an overwrite
 // returned, for token-stability handling).
 func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[string]interface{}, error) {
+	return ClassifyAPIResponseWith(resp, ctx.APIClassifyContext())
+}
+
+// ClassifyAPIResponseWith is the RuntimeContext-free form of
+// ClassifyAPIResponse for callers that drive the request outside a running
+// shortcut (e.g. a cobra command holding only a factory) and supply their own
+// classification context.
+func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext) (map[string]interface{}, error) {
 	logID, _ := logIDFromHeader(resp)["log_id"].(string)
 
 	result, parseErr := client.ParseJSONResponse(resp)
@@ -321,7 +329,7 @@ func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[stri
 		}
 	}
 	out, _ := resultMap["data"].(map[string]interface{})
-	if apiErr := errclass.BuildAPIError(resultMap, ctx.APIClassifyContext()); apiErr != nil {
+	if apiErr := errclass.BuildAPIError(resultMap, cc); apiErr != nil {
 		return out, apiErr
 	}
 	if resp.StatusCode >= 400 {
@@ -676,30 +684,10 @@ func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 		WithCause(err)
 }
 
-// WrapSaveErrorByCategory maps a FileIO.Save error to structured output errors,
-// using standardized messages and the given error category (e.g. "api_error", "io").
-// Path validation errors always use ErrValidation (exit code 2).
-//
-// Deprecated: use WrapSaveErrorTyped for typed error envelopes.
-func WrapSaveErrorByCategory(err error, category string) error {
-	if err == nil {
-		return nil
-	}
-	var me *fileio.MkdirError
-	switch {
-	case errors.Is(err, fileio.ErrPathValidation):
-		return output.ErrValidation("unsafe output path: %s", err)
-	case errors.As(err, &me):
-		return output.Errorf(output.ExitInternal, category, "cannot create parent directory: %s", err)
-	default:
-		return output.Errorf(output.ExitInternal, category, "cannot create file: %s", err)
-	}
-}
-
 // WrapSaveErrorTyped maps a FileIO.Save error to typed validation/internal errors.
-// Unlike WrapSaveErrorByCategory, non-path failures always emit the canonical
-// "internal" wire type: call sites migrating from a custom category
-// (e.g. "io", "api_error") change their envelope's type field.
+// Non-path failures always emit the canonical "internal" wire type; call sites
+// migrating from a custom category (e.g. "io", "api_error") change their
+// envelope's type field.
 func WrapSaveErrorTyped(err error) error {
 	if err == nil {
 		return nil

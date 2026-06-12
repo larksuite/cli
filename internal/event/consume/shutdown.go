@@ -16,8 +16,8 @@ const preShutdownAckTimeout = 2 * time.Second
 
 // checkLastForKey atomically reserves a cleanup lock; on any error defaults to true
 // (cleanup-on-error is safer than leaking server state). Discards non-ack frames in flight.
-func checkLastForKey(conn net.Conn, eventKey string) bool {
-	msg := protocol.NewPreShutdownCheck(eventKey)
+func checkLastForKey(conn net.Conn, eventKey string, subscriptionID string) bool {
+	msg := protocol.NewPreShutdownCheck(eventKey, subscriptionID)
 	if err := protocol.EncodeWithDeadline(conn, msg, protocol.WriteTimeout); err != nil {
 		return true
 	}
