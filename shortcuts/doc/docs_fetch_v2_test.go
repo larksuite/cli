@@ -5,6 +5,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -137,17 +138,45 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
-	cmd.Flags().String("doc-format", "xml", "")
-	cmd.Flags().String("detail", "simple", "")
-	cmd.Flags().Int("revision-id", -1, "")
-	cmd.Flags().String("scope", "full", "")
-	cmd.Flags().String("start-block-id", "", "")
-	cmd.Flags().String("end-block-id", "", "")
-	cmd.Flags().String("keyword", "", "")
-	cmd.Flags().Int("context-before", 0, "")
-	cmd.Flags().Int("context-after", 0, "")
-	cmd.Flags().Int("max-depth", -1, "")
+	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
+	cmd.Flags().String("detail", fetchDefault("detail"), "")
+	cmd.Flags().Int("revision-id", fetchDefaultInt("revision-id"), "")
+	cmd.Flags().String("scope", fetchDefault("scope"), "")
+	cmd.Flags().String("start-block-id", fetchDefault("start-block-id"), "")
+	cmd.Flags().String("end-block-id", fetchDefault("end-block-id"), "")
+	cmd.Flags().String("keyword", fetchDefault("keyword"), "")
+	cmd.Flags().Int("context-before", fetchDefaultInt("context-before"), "")
+	cmd.Flags().Int("context-after", fetchDefaultInt("context-after"), "")
+	cmd.Flags().Int("max-depth", fetchDefaultInt("max-depth"), "")
 	return common.TestNewRuntimeContextWithCtx(ctx, cmd, nil)
+}
+
+// fetchDefault returns the declared default for a flag from the real
+// v2FetchFlags definition so tests don't hardcode a stale default.
+// It panics if the flag is not found, since a missing flag indicates
+// a test setup error rather than a runtime condition.
+func fetchDefault(name string) string {
+	for _, fl := range v2FetchFlags() {
+		if fl.Name == name {
+			return fl.Default
+		}
+	}
+	panic(fmt.Sprintf("fetchDefault: flag %q not found in v2FetchFlags", name))
+}
+
+// fetchDefaultInt returns the declared default for an int flag from
+// v2FetchFlags, parsed as an int. It panics if the flag is not found
+// or its default cannot be parsed as an int.
+func fetchDefaultInt(name string) int {
+	s := fetchDefault(name)
+	if s == "" {
+		return 0
+	}
+	var d int
+	if _, err := fmt.Sscanf(s, "%d", &d); err != nil {
+		panic(fmt.Sprintf("fetchDefaultInt: flag %q default %q is not an int", name, s))
+	}
+	return d
 }
 
 func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[string]string) *common.RuntimeContext {
@@ -156,16 +185,16 @@ func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[s
 	cmd := &cobra.Command{Use: "+fetch"}
 	cmd.Flags().String("api-version", "", "")
 	cmd.Flags().String("doc", "doxcnFetchDryRun", "")
-	cmd.Flags().String("doc-format", "xml", "")
-	cmd.Flags().String("detail", "simple", "")
-	cmd.Flags().Int("revision-id", -1, "")
-	cmd.Flags().String("scope", "full", "")
-	cmd.Flags().String("start-block-id", "", "")
-	cmd.Flags().String("end-block-id", "", "")
-	cmd.Flags().String("keyword", "", "")
-	cmd.Flags().Int("context-before", 0, "")
-	cmd.Flags().Int("context-after", 0, "")
-	cmd.Flags().Int("max-depth", -1, "")
+	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
+	cmd.Flags().String("detail", fetchDefault("detail"), "")
+	cmd.Flags().Int("revision-id", fetchDefaultInt("revision-id"), "")
+	cmd.Flags().String("scope", fetchDefault("scope"), "")
+	cmd.Flags().String("start-block-id", fetchDefault("start-block-id"), "")
+	cmd.Flags().String("end-block-id", fetchDefault("end-block-id"), "")
+	cmd.Flags().String("keyword", fetchDefault("keyword"), "")
+	cmd.Flags().Int("context-before", fetchDefaultInt("context-before"), "")
+	cmd.Flags().Int("context-after", fetchDefaultInt("context-after"), "")
+	cmd.Flags().Int("max-depth", fetchDefaultInt("max-depth"), "")
 	cmd.Flags().String("offset", "", "")
 	cmd.Flags().String("limit", "", "")
 	if apiVersion != "" {
