@@ -161,6 +161,8 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_move_aft
   --src-block-ids "block_a,block_b"
 ```
 
+> **`--emulate` 客户端兜底**：若服务端报 `requires content or src_block_ids but both were empty`（服务端未读取 `src_block_ids` 的已知问题），可在 `block_move_after` / `block_copy_insert_after` 上追加 `--emulate`，由 CLI 客户端模拟完成（先取源块重建并插入锚点之后，验证成功后才删除原块，move 专属；失败立即停止，不会丢内容）。注意语义差异：重建块的 block_id 会变化，原块上的评论与 `#block_id` 锚点链接不会迁移，img 相当于重新上传。仅支持 `p`/`h1`-`h9`/`ul`/`ol`/`li`/`blockquote`/`callout`/`pre`/`img`，含服务端状态的块类型（whiteboard / sheet / bitable / table 等）会被拒绝。
+
 ## 返回值
 
 ```json

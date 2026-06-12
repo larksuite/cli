@@ -77,6 +77,32 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			},
 			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
 		},
+		{
+			name: "block_move_after emulate",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "block_move_after",
+				"--block-id", "blkAnchor",
+				"--src-block-ids", "blkA,blkB",
+				"--emulate",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch",
+		},
+		{
+			name: "block_copy_insert_after emulate",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "block_copy_insert_after",
+				"--block-id", "blkAnchor",
+				"--src-block-ids", "blkA",
+				"--emulate",
+				"--dry-run",
+			},
+			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch",
+		},
 	}
 
 	for _, tt := range tests {
