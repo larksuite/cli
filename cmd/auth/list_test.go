@@ -4,6 +4,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -34,6 +35,33 @@ func TestAuthListRun_NotConfigured_ReturnsExitZero(t *testing.T) {
 	}
 }
 
+func TestAuthListRun_JSONMode_NotConfigured_WritesStdoutOnly(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := authListRun(&ListOptions{Factory: f, JSON: true}); err != nil {
+		t.Fatalf("auth list should succeed when not configured (exit 0); got: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout must be valid JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if payload["ok"] != true {
+		t.Errorf("stdout.ok = %v, want true", payload["ok"])
+	}
+	users, ok := payload["users"].([]any)
+	if !ok || len(users) != 0 {
+		t.Errorf("stdout.users = %v, want empty array", payload["users"])
+	}
+	if payload["reason"] != "not_configured" {
+		t.Errorf("stdout.reason = %v, want not_configured", payload["reason"])
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must stay empty in JSON mode, got:\n%s", stderr.String())
+	}
+}
+
 // TestAuthListRun_NotConfigured_AgentWorkspace_RoutesToBindHelp covers the
 // reason this hint exists workspace-aware in the first place: an AI agent
 // in OpenClaw / Hermes that probes auth list before binding gets routed to
@@ -55,5 +83,50 @@ func TestAuthListRun_NotConfigured_AgentWorkspace_RoutesToBindHelp(t *testing.T)
 	}
 	if strings.Contains(out, "config init") {
 		t.Errorf("agent hint must not mention config init: %s", out)
+	}
+}
+
+func TestAuthListRun_JSONMode_NoLoggedInUsers_WritesStdoutOnly(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	writeLogoutConfig(t, nil)
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := authListRun(&ListOptions{Factory: f, JSON: true}); err != nil {
+		t.Fatalf("auth list should succeed when no users exist (exit 0); got: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("stdout must be valid JSON: %v\nstdout=%s", err, stdout.String())
+	}
+	if payload["ok"] != true {
+		t.Errorf("stdout.ok = %v, want true", payload["ok"])
+	}
+	users, ok := payload["users"].([]any)
+	if !ok || len(users) != 0 {
+		t.Errorf("stdout.users = %v, want empty array", payload["users"])
+	}
+	if payload["reason"] != "not_logged_in" {
+		t.Errorf("stdout.reason = %v, want not_logged_in", payload["reason"])
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr must stay empty in JSON mode, got:\n%s", stderr.String())
+	}
+}
+
+func TestAuthListRun_DefaultMode_NoLoggedInUsers_KeepsTextOutput(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	writeLogoutConfig(t, nil)
+
+	f, stdout, stderr, _ := cmdutil.TestFactory(t, nil)
+	if err := authListRun(&ListOptions{Factory: f}); err != nil {
+		t.Fatalf("auth list should succeed when no users exist (exit 0); got: %v", err)
+	}
+
+	if stdout.Len() != 0 {
+		t.Errorf("stdout must stay empty in default mode, got:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "No logged-in users") {
+		t.Errorf("stderr = %q, want no-users hint", stderr.String())
 	}
 }
