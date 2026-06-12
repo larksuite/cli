@@ -78,6 +78,18 @@ func NewDefault(streams *IOStreams, inv InvocationContext) *Factory {
 		return cfg, nil
 	})
 
+	// ConfigBrand resolves just the brand without decrypting the app secret, so
+	// brand-aware help and shortcut registration at startup do not touch the
+	// keychain. It still initializes the registry with the resolved brand — the
+	// same side effect Config has, minus the secret.
+	f.ConfigBrand = sync.OnceValues(func() (core.LarkBrand, bool) {
+		brand, _, ok := f.Credential.ResolveMeta(context.Background())
+		if ok {
+			registry.InitWithBrand(brand)
+		}
+		return brand, ok
+	})
+
 	// Phase 4: LarkClient from Credential (placeholder AppSecret)
 	f.LarkClient = cachedLarkClientFunc(f)
 

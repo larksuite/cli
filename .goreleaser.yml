@@ -2,6 +2,8 @@ version: 2
 
 before:
   hooks:
+    # fetch_meta.py also regenerates the static Go registry (meta_data_gen.go),
+    # the sole source of the embedded command tree.
     - python3 scripts/fetch_meta.py
 
 builds:

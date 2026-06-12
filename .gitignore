@@ -38,6 +38,7 @@ tests/mail/reports/
 /notes/
 /minutes/
 internal/registry/meta_data.json
+internal/registry/metastatic/meta_data_gen.go
 cmd/api/download.bin
 app.log
 /sidecar-server-demo

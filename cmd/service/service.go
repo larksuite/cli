@@ -18,6 +18,7 @@ import (
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/registry/metaschema"
 	"github.com/larksuite/cli/internal/util"
 	"github.com/larksuite/cli/internal/validate"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -30,74 +31,56 @@ func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
-	for _, project := range registry.ListFromMetaProjects() {
-		spec := registry.LoadFromMeta(project)
-		if spec == nil {
+	for _, spec := range registry.TypedServices() {
+		if spec.Name == "" || spec.ServicePath == "" || len(spec.Resources) == 0 {
 			continue
 		}
-		specName := registry.GetStrFromMap(spec, "name")
-		servicePath := registry.GetStrFromMap(spec, "servicePath")
-		if specName == "" || servicePath == "" {
-			continue
-		}
-		resources, _ := spec["resources"].(map[string]interface{})
-		if resources == nil {
-			continue
-		}
-		registerServiceWithContext(ctx, parent, spec, resources, f)
+		registerServiceWithContext(ctx, parent, spec, f)
 	}
 }
 
 func registerService(parent *cobra.Command, spec map[string]interface{}, resources map[string]interface{}, f *cmdutil.Factory) {
-	registerServiceWithContext(context.Background(), parent, spec, resources, f)
+	svc := registry.MapToService(spec)
+	svc.Resources = registry.MapToResources(resources)
+	registerServiceWithContext(context.Background(), parent, svc, f)
 }
 
-func registerServiceWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, resources map[string]interface{}, f *cmdutil.Factory) {
-	specName := registry.GetStrFromMap(spec, "name")
-	specDesc := registry.GetServiceDescription(specName, "en")
+func registerServiceWithContext(ctx context.Context, parent *cobra.Command, spec metaschema.Service, f *cmdutil.Factory) {
+	specDesc := registry.GetServiceDescription(spec.Name, "en")
 	if specDesc == "" {
-		specDesc = registry.GetStrFromMap(spec, "description")
+		specDesc = spec.Description
 	}
 
 	// Find existing service command or create one
 	var svc *cobra.Command
 	for _, c := range parent.Commands() {
-		if c.Name() == specName {
+		if c.Name() == spec.Name {
 			svc = c
 			break
 		}
 	}
 	if svc == nil {
 		svc = &cobra.Command{
-			Use:   specName,
+			Use:   spec.Name,
 			Short: specDesc,
 		}
 		parent.AddCommand(svc)
 	}
 
-	for resName, resource := range resources {
-		resMap, _ := resource.(map[string]interface{})
-		if resMap == nil {
-			continue
-		}
-		registerResourceWithContext(ctx, svc, spec, resName, resMap, f)
+	for _, resource := range spec.Resources {
+		registerResourceWithContext(ctx, svc, spec, resource, f)
 	}
 }
 
-func registerResourceWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, name string, resource map[string]interface{}, f *cmdutil.Factory) {
+func registerResourceWithContext(ctx context.Context, parent *cobra.Command, spec metaschema.Service, resource metaschema.Resource, f *cmdutil.Factory) {
 	res := &cobra.Command{
-		Use:   name,
-		Short: name + " operations",
+		Use:   resource.Name,
+		Short: resource.Name + " operations",
 	}
 	parent.AddCommand(res)
 
-	methods, _ := resource["methods"].(map[string]interface{})
-	for methodName, method := range methods {
-		methodMap, _ := method.(map[string]interface{})
-		if methodMap == nil {
-			continue
-		}
-		registerMethodWithContext(ctx, res, spec, methodMap, methodName, name, f)
+	for _, method := range resource.Methods {
+		registerMethodWithContext(ctx, res, spec, method, method.Name, resource.Name, f)
 	}
 }
 
@@ -125,31 +108,36 @@ type ServiceMethodOptions struct {
 	FileFields []string // auto-detected file field names from metadata
 }
 
-// detectFileFields delegates to the shared cmdutil.DetectFileFields helper.
-func detectFileFields(method map[string]interface{}) []string {
-	return cmdutil.DetectFileFields(method)
+// detectFileFieldsTyped returns the names of file-type fields in the method's
+// request body (used to decide whether to register --file).
+func detectFileFieldsTyped(m metaschema.Method) []string {
+	var fields []string
+	for _, fld := range m.RequestBody {
+		if fld.Type == "file" {
+			fields = append(fields, fld.Name)
+		}
+	}
+	return fields
 }
 
-func registerMethodWithContext(ctx context.Context, parent *cobra.Command, spec map[string]interface{}, method map[string]interface{}, name string, resName string, f *cmdutil.Factory) {
+func registerMethodWithContext(ctx context.Context, parent *cobra.Command, spec metaschema.Service, method metaschema.Method, name string, resName string, f *cmdutil.Factory) {
 	parent.AddCommand(NewCmdServiceMethodWithContext(ctx, f, spec, method, name, resName, nil))
 }
 
-// NewCmdServiceMethod creates a command for a dynamically registered service method.
+// NewCmdServiceMethod creates a command for a dynamically registered service
+// method from map specs (kept for tests; converts to typed internally).
 func NewCmdServiceMethod(f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
-	return NewCmdServiceMethodWithContext(context.Background(), f, spec, method, name, resName, runF)
+	return NewCmdServiceMethodWithContext(context.Background(), f, registry.MapToService(spec), registry.MapToMethod(name, method), name, resName, runF)
 }
 
-func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spec, method map[string]interface{}, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
-	desc := registry.GetStrFromMap(method, "description")
-	httpMethod := registry.GetStrFromMap(method, "httpMethod")
-	risk := registry.GetStrFromMap(method, "risk")
-	specName := registry.GetStrFromMap(spec, "name")
-	schemaPath := fmt.Sprintf("%s.%s.%s", specName, resName, name)
+func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spec metaschema.Service, method metaschema.Method, name, resName string, runF func(*ServiceMethodOptions) error) *cobra.Command {
+	desc := method.Description
+	httpMethod := method.HTTPMethod
+	risk := method.Risk
+	schemaPath := fmt.Sprintf("%s.%s.%s", spec.Name, resName, name)
 
 	opts := &ServiceMethodOptions{
 		Factory:    f,
-		Spec:       spec,
-		Method:     method,
 		SchemaPath: schemaPath,
 	}
 	var asStr string
@@ -159,6 +147,10 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 		Short: desc,
 		Long:  fmt.Sprintf("%s\n\nView parameter definitions before calling:\n  lark-cli schema %s", desc, schemaPath),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Materialize the maps the execution path still reads lazily — only
+			// when THIS command actually runs, never at startup.
+			opts.Spec = registry.ServiceToMap(spec)
+			opts.Method = registry.MethodToMap(method)
 			opts.Cmd = cmd
 			opts.Ctx = cmd.Context()
 			opts.As = core.Identity(asStr)
@@ -188,7 +180,7 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 	}
 
 	// Conditionally register --file for methods with file-type fields.
-	fileFields := detectFileFields(method)
+	fileFields := detectFileFieldsTyped(method)
 	opts.FileFields = fileFields
 	if len(fileFields) > 0 {
 		switch httpMethod {
@@ -200,10 +192,15 @@ func NewCmdServiceMethodWithContext(ctx context.Context, f *cmdutil.Factory, spe
 		return []string{"json", "ndjson", "table", "csv"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	cmdutil.SetTips(cmd, registry.GetStrSliceFromMap(method, "tips"))
+	// meta_data.json carries no per-method tips; SetTips(nil) matches prior behavior.
+	cmdutil.SetTips(cmd, nil)
 	cmdutil.SetRisk(cmd, risk)
-	if tokens, ok := method["accessTokens"].([]interface{}); ok && len(tokens) > 0 {
-		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(tokens))
+	if len(method.AccessTokens) > 0 {
+		toks := make([]interface{}, len(method.AccessTokens))
+		for i, t := range method.AccessTokens {
+			toks[i] = t
+		}
+		cmdutil.SetSupportedIdentities(cmd, cmdutil.AccessTokensToIdentities(toks))
 	}
 
 	return cmd

@@ -83,9 +83,13 @@ type AffordanceCase struct {
 	Command     string `json:"command"`
 }
 
-// OrderedProps is map[string]Property with preserved key order on MarshalJSON.
-// It is used wherever JSON output must reflect meta_data.json's natural field
-// order rather than Go's default alphabetical map encoding.
+// OrderedProps is map[string]Property that emits its keys in Order on
+// MarshalJSON. Order is now populated alphabetically (see orderedKeys): the
+// schema envelope is an MCP tool spec / JSON Schema, where object property
+// order carries no meaning. The machinery that once preserved meta_data.json's
+// natural field order was removed with the static-registry migration; Order is
+// retained so MarshalJSON has one stable key sequence (and callers that leave
+// it empty fall back to alphabetical over Map).
 type OrderedProps struct {
 	Order []string
 	Map   map[string]Property

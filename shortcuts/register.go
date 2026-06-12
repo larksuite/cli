@@ -97,11 +97,13 @@ func RegisterShortcuts(program *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f *cmdutil.Factory) {
-	// Factory.Config may be nil in tests that pass a zero-value factory.
+	// Brand only — never decrypt the app secret at registration time (avoids a
+	// keychain read on every invocation). ConfigBrand may be nil in tests that
+	// pass a zero-value factory.
 	var brand core.LarkBrand
-	if f != nil && f.Config != nil {
-		if cfg, err := f.Config(); err == nil && cfg != nil {
-			brand = cfg.Brand
+	if f != nil && f.ConfigBrand != nil {
+		if b, ok := f.ConfigBrand(); ok {
+			brand = b
 		}
 	}
 

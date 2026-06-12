@@ -76,6 +76,23 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 	return AccountFromCliConfig(cfg), nil
 }
 
+// ResolveMeta returns config metadata — brand and the strict-mode identity
+// support — from config.json WITHOUT resolving the app secret (no keychain
+// access). Both are plain config fields, so brand-aware help, shortcut
+// registration, and strict-mode checks at startup need not decrypt the secret.
+// Returns ok=false when no config exists, so callers keep their defaults.
+func (p *DefaultAccountProvider) ResolveMeta(_ context.Context) (core.LarkBrand, uint8, bool) {
+	multi, err := core.LoadMultiAppConfig()
+	if err != nil {
+		return "", 0, false
+	}
+	app := multi.CurrentAppConfig(p.profile)
+	if app == nil {
+		return "", 0, false
+	}
+	return app.Brand, strictModeToIdentitySupport(multi, p.profile), true
+}
+
 // strictModeToIdentitySupport maps the config-level strict mode to
 // the SupportedIdentities bitflag using an already-loaded MultiAppConfig.
 func strictModeToIdentitySupport(multi *core.MultiAppConfig, profileOverride string) uint8 {

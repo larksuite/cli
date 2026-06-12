@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -752,7 +753,7 @@ func TestDetectFileFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := detectFileFields(tt.method)
+			got := detectFileFieldsTyped(registry.MapToMethod("", tt.method))
 			if len(got) != len(tt.want) {
 				t.Errorf("detectFileFields() = %v, want %v", got, tt.want)
 				return

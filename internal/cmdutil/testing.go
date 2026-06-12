@@ -65,7 +65,13 @@ func TestFactory(t *testing.T, config *core.CliConfig) (*Factory, *bytes.Buffer,
 	)
 
 	f := &Factory{
-		Config:         func() (*core.CliConfig, error) { return config, nil },
+		Config: func() (*core.CliConfig, error) { return config, nil },
+		ConfigBrand: func() (core.LarkBrand, bool) {
+			if config != nil {
+				return config.Brand, true
+			}
+			return "", false
+		},
 		HttpClient:     func() (*http.Client, error) { return mockClient, nil },
 		LarkClient:     func() (*lark.Client, error) { return testLarkClient, nil },
 		IOStreams:      &IOStreams{In: nil, Out: stdoutBuf, ErrOut: stderrBuf},

@@ -63,6 +63,19 @@ def fetch_remote(brand):
     return data
 
 
+def run_gen():
+    """Regenerate the static Go registry (metastatic/meta_data_gen.go) from
+    meta_data.json. Run after every fetch so any caller that fetches also
+    produces the sole build-time source of the embedded command tree — no build
+    tag, no JSON embedded in the binary. Output is gitignored."""
+    print("fetch-meta: generating static Go registry (metastatic/meta_data_gen.go)", file=sys.stderr)
+    subprocess.run(
+        ["go", "run", "internal/registry/metastatic/gen.go"],
+        cwd=ROOT,
+        check=True,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fetch meta_data.json for build-time embedding")
     parser.add_argument("--brand", default="feishu", choices=["feishu", "lark"],
@@ -71,27 +84,29 @@ def main():
                         help="force refresh from remote even if local file exists")
     args = parser.parse_args()
 
-    if os.path.exists(OUT_PATH) and not args.force:
-        if os.path.isfile(OUT_PATH):
-            try:
-                with open(OUT_PATH, "r", encoding="utf-8") as fp:
-                    local = json.load(fp)
-                if local.get("services"):
-                    print(f"fetch-meta: {OUT_PATH} already exists, skipping (use --force to re-fetch)", file=sys.stderr)
-                    return
-                print(f"fetch-meta: {OUT_PATH} has no services, re-fetching", file=sys.stderr)
-            except (OSError, json.JSONDecodeError):
-                print(f"fetch-meta: {OUT_PATH} is invalid JSON, re-fetching", file=sys.stderr)
-        else:
-            print(f"fetch-meta: {OUT_PATH} is not a file, re-fetching", file=sys.stderr)
+    have_valid = False
+    if os.path.isfile(OUT_PATH) and not args.force:
+        try:
+            with open(OUT_PATH, "r", encoding="utf-8") as fp:
+                local = json.load(fp)
+            have_valid = bool(local.get("services"))
+        except (OSError, json.JSONDecodeError):
+            have_valid = False
 
-    data = fetch_remote(args.brand)
-    count = len(data.get("services", []))
-    print(f"fetch-meta: OK, {count} services from remote API", file=sys.stderr)
+    if have_valid:
+        print(f"fetch-meta: {OUT_PATH} already exists, skipping fetch (use --force to re-fetch)", file=sys.stderr)
+    else:
+        data = fetch_remote(args.brand)
+        count = len(data.get("services", []))
+        print(f"fetch-meta: OK, {count} services from remote API", file=sys.stderr)
+        with open(OUT_PATH, "w") as fp:
+            json.dump(data, fp, ensure_ascii=False, indent=2)
+            fp.write("\n")
 
-    with open(OUT_PATH, "w") as fp:
-        json.dump(data, fp, ensure_ascii=False, indent=2)
-        fp.write("\n")
+    # Always (re)generate the static Go registry so every fetch also produces
+    # the embedded command tree — the build-time replacement for the old
+    # embedded meta_data.json.
+    run_gen()
 
 
 if __name__ == "__main__":

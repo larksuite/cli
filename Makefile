@@ -19,6 +19,9 @@ RACE_FLAG := $(if $(filter riscv64,$(TEST_GOARCH)),,-race)
 
 all: test
 
+# fetch_meta fetches meta_data.json AND regenerates the static Go registry
+# (internal/registry/metastatic/meta_data_gen.go) — the sole build-time source
+# of the embedded command tree. Both are gitignored; build/vet/test depend on it.
 fetch_meta:
 	python3 scripts/fetch_meta.py
 

@@ -72,10 +72,12 @@ to generate QR codes (supports ASCII and PNG formats).`,
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to request (space- or comma-separated). Combines additively with --domain/--recommend")
 	cmd.Flags().BoolVar(&opts.Recommend, "recommend", false, "request only recommended (auto-approve) scopes")
+	// Brand only — never decrypt the app secret just to build help text
+	// (avoids a keychain read on every `auth login --help` / completion).
 	var helpBrand core.LarkBrand
-	if f != nil && f.Config != nil {
-		if cfg, err := f.Config(); err == nil && cfg != nil {
-			helpBrand = cfg.Brand
+	if f != nil && f.ConfigBrand != nil {
+		if b, ok := f.ConfigBrand(); ok {
+			helpBrand = b
 		}
 	}
 	available := sortedKnownDomains(helpBrand)

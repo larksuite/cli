@@ -20,6 +20,10 @@ func newFactoryWithBrand(brand core.LarkBrand) *cmdutil.Factory {
 		Config: func() (*core.CliConfig, error) {
 			return &core.CliConfig{Brand: brand}, nil
 		},
+		// Registration reads the brand via ConfigBrand (no secret decryption).
+		ConfigBrand: func() (core.LarkBrand, bool) {
+			return brand, true
+		},
 	}
 }
 

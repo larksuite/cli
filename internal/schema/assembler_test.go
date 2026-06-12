@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/registry"
+	"github.com/larksuite/cli/internal/registry/metaschema"
 )
 
 // TestMain isolates registry-backed tests from any host ~/.lark-cli cache so
@@ -33,58 +35,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
-}
-
-func TestKeyOrderIndex_ImReactionsList(t *testing.T) {
-	// We only assert key-set membership, not absolute order — the upstream
-	// meta_data API does not guarantee a stable JSON key sequence across
-	// fetches, so hard-coding the order makes CI flaky. Order preservation
-	// from input to output is tested separately in TestBuildInputSchema_*.
-	order := lookupKeyOrder("im", []string{"reactions"}, "list")
-	if order == nil {
-		t.Fatal("expected key order for im.reactions.list, got nil")
-	}
-	wantParams := map[string]bool{
-		"message_id": true, "reaction_type": true, "page_token": true,
-		"page_size": true, "user_id_type": true,
-	}
-	if got, want := len(order.Parameters), len(wantParams); got != want {
-		t.Errorf("parameters count = %d, want %d (got %v)", got, want, order.Parameters)
-	}
-	for _, k := range order.Parameters {
-		if !wantParams[k] {
-			t.Errorf("unexpected parameter key %q", k)
-		}
-	}
-	// im.reactions.list 是 GET，没有 requestBody
-	if len(order.RequestBody) != 0 {
-		t.Errorf("expected empty RequestBody, got %v", order.RequestBody)
-	}
-}
-
-func TestKeyOrderIndex_ImImagesCreate(t *testing.T) {
-	// Membership-only assertion; see comment on TestKeyOrderIndex_ImReactionsList.
-	order := lookupKeyOrder("im", []string{"images"}, "create")
-	if order == nil {
-		t.Fatal("expected key order for im.images.create, got nil")
-	}
-	wantBody := map[string]bool{"image_type": true, "image": true}
-	if got, want := len(order.RequestBody), len(wantBody); got != want {
-		t.Errorf("requestBody count = %d, want %d (got %v)", got, want, order.RequestBody)
-	}
-	for _, k := range order.RequestBody {
-		if !wantBody[k] {
-			t.Errorf("unexpected requestBody key %q", k)
-		}
-	}
-}
-
-func TestKeyOrderIndex_UnknownPath(t *testing.T) {
-	// 远端缓存的命令（不在 embedded 内）查不到 key order，返回 nil 走字母序兜底
-	order := lookupKeyOrder("nonexistent_service", []string{"foo"}, "bar")
-	if order != nil {
-		t.Errorf("expected nil for unknown path, got %+v", order)
-	}
 }
 
 func TestConvertProperty_BasicTypes(t *testing.T) {
@@ -288,9 +238,6 @@ func TestConvertProperty_DescriptionDefaultExample(t *testing.T) {
 
 func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 
@@ -313,16 +260,15 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	if !reflect.DeepEqual(params.Required, []string{"message_id"}) {
 		t.Errorf("params.Required = %v, want [message_id]", params.Required)
 	}
-	if !reflect.DeepEqual(params.Properties.Order, mko.Parameters) {
-		t.Errorf("params.properties order = %v, want (from key index) %v",
-			params.Properties.Order, mko.Parameters)
+	// Property order is alphabetical now: the envelope is a JSON Schema (MCP
+	// tool spec) where object property order carries no meaning.
+	if !sort.StringsAreSorted(params.Properties.Order) {
+		t.Errorf("params.properties order not alphabetical: %v", params.Properties.Order)
 	}
 }
 
 func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"images"}, "create")
-	currentMethodOrder = lookupKeyOrder("im", []string{"images"}, "create")
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 
@@ -382,9 +328,6 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 			},
 		},
 	}
-	currentMethodOrder = nil
-	defer func() { currentMethodOrder = nil }()
-
 	is := buildInputSchema(method)
 
 	// yes lives at inputSchema.properties.yes (sibling of params/data)
@@ -413,9 +356,6 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 
 func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 	if _, ok := is.Properties.Map["yes"]; ok {
@@ -425,9 +365,6 @@ func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 
 func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	os := buildOutputSchema(method)
 
@@ -613,6 +550,45 @@ func TestBuildMeta_AffordanceFromMethod(t *testing.T) {
 	}
 }
 
+// TestBuildMeta_AffordanceThroughTypedRegistry guards the static-registry path:
+// a method's affordance must survive metaschema.Method -> registry.MethodToMap
+// -> buildMeta, so `schema --format json` keeps emitting _meta.affordance after
+// the embedded-JSON-to-typed-registry migration. Without typed-side support the
+// overlay is silently stripped whenever meta_data.json carries affordance.
+func TestBuildMeta_AffordanceThroughTypedRegistry(t *testing.T) {
+	mth := metaschema.Method{
+		Name: "primary",
+		Affordance: &metaschema.Affordance{
+			UseWhen:       []string{"用户想拿到自己默认日历的 ID"},
+			DoNotUseWhen:  []string{"已经知道某个具体日历的 ID"},
+			Prerequisites: []string{"user 身份登录"},
+			Examples: []metaschema.AffordanceExample{
+				{Description: "取主日历", Command: "lark-cli calendar calendars primary"},
+			},
+			Related: []string{"calendars.list", "calendars.get"},
+		},
+	}
+	method := registry.MethodToMap(mth)
+	m := buildMeta(method)
+	if m.Affordance == nil {
+		t.Fatal("affordance dropped through the typed registry (MethodToMap -> buildMeta)")
+	}
+	a := m.Affordance
+	if len(a.UseWhen) != 1 || a.UseWhen[0] != "用户想拿到自己默认日历的 ID" {
+		t.Errorf("UseWhen = %v", a.UseWhen)
+	}
+	if len(a.DoNotUseWhen) != 1 || len(a.Prerequisites) != 1 {
+		t.Errorf("DoNotUseWhen=%v Prerequisites=%v", a.DoNotUseWhen, a.Prerequisites)
+	}
+	if len(a.Examples) != 1 || a.Examples[0].Description != "取主日历" ||
+		a.Examples[0].Command != "lark-cli calendar calendars primary" {
+		t.Errorf("Examples = %+v", a.Examples)
+	}
+	if len(a.Related) != 2 {
+		t.Errorf("Related = %v", a.Related)
+	}
+}
+
 func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 	method := map[string]interface{}{
 		"scopes":       []interface{}{"x"},
@@ -634,7 +610,6 @@ func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 	// 装配器对空 responseBody 应生成 properties = {} （不 nil）
 	method := map[string]interface{}{}
-	currentMethodOrder = nil
 	os := buildOutputSchema(method)
 	if os.Type != "object" {
 		t.Errorf("Type = %q, want \"object\"", os.Type)

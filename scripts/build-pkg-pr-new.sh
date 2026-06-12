@@ -6,6 +6,7 @@ OUT_DIR="$ROOT_DIR/.pkg-pr-new"
 
 cd "$ROOT_DIR"
 
+# fetch_meta.py also regenerates the static Go registry (meta_data_gen.go).
 python3 scripts/fetch_meta.py
 
 rm -rf "$OUT_DIR"

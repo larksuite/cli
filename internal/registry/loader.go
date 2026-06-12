@@ -19,72 +19,32 @@ import (
 //go:embed scope_priorities.json scope_overrides.json
 var registryFS embed.FS
 
-// embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
-var embeddedMetaJSON []byte
-
-// EmbeddedMetaJSON returns the raw embedded meta_data.json bytes for callers
-// that need to parse key order or other JSON-level structure not exposed by
-// LoadFromMeta (which loses map insertion order).
-func EmbeddedMetaJSON() []byte {
-	return embeddedMetaJSON
-}
-
-var (
-	embeddedServicesMap  map[string]map[string]interface{} // service name -> spec
-	embeddedServiceNames []string                          // sorted
-	embeddedParseOnce    sync.Once
-)
-
-// parseEmbeddedServices parses embeddedMetaJSON into a service name → spec map
-// without touching mergedServices. Safe to call multiple times (sync.Once).
-func parseEmbeddedServices() {
-	embeddedParseOnce.Do(func() {
-		embeddedServicesMap = make(map[string]map[string]interface{})
-		if len(embeddedMetaJSON) == 0 {
-			return
-		}
-		var wrapper struct {
-			Services []map[string]interface{} `json:"services"`
-		}
-		if err := json.Unmarshal(embeddedMetaJSON, &wrapper); err != nil {
-			return
-		}
-		for _, svc := range wrapper.Services {
-			name, _ := svc["name"].(string)
-			if name == "" {
-				continue
-			}
-			embeddedServicesMap[name] = svc
-		}
-		embeddedServiceNames = make([]string, 0, len(embeddedServicesMap))
-		for name := range embeddedServicesMap {
-			embeddedServiceNames = append(embeddedServiceNames, name)
-		}
-		sort.Strings(embeddedServiceNames)
-	})
-}
-
-// EmbeddedSpec returns the embedded spec for one service, or nil if unknown.
-// Bypasses remote overlay — used for deterministic envelope output.
+// EmbeddedSpec returns the embedded baseline spec for one service as a map, or
+// nil if the service is unknown. It reads the static compile-time registry
+// (metastatic.Registry) and bypasses the remote overlay, so envelope output is
+// deterministic across machines.
 func EmbeddedSpec(serviceName string) map[string]interface{} {
-	parseEmbeddedServices()
-	return embeddedServicesMap[serviceName]
+	if svc, ok := baselineServiceByName(serviceName); ok {
+		return ServiceToMap(svc)
+	}
+	return nil
 }
 
-// EmbeddedServiceNames returns sorted embedded service names (no overlay).
-// Returns a defensive copy — callers must not mutate the package-level slice.
+// EmbeddedServiceNames returns the embedded baseline service names, sorted
+// (no remote overlay).
 func EmbeddedServiceNames() []string {
-	parseEmbeddedServices()
-	out := make([]string, len(embeddedServiceNames))
-	copy(out, embeddedServiceNames)
+	svcs := baselineServices()
+	out := make([]string, 0, len(svcs))
+	for _, s := range svcs {
+		out = append(out, s.Name)
+	}
+	sort.Strings(out)
 	return out
 }
 
 var (
-	mergedServices    = make(map[string]map[string]interface{}) // project name → parsed spec
-	mergedProjectList []string                                  // sorted project names
-	embeddedVersion   string                                    // version from embedded meta_data.json
-	initOnce          sync.Once
+	embeddedVersion string // baseline data version (from the static registry)
+	initOnce        sync.Once
 )
 
 // Init initializes the registry with default brand (feishu).
@@ -101,53 +61,25 @@ func Init() {
 func InitWithBrand(brand core.LarkBrand) {
 	initOnce.Do(func() {
 		configuredBrand = brand
-		// 1. Load embedded meta_data.json as baseline (no-op if not compiled in)
-		loadEmbeddedIntoMerged()
-		// 2. Remote overlay
+		// 1. Baseline version: the static compile-time registry (metastatic).
+		embeddedVersion = baselineVersion()
+		// 2. Remote overlay — still fetched/refreshed at runtime, decoded into
+		//    the same typed shape and merged over the baseline.
 		if remoteEnabled() && cacheWritable() {
-			// Check if brand changed since last cache
 			meta, metaErr := loadCacheMeta()
 			brandChanged := metaErr == nil && meta.Brand != "" && meta.Brand != string(brand)
 
 			if !brandChanged {
-				if cached, err := loadCachedMerged(); err == nil {
-					overlayMergedServices(cached)
-				}
+				_ = loadCachedTyped()
 			}
-			if len(mergedServices) == 0 || brandChanged {
-				// No data at all or brand changed — must sync fetch
+			if !hasTypedData() || brandChanged {
+				// No data at all (e.g. stub build, no cache) or brand changed.
 				doSyncFetch()
 			} else if shouldRefresh(meta) || metaErr != nil {
-				// Have embedded/cached data; refresh in background if TTL expired or first run
 				triggerBackgroundRefresh()
 			}
 		}
-		// 3. Build sorted project list
-		rebuildProjectList()
 	})
-}
-
-// loadEmbeddedIntoMerged parses the embedded meta_data.json and populates
-// mergedServices. No-op if meta_data.json is not compiled in.
-func loadEmbeddedIntoMerged() {
-	if len(embeddedMetaJSON) == 0 {
-		return
-	}
-	var reg MergedRegistry
-	if err := json.Unmarshal(embeddedMetaJSON, &reg); err != nil {
-		return
-	}
-	embeddedVersion = reg.Version
-	overlayMergedServices(&reg)
-}
-
-// rebuildProjectList rebuilds the sorted list of project names from mergedServices.
-func rebuildProjectList() {
-	mergedProjectList = make([]string, 0, len(mergedServices))
-	for name := range mergedServices {
-		mergedProjectList = append(mergedProjectList, name)
-	}
-	sort.Strings(mergedProjectList)
 }
 
 var cachedAllScopes map[string][]string
@@ -226,7 +158,11 @@ func CollectAllScopesFromMeta(identity string) []string {
 // It returns data from the merged registry (embedded + cached remote overlay).
 func LoadFromMeta(project string) map[string]interface{} {
 	Init()
-	return mergedServices[project]
+	svc, ok := typedServiceByName(project)
+	if !ok {
+		return nil
+	}
+	return ServiceToMap(svc)
 }
 
 // ListFromMetaProjects lists available service project names (sorted).
@@ -234,7 +170,7 @@ func LoadFromMeta(project string) map[string]interface{} {
 //go:noinline
 func ListFromMetaProjects() []string {
 	Init()
-	return mergedProjectList
+	return typedServiceNames()
 }
 
 // DefaultScopeScore is the score assigned to scopes not in the priorities table.

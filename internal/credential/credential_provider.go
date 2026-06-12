@@ -21,6 +21,14 @@ type DefaultAccountResolver interface {
 	ResolveAccount(ctx context.Context) (*Account, error)
 }
 
+// metaResolver is an optional capability: resolve config metadata (brand +
+// strict-mode identity support) without resolving the app secret (no keychain
+// access). Providers that don't implement it fall back to ResolveAccount inside
+// CredentialProvider.ResolveMeta.
+type metaResolver interface {
+	ResolveMeta(ctx context.Context) (core.LarkBrand, uint8, bool)
+}
+
 // DefaultTokenResolver is implemented by the default token provider.
 type DefaultTokenResolver interface {
 	ResolveToken(ctx context.Context, req TokenSpec) (*TokenResult, error)
@@ -141,6 +149,11 @@ type CredentialProvider struct {
 	accountErr     error
 	selectedSource credentialSource
 
+	metaOnce   sync.Once
+	metaBrand  core.LarkBrand
+	metaIdents uint8
+	metaOK     bool
+
 	hintOnce sync.Once
 	hint     *IdentityHint
 	hintErr  error
@@ -170,6 +183,44 @@ func (p *CredentialProvider) ResolveAccount(ctx context.Context) (*Account, erro
 		p.account, p.accountErr = p.doResolveAccount(ctx)
 	})
 	return p.account, p.accountErr
+}
+
+// ResolveMeta resolves config metadata — brand and strict-mode identity support
+// — cheaply, WITHOUT decrypting the app secret for the default
+// (config.json/keychain) provider. It mirrors doResolveAccount's provider
+// selection: external providers (env/sidecar) are asked first via ResolveAccount
+// (they do not touch the keychain), then the default provider's keychain-free
+// metaResolver path. Cached after first call. Best-effort: returns ok=false when
+// nothing is configured, so callers keep their defaults. Used for brand-aware
+// help text, shortcut registration, and strict-mode checks at startup, where
+// decrypting the secret would be wasteful.
+func (p *CredentialProvider) ResolveMeta(ctx context.Context) (core.LarkBrand, uint8, bool) {
+	p.metaOnce.Do(func() {
+		p.metaBrand, p.metaIdents, p.metaOK = p.doResolveMeta(ctx)
+	})
+	return p.metaBrand, p.metaIdents, p.metaOK
+}
+
+func (p *CredentialProvider) doResolveMeta(ctx context.Context) (core.LarkBrand, uint8, bool) {
+	for _, prov := range p.providers {
+		acct, err := prov.ResolveAccount(ctx)
+		if err != nil {
+			return "", 0, false
+		}
+		if acct != nil {
+			internal := convertAccount(acct)
+			return internal.Brand, internal.SupportedIdentities, true
+		}
+	}
+	if p.defaultAcct != nil {
+		if mr, ok := p.defaultAcct.(metaResolver); ok {
+			return mr.ResolveMeta(ctx)
+		}
+		if acct, err := p.defaultAcct.ResolveAccount(ctx); err == nil && acct != nil {
+			return acct.Brand, acct.SupportedIdentities, true
+		}
+	}
+	return "", 0, false
 }
 
 func (p *CredentialProvider) doResolveAccount(ctx context.Context) (*Account, error) {

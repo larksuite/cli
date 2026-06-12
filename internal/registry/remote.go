@@ -147,22 +147,6 @@ func saveCacheMeta(meta CacheMeta) error {
 	return validate.AtomicWrite(cacheMetaPath(), data, 0644)
 }
 
-func loadCachedMerged() (*MergedRegistry, error) {
-	path := cachePath()
-	data, err := vfs.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var reg MergedRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		// Cache corrupted — remove it so next run triggers a fresh fetch
-		vfs.Remove(path)
-		vfs.Remove(cacheMetaPath())
-		return nil, err
-	}
-	return &reg, nil
-}
-
 func saveCachedMerged(data []byte, meta CacheMeta) error {
 	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
 		return err
@@ -253,7 +237,7 @@ func doSyncFetch() {
 		Brand:       string(configuredBrand),
 	}
 	_ = saveCachedMerged(data, meta)
-	overlayMergedServices(reg)
+	_ = loadCachedTyped()
 }
 
 // --- background refresh ---
@@ -307,16 +291,4 @@ func shouldRefresh(meta CacheMeta) bool {
 		return true
 	}
 	return time.Since(time.Unix(meta.LastCheckAt, 0)) > metaTTL()
-}
-
-// overlayMergedServices merges remote services into the in-memory map.
-// Remote entries override embedded entries with the same name.
-func overlayMergedServices(reg *MergedRegistry) {
-	for _, svc := range reg.Services {
-		name, ok := svc["name"].(string)
-		if !ok || name == "" {
-			continue
-		}
-		mergedServices[name] = svc
-	}
 }

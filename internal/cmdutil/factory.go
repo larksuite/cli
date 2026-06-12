@@ -30,10 +30,11 @@ type InvocationContext struct {
 }
 
 type Factory struct {
-	Config     func() (*core.CliConfig, error) // lazily loads app config from Credential
-	HttpClient func() (*http.Client, error)    // HTTP client for non-Lark API calls (with retry and security headers)
-	LarkClient func() (*lark.Client, error)    // Lark SDK client for all Open API calls
-	IOStreams  *IOStreams                      // stdin/stdout/stderr streams
+	Config      func() (*core.CliConfig, error) // lazily loads app config from Credential
+	ConfigBrand func() (core.LarkBrand, bool)   // brand only, no secret decryption — for startup help/registration (avoids keychain)
+	HttpClient  func() (*http.Client, error)    // HTTP client for non-Lark API calls (with retry and security headers)
+	LarkClient  func() (*lark.Client, error)    // Lark SDK client for all Open API calls
+	IOStreams   *IOStreams                      // stdin/stdout/stderr streams
 
 	Invocation           InvocationContext       // Immutable call context; do not mutate after Factory construction.
 	Keychain             keychain.KeychainAccess // secret storage (real keychain in prod, mock in tests)
@@ -151,11 +152,14 @@ func (f *Factory) ResolveStrictMode(ctx context.Context) core.StrictMode {
 	if f.Credential == nil {
 		return core.StrictModeOff
 	}
-	acct, err := f.Credential.ResolveAccount(ctx)
-	if err != nil || acct == nil {
+	// Strict mode is plain config metadata; resolve it WITHOUT decrypting the
+	// app secret so identity-flag registration at startup never touches the
+	// keychain (ResolveStrictMode is called per command during Build).
+	_, supported, ok := f.Credential.ResolveMeta(ctx)
+	if !ok {
 		return core.StrictModeOff
 	}
-	ids := extcred.IdentitySupport(acct.SupportedIdentities)
+	ids := extcred.IdentitySupport(supported)
 	switch {
 	case ids.BotOnly():
 		return core.StrictModeBot
