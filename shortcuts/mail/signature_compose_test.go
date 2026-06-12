@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
+	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
+	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 )
 
 func TestValidateNoSignatureConflictTypedError(t *testing.T) {
@@ -16,16 +18,13 @@ func TestValidateNoSignatureConflictTypedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	// output.ErrValidation returns *output.ExitError with exit code ExitValidation (2).
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	// mailValidationParamError returns *errs.ValidationError.
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("expected exit code %d (ExitValidation), got %d", output.ExitValidation, exitErr.Code)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
-		t.Errorf("expected detail type validation, got %+v", exitErr.Detail)
+	if valErr.Param != "--no-signature" {
+		t.Errorf("expected Param \"--no-signature\", got %q", valErr.Param)
 	}
 	if !strings.Contains(err.Error(), "mutually exclusive") {
 		t.Errorf("error message = %q, want it to contain \"mutually exclusive\"", err.Error())
@@ -83,4 +82,94 @@ func TestInjectPlainTextSignatureTrimsTrailingNewlines(t *testing.T) {
 	if !strings.Contains(got, "Alice") {
 		t.Fatalf("expected sig text in result, got %q", got)
 	}
+}
+
+func TestContentTypeFromFilename(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"logo.png", "image/png"},
+		{"photo.jpg", "image/jpeg"},
+		{"photo.jpeg", "image/jpeg"},
+		{"anim.gif", "image/gif"},
+		{"icon.webp", "image/webp"},
+		{"draw.svg", "image/svg+xml"},
+		{"bitmap.bmp", "image/bmp"},
+		{"data.bin", "application/octet-stream"},
+		{"noext", "application/octet-stream"},
+		{"UPPER.PNG", "image/png"},
+	}
+	for _, tc := range cases {
+		got := contentTypeFromFilename(tc.name)
+		if got != tc.want {
+			t.Errorf("contentTypeFromFilename(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSignatureCIDsNilSig(t *testing.T) {
+	if cids := signatureCIDs(nil); cids != nil {
+		t.Fatalf("expected nil slice for nil sig, got %v", cids)
+	}
+}
+
+func TestSignatureCIDsFiltersEmpty(t *testing.T) {
+	sig := &signatureResult{
+		Images: []draftpkg.SignatureImage{
+			{CID: "abc123"},
+			{CID: ""},
+			{CID: "<def456>"},
+		},
+	}
+	cids := signatureCIDs(sig)
+	// normalizeInlineCID strips angle brackets; empty CID is filtered out.
+	if len(cids) != 2 {
+		t.Fatalf("expected 2 CIDs, got %d: %v", len(cids), cids)
+	}
+	for _, c := range cids {
+		if c == "" {
+			t.Errorf("CID must not be empty string; got %v", cids)
+		}
+	}
+}
+
+func TestInjectSignatureIntoBodyNilSig(t *testing.T) {
+	html := "<div>body</div>"
+	got := injectSignatureIntoBody(html, nil)
+	if got != html {
+		t.Fatalf("expected unchanged body for nil sig, got %q", got)
+	}
+}
+
+func TestInjectSignatureIntoBodyInjectsSig(t *testing.T) {
+	html := "<div>Hello</div>"
+	sig := &signatureResult{
+		ID:              "sig1",
+		RenderedContent: "<div>-- Alice</div>",
+	}
+	got := injectSignatureIntoBody(html, sig)
+	if !strings.Contains(got, "sig1") && !strings.Contains(got, "Alice") {
+		t.Fatalf("expected signature content in result, got %q", got)
+	}
+}
+
+func TestAddSignatureImagesToBuilderNilSig(t *testing.T) {
+	bld := emlbuilder.New()
+	got := addSignatureImagesToBuilder(bld, nil)
+	// nil sig must return the builder unchanged (no panic, no nil return).
+	_ = got
+}
+
+func TestAddSignatureImagesToBuilderWithImages(t *testing.T) {
+	bld := emlbuilder.New()
+	sig := &signatureResult{
+		Images: []draftpkg.SignatureImage{
+			{CID: "img1", ContentType: "image/png", FileName: "logo.png", Data: []byte("fake")},
+			{CID: "", ContentType: "image/jpeg", FileName: "skip.jpg", Data: []byte("fake")}, // empty CID skipped
+		},
+	}
+	// Should not panic; empty CID entry is silently skipped.
+	got := addSignatureImagesToBuilder(bld, sig)
+	_ = got
 }

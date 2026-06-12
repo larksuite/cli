@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
@@ -40,7 +39,7 @@ var noSignatureFlag = common.Flag{
 // structured parameter error, consistent with the other mail validators.
 func validateNoSignatureConflict(noSignature bool, signatureID string) error {
 	if noSignature && signatureID != "" {
-		return output.ErrValidation("--no-signature and --signature-id are mutually exclusive")
+		return mailValidationParamError("--no-signature", "--no-signature and --signature-id are mutually exclusive")
 	}
 	return nil
 }
