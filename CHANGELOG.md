@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.53] - 2026-06-12
+
+### Features
+
+- **auth**: Revoke user tokens server-side on `auth logout` (#1434)
+- **auth**: Add `--json` flag support to auth subcommands (#1431)
+- **token**: Mint TAT via unified OAuth v3 Token Endpoint (#1408)
+- **note**: Split note into a dedicated domain with `+detail` and `+transcript` flows (#1345, #1417, #1435)
+- **im**: Unify sort flags into `--sort` field and `--order` direction (#1302)
+
+### Bug Fixes
+
+- **apps**: Read release error_logs from `data.error_logs` in `+release-get` (#1436)
+
+### Documentation
+
+- **skills**: Optimize whiteboard skill (#1371)
+- **skills**: Optimize okr skill (#1368)
+
 ## [v1.0.52] - 2026-06-11
 
 ### Features
@@ -1130,6 +1149,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.53]: https://github.com/larksuite/cli/releases/tag/v1.0.53
 [v1.0.52]: https://github.com/larksuite/cli/releases/tag/v1.0.52
 [v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51
 [v1.0.50]: https://github.com/larksuite/cli/releases/tag/v1.0.50
