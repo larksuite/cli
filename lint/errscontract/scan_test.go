@@ -5,9 +5,12 @@ package errscontract
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fixtureRepo lays out a tiny repo on tmpfs that mimics the live layout enough
@@ -27,6 +30,17 @@ func writeFixture(t *testing.T, files fixtureRepo) string {
 		}
 	}
 	return root
+}
+
+func runGit(t *testing.T, root string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func TestLoadSubtypeAllowlist_ExtractsTypedConstValues(t *testing.T) {
@@ -244,6 +258,194 @@ func placeholder() {}
 	}
 	if !sawBadSubtype {
 		t.Errorf("ScanRepo missed CheckDeclaredSubtype undeclared subtype; got %+v", v)
+	}
+}
+
+func TestScanRepoWithOptionsLabelsAllowlistedCommandBoundaryError(t *testing.T) {
+	cmdSrc := `package cmd
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)
+
+func buildCmd() *cobra.Command {
+	return &cobra.Command{RunE: func(cmd *cobra.Command, args []string) error {
+		return fmt.Errorf("legacy user input")
+	}}
+}
+`
+	line := lineOf(cmdSrc, "legacy user input")
+	addedAt := legacyCommandErrorCandidateDate(time.Now())
+	root := writeFixture(t, fixtureRepo{
+		"errs/types.go": `package errs
+
+type Problem struct{}
+type Subtype string
+type FooError struct{ Problem }
+`,
+		"errs/predicates.go": `package errs
+
+func IsFoo(err error) bool { return false }
+`,
+		"errs/foo_test.go": `package errs_test
+import "testing"
+func TestFooError(t *testing.T) { _ = FooError{} }
+`,
+		"errs/subtypes.go": `package errs
+
+const (
+	SubtypeKnown Subtype = "known"
+)
+`,
+		"cmd/legacy.go": cmdSrc,
+		"internal/qualitygate/config/allowlists/legacy-command-errors.txt": "cmd/legacy.go\t" +
+			strings.TrimSpace(strconv.Itoa(line)) +
+			"\tcli-owner\tlegacy command boundary bare error\t" + addedAt + "\n",
+	})
+	v, err := ScanRepoWithOptions(root, ScanOptions{})
+	if err != nil {
+		t.Fatalf("ScanRepoWithOptions: %v", err)
+	}
+	var sawLabel bool
+	for _, vv := range v {
+		if vv.Rule == "no_bare_command_error" {
+			if vv.Action != ActionLabel {
+				t.Fatalf("allowlisted boundary error should label, got %#v", vv)
+			}
+			sawLabel = true
+		}
+	}
+	if !sawLabel {
+		t.Fatalf("missing allowlisted boundary diagnostic: %#v", v)
+	}
+}
+
+func TestScanRepoWithOptionsRejectsStaleCommandErrorAllowlistRows(t *testing.T) {
+	addedAt := legacyCommandErrorCandidateDate(time.Now())
+	root := writeFixture(t, fixtureRepo{
+		"errs/types.go": `package errs
+
+type Problem struct{}
+type Subtype string
+type FooError struct{ Problem }
+`,
+		"errs/predicates.go": `package errs
+
+func IsFoo(err error) bool { return false }
+`,
+		"errs/foo_test.go": `package errs_test
+import "testing"
+func TestFooError(t *testing.T) { _ = FooError{} }
+`,
+		"errs/subtypes.go": `package errs
+
+const (
+	SubtypeKnown Subtype = "known"
+)
+`,
+		"cmd/clean.go": `package cmd
+
+import "github.com/spf13/cobra"
+
+func buildCmd() *cobra.Command {
+	return &cobra.Command{RunE: func(cmd *cobra.Command, args []string) error {
+		return nil
+	}}
+}
+`,
+		"internal/qualitygate/config/allowlists/legacy-command-errors.txt": "cmd/clean.go\t7\tcli-owner\tlegacy command boundary bare error\t" + addedAt + "\n",
+	})
+	v, err := ScanRepoWithOptions(root, ScanOptions{})
+	if err != nil {
+		t.Fatalf("ScanRepoWithOptions: %v", err)
+	}
+	for _, vv := range v {
+		if vv.Rule == "legacy_command_error_allowlist" &&
+			vv.Action == ActionReject &&
+			vv.File == "internal/qualitygate/config/allowlists/legacy-command-errors.txt" &&
+			vv.Line == 1 {
+			return
+		}
+	}
+	t.Fatalf("missing stale allowlist reject: %#v", v)
+}
+
+func TestScanRepoWithOptionsKeepsAllowlistedUnchangedCommandErrorInChangedScope(t *testing.T) {
+	cmdSrc := `package cmd
+
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)
+
+func buildCmd() *cobra.Command {
+	return &cobra.Command{RunE: func(cmd *cobra.Command, args []string) error {
+		return fmt.Errorf("legacy user input")
+	}}
+}
+`
+	line := lineOf(cmdSrc, "legacy user input")
+	addedAt := legacyCommandErrorCandidateDate(time.Now())
+	root := writeFixture(t, fixtureRepo{
+		"errs/types.go": `package errs
+
+type Problem struct{}
+type Subtype string
+type FooError struct{ Problem }
+`,
+		"errs/predicates.go": `package errs
+
+func IsFoo(err error) bool { return false }
+`,
+		"errs/foo_test.go": `package errs_test
+import "testing"
+func TestFooError(t *testing.T) { _ = FooError{} }
+`,
+		"errs/subtypes.go": `package errs
+
+const (
+	SubtypeKnown Subtype = "known"
+)
+`,
+		"cmd/legacy.go": cmdSrc,
+		"README.md":     "base\n",
+		"internal/qualitygate/config/allowlists/legacy-command-errors.txt": "cmd/legacy.go\t" +
+			strings.TrimSpace(strconv.Itoa(line)) +
+			"\tcli-owner\tlegacy command boundary bare error\t" + addedAt + "\n",
+	})
+	runGit(t, root, "init")
+	runGit(t, root, "config", "user.email", "test@example.com")
+	runGit(t, root, "config", "user.name", "Test User")
+	runGit(t, root, "add", ".")
+	runGit(t, root, "commit", "-m", "base")
+	base := runGit(t, root, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("write README.md: %v", err)
+	}
+	runGit(t, root, "add", "README.md")
+	runGit(t, root, "commit", "-m", "change docs")
+
+	v, err := ScanRepoWithOptions(root, ScanOptions{ChangedFrom: base})
+	if err != nil {
+		t.Fatalf("ScanRepoWithOptions: %v", err)
+	}
+	var sawLabel bool
+	for _, vv := range v {
+		if vv.Rule == "legacy_command_error_allowlist" && vv.Action == ActionReject {
+			t.Fatalf("allowlisted unchanged boundary must not be rejected as stale: %#v", vv)
+		}
+		if vv.Rule == "no_bare_command_error" {
+			if vv.Action != ActionLabel {
+				t.Fatalf("allowlisted unchanged boundary should remain LABEL, got %#v", vv)
+			}
+			sawLabel = true
+		}
+	}
+	if !sawLabel {
+		t.Fatalf("missing allowlisted unchanged boundary diagnostic: %#v", v)
 	}
 }
 

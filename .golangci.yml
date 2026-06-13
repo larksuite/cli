@@ -65,6 +65,12 @@ linters:
       - path: shortcuts/.*/internal/gen/
         linters:
           - forbidigo
+      # internal/qualitygate/cmd contains standalone CI tools. Their main
+      # entrypoints legitimately own process exit codes and stdio, matching the
+      # old tools/ layout before these packages moved under internal/.
+      - path: internal/qualitygate/cmd/[^/]+/main\.go$
+        linters:
+          - forbidigo
       # shortcuts-no-raw-http is shortcuts-only; internal/ wraps raw HTTP
       # for the client / credential layer.
       - path-except: shortcuts/

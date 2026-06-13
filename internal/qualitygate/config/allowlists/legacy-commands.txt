@@ -1,0 +1,3 @@
+# command	owner	reason	added_at
+drive +task_result	cli-owner	legacy public command kept for compatibility	2026-06-05
+event _bus	cli-owner	legacy hidden command kept for compatibility	2026-06-05

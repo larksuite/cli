@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -32,13 +33,16 @@ func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
+	RegisterServiceCommandsFromCatalog(ctx, parent, f, registry.RuntimeCatalog())
+}
+
+func RegisterServiceCommandsFromCatalog(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog) {
 	// Drive the service list from the same navigation catalog the method walk
-	// uses — RuntimeCatalog().Services() is the deterministic, sorted view of the
-	// merged metadata — so registration is catalog-sourced end to end. Kept as a
-	// per-service loop rather than a flat WalkMethods(nil) drive precisely so a
-	// service with no methods still gets its bare command (WalkMethods yields one
-	// ref per method, so empty services would vanish).
-	for _, svc := range registry.RuntimeCatalog().Services() {
+	// uses, so registration is catalog-sourced end to end. Kept as a per-service
+	// loop rather than a flat WalkMethods(nil) drive precisely so a service with
+	// no methods still gets its bare command (WalkMethods yields one ref per
+	// method, so empty services would vanish).
+	for _, svc := range catalog.Services() {
 		if svc.Name == "" || svc.ServicePath == "" {
 			continue
 		}
@@ -84,10 +88,12 @@ func serviceShort(svc meta.Service) string {
 func ensureChildCommand(parent *cobra.Command, name, short string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
+			cmdmeta.SetSource(c, cmdmeta.SourceService, true)
 			return c
 		}
 	}
 	cmd := &cobra.Command{Use: name, Short: short}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
 	parent.AddCommand(cmd)
 	return cmd
 }
@@ -231,6 +237,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 			return serviceMethodRun(opts)
 		},
 	}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
 
 	cmd.Flags().StringVar(&opts.Params, "params", "", "Raw URL/query params JSON. Supports - and @file.")
 	if spec.acceptsBody {
