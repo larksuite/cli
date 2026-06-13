@@ -148,6 +148,13 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 	return nameMap
 }
 
+// maxConsecutiveBatchFailures bounds how many batches in a row may fail before
+// name resolution gives up. A single transient error should not discard the
+// remaining batches, but a run of failures usually signals a systemic problem
+// (expired token, missing scope, downstream outage) where continuing would only
+// fire more doomed requests and add latency, so we break out early.
+const maxConsecutiveBatchFailures = 3
+
 // batchResolveByBasicContact resolves user names via POST /contact/v3/users/basic_batch.
 // This API has lighter permission requirements and works with user identity
 // even when the target user is not in the app's visible range.
@@ -155,6 +162,7 @@ func ResolveSenderNames(runtime *common.RuntimeContext, messages []map[string]in
 // The basic_batch endpoint caps user_ids at 10 per request.
 func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
 	const batchSize = 10
+	consecutiveFailures := 0
 	for i := 0; i < len(missingIDs); i += batchSize {
 		end := i + batchSize
 		if end > len(missingIDs) {
@@ -168,8 +176,15 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 			map[string]interface{}{"user_ids": batch},
 		)
 		if err != nil {
+			consecutiveFailures++
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: contact_basic_batch_resolve_failed: batch %d-%d: %v\n", i, end-1, err)
+			if consecutiveFailures >= maxConsecutiveBatchFailures {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: contact_basic_batch_resolve_aborted: %d consecutive failures, skipping remaining batches\n", consecutiveFailures)
+				break
+			}
 			continue
 		}
+		consecutiveFailures = 0
 
 		users, _ := data["users"].([]interface{})
 		for _, item := range users {
@@ -185,6 +200,7 @@ func batchResolveByBasicContact(runtime *common.RuntimeContext, missingIDs []str
 
 func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, nameMap map[string]string) {
 	const batchSize = 50
+	consecutiveFailures := 0
 	for i := 0; i < len(missingIDs); i += batchSize {
 		end := i + batchSize
 		if end > len(missingIDs) {
@@ -200,8 +216,15 @@ func batchResolveUsers(runtime *common.RuntimeContext, missingIDs []string, name
 
 		data, err := runtime.DoAPIJSONTyped(http.MethodGet, apiURL, nil, nil)
 		if err != nil {
+			consecutiveFailures++
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: contact_batch_resolve_failed: batch %d-%d: %v\n", i, end-1, err)
+			if consecutiveFailures >= maxConsecutiveBatchFailures {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: contact_batch_resolve_aborted: %d consecutive failures, skipping remaining batches\n", consecutiveFailures)
+				break
+			}
 			continue
 		}
+		consecutiveFailures = 0
 
 		items, _ := data["items"].([]interface{})
 		for _, item := range items {
