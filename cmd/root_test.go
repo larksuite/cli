@@ -137,9 +137,6 @@ func TestIsCompletionCommand(t *testing.T) {
 	}
 }
 
-// TestPromoteConfigError_* lives with the implementation in
-// internal/errcompat/promote_test.go.
-
 // TestHandleRootError_SecurityPolicyCanonicalEnvelope verifies that
 // *errs.SecurityPolicyError flows through the canonical typed envelope
 // (output.WriteTypedErrorEnvelope) — type=policy, numeric code, subtype,
@@ -269,12 +266,11 @@ func (f *failingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// TestHandleRootError_DeprecatedAliasMissingFlagStructured pins issue #4: a
-// backward-compat alias that fails on a cobra-level required flag (which
-// short-circuits before RunE) still routes through the structured envelope,
-// because OnInvoke records the deprecation in PreRunE and the legacy fallback
-// switches to WriteErrorEnvelope when a deprecation is pending — so the
-// migration notice is no longer dropped on the plain "Error:" line.
+// TestHandleRootError_DeprecatedAliasMissingFlagStructured pins that a
+// backward-compat alias failing on a cobra-level required flag (which
+// short-circuits before RunE) routes through the structured envelope, so the
+// deprecation notice OnInvoke records in PreRunE is carried on the wire instead
+// of being dropped on a plain "Error:" line.
 func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Cleanup(func() { deprecation.SetPending(nil) })
@@ -286,9 +282,9 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	deprecation.SetPending(&deprecation.Notice{
 		Command: "+write", Replacement: "+cells-set", Skill: "lark-sheets",
 	})
-	// The bare error shape cobra's ValidateRequiredFlags produces: neither typed
-	// nor an *output.ExitError, so it reaches the legacy fallback.
-	handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+	// The bare error shape cobra's ValidateRequiredFlags produces: not a typed
+	// errs.* error, so it reaches the deprecation fallback.
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
 
 	out := errOut.String()
 	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
@@ -297,12 +293,96 @@ func TestHandleRootError_DeprecatedAliasMissingFlagStructured(t *testing.T) {
 	if !strings.Contains(out, `"message"`) || !strings.Contains(out, "values") {
 		t.Errorf("expected a JSON error envelope carrying the failure message; got:\n%s", out)
 	}
+	// The envelope is typed validation, so the exit code must derive from that
+	// category (2) — the wire type and the exit code must not disagree.
+	if exit != int(output.ExitValidation) {
+		t.Errorf("exit = %d, want %d (validation envelope → category-derived exit)", exit, int(output.ExitValidation))
+	}
 }
 
-// TestHandleRootError_NoDeprecationKeepsPlainError pins the other half: with no
-// deprecation pending, the legacy fallback stays a plain "Error:" line, so the
-// fix does not reshape every unrecognized cobra error.
-func TestHandleRootError_NoDeprecationKeepsPlainError(t *testing.T) {
+// TestHandleRootError_AuthConfigWireGolden is the wire-consistency regression
+// baseline for auth/config errors: it pins the typed envelope and exit code the
+// dispatcher produces for the two source-of-truth shapes, which are constructed
+// typed at their origin in internal/auth and internal/core.
+func TestHandleRootError_AuthConfigWireGolden(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	t.Run("token missing exits 3 with token_missing authentication envelope", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		errOut := &bytes.Buffer{}
+		f.IOStreams.ErrOut = errOut
+
+		exit := handleRootError(f, internalauth.NewNeedUserAuthorizationError("u_golden"))
+		if exit != int(output.ExitAuth) {
+			t.Errorf("exit = %d, want %d (ExitAuth)", exit, int(output.ExitAuth))
+		}
+
+		errObj := decodeErrorEnvelope(t, errOut.Bytes())
+		if got := errObj["type"]; got != "authentication" {
+			t.Errorf("error.type = %v, want %q", got, "authentication")
+		}
+		if got := errObj["subtype"]; got != "token_missing" {
+			t.Errorf("error.subtype = %v, want %q", got, "token_missing")
+		}
+		if got, _ := errObj["message"].(string); !strings.Contains(got, "need_user_authorization") {
+			t.Errorf("error.message = %q, must keep the need_user_authorization marker", got)
+		}
+		if got, _ := errObj["message"].(string); !strings.Contains(got, "u_golden") {
+			t.Errorf("error.message = %q, must carry the user open id", got)
+		}
+		if got, _ := errObj["hint"].(string); !strings.Contains(got, "auth login") {
+			t.Errorf("error.hint = %q, must point at auth login", got)
+		}
+		if got := errObj["user_open_id"]; got != "u_golden" {
+			t.Errorf("error.user_open_id = %v, want %q", got, "u_golden")
+		}
+	})
+
+	t.Run("not configured exits 3 with not_configured config envelope", func(t *testing.T) {
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		errOut := &bytes.Buffer{}
+		f.IOStreams.ErrOut = errOut
+
+		exit := handleRootError(f, core.NotConfiguredError())
+		if exit != int(output.ExitAuth) {
+			t.Errorf("exit = %d, want %d (config shares ExitAuth)", exit, int(output.ExitAuth))
+		}
+
+		errObj := decodeErrorEnvelope(t, errOut.Bytes())
+		if got := errObj["type"]; got != "config" {
+			t.Errorf("error.type = %v, want %q", got, "config")
+		}
+		if got := errObj["subtype"]; got != "not_configured" {
+			t.Errorf("error.subtype = %v, want %q", got, "not_configured")
+		}
+		if got, _ := errObj["message"].(string); !strings.Contains(got, "not configured") {
+			t.Errorf("error.message = %q, want the not-configured message", got)
+		}
+		if got, _ := errObj["hint"].(string); !strings.Contains(got, "config init") {
+			t.Errorf("error.hint = %q, must point at config init", got)
+		}
+	})
+}
+
+// decodeErrorEnvelope unmarshals a typed error envelope and returns its
+// top-level "error" object, failing the test if the shape is unexpected.
+func decodeErrorEnvelope(t *testing.T, raw []byte) map[string]any {
+	t.Helper()
+	var env map[string]any
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("envelope is not valid JSON: %v\n%s", err, raw)
+	}
+	errObj, ok := env["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("envelope missing top-level error object: %s", raw)
+	}
+	return errObj
+}
+
+// TestHandleRootError_NoDeprecationTypesUsageError pins that a residual cobra
+// usage error (missing required flag) is typed as invalid_argument with exit 2
+// even with no deprecation pending — never cobra's plain "Error:" line.
+func TestHandleRootError_NoDeprecationTypesUsageError(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Cleanup(func() { deprecation.SetPending(nil) })
 	deprecation.SetPending(nil)
@@ -311,9 +391,45 @@ func TestHandleRootError_NoDeprecationKeepsPlainError(t *testing.T) {
 	errOut := &bytes.Buffer{}
 	f.IOStreams.ErrOut = errOut
 
-	handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
-	if !strings.HasPrefix(errOut.String(), "Error:") {
-		t.Errorf("no deprecation pending: want a plain 'Error:' line, got:\n%s", errOut.String())
+	exit := handleRootError(f, fmt.Errorf(`required flag(s) %q not set`, "values"))
+
+	out := errOut.String()
+	if strings.HasPrefix(strings.TrimSpace(out), "Error:") {
+		t.Fatalf("want a structured envelope, got a plain Error: line:\n%s", out)
+	}
+	errObj := decodeErrorEnvelope(t, errOut.Bytes())
+	if got := errObj["type"]; got != "validation" {
+		t.Errorf("error.type = %v, want %q", got, "validation")
+	}
+	if got, _ := errObj["message"].(string); !strings.Contains(got, "values") {
+		t.Errorf("error.message = %q, must carry the failing flag name", got)
+	}
+	if exit != int(output.ExitValidation) {
+		t.Errorf("exit = %d, want %d (validation envelope → category-derived exit)", exit, int(output.ExitValidation))
+	}
+}
+
+// TestHandleRootError_LeakedUntypedErrorBecomesInternal pins that an untyped
+// error that does NOT match a cobra usage shape (i.e. one that leaked past the
+// typed boundary from a helper) is classified as an internal fault (exit 5),
+// not blamed on the user's input as a validation error.
+func TestHandleRootError_LeakedUntypedErrorBecomesInternal(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Cleanup(func() { deprecation.SetPending(nil) })
+	deprecation.SetPending(nil)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	errOut := &bytes.Buffer{}
+	f.IOStreams.ErrOut = errOut
+
+	exit := handleRootError(f, fmt.Errorf("upstream helper exploded: %w", io.ErrUnexpectedEOF))
+
+	errObj := decodeErrorEnvelope(t, errOut.Bytes())
+	if got := errObj["type"]; got != "internal" {
+		t.Errorf("error.type = %v, want %q (leaked untyped error must not be mislabeled validation)", got, "internal")
+	}
+	if exit != int(output.ExitInternal) {
+		t.Errorf("exit = %d, want %d (internal envelope → category-derived exit)", exit, int(output.ExitInternal))
 	}
 }
 
@@ -337,12 +453,32 @@ func TestHandleRootError_PartialWritePreservesExitCode(t *testing.T) {
 	}
 }
 
-// TestHandleRootError_TypedOuterShortCircuitsPromote pins that when a typed
-// *errs.AuthenticationError carries a legacy *NeedAuthorizationError in its
-// Cause chain, the dispatcher does NOT run PromoteAuthError — doing so
-// would replace the producer's TokenExpired subtype + custom hint with the
-// promoted shape's TokenMissing.
-func TestHandleRootError_TypedOuterShortCircuitsPromote(t *testing.T) {
+// TestHandleRootError_BareErrorExitCodeNoStderr pins the silent-exit
+// contract: a *output.BareError is honored for its exit code while stderr stays
+// empty (stdout already carries the result, so the dispatcher must not layer a
+// second envelope on top).
+func TestHandleRootError_BareErrorExitCodeNoStderr(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	errOut := &bytes.Buffer{}
+	f.IOStreams.ErrOut = errOut
+
+	exit := handleRootError(f, output.ErrBare(output.ExitAuth))
+	if exit != int(output.ExitAuth) {
+		t.Errorf("exit = %d, want %d (BareError code propagated)", exit, int(output.ExitAuth))
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("stderr must stay empty for a bare predicate signal, got:\n%s", errOut.String())
+	}
+}
+
+// TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved pins that a typed
+// *errs.AuthenticationError carrying a legacy *NeedAuthorizationError in its
+// Cause chain renders the producer's TokenExpired subtype + custom hint
+// verbatim — the legacy sentinel in the Cause chain never coarsens the wire
+// shape.
+func TestHandleRootError_TypedAuthErrorWithLegacyCausePreserved(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
@@ -492,138 +628,5 @@ func TestApplyNeedAuthorizationHint_AppendsExistingHint(t *testing.T) {
 	want := "existing hint\ncurrent command requires scope(s): docx:document:create"
 	if authErr.Hint != want {
 		t.Errorf("expected appended hint %q, got %q", want, authErr.Hint)
-	}
-}
-
-// TestEnrichPermissionError_CanonicalConvergence pins that the legacy
-// *output.ExitError dispatch path produces the same canonical Message + Hint
-// + ConsoleURL as the typed *errs.PermissionError dispatch path. Both paths
-// share errclass.CanonicalPermissionMessage / errclass.PermissionHint /
-// errclass.ConsoleURL — so a wire consumer cannot tell which path produced
-// the envelope.
-func TestEnrichPermissionError_CanonicalConvergence(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
-	cases := []struct {
-		name            string
-		larkCode        int
-		legacyErrType   string
-		wantMsgSubstrs  []string
-		wantHintSubstrs []string
-		wantConsoleURL  bool
-		wantNoAuthLogin bool // hint must not suggest `auth login`
-	}{
-		{
-			name:            "99991672 app_scope_not_applied",
-			larkCode:        99991672,
-			legacyErrType:   "permission",
-			wantMsgSubstrs:  []string{"access denied", "app cli_test", "drive:drive:read"},
-			wantHintSubstrs: []string{"developer console", "open.feishu.cn"},
-			wantConsoleURL:  true,
-			wantNoAuthLogin: true,
-		},
-		{
-			name:            "99991679 missing_scope",
-			larkCode:        99991679,
-			legacyErrType:   "permission",
-			wantMsgSubstrs:  []string{"unauthorized", "user authorization"},
-			wantHintSubstrs: []string{"lark-cli auth login"},
-		},
-		{
-			name:            "99991673 app_unavailable",
-			larkCode:        99991673,
-			legacyErrType:   "app_status",
-			wantMsgSubstrs:  []string{"unauthorized app", "app cli_test", "not properly installed"},
-			wantHintSubstrs: []string{"tenant admin", "install status"},
-		},
-		{
-			name:            "99991662 app_disabled",
-			larkCode:        99991662,
-			legacyErrType:   "app_status",
-			wantMsgSubstrs:  []string{"app cli_test", "not in use", "currently disabled"},
-			wantHintSubstrs: []string{"tenant admin", "re-enable"},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-				AppID: "cli_test", AppSecret: "s", Brand: core.BrandFeishu,
-			})
-			f.ResolvedIdentity = core.AsUser
-
-			// Mimic the wire shape ErrAPI produces: legacy *ExitError with
-			// Detail.Type populated by ClassifyLarkError, Detail.Detail
-			// carrying the permission_violations block so ExtractRequiredScopes
-			// can recover the missing scope.
-			scopeForDetail := "drive:drive:read"
-			exitErr := &output.ExitError{
-				Code: output.ExitAPI,
-				Detail: &output.ErrDetail{
-					Type:    tc.legacyErrType,
-					Code:    tc.larkCode,
-					Message: "upstream raw message — must be replaced",
-					Detail: map[string]interface{}{
-						"permission_violations": []interface{}{
-							map[string]interface{}{"subject": scopeForDetail},
-						},
-					},
-				},
-			}
-			enrichPermissionError(f, exitErr)
-
-			for _, sub := range tc.wantMsgSubstrs {
-				if !strings.Contains(exitErr.Detail.Message, sub) {
-					t.Errorf("Message %q missing substring %q", exitErr.Detail.Message, sub)
-				}
-			}
-			if exitErr.Detail.Message == "upstream raw message — must be replaced" {
-				t.Errorf("Message must be rewritten to canonical text; got upstream verbatim")
-			}
-			for _, sub := range tc.wantHintSubstrs {
-				if !strings.Contains(exitErr.Detail.Hint, sub) {
-					t.Errorf("Hint %q missing substring %q", exitErr.Detail.Hint, sub)
-				}
-			}
-			if tc.wantNoAuthLogin && strings.Contains(exitErr.Detail.Hint, "auth login") {
-				t.Errorf("Hint must not suggest `auth login` for this subtype; got %q", exitErr.Detail.Hint)
-			}
-			if tc.wantConsoleURL && exitErr.Detail.ConsoleURL == "" {
-				t.Error("ConsoleURL should be populated when missing scopes are present")
-			}
-		})
-	}
-}
-
-// TestEnrichPermissionError_SkipsUnrelatedTypes pins that an ExitError whose
-// Detail.Type is neither "permission" nor "app_status" is left untouched —
-// no Message rewrite, no Hint rewrite, no ConsoleURL injection.
-func TestEnrichPermissionError_SkipsUnrelatedTypes(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		AppID: "cli_test", AppSecret: "s", Brand: core.BrandFeishu,
-	})
-	f.ResolvedIdentity = core.AsUser
-
-	for _, ty := range []string{"api_error", "validation", "rate_limit", "auth"} {
-		exitErr := &output.ExitError{
-			Code: output.ExitAPI,
-			Detail: &output.ErrDetail{
-				Type:    ty,
-				Code:    99991400,
-				Message: "untouched",
-				Hint:    "original hint",
-			},
-		}
-		enrichPermissionError(f, exitErr)
-		if exitErr.Detail.Message != "untouched" {
-			t.Errorf("type=%q: Message was rewritten unexpectedly: %q", ty, exitErr.Detail.Message)
-		}
-		if exitErr.Detail.Hint != "original hint" {
-			t.Errorf("type=%q: Hint was rewritten unexpectedly: %q", ty, exitErr.Detail.Hint)
-		}
-		if exitErr.Detail.ConsoleURL != "" {
-			t.Errorf("type=%q: ConsoleURL should not be injected; got %q", ty, exitErr.Detail.ConsoleURL)
-		}
 	}
 }

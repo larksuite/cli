@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/hook"
-	"github.com/larksuite/cli/internal/output"
 	internalplatform "github.com/larksuite/cli/internal/platform"
 )
 
@@ -34,16 +34,8 @@ import (
 // lands directly on their RunE, which now carries the guard.
 //
 // makeErr is called for every guarded dispatch; it must return a fresh
-// *output.ExitError each time (the envelope writer mutates a few fields
-// as it serialises).
-// Deprecated: installFatalGuard accepts a *output.ExitError-producing lambda,
-// which is part of the legacy error surface that predates the typed error
-// contract introduced by errs/. New code MUST NOT add new callers — the
-// platform-extension fatal-guard plumbing will switch to typed errs.* errors
-// when the platform-extension framework migrates. This wrapper is retained
-// only for the existing in-tree call sites; it will be removed once they
-// have moved to the typed surface.
-func installFatalGuard(rootCmd *cobra.Command, makeErr func() *output.ExitError) {
+// typed error each time.
+func installFatalGuard(rootCmd *cobra.Command, makeErr func() error) {
 	// Two cobra subcommands are injected lazily at Execute() time and
 	// would otherwise slip past walkGuard. We pre-register both so
 	// walkGuard catches them.
@@ -80,120 +72,65 @@ func installFatalGuard(rootCmd *cobra.Command, makeErr func() *output.ExitError)
 }
 
 // installPluginInstallErrorGuard surfaces a FailClosed plugin install
-// failure as a structured plugin_install envelope before any command
-// runs.
-// Deprecated: installPluginInstallErrorGuard produces a legacy
-// *output.ExitError via its internal makeErr lambda. New code MUST NOT add
-// such producers — plugin install failures should surface as a typed
-// *errs.XxxError once the platform-extension framework migrates. This
-// helper is retained only while existing call sites are migrated; it will
-// be removed once they have moved to the typed surface.
+// failure as a typed validation error (failed_precondition) before any
+// command runs.
 func installPluginInstallErrorGuard(rootCmd *cobra.Command, installErr error) {
-	makeErr := func() *output.ExitError {
+	makeErr := func() error {
 		var pi *internalplatform.PluginInstallError
 		if errors.As(installErr, &pi) {
-			return &output.ExitError{
-				Code: output.ExitValidation,
-				Detail: &output.ErrDetail{
-					Type:    "plugin_install",
-					Message: pi.Error(),
-					Detail: map[string]any{
-						"plugin":      pi.PluginName,
-						"reason_code": pi.ReasonCode,
-						"reason":      pi.Reason,
-					},
-				},
-				Err: installErr,
-			}
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", pi.Error()).
+				WithHint("plugin %q failed to install (reason_code %s); fix or remove the plugin before running commands", pi.PluginName, pi.ReasonCode).
+				WithCause(installErr)
 		}
-		return &output.ExitError{
-			Code: output.ExitValidation,
-			Detail: &output.ErrDetail{
-				Type:    "plugin_install",
-				Message: installErr.Error(),
-				Detail: map[string]any{
-					"reason_code": internalplatform.ReasonInstallFailed,
-				},
-			},
-			Err: installErr,
-		}
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", installErr.Error()).
+			WithHint("a plugin failed to install (reason_code %s); fix or remove the plugin before running commands", internalplatform.ReasonInstallFailed).
+			WithCause(installErr)
 	}
 	installFatalGuard(rootCmd, makeErr)
 }
 
 // installPluginConflictGuard surfaces a Plugin.Restrict() configuration
 // error (single plugin invalid Rule or multiple plugins each contributing
-// Restrict). The design separates the envelope type:
+// Restrict). The hint separates the two failure modes by reason code:
 //
-//   - "plugin_install" with reason_code "invalid_rule"           - single bad rule
-//   - "plugin_conflict" with reason_code "multiple_restrict_plugins" - multi
+//   - "invalid_rule"              - single bad rule
+//   - "multiple_restrict_plugins" - multiple Restrict plugins conflict
 //
 // Either way the CLI must NOT silently continue with a broken policy.
-// Deprecated: installPluginConflictGuard produces a legacy *output.ExitError
-// via its internal makeErr lambda. New code MUST NOT add such producers —
-// plugin conflict failures should surface as a typed *errs.XxxError once the
-// platform-extension framework migrates. This helper is retained only while
-// existing call sites are migrated; it will be removed once they have moved
-// to the typed surface.
 func installPluginConflictGuard(rootCmd *cobra.Command, err error) {
-	makeErr := func() *output.ExitError {
-		envelopeType := "plugin_install"
+	makeErr := func() error {
 		reasonCode := internalplatform.ReasonInvalidRule
 		if errors.Is(err, cmdpolicy.ErrMultipleRestricts) {
-			envelopeType = "plugin_conflict"
 			reasonCode = internalplatform.ReasonMultipleRestricts
 		}
-		return &output.ExitError{
-			Code: output.ExitValidation,
-			Detail: &output.ErrDetail{
-				Type:    envelopeType,
-				Message: err.Error(),
-				Detail: map[string]any{
-					"reason_code": reasonCode,
-				},
-			},
-			Err: err,
-		}
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", err.Error()).
+			WithHint("plugin policy configuration is broken (reason_code %s); fix the plugin's Restrict rule or remove the conflicting plugin", reasonCode).
+			WithCause(err)
 	}
 	installFatalGuard(rootCmd, makeErr)
 }
 
 // installPluginLifecycleErrorGuard surfaces a Startup lifecycle handler
-// failure as a plugin_lifecycle envelope. The reason_code splits
-// returned-error vs panic so consumers (audit / on-call) can tell the
-// two failure modes apart.
-// Deprecated: installPluginLifecycleErrorGuard produces a legacy
-// *output.ExitError via its internal makeErr lambda. New code MUST NOT add
-// such producers — plugin lifecycle failures should surface as a typed
-// *errs.XxxError once the platform-extension framework migrates. This
-// helper is retained only while existing call sites are migrated; it will
-// be removed once they have moved to the typed surface.
+// failure as a typed validation error (failed_precondition). The hint's
+// reason code splits returned-error vs panic so consumers (audit /
+// on-call) can tell the two failure modes apart.
 func installPluginLifecycleErrorGuard(rootCmd *cobra.Command, err error) {
-	makeErr := func() *output.ExitError {
+	makeErr := func() error {
 		reasonCode := "lifecycle_failed"
-		detail := map[string]any{
-			"reason_code": reasonCode,
-		}
+		hookName := ""
 		var le *hook.LifecycleError
 		if errors.As(err, &le) {
 			if le.Panic {
 				reasonCode = "lifecycle_panic"
 			}
-			detail = map[string]any{
-				"reason_code": reasonCode,
-				"hook_name":   le.HookName,
-				"event":       "startup",
-			}
+			hookName = le.HookName
 		}
-		return &output.ExitError{
-			Code: output.ExitValidation,
-			Detail: &output.ErrDetail{
-				Type:    "plugin_lifecycle",
-				Message: err.Error(),
-				Detail:  detail,
-			},
-			Err: err,
+		typed := errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", err.Error()).
+			WithCause(err)
+		if hookName != "" {
+			return typed.WithHint("plugin startup hook %q failed (reason_code %s); fix or remove the plugin before running commands", hookName, reasonCode)
 		}
+		return typed.WithHint("a plugin startup hook failed (reason_code %s); fix or remove the plugin before running commands", reasonCode)
 	}
 	installFatalGuard(rootCmd, makeErr)
 }
@@ -219,14 +156,7 @@ func installPluginLifecycleErrorGuard(rootCmd *cobra.Command, err error) {
 //
 // This way the very first non-nil step in cobra's chain is always our
 // guard, regardless of which leaf the user invoked.
-// Deprecated: walkGuard accepts a *output.ExitError-producing lambda, part
-// of the legacy error surface that predates the typed error contract
-// introduced by errs/. New code MUST NOT add new callers — the platform-
-// extension guard plumbing will switch to typed errs.* errors when the
-// platform-extension framework migrates. This wrapper is retained only for
-// the existing in-tree call sites; it will be removed once they have moved
-// to the typed surface.
-func walkGuard(cmd *cobra.Command, makeErr func() *output.ExitError) {
+func walkGuard(cmd *cobra.Command, makeErr func() error) {
 	if cmd == nil {
 		return
 	}

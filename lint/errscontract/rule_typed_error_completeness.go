@@ -22,8 +22,8 @@ import (
 //     unqualified `<X>Error` ident.
 //
 // This intentionally excludes legacy *Error types in other packages
-// (core.ConfigError, internal/auth.NeedAuthorizationError, etc.) which
-// are not part of the typed taxonomy.
+// (e.g. internal/auth.NeedAuthorizationError) which are not part of the
+// typed taxonomy.
 //
 // When the inner `Problem:` value is a variable reference (e.g.
 // `Problem: base`) instead of a composite literal, the check trusts that

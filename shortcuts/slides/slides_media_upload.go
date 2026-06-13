@@ -128,7 +128,7 @@ func uploadSlidesMedia(runtime *common.RuntimeContext, filePath, fileName string
 			fileName, common.FormatSize(fileSize))
 	}
 	parent := presentationID
-	return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,

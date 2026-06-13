@@ -1,2 +1,1 @@
 # file	line	owner	reason	added_at
-cmd/completion/completion.go	35	cli-owner	legacy command boundary bare error	2026-06-05

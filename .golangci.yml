@@ -29,11 +29,11 @@ linters:
     - unused          # checks for unused constants, variables, functions and types
     - depguard        # blocks forbidden package imports
     - forbidigo       # forbids specific function calls
+    - errorlint       # enforces error wrapping (%w) and errors.Is/As over == and type asserts
 
     # To enable later after fixing existing issues:
     # - errcheck      # checks for unchecked errors
     # - errname       # checks that error types are named XxxError
-    # - errorlint     # checks error wrapping best practices
     # - gosec         # security-oriented linter
     # - misspell      # finds commonly misspelled English words
     # - staticcheck   # comprehensive static analysis
@@ -49,9 +49,16 @@ linters:
           - gocritic
           - depguard
           - forbidigo
-      # Paths that run forbidigo. Add an entry when a path joins one of
-      # the rules below.
+          - errorlint # tests legitimately do identity (==) and concrete type-assert checks
+      # forbidigo runs repo-wide (minus the boundaries below) so errs-no-bare-wrap
+      # has no gap. The framework bans (os/vfs, raw HTTP, fmt.Print, filepath,
+      # log) stay scoped to shortcuts/ + internal/ + config/auth/service via the
+      # next rule; elsewhere only errs-no-bare-wrap fires.
+      - path-except: (shortcuts/|internal/|cmd/|events/)
+        linters:
+          - forbidigo
       - path-except: (shortcuts/|internal/|cmd/auth/|cmd/config/|cmd/service/)
+        text: (vfs|IOStreams|ctx\.Out|shortcuts-no-raw-http|filepath functions|os\.Exit|structured error return)
         linters:
           - forbidigo
       - path: internal/vfs/
@@ -77,23 +84,12 @@ linters:
         text: shortcuts-no-raw-http
         linters:
           - forbidigo
-      # errs-typed-only enforced on paths already migrated to errs.NewXxxError.
-      # Add a path when its migration is complete.
-      - path-except: (internal/auth/|internal/errcompat/|internal/errclass/|internal/client/|internal/cmdutil/factory\.go|cmd/auth/|cmd/config/|cmd/service/|shortcuts/common/mcp_client\.go|shortcuts/apps/|shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/markdown/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/wiki/|internal/event/consume/|cmd/event/|events/|shortcuts/event/)
-        text: errs-typed-only
-        linters:
-          - forbidigo
-      # errs-no-bare-wrap enforced on paths fully migrated to typed final
-      # errors. Scoped separately from errs-typed-only because cmd/auth/,
-      # cmd/config/ still have residual fmt.Errorf and must not be caught.
-      - path-except: (shortcuts/apps/|shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/markdown/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/wiki/|shortcuts/common/mcp_client\.go|cmd/event/|events/|shortcuts/event/)
+      # errs-no-bare-wrap enforced across every command/wire boundary by
+      # structural prefix, so any future business domain or command is covered
+      # without editing an allowlist. Genuine intermediate wraps inside these
+      # paths use //nolint:forbidigo with a reason.
+      - path-except: (cmd/|shortcuts/|events/)
         text: errs-no-bare-wrap
-        linters:
-          - forbidigo
-      # errs-no-legacy-helper enforced on domains whose shared validation/save
-      # helpers have migrated to typed final errors.
-      - path-except: (shortcuts/apps/|shortcuts/base/|shortcuts/calendar/|shortcuts/contact/|shortcuts/doc/|shortcuts/drive/|shortcuts/im/|shortcuts/mail/|shortcuts/markdown/|shortcuts/minutes/|shortcuts/okr/|shortcuts/sheets/|shortcuts/slides/|shortcuts/task/|shortcuts/vc/|shortcuts/whiteboard/|shortcuts/wiki/|cmd/event/|events/|shortcuts/event/)
-        text: errs-no-legacy-helper
         linters:
           - forbidigo
 
@@ -114,22 +110,6 @@ linters:
                 Use runtime.FileIO() for file operations or runtime.ValidatePath() for path validation.
     forbidigo:
       forbid:
-        # ── legacy output.Err* helpers banned on migrated paths ──
-        # output.ErrBare is intentionally not listed — it is the predicate-
-        # command silent-exit signal, outside the typed envelope contract.
-        - pattern: output\.(ErrValidation|ErrAuth|ErrNetwork|ErrAPI|ErrWithHint|Errorf)\b
-          msg: >-
-            [errs-typed-only] use errs.NewXxxError(...) builder
-            (see errs/types.go).
-        # ── legacy shared error helpers banned on migrated domains ──
-        # These helpers emit legacy output.Err* / bare error shapes or drop
-        # typed metadata such as Param/Cause. Migrated domains must use typed
-        # common replacements or local typed helpers instead.
-        - pattern: (common\.FlagErrorf|common\.RejectDangerousChars|common\.WrapInputStatError|common\.WrapSaveErrorByCategory)\b
-          msg: >-
-            [errs-no-legacy-helper] these shared helpers emit legacy or
-            metadata-poor error shapes. Use typed common replacements, typed
-            errs.NewXxxError builders, or domain-local typed helpers.
         # ── bare error wraps banned on fully-typed paths ──
         - pattern: (fmt\.Errorf|errors\.New)\b
           msg: >-

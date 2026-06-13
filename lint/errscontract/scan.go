@@ -105,6 +105,11 @@ func ScanRepoWithOptions(root string, opts ScanOptions) ([]Violation, error) {
 			return walkErr
 		}
 		if d.IsDir() {
+			// Skip hidden dirs (.git, .claude/worktrees, …): gitignored tooling
+			// state, not repo source. The walk root itself is exempt.
+			if path != root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
 			// Skip well-known noise directories.
 			if skipLintDir(d.Name()) {
 				return filepath.SkipDir

@@ -101,9 +101,9 @@ func TestSecurityPolicyErrorUnwrap(t *testing.T) {
 // interface would panic when the root dispatcher or any caller walks the
 // errors.Is / errors.Unwrap chain.
 //
-// The doc comments on these types claim "nil-receiver safe" but until this
-// test landed nothing actually pinned that claim — exactly the
-// behavioral-comment-without-test footgun caught in PR #984 review.
+// The doc comments on these types claim "nil-receiver safe"; this test
+// pins that claim so the behavioral comment cannot silently drift from the
+// implementation.
 func TestTypedErrors_UnwrapNilReceiver(t *testing.T) {
 	t.Helper()
 	checks := []struct {

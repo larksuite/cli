@@ -19,7 +19,6 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -447,10 +446,9 @@ func TestRegisterShortcutsLeavesNonMailFlagErrorUntouched(t *testing.T) {
 	in := errors.New("unknown flag: --bogus")
 	got := baseCmd.FlagErrorFunc()(baseCmd, in)
 	// Default cobra hook is identity — anything else means the mail hook
-	// leaked across domains.
-	var exitErr *output.ExitError
-	if errors.As(got, &exitErr) {
-		t.Fatalf("base service unexpectedly produced *output.ExitError: %#v", exitErr)
+	// (which wraps into a typed *errs.ValidationError) leaked across domains.
+	if errs.IsTyped(got) {
+		t.Fatalf("base service unexpectedly produced a typed error: %#v", got)
 	}
 	if got != in {
 		t.Fatalf("base service should pass through original error pointer, got %T (%v)", got, got)

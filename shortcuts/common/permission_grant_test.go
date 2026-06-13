@@ -11,9 +11,25 @@ import (
 
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 )
+
+// apiErrWithScopes builds the typed error errclass.BuildAPIError produces for a
+// Lark API failure carrying permission_violations. For authorization codes this
+// yields an *errs.PermissionError with MissingScopes populated; for other codes
+// it yields the corresponding typed error.
+func apiErrWithScopes(code int, msg string, subjects ...string) error {
+	resp := map[string]any{"code": code, "msg": msg}
+	if len(subjects) > 0 {
+		violations := make([]any, 0, len(subjects))
+		for _, s := range subjects {
+			violations = append(violations, map[string]any{"subject": s})
+		}
+		resp["error"] = map[string]any{"permission_violations": violations}
+	}
+	return errclass.BuildAPIError(resp, errclass.ClassifyContext{})
+}
 
 func TestAutoGrantStderrWarning_SkippedNoUser(t *testing.T) {
 	config := &core.CliConfig{
@@ -117,11 +133,7 @@ func TestAnnotateGrantPermissionError_AppScopeNotEnabled(t *testing.T) {
 		"hint": "generic fallback hint",
 	}
 
-	err := output.ErrAPI(99991672, "Permission denied [99991672]", map[string]interface{}{
-		"permission_violations": []interface{}{
-			map[string]interface{}{"subject": "docs:permission.member:create"},
-		},
-	})
+	err := apiErrWithScopes(99991672, "Permission denied [99991672]", "docs:permission.member:create")
 
 	annotateGrantPermissionError(rt, result, err)
 
@@ -150,11 +162,7 @@ func TestAnnotateGrantPermissionError_AppScopeNotEnabled(t *testing.T) {
 func TestAnnotateGrantPermissionError_LarkBrand(t *testing.T) {
 	rt := newAnnotateRuntime(core.BrandLark, "cli_demo")
 	result := map[string]interface{}{}
-	err := output.ErrAPI(99991679, "Permission denied [99991679]", map[string]interface{}{
-		"permission_violations": []interface{}{
-			map[string]interface{}{"subject": "docs:permission.member:create"},
-		},
-	})
+	err := apiErrWithScopes(99991679, "Permission denied [99991679]", "docs:permission.member:create")
 
 	annotateGrantPermissionError(rt, result, err)
 
@@ -170,14 +178,8 @@ func TestAnnotateGrantPermissionError_NonPermissionErrorNoOp(t *testing.T) {
 
 	cases := []error{
 		errors.New("plain error"),
-		output.ErrNetwork("connection reset"),
-		output.ErrValidation("bad request"),
-		// Non-permission API errors (e.g. 230001) — type is "api_error" not "permission"
-		output.ErrAPI(230001, "no permission", map[string]interface{}{
-			"permission_violations": []interface{}{
-				map[string]interface{}{"subject": "docs:doc"},
-			},
-		}),
+		apiErrWithScopes(230001, "no permission", "docs:doc"), // unknown code → *errs.APIError, not permission
+
 	}
 	for i, e := range cases {
 		result := map[string]interface{}{
@@ -203,7 +205,7 @@ func TestAnnotateGrantPermissionError_NoViolations(t *testing.T) {
 	result := map[string]interface{}{
 		"hint": "untouched fallback",
 	}
-	err := output.ErrAPI(99991672, "Permission denied [99991672]", nil)
+	err := apiErrWithScopes(99991672, "Permission denied [99991672]")
 
 	annotateGrantPermissionError(rt, result, err)
 
@@ -222,11 +224,7 @@ func TestAnnotateGrantPermissionError_NoViolations(t *testing.T) {
 func TestAnnotateGrantPermissionError_EmptyAppID(t *testing.T) {
 	rt := newAnnotateRuntime(core.BrandFeishu, "")
 	result := map[string]interface{}{}
-	err := output.ErrAPI(99991672, "Permission denied", map[string]interface{}{
-		"permission_violations": []interface{}{
-			map[string]interface{}{"subject": "docs:doc"},
-		},
-	})
+	err := apiErrWithScopes(99991672, "Permission denied", "docs:doc")
 
 	annotateGrantPermissionError(rt, result, err)
 	if _, ok := result["console_url"]; ok {

@@ -5,14 +5,15 @@ package shortcuts
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 )
 
 func newFactoryWithBrand(brand core.LarkBrand) *cmdutil.Factory {
@@ -70,15 +71,15 @@ func TestBrandGuard_AppsExecuteReturnsBrandError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected brand-restriction error, got nil")
 	}
-	exitErr, ok := err.(*output.ExitError)
-	if !ok {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("expected ExitValidation (%d), got %d", output.ExitValidation, exitErr.Code)
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("expected subtype %q, got %q", errs.SubtypeFailedPrecondition, validationErr.Subtype)
 	}
-	if !strings.Contains(exitErr.Error(), "apps") || !strings.Contains(exitErr.Error(), "lark") {
-		t.Errorf("expected error to mention apps + lark, got: %s", exitErr.Error())
+	if !strings.Contains(validationErr.Error(), "apps") || !strings.Contains(validationErr.Error(), "lark") {
+		t.Errorf("expected error to mention apps + lark, got: %s", validationErr.Error())
 	}
 }
 
@@ -112,11 +113,11 @@ func TestBrandGuard_DispatchHitsStubViaCobra(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from dispatching apps +create on Lark brand")
 	}
-	exitErr, ok := err.(*output.ExitError)
-	if !ok {
-		t.Fatalf("expected *output.ExitError from cobra dispatch, got %T: %v", err, err)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError from cobra dispatch, got %T: %v", err, err)
 	}
-	if !strings.Contains(exitErr.Error(), "lark") {
-		t.Errorf("dispatched error should mention lark brand, got: %s", exitErr.Error())
+	if !strings.Contains(validationErr.Error(), "lark") {
+		t.Errorf("dispatched error should mention lark brand, got: %s", validationErr.Error())
 	}
 }

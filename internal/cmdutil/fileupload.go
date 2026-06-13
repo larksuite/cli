@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 )
 
@@ -42,26 +42,41 @@ func ValidateFileFlag(file, params, data, outputPath string, pageAll bool, httpM
 
 	_, filePath, isStdin := ParseFileFlag(file, "file")
 	if !isStdin && filePath == "" {
-		return output.ErrValidation("--file: empty file path")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: empty file path").
+			WithParam("--file")
 	}
 
 	if outputPath != "" {
-		return output.ErrValidation("--file and --output are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file and --output are mutually exclusive").WithParams(
+			errs.InvalidParam{Name: "--file", Reason: "mutually exclusive with --output"},
+			errs.InvalidParam{Name: "--output", Reason: "mutually exclusive with --file"},
+		)
 	}
 	if pageAll {
-		return output.ErrValidation("--file and --page-all are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file and --page-all are mutually exclusive").WithParams(
+			errs.InvalidParam{Name: "--file", Reason: "mutually exclusive with --page-all"},
+			errs.InvalidParam{Name: "--page-all", Reason: "mutually exclusive with --file"},
+		)
 	}
 	if isStdin && data == "-" {
-		return output.ErrValidation("--file and --data cannot both read from stdin")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file and --data cannot both read from stdin").WithParams(
+			errs.InvalidParam{Name: "--file", Reason: "only one flag may read from stdin"},
+			errs.InvalidParam{Name: "--data", Reason: "only one flag may read from stdin"},
+		)
 	}
 	if isStdin && params == "-" {
-		return output.ErrValidation("--file and --params cannot both read from stdin")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file and --params cannot both read from stdin").WithParams(
+			errs.InvalidParam{Name: "--file", Reason: "only one flag may read from stdin"},
+			errs.InvalidParam{Name: "--params", Reason: "only one flag may read from stdin"},
+		)
 	}
 
 	switch httpMethod {
 	case "POST", "PUT", "PATCH", "DELETE":
 	default:
-		return output.ErrValidation("--file requires POST, PUT, PATCH, or DELETE method")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file requires POST, PUT, PATCH, or DELETE method").
+			WithParam("--file").
+			WithHint("file upload only applies to write methods; remove --file for read methods")
 	}
 
 	return nil
@@ -83,25 +98,35 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 
 	if isStdin {
 		if stdin == nil {
-			return nil, output.ErrValidation("--file: stdin is not available")
+			return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "--file: stdin is not available").
+				WithParam("--file").
+				WithHint("pipe the file content to stdin, or pass a file path instead of \"-\"")
 		}
 		data, err := io.ReadAll(stdin)
 		if err != nil {
-			return nil, output.ErrValidation("--file: failed to read stdin: %v", err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: failed to read stdin: %v", err).
+				WithParam("--file").
+				WithCause(err)
 		}
 		if len(data) == 0 {
-			return nil, output.ErrValidation("--file: stdin is empty")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: stdin is empty").
+				WithParam("--file").
+				WithHint("pipe non-empty file content to stdin")
 		}
 		fd.AddFile(fieldName, bytes.NewReader(data))
 	} else {
 		f, err := fileIO.Open(filePath)
 		if err != nil {
-			return nil, output.ErrValidation("cannot open file: %s", filePath)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot open file: %s", filePath).
+				WithParam("--file").
+				WithCause(err)
 		}
 		defer f.Close()
 		data, err := io.ReadAll(f)
 		if err != nil {
-			return nil, output.ErrValidation("--file: failed to read %s: %v", filePath, err)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: failed to read %s: %v", filePath, err).
+				WithParam("--file").
+				WithCause(err)
 		}
 		fd.AddFile(fieldName, bytes.NewReader(data))
 	}

@@ -50,8 +50,7 @@ func TestAddTaskToTasklist_Success(t *testing.T) {
 // land in stdout as an ok:false envelope, and the command returns the typed
 // partial-failure exit signal (exit 1) via runtime.OutPartialFailure. The
 // failed_tasks[].type carries the typed subtype (e.g. "permission_denied",
-// "not_found") read off errs.ProblemOf, not the legacy
-// *output.ExitError.Detail.Type ("permission_error" etc).
+// "not_found") read off errs.ProblemOf.
 func TestAddTaskToTasklist_PartialFailure(t *testing.T) {
 	f, stdout, _, reg := taskShortcutTestFactory(t)
 	warmTenantToken(t, f, reg)

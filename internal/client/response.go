@@ -41,6 +41,26 @@ type ResponseOptions struct {
 	CheckError func(result interface{}, identity core.Identity) error
 }
 
+// httpStatusError classifies an HTTP error response by status when the body
+// carries no usable business error: 5xx → NetworkError (server tier), 404 →
+// APIError/not_found, any other 4xx → APIError/unknown. Used wherever a
+// status >= 400 must not be swallowed — a non-JSON body, an unparseable body,
+// or a JSON body whose business code is 0.
+func httpStatusError(status int, rawBody []byte) error {
+	body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(rawBody)), 500)
+	if status >= 500 {
+		return errs.NewNetworkError(errs.SubtypeNetworkServer,
+			"HTTP %d: %s", status, body).
+			WithCode(status)
+	}
+	subtype := errs.SubtypeUnknown
+	if status == 404 {
+		subtype = errs.SubtypeNotFound
+	}
+	return errs.NewAPIError(subtype, "HTTP %d: %s", status, body).
+		WithCode(status)
+}
+
 // HandleResponse routes a raw *larkcore.ApiResp to the appropriate output:
 //  1. If Content-Type is JSON, check for business errors first (even with --output).
 //  2. If --output is set and response is not a JSON error, save to file.
@@ -62,32 +82,32 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		}
 	}
 
-	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error directly
-	// instead of falling through to the binary-save path.
-	// 5xx → typed NetworkError (server/transport tier); 4xx → typed APIError (client error).
+	// Non-JSON error responses (e.g. 404 text/plain from gateway): return error
+	// directly instead of falling through to the binary-save path.
 	if resp.StatusCode >= 400 && !IsJSONContentType(ct) && ct != "" {
-		body := util.TruncateStrWithEllipsis(strings.TrimSpace(string(resp.RawBody)), 500)
-		if resp.StatusCode >= 500 {
-			return errs.NewNetworkError(errs.SubtypeNetworkServer,
-				"HTTP %d: %s", resp.StatusCode, body).
-				WithCode(resp.StatusCode)
-		}
-		subtype := errs.SubtypeUnknown
-		if resp.StatusCode == 404 {
-			subtype = errs.SubtypeNotFound
-		}
-		return errs.NewAPIError(subtype, "HTTP %d: %s", resp.StatusCode, body).
-			WithCode(resp.StatusCode)
+		return httpStatusError(resp.StatusCode, resp.RawBody)
 	}
 
 	// JSON responses: always check for business errors before saving.
 	if IsJSONContentType(ct) || ct == "" {
 		result, err := ParseJSONResponse(resp)
 		if err != nil {
+			// An unparseable / empty body on an HTTP error (common with a
+			// missing Content-Type) must be classified by status, not reported
+			// as an internal decode failure, matching the non-JSON branch above.
+			if resp.StatusCode >= 400 {
+				return httpStatusError(resp.StatusCode, resp.RawBody)
+			}
 			return WrapJSONResponseParseError(err, resp.RawBody)
 		}
 		if apiErr := check(result, identity); apiErr != nil {
 			return apiErr
+		}
+		// CheckResponse treats business code 0 as success, so a 4xx/5xx whose
+		// JSON body omits a non-zero code would otherwise be served as a
+		// successful result. Classify by HTTP status so it is never swallowed.
+		if resp.StatusCode >= 400 {
+			return httpStatusError(resp.StatusCode, resp.RawBody)
 		}
 		if opts.OutputPath != "" {
 			// File downloads keep the existing raw-response scan path because the

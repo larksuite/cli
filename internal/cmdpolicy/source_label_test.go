@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // The envelope's policy_source must never leak the absolute home path.
@@ -39,25 +39,26 @@ func TestEnvelope_yamlPolicySourceDoesNotLeakHomePath(t *testing.T) {
 	cmdpolicy.Apply(root, denied)
 	err := leaf.RunE(leaf, nil)
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected denial ExitError, got %v", err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected denial *errs.ValidationError, got %T %v", err, err)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	src, _ := detail["policy_source"].(string)
-	if src != "yaml" {
-		t.Errorf("policy_source = %q, want %q (no path leak)", src, "yaml")
+	// The policy source is folded into the Hint as "yaml" -- the bare
+	// kind, never the absolute path.
+	if !strings.Contains(ve.Hint, "source yaml") {
+		t.Errorf("hint must carry policy_source %q (no path leak), got %q", "yaml", ve.Hint)
 	}
 	// rule_name carries the disambiguating identifier.
-	if detail["rule_name"] != "my-readonly-rule" {
-		t.Errorf("rule_name = %v, want my-readonly-rule", detail["rule_name"])
+	if !strings.Contains(ve.Hint, "my-readonly-rule") {
+		t.Errorf("hint must carry rule_name my-readonly-rule, got %q", ve.Hint)
 	}
-	// Direct probe: the absolute path must not appear anywhere in the
-	// envelope detail (key OR value).
-	for k, v := range detail {
-		if strings.Contains(k, "/Users/alice") || strings.Contains(asString(v), "/Users/alice") {
-			t.Errorf("envelope detail must not leak '/Users/alice', found in %s = %v", k, v)
-		}
+	// Direct privacy probe: the absolute home path must not appear
+	// anywhere in the user-facing message OR hint text.
+	if strings.Contains(ve.Message, "/Users/alice") {
+		t.Errorf("error message must not leak '/Users/alice', got %q", ve.Message)
+	}
+	if strings.Contains(ve.Hint, "/Users/alice") {
+		t.Errorf("error hint must not leak '/Users/alice', got %q", ve.Hint)
 	}
 }
 
@@ -80,17 +81,14 @@ func TestEnvelope_pluginPolicySourceCarriesName(t *testing.T) {
 	cmdpolicy.Apply(root, denied)
 
 	err := leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected ExitError")
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	if detail["policy_source"] != "plugin:secaudit" {
-		t.Errorf("policy_source = %v, want plugin:secaudit", detail["policy_source"])
+	// The plugin name IS surfaced (in-binary, part of the contract): it
+	// must appear in the Hint so an integrator debugging a denial knows
+	// which plugin fired.
+	if !strings.Contains(ve.Hint, "plugin:secaudit") {
+		t.Errorf("hint must carry policy_source plugin:secaudit, got %q", ve.Hint)
 	}
-}
-
-func asString(v any) string {
-	s, _ := v.(string)
-	return s
 }

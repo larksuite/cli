@@ -77,6 +77,10 @@ type ValidationError struct {
 type InvalidParam struct {
 	Name   string `json:"name"`
 	Reason string `json:"reason"`
+	// Suggestions holds machine-readable, ranked candidate corrections for this
+	// parameter (e.g. did-you-mean flags or subcommands), so an agent can retry
+	// without parsing the human-facing hint. Omitted when there are none.
+	Suggestions []string `json:"suggestions,omitempty"`
 }
 
 // Unwrap exposes the wrapped cause so errors.Unwrap / errors.Is can traverse
