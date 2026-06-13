@@ -65,6 +65,10 @@ Markdown 格式支持通过 URL 插入网络图片，图片将自动从 HTTP 下
 - URL 支持 `http://` 和 `https://` 协议
 - 对应的 XML 格式为：`<img href="https://example.com/photo.png"/>`
 
+## 链接写法
+
+写入飞书/Lark 云空间原生资源（Docx、Sheets、Base、Wiki、Drive、Slides、Minutes）的链接时，**默认写裸 URL**，不要默认包装成 `[标题](url)`——裸 URL 能让文档保留转成卡片/预览/@文档的能力。带显示文本的链接仅用于：用户明确要求自定义文本、外部 URL、分享/下载/回调等非原生页面。完整规则见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 的「链接书写规则」。
+
 ## Markdown 不支持的 Block 类型
 
 非原生 Markdown 语法的内容（如下划线、高亮框(Callout)、勾选框、多维表格、画板、思维导图、电子表格、网格布局、引用(@文档/@人)、按钮、日期提醒、行内文件、文字颜色/背景色、同步块等）采用 XML 语法表示，详见 [`lark-doc-xml.md`](lark-doc-xml.md)。

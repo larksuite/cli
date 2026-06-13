@@ -150,6 +150,8 @@ lark-cli sheets spreadsheet.sheet.filters update \
 | 日期 | `数字`（自 1899-12-30 起的天数，需先设单元格日期格式） | `42101` |
 | 链接（纯 URL） | `"URL 字符串"` | `"https://example.com"` |
 | 链接（带文本） | `{"type":"url","text":"显示文本","link":"URL"}` | `{"type":"url","text":"飞书","link":"https://www.feishu.cn"}` |
+
+> **飞书/Lark 原生资源链接默认写裸 URL**：当链接指向 Docx、Sheets、Base、Wiki、Drive、Slides、Minutes 等云空间原生资源时，优先用「纯 URL 字符串」写法，不要默认套用带文本的 `{"type":"url",...}`。带文本对象仅用于用户明确要求自定义显示文本、外部 URL 或非原生页面。完整规则见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 的「链接书写规则」。
 | 邮箱 | `"邮箱字符串"` | `"user@example.com"` |
 | **公式** | `{"type":"formula","text":"=公式"}` | `{"type":"formula","text":"=SUM(A1:A10)"}` |
 | @人 | `{"type":"mention","text":"标识","textType":"email\|openId\|unionId","notify":false}` | `{"type":"mention","text":"user@example.com","textType":"email","notify":false}`（notify 可选，默认 false；仅在用户明确要求通知时设为 true） |

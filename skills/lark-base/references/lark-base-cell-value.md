@@ -20,6 +20,8 @@
 
 用字符串。URL 字段也传 URL 字符串；普通文本里可以保留 Markdown 风格链接文本，平台会按字段类型处理。
 
+> **飞书/Lark 原生资源链接默认写裸 URL**：写入指向 Docx、Sheets、Base、Wiki、Drive、Slides、Minutes 等云空间原生资源的链接时，默认写原始 URL 字符串，不要默认包装成 `[标题](url)`。带显示文本的写法仅用于用户明确要求自定义文本、外部 URL 或非原生页面。完整规则见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 的「链接书写规则」。
+
 ```json
 {
     "标题": "Hello",

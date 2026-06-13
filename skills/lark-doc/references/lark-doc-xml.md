@@ -36,6 +36,9 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 - `align` — `"left"`|`"center"`|`"right"`（适用于 p / h1-h9 / li / checkbox）
 - 有序列表项用 `seq="auto"` 自动编号
 
+## 链接写法
+飞书/Lark 云空间原生资源（Docx、Sheets、Base、Wiki、Drive、Slides、Minutes）的链接，**默认作为裸 URL 文本写入**（直接放进 `<p>` 文本），不要默认包装成 `<a href>` 文字链接——裸 URL 能保留转成卡片/预览/@文档的能力。`<a>`、`<bookmark>`、`<a type="url-preview">` 等带显示文本的链接形式仅用于用户明确要求自定义文本、外部 URL 或分享/下载/回调等非原生页面。完整规则见 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 的「链接书写规则」。
+
 # 三、资源块
 
 文档中可嵌入外部资源块（属于容器标签的特殊形式），需要额外语法创建：
