@@ -10,8 +10,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
+	"fmt"
+	"math/big"
 	"reflect"
 	"testing"
 )
@@ -120,11 +124,110 @@ func TestPublicKeyJWK_UnsupportedCurve(t *testing.T) {
 	}
 }
 
+func TestECDSADERToJOSE(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Iterate so we hit signatures whose r or s has its high bit set (ASN.1 pads
+	// those with a leading 0x00) and whose scalars are short (need left-zero
+	// padding) — verifying fixed-width conversion in both directions.
+	for i := 0; i < 64; i++ {
+		digest := sha256.Sum256([]byte{byte(i), byte(i >> 8), 'j', 'w', 't'})
+		der, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		jose, err := ecdsaDERToJOSE(der, 32)
+		if err != nil {
+			t.Fatalf("iter %d: %v", i, err)
+		}
+		if len(jose) != 64 {
+			t.Fatalf("iter %d: len(jose)=%d, want 64 (fixed-width r||s)", i, len(jose))
+		}
+		r := new(big.Int).SetBytes(jose[:32])
+		s := new(big.Int).SetBytes(jose[32:])
+		if !ecdsa.Verify(&key.PublicKey, digest[:], r, s) {
+			t.Fatalf("iter %d: converted r||s did not verify against the public key", i)
+		}
+	}
+}
+
+func TestECDSADERToJOSE_Errors(t *testing.T) {
+	if _, err := ecdsaDERToJOSE([]byte{0x01, 0x02, 0x03}, 32); err == nil {
+		t.Error("garbage DER: expected error")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256([]byte("trailing"))
+	der, err := ecdsa.SignASN1(rand.Reader, key, digest[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ecdsaDERToJOSE(append(der, 0x00), 32); err == nil {
+		t.Error("DER with trailing byte: expected error")
+	}
+}
+
 type stubSigner struct{}
 
 func (stubSigner) EnsureKey(context.Context, KeyRef) (crypto.PublicKey, error)  { return nil, nil }
 func (stubSigner) PublicKey(context.Context, KeyRef) (crypto.PublicKey, error)  { return nil, nil }
 func (stubSigner) Sign(context.Context, KeyRef, []byte) ([]byte, string, error) { return nil, "", nil }
+
+func TestCleanProbeError(t *testing.T) {
+	cause := errors.New("open /dev/tpmrm0: permission denied")
+	const p = "sks: error fetching Secure Hardware Vendor Data: "
+
+	// sks double-wraps with the same %w prefix → collapse to a single prefix.
+	doubled := fmt.Errorf(p+"%w", fmt.Errorf(p+"%w", cause))
+	if got, want := cleanProbeError(doubled), p+cause.Error(); got != want {
+		t.Errorf("doubled: got %q, want %q", got, want)
+	}
+	// Triple wrap collapses too.
+	if got, want := cleanProbeError(fmt.Errorf(p+"%w", doubled)), p+cause.Error(); got != want {
+		t.Errorf("tripled: got %q, want %q", got, want)
+	}
+	// A layer adding genuinely new context is preserved.
+	if got, want := cleanProbeError(fmt.Errorf("load: %w", cause)), "load: "+cause.Error(); got != want {
+		t.Errorf("distinct prefix: got %q, want %q", got, want)
+	}
+	// nil and unwrapped-leaf cases.
+	if got := cleanProbeError(nil); got != "" {
+		t.Errorf("nil: got %q, want empty", got)
+	}
+	if got := cleanProbeError(cause); got != cause.Error() {
+		t.Errorf("leaf: got %q, want %q", got, cause.Error())
+	}
+}
+
+type proberSigner struct {
+	stubSigner
+	info HardwareInfo
+}
+
+func (p proberSigner) ProbeHardware(context.Context) (HardwareInfo, error) { return p.info, nil }
+
+func TestProbeHardware(t *testing.T) {
+	// nil signer and a signer that does not implement HardwareProber both yield ok=false.
+	if _, ok, _ := probeHardware(context.Background(), nil); ok {
+		t.Error("nil signer: ok should be false")
+	}
+	if _, ok, _ := probeHardware(context.Background(), stubSigner{}); ok {
+		t.Error("non-prober signer: ok should be false")
+	}
+
+	want := HardwareInfo{Backend: "tpm2", Available: true, VendorName: "ACME"}
+	info, ok, err := probeHardware(context.Background(), proberSigner{info: want})
+	if err != nil || !ok {
+		t.Fatalf("prober: ok=%v err=%v, want true/nil", ok, err)
+	}
+	if info != want {
+		t.Errorf("info = %+v, want %+v", info, want)
+	}
+}
 
 func TestRegistry(t *testing.T) {
 	if Active() != nil {
