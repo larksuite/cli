@@ -100,10 +100,20 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
+// Seams for unit-testing the proxy-warning gate. Production wires them to the
+// real implementations; tests substitute a predicate and a spy to verify the
+// warning fires only on an interactive stderr (see factory_proxy_warn_test.go).
+// StderrIsTerminal is a concrete method (real TTY only) and WarnIfProxied is a
+// package function, so neither is otherwise injectable.
+var (
+	warnIfProxied    = transport.WarnIfProxied
+	stderrIsTerminal = func(s *IOStreams) bool { return s.StderrIsTerminal() }
+)
+
 func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		if f.IOStreams.StderrIsTerminal() {
-			transport.WarnIfProxied(f.IOStreams.ErrOut)
+		if stderrIsTerminal(f.IOStreams) {
+			warnIfProxied(f.IOStreams.ErrOut)
 		}
 
 		var rt http.RoundTripper = transport.Shared()
@@ -131,8 +141,8 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		if f.IOStreams.StderrIsTerminal() {
-			transport.WarnIfProxied(f.IOStreams.ErrOut)
+		if stderrIsTerminal(f.IOStreams) {
+			warnIfProxied(f.IOStreams.ErrOut)
 		}
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     buildSDKTransport(),
