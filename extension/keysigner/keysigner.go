@@ -19,9 +19,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 )
 
 // KeyRef identifies a non-exportable signing key held by a backend
@@ -55,6 +58,68 @@ const (
 // and reused across subsequent app registrations on the same device.
 const DefaultKeyLabel = "larksuite-cli-agent"
 
+// HardwareInfo describes the secure hardware backing a Signer, as reported by a
+// HardwareProber. It is advisory/diagnostic: it tells a user whether
+// private_key_jwt can use a real TEE on this device.
+type HardwareInfo struct {
+	Backend    string // backing technology, e.g. "tpm2" or "keychain"
+	Available  bool   // the hardware is present and usable for signing
+	VendorName string // hardware vendor/manufacturer, when known
+	VendorInfo string // additional vendor detail, when known
+	Reason     string // when Available is false, a human-readable cause
+}
+
+// HardwareProber is an optional capability a Signer may implement to report on
+// the secure hardware backing it (TPM/TEE vendor and availability) WITHOUT
+// creating or using a key. Probing never mutates key state.
+type HardwareProber interface {
+	ProbeHardware(ctx context.Context) (HardwareInfo, error)
+}
+
+// ProbeActiveHardware probes the active signer's secure hardware. ok is false
+// when there is no active signer or it does not implement HardwareProber — in
+// which case private_key_jwt is unsupported on this build. When ok is true, info
+// reports availability and, if unavailable, info.Reason explains why.
+func ProbeActiveHardware(ctx context.Context) (info HardwareInfo, ok bool, err error) {
+	return probeHardware(ctx, Active())
+}
+
+// probeHardware is the registry-independent core of ProbeActiveHardware, so it
+// can be unit-tested without touching the global signer.
+func probeHardware(ctx context.Context, s Signer) (HardwareInfo, bool, error) {
+	p, ok := s.(HardwareProber)
+	if !ok {
+		return HardwareInfo{}, false, nil
+	}
+	info, err := p.ProbeHardware(ctx)
+	return info, true, err
+}
+
+// cleanProbeError renders err's message with redundant re-wraps collapsed. Some
+// backends (e.g. facebookincubator/sks) wrap an error twice with the SAME "%w"
+// prefix, yielding "P: P: cause"; this peels each outer layer whose only
+// contribution is to repeat the prefix already present in the wrapped error,
+// leaving a single "P: cause". A layer that adds genuinely new context is kept.
+func cleanProbeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	for {
+		inner := errors.Unwrap(err)
+		if inner == nil {
+			break
+		}
+		innerMsg := inner.Error()
+		prefix, ok := strings.CutSuffix(msg, innerMsg)
+		if !ok || prefix == "" || !strings.HasPrefix(innerMsg, prefix) {
+			break
+		}
+		msg, err = innerMsg, inner
+	}
+	return msg
+}
+
 // AlgForKey returns the JWS alg for a public key: EC P-256 -> ES256, RSA -> RS256.
 // The signer backend chooses the key type (the macOS keychain signer uses an
 // RSA-2048 key, hence RS256).
@@ -70,6 +135,36 @@ func AlgForKey(pub crypto.PublicKey) (string, error) {
 	default:
 		return "", fmt.Errorf("keysigner: unsupported public key type %T", pub)
 	}
+}
+
+// ecdsaDERToJOSE converts an ASN.1 DER-encoded ECDSA signature — the form most
+// TEE/TPM backends emit (e.g. facebookincubator/sks marshals the TPM's r,s with
+// asn1.Marshal) — into the fixed-width r||s form JWS requires for ES256
+// (RFC 7518 §3.4). byteLen is the curve coordinate size (32 for P-256), so the
+// result is exactly 2*byteLen bytes with r and s each left-zero-padded.
+//
+// This is intentionally part of the pure-stdlib core (not a platform signer) so
+// it can be unit-tested with a software key on any machine, including TPM-less CI.
+func ecdsaDERToJOSE(der []byte, byteLen int) ([]byte, error) {
+	var sig struct{ R, S *big.Int }
+	rest, err := asn1.Unmarshal(der, &sig)
+	if err != nil {
+		return nil, fmt.Errorf("keysigner: parse ECDSA DER signature: %w", err)
+	}
+	if len(rest) != 0 {
+		return nil, fmt.Errorf("keysigner: %d trailing byte(s) after ECDSA DER signature", len(rest))
+	}
+	if sig.R == nil || sig.S == nil || sig.R.Sign() <= 0 || sig.S.Sign() <= 0 {
+		return nil, fmt.Errorf("keysigner: ECDSA signature has non-positive r/s")
+	}
+	// Guard before FillBytes, which panics if the scalar does not fit in byteLen.
+	if sig.R.BitLen() > byteLen*8 || sig.S.BitLen() > byteLen*8 {
+		return nil, fmt.Errorf("keysigner: ECDSA r/s exceeds %d-byte coordinate", byteLen)
+	}
+	out := make([]byte, 2*byteLen)
+	sig.R.FillBytes(out[:byteLen])
+	sig.S.FillBytes(out[byteLen:])
+	return out, nil
 }
 
 // EncodePublicKey marshals pub to PKIX DER and base64-encodes it (std encoding),
