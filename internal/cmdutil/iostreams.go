@@ -31,6 +31,15 @@ func NewIOStreams(in io.Reader, out, errOut io.Writer) *IOStreams {
 	return &IOStreams{In: in, Out: out, ErrOut: errOut, IsTerminal: isTerminal}
 }
 
+// StderrIsTerminal reports whether ErrOut is an interactive terminal. Advisory
+// warnings written to stderr (e.g. the proxy notice) gate on this so they stay
+// out of non-interactive output (pipes, CI, agent runs). Buffers (tests) and
+// redirects are not *os.File terminals, so they yield false.
+func (s *IOStreams) StderrIsTerminal() bool {
+	f, ok := s.ErrOut.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
 // SystemIO creates an IOStreams wired to the process's standard file descriptors.
 //
 //nolint:forbidigo // entry point for real stdio

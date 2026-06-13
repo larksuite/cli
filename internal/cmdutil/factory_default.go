@@ -102,7 +102,9 @@ func safeRedirectPolicy(req *http.Request, via []*http.Request) error {
 
 func cachedHttpClientFunc(f *Factory) func() (*http.Client, error) {
 	return sync.OnceValues(func() (*http.Client, error) {
-		transport.WarnIfProxied(f.IOStreams.ErrOut)
+		if f.IOStreams.StderrIsTerminal() {
+			transport.WarnIfProxied(f.IOStreams.ErrOut)
+		}
 
 		var rt http.RoundTripper = transport.Shared()
 		rt = &RetryTransport{Base: rt}
@@ -129,7 +131,9 @@ func cachedLarkClientFunc(f *Factory) func() (*lark.Client, error) {
 			lark.WithLogLevel(larkcore.LogLevelError),
 			lark.WithHeaders(BaseSecurityHeaders()),
 		}
-		transport.WarnIfProxied(f.IOStreams.ErrOut)
+		if f.IOStreams.StderrIsTerminal() {
+			transport.WarnIfProxied(f.IOStreams.ErrOut)
+		}
 		opts = append(opts, lark.WithHttpClient(&http.Client{
 			Transport:     buildSDKTransport(),
 			CheckRedirect: safeRedirectPolicy,
