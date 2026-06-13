@@ -50,6 +50,16 @@ func NewIOStreams(in io.Reader, out, errOut io.Writer) *IOStreams {
 	}
 }
 
+// StdoutIsTerminal reports whether Out is an interactive terminal. Unlike
+// IsTerminal — which reflects stdin and drives prompt decisions — this is the
+// correct check for OUTPUT formatting: `cmd | jq` must still emit machine output
+// from an interactive shell (stdin is a TTY there, but stdout is the pipe).
+// Buffers (tests) and redirects are not *os.File terminals, so they yield false.
+func (s *IOStreams) StdoutIsTerminal() bool {
+	f, ok := s.Out.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
 // SystemIO creates an IOStreams wired to the process's standard file descriptors.
 //
 //nolint:forbidigo // entry point for real stdio
