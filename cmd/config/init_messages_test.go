@@ -104,10 +104,10 @@ func TestInitMsg_FormatStrings(t *testing.T) {
 
 func TestGetInitMsg_BilingualCollapse(t *testing.T) {
 	tests := []struct {
-		lang       i18n.Lang
-		wantZh     bool
-		wantEn     bool
-		wantVi     bool
+		lang   i18n.Lang
+		wantZh bool
+		wantEn bool
+		wantVi bool
 	}{
 		{i18n.LangZhCN, true, false, false},
 		{i18n.LangEnUS, false, true, false},

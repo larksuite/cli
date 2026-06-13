@@ -98,7 +98,7 @@ func getInitMsg(lang i18n.Lang) *initMsg {
 	return initMsgZh
 }
 
-// promptLangSelection shows the 中文/English picker and returns the chosen locale.
+// promptLangSelection shows the 中文/English/Tiếng Việt picker and returns the chosen locale.
 func promptLangSelection() (i18n.Lang, error) {
 	lang := i18n.LangZhCN
 	form := huh.NewForm(
@@ -106,9 +106,9 @@ func promptLangSelection() (i18n.Lang, error) {
 			huh.NewSelect[i18n.Lang]().
 				Title("Language / 语言").
 				Options(
-			huh.NewOption("中文", i18n.LangZhCN),
-				huh.NewOption("English", i18n.LangEnUS),
-				huh.NewOption("Tiếng Việt", i18n.LangViVN),
+					huh.NewOption("中文", i18n.LangZhCN),
+					huh.NewOption("English", i18n.LangEnUS),
+					huh.NewOption("Tiếng Việt", i18n.LangViVN),
 				).
 				Value(&lang),
 		),
