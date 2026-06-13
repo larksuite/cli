@@ -18,26 +18,28 @@ type IOStreams struct {
 	Out        io.Writer
 	ErrOut     io.Writer
 	IsTerminal bool
+	// StderrIsTerminal reports whether ErrOut is an interactive terminal.
+	// Advisory warnings written to stderr (e.g. the proxy notice) gate on this
+	// so they stay out of non-interactive output (pipes, CI, agent runs).
+	// Computed once in NewIOStreams, mirroring IsTerminal; tests assign it
+	// directly like cmd/config/bind_test.go does for IsTerminal.
+	StderrIsTerminal bool
 }
 
 // NewIOStreams builds an IOStreams from arbitrary readers/writers.
-// IsTerminal is derived from in's underlying *os.File, if any; non-file
-// readers (bytes.Buffer, strings.Reader, …) yield IsTerminal=false.
+// IsTerminal / StderrIsTerminal are derived from in's / errOut's underlying
+// *os.File, if any; non-file streams (bytes.Buffer, strings.Reader, …) yield
+// false.
 func NewIOStreams(in io.Reader, out, errOut io.Writer) *IOStreams {
 	isTerminal := false
 	if f, ok := in.(*os.File); ok {
 		isTerminal = term.IsTerminal(int(f.Fd()))
 	}
-	return &IOStreams{In: in, Out: out, ErrOut: errOut, IsTerminal: isTerminal}
-}
-
-// StderrIsTerminal reports whether ErrOut is an interactive terminal. Advisory
-// warnings written to stderr (e.g. the proxy notice) gate on this so they stay
-// out of non-interactive output (pipes, CI, agent runs). Buffers (tests) and
-// redirects are not *os.File terminals, so they yield false.
-func (s *IOStreams) StderrIsTerminal() bool {
-	f, ok := s.ErrOut.(*os.File)
-	return ok && term.IsTerminal(int(f.Fd()))
+	stderrIsTerminal := false
+	if f, ok := errOut.(*os.File); ok {
+		stderrIsTerminal = term.IsTerminal(int(f.Fd()))
+	}
+	return &IOStreams{In: in, Out: out, ErrOut: errOut, IsTerminal: isTerminal, StderrIsTerminal: stderrIsTerminal}
 }
 
 // SystemIO creates an IOStreams wired to the process's standard file descriptors.

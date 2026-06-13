@@ -11,19 +11,16 @@ import (
 	"github.com/larksuite/cli/internal/envvars"
 )
 
-// installProxyWarnSpy swaps the package-level proxy-warning seams for one test:
-// stderrIsTerminal is forced to `terminal`, and warnIfProxied is replaced with a
-// counter. The real implementations are restored on cleanup. Returns a pointer
-// to the call count so the caller can assert how many times the warning fired.
-func installProxyWarnSpy(t *testing.T, terminal bool) *int {
+// installProxyWarnSpy replaces warnIfProxied with a counter for one test and
+// restores it on cleanup. Returns a pointer to the call count so the caller can
+// assert how many times the warning fired. The terminal state is controlled via
+// the IOStreams.StderrIsTerminal field, not a seam.
+func installProxyWarnSpy(t *testing.T) *int {
 	t.Helper()
-	prevWarn, prevTTY := warnIfProxied, stderrIsTerminal
-	t.Cleanup(func() {
-		warnIfProxied, stderrIsTerminal = prevWarn, prevTTY
-	})
+	prevWarn := warnIfProxied
+	t.Cleanup(func() { warnIfProxied = prevWarn })
 	calls := 0
 	warnIfProxied = func(io.Writer) { calls++ }
-	stderrIsTerminal = func(*IOStreams) bool { return terminal }
 	return &calls
 }
 
@@ -41,9 +38,11 @@ var proxyWarnGateCases = []struct {
 func TestCachedHttpClientFunc_ProxyWarnGate(t *testing.T) {
 	for _, tc := range proxyWarnGateCases {
 		t.Run(tc.name, func(t *testing.T) {
-			calls := installProxyWarnSpy(t, tc.terminal)
+			calls := installProxyWarnSpy(t)
 
-			fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{ErrOut: io.Discard}})
+			fn := cachedHttpClientFunc(&Factory{IOStreams: &IOStreams{
+				ErrOut: io.Discard, StderrIsTerminal: tc.terminal,
+			}})
 			if _, err := fn(); err != nil {
 				t.Fatalf("http client init: %v", err)
 			}
@@ -69,9 +68,11 @@ func TestCachedLarkClientFunc_ProxyWarnGate(t *testing.T) {
 			t.Setenv(envvars.CliTenantAccessToken, "")
 			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-			calls := installProxyWarnSpy(t, tc.terminal)
+			calls := installProxyWarnSpy(t)
 
-			f := NewDefault(&IOStreams{ErrOut: io.Discard}, InvocationContext{})
+			// normalizeStreams copies the struct (out := *s), so the
+			// StderrIsTerminal field survives into f.IOStreams.
+			f := NewDefault(&IOStreams{ErrOut: io.Discard, StderrIsTerminal: tc.terminal}, InvocationContext{})
 			if _, err := cachedLarkClientFunc(f)(); err != nil {
 				t.Fatalf("lark client init: %v", err)
 			}
