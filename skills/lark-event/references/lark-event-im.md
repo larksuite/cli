@@ -2,85 +2,45 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 >
-> **Heads-up for AI agents**: this key's `.content` is **NOT** the raw OAPI payload shape your training data may suggest. `lark-cli` runs a Process hook (`convertlib`) that flattens the V2 envelope and **pre-renders** `.content` to human-readable text for `text` / `post` / `image` / `file` / `audio` / etc. Only `interactive` (cards) keeps the raw JSON string. Don't blindly `fromjson`.
+> **The catalog lives in the CLI, not here.** `lark-cli event list` lists all 11 IM EventKeys; `lark-cli event schema <key>` gives any key's fields / types / enums. This file only covers what the schema can't: payload-shape gotchas and ready-to-use jq recipes.
 
-## Key catalog (11)
+## Shape: flat vs enveloped
 
-| EventKey | Purpose |
-|---|---|
-| `im.message.receive_v1` | Receive IM messages |
-| `im.message.message_read_v1` | User read a bot's **p2p** message (group messages don't fire this) |
-| `im.message.reaction.created_v1` | Reaction added to a message |
-| `im.message.reaction.deleted_v1` | Reaction removed from a message |
-| `im.chat.updated_v1` | Chat settings changed (owner, avatar, name, permissions, etc.) |
-| `im.chat.disbanded_v1` | Chat disbanded |
-| `im.chat.member.bot.added_v1` | Bot added to a chat |
-| `im.chat.member.bot.deleted_v1` | Bot removed from a chat |
-| `im.chat.member.user.added_v1` | User joined a chat (including topic chats) |
-| `im.chat.member.user.deleted_v1` | User left voluntarily **or** was removed |
-| `im.chat.member.user.withdrawn_v1` | Pending chat invite withdrawn (inviter canceled; user never actually joined) |
+`im.message.receive_v1` is the only **flat** key (fields at `.xxx`). The other 10 IM keys are **V2-enveloped** — fields live at `.event.xxx` (e.g. `.event.chat_id`). `event schema <key>` confirms it (its Output Schema nests everything under `event`).
 
-> **Shape**: `im.message.receive_v1` is the only flat key (fields at `.xxx`); the other 10 are V2-enveloped (fields at `.event.xxx`).
+## `.content` is pre-rendered — do NOT blindly `fromjson` (`im.message.receive_v1`)
 
-## Gotchas (`im.message.receive_v1`)
+`lark-cli` runs a Process hook that **pre-renders `.content` to human-readable text** for every `message_type` except `interactive` (`@mentions` resolved to display names). Only `interactive` (cards) keeps the raw JSON string.
 
-**sender_id is open_id only**: the event payload carries no display name. Call the contact API separately if you need the sender's name.
-
-**`.content` shape depends on `message_type`** (this key uses a flat Custom schema; see [`events/im/message_receive.go`](../../../events/im/message_receive.go)):
-
-| message_type | `.content` shape | How to read |
+| message_type | `.content` | How to read |
 |---|---|---|
-| `text` / `post` / `image` / `file` / `audio` / `sticker` / `share_chat` / `share_user` / `media` / `system` | Human-readable text (convertlib-processed; `@mentions` resolved to display names) | Use `.content` directly |
-| `interactive` (card) | Raw card JSON string (structured actions can't be losslessly flattened) | `.content \| fromjson` to get the card object |
+| everything except `interactive` | plain text | use `.content` directly |
+| `interactive` (card) | raw card JSON string | `.content \| fromjson` |
 
-**Do not blindly `fromjson`** — for non-interactive messages it fails with `jq: fromjson cannot be applied to "hello"` because `.content` isn't JSON-encoded.
+Applying `fromjson` to a non-interactive message errors per event (`jq: fromjson cannot be applied to "hello"`) and the consumer **silently drops** it — looks alive, emits nothing.
 
-```bash
-# text: .content is plain text — no fromjson needed
-lark-cli event consume im.message.receive_v1 --as bot \
-  --jq 'select(.message_type=="text") | .content'
+**`sender_id` is `open_id` only** — the payload carries no display name; resolve via the contact API if you need one.
 
-# interactive: .content is a JSON string — fromjson to parse
-lark-cli event consume im.message.receive_v1 --as bot \
-  --jq 'select(.message_type=="interactive") | .content | fromjson'
-```
+## jq recipes (`im.message.receive_v1`)
 
-## On-demand filter recipes
-
-> **Default = no `--jq`.** Run `lark-cli event consume im.message.receive_v1 --as bot` to see every message. The recipes below are only for cases where the user has asked to narrow the stream.
-
-### 1. Filter by chat type (p2p vs group)
-
-`chat_type` is an enum with values `p2p` / `group`.
+> Default = no `--jq` (stream every message). Use these only when asked to narrow the stream.
 
 ```bash
-# p2p only (direct messages)
-lark-cli event consume im.message.receive_v1 --as bot \
-  --jq 'select(.chat_type=="p2p") | {from: .sender_id, msg: .content}'
-
-# group only
+# group chats only (chat_type enum: p2p | group)
 lark-cli event consume im.message.receive_v1 --as bot \
   --jq 'select(.chat_type=="group") | {chat: .chat_id, from: .sender_id, msg: .content}'
-```
 
-### 2. Filter by message type
-
-```bash
-# text only — content is plain human-readable text
+# text messages only — .content is plain text
 lark-cli event consume im.message.receive_v1 --as bot \
   --jq 'select(.message_type=="text") | .content'
 
-# interactive (card) only — parse the card body
+# interactive cards only — parse the card body
 lark-cli event consume im.message.receive_v1 --as bot \
   --jq 'select(.message_type=="interactive") | .content | fromjson'
+
+# one sender's messages only
+lark-cli event consume im.message.receive_v1 --as bot \
+  --jq 'select(.sender_id=="ou_xxxx") | {msg_id: .message_id, text: .content}'
 ```
 
-### 3. Filter by sender (only one user's messages)
-
-```bash
-# example: only messages from the given open_id
-lark-cli event consume im.message.receive_v1 --as bot\
-  --jq 'select(.sender_id=="ou_xxxxxxxxxxxxxxxxxxxxxxxxxx") | {msg_id: .message_id, text: .content}'
-```
-
-Get your own open_id via `lark-cli contact +get-user --as user`; other users' via `lark-cli contact +search-user`.
+Get your own open_id via `lark-cli contact +get-user --as user`; others' via `lark-cli contact +search-user`.
