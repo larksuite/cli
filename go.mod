@@ -7,6 +7,8 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/facebookincubator/flog v0.0.0-20190930132826-d2511d0ce33c
+	github.com/facebookincubator/sks v0.0.0-20251112220143-6823f23937b4
 	github.com/gofrs/flock v0.8.1
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.17
@@ -26,11 +28,6 @@ require (
 	golang.org/x/term v0.27.0
 	golang.org/x/text v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
-)
-
-require (
-	github.com/facebookincubator/flog v0.0.0-20190930132826-d2511d0ce33c
-	github.com/facebookincubator/sks v0.0.0-20251112220143-6823f23937b4
 )
 
 require (
