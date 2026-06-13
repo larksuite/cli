@@ -52,7 +52,7 @@ const (
 	// the binding workflow" guidance. Always points at --help (never a
 	// ready-to-run bind command) so the AI reads the confirmation
 	// discipline (identity preset, user opt-in) before acting.
-	agentBindHint = "read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`"
+	agentBindHint = "read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`. If this is NOT an Agent job and the Agent context was triggered only by an inherited env var (e.g. HERMES_HOME), set LARKSUITE_CLI_FORCE_LOCAL=1 to use the normal local config instead."
 )
 
 // NotConfiguredError returns the canonical "not configured" error, with a

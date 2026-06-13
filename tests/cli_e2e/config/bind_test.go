@@ -294,7 +294,7 @@ func TestBind_ConfigShow_UnboundWorkspace(t *testing.T) {
 	// wire error.type="config"; CategoryConfig → exit 3.
 	assertStderrError(t, result, 3, "config",
 		"openclaw context detected but lark-cli is not bound to it",
-		"read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`")
+		"read `lark-cli config bind --help`, then ask the user to confirm intent and identity preset (bot-only or user-default); only after both are confirmed, run `lark-cli config bind`. If this is NOT an Agent job and the Agent context was triggered only by an inherited env var (e.g. HERMES_HOME), set LARKSUITE_CLI_FORCE_LOCAL=1 to use the normal local config instead.")
 }
 
 func TestBind_OpenClaw_MissingFile(t *testing.T) {
