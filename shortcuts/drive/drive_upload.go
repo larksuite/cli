@@ -154,6 +154,11 @@ var DriveUpload = common.Shortcut{
 			return driveInputStatError(err)
 		}
 		fileSize := info.Size()
+		if !isOverwrite {
+			if err := requireDriveBotCurrentUserForCreate(runtime, "drive +upload"); err != nil {
+				return err
+			}
+		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading: %s (%s) -> %s\n", fileName, common.FormatSize(fileSize), target.Label())
 

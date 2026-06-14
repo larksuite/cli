@@ -87,6 +87,9 @@ var DriveImport = common.Shortcut{
 		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
 			return err
 		}
+		if err := requireDriveBotCurrentUserForCreate(runtime, "drive +import"); err != nil {
+			return err
+		}
 
 		// Step 1: Upload file as media
 		fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec.FilePath, spec.SourceFileName(), spec.DocType)
