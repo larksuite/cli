@@ -335,9 +335,15 @@ lark-cli mail +send --as user \
 lark-cli mail +send --to alice@example.com --subject '周报' \
   --body '<p>本周进展：</p><ul><li>完成 A 模块</li><li>修复 3 个 bug</li></ul>'
 
+# 跳过当前账号/发件地址的默认发信签名
+lark-cli mail +send --to alice@example.com --subject '简短通知' \
+  --body '<p>收到，谢谢。</p>' --no-signature
+
 # ⚠️ 仅在内容极简时使用纯文本
 lark-cli mail +reply --message-id <id> --body '收到，谢谢'
 ```
+
+`+send` 默认会追加当前账号 / `--from` 发件地址对应的发信默认签名；需要完全不带签名时传 `--no-signature`，需要指定某个签名时传 `--signature-id <id>` 覆盖默认签名。`--signature-id` 与 `--no-signature` 互斥。纯文本 `+send --plain-text` 不会因为签名升级为 HTML；签名会先转换为纯文本再拼接。
 
 ## 邮件书写规范
 
