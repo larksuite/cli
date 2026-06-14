@@ -116,6 +116,7 @@ func TestMail_SendWorkflowAsUser(t *testing.T) {
 				"--subject", subject,
 				"--body", body,
 				"--plain-text",
+				"--no-signature",
 				"--confirm-send",
 			},
 			DefaultAs: "user",

@@ -127,6 +127,7 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		"--to", "bob@example.com",
 		"--subject", "hi",
 		"--body", "please confirm",
+		"--no-signature",
 		"--request-receipt",
 		"--confirm-send",
 	}, f, stdout); err != nil {
@@ -153,6 +154,7 @@ func TestMailSend_RequestReceiptNoSender_FailsValidation(t *testing.T) {
 		"--to", "bob@example.com",
 		"--subject", "hi",
 		"--body", "body",
+		"--no-signature",
 		"--request-receipt",
 		"--confirm-send",
 	}, f, stdout)

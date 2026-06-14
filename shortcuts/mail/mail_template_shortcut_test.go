@@ -1041,6 +1041,7 @@ func TestFetchTemplateAttachmentURLs_FailedReasons(t *testing.T) {
 		"--to", "alice@example.com",
 		"--subject", "s",
 		"--body", "<p>b</p>",
+		"--no-signature",
 		"--template-id", "33",
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "download URL not returned") {
@@ -1140,6 +1141,7 @@ func TestMailSend_TemplateIDAppliesInlineAndSmall(t *testing.T) {
 		"--to", "alice@example.com",
 		"--subject", "override-subj",
 		"--body", "<p>user body</p>",
+		"--no-signature",
 		"--template-id", "42",
 	}, f, stdout)
 	if err != nil {

@@ -7,6 +7,7 @@
 - 抄送/密送
 - 本地文件附件（`--attach`）
 - 内嵌图片（`--inline`，CID 可用随机字符串）
+- 默认追加当前发件人的发送签名；可用 `--signature-id` 指定签名，或用 `--no-signature` 跳过签名
 
 本 skill 对应 shortcut：`lark-cli mail +send`。
 
@@ -59,6 +60,13 @@ lark-cli mail +send --to alice@example.com --subject '预览图' --body '<img sr
 # 纯文本邮件（仅在内容极简时使用）
 lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢'
 
+# 使用指定签名；纯文本模式下签名会以 text/plain 追加，不会升级为 HTML
+lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢' \
+  --plain-text --signature-id sig_123
+
+# 不附加默认签名
+lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢' --no-signature
+
 # Dry Run（仅打印请求，不执行）
 lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p>' --dry-run
 ```
@@ -75,10 +83,11 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
-| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
+| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用。若使用默认签名或 `--signature-id`，签名会转为纯文本追加到正文末尾，不会升级为 HTML |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
-| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 签名 ID。显式指定要附加的邮箱签名，并覆盖当前发件人的默认发送签名。运行 `mail +signature` 查看可用签名。不可与 `--no-signature` 同时使用 |
+| `--no-signature` | 否 | 不附加默认签名，也不查询签名和 send_as 设置。不可与 `--signature-id` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |
@@ -209,6 +218,9 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
 - `--attach` 作为普通附件添加。相对路径。
 - `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
+- 签名规则：未传 `--signature-id` 且未传 `--no-signature` 时，命令会按最终发件人（`--from`，或 `--mailbox`/profile 解析出的地址）读取 `settings/signatures`，选择该地址的 `send_mail_signature_id` 作为默认发送签名。`--signature-id` 显式优先；`--no-signature` 完全跳过签名和 send_as 查询。
+- HTML 邮件沿用飞书签名 HTML 注入和内嵌图片处理；纯文本邮件会把签名 HTML 渲染为文本后追加到 `text/plain` 正文末尾，不会因为签名而改成 HTML 邮件。
+- 如果默认签名查询失败，可加 `--no-signature` 先发送无签名邮件；如果默认签名 ID 已配置但在 `settings/signatures` 中找不到，先运行 `lark-cli mail +signature` 检查签名列表，或使用 `--no-signature` 跳过。
 - **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端。HTML 邮件插入与飞书客户端一致的下载卡片；纯文本邮件追加包含文件名、大小和下载链接的文本块。单个文件上限 3 GB，总附件数量上限 250 个。
 
 ## 相关命令
