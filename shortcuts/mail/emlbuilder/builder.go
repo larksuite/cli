@@ -59,6 +59,9 @@ import (
 // MaxEMLSize is the maximum allowed raw EML size in bytes.
 const MaxEMLSize = 25 * 1024 * 1024 // 25 MB
 
+// lmsReplyTypeHeaderKey is the Lark internal header that carries the reply/forward type.
+const lmsReplyTypeHeaderKey = "X-LMS-Reply-Type"
+
 // readFile reads the named file and returns its contents via FileIO.
 func readFile(fio fileio.FileIO, path string) ([]byte, error) {
 	f, err := fio.Open(path)
@@ -389,6 +392,24 @@ func (b Builder) LMSReplyToMessageID(id string) Builder {
 	}
 	b.lmsReplyToMessageID = id
 	return b
+}
+
+// LMSReplyType sets the reply/forward type header (X-LMS-Reply-Type).
+// Accepted values are "REPLY" and "FORWARD".
+// Used together with LMSReplyToMessageID so the server can mark the original
+// message as replied-to or forwarded.
+// Returns an error builder if t contains CR or LF.
+func (b Builder) LMSReplyType(t string) Builder {
+	if b.err != nil {
+		return b
+	}
+	if err := validateHeaderValue(t); err != nil {
+		b.err = err
+		return b
+	}
+	cp := b.copySlices()
+	cp.extraHeaders = append(cp.extraHeaders, [2]string{lmsReplyTypeHeaderKey, t})
+	return cp
 }
 
 // References sets the References header value verbatim.

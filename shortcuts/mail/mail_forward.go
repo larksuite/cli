@@ -229,6 +229,7 @@ var MailForward = common.Shortcut{
 		}
 		if messageId != "" {
 			bld = bld.LMSReplyToMessageID(messageId)
+			bld = bld.LMSReplyType("FORWARD")
 		}
 		useHTML := !plainText && (bodyIsHTML(body) || bodyIsHTML(orig.bodyRaw) || sigResult != nil)
 		if strings.TrimSpace(inlineFlag) != "" && !useHTML {
