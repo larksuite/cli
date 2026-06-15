@@ -35,8 +35,6 @@ var noSignatureFlag = common.Flag{
 
 // validateNoSignatureConflict returns a structured validation error when
 // --no-signature and --signature-id are both set; they are mutually exclusive.
-// Uses output.ErrValidation (not fmt.Errorf) so callers/scripts get a stable
-// structured parameter error, consistent with the other mail validators.
 func validateNoSignatureConflict(noSignature bool, signatureID string) error {
 	if noSignature && signatureID != "" {
 		return mailValidationParamError("--no-signature", "--no-signature and --signature-id are mutually exclusive")
