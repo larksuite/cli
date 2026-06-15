@@ -77,6 +77,10 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
    </ul>
    ```
 
+## 代码块
+- 代码块必须写成 `<pre lang="xxx" caption="可选说明"><code>代码内容</code></pre>`。
+- 不要将代码文本直接放在 `<pre>` 下；应放在内层 `<code>` 中。
+
 
 ## 用户名写入规则
 

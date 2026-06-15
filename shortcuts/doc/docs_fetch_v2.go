@@ -38,9 +38,6 @@ func validateFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --doc: %v", err).WithParam("--doc")
-	}
-	if err := validateFetchDetail(runtime); err != nil {
 		return err
 	}
 	if err := validateReadModeFlags(runtime); err != nil {
@@ -71,6 +68,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {
 		if doc, ok := data["document"].(map[string]interface{}); ok {
@@ -90,7 +90,7 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 		body["revision_id"] = v
 	}
 
-	detail := runtime.Str("detail")
+	detail := effectiveFetchDetail(runtime)
 	switch detail {
 	case "", "simple":
 		body["export_option"] = map[string]interface{}{
@@ -146,17 +146,33 @@ func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
 	return ro
 }
 
-// validateFetchDetail 非 xml 格式（markdown）不承载 block_id 与样式属性，拒绝 with-ids/full。
-func validateFetchDetail(runtime *common.RuntimeContext) error {
+// effectiveFetchDetail degrades detail options that cannot be represented by
+// non-XML exports. The original flag value is left intact so callers can still
+// surface an explicit warning in execute output.
+func effectiveFetchDetail(runtime *common.RuntimeContext) string {
 	format := strings.TrimSpace(runtime.Str("doc-format"))
 	detail := strings.TrimSpace(runtime.Str("detail"))
 	if format == "" || format == "xml" {
-		return nil
+		return detail
 	}
 	if detail == "with-ids" || detail == "full" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format).WithParam("--detail")
+		return "simple"
 	}
-	return nil
+	return detail
+}
+
+func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[string]interface{}) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	detail := strings.TrimSpace(runtime.Str("detail"))
+	if format == "" || format == "xml" {
+		return ""
+	}
+	if detail != "with-ids" && detail != "full" {
+		return ""
+	}
+	warning := fmt.Sprintf("--detail %s is only supported with --doc-format xml; returning %s output and ignoring the unsupported detail option", detail, format)
+	appendDocWarning(data, warning)
+	return warning
 }
 
 // validateReadModeFlags 客户端前置校验，服务端也会再校验一次。

@@ -113,6 +113,8 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace 
   --content '<p>替换后的段落内容</p>'
 ```
 
+> `block_replace` 由服务端执行整块替换，目标 block 的 ID 不保证在替换后继续可用。后续如果还要在替换后的块附近继续 `block_insert_after`、`range` 或其他 block 级操作，先重新 `docs +fetch --detail with-ids` 获取最新 block ID，不要复用旧 ID。
+
 ### block_delete — 删除指定 block
 
 ```bash
@@ -234,6 +236,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
 - **保护不可重建的内容**：图片、画板、电子表格等以 token 形式存储，替换时避开这些 block
 - **str_replace 的 replacement 支持富文本**：可以用行内标签 `<b>`、`<a>`、`<cite>`、`<latex>` 等替换普通文本为富文本
 - **同一 block 只能被 replace 一次**：多次修改同一 block 请合并为一次 block_replace
+- **block_replace 后重新获取 ID**：`block_replace` 成功后旧 block ID 不保证继续可用；继续做相邻块操作前，重新 `docs +fetch --detail with-ids`
 - **block_delete 支持批量**：用逗号分隔多个 block_id 一次删除
 - **复杂结构重组**：将多个段落转换为 grid / table 等复杂布局时，分步操作比 overwrite 更安全：
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
