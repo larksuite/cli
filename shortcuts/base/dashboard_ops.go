@@ -23,7 +23,7 @@ func blockIDFlag(required bool) common.Flag {
 // dryRunDashboardBase returns a base DryRunAPI with common dashboard parameters set.
 func dryRunDashboardBase(runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("dashboard_id", runtime.Str("dashboard-id")).
 		Set("block_id", runtime.Str("block-id"))
 }
@@ -108,7 +108,7 @@ func dryRunDashboardBlockGet(_ context.Context, runtime *common.RuntimeContext) 
 func dryRunDashboardBlockGetData(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/dashboards/blocks/:block_id/data").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("block_id", runtime.Str("block-id"))
 }
 
@@ -177,7 +177,7 @@ func executeDashboardList(runtime *common.RuntimeContext) error {
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards"), params, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards"), params, nil)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func executeDashboardList(runtime *common.RuntimeContext) error {
 
 // executeDashboardGet retrieves a dashboard by ID.
 func executeDashboardGet(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id")), nil, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id")), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func executeDashboardCreate(runtime *common.RuntimeContext) error {
 	if themeStyle := strings.TrimSpace(runtime.Str("theme-style")); themeStyle != "" {
 		body["theme"] = map[string]interface{}{"theme_style": themeStyle}
 	}
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "dashboards"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards"), nil, body)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func executeDashboardUpdate(runtime *common.RuntimeContext) error {
 	if themeStyle := strings.TrimSpace(runtime.Str("theme-style")); themeStyle != "" {
 		body["theme"] = map[string]interface{}{"theme_style": themeStyle}
 	}
-	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id")), nil, body)
+	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id")), nil, body)
 	if err != nil {
 		return err
 	}
@@ -228,7 +228,7 @@ func executeDashboardUpdate(runtime *common.RuntimeContext) error {
 
 // executeDashboardDelete deletes a dashboard by ID.
 func executeDashboardDelete(runtime *common.RuntimeContext) error {
-	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id")), nil, nil)
+	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id")), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -247,7 +247,7 @@ func executeDashboardBlockList(runtime *common.RuntimeContext) error {
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, nil)
 	if err != nil {
 		return err
 	}
@@ -261,7 +261,7 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 	if userIDType := strings.TrimSpace(runtime.Str("user-id-type")); userIDType != "" {
 		params["user_id_type"] = userIDType
 	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), params, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), params, nil)
 	if err != nil {
 		return err
 	}
@@ -271,7 +271,7 @@ func executeDashboardBlockGet(runtime *common.RuntimeContext) error {
 
 // executeDashboardBlockGetData retrieves computed data for a dashboard chart block.
 func executeDashboardBlockGetData(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "dashboards", "blocks", runtime.Str("block-id"), "data"), nil, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", "blocks", runtime.Str("block-id"), "data"), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -302,7 +302,7 @@ func executeDashboardBlockCreate(runtime *common.RuntimeContext) error {
 		params["user_id_type"] = userIDType
 	}
 
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "blocks"), params, body)
 	if err != nil {
 		return err
 	}
@@ -329,7 +329,7 @@ func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 		params["user_id_type"] = userIDType
 	}
 
-	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), params, body)
+	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), params, body)
 	if err != nil {
 		return err
 	}
@@ -339,7 +339,7 @@ func executeDashboardBlockUpdate(runtime *common.RuntimeContext) error {
 
 // executeDashboardBlockDelete deletes a dashboard block by ID.
 func executeDashboardBlockDelete(runtime *common.RuntimeContext) error {
-	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), nil, nil)
+	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "blocks", runtime.Str("block-id")), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func executeDashboardArrange(runtime *common.RuntimeContext) error {
 		params["user_id_type"] = userIDType
 	}
 	// 请求体为空对象，由服务端智能重排
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "dashboards", runtime.Str("dashboard-id"), "arrange"), params, map[string]interface{}{})
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "dashboards", runtime.Str("dashboard-id"), "arrange"), params, map[string]interface{}{})
 	if err != nil {
 		return err
 	}

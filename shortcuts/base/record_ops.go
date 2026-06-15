@@ -291,7 +291,7 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	path := "/open-apis/base/v3/bases/:base_token/tables/:table_id/records?" + params.Encode()
 	return common.NewDryRunAPI().
 		GET(path).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -303,7 +303,7 @@ func dryRunRecordGet(_ context.Context, runtime *common.RuntimeContext) *common.
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_get").
 		Body(recordGetBatchBody(selection)).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -317,7 +317,7 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/search").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -328,14 +328,14 @@ func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *comm
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("table_id", baseTableID(runtime)).
 			Set("record_id", recordID)
 	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -345,7 +345,7 @@ func dryRunRecordBatchCreate(_ context.Context, runtime *common.RuntimeContext) 
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_create").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -355,7 +355,7 @@ func dryRunRecordBatchUpdate(_ context.Context, runtime *common.RuntimeContext) 
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_update").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -367,7 +367,7 @@ func dryRunRecordDelete(_ context.Context, runtime *common.RuntimeContext) *comm
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/batch_delete").
 		Body(map[string]interface{}{"record_id_list": selection.recordIDs}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -383,7 +383,7 @@ func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) 
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/record_history").
 		Params(params).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 }
 
 func dryRunRecordShareBatch(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -391,7 +391,7 @@ func dryRunRecordShareBatch(_ context.Context, runtime *common.RuntimeContext) *
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/share_links/batch").
 		Body(map[string]interface{}{"record_ids": recordIDs}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -427,7 +427,7 @@ func executeRecordShareBatch(runtime *common.RuntimeContext) error {
 		"record_ids": recordIDs,
 	}
 	data, err := baseV3Call(runtime, "POST",
-		baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "share_links", "batch"),
+		baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "share_links", "batch"),
 		nil, body)
 	if err != nil {
 		return err
@@ -466,7 +466,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if err := applyRecordQueryToParams(runtime, params); err != nil {
 		return err
 	}
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records"), params, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records"), params, nil)
 	if err != nil {
 		return err
 	}
@@ -485,7 +485,7 @@ func executeRecordGet(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_get"), nil, recordGetBatchBody(selection))
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "batch_get"), nil, recordGetBatchBody(selection))
 	data, err := handleBaseAPIResult(result, err, "batch get records")
 	if err != nil {
 		return err
@@ -508,7 +508,7 @@ func executeRecordSearch(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "search"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "search"), nil, body)
 	if err != nil {
 		return err
 	}
@@ -525,7 +525,7 @@ func executeRecordUpsert(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseToken, "tables", tableIDValue, "records", recordID), nil, body)
@@ -549,7 +549,7 @@ func executeRecordBatchCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_create"), nil, body)
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "batch_create"), nil, body)
 	data, err := handleBaseAPIResult(result, err, "batch create records")
 	if err != nil {
 		return err
@@ -564,7 +564,7 @@ func executeRecordBatchUpdate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_update"), nil, body)
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "batch_update"), nil, body)
 	data, err := handleBaseAPIResult(result, err, "batch update records")
 	if err != nil {
 		return err
@@ -578,7 +578,7 @@ func executeRecordDelete(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "records", "batch_delete"), nil, map[string]interface{}{
+	result, err := baseV3Raw(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "records", "batch_delete"), nil, map[string]interface{}{
 		"record_id_list": selection.recordIDs,
 	})
 	data, err := handleBaseAPIResult(result, err, "batch delete records")

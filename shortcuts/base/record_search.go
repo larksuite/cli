@@ -11,12 +11,13 @@ import (
 )
 
 var BaseRecordSearch = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-search",
-	Description: "Search records in a table",
-	Risk:        "read",
-	Scopes:      []string{"base:record:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-search",
+	Description:       "Search records in a table",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

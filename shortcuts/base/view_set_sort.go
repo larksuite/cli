@@ -10,12 +10,13 @@ import (
 )
 
 var BaseViewSetSort = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-set-sort",
-	Description: "Set view sort configuration",
-	Risk:        "write",
-	Scopes:      []string{"base:view:write_only"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+view-set-sort",
+	Description:       "Set view sort configuration",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:write_only"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

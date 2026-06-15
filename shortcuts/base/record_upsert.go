@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordUpsert = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-upsert",
-	Description: "Create or update a record",
-	Risk:        "write",
-	Scopes:      []string{"base:record:create", "base:record:update"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-upsert",
+	Description:       "Create or update a record",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:create", "base:record:update"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

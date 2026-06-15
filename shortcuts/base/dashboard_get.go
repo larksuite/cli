@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-get",
-	Description: "Get a dashboard by ID",
-	Risk:        "read",
-	Scopes:      []string{"base:dashboard:read"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-get",
+	Description:       "Get a dashboard by ID",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:read"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -27,7 +28,7 @@ var BaseDashboardGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

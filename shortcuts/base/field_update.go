@@ -10,12 +10,13 @@ import (
 )
 
 var BaseFieldUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+field-update",
-	Description: "Update a field by ID or name",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:field:update"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+field-update",
+	Description:       "Update a field by ID or name",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:field:update"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

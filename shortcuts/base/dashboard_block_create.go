@@ -13,13 +13,14 @@ import (
 )
 
 var BaseDashboardBlockCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-create",
-	Description: "Create a block in a dashboard",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:create"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-create",
+	Description:       "Create a block in a dashboard",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:create"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -86,7 +87,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			POST("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks").
 			Params(params).
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

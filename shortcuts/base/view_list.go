@@ -10,12 +10,13 @@ import (
 )
 
 var BaseViewList = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-list",
-	Description: "List views in a table",
-	Risk:        "read",
-	Scopes:      []string{"base:view:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+view-list",
+	Description:       "List views in a table",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

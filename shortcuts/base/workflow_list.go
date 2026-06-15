@@ -11,23 +11,25 @@ import (
 )
 
 var BaseWorkflowList = common.Shortcut{
-	Service:     "base",
-	Command:     "+workflow-list",
-	Description: "List all workflows in a base (auto-paginated)",
-	Risk:        "read",
-	Scopes:      []string{"base:workflow:read"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+workflow-list",
+	Description:       "List all workflows in a base (auto-paginated)",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:workflow:read"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "status", Desc: "filter by status", Enum: []string{"enabled", "disabled"}},
 		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, max 100"},
+		{Name: "compact", Type: "bool", Desc: "return compact workflow_id/title/status/trigger_type fields for lower context cost; default returns full workflow metadata"},
 	},
 	Tips: []string{
 		"Returns workflow_id values with wkf prefix; pass those IDs to +workflow-get/enable/disable/update.",
 		"This shortcut auto-paginates and returns all matched workflows.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
@@ -42,7 +44,7 @@ var BaseWorkflowList = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/workflows/list").
 			Body(body).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		var allItems []interface{}
@@ -58,7 +60,7 @@ var BaseWorkflowList = common.Shortcut{
 				body["status"] = s
 			}
 			data, err := baseV3Call(runtime, "POST",
-				baseV3Path("bases", runtime.Str("base-token"), "workflows", "list"),
+				baseV3Path("bases", baseTokenOrRaw(runtime), "workflows", "list"),
 				nil,
 				body,
 			)
@@ -78,9 +80,32 @@ var BaseWorkflowList = common.Shortcut{
 			pageToken = nextToken
 		}
 		runtime.Out(map[string]interface{}{
-			"items": allItems,
+			"items": workflowListItems(runtime, allItems),
 			"total": len(allItems),
 		}, nil)
 		return nil
 	},
+}
+
+func workflowListItems(runtime *common.RuntimeContext, items []interface{}) []interface{} {
+	if !runtime.Bool("compact") {
+		return items
+	}
+	keep := []string{"workflow_id", "title", "status", "trigger_type"}
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			out = append(out, item)
+			continue
+		}
+		compact := map[string]interface{}{}
+		for _, key := range keep {
+			if value, ok := m[key]; ok {
+				compact[key] = value
+			}
+		}
+		out = append(out, compact)
+	}
+	return out
 }

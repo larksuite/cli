@@ -10,13 +10,14 @@ import (
 )
 
 var BaseBaseCopy = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-copy",
-	Description: "Copy a base resource",
-	Risk:        "write",
-	UserScopes:  []string{"base:app:copy"},
-	BotScopes:   []string{"base:app:copy", "docs:permission.member:create"},
-	AuthTypes:   authTypes(),
+	Service:               "base",
+	Command:               "+base-copy",
+	Description:           "Copy a base resource",
+	Risk:                  "write",
+	ConditionalUserScopes: []string{"wiki:node:retrieve"},
+	Scopes:                []string{"base:app:copy"},
+	BotScopes:             []string{"base:app:copy", "docs:permission.member:create"},
+	AuthTypes:             authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "new base name"},

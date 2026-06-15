@@ -11,12 +11,13 @@ import (
 )
 
 var BaseWorkflowCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+workflow-create",
-	Description: "Create a new workflow in a base",
-	Risk:        "write",
-	Scopes:      []string{"base:workflow:create"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+workflow-create",
+	Description:       "Create a new workflow in a base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:workflow:create"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "json", Desc: "workflow body JSON; read lark-base-workflow-guide.md and lark-base-workflow-schema.md before constructing steps", Required: true},
@@ -30,7 +31,7 @@ var BaseWorkflowCreate = common.Shortcut{
 		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		pc := newParseCtx(runtime)
@@ -52,7 +53,7 @@ var BaseWorkflowCreate = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/workflows").
 			Body(body).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		pc := newParseCtx(runtime)
@@ -65,7 +66,7 @@ var BaseWorkflowCreate = common.Shortcut{
 			return err
 		}
 		data, err := baseV3Call(runtime, "POST",
-			baseV3Path("bases", runtime.Str("base-token"), "workflows"),
+			baseV3Path("bases", baseTokenOrRaw(runtime), "workflows"),
 			nil,
 			body,
 		)

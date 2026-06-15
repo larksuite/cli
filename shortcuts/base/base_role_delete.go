@@ -16,12 +16,13 @@ import (
 )
 
 var BaseRoleDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+role-delete",
-	Description: "Delete a custom role (system roles cannot be deleted)",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:role:delete"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+role-delete",
+	Description:       "Delete a custom role (system roles cannot be deleted)",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:role:delete"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "role-id", Desc: "role ID (e.g. rolxxxxxx4)", Required: true},
@@ -33,7 +34,7 @@ var BaseRoleDelete = common.Shortcut{
 		"Use +role-get first if the role target is ambiguous, then pass --yes to confirm deletion.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("role-id")) == "" {
@@ -44,11 +45,11 @@ var BaseRoleDelete = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			DELETE("/open-apis/base/v3/bases/:base_token/roles/:role_id").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("role_id", runtime.Str("role-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		roleId := runtime.Str("role-id")
 
 		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{

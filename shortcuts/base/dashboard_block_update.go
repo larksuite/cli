@@ -12,13 +12,14 @@ import (
 )
 
 var BaseDashboardBlockUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-update",
-	Description: "Update a dashboard block",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:update"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-update",
+	Description:       "Update a dashboard block",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:update"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -74,7 +75,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			PATCH("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
 			Params(params).
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id")).
 			Set("block_id", runtime.Str("block-id"))
 	},

@@ -63,6 +63,44 @@ func TestBaseWorkflowExecuteGetValidate(t *testing.T) {
 	})
 }
 
+func TestBaseWorkflowExecuteListCompact(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/workflows/list",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"workflow_id":  "wkf_1",
+						"title":        "My Workflow",
+						"status":       "enabled",
+						"trigger_type": "TimerTrigger",
+						"creator_id":   "ou_creator",
+						"update_time":  123,
+					},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	if err := runShortcut(t, BaseWorkflowList, []string{"+workflow-list", "--base-token", "app_x", "--compact"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	for _, want := range []string{`"workflow_id"`, `"wkf_1"`, `"title"`, `"status"`, `"trigger_type"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("stdout missing %s: %s", want, got)
+		}
+	}
+	for _, notWant := range []string{`"creator_id"`, `"update_time"`} {
+		if strings.Contains(got, notWant) {
+			t.Fatalf("stdout should be compact, found %s: %s", notWant, got)
+		}
+	}
+}
+
 func TestBaseWorkflowExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

@@ -10,12 +10,13 @@ import (
 )
 
 var BaseFieldList = common.Shortcut{
-	Service:     "base",
-	Command:     "+field-list",
-	Description: "List fields in a table",
-	Risk:        "read",
-	Scopes:      []string{"base:field:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+field-list",
+	Description:       "List fields in a table",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:field:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

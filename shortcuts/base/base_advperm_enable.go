@@ -16,12 +16,13 @@ import (
 )
 
 var BaseAdvpermEnable = common.Shortcut{
-	Service:     "base",
-	Command:     "+advperm-enable",
-	Description: "Enable advanced permissions for a Base",
-	Risk:        "write",
-	Scopes:      []string{"base:app:update"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+advperm-enable",
+	Description:       "Enable advanced permissions for a Base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:app:update"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
@@ -29,7 +30,7 @@ var BaseAdvpermEnable = common.Shortcut{
 		"Caller must be a Base admin; enable advanced permissions before creating or updating roles.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
@@ -37,10 +38,10 @@ var BaseAdvpermEnable = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			PUT("/open-apis/base/v3/bases/:base_token/advperm/enable?enable=true").
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 
 		queryParams := make(larkcore.QueryParams)
 		queryParams.Set("enable", "true")

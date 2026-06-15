@@ -16,13 +16,14 @@ import (
 )
 
 var BaseRoleList = common.Shortcut{
-	Service:     "base",
-	Command:     "+role-list",
-	Description: "List all roles in a Base",
-	Risk:        "read",
-	Scopes:      []string{"base:role:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+role-list",
+	Description:       "List all roles in a Base",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:role:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 	},
@@ -31,7 +32,7 @@ var BaseRoleList = common.Shortcut{
 		"Returns role summaries; use +role-get for the full permission config.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		return nil
@@ -39,10 +40,10 @@ var BaseRoleList = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/roles").
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 
 		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{
 			HttpMethod: http.MethodGet,

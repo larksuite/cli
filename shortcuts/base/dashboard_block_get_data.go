@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardBlockGetData = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-get-data",
-	Description: "Get computed data for a dashboard chart block",
-	Risk:        "read",
-	Scopes:      []string{"base:dashboard:read"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-get-data",
+	Description:       "Get computed data for a dashboard chart block",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:read"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "dashboard-id", Hidden: true},

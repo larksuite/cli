@@ -13,13 +13,14 @@ import (
 )
 
 var BaseFormsList = common.Shortcut{
-	Service:     "base",
-	Command:     "+form-list",
-	Description: "List all forms in a Base table (auto-paginated)",
-	Risk:        "read",
-	Scopes:      []string{"base:form:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+form-list",
+	Description:       "List all forms in a Base table (auto-paginated)",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:form:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
@@ -28,11 +29,11 @@ var BaseFormsList = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("table_id", runtime.Str("table-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		tableId := runtime.Str("table-id")
 
 		var allForms []interface{}

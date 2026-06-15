@@ -13,12 +13,13 @@ import (
 )
 
 var BaseDataQuery = common.Shortcut{
-	Service:     "base",
-	Command:     "+data-query",
-	Description: "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
-	Risk:        "read",
-	Scopes:      []string{"base:table:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+data-query",
+	Description:       "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "table-id", Hidden: true},
@@ -54,10 +55,10 @@ var BaseDataQuery = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/data/query").
 			Body(dsl).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 
 		var dsl map[string]interface{}
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))

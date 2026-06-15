@@ -10,14 +10,15 @@ import (
 )
 
 var BaseViewGetTimebar = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-get-timebar",
-	Description: "Get view timebar configuration",
-	Risk:        "read",
-	Scopes:      []string{"base:view:read"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
-	DryRun:      dryRunViewGetTimebar,
+	Service:           "base",
+	Command:           "+view-get-timebar",
+	Description:       "Get view timebar configuration",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:read"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
+	DryRun:            dryRunViewGetTimebar,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewGetProperty(runtime, "timebar", "timebar")
 	},

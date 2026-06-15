@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordBatchCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-batch-create",
-	Description: "Batch create records",
-	Risk:        "write",
-	Scopes:      []string{"base:record:create"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-batch-create",
+	Description:       "Batch create records",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:create"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

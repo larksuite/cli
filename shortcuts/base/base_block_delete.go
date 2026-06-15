@@ -10,12 +10,13 @@ import (
 )
 
 var BaseBaseBlockDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-block-delete",
-	Description: "Delete a block",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:block:delete"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+base-block-delete",
+	Description:       "Delete a block",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:block:delete"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		baseBlockIDFlag(true),

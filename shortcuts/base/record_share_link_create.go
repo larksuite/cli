@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordShareLinkCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-share-link-create",
-	Description: "Generate share links for one or more records (max 100 per request)",
-	Risk:        "read",
-	Scopes:      []string{"base:record:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-share-link-create",
+	Description:       "Generate share links for one or more records (max 100 per request)",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

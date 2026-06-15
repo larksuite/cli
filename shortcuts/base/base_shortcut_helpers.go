@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -21,6 +23,70 @@ type parseCtx struct {
 
 func newParseCtx(runtime *common.RuntimeContext) *parseCtx {
 	return &parseCtx{fio: runtime.FileIO()}
+}
+
+// baseTokenMemo caches the resolved --base-token per runtime so a command that
+// references the token multiple times (path building, request params, attachment
+// upload loops) performs the parse — and at most one wiki get_node call — only
+// once. Entries are keyed by the per-command *RuntimeContext, which a CLI run
+// holds exactly one of.
+var baseTokenMemo sync.Map // *common.RuntimeContext -> baseTokenResolution
+
+type baseTokenResolution struct {
+	token string
+	err   error
+}
+
+// baseToken resolves --base-token (a raw base token, a /base/ URL, or a /wiki/
+// URL) to a bitable app token, memoizing the result per runtime.
+func baseToken(runtime *common.RuntimeContext) (string, error) {
+	if cached, ok := baseTokenMemo.Load(runtime); ok {
+		res := cached.(baseTokenResolution)
+		return res.token, res.err
+	}
+	token, err := resolveBaseToken(runtime)
+	baseTokenMemo.Store(runtime, baseTokenResolution{token: token, err: err})
+	return token, err
+}
+
+func resolveBaseToken(runtime *common.RuntimeContext) (string, error) {
+	raw := strings.TrimSpace(runtime.Str("base-token"))
+	if raw == "" {
+		return "", baseFlagErrorf("--base-token must not be blank")
+	}
+	ref, ok := common.ParseResourceURL(raw)
+	if !ok {
+		if strings.Contains(raw, "://") || strings.ContainsAny(raw, "/?#") {
+			return "", baseFlagErrorf("unsupported --base-token URL %q: expected a /base/ or /wiki/ URL, or pass a raw base token", raw)
+		}
+		return raw, nil
+	}
+	switch ref.Type {
+	case "bitable":
+		return ref.Token, nil
+	case "wiki":
+		data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", map[string]interface{}{"token": ref.Token}, nil)
+		if err != nil {
+			return "", err
+		}
+		node := common.GetMap(data, "node")
+		objType := common.GetString(node, "obj_type")
+		objToken := common.GetString(node, "obj_token")
+		if objType != "bitable" || strings.TrimSpace(objToken) == "" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--base-token wiki URL resolves to %s, not bitable", objType).WithParam("--base-token")
+		}
+		return objToken, nil
+	default:
+		return "", baseFlagErrorf("--base-token URL must point to /base/ or /wiki/ bitable, got %q", ref.Type)
+	}
+}
+
+func baseTokenOrRaw(runtime *common.RuntimeContext) string {
+	token, err := baseToken(runtime)
+	if err != nil {
+		return strings.TrimSpace(runtime.Str("base-token"))
+	}
+	return token
 }
 
 func baseTableID(runtime *common.RuntimeContext) string {

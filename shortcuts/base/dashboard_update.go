@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-update",
-	Description: "Update a dashboard",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:update"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-update",
+	Description:       "Update a dashboard",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:update"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -34,7 +35,7 @@ var BaseDashboardUpdate = common.Shortcut{
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id").
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

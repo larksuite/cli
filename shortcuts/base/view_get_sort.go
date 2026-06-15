@@ -10,14 +10,15 @@ import (
 )
 
 var BaseViewGetSort = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-get-sort",
-	Description: "Get view sort configuration",
-	Risk:        "read",
-	Scopes:      []string{"base:view:read"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
-	DryRun:      dryRunViewGetSort,
+	Service:           "base",
+	Command:           "+view-get-sort",
+	Description:       "Get view sort configuration",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:read"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
+	DryRun:            dryRunViewGetSort,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewGetProperty(runtime, "sort", "sort")
 	},

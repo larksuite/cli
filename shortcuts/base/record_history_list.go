@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordHistoryList = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-history-list",
-	Description: "List record change history",
-	Risk:        "read",
-	Scopes:      []string{"base:history:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-history-list",
+	Description:       "List record change history",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:history:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
@@ -37,7 +38,7 @@ var BaseRecordHistoryList = common.Shortcut{
 		if value := runtime.Int("max-version"); value > 0 {
 			params["max_version"] = value
 		}
-		data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token"), "record_history"), params, nil)
+		data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime), "record_history"), params, nil)
 		if err != nil {
 			return err
 		}

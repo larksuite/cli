@@ -25,7 +25,7 @@ func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
 		Params(map[string]interface{}{"offset": offset, "limit": limit}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -37,9 +37,9 @@ func dryRunFieldListBatch(_ context.Context, runtime *common.RuntimeContext) *co
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	dry := common.NewDryRunAPI()
 	for _, tableIDValue := range runtime.StrArray("table-id") {
-		dry.GET(baseV3Path("bases", runtime.Str("base-token"), "tables", tableIDValue, "fields")).
+		dry.GET(baseV3Path("bases", baseTokenOrRaw(runtime), "tables", tableIDValue, "fields")).
 			Params(map[string]interface{}{"offset": offset, "limit": limit}).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("table_id", tableIDValue)
 	}
 	return dry
@@ -48,7 +48,7 @@ func dryRunFieldListBatch(_ context.Context, runtime *common.RuntimeContext) *co
 func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("field_id", runtime.Str("field-id"))
 }
@@ -59,7 +59,7 @@ func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *commo
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -69,7 +69,7 @@ func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *commo
 	return common.NewDryRunAPI().
 		PUT("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("field_id", runtime.Str("field-id"))
 }
@@ -77,7 +77,7 @@ func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *commo
 func dryRunFieldDelete(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("field_id", runtime.Str("field-id"))
 }
@@ -95,9 +95,9 @@ func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext)
 		params["query"] = keyword
 	}
 	return common.NewDryRunAPI().
-		GET(baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields", fieldRef, "options")).
+		GET(baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "fields", fieldRef, "options")).
 		Params(params).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("field_id", fieldRef)
 }
@@ -141,7 +141,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableRef, err := resolveFieldListTableRefs(runtime, baseToken, []string{baseTableID(runtime)})
 	if err != nil {
 		return err
@@ -166,7 +166,7 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableRefs, err := resolveFieldListTableRefs(runtime, baseToken, runtime.StrArray("table-id"))
 	if err != nil {
 		return err
@@ -278,7 +278,7 @@ func compactFields(fields []map[string]interface{}) []map[string]interface{} {
 }
 
 func executeFieldGet(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	fieldRef := runtime.Str("field-id")
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
@@ -295,7 +295,7 @@ func executeFieldCreate(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "fields"), nil, body)
 	if err != nil {
 		return err
 	}
@@ -305,7 +305,7 @@ func executeFieldCreate(runtime *common.RuntimeContext) error {
 
 func executeFieldUpdate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
 	if err != nil {
@@ -321,7 +321,7 @@ func executeFieldUpdate(runtime *common.RuntimeContext) error {
 }
 
 func executeFieldDelete(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	fieldRef := runtime.Str("field-id")
 	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
@@ -348,7 +348,7 @@ func fieldSearchOptionsKeyword(runtime *common.RuntimeContext) string {
 }
 
 func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	fieldRef := fieldSearchOptionsRef(runtime)
 	params := map[string]interface{}{

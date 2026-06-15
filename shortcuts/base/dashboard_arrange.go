@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardArrange = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-arrange",
-	Description: "Auto-arrange dashboard blocks layout (server-side smart layout)",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:update"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-arrange",
+	Description:       "Auto-arrange dashboard blocks layout (server-side smart layout)",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:update"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),

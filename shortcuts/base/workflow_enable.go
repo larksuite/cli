@@ -11,12 +11,13 @@ import (
 )
 
 var BaseWorkflowEnable = common.Shortcut{
-	Service:     "base",
-	Command:     "+workflow-enable",
-	Description: "Enable a workflow in a base",
-	Risk:        "write",
-	Scopes:      []string{"base:workflow:update"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+workflow-enable",
+	Description:       "Enable a workflow in a base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:workflow:update"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
@@ -27,7 +28,7 @@ var BaseWorkflowEnable = common.Shortcut{
 		"New workflows are created disabled; enable after creation only when the user wants it active.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
@@ -38,12 +39,12 @@ var BaseWorkflowEnable = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/workflows/:workflow_id/enable").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("workflow_id", runtime.Str("workflow-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		data, err := baseV3Call(runtime, "PATCH",
-			baseV3Path("bases", runtime.Str("base-token"), "workflows", runtime.Str("workflow-id"), "enable"),
+			baseV3Path("bases", baseTokenOrRaw(runtime), "workflows", runtime.Str("workflow-id"), "enable"),
 			nil,
 			map[string]interface{}{},
 		)

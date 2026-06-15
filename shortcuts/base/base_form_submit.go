@@ -23,13 +23,14 @@ const (
 )
 
 var BaseFormSubmit = common.Shortcut{
-	Service:     "base",
-	Command:     "+form-submit",
-	Description: "Submit a form (fill and submit form data)",
-	Risk:        "write",
-	Scopes:      []string{"base:form:update", "docs:document.media:upload"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+form-submit",
+	Description:       "Submit a form (fill and submit form data)",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:form:update", "docs:document.media:upload"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "share-token", Desc: "Form share token (required), extracted from the form share link", Required: true},
 		{Name: "base-token", Desc: "Base token (required when --json contains attachments, used for uploading attachments to Base Drive Media)"},
@@ -66,7 +67,7 @@ func validateFormSubmit(runtime *common.RuntimeContext) error {
 
 	if hasAttachments {
 		// 有附件时 --base-token 必填（上传附件到 Base Drive Media 需要）
-		if runtime.Str("base-token") == "" {
+		if baseTokenOrRaw(runtime) == "" {
 			return baseFlagErrorf("--base-token is required when --json contains \"attachments\"")
 		}
 
@@ -155,7 +156,7 @@ func dryRunFormSubmit(_ context.Context, runtime *common.RuntimeContext) *common
 					Body(map[string]interface{}{
 						"file_name":   fileName,
 						"parent_type": baseFormAttachmentParentType,
-						"parent_node": runtime.Str("base-token"),
+						"parent_node": baseTokenOrRaw(runtime),
 						"extra":       baseFormAttachmentExtra(runtime.Str("share-token")),
 						"file":        "@" + p,
 						"size":        "<file_size>",
@@ -191,7 +192,7 @@ func executeFormSubmit(runtime *common.RuntimeContext) error {
 
 	// 上传附件并合并到字段中
 	if len(attachmentMap) > 0 {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		fio := runtime.FileIO()
 		if fio == nil {
 			return baseMissingFileIOError("file operations require a FileIO provider (needed for attachments in --json)")

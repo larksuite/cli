@@ -19,13 +19,13 @@ func dryRunTableList(_ context.Context, runtime *common.RuntimeContext) *common.
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables").
 		Params(map[string]interface{}{"offset": offset, "limit": limit}).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 }
 
 func dryRunTableGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", runtime.Str("table-id"))
 }
 
@@ -34,7 +34,7 @@ func dryRunTableCreate(_ context.Context, runtime *common.RuntimeContext) *commo
 	d := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables").
 		Body(body).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 	return d
 }
 
@@ -42,14 +42,14 @@ func dryRunTableUpdate(_ context.Context, runtime *common.RuntimeContext) *commo
 	return common.NewDryRunAPI().
 		PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id").
 		Body(map[string]interface{}{"name": runtime.Str("name")}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", runtime.Str("table-id"))
 }
 
 func dryRunTableDelete(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		DELETE("/open-apis/base/v3/bases/:base_token/tables/:table_id").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", runtime.Str("table-id"))
 }
 
@@ -63,7 +63,7 @@ func executeTableList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 100)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tables, total, err := listAllTables(runtime, baseToken, offset, limit)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func executeTableList(runtime *common.RuntimeContext) error {
 }
 
 func executeTableGet(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := runtime.Str("table-id")
 	table, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue), nil, nil)
 	if err != nil {
@@ -99,7 +99,7 @@ func executeTableGet(runtime *common.RuntimeContext) error {
 }
 
 func executeTableCreate(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	pc := newParseCtx(runtime)
 	body, err := buildTableCreateBody(runtime, pc, runtime.Str("name"))
 	if err != nil {
@@ -224,7 +224,7 @@ func listEveryView(runtime *common.RuntimeContext, baseToken, tableID string) ([
 }
 
 func executeTableUpdate(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := runtime.Str("table-id")
 	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseToken, "tables", tableIDValue), nil, map[string]interface{}{"name": runtime.Str("name")})
 	if err != nil {
@@ -235,7 +235,7 @@ func executeTableUpdate(runtime *common.RuntimeContext) error {
 }
 
 func executeTableDelete(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := runtime.Str("table-id")
 	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue), nil, nil)
 	if err != nil {

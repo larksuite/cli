@@ -10,12 +10,13 @@ import (
 )
 
 var BaseBaseBlockCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-block-create",
-	Description: "Create a block",
-	Risk:        "write",
-	Scopes:      []string{"base:block:create"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+base-block-create",
+	Description:       "Create a block",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:block:create"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "type", Desc: "resource type", Required: true, Enum: baseBlockTypeEnums},

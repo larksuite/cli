@@ -11,12 +11,13 @@ import (
 )
 
 var BaseFieldSearchOptions = common.Shortcut{
-	Service:     "base",
-	Command:     "+field-search-options",
-	Description: "Search select options of a field",
-	Risk:        "read",
-	Scopes:      []string{"base:field:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+field-search-options",
+	Description:       "Search select options of a field",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:field:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
