@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 
@@ -426,22 +425,10 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 
 			runtime := newUpdateShortcutTestRuntime(t, "", tt.setFlags)
 			err := validateUpdateV2(context.Background(), runtime)
-			if err == nil {
-				t.Fatal("expected validation error")
-			}
 
-			// Primary assertions: typed error metadata (category/subtype/param),
-			// not message text — error-path tests must pin the envelope.
-			if p, ok := errs.ProblemOf(err); !ok || p.Subtype != errs.SubtypeInvalidArgument {
-				t.Fatalf("expected subtype %s, got %T: %v", errs.SubtypeInvalidArgument, err, err)
-			}
-			var ve *errs.ValidationError
-			if !errors.As(err, &ve) {
-				t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
-			}
-			if ve.Param != tt.wantParam {
-				t.Fatalf("param = %q, want %q", ve.Param, tt.wantParam)
-			}
+			// Primary: pin the typed envelope (category/subtype/param) via the
+			// package's shared contract helper, not message text.
+			assertValidationContract(t, err, errs.SubtypeInvalidArgument, tt.wantParam)
 
 			// Secondary: the human-facing message still names the problem.
 			if !strings.Contains(err.Error(), tt.want) {
