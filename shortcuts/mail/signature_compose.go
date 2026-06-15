@@ -5,6 +5,7 @@ package mail
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,7 +23,13 @@ import (
 // signatureFlag is the common flag definition for --signature-id, shared by all compose shortcuts.
 var signatureFlag = common.Flag{
 	Name: "signature-id",
-	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
+	Desc: "Optional. Signature ID to append after body content, overriding the default send signature. Run `mail +signature` to list available signatures.",
+}
+
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Skip appending the default or explicit mail signature for this send.",
 }
 
 // signatureResult holds the pre-processed signature data ready for HTML injection.
@@ -36,6 +43,10 @@ type signatureResult struct {
 // fromEmail is the --from address (may be an alias); used to match the correct
 // sender identity for template interpolation. Pass "" to use the primary address.
 func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string) (*signatureResult, error) {
+	return resolveSignatureWithOptions(ctx, runtime, mailboxID, signatureID, fromEmail, true)
+}
+
+func resolveSignatureWithOptions(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string, includeImages bool) (*signatureResult, error) {
 	if signatureID == "" {
 		return nil, nil
 	}
@@ -53,20 +64,22 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 	// Download signature inline images. The file_key field contains a
 	// direct download URL provided by the mail backend.
 	var images []draftpkg.SignatureImage
-	for _, img := range sig.Images {
-		if img.DownloadURL == "" || img.CID == "" {
-			continue
+	if includeImages {
+		for _, img := range sig.Images {
+			if img.DownloadURL == "" || img.CID == "" {
+				continue
+			}
+			data, ct, err := downloadSignatureImage(runtime, img.DownloadURL, img.ImageName)
+			if err != nil {
+				return nil, mailDecorateProblemMessage(err, "failed to download signature image %s", img.ImageName)
+			}
+			images = append(images, draftpkg.SignatureImage{
+				CID:         img.CID,
+				ContentType: ct,
+				FileName:    img.ImageName,
+				Data:        data,
+			})
 		}
-		data, ct, err := downloadSignatureImage(runtime, img.DownloadURL, img.ImageName)
-		if err != nil {
-			return nil, mailDecorateProblemMessage(err, "failed to download signature image %s", img.ImageName)
-		}
-		images = append(images, draftpkg.SignatureImage{
-			CID:         img.CID,
-			ContentType: ct,
-			FileName:    img.ImageName,
-			Data:        data,
-		})
 	}
 
 	return &signatureResult{
@@ -74,6 +87,101 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 		RenderedContent: rendered,
 		Images:          images,
 	}, nil
+}
+
+func resolveSignatureForSend(ctx context.Context, runtime *common.RuntimeContext, mailboxID, explicitSignatureID, senderEmail string, noSignature, includeImages bool) (*signatureResult, error) {
+	if noSignature {
+		return nil, nil
+	}
+	if explicitSignatureID != "" {
+		return resolveSignatureWithOptions(ctx, runtime, mailboxID, explicitSignatureID, senderEmail, includeImages)
+	}
+
+	resp, err := signature.ListAll(runtime, mailboxID)
+	if err != nil {
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: failed to resolve default signature: %v\n", err)
+		return nil, nil
+	}
+	signatureID := selectDefaultSendSignatureID(resp, senderEmail, mailboxID)
+	if signatureID == "" {
+		return nil, nil
+	}
+	if findUserSignatureByID(resp, signatureID) == nil {
+		return nil, nil
+	}
+	return resolveSignatureWithOptions(ctx, runtime, mailboxID, signatureID, senderEmail, includeImages)
+}
+
+func selectDefaultSendSignatureID(resp *signature.GetSignaturesResponse, senderEmail string, mailboxID string) string {
+	if resp == nil {
+		return ""
+	}
+	senderEmail = strings.TrimSpace(senderEmail)
+	mailboxEmail := strings.TrimSpace(mailboxID)
+	if senderEmail != "" {
+		for _, usage := range resp.Usages {
+			if strings.EqualFold(strings.TrimSpace(usage.EmailAddress), senderEmail) {
+				return normalizeSignatureID(usage.SendMailSignatureID)
+			}
+		}
+	}
+	if senderEmail == "" && mailboxEmail != "" && !strings.EqualFold(mailboxEmail, "me") {
+		for _, usage := range resp.Usages {
+			if strings.EqualFold(strings.TrimSpace(usage.EmailAddress), mailboxEmail) {
+				return normalizeSignatureID(usage.SendMailSignatureID)
+			}
+		}
+	}
+
+	var single string
+	for _, usage := range resp.Usages {
+		if id := normalizeSignatureID(usage.SendMailSignatureID); id != "" {
+			if single != "" {
+				return ""
+			}
+			single = id
+		}
+	}
+	return single
+}
+
+func findUserSignatureByID(resp *signature.GetSignaturesResponse, signatureID string) *signature.Signature {
+	if resp == nil {
+		return nil
+	}
+	signatureID = normalizeSignatureID(signatureID)
+	if signatureID == "" {
+		return nil
+	}
+	for i := range resp.Signatures {
+		if resp.Signatures[i].ID == signatureID && resp.Signatures[i].SignatureType == signature.SignatureTypeUser {
+			return &resp.Signatures[i]
+		}
+	}
+	return nil
+}
+
+func normalizeSignatureID(signatureID string) string {
+	signatureID = strings.TrimSpace(signatureID)
+	if signatureID == "" || signatureID == "0" {
+		return ""
+	}
+	return signatureID
+}
+
+func appendSignatureToPlainText(body string, sig *signatureResult) string {
+	if sig == nil {
+		return body
+	}
+	signatureText := strings.TrimSpace(draftpkg.PlainTextFromHTML(sig.RenderedContent))
+	if signatureText == "" {
+		return body
+	}
+	body = strings.TrimRight(body, "\r\n")
+	if body == "" {
+		return signatureText
+	}
+	return body + "\n\n" + signatureText
 }
 
 // injectSignatureIntoBody inserts signature HTML into the body, placing
@@ -251,6 +359,17 @@ func validateSignatureWithPlainText(plainText bool, signatureID string) error {
 			WithParams(
 				mailInvalidParam("--plain-text", "mutually exclusive with --signature-id"),
 				mailInvalidParam("--signature-id", "requires HTML mode"),
+			)
+	}
+	return nil
+}
+
+func validateSignatureOptions(signatureID string, noSignature bool) error {
+	if signatureID != "" && noSignature {
+		return mailValidationError("--signature-id and --no-signature are mutually exclusive").
+			WithParams(
+				mailInvalidParam("--signature-id", "mutually exclusive with --no-signature"),
+				mailInvalidParam("--no-signature", "mutually exclusive with --signature-id"),
 			)
 	}
 	return nil

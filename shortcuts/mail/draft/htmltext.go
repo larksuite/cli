@@ -84,6 +84,11 @@ func plainTextFromHTML(raw string) string {
 	return strings.Join(out, "\n")
 }
 
+// PlainTextFromHTML produces a conservative plain-text fallback from HTML.
+func PlainTextFromHTML(raw string) string {
+	return plainTextFromHTML(raw)
+}
+
 func bufLastByte(buf *bytes.Buffer) byte {
 	if buf.Len() == 0 {
 		return 0

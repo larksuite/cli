@@ -40,6 +40,7 @@ var MailSend = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -58,7 +59,14 @@ var MailSend = common.Shortcut{
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
 		api = api.GET(mailboxPath(mailboxID, "profile")).
-			POST(mailboxPath(mailboxID, "drafts")).
+			Desc("Resolve sender mailbox profile.")
+		if !runtime.Bool("no-signature") {
+			api = api.GET(mailboxPath(mailboxID, "settings", "signatures")).
+				Desc("Resolve explicit or default send signature.").
+				GET(mailboxPath(mailboxID, "settings", "send_as")).
+				Desc("Resolve sender variables for signature template.")
+		}
+		api = api.POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
@@ -98,7 +106,7 @@ var MailSend = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+		if err := validateSignatureOptions(runtime.Str("signature-id"), runtime.Bool("no-signature")); err != nil {
 			return err
 		}
 		// Resolve the body content first (reading --body-file if set) so
@@ -135,6 +143,7 @@ var MailSend = common.Shortcut{
 		inlineFlag := runtime.Str("inline")
 		confirmSend := runtime.Bool("confirm-send")
 		sendTime := runtime.Str("send-time")
+		noSignature := runtime.Bool("no-signature")
 
 		senderEmail := resolveComposeSenderEmail(runtime)
 		signatureID := runtime.Str("signature-id")
@@ -195,7 +204,8 @@ var MailSend = common.Shortcut{
 			}
 		}
 
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		signatureNeedsImages := !plainText && bodyIsHTML(body)
+		sigResult, err := resolveSignatureForSend(ctx, runtime, mailboxID, signatureID, senderEmail, noSignature, signatureNeedsImages)
 		if err != nil {
 			return err
 		}
@@ -230,15 +240,10 @@ var MailSend = common.Shortcut{
 		// `lint_applied[]` / `original_blocked[]` even on the plain-text path.
 		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if plainText {
-			composedTextBody = body
+			composedTextBody = appendSignatureToPlainText(body, sigResult)
 			bld = bld.TextBody([]byte(composedTextBody))
-		} else if bodyIsHTML(body) || sigResult != nil {
-			// If signature is requested on plain-text body, auto-upgrade to HTML.
-			htmlBody := body
-			if !bodyIsHTML(body) {
-				htmlBody = buildBodyDiv(body, false)
-			}
-			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(htmlBody)
+		} else if bodyIsHTML(body) {
+			resolved, refs, resolveErr := draftpkg.ResolveLocalImagePaths(body)
 			if resolveErr != nil {
 				return mailValidationError("failed to resolve local image paths: %v", resolveErr).WithCause(resolveErr)
 			}
@@ -275,7 +280,7 @@ var MailSend = common.Shortcut{
 				return err
 			}
 		} else {
-			composedTextBody = body
+			composedTextBody = appendSignatureToPlainText(body, sigResult)
 			bld = bld.TextBody([]byte(composedTextBody))
 		}
 		// Embed template SMALL non-inline attachments via AddAttachment.

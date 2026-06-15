@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/mail/signature"
 )
 
 func TestDownloadSignatureImageRejectsInvalidURLs(t *testing.T) {
@@ -185,6 +186,82 @@ func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
 	}
 	if validationErr.Params[0].Name != "--plain-text" || validationErr.Params[1].Name != "--signature-id" {
 		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestValidateSignatureOptionsRejectsNoSignatureWithExplicitID(t *testing.T) {
+	err := validateSignatureOptions("sig_123", true)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T (%v)", err, err)
+	}
+	if !strings.Contains(validationErr.Error(), "--signature-id and --no-signature are mutually exclusive") {
+		t.Fatalf("unexpected validation message: %v", validationErr)
+	}
+}
+
+func TestSelectDefaultSendSignatureID(t *testing.T) {
+	resp := &signature.GetSignaturesResponse{
+		Usages: []signature.SignatureUsage{
+			{EmailAddress: "primary@example.com", SendMailSignatureID: "sig_primary"},
+			{EmailAddress: "alias@example.com", SendMailSignatureID: "sig_alias"},
+		},
+	}
+
+	if got := selectDefaultSendSignatureID(resp, "ALIAS@example.com", "me"); got != "sig_alias" {
+		t.Fatalf("alias match = %q, want sig_alias", got)
+	}
+	if got := selectDefaultSendSignatureID(resp, "", "primary@example.com"); got != "sig_primary" {
+		t.Fatalf("mailbox match = %q, want sig_primary", got)
+	}
+
+	resp = &signature.GetSignaturesResponse{
+		Usages: []signature.SignatureUsage{
+			{EmailAddress: "only@example.com", SendMailSignatureID: " sig_only "},
+			{EmailAddress: "none@example.com", SendMailSignatureID: "0"},
+		},
+	}
+	if got := selectDefaultSendSignatureID(resp, "", "me"); got != "sig_only" {
+		t.Fatalf("single usage fallback = %q, want sig_only", got)
+	}
+
+	resp.Usages = append(resp.Usages, signature.SignatureUsage{EmailAddress: "other@example.com", SendMailSignatureID: "sig_other"})
+	if got := selectDefaultSendSignatureID(resp, "", "me"); got != "" {
+		t.Fatalf("ambiguous fallback = %q, want empty", got)
+	}
+}
+
+func TestFindUserSignatureByIDRequiresUserType(t *testing.T) {
+	resp := &signature.GetSignaturesResponse{
+		Signatures: []signature.Signature{
+			{ID: "sig_user", SignatureType: signature.SignatureTypeUser},
+			{ID: "sig_tenant", SignatureType: signature.SignatureTypeTenant},
+			{ID: "sig_missing_type"},
+		},
+	}
+
+	if got := findUserSignatureByID(resp, "sig_user"); got == nil || got.ID != "sig_user" {
+		t.Fatalf("user signature not found: %#v", got)
+	}
+	if got := findUserSignatureByID(resp, "sig_tenant"); got != nil {
+		t.Fatalf("tenant signature should not be auto-selected: %#v", got)
+	}
+	if got := findUserSignatureByID(resp, "sig_missing_type"); got != nil {
+		t.Fatalf("missing signature_type should not be auto-selected: %#v", got)
+	}
+}
+
+func TestAppendSignatureToPlainText(t *testing.T) {
+	sig := &signatureResult{RenderedContent: "<div>Best<br>Alice</div>"}
+	got := appendSignatureToPlainText("hello\r\n", sig)
+	want := "hello\n\nBest\nAlice"
+	if got != want {
+		t.Fatalf("plain text signature = %q, want %q", got, want)
+	}
+
+	imageOnly := &signatureResult{RenderedContent: `<img src="cid:logo">`}
+	if got := appendSignatureToPlainText("hello", imageOnly); got != "hello" {
+		t.Fatalf("image-only signature should not change body, got %q", got)
 	}
 }
 

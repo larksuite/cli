@@ -203,6 +203,8 @@ lark-cli mail +send --mailbox me --from alias@example.com \
 
 不使用公共邮箱或别名时无需指定 `--mailbox`，行为与之前一致。
 
+`+send` 默认会按最终发件人邮箱追加默认个人发信签名。明确不要签名时传 `--no-signature`；需要手动指定签名时传 `--signature-id <id>`，该显式签名会覆盖默认签名。纯文本邮件会追加签名文本并保持 `text/plain`。
+
 ### 发送后确认投递状态
 
 **立即发送（无 `--send-time`）**：邮件发送成功后（收到 `message_id`），**必须**调用 `send_status` API 查询投递状态并向用户报告：
