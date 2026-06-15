@@ -59,6 +59,38 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
+// newChatSearchTestRuntimeContext registers +chat-search flags using the same
+// types as the real shortcut command. In particular, --page-size is an int flag.
+func newChatSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 20, "")
+	for name := range stringFlags {
+		if name == "page-size" {
+			continue
+		}
+		cmd.Flags().String(name, "", "")
+	}
+	for name := range boolFlags {
+		cmd.Flags().Bool(name, false, "")
+	}
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	for name, val := range stringFlags {
+		if err := cmd.Flags().Set(name, val); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	for name, val := range boolFlags {
+		if err := cmd.Flags().Set(name, map[bool]string{true: "true", false: "false"}[val]); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
 // newMessagesSearchTestRuntimeContext is the messages-search variant of
 // newTestRuntimeContext: registers the search-specific --page-size flag
 // before applying caller-provided values.
@@ -297,7 +329,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImChatSearch invalid page size", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query":     "ok",
 			"page-size": "0",
 		}, nil)
@@ -307,12 +339,13 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
-	t.Run("ImChatSearch query too long", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
-			"query": strings.Repeat("q", 65),
+	t.Run("ImChatSearch allows long query for server-side notice", func(t *testing.T) {
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
+			"query":     strings.Repeat("q", 81),
+			"page-size": "20",
 		}, nil)
 		err := ImChatSearch.Validate(context.Background(), runtime)
-		if err == nil || !strings.Contains(err.Error(), "--query exceeds the maximum of 64 characters") {
+		if err != nil {
 			t.Fatalf("ImChatSearch.Validate() error = %v", err)
 		}
 	})
@@ -663,19 +696,19 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	})
 
 	t.Run("ImChatSearch dry run includes built params", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query":      "team-alpha",
 			"page-size":  "50",
 			"page-token": "next_page",
 		}, nil)
 		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) || !strings.Contains(got, `"page_size":20`) || !strings.Contains(got, `"query":"\"team-alpha\""`) {
+		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) || !strings.Contains(got, `"page_size":50`) || !strings.Contains(got, `"query":"\"team-alpha\""`) {
 			t.Fatalf("ImChatSearch.DryRun() = %s", got)
 		}
 	})
 
 	t.Run("ImChatSearch dry run still works with --exclude-muted set", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query": "team-alpha",
 		}, map[string]bool{
 			"exclude-muted": true,

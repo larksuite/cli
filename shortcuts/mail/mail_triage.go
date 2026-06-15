@@ -291,6 +291,9 @@ var MailTriage = common.Shortcut{
 			}
 			output.PrintJson(runtime.IO().Out, outData)
 		default: // "table"
+			if notice != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "notice: %s\n", notice)
+			}
 			if len(messages) == 0 {
 				fmt.Fprintln(runtime.IO().ErrOut, "No messages found.")
 				return nil

@@ -18,10 +18,18 @@ import (
 
 func TestImChatSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+	longQuery := strings.Repeat("q", 81)
 
 	runtime := newBotShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if !strings.Contains(req.URL.Path, "/open-apis/im/v2/chats/search") {
 			return nil, fmt.Errorf("unexpected request: %s", req.URL.String())
+		}
+		var body map[string]interface{}
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			return nil, fmt.Errorf("decode request body: %w", err)
+		}
+		if got, _ := body["query"].(string); got != longQuery {
+			return nil, fmt.Errorf("body.query = %q, want %q", got, longQuery)
 		}
 		return shortcutJSONResponse(200, map[string]interface{}{
 			"code": 0,
@@ -34,7 +42,7 @@ func TestImChatSearchExecutePassesThroughNotice(t *testing.T) {
 			},
 		}), nil
 	}))
-	runtime.Cmd = newChatSearchNoticeTestCommand(t)
+	runtime.Cmd = newChatSearchNoticeTestCommand(t, longQuery)
 	runtime.Format = "json"
 
 	if err := ImChatSearch.Execute(context.Background(), runtime); err != nil {
@@ -78,7 +86,7 @@ func TestImMessagesSearchExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
-func newChatSearchNoticeTestCommand(t *testing.T) *cobra.Command {
+func newChatSearchNoticeTestCommand(t *testing.T, query string) *cobra.Command {
 	t.Helper()
 
 	cmd := &cobra.Command{Use: "test"}
@@ -92,7 +100,7 @@ func newChatSearchNoticeTestCommand(t *testing.T) *cobra.Command {
 	if err := cmd.ParseFlags(nil); err != nil {
 		t.Fatalf("ParseFlags() error = %v", err)
 	}
-	if err := cmd.Flags().Set("query", "incident"); err != nil {
+	if err := cmd.Flags().Set("query", query); err != nil {
 		t.Fatalf("Flags().Set(query) error = %v", err)
 	}
 	return cmd

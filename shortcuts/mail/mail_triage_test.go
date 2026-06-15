@@ -1659,6 +1659,31 @@ func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 	}
 }
 
+func TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, stderr, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	registerMailTriageSearchStub(reg, "me", []interface{}{
+		mailTriageSearchItem("msg_search_notice", "Search notice result"),
+	}, false, "", notice)
+
+	if err := runMountedMailShortcut(t, MailTriage, []string{
+		"+triage",
+		"--query", strings.Repeat("q", 81),
+	}, f, stdout); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if out := stdout.String(); !strings.Contains(out, "msg_search_notice") {
+		t.Fatalf("stdout should contain table row, got:\n%s", out)
+	}
+	if errOut := stderr.String(); !strings.Contains(errOut, "notice: "+notice) {
+		t.Fatalf("stderr should contain search notice, got:\n%s", errOut)
+	}
+}
+
 func decodeMailTriageJSONOutput(t *testing.T, stdout interface{ Bytes() []byte }) map[string]interface{} {
 	t.Helper()
 	var data map[string]interface{}
