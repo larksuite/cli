@@ -174,8 +174,8 @@ func TestDownloadSignatureImageSuccessUsesFilenameContentType(t *testing.T) {
 	}
 }
 
-func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
-	err := validateSignatureWithPlainText(true, "sig_123")
+func TestValidateSignatureFlagsTypedError(t *testing.T) {
+	err := validateSignatureFlags("sig_123", true, true)
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T (%v)", err, err)
@@ -183,8 +183,19 @@ func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
 	if len(validationErr.Params) != 2 {
 		t.Fatalf("params = %#v, want two conflicting params", validationErr.Params)
 	}
-	if validationErr.Params[0].Name != "--plain-text" || validationErr.Params[1].Name != "--signature-id" {
+	if validationErr.Params[0].Name != "--signature-id" || validationErr.Params[1].Name != "--no-signature" {
 		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestValidateSignatureFlagsRejectsExplicitEmpty(t *testing.T) {
+	err := validateSignatureFlags("", true, false)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T (%v)", err, err)
+	}
+	if validationErr.Param != "--signature-id" {
+		t.Fatalf("param = %q, want --signature-id", validationErr.Param)
 	}
 }
 

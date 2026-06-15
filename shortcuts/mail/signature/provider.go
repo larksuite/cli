@@ -6,6 +6,7 @@ package signature
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -67,4 +68,31 @@ func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signat
 		}
 	}
 	return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "signature not found: %s", signatureID)
+}
+
+// FindSendDefault returns the new-mail default signature for senderEmail.
+// Empty, "0", unmatched sender, and dangling signature IDs all mean no
+// default signature instead of an API-level error.
+func FindSendDefault(resp *GetSignaturesResponse, senderEmail string) (*Signature, bool) {
+	if resp == nil || strings.TrimSpace(senderEmail) == "" {
+		return nil, false
+	}
+
+	var signatureID string
+	for _, usage := range resp.Usages {
+		if strings.EqualFold(strings.TrimSpace(usage.EmailAddress), strings.TrimSpace(senderEmail)) {
+			signatureID = strings.TrimSpace(usage.SendMailSignatureID)
+			break
+		}
+	}
+	if signatureID == "" || signatureID == "0" {
+		return nil, false
+	}
+
+	for i := range resp.Signatures {
+		if resp.Signatures[i].ID == signatureID {
+			return &resp.Signatures[i], true
+		}
+	}
+	return nil, false
 }

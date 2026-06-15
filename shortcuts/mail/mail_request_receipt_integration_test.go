@@ -129,6 +129,7 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		"--body", "please confirm",
 		"--request-receipt",
 		"--confirm-send",
+		"--no-signature",
 	}, f, stdout); err != nil {
 		t.Fatalf("send failed: %v", err)
 	}
