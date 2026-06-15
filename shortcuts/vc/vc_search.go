@@ -130,8 +130,8 @@ func buildSearchBody(runtime *common.RuntimeContext, startTime, endTime string) 
 		body["query"] = q
 	}
 	participants := uniqueIDs(common.SplitCSV(runtime.Str("participant-ids")))
-	organizers := common.SplitCSV(runtime.Str("organizer-ids"))
-	rooms := common.SplitCSV(runtime.Str("room-ids"))
+	organizers := uniqueIDs(common.SplitCSV(runtime.Str("organizer-ids")))
+	rooms := uniqueIDs(common.SplitCSV(runtime.Str("room-ids")))
 	if filter := buildMeetingFilter(participants, organizers, rooms, buildTimeFilter(startTime, endTime)); filter != nil {
 		body["meeting_filter"] = filter
 	}

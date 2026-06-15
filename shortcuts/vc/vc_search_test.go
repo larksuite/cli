@@ -6,6 +6,7 @@ package vc
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -93,8 +94,9 @@ func TestBuildSearchBody(t *testing.T) {
 	cmd.Flags().String("participant-ids", "", "")
 	cmd.Flags().String("room-ids", "", "")
 	cmd.Flags().Set("query", "weekly")
-	cmd.Flags().Set("organizer-ids", "ou_a,ou_b")
-	cmd.Flags().Set("room-ids", "room1")
+	cmd.Flags().Set("organizer-ids", "ou_a,ou_b,ou_a")
+	cmd.Flags().Set("participant-ids", "ou_p,ou_p,ou_q")
+	cmd.Flags().Set("room-ids", "room1,room1")
 
 	runtime := common.TestNewRuntimeContext(cmd, cfg)
 	body := buildSearchBody(runtime, "2026-03-20T00:00:00Z", "2026-03-24T00:00:00Z")
@@ -106,11 +108,14 @@ func TestBuildSearchBody(t *testing.T) {
 	if !ok {
 		t.Fatal("meeting_filter should be present")
 	}
-	if filter["organizer_ids"] == nil {
-		t.Error("organizer_ids should be present")
+	if got, want := filter["organizer_ids"], []string{"ou_a", "ou_b"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("organizer_ids = %v, want %v", got, want)
 	}
-	if filter["open_room_ids"] == nil {
-		t.Error("open_room_ids should be present")
+	if got, want := filter["participant_ids"], []string{"ou_p", "ou_q"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("participant_ids = %v, want %v", got, want)
+	}
+	if got, want := filter["open_room_ids"], []string{"room1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("open_room_ids = %v, want %v", got, want)
 	}
 	if filter["start_time"] == nil {
 		t.Error("start_time should be present")
