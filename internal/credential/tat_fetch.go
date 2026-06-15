@@ -15,7 +15,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
-// FetchTAT performs a single HTTP POST to mint a tenant access token via the
+// FetchTAT mints a tenant access token via the
 // unified OAuth 2.0 Token Endpoint ({accounts}/oauth/v3/token) using the
 // client_credentials grant with client_secret_post authentication. It does not
 // read configuration or keychain, so callers that already hold plaintext
@@ -29,6 +29,12 @@ import (
 // bodies, and transient server-side failures (5xx / server_error) are returned
 // raw (untyped), leaving them ambiguous; a caller can use errs.IsTyped to tell a
 // deterministic credential rejection apart from upstream/transport noise.
+//
+// On a transient/server-side failure of the v3 endpoint, FetchTAT falls back to
+// the legacy per-tenant mint endpoint ({open}/open-apis/auth/v3/tenant_access_token/
+// internal) before surfacing the failure: the v3 endpoint can return a 5xx for an
+// app the legacy endpoint still mints for (observed on Lark international internal
+// apps, see #1470).
 //
 // The caller owns the context timeout.
 func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, appID, appSecret string) (string, error) {
@@ -82,6 +88,13 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 	if resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests ||
 		result.Error == "server_error" || result.Error == "temporarily_unavailable" ||
 		result.Error == "slow_down" {
+		// The unified OAuth v3 token endpoint can return a 5xx/server_error for an
+		// app the legacy per-tenant endpoint still mints for (observed on Lark
+		// international internal apps, see #1470). Fall back to the legacy mint
+		// before surfacing the transient failure.
+		if token, legacyErr := fetchTATLegacy(ctx, httpClient, ep.Open, appID, appSecret); legacyErr == nil && token != "" {
+			return token, nil
+		}
 		return "", fmt.Errorf("TAT endpoint transient failure (HTTP %d, code=%d, error=%q): %s",
 			resp.StatusCode, result.Code, result.Error, result.ErrorDescription)
 	}
@@ -99,4 +112,50 @@ func FetchTAT(ctx context.Context, httpClient *http.Client, brand core.LarkBrand
 		desc = result.Msg
 	}
 	return "", classifyTATResponseCode(result.Code, result.Error, desc, string(brand), appID)
+}
+
+// legacyTATInternalPath is the pre-v3 per-tenant mint endpoint, hosted on the
+// open API base. Used only as a fallback when the unified OAuth v3 token
+// endpoint returns a transient 5xx/server_error (see #1470).
+const legacyTATInternalPath = "/open-apis/auth/v3/tenant_access_token/internal"
+
+// fetchTATLegacy mints a tenant access token via the legacy per-tenant endpoint.
+// It returns ("", err) on any failure so the caller can surface the original v3
+// transient error unchanged. Like FetchTAT, the caller owns the context timeout
+// and supplies the HTTP client.
+func fetchTATLegacy(ctx context.Context, httpClient *http.Client, openBase, appID, appSecret string) (string, error) {
+	payload, err := json.Marshal(map[string]string{"app_id": appID, "app_secret": appSecret})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openBase+legacyTATInternalPath, strings.NewReader(string(payload)))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("failed to read legacy TAT response: %w", err)
+	}
+
+	var result struct {
+		Code              int    `json:"code"`
+		Msg               string `json:"msg"`
+		TenantAccessToken string `json:"tenant_access_token"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", fmt.Errorf("failed to parse legacy TAT response (HTTP %d): %w", resp.StatusCode, err)
+	}
+	if result.Code == 0 && result.TenantAccessToken != "" {
+		return result.TenantAccessToken, nil
+	}
+	return "", fmt.Errorf("legacy TAT mint failed (HTTP %d, code=%d): %s", resp.StatusCode, result.Code, result.Msg)
 }
