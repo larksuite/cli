@@ -40,6 +40,7 @@ var MailSend = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -57,8 +58,12 @@ var MailSend = common.Shortcut{
 			api = api.GET(templateMailboxPath(mailboxID, tid)).
 				Desc("Fetch template to merge with compose flags (subject/body/to/cc/bcc/attachments).")
 		}
-		api = api.GET(mailboxPath(mailboxID, "profile")).
-			POST(mailboxPath(mailboxID, "drafts")).
+		api = api.GET(mailboxPath(mailboxID, "profile"))
+		if !runtime.Bool("no-signature") {
+			api = api.GET(mailboxPath(mailboxID, "settings", "signatures")).
+				Desc("Fetch signatures to resolve --signature-id or the default send signature.")
+		}
+		api = api.POST(mailboxPath(mailboxID, "drafts")).
 			Body(map[string]interface{}{
 				"raw": "<base64url-EML>",
 				"_preview": map[string]interface{}{
@@ -98,8 +103,12 @@ var MailSend = common.Shortcut{
 		if err := validateSendTime(runtime); err != nil {
 			return err
 		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
-			return err
+		if runtime.Bool("no-signature") && runtime.Str("signature-id") != "" {
+			return mailValidationError("--no-signature and --signature-id are mutually exclusive").
+				WithParams(
+					mailInvalidParam("--no-signature", "mutually exclusive with --signature-id"),
+					mailInvalidParam("--signature-id", "mutually exclusive with --no-signature"),
+				)
 		}
 		// Resolve the body content first (reading --body-file if set) so
 		// inline / HTML checks see the actual body. This makes the
@@ -195,7 +204,23 @@ var MailSend = common.Shortcut{
 			}
 		}
 
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		if runtime.Bool("no-signature") {
+			signatureID = ""
+		} else if signatureID == "" {
+			defaultSignatureID, sigErr := resolveDefaultSendSignatureID(runtime, mailboxID, senderEmail)
+			if sigErr != nil {
+				fmt.Fprintf(runtime.IO().ErrOut, "warning: default signature lookup failed: %v\n", sigErr)
+			} else {
+				signatureID = defaultSignatureID
+			}
+		}
+
+		var sigResult *signatureResult
+		if plainText {
+			sigResult, err = resolveSignatureTextOnly(ctx, runtime, mailboxID, signatureID, senderEmail)
+		} else {
+			sigResult, err = resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+		}
 		if err != nil {
 			return err
 		}
@@ -230,7 +255,7 @@ var MailSend = common.Shortcut{
 		// `lint_applied[]` / `original_blocked[]` even on the plain-text path.
 		lintApplied, lintBlocked := emptyLintEnvelopeFields()
 		if plainText {
-			composedTextBody = body
+			composedTextBody = appendPlainTextSignature(body, sigResult)
 			bld = bld.TextBody([]byte(composedTextBody))
 		} else if bodyIsHTML(body) || sigResult != nil {
 			// If signature is requested on plain-text body, auto-upgrade to HTML.

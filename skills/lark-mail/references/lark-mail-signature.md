@@ -87,12 +87,15 @@ lark-cli mail +signature --from shared@example.com
 
 ## 与 compose shortcut 配合
 
-获取签名 ID 后，可在发送/回复/转发时附加签名：
+`mail +send` 默认会自动追加当前发件地址的新邮件默认签名；如需跳过，传 `--no-signature`。获取签名 ID 后，也可在发送/回复/转发时显式附加签名：
 
 ```bash
 # 查看签名列表获取 ID
 lark-cli mail +signature
 
-# 在发送邮件时附加签名
+# 在发送邮件时显式附加签名（覆盖默认签名选择）
 lark-cli mail +send --to alice@example.com --subject '你好' --body '<p>内容</p>' --signature-id <签名ID>
+
+# 发送邮件时跳过默认签名
+lark-cli mail +send --to alice@example.com --subject '你好' --body '<p>内容</p>' --no-signature
 ```

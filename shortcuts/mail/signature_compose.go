@@ -5,6 +5,7 @@ package mail
 
 import (
 	"context"
+	stdhtml "html"
 	"io"
 	"net/http"
 	"net/url"
@@ -17,12 +18,21 @@ import (
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 	"github.com/larksuite/cli/shortcuts/mail/signature"
+	nethtml "golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 )
 
 // signatureFlag is the common flag definition for --signature-id, shared by all compose shortcuts.
 var signatureFlag = common.Flag{
 	Name: "signature-id",
 	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
+}
+
+// noSignatureFlag is send-only: skip automatic default signature lookup and injection.
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Skip auto-appending the default send signature.",
 }
 
 // signatureResult holds the pre-processed signature data ready for HTML injection.
@@ -36,6 +46,14 @@ type signatureResult struct {
 // fromEmail is the --from address (may be an alias); used to match the correct
 // sender identity for template interpolation. Pass "" to use the primary address.
 func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string) (*signatureResult, error) {
+	return resolveSignatureWithImages(ctx, runtime, mailboxID, signatureID, fromEmail, true)
+}
+
+func resolveSignatureTextOnly(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string) (*signatureResult, error) {
+	return resolveSignatureWithImages(ctx, runtime, mailboxID, signatureID, fromEmail, false)
+}
+
+func resolveSignatureWithImages(ctx context.Context, runtime *common.RuntimeContext, mailboxID, signatureID, fromEmail string, includeImages bool) (*signatureResult, error) {
 	if signatureID == "" {
 		return nil, nil
 	}
@@ -53,20 +71,22 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 	// Download signature inline images. The file_key field contains a
 	// direct download URL provided by the mail backend.
 	var images []draftpkg.SignatureImage
-	for _, img := range sig.Images {
-		if img.DownloadURL == "" || img.CID == "" {
-			continue
+	if includeImages {
+		for _, img := range sig.Images {
+			if img.DownloadURL == "" || img.CID == "" {
+				continue
+			}
+			data, ct, err := downloadSignatureImage(runtime, img.DownloadURL, img.ImageName)
+			if err != nil {
+				return nil, mailDecorateProblemMessage(err, "failed to download signature image %s", img.ImageName)
+			}
+			images = append(images, draftpkg.SignatureImage{
+				CID:         img.CID,
+				ContentType: ct,
+				FileName:    img.ImageName,
+				Data:        data,
+			})
 		}
-		data, ct, err := downloadSignatureImage(runtime, img.DownloadURL, img.ImageName)
-		if err != nil {
-			return nil, mailDecorateProblemMessage(err, "failed to download signature image %s", img.ImageName)
-		}
-		images = append(images, draftpkg.SignatureImage{
-			CID:         img.CID,
-			ContentType: ct,
-			FileName:    img.ImageName,
-			Data:        data,
-		})
 	}
 
 	return &signatureResult{
@@ -74,6 +94,43 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 		RenderedContent: rendered,
 		Images:          images,
 	}, nil
+}
+
+func resolveDefaultSendSignatureID(runtime *common.RuntimeContext, mailboxID, senderEmail string) (string, error) {
+	resp, err := signature.ListAll(runtime, mailboxID)
+	if err != nil {
+		return "", err
+	}
+	candidates := []string{senderEmail}
+	if strings.TrimSpace(senderEmail) == "" {
+		if _, resolvedEmail := resolveSenderInfo(runtime, mailboxID, ""); resolvedEmail != "" {
+			candidates = append(candidates, resolvedEmail)
+		}
+	}
+	if mailboxID != "" && mailboxID != "me" {
+		candidates = append(candidates, mailboxID)
+	}
+	return defaultSendSignatureIDFromUsages(resp.Usages, candidates...), nil
+}
+
+func defaultSendSignatureIDFromUsages(usages []signature.SignatureUsage, candidates ...string) string {
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		for _, usage := range usages {
+			if !strings.EqualFold(strings.TrimSpace(usage.EmailAddress), candidate) {
+				continue
+			}
+			id := strings.TrimSpace(usage.SendMailSignatureID)
+			if id == "" || id == "0" {
+				return ""
+			}
+			return id
+		}
+	}
+	return ""
 }
 
 // injectSignatureIntoBody inserts signature HTML into the body, placing
@@ -90,6 +147,137 @@ func injectSignatureIntoBody(bodyHTML string, sig *signatureResult) string {
 	}
 	sigBlock := draftpkg.SignatureSpacing() + draftpkg.BuildSignatureHTML(sig.ID, sig.RenderedContent)
 	return draftpkg.PlaceSignatureBeforeSystemTail(bodyHTML, sigBlock)
+}
+
+func appendPlainTextSignature(textBody string, sig *signatureResult) string {
+	if sig == nil {
+		return textBody
+	}
+	sigText := strings.TrimSpace(signatureHTMLToPlainText(sig.RenderedContent))
+	if sigText == "" {
+		return textBody
+	}
+	body := strings.TrimRight(textBody, " \t\r\n")
+	if body == "" {
+		return sigText
+	}
+	return body + "\n\n" + sigText
+}
+
+func signatureHTMLToPlainText(htmlText string) string {
+	nodes, err := nethtml.ParseFragment(strings.NewReader(htmlText), &nethtml.Node{
+		Type:     nethtml.ElementNode,
+		DataAtom: atom.Body,
+		Data:     "body",
+	})
+	if err != nil {
+		return strings.TrimSpace(stdhtml.UnescapeString(htmlText))
+	}
+	var b strings.Builder
+	for _, n := range nodes {
+		appendHTMLNodeText(&b, n)
+	}
+	return normalizePlainSignatureText(b.String())
+}
+
+func appendHTMLNodeText(b *strings.Builder, n *nethtml.Node) {
+	switch n.Type {
+	case nethtml.TextNode:
+		writePlainTextWords(b, stdhtml.UnescapeString(n.Data))
+	case nethtml.ElementNode:
+		switch strings.ToLower(n.Data) {
+		case "br":
+			writePlainTextNewline(b)
+			return
+		case "img":
+			return
+		case "script", "style", "head", "template", "noscript":
+			return
+		case "a":
+			var child strings.Builder
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				appendHTMLNodeText(&child, c)
+			}
+			label := strings.TrimSpace(normalizePlainSignatureText(child.String()))
+			href := attrValue(n, "href")
+			if href != "" && label != "" && href != label {
+				writePlainTextWords(b, label+" ("+href+")")
+			} else if label != "" {
+				writePlainTextWords(b, label)
+			} else if href != "" {
+				writePlainTextWords(b, href)
+			}
+			return
+		case "p", "div", "section", "article", "header", "footer", "blockquote", "tr", "table", "ul", "ol":
+			writePlainTextNewline(b)
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				appendHTMLNodeText(b, c)
+			}
+			writePlainTextNewline(b)
+			return
+		case "li":
+			writePlainTextNewline(b)
+			writePlainTextWords(b, "-")
+			for c := n.FirstChild; c != nil; c = c.NextSibling {
+				appendHTMLNodeText(b, c)
+			}
+			writePlainTextNewline(b)
+			return
+		}
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		appendHTMLNodeText(b, c)
+	}
+}
+
+func writePlainTextWords(b *strings.Builder, text string) {
+	words := strings.Join(strings.Fields(text), " ")
+	if words == "" {
+		return
+	}
+	current := b.String()
+	if current != "" && !strings.HasSuffix(current, " ") && !strings.HasSuffix(current, "\n") {
+		b.WriteByte(' ')
+	}
+	b.WriteString(words)
+}
+
+func writePlainTextNewline(b *strings.Builder) {
+	current := b.String()
+	if current == "" || strings.HasSuffix(current, "\n") {
+		return
+	}
+	b.WriteByte('\n')
+}
+
+func normalizePlainSignatureText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	lines := strings.Split(text, "\n")
+	out := make([]string, 0, len(lines))
+	blank := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			if len(out) > 0 && !blank {
+				out = append(out, "")
+				blank = true
+			}
+			continue
+		}
+		out = append(out, line)
+		blank = false
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func attrValue(n *nethtml.Node, key string) string {
+	for _, attr := range n.Attr {
+		if strings.EqualFold(attr.Key, key) {
+			return strings.TrimSpace(attr.Val)
+		}
+	}
+	return ""
 }
 
 // addSignatureImagesToBuilder adds signature inline images to the EML builder.
