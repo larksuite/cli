@@ -7,6 +7,7 @@
 - 抄送/密送
 - 本地文件附件（`--attach`）
 - 内嵌图片（`--inline`，CID 可用随机字符串）
+- 默认追加当前发件地址的发信签名，可用 `--no-signature` 跳过
 
 本 skill 对应 shortcut：`lark-cli mail +send`。
 
@@ -59,6 +60,9 @@ lark-cli mail +send --to alice@example.com --subject '预览图' --body '<img sr
 # 纯文本邮件（仅在内容极简时使用）
 lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢'
 
+# 不追加签名
+lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢' --no-signature
+
 # Dry Run（仅打印请求，不执行）
 lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p>' --dry-run
 ```
@@ -75,10 +79,11 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--mailbox <email>` | 否 | 邮箱地址，指定草稿所属的邮箱（默认回退到 `--from`，再回退到 `me`）。当发件人（`--from`）与邮箱不同时使用。可通过 `accessible_mailboxes` 查询可用邮箱 |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔 |
-| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
+| `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用。若追加签名，签名会以纯文本形式附加，不会把邮件升级为 HTML |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
-| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 显式签名 ID，优先于默认发信签名。运行 `mail +signature` 查看可用签名。不可与 `--no-signature` 同时使用 |
+| `--no-signature` | 否 | 跳过默认签名查询，不追加任何签名。不可与 `--signature-id` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |

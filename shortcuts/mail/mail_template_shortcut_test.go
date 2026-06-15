@@ -1042,6 +1042,7 @@ func TestFetchTemplateAttachmentURLs_FailedReasons(t *testing.T) {
 		"--subject", "s",
 		"--body", "<p>b</p>",
 		"--template-id", "33",
+		"--no-signature",
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "download URL not returned") {
 		t.Errorf("expected download-URL-missing error (with failed_reasons warning), got %v", err)
@@ -1141,6 +1142,7 @@ func TestMailSend_TemplateIDAppliesInlineAndSmall(t *testing.T) {
 		"--subject", "override-subj",
 		"--body", "<p>user body</p>",
 		"--template-id", "42",
+		"--no-signature",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("+send --template-id failed: %v", err)

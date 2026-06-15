@@ -84,6 +84,12 @@ func plainTextFromHTML(raw string) string {
 	return strings.Join(out, "\n")
 }
 
+// PlainTextFromHTML exposes the draft package's conservative HTML-to-text
+// conversion for compose helpers that need to keep a text/plain body.
+func PlainTextFromHTML(raw string) string {
+	return plainTextFromHTML(raw)
+}
+
 func bufLastByte(buf *bytes.Buffer) byte {
 	if buf.Len() == 0 {
 		return 0

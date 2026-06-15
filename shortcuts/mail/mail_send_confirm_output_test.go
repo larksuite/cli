@@ -149,6 +149,7 @@ func TestMailSendConfirmSendOutputsAutomationDisable(t *testing.T) {
 		"--to", "alice@example.com",
 		"--subject", "hello",
 		"--body", "world",
+		"--no-signature",
 		"--confirm-send",
 	}, f, stdout)
 	if err != nil {
@@ -203,6 +204,7 @@ func TestMailSendSaveDraftOutputsReference(t *testing.T) {
 		"--to", "alice@example.com",
 		"--subject", "hello",
 		"--body", "world",
+		"--no-signature",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("save draft failed: %v", err)
@@ -246,6 +248,7 @@ func TestMailSend_WithCalendarEventEmbedded(t *testing.T) {
 		"--event-summary", "Team Sync",
 		"--event-start", "2026-05-10T10:00+08:00",
 		"--event-end", "2026-05-10T11:00+08:00",
+		"--no-signature",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("mail send with calendar failed: %v", err)

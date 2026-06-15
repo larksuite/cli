@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/mail/signature"
 )
 
 func TestDownloadSignatureImageRejectsInvalidURLs(t *testing.T) {
@@ -185,6 +186,80 @@ func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
 	}
 	if validationErr.Params[0].Name != "--plain-text" || validationErr.Params[1].Name != "--signature-id" {
 		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestValidateSignatureFlagsRejectsNoSignatureWithExplicitID(t *testing.T) {
+	if err := validateSignatureFlags("sig_123", false); err != nil {
+		t.Fatalf("explicit signature without --no-signature should pass: %v", err)
+	}
+	if err := validateSignatureFlags("", true); err != nil {
+		t.Fatalf("--no-signature without explicit signature should pass: %v", err)
+	}
+
+	err := validateSignatureFlags("sig_123", true)
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T (%v)", err, err)
+	}
+	if len(validationErr.Params) != 2 {
+		t.Fatalf("params = %#v, want two conflicting params", validationErr.Params)
+	}
+	if validationErr.Params[0].Name != "--no-signature" || validationErr.Params[1].Name != "--signature-id" {
+		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestSelectDefaultSendSignatureID(t *testing.T) {
+	resp := &signature.GetSignaturesResponse{
+		Usages: []signature.SignatureUsage{
+			{EmailAddress: "other@example.com", SendMailSignatureID: "sig_other"},
+			{EmailAddress: "Sender@Example.com", SendMailSignatureID: "sig_sender"},
+			{EmailAddress: "empty@example.com", SendMailSignatureID: "0"},
+		},
+	}
+
+	if got := selectDefaultSendSignatureID(resp, "sender@example.com"); got != "sig_sender" {
+		t.Fatalf("matched sender id = %q, want sig_sender", got)
+	}
+	if got := selectDefaultSendSignatureID(resp, "missing@example.com"); got != "" {
+		t.Fatalf("unmatched sender id = %q, want empty", got)
+	}
+	if got := selectDefaultSendSignatureID(&signature.GetSignaturesResponse{
+		Usages: []signature.SignatureUsage{{SendMailSignatureID: " sig_only "}},
+	}, ""); got != "sig_only" {
+		t.Fatalf("single fallback id = %q, want sig_only", got)
+	}
+	if got := selectDefaultSendSignatureID(&signature.GetSignaturesResponse{
+		Usages: []signature.SignatureUsage{
+			{SendMailSignatureID: "sig_a"},
+			{SendMailSignatureID: "sig_b"},
+		},
+	}, ""); got != "" {
+		t.Fatalf("multiple fallback id = %q, want empty", got)
+	}
+}
+
+func TestInjectSignatureIntoPlainText(t *testing.T) {
+	sig := &signatureResult{RenderedTextContent: "  Best,\nAlice  "}
+	if got, want := injectSignatureIntoPlainText("Hello\n\n", sig), "Hello\n\nBest,\nAlice"; got != want {
+		t.Fatalf("plain text signature = %q, want %q", got, want)
+	}
+	if got := injectSignatureIntoPlainText("", sig); got != "Best,\nAlice" {
+		t.Fatalf("empty body signature = %q", got)
+	}
+	if got := injectSignatureIntoPlainText("Hello", &signatureResult{}); got != "Hello" {
+		t.Fatalf("empty signature should keep body, got %q", got)
+	}
+}
+
+func TestRenderSignatureTextUsesLocalizedImagePlaceholder(t *testing.T) {
+	html := `<div>Logo<img src="cid:logo">Tail</div>`
+	if got := renderSignatureText(html, "en_us"); !strings.Contains(got, "[image]") {
+		t.Fatalf("English text signature missing image placeholder: %q", got)
+	}
+	if got := renderSignatureText(html, "zh_cn"); !strings.Contains(got, "[图片]") {
+		t.Fatalf("Chinese text signature missing image placeholder: %q", got)
 	}
 }
 
