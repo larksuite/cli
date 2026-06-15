@@ -154,18 +154,16 @@ var MailReplyAll = common.Shortcut{
 			senderEmail = orig.headTo
 		}
 
-		// Resolve signature after senderEmail is finalised so DefaultReplyID matches the correct usage.
+		// Signature ID is resolved here (after senderEmail is finalised) so DefaultReplyID
+		// matches the correct usage. The actual image download in resolveSignature is deferred
+		// to after applyTemplate so the final plainText value (which a template can override
+		// via IsPlainTextMode) is used for the downloadImages decision.
 		signatureID := runtime.Str("signature-id")
 		noSignature := runtime.Bool("no-signature")
 		if noSignature {
 			signatureID = ""
 		} else if signatureID == "" {
 			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, true /*isReply*/)
-		}
-		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
-			runtime.Str("signature-id") != "", !plainText)
-		if sigErr != nil {
-			return sigErr
 		}
 
 		var removeList []string
@@ -227,6 +225,14 @@ var MailReplyAll = common.Shortcut{
 				"ccs_count":          countAddresses(ccList),
 				"bccs_count":         countAddresses(bccFlag),
 			})
+		}
+		// Resolve signature after template processing so plainText reflects any IsPlainTextMode
+		// override from the template. This avoids downloading HTML signature images when the
+		// template forces plain-text mode, which could cause CDN 403/5xx or timeout errors.
+		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
+			runtime.Str("signature-id") != "", !plainText)
+		if sigErr != nil {
+			return sigErr
 		}
 		subjectOverride := strings.TrimSpace(runtime.Str("subject"))
 
