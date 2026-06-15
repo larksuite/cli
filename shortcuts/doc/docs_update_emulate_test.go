@@ -28,6 +28,8 @@ const emulateTestXML = `<h1 id="blkHead">Title</h1>` +
 	`<callout id="blkCall" background-color="rgb(1,2,3)" emoji="bulb"><p id="blkCallP">tip</p></callout>` +
 	`<p id="blkAnchor">anchor</p>`
 
+// TestIndexEmulatedBlocks checks that indexEmulatedBlocks maps every fetched
+// block id to its tag and attribute run across the fixture document.
 func TestIndexEmulatedBlocks(t *testing.T) {
 	blocks := indexEmulatedBlocks(emulateTestXML)
 
@@ -60,6 +62,8 @@ func TestIndexEmulatedBlocks(t *testing.T) {
 	}
 }
 
+// TestBuildEmulatedBlockContent verifies the rebuild rules that turn each
+// supported fetched block into the content re-inserted after the anchor.
 func TestBuildEmulatedBlockContent(t *testing.T) {
 	blocks := indexEmulatedBlocks(emulateTestXML)
 
@@ -91,6 +95,8 @@ func TestBuildEmulatedBlockContent(t *testing.T) {
 	}
 }
 
+// TestBuildEmulatedBlockContentRejectsUnsupportedType asserts that block types
+// carrying server-side state are rejected with a failed_precondition error.
 func TestBuildEmulatedBlockContentRejectsUnsupportedType(t *testing.T) {
 	blocks := indexEmulatedBlocks(emulateTestXML)
 
@@ -105,6 +111,8 @@ func TestBuildEmulatedBlockContentRejectsUnsupportedType(t *testing.T) {
 	}
 }
 
+// TestBuildEmulatedBlockContentRejectsImgWithoutHref asserts that an img block
+// without a rebuildable href is rejected rather than silently dropped.
 func TestBuildEmulatedBlockContentRejectsImgWithoutHref(t *testing.T) {
 	// An img source block with no href/url cannot be re-inserted; the rejection
 	// must surface as a typed validation fault naming --src-block-ids.
@@ -117,6 +125,8 @@ func TestBuildEmulatedBlockContentRejectsImgWithoutHref(t *testing.T) {
 	}
 }
 
+// TestRebuildEmulatedImgTagRequiresHref verifies rebuildEmulatedImgTag fails
+// when the source img tag has no href to re-upload from.
 func TestRebuildEmulatedImgTagRequiresHref(t *testing.T) {
 	_, err := rebuildEmulatedImgTag(` src="tok123" width="10"`)
 	if err == nil {
@@ -146,6 +156,8 @@ type docEmulateOutput struct {
 	} `json:"data"`
 }
 
+// decodeDocEmulateOutput unmarshals the JSON success envelope an emulation run
+// writes to stdout, failing the test on malformed output.
 func decodeDocEmulateOutput(t *testing.T, stdout *bytes.Buffer) docEmulateOutput {
 	t.Helper()
 	var out docEmulateOutput
@@ -155,6 +167,8 @@ func decodeDocEmulateOutput(t *testing.T, stdout *bytes.Buffer) docEmulateOutput
 	return out
 }
 
+// registerEmulateFetchStub registers an httpmock stub that answers the
+// docs_ai fetch call with the given document content.
 func registerEmulateFetchStub(reg *httpmock.Registry, docID, content string) *httpmock.Stub {
 	stub := &httpmock.Stub{
 		Method: "POST",
@@ -181,6 +195,8 @@ type emulateUpdateRequestBody struct {
 	Content string `json:"content"`
 }
 
+// decodeEmulateUpdateBody unmarshals the update request body a stub captured so
+// tests can assert the command and block ids the emulation wrote.
 func decodeEmulateUpdateBody(t *testing.T, stub *httpmock.Stub) emulateUpdateRequestBody {
 	t.Helper()
 	var body emulateUpdateRequestBody
@@ -190,6 +206,8 @@ func decodeEmulateUpdateBody(t *testing.T, stub *httpmock.Stub) emulateUpdateReq
 	return body
 }
 
+// registerEmulateUpdateStub registers an httpmock stub that matches the
+// emulation's update call for the given command and returns a success result.
 func registerEmulateUpdateStub(reg *httpmock.Registry, docID, command string) *httpmock.Stub {
 	stub := &httpmock.Stub{
 		Method: "PUT",
@@ -206,6 +224,8 @@ func registerEmulateUpdateStub(reg *httpmock.Registry, docID, command string) *h
 	return stub
 }
 
+// TestDocsUpdateEmulatedMoveViaExecute drives a full move through execute:
+// fetch, insert after the anchor, verify, then delete the originals.
 func TestDocsUpdateEmulatedMoveViaExecute(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-emulate-move"))
 
@@ -254,6 +274,8 @@ func TestDocsUpdateEmulatedMoveViaExecute(t *testing.T) {
 	}
 }
 
+// TestDocsUpdateEmulatedCopyKeepsOriginals verifies a copy inserts the rebuilt
+// blocks but issues no delete, leaving the source blocks in place.
 func TestDocsUpdateEmulatedCopyKeepsOriginals(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-emulate-copy"))
 
@@ -297,6 +319,8 @@ func TestDocsUpdateEmulatedCopyKeepsOriginals(t *testing.T) {
 	}
 }
 
+// TestDocsUpdateEmulatedRejectsUnsupportedTypeBeforeWriting asserts an
+// unsupported source block aborts the run before any insert or delete write.
 func TestDocsUpdateEmulatedRejectsUnsupportedTypeBeforeWriting(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-emulate-reject"))
 
@@ -323,6 +347,8 @@ func TestDocsUpdateEmulatedRejectsUnsupportedTypeBeforeWriting(t *testing.T) {
 	}
 }
 
+// TestDocsUpdateEmulatedStopsWhenInsertNotVisible asserts that a failed
+// post-insert verification halts the move and keeps the originals undeleted.
 func TestDocsUpdateEmulatedStopsWhenInsertNotVisible(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-emulate-verify"))
 
@@ -350,6 +376,8 @@ func TestDocsUpdateEmulatedStopsWhenInsertNotVisible(t *testing.T) {
 	}
 }
 
+// TestDocsUpdateEmulateValidation checks that validateUpdateV2 rejects invalid
+// --emulate flag combinations with the expected typed validation metadata.
 func TestDocsUpdateEmulateValidation(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -423,6 +451,8 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 	}
 }
 
+// TestDocsUpdateEmulatedDryRun verifies the dry-run plan lists the expected
+// fetch/insert/verify/delete call sequence for move and copy.
 func TestDocsUpdateEmulatedDryRun(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -467,6 +497,8 @@ func TestDocsUpdateEmulatedDryRun(t *testing.T) {
 	}
 }
 
+// TestIndexTopLevelBlocks checks that indexTopLevelBlocks returns the ordered
+// top-level blocks with their tags and ids, including nested callout children.
 func TestIndexTopLevelBlocks(t *testing.T) {
 	got := indexTopLevelBlocks(emulateTestXML)
 
@@ -498,6 +530,8 @@ func TestIndexTopLevelBlocks(t *testing.T) {
 	}
 }
 
+// TestVerifyEmulatedInsert checks that verifyEmulatedInsert confirms the
+// rebuilt blocks appear within the anchor-scoped run before delete is allowed.
 func TestVerifyEmulatedInsert(t *testing.T) {
 	beforeIDs := map[string]bool{"blkAnchor": true, "blkOld": true}
 	// after: anchor, then a freshly inserted paragraph, then a pre-existing block.

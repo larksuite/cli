@@ -216,6 +216,8 @@ func indexTopLevelBlocks(xml string) []topLevelBlock {
 	return out
 }
 
+// idAttrSet returns the block id(s) carried by an attribute run as a set,
+// or an empty set when the run has no id attribute.
 func idAttrSet(attrs string) map[string]bool {
 	ids := map[string]bool{}
 	if m := emulateBlockIDRE.FindStringSubmatch(attrs); m != nil {
@@ -229,6 +231,8 @@ func idAttrSet(attrs string) map[string]bool {
 // xmlAttrValue call.
 var xmlAttrValueRECache sync.Map // name string -> *regexp.Regexp
 
+// xmlAttrValue returns the value of the named attribute within an attribute
+// run and whether it was present.
 func xmlAttrValue(attrs, name string) (string, bool) {
 	re, ok := xmlAttrValueRECache.Load(name)
 	if !ok {
@@ -242,11 +246,15 @@ func xmlAttrValue(attrs, name string) (string, bool) {
 	return m[1], true
 }
 
+// xmlAttrEscape escapes a raw string for safe inclusion in a double-quoted
+// XML attribute value.
 func xmlAttrEscape(raw string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(raw)
 }
 
+// xmlEntityDecode reverses xmlAttrEscape, decoding the XML entities that
+// DocxXML export emits back into their literal characters.
 func xmlEntityDecode(s string) string {
 	r := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&quot;", `"`, "&#39;", "'", "&amp;", "&")
 	return r.Replace(s)
@@ -336,6 +344,8 @@ func buildEmulatedBlockContent(b emulatedBlock) (content, insertedTag string, er
 	return inner, b.tag, nil
 }
 
+// splitSrcBlockIDs splits a comma-separated --src-block-ids value into trimmed,
+// non-empty block ids, preserving order.
 func splitSrcBlockIDs(raw string) []string {
 	var ids []string
 	for _, id := range strings.Split(raw, ",") {
