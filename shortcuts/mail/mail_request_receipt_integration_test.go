@@ -64,18 +64,22 @@ func stubGetMessageWithFormat(reg *httpmock.Registry, messageID string) {
 // JSON body of the drafts.create request; decodeCapturedRawEML extracts the
 // base64url-decoded EML from it.
 func registerDraftCaptureStubs(reg *httpmock.Registry) *httpmock.Stub {
+	return registerDraftCaptureStubsForMailbox(reg, "me", "draft_001")
+}
+
+func registerDraftCaptureStubsForMailbox(reg *httpmock.Registry, mailboxID, draftID string) *httpmock.Stub {
 	createStub := &httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me/drafts",
+		URL:    "/user_mailboxes/" + mailboxID + "/drafts",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"draft_id": "draft_001"},
+			"data": map[string]interface{}{"draft_id": draftID},
 		},
 	}
 	reg.Register(createStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
-		URL:    "/user_mailboxes/me/drafts/draft_001/send",
+		URL:    "/user_mailboxes/" + mailboxID + "/drafts/" + draftID + "/send",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -85,6 +89,50 @@ func registerDraftCaptureStubs(reg *httpmock.Registry) *httpmock.Stub {
 		},
 	})
 	return createStub
+}
+
+func registerDraftCreateCaptureStubForMailbox(reg *httpmock.Registry, mailboxID, draftID string) *httpmock.Stub {
+	createStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/" + mailboxID + "/drafts",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"draft_id": draftID},
+		},
+	}
+	reg.Register(createStub)
+	return createStub
+}
+
+func stubSignatureSettings(reg *httpmock.Registry, mailboxID string, signatures []map[string]interface{}, usages []map[string]interface{}) *httpmock.Stub {
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/" + mailboxID + "/settings/signatures",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"signatures": signatures,
+				"usages":     usages,
+			},
+		},
+	}
+	reg.Register(stub)
+	return stub
+}
+
+func stubSendAsSettings(reg *httpmock.Registry, mailboxID string, addrs []map[string]interface{}) *httpmock.Stub {
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/user_mailboxes/" + mailboxID + "/settings/send_as",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"sendable_addresses": addrs,
+			},
+		},
+	}
+	reg.Register(stub)
+	return stub
 }
 
 // decodeCapturedRawEML extracts and base64url-decodes the "raw" field from
@@ -127,6 +175,7 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 		"--to", "bob@example.com",
 		"--subject", "hi",
 		"--body", "please confirm",
+		"--no-signature",
 		"--request-receipt",
 		"--confirm-send",
 	}, f, stdout); err != nil {
@@ -137,6 +186,104 @@ func TestMailSend_RequestReceiptAddsHeader_Integration(t *testing.T) {
 	// satisfy a substring check even when DNT is broken.
 	if !strings.Contains(raw, "Disposition-Notification-To: <me@example.com>") {
 		t.Errorf("expected DNT header addressed to sender; got EML:\n%s", raw)
+	}
+}
+
+func TestMailSend_PlainTextExplicitSignatureStaysText(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	createStub := registerDraftCreateCaptureStubForMailbox(reg, "sig-plain@example.com", "draft_sig_plain")
+	stubSignatureSettings(reg, "sig-plain@example.com", []map[string]interface{}{
+		{"id": "sig_1", "name": "Best", "signature_type": "USER", "content": "<div>Best regards</div>"},
+	}, nil)
+	stubSendAsSettings(reg, "sig-plain@example.com", []map[string]interface{}{{
+		"email_address": "sig-plain@example.com",
+		"name":          "Sender",
+	}})
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", "sig-plain@example.com",
+		"--to", "alice@example.com",
+		"--subject", "hi",
+		"--body", "hello",
+		"--plain-text",
+		"--signature-id", "sig_1",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("send with plain-text signature failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	if !strings.Contains(normalized, "hello\n\nBest regards") {
+		t.Errorf("expected plain-text signature block in EML, got:\n%s", raw)
+	}
+	if strings.Contains(raw, "<div>Best regards</div>") {
+		t.Errorf("plain-text path should not keep signature HTML, got:\n%s", raw)
+	}
+}
+
+func TestMailSend_AutoDefaultSignatureMatchesAliasAndUsesCache(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	createStub := registerDraftCreateCaptureStubForMailbox(reg, "owner@example.com", "draft_alias")
+	sigStub := stubSignatureSettings(reg, "owner@example.com", []map[string]interface{}{
+		{"id": "sig_owner", "name": "Owner", "signature_type": "USER", "content": "<div>Owner sign</div>"},
+		{"id": "sig_alias", "name": "Alias", "signature_type": "USER", "content": "<div>Alias sign</div>"},
+	}, []map[string]interface{}{
+		{"email_address": "owner@example.com", "send_mail_signature_id": "sig_owner"},
+		{"email_address": "alias@example.com", "send_mail_signature_id": "sig_alias"},
+	})
+	sendAsStub := stubSendAsSettings(reg, "owner@example.com", []map[string]interface{}{
+		{"email_address": "owner@example.com", "name": "Owner"},
+		{"email_address": "alias@example.com", "name": "Alias"},
+	})
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", "owner@example.com",
+		"--from", "alias@example.com",
+		"--to", "alice@example.com",
+		"--subject", "hi",
+		"--body", "hello",
+		"--plain-text",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("send with auto default signature failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	if !strings.Contains(normalized, "hello\n\nAlias sign") {
+		t.Errorf("expected alias signature in plain-text EML, got:\n%s", raw)
+	}
+	if strings.Contains(raw, "Owner sign") {
+		t.Errorf("owner signature should not be selected for alias sender, got:\n%s", raw)
+	}
+	if len(sigStub.CapturedBodies) != 1 {
+		t.Fatalf("signature list should be fetched once via process cache, got %d", len(sigStub.CapturedBodies))
+	}
+	if len(sendAsStub.CapturedBodies) != 1 {
+		t.Fatalf("send_as should be fetched once for interpolation, got %d", len(sendAsStub.CapturedBodies))
+	}
+}
+
+func TestMailSend_NoSignatureSkipsSignatureLookups(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	createStub := registerDraftCreateCaptureStubForMailbox(reg, "nosig@example.com", "draft_no_sig")
+
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--mailbox", "nosig@example.com",
+		"--from", "alias@example.com",
+		"--to", "alice@example.com",
+		"--subject", "hi",
+		"--body", "hello",
+		"--no-signature",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("send with --no-signature failed: %v", err)
+	}
+	raw := decodeCapturedRawEML(t, createStub.CapturedBody)
+	if !strings.Contains(raw, "hello") {
+		t.Errorf("expected original body in EML, got:\n%s", raw)
 	}
 }
 

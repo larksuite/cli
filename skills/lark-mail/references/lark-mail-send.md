@@ -7,6 +7,7 @@
 - 抄送/密送
 - 本地文件附件（`--attach`）
 - 内嵌图片（`--inline`，CID 可用随机字符串）
+- 默认自动追加当前 sender 对应的发送签名（可用 `--no-signature` 显式跳过）
 
 本 skill 对应 shortcut：`lark-cli mail +send`。
 
@@ -59,6 +60,9 @@ lark-cli mail +send --to alice@example.com --subject '预览图' --body '<img sr
 # 纯文本邮件（仅在内容极简时使用）
 lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢'
 
+# 显式跳过默认签名
+lark-cli mail +send --to alice@example.com --subject '确认' --body '收到，谢谢' --no-signature
+
 # Dry Run（仅打印请求，不执行）
 lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p>' --dry-run
 ```
@@ -78,7 +82,8 @@ lark-cli mail +send --to alice@example.com --subject '测试' --body '<p>test</p
 | `--plain-text` | 否 | 强制纯文本模式，忽略 HTML 自动检测。不可与 `--inline` 同时使用 |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
-| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到正文末尾。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 显式指定签名 ID。运行 `mail +signature` 查看可用签名；优先级高于自动默认签名。HTML 正文继续插入 HTML 签名，纯文本正文会追加纯文本签名 |
+| `--no-signature` | 否 | 显式跳过签名追加。优先级高于 `--signature-id` 与自动默认签名；不可与 `--signature-id` 同时使用 |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请（text/calendar）。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601，如 `2026-04-20T14:00+08:00`） |
@@ -209,6 +214,7 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 - 使用 EML 构建器生成完整 MIME 邮件并 base64url 编码后发送。
 - `--attach` 作为普通附件添加。相对路径。
 - `--inline` 接受 JSON 数组，每项需提供 `cid`（唯一标识符，可用随机十六进制字符串）和 `file_path`（相对路径），作为 inline part 嵌入邮件。
+- 未显式传 `--signature-id` 且未传 `--no-signature` 时，会自动读取当前 sender 对应的发送默认签名；`--from` alias 会按实际 sender 地址精确匹配签名 usage。
 - **超大附件**：当附件导致 EML 总大小（headers + body + inline images + attachments，base64 编码后）超过 25 MB 时，超出的文件自动通过 `medias/upload_*` API 上传到云端。HTML 邮件插入与飞书客户端一致的下载卡片；纯文本邮件追加包含文件名、大小和下载链接的文本块。单个文件上限 3 GB，总附件数量上限 250 个。
 
 ## 相关命令

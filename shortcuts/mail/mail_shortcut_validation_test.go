@@ -100,6 +100,20 @@ func TestRequiredBodyRejectsWhitespaceBodyFile(t *testing.T) {
 	}
 }
 
+func TestMailSendRejectsNoSignatureWithSignatureID(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	err := runMountedMailShortcut(t, MailSend, []string{
+		"+send",
+		"--as", "user",
+		"--to", "alice@example.com",
+		"--subject", "conflict",
+		"--body", "hello",
+		"--no-signature",
+		"--signature-id", "sig_123",
+	}, f, stdout)
+	assertValidationError(t, err, "--no-signature and --signature-id are mutually exclusive")
+}
+
 // TC-1: +message --as bot --mailbox me → ErrValidation
 func TestMailMessageBotMailboxMeReturnsValidationError(t *testing.T) {
 	f, stdout, _, _ := mailShortcutTestFactory(t)

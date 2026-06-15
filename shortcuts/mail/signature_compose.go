@@ -17,12 +17,19 @@ import (
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
 	"github.com/larksuite/cli/shortcuts/mail/signature"
+	xhtml "golang.org/x/net/html"
 )
 
 // signatureFlag is the common flag definition for --signature-id, shared by all compose shortcuts.
 var signatureFlag = common.Flag{
 	Name: "signature-id",
 	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
+}
+
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Skip both explicit and default signature lookup for this compose action.",
 }
 
 // signatureResult holds the pre-processed signature data ready for HTML injection.
@@ -74,6 +81,49 @@ func resolveSignature(ctx context.Context, runtime *common.RuntimeContext, mailb
 		RenderedContent: rendered,
 		Images:          images,
 	}, nil
+}
+
+// resolveComposeSignature applies the +send signature policy order:
+// --no-signature → explicit --signature-id → auto default signature → no signature.
+func resolveComposeSignature(ctx context.Context, runtime *common.RuntimeContext, mailboxID, senderEmail string) (*signatureResult, error) {
+	if runtime.Bool("no-signature") {
+		return nil, nil
+	}
+	if signatureID := runtime.Str("signature-id"); signatureID != "" {
+		return resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
+	}
+	defaultID, err := resolveDefaultSendSignature(runtime, mailboxID, senderEmail)
+	if err != nil {
+		return nil, err
+	}
+	if defaultID == "" {
+		return nil, nil
+	}
+	return resolveSignature(ctx, runtime, mailboxID, defaultID, senderEmail)
+}
+
+// resolveDefaultSendSignature returns the default send signature ID that matches
+// the concrete sender email. Empty / "0" usage IDs mean "no default".
+func resolveDefaultSendSignature(runtime *common.RuntimeContext, mailboxID, senderEmail string) (string, error) {
+	resp, err := signature.ListAll(runtime, mailboxID)
+	if err != nil {
+		return "", err
+	}
+	senderEmail = strings.TrimSpace(senderEmail)
+	if senderEmail == "" {
+		return "", nil
+	}
+	for _, usage := range resp.Usages {
+		if !strings.EqualFold(strings.TrimSpace(usage.EmailAddress), senderEmail) {
+			continue
+		}
+		id := strings.TrimSpace(usage.SendMailSignatureID)
+		if id == "" || id == "0" {
+			return "", nil
+		}
+		return id, nil
+	}
+	return "", nil
 }
 
 // injectSignatureIntoBody inserts signature HTML into the body, placing
@@ -244,7 +294,21 @@ func signatureCIDs(sig *signatureResult) []string {
 	return cids
 }
 
-// validateSignatureWithPlainText returns an error if both --plain-text and --signature-id are set.
+// validateSignatureFlags rejects the only raw-input conflict in +send's
+// signature policy: explicit opt-out and explicit signature ID at the same time.
+func validateSignatureFlags(noSignature bool, signatureID string) error {
+	if noSignature && signatureID != "" {
+		return mailValidationError("--no-signature and --signature-id are mutually exclusive").
+			WithParams(
+				mailInvalidParam("--no-signature", "mutually exclusive with --signature-id"),
+				mailInvalidParam("--signature-id", "mutually exclusive with --no-signature"),
+			)
+	}
+	return nil
+}
+
+// validateSignatureWithPlainText remains for reply/draft siblings that still
+// intentionally reject plain-text + signature-id outside this sprint's scope.
 func validateSignatureWithPlainText(plainText bool, signatureID string) error {
 	if plainText && signatureID != "" {
 		return mailValidationError("--plain-text and --signature-id are mutually exclusive: signatures require HTML mode").
@@ -254,4 +318,163 @@ func validateSignatureWithPlainText(plainText bool, signatureID string) error {
 			)
 	}
 	return nil
+}
+
+func appendPlainTextSignature(body, signatureText string) string {
+	signatureText = strings.TrimSpace(signatureText)
+	if signatureText == "" {
+		return body
+	}
+	if strings.TrimSpace(body) == "" {
+		return signatureText
+	}
+	return body + "\n\n" + signatureText
+}
+
+func renderPlainTextSignature(sig *signatureResult) string {
+	if sig == nil {
+		return ""
+	}
+	return plainTextSignatureFromHTML(sig.RenderedContent)
+}
+
+func plainTextSignatureFromHTML(raw string) string {
+	doc, err := xhtml.Parse(strings.NewReader(raw))
+	if err != nil {
+		return strings.TrimSpace(raw)
+	}
+	var buf strings.Builder
+	renderPlainTextNode(&buf, doc)
+	return normalizePlainTextOutput(buf.String())
+}
+
+func renderPlainTextNode(buf *strings.Builder, n *xhtml.Node) {
+	if n == nil || isSignatureNonTextTag(n) {
+		return
+	}
+	if n.Type == xhtml.TextNode {
+		appendPlainTextToken(buf, collapseSignatureWhitespace(n.Data))
+		return
+	}
+	if n.Type == xhtml.ElementNode {
+		switch strings.ToLower(n.Data) {
+		case "img":
+			return
+		case "a":
+			text := normalizePlainTextOutput(collectPlainTextNodeText(n.FirstChild))
+			if text == "" {
+				text = strings.TrimSpace(nodeAttr(n, "href"))
+			}
+			appendPlainTextToken(buf, text)
+			return
+		}
+		if isSignatureBlockBoundary(n) {
+			appendPlainTextLineBreak(buf)
+		}
+	}
+	for child := n.FirstChild; child != nil; child = child.NextSibling {
+		renderPlainTextNode(buf, child)
+	}
+	if isSignatureBlockBoundary(n) {
+		appendPlainTextLineBreak(buf)
+	}
+}
+
+func collectPlainTextNodeText(n *xhtml.Node) string {
+	var buf strings.Builder
+	var walk func(*xhtml.Node)
+	walk = func(node *xhtml.Node) {
+		if node == nil || isSignatureNonTextTag(node) {
+			return
+		}
+		if node.Type == xhtml.TextNode {
+			appendPlainTextToken(&buf, collapseSignatureWhitespace(node.Data))
+			return
+		}
+		if node.Type == xhtml.ElementNode && strings.EqualFold(node.Data, "img") {
+			return
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(n)
+	return buf.String()
+}
+
+func appendPlainTextToken(buf *strings.Builder, token string) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return
+	}
+	if buf.Len() > 0 {
+		last := buf.String()[buf.Len()-1]
+		if last != '\n' && last != ' ' {
+			buf.WriteByte(' ')
+		}
+	}
+	buf.WriteString(token)
+}
+
+func appendPlainTextLineBreak(buf *strings.Builder) {
+	if buf.Len() == 0 {
+		return
+	}
+	if buf.String()[buf.Len()-1] != '\n' {
+		buf.WriteByte('\n')
+	}
+}
+
+func normalizePlainTextOutput(raw string) string {
+	lines := strings.Split(raw, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+func collapseSignatureWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+func isSignatureNonTextTag(n *xhtml.Node) bool {
+	if n == nil || n.Type != xhtml.ElementNode {
+		return false
+	}
+	switch strings.ToLower(n.Data) {
+	case "head", "meta", "script", "noscript", "style", "link", "title":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSignatureBlockBoundary(n *xhtml.Node) bool {
+	if n == nil || n.Type != xhtml.ElementNode {
+		return false
+	}
+	switch strings.ToLower(n.Data) {
+	case "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt",
+		"figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6",
+		"header", "hr", "li", "main", "nav", "ol", "p", "pre", "section", "table", "tr", "ul":
+		return true
+	default:
+		return false
+	}
+}
+
+func nodeAttr(n *xhtml.Node, key string) string {
+	if n == nil {
+		return ""
+	}
+	for _, attr := range n.Attr {
+		if strings.EqualFold(attr.Key, key) {
+			return attr.Val
+		}
+	}
+	return ""
 }

@@ -14,6 +14,69 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func setMailSendDryRunEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	t.Setenv("LARKSUITE_CLI_APP_ID", "mail_send_dryrun_test")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "mail_send_dryrun_secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+}
+
+func TestMail_SendDryRunAutoSignaturePlan(t *testing.T) {
+	setMailSendDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"mail", "+send",
+			"--mailbox", "owner@example.com",
+			"--from", "alias@example.com",
+			"--to", "alice@example.com",
+			"--subject", "dryrun",
+			"--body", "hello",
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	assert.Equal(t, int64(4), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/profile", gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/settings/signatures", gjson.Get(result.Stdout, "api.1.url").String(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/settings/send_as", gjson.Get(result.Stdout, "api.2.url").String(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/drafts", gjson.Get(result.Stdout, "api.3.url").String(), "stdout:\n%s", result.Stdout)
+}
+
+func TestMail_SendDryRunNoSignatureSkipsLookups(t *testing.T) {
+	setMailSendDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"mail", "+send",
+			"--mailbox", "owner@example.com",
+			"--from", "alias@example.com",
+			"--to", "alice@example.com",
+			"--subject", "dryrun",
+			"--body", "hello",
+			"--no-signature",
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	assert.Equal(t, int64(2), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/profile", gjson.Get(result.Stdout, "api.0.url").String(), "stdout:\n%s", result.Stdout)
+	assert.Equal(t, "/open-apis/mail/v1/user_mailboxes/owner@example.com/drafts", gjson.Get(result.Stdout, "api.1.url").String(), "stdout:\n%s", result.Stdout)
+	assert.False(t, gjson.Get(result.Stdout, `api.#(url=="/open-apis/mail/v1/user_mailboxes/owner@example.com/settings/signatures")`).Exists(), "stdout:\n%s", result.Stdout)
+	assert.False(t, gjson.Get(result.Stdout, `api.#(url=="/open-apis/mail/v1/user_mailboxes/owner@example.com/settings/send_as")`).Exists(), "stdout:\n%s", result.Stdout)
+}
+
 func TestMail_SendWorkflowAsUser(t *testing.T) {
 	parentT := t
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)

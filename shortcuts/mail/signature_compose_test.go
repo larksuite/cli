@@ -174,8 +174,8 @@ func TestDownloadSignatureImageSuccessUsesFilenameContentType(t *testing.T) {
 	}
 }
 
-func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
-	err := validateSignatureWithPlainText(true, "sig_123")
+func TestValidateSignatureFlagsTypedError(t *testing.T) {
+	err := validateSignatureFlags(true, "sig_123")
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("expected validation error, got %T (%v)", err, err)
@@ -183,8 +183,25 @@ func TestValidateSignatureWithPlainTextTypedError(t *testing.T) {
 	if len(validationErr.Params) != 2 {
 		t.Fatalf("params = %#v, want two conflicting params", validationErr.Params)
 	}
-	if validationErr.Params[0].Name != "--plain-text" || validationErr.Params[1].Name != "--signature-id" {
+	if validationErr.Params[0].Name != "--no-signature" || validationErr.Params[1].Name != "--signature-id" {
 		t.Fatalf("unexpected params: %#v", validationErr.Params)
+	}
+}
+
+func TestRenderPlainTextSignatureUsesAnchorTextAndHrefFallback(t *testing.T) {
+	sig := &signatureResult{RenderedContent: `<div>Hello <a href="https://example.com/portal">Portal</a></div><div><a href="https://example.com/raw"></a><img src="cid:ignored"></div>`}
+	got := renderPlainTextSignature(sig)
+	if want := "Hello Portal\nhttps://example.com/raw"; got != want {
+		t.Fatalf("renderPlainTextSignature() = %q, want %q", got, want)
+	}
+}
+
+func TestAppendPlainTextSignatureSkipsEmptyRender(t *testing.T) {
+	if got := appendPlainTextSignature("body", "   "); got != "body" {
+		t.Fatalf("appendPlainTextSignature() = %q, want body", got)
+	}
+	if got := appendPlainTextSignature("", "sig"); got != "sig" {
+		t.Fatalf("appendPlainTextSignature() empty body = %q, want sig", got)
 	}
 }
 
