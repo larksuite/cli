@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -351,14 +352,16 @@ func TestDocsUpdateEmulatedStopsWhenInsertNotVisible(t *testing.T) {
 
 func TestDocsUpdateEmulateValidation(t *testing.T) {
 	tests := []struct {
-		name     string
-		setFlags map[string]string
-		want     string
+		name      string
+		setFlags  map[string]string
+		wantParam string
+		want      string
 	}{
 		{
-			name:     "rejects non move/copy command",
-			setFlags: map[string]string{"command": "append", "content": "<p>x</p>", "emulate": "true"},
-			want:     "--emulate only applies to block_move_after and block_copy_insert_after",
+			name:      "rejects non move/copy command",
+			setFlags:  map[string]string{"command": "append", "content": "<p>x</p>", "emulate": "true"},
+			wantParam: "--emulate",
+			want:      "--emulate only applies to block_move_after and block_copy_insert_after",
 		},
 		{
 			name: "rejects explicit revision id",
@@ -366,7 +369,8 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 				"command": "block_move_after", "block-id": "blkAnchor",
 				"src-block-ids": "blkA", "emulate": "true", "revision-id": "7", "content": "",
 			},
-			want: "--revision-id is not supported with --emulate",
+			wantParam: "--revision-id",
+			want:      "--revision-id is not supported with --emulate",
 		},
 		{
 			name: "rejects duplicate source ids",
@@ -374,7 +378,8 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 				"command": "block_move_after", "block-id": "blkAnchor",
 				"src-block-ids": "blkA,blkA", "emulate": "true", "content": "",
 			},
-			want: "duplicate block id blkA",
+			wantParam: "--src-block-ids",
+			want:      "duplicate block id blkA",
 		},
 		{
 			name: "rejects empty source id list",
@@ -382,7 +387,8 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 				"command": "block_copy_insert_after", "block-id": "blkAnchor",
 				"src-block-ids": ",", "emulate": "true",
 			},
-			want: "contains no block ids",
+			wantParam: "--src-block-ids",
+			want:      "contains no block ids",
 		},
 	}
 
@@ -395,6 +401,21 @@ func TestDocsUpdateEmulateValidation(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected validation error")
 			}
+
+			// Primary assertions: typed error metadata (category/subtype/param),
+			// not message text — error-path tests must pin the envelope.
+			if p, ok := errs.ProblemOf(err); !ok || p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("expected subtype %s, got %T: %v", errs.SubtypeInvalidArgument, err, err)
+			}
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("param = %q, want %q", ve.Param, tt.wantParam)
+			}
+
+			// Secondary: the human-facing message still names the problem.
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error missing %q: %v", tt.want, err)
 			}

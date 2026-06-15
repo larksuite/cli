@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -223,9 +224,18 @@ func idAttrSet(attrs string) map[string]bool {
 	return ids
 }
 
+// xmlAttrValueRECache memoizes the per-attribute-name regex so re-inserting a
+// document with many images does not recompile the same pattern on every
+// xmlAttrValue call.
+var xmlAttrValueRECache sync.Map // name string -> *regexp.Regexp
+
 func xmlAttrValue(attrs, name string) (string, bool) {
-	re := regexp.MustCompile(`(?:^|\s)` + regexp.QuoteMeta(name) + `="([^"]*)"`)
-	m := re.FindStringSubmatch(attrs)
+	re, ok := xmlAttrValueRECache.Load(name)
+	if !ok {
+		re, _ = xmlAttrValueRECache.LoadOrStore(name,
+			regexp.MustCompile(`(?:^|\s)`+regexp.QuoteMeta(name)+`="([^"]*)"`))
+	}
+	m := re.(*regexp.Regexp).FindStringSubmatch(attrs)
 	if m == nil {
 		return "", false
 	}
