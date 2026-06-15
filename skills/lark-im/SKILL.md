@@ -53,6 +53,14 @@ When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-lis
 
 The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) automatically attach a `reactions` block and (for edited messages) `update_time` to each returned message — no separate `im.reactions.batch_query` call is needed. Pass `--no-reactions` to opt out. For the full contract (output shape, the `im:message.reactions:read` scope requirement, and the "missing field ≠ fetch failure" data rules), read [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
 
+### Sending Code Snippets
+
+When sending messages that include code via `+messages-send` or `+messages-reply`, prefer `--markdown` instead of `--text`.
+
+- Code snippets should be sent using fenced code blocks, for example triple backticks with an optional language like ```sql.
+- Avoid plain `--text` for code-heavy messages, because the receiving client may show the fence markers as raw text instead of rendering a code block.
+- To avoid shell escaping issues with backticks, prefer writing the markdown body to a local file first and then pass it into the send command, instead of inlining a large markdown string directly in the shell command.
+
 ### Opt-in resource auto-download (`--download-resources`)
 
 `+chat-messages-list`, `+messages-mget`, and `+threads-messages-list` accept `--download-resources` (**off by default** — no `resources` block and no extra requests when omitted). When set, eligible message resources (image/file/audio/video/media + post-embedded; **stickers excluded**) are downloaded into `./lark-im-resources/` and each message gains a `resources` array of `{message_id, key, type, local_path, size_bytes}`. Downloads are deduped by `(message_id, file_key)`, run with bounded concurrency, and isolate single-resource failures (`error: true` + stderr warning). **Scope:** requires `im:message:readonly` (already declared by the listing commands — no extra scope); works under both user and bot identity. For one-off downloads use [`+messages-resources-download`](references/lark-im-messages-resources-download.md). Full contract: [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
