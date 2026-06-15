@@ -14,6 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/signature"
 )
 
 // MailForward is the `+forward` shortcut: forward an existing message to
@@ -45,6 +46,7 @@ var MailForward = common.Shortcut{
 		{Name: "subject", Desc: "Optional. Override the auto-generated Fw: subject. When set, the shortcut uses this value verbatim instead of prefixing the original subject."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's body/to/cc/bcc/attachments are merged into the forward draft (template values appended to user flags / forward-derived values; no de-duplication)."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -129,6 +131,21 @@ var MailForward = common.Shortcut{
 
 		signatureID := runtime.Str("signature-id")
 		mailboxID := resolveComposeMailboxID(runtime)
+		noSignature := runtime.Bool("no-signature")
+		if noSignature {
+			if signatureID != "" {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: --signature-id ignored because --no-signature is set\n")
+			}
+			signatureID = ""
+		} else if signatureID == "" && !plainText {
+			if resp, lErr := signature.ListAll(runtime, mailboxID); lErr == nil {
+				signatureID = signature.DefaultReplyID(resp.Usages, runtime.Str("from"))
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: failed to fetch default signature: %v\n", lErr)
+			}
+		}
 		sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, signatureID, runtime.Str("from"))
 		if sigErr != nil {
 			return sigErr

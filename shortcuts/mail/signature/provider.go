@@ -6,6 +6,7 @@ package signature
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -67,4 +68,40 @@ func Get(runtime *common.RuntimeContext, mailboxID, signatureID string) (*Signat
 		}
 	}
 	return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "signature not found: %s", signatureID)
+}
+
+// DefaultSendID returns the send_mail_signature_id for the given addr.
+// Falls back to usages[0] if no entry matches, but returns "" when
+// no default is configured (id empty or "0").
+// Returns "" if usages is empty.
+func DefaultSendID(usages []SignatureUsage, addr string) string {
+	return pickSignatureID(usages, addr, func(u SignatureUsage) string {
+		return u.SendMailSignatureID
+	})
+}
+
+// DefaultReplyID returns the reply_signature_id for the given addr.
+// Used by reply/reply-all/forward shortcuts.
+// Returns "" if usages is empty or no default is configured.
+func DefaultReplyID(usages []SignatureUsage, addr string) string {
+	return pickSignatureID(usages, addr, func(u SignatureUsage) string {
+		return u.ReplySignatureID
+	})
+}
+
+func pickSignatureID(usages []SignatureUsage, addr string, pick func(SignatureUsage) string) string {
+	if len(usages) == 0 {
+		return ""
+	}
+	laddr := strings.ToLower(strings.TrimSpace(addr))
+	for _, u := range usages {
+		if strings.ToLower(strings.TrimSpace(u.EmailAddress)) == laddr {
+			id := pick(u)
+			if id == "" || id == "0" {
+				return ""
+			}
+			return id
+		}
+	}
+	return ""
 }

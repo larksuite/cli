@@ -25,6 +25,13 @@ var signatureFlag = common.Flag{
 	Desc: "Optional. Signature ID to append after body content. Run `mail +signature` to list available signatures.",
 }
 
+// noSignatureFlag is the common flag for --no-signature, shared by all compose shortcuts.
+var noSignatureFlag = common.Flag{
+	Name: "no-signature",
+	Type: "bool",
+	Desc: "Do not append any signature to the email body (overrides automatic default signature).",
+}
+
 // signatureResult holds the pre-processed signature data ready for HTML injection.
 type signatureResult struct {
 	ID              string

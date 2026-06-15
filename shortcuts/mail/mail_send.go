@@ -11,6 +11,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 	draftpkg "github.com/larksuite/cli/shortcuts/mail/draft"
 	"github.com/larksuite/cli/shortcuts/mail/emlbuilder"
+	"github.com/larksuite/cli/shortcuts/mail/signature"
 )
 
 // MailSend is the `+send` shortcut: compose a new email and save it as a
@@ -40,6 +41,7 @@ var MailSend = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag},
@@ -195,6 +197,21 @@ var MailSend = common.Shortcut{
 			}
 		}
 
+		noSignature := runtime.Bool("no-signature")
+		if noSignature {
+			if signatureID != "" {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: --signature-id ignored because --no-signature is set\n")
+			}
+			signatureID = ""
+		} else if signatureID == "" && !plainText {
+			if resp, lErr := signature.ListAll(runtime, mailboxID); lErr == nil {
+				signatureID = signature.DefaultSendID(resp.Usages, senderEmail)
+			} else {
+				fmt.Fprintf(runtime.IO().ErrOut,
+					"warning: failed to fetch default signature: %v\n", lErr)
+			}
+		}
 		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail)
 		if err != nil {
 			return err
