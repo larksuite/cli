@@ -1178,5 +1178,5 @@ func formatDataConfigErrors(problems []string) error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- "))
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/lark-base-dashboard-block-data-config.md", strings.Join(problems, "\n- "))
 }

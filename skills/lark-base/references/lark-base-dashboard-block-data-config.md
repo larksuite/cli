@@ -42,7 +42,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 |------|------|------|
 | `table_name` | string | 关联数据表名称 |
 | `series` | `[{ "field_name": "xxx", "rollup": "SUM" }]` | 指标/Y 轴（与 `count_all` 二选一）。rollup 支持 `SUM` / `MAX` / `MIN` / `AVERAGE` |
-| `count_all` | boolean | COUNTA 聚合，统计所有记录数（与 `series` 二选一） |
+| `count_all` | boolean | COUNTA 聚合，统计所有**记录条数**（与 `series` 二选一）。注意：用户指标是"数量/人数/金额"且表中存在对应数量语义字段（如「访客人数」「销售额」，一条记录可能代表多个计数单位）时，必须用 `series` + `SUM(该字段)`，不要用 `count_all` 数行数；同一仪表盘内同口径指标统计方式必须一致 |
 | `group_by` | `[{ "field_name": "xxx", "mode": "integrated", "sort": {...} }]` | X 轴分组维度。`mode` 必填，`sort` 可选，见下方说明 |
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |

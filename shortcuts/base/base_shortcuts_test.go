@@ -458,7 +458,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"sequentially",
 			},
@@ -469,7 +469,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",
 				"top-level keys",

@@ -78,6 +78,27 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 	return normalizeRecordSortValue(value, "--"+recordSortJSONFlag)
 }
 
+// recordPageLimit resolves --limit together with the hidden --page-size
+// alias. --page-size is the im domain's pagination flag name, which agents
+// habitually carry over to base record commands; accepting it here keeps
+// pagination naming forgiving across domains.
+func recordPageLimit(runtime *common.RuntimeContext) int {
+	if runtime.Changed("page-size") && !runtime.Changed("limit") {
+		return common.ParseIntBounded(runtime, "page-size", 1, 200)
+	}
+	return common.ParseIntBounded(runtime, "limit", 1, 200)
+}
+
+func validateRecordPageLimit(runtime *common.RuntimeContext) error {
+	if runtime.Changed("limit") && runtime.Changed("page-size") {
+		return baseFlagErrorf("--page-size is a deprecated alias for --limit; use only one")
+	}
+	if strings.TrimSpace(runtime.Str("page-token")) != "" {
+		return baseFlagErrorf("this command uses offset pagination, not page tokens; did you mean --offset/--limit? (use --offset <n> for the next page)")
+	}
+	return nil
+}
+
 func recordQueryFlagValue(runtime *common.RuntimeContext, canonical string, alias string) (string, error) {
 	canonicalRaw := strings.TrimSpace(runtime.Str(canonical))
 	aliasRaw := strings.TrimSpace(runtime.Str(alias))
@@ -212,7 +233,7 @@ func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{
 		offset = 0
 	}
 	body["offset"] = offset
-	body["limit"] = common.ParseIntBounded(runtime, "limit", 1, 200)
+	body["limit"] = recordPageLimit(runtime)
 	return body, applyRecordQueryToBody(runtime, body)
 }
 
@@ -243,6 +264,9 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	if err := validateRecordReadFormat(runtime); err != nil {
 		return err
 	}
+	if err := validateRecordPageLimit(runtime); err != nil {
+		return err
+	}
 	if strings.TrimSpace(runtime.Str("keyword")) != "" && strings.TrimSpace(runtime.Str("query")) != "" {
 		return baseFlagErrorf("--query is a deprecated alias for --keyword; use only one")
 	}
@@ -269,7 +293,8 @@ func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool
 		len(recordListFields(runtime)) > 0 ||
 		runtime.Str("view-id") != "" ||
 		runtime.Changed("offset") ||
-		runtime.Changed("limit")
+		runtime.Changed("limit") ||
+		runtime.Changed("page-size")
 }
 
 func recordSearchKeyword(runtime *common.RuntimeContext) string {

@@ -34,6 +34,8 @@ var BaseRecordSearch = common.Shortcut{
 		recordSortAliasFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "10", Desc: "pagination size, range 1-200"},
+		{Name: "page-size", Type: "int", Default: "0", Desc: "deprecated alias for --limit", Hidden: true},
+		{Name: "page-token", Hidden: true},
 		recordReadFormatFlag(),
 	},
 	Tips: []string{

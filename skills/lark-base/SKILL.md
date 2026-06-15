@@ -72,9 +72,9 @@ metadata:
 | 查看 Base 内资源目录 | `+base-block-list` | 先判断 Base 里有什么（table/docx/dashboard/workflow/folder），再决定走哪类命令 |
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
-| 列/查/删字段 | `+field-list/get/delete/search-options` | 字段发现默认用 `+field-list --compact`；需要 formula/lookup 细节或完整字段 JSON 再用 `+field-get` / 不带 compact 的 list；多表结构用 `+field-list-batch --compact --table-id <表1> --table-id <表2>` 一次取齐，不要逐表调用 |
+| 列/查/删字段 | `+field-list/get/delete/search-options` | 字段发现默认用 `+field-list --compact`（一次返回全部）；`+field-get` 仅用于深挖单个字段的 formula/lookup 细节或完整 JSON；多表结构用 `+field-list-batch --compact --table-id <表1> --table-id <表2>` 一次取齐，不要逐表调用 |
 | 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
-| 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
+| 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 默认输出 markdown（更紧凑、省 token，适合直接阅读）；需要 `--jq` 或程序化解析时显式加 `--format json`。涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
@@ -85,7 +85,9 @@ metadata:
 | 表单提交 | `+form-submit` | 先读 [lark-base-form-detail.md](references/lark-base-form-detail.md) 获取题目、filter 和附件所需 `base_token`；提交 JSON 读 [lark-base-form-submit.md](references/lark-base-form-submit.md) |
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md) |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
-| 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
+| 仪表盘读操作 | `+dashboard-list/get` / `+dashboard-block-list/get/get-data` | 读 [lark-base-dashboard.md](references/lark-base-dashboard.md) |
+| 仪表盘写操作（非图表 data_config） | `+dashboard-create/update/delete/arrange`、删除/重命名 block、text block | 读 [lark-base-dashboard.md](references/lark-base-dashboard.md) + [lark-base-dashboard-write.md](references/lark-base-dashboard-write.md) |
+| 仪表盘图表组件创建/更新 | `+dashboard-block-create/update` 且涉及 chart/statistics 的 `data_config` | 一次性读 [lark-base-dashboard.md](references/lark-base-dashboard.md) + [lark-base-dashboard-write.md](references/lark-base-dashboard-write.md) + [lark-base-dashboard-block-data-config.md](references/lark-base-dashboard-block-data-config.md) |
 | Workflow | `+workflow-*` | 先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)：它包含查询/启停/创建/修改的最短路径和常见 step 组合；只有创建/更新复杂 steps 时才继续读 schema 小文件；list/get/enable/disable 不读 schema |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界）；权限 JSON 再读 [role-config.md](references/role-config.md) |
 
@@ -139,7 +141,7 @@ done
 
 ### Dashboard / Workflow / Role
 
-- Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等操作要点见 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的「执行要点」。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
+- Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [lark-base-dashboard-block-data-config.md](references/lark-base-dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等操作要点见 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的「执行要点」。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
 - Workflow 的复杂点是 `steps`：先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，用其中的最短路径和场景表完成查询/启停/常见创建修改；需要具体 step 字段再按需读 schema 小文件；创建后 `+workflow-get` 回读验证。
 - Role 的复杂点是权限 JSON：先读 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界），权限 JSON SSOT 读 [role-config.md](references/role-config.md)；删除角色、关闭高级权限前确认目标和影响。
 
