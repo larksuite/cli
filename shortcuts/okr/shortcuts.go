@@ -21,5 +21,6 @@ func Shortcuts() []common.Shortcut {
 		OKRBatchCreate,
 		OKRReorder,
 		OKRWeight,
+		OKRIndicatorUpdate,
 	}
 }
