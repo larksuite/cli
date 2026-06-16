@@ -412,7 +412,10 @@ func (ctx *RuntimeContext) StreamPages(method, url string, params map[string]int
 		return nil, false, err
 	}
 	req := ctx.buildRequest(method, url, params, data)
-	return ac.StreamPages(ctx.ctx, req, onItems, opts)
+	return ac.StreamPages(ctx.ctx, req, func(items []interface{}) error {
+		onItems(items)
+		return nil
+	}, opts)
 }
 
 func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]interface{}, data interface{}) client.RawApiRequest {

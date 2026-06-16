@@ -350,7 +350,7 @@ func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interfa
 
 // paginateLoop runs the core pagination loop. For each successful page (code == 0),
 // it calls onResult if non-nil. It always accumulates and returns all raw page results.
-func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{})) ([]interface{}, error) {
+func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opts PaginationOptions, onResult func(interface{}) error) ([]interface{}, error) {
 	var allResults []interface{}
 	var pageToken string
 	page := 0
@@ -399,7 +399,9 @@ func (c *APIClient) paginateLoop(ctx context.Context, request RawApiRequest, opt
 		}
 
 		if onResult != nil {
-			onResult(result)
+			if err := onResult(result); err != nil {
+				return allResults, err
+			}
 		}
 		allResults = append(allResults, result)
 
@@ -452,28 +454,31 @@ func (c *APIClient) PaginateAll(ctx context.Context, request RawApiRequest, opts
 // StreamPages fetches all pages and streams each page's list items via onItems.
 // Returns the last page result (for error checking), whether any list items were found,
 // and any network error. Use this for streaming formats (ndjson, table, csv).
-func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}), opts PaginationOptions) (result interface{}, hasItems bool, err error) {
+func (c *APIClient) StreamPages(ctx context.Context, request RawApiRequest, onItems func([]interface{}) error, opts PaginationOptions) (result interface{}, hasItems bool, err error) {
 	totalItems := 0
-	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) {
+	results, loopErr := c.paginateLoop(ctx, request, opts, func(r interface{}) error {
 		resultMap, ok := r.(map[string]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		data, ok := resultMap["data"].(map[string]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		arrayField := output.FindArrayField(data)
 		if arrayField == "" {
-			return
+			return nil
 		}
 		items, ok := data[arrayField].([]interface{})
 		if !ok {
-			return
+			return nil
 		}
 		totalItems += len(items)
-		onItems(items)
+		if err := onItems(items); err != nil {
+			return err
+		}
 		hasItems = true
+		return nil
 	})
 	if loopErr != nil {
 		return nil, false, loopErr

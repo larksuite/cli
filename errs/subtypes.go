@@ -73,6 +73,7 @@ const (
 const (
 	SubtypeChallengeRequired Subtype = "challenge_required" // user must complete browser challenge / MFA
 	SubtypeAccessDenied      Subtype = "access_denied"      // policy denies access outright
+	SubtypeContentSafety     Subtype = "content_safety"     // content-safety scanner blocked output in block mode
 )
 
 // CategoryInternal subtypes

@@ -380,7 +380,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	checkErr := ac.CheckResponse
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
+		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
@@ -620,20 +620,45 @@ func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *cor
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
 	if pagOpts.Identity == "" {
 		pagOpts.Identity = request.As
 	}
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
-		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
+		result, err := ac.PaginateAll(ctx, request, pagOpts)
+		if err != nil {
+			return err
+		}
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
+			return apiErr
+		}
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			JqExpr:      jqExpr,
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)
-		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) {
+		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
+			// Streaming formats intentionally emit each page after that page has
+			// passed safety scanning. A later page may still fail, so callers
+			// must use the exit code to distinguish complete vs partial output.
+			scanResult := output.ScanForSafety(commandPath, items, errOut)
+			if scanResult.Blocked {
+				return scanResult.BlockErr
+			}
+			if scanResult.Alert != nil {
+				output.WriteAlertWarning(errOut, scanResult.Alert)
+			}
 			pf.FormatPage(items)
+			return nil
 		}, pagOpts)
 		if err != nil {
 			return err
@@ -643,7 +668,12 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 		}
 		if !hasItems {
 			fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
-			output.FormatValue(out, result, output.FormatJSON)
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: commandPath,
+				Identity:    string(pagOpts.Identity),
+				Out:         out,
+				ErrOut:      errOut,
+			})
 		}
 		return nil
 	default:
@@ -652,9 +682,14 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 			return err
 		}
 		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
 			return apiErr
 		}
-		output.FormatValue(out, result, format)
-		return nil
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 }
