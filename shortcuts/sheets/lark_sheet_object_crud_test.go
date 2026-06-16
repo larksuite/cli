@@ -4,6 +4,8 @@
 package sheets
 
 import (
+	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 
@@ -691,6 +693,102 @@ func TestCondFormatAttrs_ShapeMatchesRuleType(t *testing.T) {
 				t.Fatalf("expected acceptance (dry-run); got err=%v stderr=%s", err, stderr)
 			}
 		})
+	}
+}
+
+// TestCondFormatAttrsRequired_MatchesSchemaOneOf guards against drift
+// between the hand-maintained condFormatAttrsRequired table (the source
+// validateCondFormatAttrs enforces) and the embedded flag-schemas.json
+// attrs oneOf (the authoritative shape contract synced from the spec
+// repo). The cross-field validator only works if its per-rule_type
+// required keys mirror the schema branches; if a future schema sync adds
+// or drops a required key on any branch without updating the table, the
+// CLI would silently under- or over-validate. They share no compile-time
+// link, so this test is the only thing pinning them together.
+//
+// The schema oneOf branches are NOT labeled by rule_type (that's the whole
+// point — rule_type is a sibling field the per-entry oneOf can't see), so
+// we can't match branch→rule_type. We instead compare the *multiset* of
+// required-key sets: every branch's required array must appear as some
+// table entry's value and vice versa. This catches any added/dropped
+// required key (real drift); it tolerates only a relabeling between two
+// branches that happen to share an identical required set (dataBar and
+// colorScale both require {color,value_type}), which is harmless here.
+func TestCondFormatAttrsRequired_MatchesSchemaOneOf(t *testing.T) {
+	t.Parallel()
+
+	// multiset key: required keys sorted + joined, so order within a
+	// branch's required array doesn't matter.
+	keyOf := func(req []string) string {
+		s := append([]string(nil), req...)
+		sort.Strings(s)
+		return strings.Join(s, "+")
+	}
+
+	tableMS := map[string]int{}
+	for _, req := range condFormatAttrsRequired {
+		tableMS[keyOf(req)]++
+	}
+
+	schemaMS := func(t *testing.T, command string) map[string]int {
+		idx, err := loadFlagSchemas()
+		if err != nil {
+			t.Fatalf("loadFlagSchemas: %v", err)
+		}
+		raw, ok := idx.Flags[command]["properties"]
+		if !ok {
+			t.Fatalf("no embedded schema for %s --properties", command)
+		}
+		var schema map[string]interface{}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("unmarshal %s properties schema: %v", command, err)
+		}
+		dig := func(m map[string]interface{}, key string) map[string]interface{} {
+			next, _ := m[key].(map[string]interface{})
+			if next == nil {
+				t.Fatalf("%s: missing %q while navigating to attrs oneOf", command, key)
+			}
+			return next
+		}
+		attrs := dig(dig(schema, "properties"), "attrs")
+		items := dig(attrs, "items")
+		oneOf, ok := items["oneOf"].([]interface{})
+		if !ok || len(oneOf) == 0 {
+			t.Fatalf("%s: attrs.items.oneOf is missing or empty", command)
+		}
+		ms := map[string]int{}
+		for i, branchRaw := range oneOf {
+			branch, ok := branchRaw.(map[string]interface{})
+			if !ok {
+				t.Fatalf("%s: oneOf[%d] is not an object", command, i)
+			}
+			reqRaw, _ := branch["required"].([]interface{})
+			req := make([]string, 0, len(reqRaw))
+			for _, r := range reqRaw {
+				if s, ok := r.(string); ok {
+					req = append(req, s)
+				}
+			}
+			ms[keyOf(req)]++
+		}
+		return ms
+	}
+
+	for _, command := range []string{"+cond-format-create", "+cond-format-update"} {
+		got := schemaMS(t, command)
+		if len(got) != len(tableMS) {
+			t.Errorf("%s: schema oneOf has %d distinct required-sets, table has %d", command, len(got), len(tableMS))
+		}
+		for k, n := range tableMS {
+			if got[k] != n {
+				t.Errorf("%s: required-set %q appears %d× in schema but %d× in condFormatAttrsRequired — table drifted from schema; re-sync the table", command, k, got[k], n)
+			}
+		}
+		for k, n := range got {
+			if tableMS[k] != n {
+				t.Errorf("%s: schema branch with required-set %q (×%d) has no matching condFormatAttrsRequired entry — add it to the table", command, k, n)
+			}
+		}
 	}
 }
 
