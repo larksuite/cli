@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/internal/output"
@@ -58,6 +59,12 @@ type objectCRUDSpec struct {
 	// against data/flag-schemas.json in objectCreateInput /
 	// objectUpdateInput via validatePropertiesAgainstSchema.
 	validateUpdateInput func(input map[string]interface{}) error
+	// validateCreateInput is the create-path twin of validateUpdateInput:
+	// it runs after enhanceCreateInput to enforce cross-field rules JSON
+	// Schema can't express (e.g. cond-format's attrs shape must match the
+	// sibling rule_type — see validateCondFormatAttrs). Same scope notes
+	// as validateUpdateInput apply.
+	validateCreateInput func(input map[string]interface{}) error
 	// allowEmptySheetSelectorOnCreate, when true, makes the *create*
 	// shortcut accept empty --sheet-id / --sheet-name (backend then picks
 	// the placement target — e.g. manage_pivot_table_object auto-creates
@@ -192,6 +199,11 @@ func objectCreateInput(runtime flagView, token, sheetID, sheetName string, spec 
 	}
 	if err := validateInputAgainstSchema(runtime, input); err != nil {
 		return nil, err
+	}
+	if spec.validateCreateInput != nil {
+		if err := spec.validateCreateInput(input); err != nil {
+			return nil, err
+		}
 	}
 	return input, nil
 }
@@ -481,12 +493,118 @@ var condFormatEnhance = func(rt flagView, input map[string]interface{}) {
 }
 
 var condFormatSpec = objectCRUDSpec{
-	commandPrefix:      "+cond-format",
-	toolName:           "manage_conditional_format_object",
-	idFlag:             "rule-id",
-	idField:            "conditional_format_id",
-	enhanceCreateInput: condFormatEnhance,
-	enhanceUpdateInput: condFormatEnhance,
+	commandPrefix:       "+cond-format",
+	toolName:            "manage_conditional_format_object",
+	idFlag:              "rule-id",
+	idField:             "conditional_format_id",
+	enhanceCreateInput:  condFormatEnhance,
+	enhanceUpdateInput:  condFormatEnhance,
+	validateCreateInput: validateCondFormatAttrs,
+	validateUpdateInput: validateCondFormatAttrs,
+}
+
+// condFormatAttrsRequired maps each conditional-format rule_type to the
+// keys every properties.attrs entry must carry for that rule. It mirrors
+// the per-rule attrs contract the tool's manage_conditional_format_object
+// converter reads (byted-sheet ai-tools manage-conditional-format-object.ts):
+// that converter maps each attrs entry *blindly by rule_type*, so a
+// colorScale rule fed cellIs-shaped attrs ({compare_type,value}) silently
+// yields a color-less color-scale segment — dirty data that crashes the
+// frontend on snapshot deserialization (the 5005 "can't open" report this
+// validator was added for).
+//
+// JSON Schema can't catch this: properties.attrs.items is a oneOf over all
+// nine shapes, and the validator accepts an entry as soon as *any* branch
+// matches — blind to the sibling rule_type. {compare_type,value} matches
+// the cellIs branch regardless of whether rule_type says colorScale.
+//
+// Rule types absent from the map (duplicateValues, uniqueValues,
+// containsBlanks, notContainsBlanks) carry no attrs, so nothing to check.
+// Counts (dataBar==2, colorScale 2–3, iconSet ordering) stay the tool's
+// job — it already rejects those with actionable messages; the gap this
+// closes is per-entry *shape*, which the tool does not check.
+var condFormatAttrsRequired = map[string][]string{
+	"cellIs":       {"compare_type", "value"},
+	"containsText": {"compare_type", "text"},
+	"timePeriod":   {"operator", "time_period"},
+	"dataBar":      {"color", "value_type"},
+	"colorScale":   {"value_type", "color"},
+	"rank":         {"is_bottom", "value_type"},
+	"aboveAverage": {"operator"},
+	"expression":   {"formula"},
+	"iconSet":      {"icon_type", "value_type", "operator"},
+}
+
+// validateCondFormatAttrs enforces that every properties.attrs entry
+// matches the shape required by the sibling properties.rule_type. Shared
+// by create and update. On update, rule_type may be omitted (the caller is
+// editing style only and the existing rule's type governs the attrs shape,
+// which the CLI can't see); in that case validation is deferred to the
+// server. Missing/empty attrs is likewise left to the tool, which already
+// reports "attrs are required for rule_type: X" clearly.
+func validateCondFormatAttrs(input map[string]interface{}) error {
+	props, _ := input["properties"].(map[string]interface{})
+	if props == nil {
+		return nil
+	}
+	ruleType, _ := props["rule_type"].(string)
+	ruleType = strings.TrimSpace(ruleType)
+	if ruleType == "" {
+		return nil
+	}
+	required, ok := condFormatAttrsRequired[ruleType]
+	if !ok {
+		return nil
+	}
+	attrs, ok := props["attrs"].([]interface{})
+	if !ok {
+		// Missing attrs, or a non-array shape the schema check already
+		// flagged — nothing for this cross-field rule to add.
+		return nil
+	}
+	for i, entryRaw := range attrs {
+		entry, ok := entryRaw.(map[string]interface{})
+		if !ok {
+			continue // schema validation owns per-entry type errors.
+		}
+		for _, key := range required {
+			if v, has := entry[key]; !has || condAttrIsBlank(v) {
+				return common.FlagErrorf(
+					"--properties: attrs[%d] is missing %q, which rule_type %q requires on every entry (expected keys %s; got %s). "+
+						"A common cause is reusing another rule's attrs shape — e.g. cellIs-style {compare_type,value} under a colorScale rule, which writes a color-less segment that breaks the sheet on open.",
+					i, key, ruleType, strings.Join(required, "+"), condAttrPresentKeys(entry))
+			}
+		}
+	}
+	return nil
+}
+
+// condAttrIsBlank treats a present-but-empty string (after trimming) as
+// missing. The crash-causing case is an empty `color`, but an empty value
+// for any required key is never meaningful in these branches, so the rule
+// is uniform. Non-string values (numbers, booleans) count as present.
+func condAttrIsBlank(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	return false
+}
+
+// condAttrPresentKeys lists the keys actually present on an attrs entry,
+// sorted, for the "got ..." half of the error message.
+func condAttrPresentKeys(entry map[string]interface{}) string {
+	if len(entry) == 0 {
+		return "{}"
+	}
+	keys := make([]string, 0, len(entry))
+	for k := range entry {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return "{" + strings.Join(keys, ",") + "}"
 }
 var CondFormatCreate = newObjectCreateShortcut(condFormatSpec)
 var CondFormatUpdate = newObjectUpdateShortcut(condFormatSpec)

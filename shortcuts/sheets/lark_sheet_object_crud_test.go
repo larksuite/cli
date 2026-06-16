@@ -202,7 +202,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--rule-id", "ruleA",
-				"--properties", `{"attrs":[{"operator":"greaterThan","value":"100"}],"style":{"back_color":"#FFD7D7"}}`,
+				"--properties", `{"attrs":[{"compare_type":"greaterThan","value":"100"}],"style":{"back_color":"#FFD7D7"}}`,
 				"--rule-type", "cellIs",
 				"--ranges", `["A1:A100"]`,
 			},
@@ -214,7 +214,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"conditional_format_id": "ruleA",
 				"properties": map[string]interface{}{
 					"rule_type": "cellIs",
-					"attrs":     []interface{}{map[string]interface{}{"operator": "greaterThan", "value": "100"}},
+					"attrs":     []interface{}{map[string]interface{}{"compare_type": "greaterThan", "value": "100"}},
 					"style":     map[string]interface{}{"back_color": "#FFD7D7"},
 					"ranges":    []interface{}{"A1:A100"},
 				},
@@ -611,6 +611,86 @@ func TestSparklineUpdate_MissingSparklineID(t *testing.T) {
 	}
 	if !strings.Contains(combined, "+sparkline-list") {
 		t.Errorf("expected error to point at +sparkline-list; got=%s|%v", stderr, err)
+	}
+}
+
+// TestCondFormatAttrs_ShapeMatchesRuleType regresses the cross-field
+// guard that rejects attrs whose shape doesn't match the sibling
+// rule_type — the gap behind the "缺 color 的 colorScale 脏数据导致表格
+// 打不开" report: a colorScale rule fed cellIs-shaped attrs
+// ({compare_type,value}, no color) passed both the CLI's per-entry oneOf
+// schema check and the tool, writing a color-less segment that crashed
+// the frontend on open. The check covers create and update symmetrically.
+func TestCondFormatAttrs_ShapeMatchesRuleType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		sc      common.Shortcut
+		args    []string
+		wantErr bool
+		wantMsg string // substring expected in the error, when wantErr
+	}{
+		{
+			name: "colorScale fed cellIs-shaped attrs (missing color) is rejected",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"compare_type":"greaterThan","value":"0"},{"compare_type":"lessThan","value":"100"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: "colorScale",
+		},
+		{
+			name: "colorScale with empty color string is rejected",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"value_type":"minValue","color":""},{"value_type":"maxValue","color":"#FF0000"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: `"color"`,
+		},
+		{
+			name: "well-formed colorScale attrs pass",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"value_type":"minValue","color":"#FFFFFF"},{"value_type":"maxValue","color":"#FF0000"}]}`, "--dry-run",
+			},
+			wantErr: false,
+		},
+		{
+			name: "update path is guarded too (colorScale + cellIs attrs)",
+			sc:   CondFormatUpdate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID, "--rule-id", "ruleA",
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"compare_type":"greaterThan","value":"0"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: "colorScale",
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, stderr, err := runShortcutCapturingErr(t, tt.sc, tt.args)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected rejection; stderr=%s", stderr)
+				}
+				if combined := stderr + err.Error(); tt.wantMsg != "" && !strings.Contains(combined, tt.wantMsg) {
+					t.Errorf("expected error to mention %q; got=%s|%v", tt.wantMsg, stderr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected acceptance (dry-run); got err=%v stderr=%s", err, stderr)
+			}
+		})
 	}
 }
 
