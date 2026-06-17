@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -452,6 +453,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 			}
 			printLangPreferenceConfirmation(opts)
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand})
+			if err := runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel); err != nil {
+				return err
+			}
 			return nil
 		}
 
@@ -487,6 +491,9 @@ func configInitRun(opts *ConfigInitOptions) error {
 			// Secretless create: persist auth method + TEE key ref, no secret.
 			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
 				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
+			}
+			if err := runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel); err != nil {
+				return err
 			}
 		} else if result.AppSecret != "" {
 			// New secret provided (either from "create" or "existing" with input)
