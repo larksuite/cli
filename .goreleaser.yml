@@ -1,26 +1,77 @@
 version: 2
 
 builds:
-  - id: lark-cli
+  # Linux & Windows: pure-Go TPM 2.0 signer (sks_signer), cross-compiled with
+  # CGO disabled — the binaries ship the platform key signer for private_key_jwt.
+  - id: linux
     binary: lark-cli
+    main: .
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=sks_signer
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+  # windows/amd64 carries the sks signer. windows/arm64 ships unsigned: the sks
+  # dependency stack (certtostore -> go-ole) has no windows/arm64 support, so it
+  # falls back to client_secret only (same as before this change).
+  - id: windows
+    binary: lark-cli
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -tags=sks_signer
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - windows
+    goarch:
+      - amd64
+  - id: windows-arm64
+    binary: lark-cli
+    main: .
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
+    goos:
+      - windows
+    goarch:
+      - arm64
+  # macOS: the keychain_signer needs cgo (Security.framework). The whole release
+  # runs on a macOS runner (see release.yml) so this builds natively; linux and
+  # windows above stay CGO-free and cross-compile fine from the same host.
+  - id: darwin
+    binary: lark-cli
+    main: .
+    env:
+      - CGO_ENABLED=1
+    flags:
+      - -trimpath
+      - -tags=keychain_signer
     ldflags:
       - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
     goos:
       - darwin
-      - linux
-      - windows
     goarch:
       - amd64
       - arm64
-      - riscv64
 
 notarize:
   macos:
     - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
       ids:
-        - lark-cli
+        - darwin
       sign:
         certificate: "{{ .Env.MACOS_SIGN_P12 }}"
         password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
