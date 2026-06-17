@@ -5,6 +5,7 @@ package semantic
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -12,15 +13,17 @@ import (
 	"github.com/larksuite/cli/internal/qualitygate/report"
 )
 
-func TestInputViewKeepsChangedFactsWithOriginalRefs(t *testing.T) {
+func TestInputViewKeepsChangedReviewCandidatesWithOriginalRefs(t *testing.T) {
 	f := facts.Facts{
 		SchemaVersion: 1,
 		Commands: []facts.CommandFact{
 			{Path: "old noisy command", Source: "shortcut"},
+			{Path: "docs +clean", Changed: true, Source: "shortcut"},
 			{Path: "docs +fetch", Changed: true, Source: "shortcut", NameConflictsExisting: true},
 		},
 		Skills: []facts.SkillFact{
 			{SourceFile: "skills/lark-old/SKILL.md", Line: 3, Raw: "old noisy skill"},
+			{SourceFile: "skills/lark-doc/SKILL.md", Line: 8, Raw: "changed clean skill", Changed: true},
 			{SourceFile: "skills/lark-doc/SKILL.md", Line: 9, Raw: "changed skill", Changed: true, ReferencesInvalidCommand: true},
 		},
 		SkillQuality: []facts.SkillQualityFact{
@@ -29,10 +32,12 @@ func TestInputViewKeepsChangedFactsWithOriginalRefs(t *testing.T) {
 		},
 		Errors: []facts.ErrorFact{
 			{File: "old.go", Line: 10, Boundary: true, RequiredHint: true},
+			{File: "cmd/docs.go", Line: 19, Changed: true, Boundary: true, RequiredHint: true, HintActionCount: 1},
 			{File: "cmd/docs.go", Line: 20, Changed: true, Boundary: true, RequiredHint: true},
 		},
 		Outputs: []facts.OutputFact{
 			{Command: "old list", IsList: true},
+			{Command: "docs clean-list", Changed: true, IsList: true, HasDefaultLimit: true, HasDecisionField: true},
 			{Command: "docs list", Changed: true, IsList: true},
 		},
 		Examples: []facts.CommandExample{
@@ -42,31 +47,155 @@ func TestInputViewKeepsChangedFactsWithOriginalRefs(t *testing.T) {
 	}
 
 	view := BuildInputView(f)
-	if got := singleRef(t, view.Commands); got != "facts.commands[1]" {
-		t.Fatalf("command ref = %q, want facts.commands[1]", got)
+	if got := singleRef(t, view.Commands); got != "facts.commands[2]" {
+		t.Fatalf("command ref = %q, want facts.commands[2]", got)
 	}
-	if got := singleRef(t, view.Skills); got != "facts.skills[1]" {
-		t.Fatalf("skill ref = %q, want facts.skills[1]", got)
+	if got := singleRef(t, view.Skills); got != "facts.skills[2]" {
+		t.Fatalf("skill ref = %q, want facts.skills[2]", got)
 	}
-	if got := singleRef(t, view.SkillQuality); got != "facts.skill_quality[1]" {
-		t.Fatalf("skill quality ref = %q, want facts.skill_quality[1]", got)
+	if len(view.SkillQuality) != 0 {
+		t.Fatalf("skill quality len = %d, want 0 without diagnostics", len(view.SkillQuality))
 	}
-	if got := singleRef(t, view.Errors); got != "facts.errors[1]" {
-		t.Fatalf("error ref = %q, want facts.errors[1]", got)
+	if got := singleRef(t, view.Errors); got != "facts.errors[2]" {
+		t.Fatalf("error ref = %q, want facts.errors[2]", got)
 	}
-	if got := singleRef(t, view.Outputs); got != "facts.outputs[1]" {
-		t.Fatalf("output ref = %q, want facts.outputs[1]", got)
+	if len(view.Outputs) != 0 {
+		t.Fatalf("outputs len = %d, want 0 without reject diagnostics", len(view.Outputs))
 	}
-	if got := singleRef(t, view.Examples); got != "facts.examples[1]" {
-		t.Fatalf("example ref = %q, want facts.examples[1]", got)
+	if len(view.Examples) != 0 {
+		t.Fatalf("examples len = %d, want 0 without diagnostics", len(view.Examples))
 	}
 
 	data, err := json.Marshal(view)
 	if err != nil {
 		t.Fatalf("marshal view: %v", err)
 	}
-	if strings.Contains(string(data), "old noisy") {
-		t.Fatalf("view leaked unchanged noisy facts: %s", data)
+	for _, forbidden := range []string{"old noisy", "docs +clean", "changed clean skill", "docs clean-list"} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("view leaked non-candidate fact %q: %s", forbidden, data)
+		}
+	}
+}
+
+func TestInputViewSummarizesBroadChangedCommandSurface(t *testing.T) {
+	f := broadChangedFacts(434, 44)
+
+	view := BuildInputView(f)
+	if view.ChangedSummary.Commands != 434 || view.ChangedSummary.Outputs != 44 {
+		t.Fatalf("changed summary = %#v", view.ChangedSummary)
+	}
+	if len(view.Commands) != 0 || len(view.Outputs) != 0 {
+		t.Fatalf("broad clean surface leaked details: commands=%d outputs=%d", len(view.Commands), len(view.Outputs))
+	}
+
+	messages := BuildPrompt(f)
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(messages))
+	}
+	if got := len(messages[1].Content); got > 8192 {
+		t.Fatalf("prompt user content bytes = %d, want <= 8192", got)
+	}
+	if strings.Contains(messages[1].Content, "service command 433") {
+		t.Fatalf("prompt leaked broad command details: %s", messages[1].Content)
+	}
+}
+
+func TestInputViewKeepsSemanticCandidateInsideBroadChangedSurface(t *testing.T) {
+	f := broadChangedFacts(200, 20)
+	f.Commands[137].NameConflictsExisting = true
+	f.Outputs[11].HasDefaultLimit = false
+
+	view := BuildInputView(f)
+	if got := singleRef(t, view.Commands); got != "facts.commands[137]" {
+		t.Fatalf("command ref = %q, want facts.commands[137]", got)
+	}
+	if len(view.Outputs) != 0 {
+		t.Fatalf("outputs len = %d, want 0 without reject diagnostics", len(view.Outputs))
+	}
+}
+
+func TestInputViewOmitsVerboseOutputFields(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		Outputs: []facts.OutputFact{{
+			Command:          "base +record-list",
+			Domain:           "base",
+			Changed:          true,
+			Source:           "shortcut",
+			Fields:           []string{"items", "has_more", strings.Repeat("verbose_output_field_", 200)},
+			IsList:           true,
+			HasDefaultLimit:  true,
+			HasDecisionField: false,
+		}},
+		Diagnostics: []facts.DiagnosticFact{{
+			Rule:        "default_output_contract",
+			Action:      report.ActionReject,
+			File:        "command-manifest",
+			CommandPath: "base +record-list",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if got := singleRef(t, view.Outputs); got != "facts.outputs[0]" {
+		t.Fatalf("output ref = %q, want facts.outputs[0]", got)
+	}
+	data, err := json.Marshal(view)
+	if err != nil {
+		t.Fatalf("marshal view: %v", err)
+	}
+	text := string(data)
+	if strings.Contains(text, "verbose_output_field_") || strings.Contains(text, "fields") {
+		t.Fatalf("semantic view leaked verbose output fields: %s", text)
+	}
+	if !strings.Contains(text, `"has_decision_field":false`) {
+		t.Fatalf("semantic view should make missing decision field explicit: %s", text)
+	}
+}
+
+func TestBuildPromptKeepsManyOutputCandidatesWithinRequestLimit(t *testing.T) {
+	f := broadOutputCandidateFacts(40)
+	for i := 0; i < 80; i++ {
+		f.Commands = append(f.Commands, facts.CommandFact{
+			Path:    "shortcut list " + strconv.Itoa(i),
+			Domain:  "shortcut",
+			Changed: true,
+			Source:  "shortcut",
+			Flags:   []string{strings.Repeat("verbose_flag_", 100)},
+		})
+		f.Skills = append(f.Skills, facts.SkillFact{
+			SourceFile:  "skills/lark-shortcut/SKILL.md",
+			Line:        i + 1,
+			Raw:         strings.Repeat("verbose skill guidance ", 100),
+			CommandPath: "shortcut list " + strconv.Itoa(i),
+			Changed:     true,
+		})
+	}
+	f.Diagnostics = append(f.Diagnostics, facts.DiagnosticFact{
+		Rule:        "default_output",
+		Action:      report.ActionWarning,
+		File:        "command-manifest",
+		Message:     "shortcut list 1 looks like a list command without an explicit default limit flag",
+		CommandPath: "shortcut list 1",
+	})
+
+	messages := BuildPrompt(f)
+	var view InputView
+	if err := json.Unmarshal([]byte(messages[1].Content), &view); err != nil {
+		t.Fatalf("prompt user content is not input view JSON: %v", err)
+	}
+	if len(view.Commands) != 0 || len(view.Skills) != 0 {
+		t.Fatalf("default-output view leaked unrelated context: commands=%d skills=%d", len(view.Commands), len(view.Skills))
+	}
+	if len(view.Outputs) != 0 {
+		t.Fatalf("default-output warnings should not enter semantic view without reject diagnostics: outputs=%d", len(view.Outputs))
+	}
+	if got := len(messages[1].Content); got > 16*1024 {
+		t.Fatalf("prompt user content bytes = %d, want <= 16384", got)
+	}
+	if strings.Contains(messages[1].Content, "verbose_output_field_") ||
+		strings.Contains(messages[1].Content, "verbose_flag_") ||
+		strings.Contains(messages[1].Content, "verbose skill guidance") {
+		t.Fatalf("prompt leaked verbose output fields: %s", messages[1].Content)
 	}
 }
 
@@ -163,6 +292,32 @@ func TestInputViewDropsUnchangedWarningDiagnostics(t *testing.T) {
 	}
 }
 
+func TestInputViewDropsUnselectedLabelDiagnostics(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		Commands: []facts.CommandFact{{
+			Path:    "drive +task_result",
+			Changed: true,
+			Source:  "shortcut",
+		}},
+		Diagnostics: []facts.DiagnosticFact{{
+			Rule:        "command_naming",
+			Action:      report.ActionLabel,
+			File:        "command-manifest",
+			Message:     "drive +task_result has non-kebab-case command segments",
+			CommandPath: "drive +task_result",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if len(view.Commands) != 0 {
+		t.Fatalf("commands len = %d, want 0 for label-only diagnostic", len(view.Commands))
+	}
+	if len(view.Diagnostics) != 0 {
+		t.Fatalf("diagnostics len = %d, want 0 for label-only diagnostic", len(view.Diagnostics))
+	}
+}
+
 func TestBuildPromptUsesInputViewInsteadOfFullFacts(t *testing.T) {
 	f := facts.Facts{
 		SchemaVersion: 1,
@@ -196,6 +351,49 @@ func TestBuildPromptDescribesErrorHintRubric(t *testing.T) {
 			t.Fatalf("system prompt missing %q: %s", want, system)
 		}
 	}
+}
+
+func broadChangedFacts(commands, outputs int) facts.Facts {
+	f := facts.Facts{SchemaVersion: 1}
+	for i := 0; i < commands; i++ {
+		f.Commands = append(f.Commands, facts.CommandFact{
+			Path:    "service command " + strconv.Itoa(i),
+			Domain:  "service",
+			Changed: true,
+			Source:  "service",
+			Flags:   []string{"tenant_key", "page_token", "page_size", "user_id_type"},
+		})
+	}
+	for i := 0; i < outputs; i++ {
+		f.Outputs = append(f.Outputs, facts.OutputFact{
+			Command:          "service command " + strconv.Itoa(i),
+			Domain:           "service",
+			Changed:          true,
+			Source:           "service",
+			Fields:           []string{"items", "has_more", "page_token"},
+			IsList:           true,
+			HasDefaultLimit:  true,
+			HasDecisionField: true,
+		})
+	}
+	return f
+}
+
+func broadOutputCandidateFacts(outputs int) facts.Facts {
+	f := facts.Facts{SchemaVersion: 1}
+	for i := 0; i < outputs; i++ {
+		f.Outputs = append(f.Outputs, facts.OutputFact{
+			Command:          "shortcut list " + strconv.Itoa(i),
+			Domain:           "shortcut",
+			Changed:          true,
+			Source:           "shortcut",
+			Fields:           []string{"items", "has_more", strings.Repeat("verbose_output_field_", 200)},
+			IsList:           true,
+			HasDefaultLimit:  i%2 == 0,
+			HasDecisionField: false,
+		})
+	}
+	return f
 }
 
 type refItem interface {

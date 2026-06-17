@@ -22,6 +22,7 @@ func BuildPrompt(f facts.Facts) []Message {
 		{Role: "system", Content: strings.Join([]string{
 			"You review a projected lark-cli quality-gate semantic input view.",
 			"Use only the provided JSON view.",
+			"The changed_summary may summarize broad changed surfaces; review only listed facts, not omitted summarized items.",
 			"Use fact_ref values exactly when writing finding evidence.",
 			"Only facts.commands, facts.skills, facts.errors, and facts.outputs fact_ref values may be blocker evidence.",
 			"Evidence entries must be exact fact_ref strings such as \"facts.commands[0]\" with no explanations, labels, or suffix text.",

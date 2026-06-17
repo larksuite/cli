@@ -61,8 +61,6 @@ type SkillQualityInput struct {
 	facts.SkillQualityFact
 }
 
-func (i SkillQualityInput) ref() string { return i.FactRef }
-
 type ErrorInput struct {
 	FactRef string `json:"fact_ref"`
 	facts.ErrorFact
@@ -71,8 +69,14 @@ type ErrorInput struct {
 func (i ErrorInput) ref() string { return i.FactRef }
 
 type OutputInput struct {
-	FactRef string `json:"fact_ref"`
-	facts.OutputFact
+	FactRef          string `json:"fact_ref"`
+	Command          string `json:"command"`
+	Domain           string `json:"domain,omitempty"`
+	Changed          bool   `json:"changed,omitempty"`
+	Source           string `json:"source,omitempty"`
+	IsList           bool   `json:"is_list"`
+	HasDefaultLimit  bool   `json:"has_default_limit"`
+	HasDecisionField bool   `json:"has_decision_field"`
 }
 
 func (i OutputInput) ref() string { return i.FactRef }
@@ -82,11 +86,9 @@ type ExampleInput struct {
 	facts.CommandExample
 }
 
-func (i ExampleInput) ref() string { return i.FactRef }
-
 func BuildInputView(f facts.Facts) InputView {
 	selected := newInputSelection(f)
-	selected.addChangedFacts()
+	selected.addChangedReviewCandidates()
 
 	var viewDiagnostics []facts.DiagnosticFact
 	for _, diag := range f.Diagnostics {
@@ -115,37 +117,44 @@ func BuildInputView(f facts.Facts) InputView {
 	}
 }
 
-func (s *inputSelection) addChangedFacts() {
+func (s *inputSelection) addChangedReviewCandidates() {
 	for i, cmd := range s.f.Commands {
-		if cmd.Changed {
+		if cmd.Changed && commandReviewCandidate(cmd) {
 			s.commands[i] = true
 		}
 	}
 	for i, skill := range s.f.Skills {
-		if skill.Changed {
+		if skill.Changed && skillReviewCandidate(skill) {
 			s.skills[i] = true
 		}
 	}
-	for i, skill := range s.f.SkillQuality {
-		if skill.Changed {
-			s.skillQuality[i] = true
-		}
-	}
 	for i, errFact := range s.f.Errors {
-		if errFact.Changed {
+		if errFact.Changed && errorReviewCandidate(errFact) {
 			s.errors[i] = true
 		}
 	}
 	for i, output := range s.f.Outputs {
-		if output.Changed {
+		if output.Changed && outputReviewCandidate(output) {
 			s.outputs[i] = true
 		}
 	}
-	for i, example := range s.f.Examples {
-		if example.Changed {
-			s.examples[i] = true
-		}
-	}
+}
+
+func commandReviewCandidate(cmd facts.CommandFact) bool {
+	return cmd.NameConflictsExisting || cmd.FlagAliasConflict
+}
+
+func skillReviewCandidate(skill facts.SkillFact) bool {
+	return skill.ReferencesInvalidCommand
+}
+
+func errorReviewCandidate(errFact facts.ErrorFact) bool {
+	return errFact.Boundary && errFact.RequiredHint && errFact.HintActionCount == 0
+}
+
+func outputReviewCandidate(_ facts.OutputFact) bool {
+	// default_output is observe-first in the current rollout; reject diagnostics add exact output context.
+	return false
 }
 
 type inputSelection struct {
@@ -172,6 +181,24 @@ func newInputSelection(f facts.Facts) *inputSelection {
 
 func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSelection {
 	out := newInputSelection(s.f)
+	switch {
+	case diag.Rule == "command_naming" || diag.Rule == "flag_naming":
+		s.addDiagnosticCommands(out, diag)
+	case strings.HasPrefix(diag.Rule, "default_output"):
+		s.addDiagnosticOutputs(out, diag)
+	case strings.HasPrefix(diag.Rule, "skill_"):
+		s.addDiagnosticSkills(out, diag)
+		s.addDiagnosticSkillQuality(out, diag)
+		s.addDiagnosticExamples(out, diag)
+	case strings.HasPrefix(diag.Rule, "example_dry_run"):
+		s.addDiagnosticExamples(out, diag)
+	case diag.Rule == "no_bare_helper_error":
+		s.addDiagnosticErrors(out, diag)
+	}
+	return out
+}
+
+func (s *inputSelection) addDiagnosticCommands(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, cmd := range s.f.Commands {
 		if diagnosticCommandMatches(diag, cmd.Path, cmd.CanonicalPath) ||
 			diagnosticMentions(diag, cmd.Path) ||
@@ -179,6 +206,9 @@ func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSele
 			out.commands[i] = true
 		}
 	}
+}
+
+func (s *inputSelection) addDiagnosticSkills(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, skill := range s.f.Skills {
 		if diagnosticLocationMatches(diag.File, diag.Line, skill.SourceFile, skill.Line) ||
 			diagnosticCommandMatches(diag, skill.CommandPath) ||
@@ -186,11 +216,17 @@ func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSele
 			out.skills[i] = true
 		}
 	}
+}
+
+func (s *inputSelection) addDiagnosticSkillQuality(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, skill := range s.f.SkillQuality {
 		if samePath(diag.File, skill.SourceFile) {
 			out.skillQuality[i] = true
 		}
 	}
+}
+
+func (s *inputSelection) addDiagnosticErrors(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, errFact := range s.f.Errors {
 		if diagnosticLocationMatches(diag.File, diag.Line, errFact.File, errFact.Line) ||
 			diagnosticCommandMatches(diag, errFact.CommandPath, errFact.Command) ||
@@ -199,12 +235,18 @@ func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSele
 			out.errors[i] = true
 		}
 	}
+}
+
+func (s *inputSelection) addDiagnosticOutputs(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, output := range s.f.Outputs {
 		if diagnosticCommandMatches(diag, output.Command) ||
 			diagnosticMentions(diag, output.Command) {
 			out.outputs[i] = true
 		}
 	}
+}
+
+func (s *inputSelection) addDiagnosticExamples(out *inputSelection, diag facts.DiagnosticFact) {
 	for i, example := range s.f.Examples {
 		if diagnosticLocationMatches(diag.File, diag.Line, example.SourceFile, example.Line) ||
 			diagnosticCommandMatches(diag, example.CommandPath) ||
@@ -212,11 +254,10 @@ func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSele
 			out.examples[i] = true
 		}
 	}
-	return out
 }
 
 func includeDiagnosticInView(diag facts.DiagnosticFact, selected, context *inputSelection) bool {
-	if diag.Action != report.ActionWarning {
+	if diag.Action == report.ActionReject {
 		return true
 	}
 	return selected.intersects(context)
@@ -284,7 +325,17 @@ func (s *inputSelection) outputInputs() []OutputInput {
 	out := make([]OutputInput, 0, countSelected(s.outputs))
 	for i, ok := range s.outputs {
 		if ok {
-			out = append(out, OutputInput{FactRef: factRef("outputs", i), OutputFact: s.f.Outputs[i]})
+			output := s.f.Outputs[i]
+			out = append(out, OutputInput{
+				FactRef:          factRef("outputs", i),
+				Command:          output.Command,
+				Domain:           output.Domain,
+				Changed:          output.Changed,
+				Source:           output.Source,
+				IsList:           output.IsList,
+				HasDefaultLimit:  output.HasDefaultLimit,
+				HasDecisionField: output.HasDecisionField,
+			})
 		}
 	}
 	return out
