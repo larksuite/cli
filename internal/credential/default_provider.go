@@ -61,15 +61,21 @@ func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) e
 
 // DefaultAccountProvider resolves account from config.json via keychain.
 type DefaultAccountProvider struct {
-	keychain func() keychain.KeychainAccess
-	profile  string
+	keychain          func() keychain.KeychainAccess
+	profile           string
+	profileSource     core.ProfileSource
+	profileConfigPath string
 }
 
 func NewDefaultAccountProvider(kc func() keychain.KeychainAccess, profile string) *DefaultAccountProvider {
+	return NewDefaultAccountProviderWithSource(kc, profile, core.ProfileSourceGlobal, "")
+}
+
+func NewDefaultAccountProviderWithSource(kc func() keychain.KeychainAccess, profile string, source core.ProfileSource, configPath string) *DefaultAccountProvider {
 	if kc == nil {
 		kc = keychain.Default
 	}
-	return &DefaultAccountProvider{keychain: kc, profile: profile}
+	return &DefaultAccountProvider{keychain: kc, profile: profile, profileSource: source, profileConfigPath: configPath}
 }
 
 func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, error) {
@@ -77,6 +83,9 @@ func (p *DefaultAccountProvider) ResolveAccount(ctx context.Context) (*Account, 
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		return nil, core.NotConfiguredError()
+	}
+	if p.profile != "" && p.profileSource == core.ProfileSourceProject && multi.FindApp(p.profile) == nil {
+		return nil, core.ProjectProfileNotFoundError(p.profile, p.profileConfigPath, multi.ProfileNames())
 	}
 
 	cfg, err := core.ResolveConfigFromMulti(multi, p.keychain(), p.profile)
