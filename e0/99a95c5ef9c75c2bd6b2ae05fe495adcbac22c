@@ -1,0 +1,27 @@
+internal/auth/device_flow_test.go
+  75da2a6b71f3ae11 179-181
+internal/keychain/auth_log.go
+  75da2a6b71f3ae11 7,11,13,102-162,170,175,191,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "e099a95c5ef9c75c2bd6b2ae05fe495adcbac22c",
+  "prompts": {
+    "75da2a6b71f3ae11": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a03e3611b3cde019b04c6ff",
+        "model": "Doubao_1_6__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 109,
+      "total_deletions": 20,
+      "accepted_lines": 71,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
