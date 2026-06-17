@@ -44,6 +44,21 @@
 | `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after --block-id -1`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `--block-id` | `--content` |
 | `block_move_after` | 移动已有 block 到指定位置 | `--block-id` `--src-block-ids` |
 
+## Block ID 生命周期
+
+执行写操作后，不要默认继续复用之前 fetch 到的 block ID。按下表判断是否需要重新 `docs +fetch --api-version v2 --detail with-ids`（需要样式 / 引用元数据时用 `--detail full`）：
+
+| 指令 | 对 block ID 的影响 | 后续操作规则 |
+|------|-------------------|--------------|
+| `overwrite` | 清空文档后全文重建；所有旧 block ID 都应视为失效 | 后续任何 block 级操作前必须重新 fetch |
+| `block_replace` | 目标 block 及其子 block 会被服务端整块替换；旧 ID 不保证继续可用 | 不要复用被替换 block 的旧 ID；继续编辑附近内容前重新 fetch |
+| `block_delete` | 被删除 block 及其子 block ID 立即失效 | 不要复用被删除 ID；删除后继续按位置 / 章节编辑时重新 fetch |
+| `block_insert_after` | 锚点 block ID 通常保留；插入的新内容会生成新 block ID | 如果要继续操作新插入内容，先重新 fetch 获取新 ID |
+| `append` | 等价于 `block_insert_after --block-id -1`；新增末尾内容会生成新 block ID | 如果要继续操作追加内容，先重新 fetch 获取新 ID |
+| `block_copy_insert_after` | 源 block 和锚点 block ID 保留；复制出的 block 是新 ID | 如果要继续操作复制出的内容，先重新 fetch 获取新 ID |
+| `block_move_after` | 被移动 block 的 ID 通常保留，但文档顺序、章节范围和 range 结果已变化 | 后续依赖位置、章节或区间时重新 fetch |
+| `str_replace` | 简单行内替换通常不改变 block ID；Markdown 跨行 / 大段替换可能影响多个 block 的结构 | 替换后还要做 block 级操作时，尤其是跨行 / 大段替换后，先重新 fetch |
+
 ## 指令示例
 
 ### str_replace — 全文文本替换
@@ -237,7 +252,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
 - **保护不可重建的内容**：图片、画板、电子表格等以 token 形式存储，替换时避开这些 block
 - **str_replace 的 replacement 支持富文本**：可以用行内标签 `<b>`、`<a>`、`<cite>`、`<latex>` 等替换普通文本为富文本
 - **同一 block 只能被 replace 一次**：多次修改同一 block 请合并为一次 block_replace
-- **block_replace 后重新获取 ID**：`block_replace` 成功后旧 block ID 不保证继续可用；继续做相邻块操作前，重新 `docs +fetch --detail with-ids`
+- **写操作后按需重新获取 ID**：`overwrite` / `block_replace` / `block_delete` 会让相关旧 ID 失效；插入 / 复制会产生新 ID；移动会改变位置语义。继续做 block 级操作前，按「Block ID 生命周期」判断是否重新 `docs +fetch --detail with-ids`
 - **block_delete 支持批量**：用逗号分隔多个 block_id 一次删除
 - **复杂结构重组**：将多个段落转换为 grid / table 等复杂布局时，分步操作比 overwrite 更安全：
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构

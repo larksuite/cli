@@ -26,7 +26,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 **CRITICAL — 执行对应操作前，MUST 先用 Read 工具读取以下文件，缺一不可：**
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
 2. **读取文档（`docs +fetch --api-version v2`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
-3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
+3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update.md`](references/lark-doc-update.md) 和 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
 4. **需要使用 callout、grid、table、whiteboard 等富 block 时** → 参考 [`lark-doc-style.md`](references/style/lark-doc-style.md) 的元素能力说明。该文件不是固定模板或强制排版规范；除非用户明确要求美化、重排版或特定风格，不要为了“达标”主动套用固定结构。
 
 **未读完以上文件就执行相应操作会导致参数选择错误或格式错误。**
@@ -37,6 +37,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 
 ## 快速决策
 - 用户需要“某个 block 的直达链接 / 锚点链接”时：返回 `文档基础 URL#block_id`。如果当前只有文档 URL 没有 block_id，先用 `docs +fetch --detail with-ids` 拿到目标 block 的 id
+- 连续执行多个文档写操作时，必须按 [`lark-doc-update.md`](references/lark-doc-update.md) 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
 - 例：
   - 已知文档 URL = `https://xxx.feishu.cn/docx/doxcn123`
   - 已知 block_id = `blkcn456`
