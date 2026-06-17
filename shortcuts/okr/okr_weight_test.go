@@ -33,6 +33,7 @@ func getWeightFloat(v interface{}) float64 {
 
 func weightTestConfig(t *testing.T) *core.CliConfig {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	return &core.CliConfig{
 		AppID:     "test-okr-weight",
 		AppSecret: "secret-okr-weight",
@@ -56,7 +57,6 @@ func runWeightShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buffer, a
 // --- Validate tests ---
 
 func TestWeightValidate_MissingLevel(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -70,7 +70,6 @@ func TestWeightValidate_MissingLevel(t *testing.T) {
 }
 
 func TestWeightValidate_InvalidLevel(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -101,7 +100,6 @@ func TestWeightValidate_InvalidLevel(t *testing.T) {
 }
 
 func TestWeightValidate_MissingCycleID(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -115,7 +113,6 @@ func TestWeightValidate_MissingCycleID(t *testing.T) {
 }
 
 func TestWeightValidate_MissingObjectiveIDForKRLevel(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -146,7 +143,6 @@ func TestWeightValidate_MissingObjectiveIDForKRLevel(t *testing.T) {
 }
 
 func TestWeightValidate_MissingWeights(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -160,7 +156,6 @@ func TestWeightValidate_MissingWeights(t *testing.T) {
 }
 
 func TestWeightValidate_InvalidWeightsJSON(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -191,7 +186,6 @@ func TestWeightValidate_InvalidWeightsJSON(t *testing.T) {
 }
 
 func TestWeightValidate_EmptyWeightsArray(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -222,7 +216,6 @@ func TestWeightValidate_EmptyWeightsArray(t *testing.T) {
 }
 
 func TestWeightValidate_NegativeWeight(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -256,7 +249,6 @@ func TestWeightValidate_NegativeWeight(t *testing.T) {
 }
 
 func TestWeightValidate_WeightGreaterThanOne(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -287,7 +279,6 @@ func TestWeightValidate_WeightGreaterThanOne(t *testing.T) {
 }
 
 func TestWeightValidate_TooManyDecimalPlaces(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -321,7 +312,6 @@ func TestWeightValidate_TooManyDecimalPlaces(t *testing.T) {
 }
 
 func TestWeightValidate_SumGreaterThanOne(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -355,7 +345,6 @@ func TestWeightValidate_SumGreaterThanOne(t *testing.T) {
 }
 
 func TestWeightValidate_DuplicateID(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -391,7 +380,6 @@ func TestWeightValidate_DuplicateID(t *testing.T) {
 // --- DryRun tests ---
 
 func TestWeightDryRun_Objectives(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -422,7 +410,6 @@ func TestWeightDryRun_Objectives(t *testing.T) {
 }
 
 func TestWeightDryRun_KeyResults(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, weightTestConfig(t))
 	err := runWeightShortcut(t, f, stdout, []string{
 		"+weight",
@@ -450,7 +437,6 @@ func TestWeightDryRun_KeyResults(t *testing.T) {
 // --- Execute tests ---
 
 func TestWeightExecute_Objectives_Success(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, weightTestConfig(t))
 	// Mock fetch objectives
 	w1 := 0.5
@@ -521,7 +507,6 @@ func TestWeightExecute_Objectives_Success(t *testing.T) {
 }
 
 func TestWeightExecute_KeyResults_Success(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, weightTestConfig(t))
 	// Mock fetch key results
 	w1 := 0.3
@@ -589,7 +574,6 @@ func TestWeightExecute_KeyResults_Success(t *testing.T) {
 }
 
 func TestWeightExecute_IDNotFound(t *testing.T) {
-	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, weightTestConfig(t))
 	// Mock fetch objectives
 	w1 := 0.5
@@ -641,7 +625,6 @@ func TestWeightExecute_IDNotFound(t *testing.T) {
 // --- Unit tests for helper functions ---
 
 func TestParseWeightOps_Valid(t *testing.T) {
-	t.Parallel()
 	ops, err := parseWeightOps(`[{"id":"1","weight":0.3},{"id":"2","weight":0.7}]`)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -658,7 +641,6 @@ func TestParseWeightOps_Valid(t *testing.T) {
 }
 
 func TestNormalizeWeights_AllSpecified(t *testing.T) {
-	t.Parallel()
 	w1 := 0.0
 	w2 := 0.0
 	items := []Objective{
@@ -687,7 +669,6 @@ func TestNormalizeWeights_AllSpecified(t *testing.T) {
 }
 
 func TestNormalizeWeights_PartialSpecified_Proportional(t *testing.T) {
-	t.Parallel()
 	w1 := 0.5
 	w2 := 0.3
 	w3 := 0.2
@@ -728,7 +709,6 @@ func TestNormalizeWeights_PartialSpecified_Proportional(t *testing.T) {
 }
 
 func TestNormalizeWeights_ZeroOriginalWeights(t *testing.T) {
-	t.Parallel()
 	w1 := 0.0
 	w2 := 0.0
 	items := []Objective{
