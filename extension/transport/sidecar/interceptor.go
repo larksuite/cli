@@ -3,12 +3,11 @@
 
 //go:build authsidecar
 
-// Package sidecar provides a transport interceptor for the auth sidecar
-// proxy mode. When LARKSUITE_CLI_AUTH_PROXY is set (an HTTP URL), all
-// outgoing requests are rewritten to the sidecar address. The interceptor
-// strips placeholder credentials, injects proxy headers, and signs each
-// request with HMAC-SHA256. No custom DialContext is needed — Go's
-// standard http.Transport connects to the sidecar via plain HTTP.
+// Package sidecar provides a transport interceptor for auth proxy mode. When
+// LARKSUITE_CLI_AUTH_PROXY is set, outgoing sentinel-authenticated requests
+// are rewritten to either a local HTTP sidecar or a remote HTTPS managed auth
+// proxy. The interceptor strips placeholder credentials, injects proxy
+// headers, and signs each request with HMAC-SHA256.
 package sidecar
 
 import (
@@ -21,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/extension/transport"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/sidecar"
 )
@@ -40,21 +40,42 @@ func (p *Provider) ResolveInterceptor(ctx context.Context) transport.Interceptor
 	if proxyAddr == "" {
 		return nil
 	}
-	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
+	endpoint, err := sidecar.ParseProxyEndpoint(proxyAddr)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: invalid %s, sidecar interceptor disabled: %v\n", envvars.CliAuthProxy, err)
 		return nil
 	}
-	key := os.Getenv(envvars.CliProxyKey)
+	if err := requireTrustedRemoteProxy(endpoint); err != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: %s is set but remote auth proxy is not trusted: %v\n", envvars.CliAuthProxy, err)
+		return nil
+	}
+
+	signingKey, proxySession := proxyAuthMaterial(endpoint.Mode)
+	if signingKey == "" {
+		fmt.Fprintf(os.Stderr, "WARNING: %s is set but required auth material is missing for %s auth proxy mode\n", envvars.CliAuthProxy, endpoint.Mode)
+		return nil
+	}
+	if endpoint.Mode == sidecar.ProxyModeRemote && proxySession == "" {
+		fmt.Fprintf(os.Stderr, "WARNING: %s is set but %s is missing for remote auth proxy mode\n", envvars.CliAuthProxy, envvars.CliProxySession)
+		return nil
+	}
+
 	return &Interceptor{
-		key:         []byte(key),
-		sidecarHost: sidecar.ProxyHost(proxyAddr),
+		key:          []byte(signingKey),
+		proxyScheme:  endpoint.Scheme,
+		sidecarHost:  endpoint.Host,
+		proxyMode:    endpoint.Mode,
+		proxySession: proxySession,
 	}
 }
 
 // Interceptor rewrites requests for the sidecar proxy.
 type Interceptor struct {
-	key         []byte // HMAC signing key
-	sidecarHost string // sidecar host:port for URL rewriting
+	key          []byte            // HMAC signing key
+	proxyScheme  string            // proxy scheme for URL rewriting
+	sidecarHost  string            // proxy host[:port] for URL rewriting
+	proxyMode    sidecar.ProxyMode // local sidecar or remote managed proxy
+	proxySession string            // remote auth proxy session credential
 }
 
 // PreRoundTrip rewrites the request for sidecar routing when it carries a
@@ -107,6 +128,7 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 	req.Header.Del("Authorization")
 	req.Header.Del(sidecar.HeaderMCPUAT)
 	req.Header.Del(sidecar.HeaderMCPTAT)
+	req.Header.Del(sidecar.HeaderProxySession)
 
 	bodySHA := sidecar.BodySHA256(bodyBytes)
 	req.Header.Set(sidecar.HeaderBodySHA256, bodySHA)
@@ -129,9 +151,16 @@ func (i *Interceptor) PreRoundTrip(req *http.Request) func(resp *http.Response, 
 	req.Header.Set(sidecar.HeaderProxyVersion, sidecar.ProtocolV1)
 	req.Header.Set(sidecar.HeaderProxyTimestamp, ts)
 	req.Header.Set(sidecar.HeaderProxySignature, sig)
+	if i.proxyMode == sidecar.ProxyModeRemote && i.proxySession != "" {
+		req.Header.Set(sidecar.HeaderProxySession, i.proxySession)
+	}
 
-	// 5. Rewrite URL to route through sidecar
-	req.URL.Scheme = "http"
+	// 5. Rewrite URL to route through the configured auth proxy.
+	proxyScheme := i.proxyScheme
+	if proxyScheme == "" {
+		proxyScheme = "http"
+	}
+	req.URL.Scheme = proxyScheme
 	req.URL.Host = i.sidecarHost
 
 	return nil // no post-hook needed
@@ -170,9 +199,34 @@ func init() {
 	if proxyAddr == "" {
 		return
 	}
-	if err := sidecar.ValidateProxyAddr(proxyAddr); err != nil {
+	if _, err := sidecar.ParseProxyEndpoint(proxyAddr); err != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: ignoring invalid %s: %v\n", envvars.CliAuthProxy, err)
 		return
 	}
 	transport.Register(&Provider{})
+}
+
+func proxyAuthMaterial(mode sidecar.ProxyMode) (signingKey, proxySession string) {
+	switch mode {
+	case sidecar.ProxyModeRemote:
+		return os.Getenv(envvars.CliProxyKey), os.Getenv(envvars.CliProxySession)
+	case sidecar.ProxyModeLocal, "":
+		return os.Getenv(envvars.CliProxyKey), ""
+	default:
+		return "", ""
+	}
+}
+
+func requireTrustedRemoteProxy(endpoint sidecar.ProxyEndpoint) error {
+	if endpoint.Mode != sidecar.ProxyModeRemote {
+		return nil
+	}
+	cfg, err := core.LoadAuthProxyConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load auth proxy trust config: %w", err)
+	}
+	if sidecar.IsTrustedRemoteProxyHost(endpoint.Host, cfg.TrustedHosts) {
+		return nil
+	}
+	return fmt.Errorf("remote auth proxy host %q is not trusted; run `lark-cli config auth-proxy trust https://%s` outside the agent environment", endpoint.Host, endpoint.Host)
 }

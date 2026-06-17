@@ -161,6 +161,9 @@ func TestValidateProxyAddr(t *testing.T) {
 		"http://gateway.docker.internal:16384",
 		// trailing slash is tolerated
 		"http://127.0.0.1:8080/",
+		// remote managed auth proxy
+		"https://auth-proxy.example.com",
+		"https://auth-proxy.example.com:443",
 	}
 	for _, addr := range valid {
 		if err := ValidateProxyAddr(addr); err != nil {
@@ -173,7 +176,17 @@ func TestValidateProxyAddr(t *testing.T) {
 		"foobar",
 		"ftp://127.0.0.1:16384",
 		"http://",
+		"http://:16384",
 		"http://127.0.0.1:16384/some/path",
+		"http://127.0.0.1:16384?debug=true",
+		"http://127.0.0.1:16384#debug",
+		"https://:443",
+		"https://auth-proxy.example.com:",
+		"https://auth-proxy.example.com:99999",
+		"https://open.feishu.cn",
+		"https://auth-proxy.example.com/some/path",
+		"https://auth-proxy.example.com?debug=true",
+		"https://auth-proxy.example.com#debug",
 		":16384",
 	}
 	for _, addr := range invalid {
@@ -259,24 +272,197 @@ func TestValidateProxyAddr_RejectsUserinfo(t *testing.T) {
 	}
 }
 
-// TestValidateProxyAddr_HTTPSRejected pins the current contract: https is
-// rejected explicitly (not lumped into a generic "bad scheme" error) because
-// the interceptor hardcodes http and would silently downgrade an https URL
-// otherwise. The message must mention https so users understand why their
-// perfectly-looking config is refused.
-func TestValidateProxyAddr_HTTPSRejected(t *testing.T) {
+func TestValidateProxyAddr_RemoteHTTPSProxy(t *testing.T) {
 	for _, addr := range []string{
-		"https://127.0.0.1:16384",
-		"https://sidecar.corp.internal:443",
+		"https://auth-proxy.example.com",
+		"https://auth-proxy.example.com:443",
+		"https://10.0.0.10:8443",
 	} {
-		err := ValidateProxyAddr(addr)
-		if err == nil {
-			t.Errorf("ValidateProxyAddr(%q): expected error, got nil", addr)
-			continue
+		if err := ValidateProxyAddr(addr); err != nil {
+			t.Errorf("ValidateProxyAddr(%q): unexpected error: %v", addr, err)
 		}
-		if !strings.Contains(err.Error(), "https") {
-			t.Errorf("ValidateProxyAddr(%q): error should mention https, got: %v", addr, err)
-		}
+	}
+}
+
+func TestValidateProxyAddr_RejectsRemoteHTTP(t *testing.T) {
+	err := ValidateProxyAddr("http://auth-proxy.example.com:8080")
+	if err == nil {
+		t.Fatal("expected remote HTTP proxy to be rejected")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "loopback") && !strings.Contains(msg, "same-host") {
+		t.Errorf("error should explain same-host requirement for HTTP, got: %v", err)
+	}
+}
+
+func TestParseProxyEndpoint(t *testing.T) {
+	tests := []struct {
+		name       string
+		addr       string
+		wantMode   ProxyMode
+		wantScheme string
+		wantHost   string
+	}{
+		{
+			name:       "bare local address",
+			addr:       "127.0.0.1:16384",
+			wantMode:   ProxyModeLocal,
+			wantScheme: "http",
+			wantHost:   "127.0.0.1:16384",
+		},
+		{
+			name:       "local HTTP URL",
+			addr:       "http://localhost:16384/",
+			wantMode:   ProxyModeLocal,
+			wantScheme: "http",
+			wantHost:   "localhost:16384",
+		},
+		{
+			name:       "remote HTTPS URL",
+			addr:       "https://auth-proxy.example.com",
+			wantMode:   ProxyModeRemote,
+			wantScheme: "https",
+			wantHost:   "auth-proxy.example.com",
+		},
+		{
+			name:       "remote HTTPS URL with port",
+			addr:       "https://auth-proxy.example.com:8443",
+			wantMode:   ProxyModeRemote,
+			wantScheme: "https",
+			wantHost:   "auth-proxy.example.com:8443",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseProxyEndpoint(tt.addr)
+			if err != nil {
+				t.Fatalf("ParseProxyEndpoint(%q) unexpected error: %v", tt.addr, err)
+			}
+			if got.Mode != tt.wantMode {
+				t.Errorf("Mode = %q, want %q", got.Mode, tt.wantMode)
+			}
+			if got.Scheme != tt.wantScheme {
+				t.Errorf("Scheme = %q, want %q", got.Scheme, tt.wantScheme)
+			}
+			if got.Host != tt.wantHost {
+				t.Errorf("Host = %q, want %q", got.Host, tt.wantHost)
+			}
+		})
+	}
+}
+
+func TestNormalizeRemoteProxyTrustHost(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"https://auth-proxy.example.com", "auth-proxy.example.com"},
+		{"https://AUTH-PROXY.example.com:443", "auth-proxy.example.com"},
+		{"auth-proxy.example.com", "auth-proxy.example.com"},
+		{"auth-proxy.example.com:8443", "auth-proxy.example.com:8443"},
+		{"https://[::1]:8443", "[::1]:8443"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := NormalizeRemoteProxyTrustHost(tt.input)
+			if err != nil {
+				t.Fatalf("NormalizeRemoteProxyTrustHost(%q) unexpected error: %v", tt.input, err)
+			}
+			if got != tt.want {
+				t.Fatalf("NormalizeRemoteProxyTrustHost(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeRemoteProxyTrustHostRejectsInvalidInput(t *testing.T) {
+	for _, input := range []string{
+		"",
+		"http://auth-proxy.example.com",
+		"https://",
+		"https://:443",
+		"https://auth-proxy.example.com/path",
+		"https://auth-proxy.example.com?debug=true",
+		"https://auth-proxy.example.com#debug",
+		"https://user@auth-proxy.example.com",
+		"https://auth-proxy.example.com:99999",
+	} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := NormalizeRemoteProxyTrustHost(input); err == nil {
+				t.Fatalf("expected NormalizeRemoteProxyTrustHost(%q) to fail", input)
+			}
+		})
+	}
+}
+
+func TestIsTrustedRemoteProxyHost(t *testing.T) {
+	trusted := []string{
+		"https://auth-proxy.example.com",
+		"gate.example.com:8443",
+	}
+	for _, host := range []string{
+		"auth-proxy.example.com",
+		"AUTH-PROXY.EXAMPLE.COM:443",
+		"gate.example.com:8443",
+	} {
+		t.Run("trusted_"+host, func(t *testing.T) {
+			if !IsTrustedRemoteProxyHost(host, trusted) {
+				t.Fatalf("expected %q to match trusted hosts %v", host, trusted)
+			}
+		})
+	}
+	for _, host := range []string{
+		"evil.example.com",
+		"auth-proxy.example.com:8443",
+		"gate.example.com",
+	} {
+		t.Run("untrusted_"+host, func(t *testing.T) {
+			if IsTrustedRemoteProxyHost(host, trusted) {
+				t.Fatalf("expected %q not to match trusted hosts %v", host, trusted)
+			}
+		})
+	}
+}
+
+func TestParseProxyTarget(t *testing.T) {
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{"https://open.feishu.cn", "open.feishu.cn"},
+		{"https://open.feishu.cn:443", "open.feishu.cn:443"},
+		{"https://open.larksuite.com", "open.larksuite.com"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.target, func(t *testing.T) {
+			got, err := ParseProxyTarget(tt.target)
+			if err != nil {
+				t.Fatalf("ParseProxyTarget(%q) unexpected error: %v", tt.target, err)
+			}
+			if got != tt.want {
+				t.Fatalf("ParseProxyTarget(%q) = %q, want %q", tt.target, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseProxyTargetRejectsUnsafeTargets(t *testing.T) {
+	for _, target := range []string{
+		"",
+		"http://open.feishu.cn",
+		"https://",
+		"https://:443",
+		"https://open.feishu.cn:",
+		"https://open.feishu.cn:99999",
+		"https://open.feishu.cn/path",
+		"https://open.feishu.cn?tenant=abc",
+		"https://open.feishu.cn#frag",
+		"https://user@open.feishu.cn",
+	} {
+		t.Run(target, func(t *testing.T) {
+			if _, err := ParseProxyTarget(target); err == nil {
+				t.Fatalf("expected ParseProxyTarget(%q) to fail", target)
+			}
+		})
 	}
 }
 
@@ -288,6 +474,7 @@ func TestProxyHost(t *testing.T) {
 		{"http://127.0.0.1:16384", "127.0.0.1:16384"},
 		{"http://0.0.0.0:8080", "0.0.0.0:8080"},
 		{"http://host.docker.internal:16384/", "host.docker.internal:16384"},
+		{"https://auth-proxy.example.com:8443", "auth-proxy.example.com:8443"},
 		{"127.0.0.1:16384", "127.0.0.1:16384"}, // no scheme
 	}
 	for _, tt := range tests {

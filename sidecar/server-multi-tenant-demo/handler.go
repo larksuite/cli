@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -199,7 +198,7 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pathAndQuery := r.URL.RequestURI()
-	targetHost, err := parseTarget(target)
+	targetHost, err := sidecar.ParseProxyTarget(target)
 	if err != nil {
 		http.Error(w, "invalid "+sidecar.HeaderProxyTarget+": "+err.Error(), http.StatusForbidden)
 		h.logger.Printf("REJECT method=%s path=%s reason=%q", r.Method, sanitizePath(pathAndQuery), sanitizeError(err))
@@ -342,31 +341,4 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.Printf("FORWARD method=%s path=%s identity=%s status=%d duration=%s%s",
 		r.Method, sanitizePath(pathAndQuery), identity, resp.StatusCode, time.Since(start).Round(time.Millisecond), clientTag)
-}
-
-// parseTarget validates X-Lark-Proxy-Target and returns the host portion.
-func parseTarget(target string) (host string, err error) {
-	u, perr := url.Parse(target)
-	if perr != nil {
-		return "", fmt.Errorf("parse: %w", perr)
-	}
-	if u.Scheme != "https" {
-		return "", fmt.Errorf("scheme must be https, got %q", u.Scheme)
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("missing host")
-	}
-	if u.User != nil {
-		return "", fmt.Errorf("userinfo not allowed")
-	}
-	if u.Path != "" && u.Path != "/" {
-		return "", fmt.Errorf("path not allowed (got %q)", u.Path)
-	}
-	if u.RawQuery != "" {
-		return "", fmt.Errorf("query not allowed")
-	}
-	if u.Fragment != "" {
-		return "", fmt.Errorf("fragment not allowed")
-	}
-	return u.Host, nil
 }

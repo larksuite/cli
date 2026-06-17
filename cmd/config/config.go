@@ -29,6 +29,7 @@ func NewCmdConfig(f *cmdutil.Factory) *cobra.Command {
 	cmd.AddCommand(NewCmdConfigBind(f, nil))
 	cmd.AddCommand(NewCmdConfigRemove(f, nil))
 	cmd.AddCommand(NewCmdConfigShow(f, nil))
+	cmd.AddCommand(NewCmdConfigAuthProxy(f))
 	cmd.AddCommand(NewCmdConfigDefaultAs(f))
 	cmd.AddCommand(NewCmdConfigStrictMode(f))
 	cmd.AddCommand(NewCmdConfigPolicy(f))

@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 // Package sidecar defines the wire protocol shared between the CLI client
-// (running inside a sandbox) and the auth sidecar proxy (running in a
-// trusted environment). Communication uses plain HTTP.
+// (running inside a sandbox) and an auth proxy. The proxy can be a local
+// same-host sidecar over HTTP or a remote managed auth proxy over HTTPS.
 package sidecar
 
 import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -46,6 +47,11 @@ const (
 	// token into. Defaults to "Authorization" for standard OpenAPI requests.
 	// MCP requests use "X-Lark-MCP-UAT" or "X-Lark-MCP-TAT".
 	HeaderProxyAuthHeader = "X-Lark-Proxy-Auth-Header"
+
+	// HeaderProxySession authenticates requests to a remote managed auth
+	// proxy. Local same-host sidecars use HeaderProxySignature with a local
+	// HMAC key instead and must not require this header.
+	HeaderProxySession = "X-Lark-Proxy-Session"
 )
 
 // MCP auth headers used by the Lark MCP protocol.
@@ -75,6 +81,23 @@ const MaxTimestampDrift = 60
 // DefaultListenAddr is the default sidecar listen address (localhost only).
 const DefaultListenAddr = "127.0.0.1:16384"
 
+// ProxyMode classifies the auth proxy transport model.
+type ProxyMode string
+
+const (
+	// ProxyModeLocal is a same-host sidecar reachable over HTTP.
+	ProxyModeLocal ProxyMode = "local"
+	// ProxyModeRemote is a managed auth proxy reachable over HTTPS.
+	ProxyModeRemote ProxyMode = "remote"
+)
+
+// ProxyEndpoint is a validated proxy endpoint ready for request rewriting.
+type ProxyEndpoint struct {
+	Scheme string
+	Host   string
+	Mode   ProxyMode
+}
+
 // sameHostAliases names DNS aliases commonly used to reach the host running
 // the sandbox across a container / VM boundary. Traffic to these names stays
 // on the physical machine (via a virtual bridge), so a plaintext sidecar
@@ -87,6 +110,15 @@ var sameHostAliases = map[string]bool{
 	"host.containers.internal": true, // Podman Desktop
 	"host.lima.internal":       true, // Lima / colima / rancher-desktop
 	"gateway.docker.internal":  true, // Docker Desktop alt name
+}
+
+var reservedRemoteProxyHosts = map[string]bool{
+	"open.feishu.cn":         true,
+	"open.larksuite.com":     true,
+	"mcp.feishu.cn":          true,
+	"mcp.larksuite.com":      true,
+	"accounts.feishu.cn":     true,
+	"accounts.larksuite.com": true,
 }
 
 // isSameHost returns true when host is either a loopback IP or a recognized
@@ -117,18 +149,16 @@ func errNotSameHost(addr string) error {
 
 // ValidateProxyAddr validates the LARKSUITE_CLI_AUTH_PROXY value.
 // Accepted formats:
-//   - http://host:port
-//   - host:port         (bare address, treated as http)
+//   - http://host:port  (local same-host sidecar)
+//   - host:port         (local same-host sidecar, treated as http)
+//   - https://host[:port] (remote managed auth proxy)
 //
-// Host must be loopback or in sameHostAliases. The sidecar pattern is
-// inherently same-machine; cross-machine deployment is a different product
-// and is not supported by this feature.
+// Plain HTTP is allowed only for loopback or sameHostAliases. Remote managed
+// proxies must use HTTPS because the auth proxy session and business request
+// data traverse the network.
 //
-// https:// is rejected because sidecar is a same-host pattern: loopback
-// and virtual same-host bridges don't traverse any untrusted medium, so
-// TLS adds no security. Cross-machine deployment is out of scope (see the
-// host constraint above), so there is no scenario today where https
-// provides a real benefit over http on loopback.
+// Path, query, fragment, and userinfo are rejected to avoid ambiguous base
+// paths, phishing-style URLs, and silently ignored policy hints.
 //
 // userinfo (user:pass@) is rejected unconditionally — the sidecar protocol
 // does not use basic auth, and the syntactic slot exists only as a phishing
@@ -136,57 +166,215 @@ func errNotSameHost(addr string) error {
 //
 // Returns an error if the value is not a valid proxy address.
 func ValidateProxyAddr(addr string) error {
+	_, err := ParseProxyEndpoint(addr)
+	return err
+}
+
+// ParseProxyEndpoint validates and classifies an auth proxy address.
+func ParseProxyEndpoint(addr string) (ProxyEndpoint, error) {
 	if addr == "" {
-		return fmt.Errorf("proxy address is empty")
+		return ProxyEndpoint{}, fmt.Errorf("proxy address is empty")
 	}
 
 	// Bare host:port (no scheme) — validate as a net address.
 	if !strings.Contains(addr, "://") {
 		host, port, err := net.SplitHostPort(addr)
 		if err != nil {
-			return fmt.Errorf("invalid proxy address %q: expected host:port or http://host:port", addr)
+			return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: expected host:port, http://host:port, or https://host[:port]", addr)
 		}
 		if host == "" || port == "" {
-			return fmt.Errorf("invalid proxy address %q: host and port must not be empty", addr)
+			return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: host and port must not be empty", addr)
+		}
+		if err := validatePort(port); err != nil {
+			return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: %w", addr, err)
 		}
 		if !isSameHost(host) {
-			return errNotSameHost(addr)
+			return ProxyEndpoint{}, errNotSameHost(addr)
 		}
-		return nil
+		return ProxyEndpoint{Scheme: "http", Host: net.JoinHostPort(host, port), Mode: ProxyModeLocal}, nil
 	}
 
 	u, err := url.Parse(addr)
 	if err != nil {
-		return fmt.Errorf("invalid proxy address %q: %w", addr, err)
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: %w", addr, err)
 	}
 	if u.User != nil {
-		return fmt.Errorf("invalid proxy address %q: userinfo is not allowed", addr)
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: userinfo is not allowed", addr)
 	}
-	if u.Scheme == "https" {
-		return fmt.Errorf("invalid proxy address %q: use http:// — sidecar is "+
-			"same-host only (loopback or virtual same-host bridge), so TLS adds "+
-			"no security; cross-machine deployment is out of scope", addr)
-	}
-	if u.Scheme != "http" {
-		return fmt.Errorf("invalid proxy address %q: scheme must be http", addr)
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: scheme must be http or https", addr)
 	}
 	if u.Host == "" {
-		return fmt.Errorf("invalid proxy address %q: missing host", addr)
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: missing host", addr)
+	}
+	host, err := validateURLAuthority(addr, u)
+	if err != nil {
+		return ProxyEndpoint{}, err
 	}
 	if u.Path != "" && u.Path != "/" {
-		return fmt.Errorf("invalid proxy address %q: path is not allowed", addr)
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: path is not allowed", addr)
 	}
-	// u.Hostname() strips the port and unwraps IPv6 brackets.
-	if !isSameHost(u.Hostname()) {
-		return errNotSameHost(addr)
+	if u.RawQuery != "" {
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: query is not allowed", addr)
+	}
+	if u.Fragment != "" {
+		return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: fragment is not allowed", addr)
+	}
+
+	switch u.Scheme {
+	case "http":
+		// u.Hostname() strips the port and unwraps IPv6 brackets.
+		if !isSameHost(host) {
+			return ProxyEndpoint{}, errNotSameHost(addr)
+		}
+		return ProxyEndpoint{Scheme: "http", Host: u.Host, Mode: ProxyModeLocal}, nil
+	case "https":
+		if isReservedRemoteProxyHost(u.Host) {
+			return ProxyEndpoint{}, fmt.Errorf("invalid proxy address %q: host %q is a Lark/Feishu upstream endpoint, not an auth proxy", addr, u.Host)
+		}
+		return ProxyEndpoint{Scheme: "https", Host: u.Host, Mode: ProxyModeRemote}, nil
+	}
+	panic("unreachable proxy scheme validation")
+}
+
+func validateURLAuthority(addr string, u *url.URL) (string, error) {
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("invalid proxy address %q: missing host", addr)
+	}
+	if strings.HasSuffix(u.Host, ":") {
+		return "", fmt.Errorf("invalid proxy address %q: port must not be empty", addr)
+	}
+	if port := u.Port(); port != "" {
+		if err := validatePort(port); err != nil {
+			return "", fmt.Errorf("invalid proxy address %q: %w", addr, err)
+		}
+	}
+	return host, nil
+}
+
+func validatePort(port string) error {
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("invalid port %q", port)
+	}
+	if n < 1 || n > 65535 {
+		return fmt.Errorf("port %q out of range", port)
 	}
 	return nil
+}
+
+func canonicalHTTPSAuthority(authority string) (string, error) {
+	u, err := url.Parse("https://" + authority)
+	if err != nil {
+		return "", fmt.Errorf("invalid proxy host %q: %w", authority, err)
+	}
+	if u.Host == "" || u.Scheme != "https" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", fmt.Errorf("invalid proxy host %q", authority)
+	}
+	host, err := validateURLAuthority(authority, u)
+	if err != nil {
+		return "", err
+	}
+	host = strings.ToLower(host)
+	port := u.Port()
+	if port == "" || port == "443" {
+		if strings.Contains(host, ":") {
+			return "[" + host + "]", nil
+		}
+		return host, nil
+	}
+	return net.JoinHostPort(host, port), nil
+}
+
+// NormalizeRemoteProxyTrustHost canonicalizes config entries for trusted
+// remote HTTPS auth proxies. It accepts either "https://host[:port]" or
+// "host[:port]" and strips the default HTTPS port.
+func NormalizeRemoteProxyTrustHost(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("trusted auth proxy host is empty")
+	}
+	if strings.Contains(value, "://") {
+		endpoint, err := ParseProxyEndpoint(value)
+		if err != nil {
+			return "", err
+		}
+		if endpoint.Mode != ProxyModeRemote {
+			return "", fmt.Errorf("trusted auth proxy must use https")
+		}
+		return canonicalHTTPSAuthority(endpoint.Host)
+	}
+	return canonicalHTTPSAuthority(value)
+}
+
+// IsTrustedRemoteProxyHost reports whether endpointHost matches the trusted
+// remote auth proxy host config. Entries without a port trust only the default
+// HTTPS port; non-default ports must be listed explicitly.
+func IsTrustedRemoteProxyHost(endpointHost string, trustedHosts []string) bool {
+	want, err := canonicalHTTPSAuthority(endpointHost)
+	if err != nil {
+		return false
+	}
+	for _, trusted := range trustedHosts {
+		got, err := NormalizeRemoteProxyTrustHost(trusted)
+		if err != nil {
+			continue
+		}
+		if got == want {
+			return true
+		}
+	}
+	return false
+}
+
+// ParseProxyTarget validates X-Lark-Proxy-Target and returns the authority
+// used for HMAC input and upstream allowlist checks. Targets must be HTTPS
+// origins only: no userinfo, path, query, or fragment.
+func ParseProxyTarget(target string) (string, error) {
+	u, err := url.Parse(target)
+	if err != nil {
+		return "", fmt.Errorf("parse: %w", err)
+	}
+	if u.Scheme != "https" {
+		return "", fmt.Errorf("scheme must be https, got %q", u.Scheme)
+	}
+	if u.User != nil {
+		return "", fmt.Errorf("userinfo not allowed")
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("missing host")
+	}
+	if _, err := validateURLAuthority(target, u); err != nil {
+		return "", err
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", fmt.Errorf("path not allowed (got %q)", u.Path)
+	}
+	if u.RawQuery != "" {
+		return "", fmt.Errorf("query not allowed")
+	}
+	if u.Fragment != "" {
+		return "", fmt.Errorf("fragment not allowed")
+	}
+	return u.Host, nil
+}
+
+func isReservedRemoteProxyHost(authority string) bool {
+	host, err := canonicalHTTPSAuthority(authority)
+	if err != nil {
+		return false
+	}
+	return reservedRemoteProxyHosts[host]
 }
 
 // ProxyHost extracts the host:port from an AUTH_PROXY URL.
 // Input is expected to be an HTTP URL like "http://127.0.0.1:16384".
 // Returns the host:port portion for URL rewriting.
 func ProxyHost(authProxy string) string {
+	if endpoint, err := ParseProxyEndpoint(authProxy); err == nil {
+		return endpoint.Host
+	}
 	// Strip scheme
 	host := authProxy
 	if i := strings.Index(host, "://"); i >= 0 {
