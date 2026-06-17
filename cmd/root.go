@@ -229,7 +229,15 @@ func configureFlagCompletions(args []string) {
 //     envelope, written via WriteErrorEnvelope.
 //  4. Cobra errors (required flags, unknown commands, etc.): plain text.
 func handleRootError(f *cmdutil.Factory, err error) int {
-	errOut := f.IOStreams.ErrOut
+	// Defensive: f or its IOStreams may be nil in exceptional situations
+	// (e.g. early bootstrap failure, plugin corruption). Guarantee stderr
+	// is always a valid writer so diagnostics are never swallowed.
+	var errOut io.Writer
+	if f != nil && f.IOStreams != nil && f.IOStreams.ErrOut != nil {
+		errOut = f.IOStreams.ErrOut
+	} else {
+		errOut = os.Stderr
+	}
 
 	// Promote legacy error shapes into typed errs/ before envelope marshal.
 	// NeedAuthorizationError check is first because it is the more specific
