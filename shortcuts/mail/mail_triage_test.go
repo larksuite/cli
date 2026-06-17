@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -974,7 +975,11 @@ func TestBuildListParamsDryRunOnlyUnread(t *testing.T) {
 func TestBuildListParamsDryRunFolderAlias(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil)
 	f := triageFilter{Folder: "sent"}
-	got, err := buildListParams(rt, "me", f, 20, "", true)
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 20, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -983,15 +988,54 @@ func TestBuildListParamsDryRunFolderAlias(t *testing.T) {
 	}
 }
 
+func TestBuildListParamsDryRunCustomFolderPreservesInput(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, nil)
+	f := triageFilter{Folder: "team-folder"}
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 20, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["folder_id"] != "team-folder" {
+		t.Fatalf("expected dry-run folder_id=team-folder, got %v", got["folder_id"])
+	}
+}
+
 func TestBuildListParamsDryRunLabelAlias(t *testing.T) {
 	rt := runtimeForMailTriageTest(t, nil)
 	f := triageFilter{Label: "flagged"}
-	got, err := buildListParams(rt, "me", f, 10, "", true)
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 10, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got["label_id"] != "FLAGGED" {
 		t.Fatalf("expected label_id=FLAGGED, got %v", got["label_id"])
+	}
+}
+
+func TestBuildListParamsDryRunCustomLabelPreservesInput(t *testing.T) {
+	rt := runtimeForMailTriageTest(t, nil)
+	f := triageFilter{Label: "custom-label"}
+	resolved, err := resolveListFilter(rt, "me", f, true)
+	if err != nil {
+		t.Fatalf("resolveListFilter: %v", err)
+	}
+	got, err := buildListParams(rt, "me", resolved, 10, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := got["folder_id"]; ok {
+		t.Fatalf("folder_id should not be set when label is specified, got %v", got["folder_id"])
+	}
+	if got["label_id"] != "custom-label" {
+		t.Fatalf("expected dry-run label_id=custom-label, got %v", got["label_id"])
 	}
 }
 
@@ -1750,4 +1794,138 @@ func mailTriageSearchItem(messageID, subject string) map[string]interface{} {
 			"from":           map[string]interface{}{"name": "Alice", "mail_address": "alice@example.com"},
 		},
 	}
+}
+
+// registerMailTriageFoldersListStub registers a NON-reusable stub for the
+// mailbox folders list API. Because it is non-reusable, any second hit returns
+// "httpmock: no stub for GET .../folders" — which is exactly the assertion we
+// use to prove resolveListFilter runs once and buildListParams does NOT
+// re-resolve. folderID/folderName is the single custom folder the API reports.
+func registerMailTriageFoldersListStub(reg *httpmock.Registry, mailbox, folderID, folderName string) {
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    mailboxPath(mailbox, "folders"),
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"items": []interface{}{
+					map[string]interface{}{
+						"id":   folderID,
+						"name": folderName,
+					},
+				},
+			},
+		},
+	})
+}
+
+// registerMailTriageListPageStub registers one page of the messages list API,
+// disambiguated from sibling pages by a URL substring unique to that page
+// (e.g. "page_size=5" for page 1 vs "page_size=2" for page 2). The substring
+// must NOT depend on query-param ordering: map iteration makes param order
+// nondeterministic, so prefer a value-only token like "page_size=N" (the N
+// differs per page because pageSize = maxCount - fetched_so_far). Non-reusable
+// so reg.Verify catches under- or over-consumption.
+func registerMailTriageListPageStub(reg *httpmock.Registry, urlSubstring string, items []string, hasMore bool, pageToken string) {
+	data := map[string]interface{}{
+		"items":    items,
+		"has_more": hasMore,
+	}
+	if pageToken != "" {
+		data["page_token"] = pageToken
+	}
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    urlSubstring,
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": data,
+		},
+	})
+}
+
+// TestMailTriageCustomFolderResolvesOnceAcrossListPages is the regression test
+// for the bug where buildListParams re-called resolveFolderID on every list
+// page, turning "resolve once" into "1 + page_count" folder-list API calls and
+// easily tripping rate limits.
+//
+// Setup: a custom folder filter that forces resolveListFilter to hit the
+// folders list API once (to map folder name "team-folder" to folder_id), then two
+// messages-list pages. The folders list stub is non-reusable, so if
+// buildListParams re-resolves, the second hit fails with "no stub". The
+// messages-list stubs are page-specific (disambiguated by page_size in the
+// URL), so both pages are served and Verify asserts each fired exactly once.
+func TestMailTriageCustomFolderResolvesOnceAcrossListPages(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	defer reg.Verify(t)
+
+	// listMailboxFolders (called once by resolveListFilter) gates on the
+	// mail:user_mailbox.folder:read scope, which the default test token does
+	// not carry. Re-store the token with that scope appended so the folders
+	// API call is actually exercised (and thus the non-reusable folders stub
+	// is the load-bearing "exactly once" assertion).
+	const folderScope = "mail:user_mailbox.folder:read"
+	cfg := mailTestConfig()
+	if stored := auth.GetStoredToken(cfg.AppID, cfg.UserOpenId); stored != nil {
+		if !strings.Contains(stored.Scope, folderScope) {
+			stored.Scope = stored.Scope + " " + folderScope
+			if err := auth.SetStoredToken(stored); err != nil {
+				t.Fatalf("re-store token with folder scope: %v", err)
+			}
+		}
+	}
+
+	const (
+		mailbox    = "me"
+		folderName = "team-folder"
+		folderID   = "fld_custom_team"
+		page2Token = "tok_page2"
+	)
+	// --max 5 with listPageMax=20 → pageSize = 5-0 = 5 on page 1, then 5-3 = 2
+	// on page 2. The page_size query value disambiguates the two list stubs.
+	page1IDs := []string{"msg_a", "msg_b", "msg_c"}
+	page2IDs := []string{"msg_d", "msg_e"}
+
+	// Folders list: registered exactly once, non-reusable. Any second folder
+	// lookup (the bug) fails the test with "no stub for GET .../folders".
+	registerMailTriageFoldersListStub(reg, mailbox, folderID, folderName)
+	// Messages list, page 1: 3 ids, has_more, hands off a page-2 token. The
+	// page_size value (5 = maxCount - 0) is unique to page 1; page 2 uses 2.
+	registerMailTriageListPageStub(reg, "page_size=5", page1IDs, true, page2Token)
+	// Messages list, page 2: 2 ids, terminal.
+	registerMailTriageListPageStub(reg, "page_size=2", page2IDs, false, "")
+	// Batch metadata fetch for all 5 ids.
+	registerMailTriageBatchStub(reg, mailbox, []map[string]interface{}{
+		mailTriageBatchMessage("msg_a", "Subject A"),
+		mailTriageBatchMessage("msg_b", "Subject B"),
+		mailTriageBatchMessage("msg_c", "Subject C"),
+		mailTriageBatchMessage("msg_d", "Subject D"),
+		mailTriageBatchMessage("msg_e", "Subject E"),
+	})
+
+	args := []string{
+		"+triage",
+		"--as", "user",
+		"--mailbox", mailbox,
+		"--filter", `{"folder":"` + folderName + `"}`,
+		"--max", "5",
+		"--format", "json",
+	}
+	if err := runMountedMailShortcut(t, MailTriage, args, f, stdout); err != nil {
+		t.Fatalf("unexpected error running +triage (likely a second folders API call — the bug): %v", err)
+	}
+
+	data := decodeMailTriageJSONOutput(t, stdout)
+	messages := mailTriageMessagesFromOutput(t, data)
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages across 2 pages, got %d (stdout=%s)", len(messages), stdout.String())
+	}
+	if got := data["has_more"]; got != false {
+		t.Fatalf("expected has_more=false after exhausting pages, got %v", got)
+	}
+	// All registered stubs (1 folders + 2 list pages + 1 batch_get) are
+	// non-reusable; reg.Verify (deferred above) asserts each was matched
+	// exactly once. Combined with the non-reusable folders stub, this is the
+	// proof that the folders list API was called exactly once across both
+	// pages — the core invariant the fix restores.
 }

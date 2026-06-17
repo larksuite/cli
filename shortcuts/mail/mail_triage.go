@@ -760,13 +760,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderIDFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderID(runtime, mailboxID, folderIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderIDFromFilter
 		}
 	} else if folderFromFilter != "" {
 		if dryRun {
@@ -776,13 +770,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderName(runtime, mailboxID, folderFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderFromFilter
 		}
 	}
 
@@ -801,13 +789,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelIDFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelID(runtime, mailboxID, labelIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelIDFromFilter
 		}
 	} else if labelFromFilter != "" {
 		if dryRun {
@@ -817,13 +799,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelName(runtime, mailboxID, labelFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelFromFilter
 		}
 	}
 
