@@ -44,8 +44,9 @@ lark-cli calendar +agenda --as user
 |------|----------|
 | 预约日程/会议、查会议室 | 先读 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) |
 | 编辑已有日程 | 先定位目标日程 `event_id`；若是重复性日程，必须定位到具体实例的 `event_id`（禁止使用原重复日程 ID） |
-| 删除/修改后验证 | 等待 2 秒再查询（API 最终一致性），不要告知用户你等待了 |
 | 调用任何 Shortcut | 先读其对应 reference 文档 |
+
+> **写操作无需二次回查**：创建、更新、删除日程后，直接信任 API 返回结果向用户报告，禁止额外等待或回查验证。
 
 ## 核心概念
 
