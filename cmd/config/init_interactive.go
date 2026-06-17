@@ -164,7 +164,7 @@ func resolveRegisterAuthMethod(f *cmdutil.Factory, flag string) (string, error) 
 	case core.AuthMethodPrivateKeyJWT:
 		if !signerAvailable {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-				"--auth-method private_key_jwt requires a TEE key signer, which is unavailable on this device/build").
+				"--auth-method private_key_jwt requires a platform key signer, which is unavailable on this device/build").
 				WithHint("omit --auth-method (or pass --auth-method client_secret) to register with an app secret")
 		}
 		return core.AuthMethodPrivateKeyJWT, nil
@@ -185,7 +185,7 @@ func resolveRegisterAuthMethod(f *cmdutil.Factory, flag string) (string, error) 
 					Title("Authentication method").
 					Options(
 						huh.NewOption("App Secret (client_secret)", core.AuthMethodClientSecret),
-						huh.NewOption("TEE signature, no secret (private_key_jwt)", core.AuthMethodPrivateKeyJWT),
+						huh.NewOption("Secure key signer, no secret (private_key_jwt)", core.AuthMethodPrivateKeyJWT),
 					).
 					Value(&choice),
 			),

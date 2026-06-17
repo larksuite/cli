@@ -106,7 +106,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
-	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "", "auth method for --new: client_secret (default) or private_key_jwt (TEE-signed, no app secret)")
+	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "", "auth method for --new: client_secret (default) or private_key_jwt (signed by a platform key, no app secret)")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
