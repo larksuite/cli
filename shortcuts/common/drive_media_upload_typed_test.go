@@ -17,14 +17,15 @@ func TestUploadDriveMediaAllTypedWithInMemoryContent(t *testing.T) {
 	runtime, reg := newDriveMediaUploadTestRuntime(t)
 	withDriveMediaUploadWorkingDir(t, t.TempDir())
 
-	reg.Register(&httpmock.Stub{
+	uploadStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/medias/upload_all",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"file_token": "file_typed_123"},
 		},
-	})
+	}
+	reg.Register(uploadStub)
 
 	payload := []byte{0x89, 0x50, 0x4e, 0x47}
 	fileToken, err := UploadDriveMediaAllTyped(runtime, DriveMediaUploadAllConfig{
@@ -39,6 +40,15 @@ func TestUploadDriveMediaAllTypedWithInMemoryContent(t *testing.T) {
 	}
 	if fileToken != "file_typed_123" {
 		t.Fatalf("fileToken = %q, want %q", fileToken, "file_typed_123")
+	}
+
+	// The in-memory reader is streamed directly into the multipart form.
+	body := decodeCapturedDriveMediaMultipartBody(t, uploadStub)
+	if got := body.Fields["file_name"]; got != "clipboard.png" {
+		t.Fatalf("file_name = %q, want %q", got, "clipboard.png")
+	}
+	if got := body.Files["file"]; !bytes.Equal(got, payload) {
+		t.Fatalf("uploaded file bytes mismatch; got %v, want %v", got, payload)
 	}
 }
 

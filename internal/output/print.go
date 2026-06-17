@@ -27,9 +27,9 @@ func PrintJson(w io.Writer, data interface{}) {
 // Only modifies map[string]interface{} values that have an "ok" key
 // (e.g. doctor, auth, config commands that build map envelopes directly).
 //
-// Struct-based envelopes (Envelope, ErrorEnvelope) are NOT handled here —
-// callers must set the Notice field explicitly via GetNotice().
-// See: shortcuts/common/runner.go Out(), output/errors.go WriteErrorEnvelope().
+// Struct-based envelopes (Envelope, the typed error envelope) are NOT handled
+// here — callers must set the Notice field explicitly via GetNotice().
+// See: shortcuts/common/runner.go Out(), output/errors.go WriteTypedErrorEnvelope().
 func injectNotice(data interface{}) {
 	if PendingNotice == nil {
 		return

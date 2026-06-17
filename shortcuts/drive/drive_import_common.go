@@ -112,7 +112,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
@@ -124,7 +124,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
 	// upload_prepare is stricter than upload_all here and expects parent_node to
 	// be sent explicitly, even when import uses the implicit root staging area.
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,

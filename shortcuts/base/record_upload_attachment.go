@@ -488,7 +488,7 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName s
 	)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		parentNode := target.ParentNode
-		fileToken, err = common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		fileToken, err = common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
@@ -497,7 +497,7 @@ func uploadAttachmentToBase(runtime *common.RuntimeContext, filePath, fileName s
 			Extra:      target.Extra,
 		})
 	} else {
-		fileToken, err = common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+		fileToken, err = common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,

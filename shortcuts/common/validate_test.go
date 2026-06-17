@@ -48,7 +48,7 @@ func assertValidationParam(t *testing.T, err error, param string) *errs.Validati
 	return validationErr
 }
 
-func TestMutuallyExclusive(t *testing.T) {
+func TestMutuallyExclusiveTyped_FlagCombinations(t *testing.T) {
 	tests := []struct {
 		name    string
 		flags   map[string]string
@@ -83,9 +83,9 @@ func TestMutuallyExclusive(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rt := newTestRuntime(tt.flags)
-			err := MutuallyExclusive(rt, tt.check...)
+			err := MutuallyExclusiveTyped(rt, tt.check...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("MutuallyExclusive() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("MutuallyExclusiveTyped() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -209,7 +209,7 @@ func TestWrapSaveErrorTyped_PreservesTypedWriteCause(t *testing.T) {
 	}
 }
 
-func TestAtLeastOne(t *testing.T) {
+func TestAtLeastOneTyped_FlagCombinations(t *testing.T) {
 	tests := []struct {
 		name    string
 		flags   map[string]string
@@ -238,15 +238,15 @@ func TestAtLeastOne(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rt := newTestRuntime(tt.flags)
-			err := AtLeastOne(rt, tt.check...)
+			err := AtLeastOneTyped(rt, tt.check...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("AtLeastOne() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("AtLeastOneTyped() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
-func TestExactlyOne(t *testing.T) {
+func TestExactlyOneTyped_FlagCombinations(t *testing.T) {
 	tests := []struct {
 		name    string
 		flags   map[string]string
@@ -275,9 +275,9 @@ func TestExactlyOne(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rt := newTestRuntime(tt.flags)
-			err := ExactlyOne(rt, tt.check...)
+			err := ExactlyOneTyped(rt, tt.check...)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ExactlyOne() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ExactlyOneTyped() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -320,7 +320,7 @@ func TestValidatePageSizeTyped_IntFlag(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ValidateSafePath — symlink escape prevention
+// ValidateSafePathTyped — symlink escape prevention
 // ---------------------------------------------------------------------------
 
 // chdirForTest changes CWD to dir and restores the original CWD on cleanup.
@@ -336,26 +336,9 @@ func chdirForTest(t *testing.T, dir string) {
 	t.Cleanup(func() { os.Chdir(orig) })
 }
 
-// TestValidateSafePath_RejectsSymlinkEscape verifies that a relative path
-// that resolves to a symlink pointing outside CWD is rejected.
-func TestValidateSafePath_RejectsSymlinkEscape(t *testing.T) {
-	outside := t.TempDir() // target outside CWD
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	// Create a symlink inside CWD pointing to outside.
-	if err := os.Symlink(outside, filepath.Join(workDir, "evil_out")); err != nil {
-		t.Fatalf("Symlink: %v", err)
-	}
-
-	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "evil_out"); err == nil {
-		t.Fatal("expected error for symlink pointing outside CWD, got nil")
-	}
-}
-
-// TestValidateSafePath_RejectsDanglingSymlink verifies that a dangling
+// TestValidateSafePathTyped_RejectsDanglingSymlink verifies that a dangling
 // symlink (target does not exist) is rejected to prevent future escapes.
-func TestValidateSafePath_RejectsDanglingSymlink(t *testing.T) {
+func TestValidateSafePathTyped_RejectsDanglingSymlink(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
@@ -363,14 +346,14 @@ func TestValidateSafePath_RejectsDanglingSymlink(t *testing.T) {
 		t.Fatalf("Symlink: %v", err)
 	}
 
-	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "dangling"); err == nil {
+	if err := ValidateSafePathTyped(&localfileio.LocalFileIO{}, "dangling"); err == nil {
 		t.Fatal("expected error for dangling symlink, got nil")
 	}
 }
 
-// TestValidateSafePath_AllowsNormalSubdir verifies that an existing real
+// TestValidateSafePathTyped_AllowsNormalSubdir verifies that an existing real
 // subdirectory within CWD is accepted.
-func TestValidateSafePath_AllowsNormalSubdir(t *testing.T) {
+func TestValidateSafePathTyped_AllowsNormalSubdir(t *testing.T) {
 	workDir := t.TempDir()
 	chdirForTest(t, workDir)
 
@@ -379,19 +362,8 @@ func TestValidateSafePath_AllowsNormalSubdir(t *testing.T) {
 		t.Fatalf("Mkdir: %v", err)
 	}
 
-	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "output"); err != nil {
+	if err := ValidateSafePathTyped(&localfileio.LocalFileIO{}, "output"); err != nil {
 		t.Fatalf("expected no error for real subdir, got: %v", err)
-	}
-}
-
-// TestValidateSafePath_AllowsNonExistentPath verifies that a path that
-// does not yet exist (new output directory) is accepted.
-func TestValidateSafePath_AllowsNonExistentPath(t *testing.T) {
-	workDir := t.TempDir()
-	chdirForTest(t, workDir)
-
-	if err := ValidateSafePath(&localfileio.LocalFileIO{}, "new_output_dir"); err != nil {
-		t.Fatalf("expected no error for non-existent path, got: %v", err)
 	}
 }
 

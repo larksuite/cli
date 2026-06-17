@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -40,11 +41,12 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 
 	idx := multi.FindAppIndex(name)
 	if idx < 0 {
-		return output.ErrValidation("profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
 	}
 
 	if len(multi.Apps) == 1 {
-		return output.ErrValidation("cannot remove the only profile")
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "cannot remove the only profile").
+			WithHint("add another profile first: lark-cli profile add")
 	}
 
 	app := &multi.Apps[idx]
@@ -65,7 +67,7 @@ func profileRemoveRun(f *cmdutil.Factory, name string) error {
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	// Best-effort credential cleanup after config commit

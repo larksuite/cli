@@ -19,11 +19,9 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/errcompat"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
@@ -54,16 +52,11 @@ func (c *APIClient) resolveAccessToken(ctx context.Context, as core.Identity) (s
 		if errors.As(err, &unavailableErr) {
 			return "", newTokenMissingError(as, unavailableErr)
 		}
-		// NeedAuthorizationError from the credential chain (e.g. UAT refresh
-		// returned need_user_authorization) must surface as typed
-		// AuthenticationError. Without this, WrapDoAPIError would wrap the
-		// raw err as NetworkError, and cmd/root.go's outer-typed gate would
-		// then skip PromoteAuthError — leaving the user with exit 4 and no
-		// auth-login hint instead of exit 3 typed authentication.
-		var needAuthErr *internalauth.NeedAuthorizationError
-		if errors.As(err, &needAuthErr) {
-			return "", errcompat.PromoteAuthError(needAuthErr)
-		}
+		// The credential chain already emits a typed *errs.AuthenticationError
+		// for the missing-UAT case (e.g. UAT refresh returned
+		// need_user_authorization), so it flows through unchanged: the
+		// outer-typed gate in cmd/root.go and the idempotent WrapDoAPIError
+		// both preserve its authentication category and exit 3.
 		return "", err
 	}
 	if result.Token == "" {
@@ -120,24 +113,22 @@ func (c *APIClient) buildApiReq(request RawApiRequest) (*larkcore.ApiReq, []lark
 //
 // SDK Do() failures are normalised through WrapDoAPIError so every caller
 // (cmd/api, RuntimeContext, shortcuts) gets the same wire shape without
-// each one remembering to wrap. Today that wire shape is still the legacy
-// *output.ExitError envelope (network / api_error); future framework-
-// boundary migration flips WrapDoAPIError to typed *errs.NetworkError /
-// *errs.InternalError per the contract in errs/ERROR_CONTRACT.md.
-// Errors that arrive already-classified (legacy *output.ExitError from
-// resolveAccessToken's missing-credential paths, or a typed *errs.*) flow
-// through unchanged.
+// each one remembering to wrap. WrapDoAPIError classifies a raw transport
+// failure into a typed *errs.NetworkError / *errs.InternalError per the
+// contract in errs/ERROR_CONTRACT.md. Errors that arrive already-classified
+// (a typed *errs.* from resolveAccessToken's missing-credential paths or
+// elsewhere) flow through unchanged.
 func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as core.Identity, extraOpts ...larkcore.RequestOptionFunc) (*larkcore.ApiResp, error) {
 	var opts []larkcore.RequestOptionFunc
 
 	token, err := c.resolveAccessToken(ctx, as)
 	if err != nil {
 		// WrapDoAPIError is idempotent on already-classified errors:
-		// the *output.ExitError that resolveAccessToken returns for missing
-		// tokens (via output.ErrAuth) passes through with its auth category
-		// and exit 3 intact, and any future typed *errs.* error from the
-		// credential chain survives the same way. Only stray untyped errors
-		// (raw fmt.Errorf) get the transport-or-internal fallback.
+		// the typed *errs.AuthenticationError that resolveAccessToken returns
+		// for missing tokens passes through with its auth category and exit 3
+		// intact, and any other typed *errs.* error from the credential chain
+		// survives the same way. Only stray untyped errors (raw fmt.Errorf)
+		// get the transport-or-internal fallback.
 		return nil, WrapDoAPIError(err)
 	}
 	if as.IsBot() {
@@ -162,7 +153,7 @@ func (c *APIClient) DoSDKRequest(ctx context.Context, req *larkcore.ApiReq, as c
 // Auth is resolved via Credential (same as DoSDKRequest). Security headers and
 // any extra headers from opts are applied automatically.
 // HTTP errors (status >= 400) are handled internally: the body is read (up to 4 KB),
-// closed, and returned as an output.ErrNetwork — callers only receive successful responses.
+// closed, and returned as a typed *errs.NetworkError — callers only receive successful responses.
 func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.Identity, opts ...Option) (*http.Response, error) {
 	cfg := buildConfig(opts)
 
@@ -332,10 +323,10 @@ func (c *APIClient) DoAPI(ctx context.Context, request RawApiRequest) (*larkcore
 //
 // JSON parse failures are wrapped via WrapJSONResponseParseError so callers
 // (notably the pagination loop and --page-all paths in cmd/api / cmd/service)
-// see an *output.ExitError envelope (api_error for malformed JSON, network
-// for everything else) instead of a bare fmt.Errorf — otherwise an empty
-// or malformed page body would surface to the root handler as a plain-text
-// "Error: ..." line and bypass the JSON stderr envelope contract.
+// see a typed *errs.InternalError (invalid_response) instead of a bare
+// fmt.Errorf — otherwise an empty or malformed page body would surface to the
+// root handler as a plain-text "Error: ..." line and bypass the JSON stderr
+// envelope contract.
 func (c *APIClient) CallAPI(ctx context.Context, request RawApiRequest) (interface{}, error) {
 	resp, err := c.DoAPI(ctx, request)
 	if err != nil {

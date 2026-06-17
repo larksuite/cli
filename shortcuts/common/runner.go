@@ -166,10 +166,15 @@ func (ctx *RuntimeContext) getAPIClient() (*client.APIClient, error) {
 func (ctx *RuntimeContext) AccessToken() (string, error) {
 	result, err := ctx.Factory.Credential.ResolveToken(ctx.ctx, credential.NewTokenSpec(ctx.As(), ctx.Config.AppID))
 	if err != nil {
-		return "", output.ErrAuth("failed to get access token: %s", err)
+		// ResolveToken classifies its own failures (config/api); pass those
+		// through so a typed lower-layer error is not flattened to token_invalid.
+		if _, ok := errs.ProblemOf(err); ok {
+			return "", err
+		}
+		return "", errs.NewAuthenticationError(errs.SubtypeTokenInvalid, "failed to get access token: %s", err).WithCause(err)
 	}
 	if result == nil || result.Token == "" {
-		return "", output.ErrAuth("no access token available for %s", ctx.As())
+		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing, "no access token available for %s", ctx.As())
 	}
 	return result.Token, nil
 }
@@ -242,25 +247,14 @@ func (ctx *RuntimeContext) Changed(name string) bool {
 
 // ── API helpers ──
 
-//	CallAPI uses an internal HTTP wrapper with limited control over request/response.
-//
-// Prefer DoAPI for new code — it calls the Lark SDK directly and supports file upload/download options.
-//
-// CallAPI calls the Lark API using the current identity (ctx.As()) and auto-handles errors.
-func (ctx *RuntimeContext) CallAPI(method, url string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
-	result, err := ctx.callRaw(method, url, params, data)
-	return HandleApiResult(result, err, "API call failed")
-}
-
-// CallAPITyped is the typed-only replacement for CallAPI: it performs the same
-// SDK request (buildRequest → APIClient.DoAPI → DoSDKRequest, identical
-// transport and query model to CallAPI) and returns the "data" object, but
-// classifies failures into typed errs.* errors via errclass.BuildAPIError.
+// CallAPITyped calls the Lark API using the current identity (ctx.As()) via
+// the SDK request path (buildRequest → APIClient.DoAPI → DoSDKRequest) and
+// returns the "data" object, classifying failures into typed errs.* errors via
+// errclass.BuildAPIError.
 //
 // A transport / auth error from the client boundary is already typed and passes
 // through unchanged; a non-zero API response code is classified into a typed
-// error carrying subtype / code / log_id. Unlike CallAPI it never emits a legacy
-// output.ExitError envelope, and never downgrades a typed network/auth error.
+// error carrying subtype / code / log_id.
 //
 // It lifts x-tt-logid from the response header (which the body-only parse drops)
 // so log_id surfaces on the typed error even when the server returns it only in
@@ -387,7 +381,7 @@ func (ctx *RuntimeContext) APIClassifyContext() errclass.ClassifyContext {
 	}
 }
 
-// Deprecated: RawAPI uses an internal HTTP wrapper with limited control over request/response.
+// RawAPI uses an internal HTTP wrapper with limited control over request/response.
 // Prefer DoAPI for new code — it calls the Lark SDK directly and supports file upload/download options.
 //
 // RawAPI calls the Lark API using the current identity (ctx.As()) and returns raw result for manual error handling.
@@ -491,25 +485,12 @@ func (ctx *RuntimeContext) DoAPIStream(callCtx context.Context, req *larkcore.Ap
 	return ac.DoStream(callCtx, req, ctx.As(), append(base, opts...)...)
 }
 
-// DoAPIJSON calls the Lark API via DoAPI, parses the JSON response envelope,
-// and returns the "data" field. Suitable for standard JSON APIs (non-file).
-func (ctx *RuntimeContext) DoAPIJSON(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
-	return ctx.doAPIJSON(method, apiPath, query, body, false)
-}
-
-// DoAPIJSONWithLogID is like DoAPIJSON but merges x-tt-logid from the response
-// header into the returned data and into error details as "log_id". Intended
-// for endpoints where surfacing the log id aids troubleshooting (e.g. doc v2).
-func (ctx *RuntimeContext) DoAPIJSONWithLogID(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
-	return ctx.doAPIJSON(method, apiPath, query, body, true)
-}
-
-// DoAPIJSONTyped is the typed-only replacement for DoAPIJSON: it issues the same
-// larkcore.ApiReq request (identical method / path / query / body model) but
-// classifies failures into typed errs.* errors via ClassifyAPIResponse instead
-// of emitting a legacy output.ExitError "api_error" envelope. A transport / auth
-// error from the client boundary is already typed and passes through unchanged;
-// a non-zero API code is classified with subtype / code / log_id.
+// DoAPIJSONTyped issues a larkcore.ApiReq request, parses the JSON response,
+// and classifies failures into typed errs.* errors via ClassifyAPIResponse,
+// which lifts MissingScopes / ConsoleURL / Identity onto the typed error at the
+// source and merges the response log id into the returned data. A transport /
+// auth error from the client boundary is already typed and passes through
+// unchanged; a non-zero API code is classified with subtype / code / log_id.
 func (ctx *RuntimeContext) DoAPIJSONTyped(method, apiPath string, query larkcore.QueryParams, body any) (map[string]any, error) {
 	req := &larkcore.ApiReq{
 		HttpMethod:  method,
@@ -524,60 +505,6 @@ func (ctx *RuntimeContext) DoAPIJSONTyped(method, apiPath string, query larkcore
 		return nil, typedOrInternal(err)
 	}
 	return ctx.ClassifyAPIResponse(resp)
-}
-
-func (ctx *RuntimeContext) doAPIJSON(method, apiPath string, query larkcore.QueryParams, body any, includeLogID bool) (map[string]any, error) {
-	req := &larkcore.ApiReq{
-		HttpMethod:  method,
-		ApiPath:     apiPath,
-		QueryParams: query,
-	}
-	if body != nil {
-		req.Body = body
-	}
-	resp, err := ctx.DoAPI(req)
-	if err != nil {
-		return nil, err
-	}
-	var detail map[string]any
-	if includeLogID {
-		detail = logIDFromHeader(resp)
-	}
-	if resp.StatusCode >= 400 {
-		if len(resp.RawBody) > 0 {
-			var errEnv struct {
-				Code int    `json:"code"`
-				Msg  string `json:"msg"`
-			}
-			if json.Unmarshal(resp.RawBody, &errEnv) == nil && errEnv.Msg != "" {
-				return nil, output.ErrAPI(errEnv.Code, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, errEnv.Msg), detail)
-			}
-		}
-		return nil, output.ErrAPI(resp.StatusCode, fmt.Sprintf("HTTP %d", resp.StatusCode), detail)
-	}
-	if len(resp.RawBody) == 0 {
-		return nil, fmt.Errorf("empty response body")
-	}
-	var envelope struct {
-		Code int            `json:"code"`
-		Msg  string         `json:"msg"`
-		Data map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(resp.RawBody, &envelope); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
-	}
-	if envelope.Code != 0 {
-		return nil, output.ErrAPI(envelope.Code, envelope.Msg, detail)
-	}
-	if detail != nil {
-		if envelope.Data == nil {
-			envelope.Data = make(map[string]any)
-		}
-		for k, v := range detail {
-			envelope.Data[k] = v
-		}
-	}
-	return envelope.Data, nil
 }
 
 // logIDFromHeader extracts x-tt-logid from response headers and returns it as a detail map.
@@ -649,29 +576,12 @@ func WrapOpenError(err error, pathMsg, readMsg string) error {
 	return fmt.Errorf("%s: %w", readMsg, err)
 }
 
-// WrapInputStatError wraps a FileIO.Stat/Open error for input file validation,
-// returning output.ErrValidation with the appropriate message:
+// WrapInputStatErrorTyped wraps a FileIO.Stat/Open error for input file
+// validation, returning a typed validation error with the appropriate message:
 //   - Path validation failures → "unsafe file path: ..."
 //   - Other errors → readMsg prefix (default "cannot read file")
 //
 // Pass an optional readMsg to override the non-path-validation message prefix.
-//
-// Deprecated: use WrapInputStatErrorTyped for typed error envelopes.
-func WrapInputStatError(err error, readMsg ...string) error {
-	if err == nil {
-		return nil
-	}
-	if errors.Is(err, fileio.ErrPathValidation) {
-		return output.ErrValidation("unsafe file path: %s", err)
-	}
-	msg := "cannot read file"
-	if len(readMsg) > 0 && readMsg[0] != "" {
-		msg = readMsg[0]
-	}
-	return output.ErrValidation("%s: %s", msg, err)
-}
-
-// WrapInputStatErrorTyped wraps a FileIO.Stat/Open error for input file validation.
 func WrapInputStatErrorTyped(err error, readMsg ...string) error {
 	if err == nil {
 		return nil
@@ -754,7 +664,8 @@ func (ctx *RuntimeContext) OutRaw(data interface{}, meta *output.Meta) {
 //
 // It is the typed alternative to `Out(...)` + `output.ErrBare(...)` — the
 // envelope's ok field honestly reports failure instead of a misleading
-// ok:true, and the exit signal is distinct from the predicate-only ErrBare.
+// ok:true, and the exit signal is distinct from ErrBare (the
+// stdout-carries-the-answer silent-exit signal).
 func (ctx *RuntimeContext) OutPartialFailure(data interface{}, meta *output.Meta) error {
 	ctx.emit(data, meta, false, false)
 	if ctx.outputErr != nil {
@@ -886,40 +797,22 @@ func checkScopePrereqs(f *cmdutil.Factory, ctx context.Context, appID string, id
 // enhancePermissionError enriches a permission / auth error with the
 // shortcut's declared required scopes so the user knows exactly what to do.
 //
-// Detection is typed: an error qualifies when it (or any error in its
-// Unwrap chain) is *errs.PermissionError, or — for legacy bridge paths —
-// when it is an *output.ExitError carrying Detail.Type "permission" or
-// "missing_scope". The previous implementation scanned the upstream
-// message text for keywords like "permission" / "scope" / "unauthorized",
-// which was brittle to canonical-message rewrites; routing on the typed
-// shape decouples this helper from the wording.
+// Detection is typed: an error qualifies when it (or any error in its Unwrap
+// chain) is *errs.PermissionError. The previous implementation scanned the
+// upstream message text for keywords like "permission" / "scope" /
+// "unauthorized", which was brittle to canonical-message rewrites; routing on
+// the typed shape decouples this helper from the wording.
 func enhancePermissionError(err error, requiredScopes []string) error {
 	var permErr *errs.PermissionError
-	if errors.As(err, &permErr) {
-		scopeDisplay := strings.Join(requiredScopes, ", ")
-		scopeArg := strings.Join(requiredScopes, " ")
-		hint := fmt.Sprintf(
-			"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-			scopeDisplay, scopeArg)
-		permErr.Hint = hint
+	if !errors.As(err, &permErr) {
 		return err
 	}
-
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		return err
-	}
-	if exitErr.Detail.Type != "permission" && exitErr.Detail.Type != "missing_scope" {
-		return err
-	}
-
 	scopeDisplay := strings.Join(requiredScopes, ", ")
 	scopeArg := strings.Join(requiredScopes, " ")
-	hint := fmt.Sprintf(
+	permErr.Hint = fmt.Sprintf(
 		"this command requires scope(s): %s\nrun `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
 		scopeDisplay, scopeArg)
-	// Return a new error instead of mutating the original's Detail in place.
-	return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, hint)
+	return err
 }
 
 // ── Mounting ──
@@ -997,11 +890,11 @@ func runShortcut(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, botOnly bo
 			out, err := s.PrintFlagSchema(strings.TrimSpace(flagName))
 			if err != nil {
 				// PrintFlagSchema implementations return bare errors; wrap as a
-				// structured ExitError so --print-schema (an agent-facing
+				// typed validation error so --print-schema (an agent-facing
 				// introspection path) yields a parseable envelope, not a plain
 				// string.
-				if _, ok := err.(*output.ExitError); !ok {
-					err = output.Errorf(output.ExitValidation, "print_schema_error", "%s", err.Error())
+				if !errs.IsTyped(err) {
+					err = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error()).WithCause(err)
 				}
 				return err
 			}
@@ -1239,9 +1132,9 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 }
 
 // rejectPositionalArgs returns a cobra.PositionalArgs that rejects any
-// positional arguments. The error is intentionally a plain error (not
-// ExitError) so that cobra prints usage and the root handler prints a
-// simple "Error:" line instead of a JSON envelope.
+// positional arguments. It returns a plain cobra usage error; the root
+// handler classifies it into the typed validation envelope (exit 2), the
+// same path as other cobra usage failures.
 func rejectPositionalArgs() cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {

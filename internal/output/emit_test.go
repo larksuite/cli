@@ -80,6 +80,9 @@ func TestScanForSafety_ModeBlock_WithAlert(t *testing.T) {
 	if safetyErr.Category != errs.CategoryPolicy || safetyErr.Subtype != errs.SubtypeContentSafety {
 		t.Errorf("problem = %s/%s, want %s/%s", safetyErr.Category, safetyErr.Subtype, errs.CategoryPolicy, errs.SubtypeContentSafety)
 	}
+	if got := ExitCodeOf(result.BlockErr); got != ExitContentSafety {
+		t.Errorf("exit code = %d, want %d", got, ExitContentSafety)
+	}
 	if len(safetyErr.Rules) != 1 || safetyErr.Rules[0] != "r1" {
 		t.Errorf("rules = %v, want [r1]", safetyErr.Rules)
 	}

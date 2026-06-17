@@ -528,8 +528,7 @@ func (f *failingTokenResolver) ResolveToken(_ context.Context, spec credential.T
 
 // TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError pins that
 // the missing-token path of resolveAccessToken returns the typed
-// *errs.AuthenticationError{Subtype: TokenMissing} rather than the legacy
-// *output.ExitError envelope.
+// *errs.AuthenticationError{Subtype: TokenMissing}.
 func TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
@@ -554,24 +553,22 @@ func TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError(t *testing.T
 	}
 }
 
-// needAuthTokenResolver returns *internalauth.NeedAuthorizationError to
-// exercise the P1 regression path: a credential chain that signals
-// "user must re-authorize" must surface as typed AuthenticationError, not
-// fall through to the generic err return which WrapDoAPIError would then
-// wrap as NetworkError (the outer-typed dispatcher gate would then skip
-// PromoteAuthError and the user would see exit 4 with no auth-login hint).
+// needAuthTokenResolver mirrors the production credential chain: the
+// missing-UAT case is constructed typed at the source (internal/auth) and
+// carries the legacy *NeedAuthorizationError sentinel in its Cause chain. It
+// must surface as a typed AuthenticationError and flow through resolveAccessToken
+// and WrapDoAPIError unchanged (never mis-classified as NetworkError).
 type needAuthTokenResolver struct {
 	userOpenID string
 }
 
 func (f *needAuthTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
-	return nil, &internalauth.NeedAuthorizationError{UserOpenId: f.userOpenID}
+	return nil, internalauth.NewNeedUserAuthorizationError(f.userOpenID)
 }
 
 // TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication
-// is the codex P1 regression test: without this branch, the credential
-// chain's NeedAuthorizationError would propagate raw and WrapDoAPIError
-// would mis-classify it as NetworkError.
+// pins that the typed missing-UAT error from the credential chain reaches the
+// caller as a typed AuthenticationError with the marker and sentinel intact.
 func TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
@@ -677,7 +674,7 @@ func TestDoSDKRequest_TransportFailureWrapsAsNetwork(t *testing.T) {
 // *errs.InternalError{Subtype: invalid_response} with the rawAPIJSONHint
 // preserved on Problem.Hint. Pagination / cmd/api / cmd/service callers see
 // the typed JSON stderr envelope (exit 5/internal) — wire `type` is
-// "internal", not the legacy "api_error".
+// "internal".
 func TestCallAPI_ParseJSONFailureWrapsAsAPI(t *testing.T) {
 	rt := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		return &http.Response{

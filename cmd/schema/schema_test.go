@@ -5,9 +5,11 @@ package schema
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 )
@@ -208,6 +210,45 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Unknown service") {
 		t.Errorf("expected 'Unknown service' error, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(ve.Hint, "Available:") {
+		t.Errorf("expected hint listing available services, got: %q", ve.Hint)
+	}
+}
+
+// TestSchemaCmd_UnknownMethod_TypedValidation pins the typed envelope for the
+// JSON-mode unknown-method path: *errs.ValidationError with
+// subtype invalid_argument and a hint listing the available methods.
+func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"calendar.events.nonexistent_method"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown method")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(err.Error(), "Unknown method") {
+		t.Errorf("expected 'Unknown method' error, got: %v", err)
+	}
+	if !strings.Contains(ve.Hint, "Available:") {
+		t.Errorf("expected hint listing available methods, got: %q", ve.Hint)
 	}
 }
 

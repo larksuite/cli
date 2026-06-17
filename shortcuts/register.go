@@ -11,11 +11,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/okr"
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/shortcuts/apps"
 	"github.com/larksuite/cli/shortcuts/base"
@@ -175,7 +175,7 @@ func RegisterShortcutsWithContext(ctx context.Context, program *cobra.Command, f
 func installBrandRestrictionGuard(svc *cobra.Command, service string, brand core.LarkBrand) {
 	stub := func(c *cobra.Command, _ []string) error {
 		c.SilenceUsage = true
-		return output.ErrValidation(
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition,
 			"the %q feature is not yet supported on the %s brand",
 			service, brand,
 		)

@@ -829,7 +829,7 @@ var CellsSetImage = common.Shortcut{
 				WithParam("--image").
 				WithCause(err)
 		}
-		fileToken, err := common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		fileToken, err := common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   imgPath,
 			FileName:   fileName,
 			FileSize:   info.Size(),

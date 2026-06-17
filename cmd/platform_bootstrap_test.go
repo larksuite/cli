@@ -9,10 +9,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -102,7 +104,7 @@ func findLeaf(t *testing.T, parent *cobra.Command, names ...string) *cobra.Comma
 }
 
 // Happy path: a valid policy.yml denies one specific command. The denied
-// command's RunE returns a typed ExitError envelope; allowed commands are
+// command's RunE returns a typed error envelope; allowed commands are
 // untouched.
 func TestApplyUserPolicyPruning_appliesValidPolicy(t *testing.T) {
 	cfgDir := tmpHome(t)
@@ -127,13 +129,27 @@ max_risk: write
 	if err == nil {
 		t.Fatalf("+delete-doc RunE should return an error")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "command_denied" {
-		t.Fatalf("expected command_denied ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok || detail["reason_code"] != "command_denylisted" {
-		t.Errorf("reason_code = %v, want command_denylisted", detail["reason_code"])
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	// The denial taxonomy (reason_code, layer, rule) is preserved on the
+	// wrapped *platform.CommandDeniedError cause and folded into the hint.
+	var cd *platform.CommandDeniedError
+	if !errors.As(err, &cd) {
+		t.Fatalf("error chain should expose *platform.CommandDeniedError")
+	}
+	if cd.ReasonCode != "command_denylisted" {
+		t.Errorf("CommandDeniedError.ReasonCode = %q, want command_denylisted", cd.ReasonCode)
+	}
+	if !strings.Contains(verr.Hint, "command_denylisted") {
+		t.Errorf("hint should surface reason_code command_denylisted, got %q", verr.Hint)
 	}
 
 	// im/+send must be denied (domain not in Allow).

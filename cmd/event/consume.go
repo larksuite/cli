@@ -386,9 +386,9 @@ func resolveTenantToken(ctx context.Context, f *cmdutil.Factory, appID string) (
 
 // Sentinels for errors.Is checks; call sites wrap them as typed ValidationError causes.
 var (
-	errInvalidParamFormat = errors.New("invalid --param format")
-	errOutputDirTilde     = errors.New("--output-dir does not support ~ expansion")
-	errOutputDirUnsafe    = errors.New("unsafe --output-dir")
+	errInvalidParamFormat = errors.New("invalid --param format")                    //nolint:forbidigo // sentinel, typed at call sites
+	errOutputDirTilde     = errors.New("--output-dir does not support ~ expansion") //nolint:forbidigo // sentinel, typed at call sites
+	errOutputDirUnsafe    = errors.New("unsafe --output-dir")                       //nolint:forbidigo // sentinel, typed at call sites
 )
 
 func parseParams(raw []string) (map[string]string, error) {

@@ -13,17 +13,12 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/deprecation"
-	"github.com/larksuite/cli/internal/errclass"
-	"github.com/larksuite/cli/internal/errcompat"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/suggest"
 	"github.com/larksuite/cli/internal/update"
@@ -217,56 +212,37 @@ func configureFlagCompletions(args []string) {
 // and returns the process exit code.
 //
 // Dispatch order:
-//  1. Legacy shapes (*core.ConfigError, *internalauth.NeedAuthorizationError)
-//     are promoted via errcompat to their typed errs/ counterparts, with the
-//     original preserved in the Cause chain.
-//  2. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError,
-//     *errs.SecurityPolicyError, *errs.AuthenticationError): render via the
-//     typed envelope writer, which lifts extension fields (missing_scopes,
-//     console_url, challenge_url, ...) to the top level. Routed by
-//     errs.CategoryOf via ExitCodeOf.
-//  3. Legacy *output.ExitError: asExitError adapts it to the legacy
-//     envelope, written via WriteErrorEnvelope.
-//  4. Cobra errors (required flags, unknown commands, etc.): plain text.
+//  1. Typed errors from errs/ (e.g. *errs.PermissionError, *errs.APIError,
+//     *errs.SecurityPolicyError, *errs.AuthenticationError, *errs.ConfigError):
+//     render via the typed envelope writer, which lifts extension fields
+//     (missing_scopes, console_url, challenge_url, ...) to the top level.
+//     Routed by errs.CategoryOf via ExitCodeOf. Auth and config errors are
+//     constructed typed at their origin (internal/auth, internal/core), so the
+//     dispatcher no longer promotes any legacy shape here.
+//  2. PartialFailure / BareError signals: the result envelope is already on
+//     stdout; honor the exit code and write nothing to stderr.
+//  3. Residual cobra usage errors (missing required flag, unknown command,
+//     argument validation): typed as an invalid_argument envelope (exit 2),
+//     matching the explicit flag/subcommand guards. Flag parse errors are
+//     already typed upstream by the root FlagErrorFunc.
 func handleRootError(f *cmdutil.Factory, err error) int {
 	errOut := f.IOStreams.ErrOut
-
-	// Promote legacy error shapes into typed errs/ before envelope marshal.
-	// NeedAuthorizationError check is first because it is the more specific
-	// shape; *core.ConfigError check follows. errors.As preserves the original
-	// in the Cause chain, so external errors.As(&core.ConfigError{}) consumers
-	// (cmd/auth/list.go, cmd/doctor/doctor.go, ...) still match.
-	//
-	// Outer-typed short-circuit: if err is already a typed *errs.* error,
-	// skip PromoteXxxError so the producer's Subtype / Hint / extension
-	// fields are not overwritten by a coarser promoted shape derived from a
-	// legacy error buried in its Cause chain. Promotion is only for legacy
-	// untyped entry points.
-	if !isOuterTypedError(err) {
-		var needAuthErr *internalauth.NeedAuthorizationError
-		if errors.As(err, &needAuthErr) {
-			err = errcompat.PromoteAuthError(needAuthErr)
-		} else {
-			var cfgErr *core.ConfigError
-			if errors.As(err, &cfgErr) {
-				err = errcompat.PromoteConfigError(cfgErr)
-			}
-		}
-	}
 
 	// When the typed error is a need_user_authorization signal, fold in the
 	// current command's declared scopes as a Hint so the user/AI sees the
 	// concrete scope(s) to re-auth with. The hint is computed on the fly from
 	// local shortcut/service metadata — it never depends on server state.
-	applyNeedAuthorizationHint(f, err)
+	if !errs.IsRaw(err) {
+		applyNeedAuthorizationHint(f, err)
+	}
 
 	// Staged dispatch: capture the typed exit code BEFORE attempting the
 	// envelope write. WriteTypedErrorEnvelope is best-effort on the wire
 	// (partial-write still returns true) so the exit code we read here is
 	// preserved even if stderr is torn — torn stderr must not downgrade
-	// typed exits 3/4/6/10 to the legacy "Error:" path with exit 1.
+	// typed exits 3/4/6/10 to the plain "Error:" path with exit 1.
 	// WriteTypedErrorEnvelope still returns false when err carries no
-	// Problem; in that case we fall through to the legacy bridge below.
+	// Problem; in that case we fall through to the signal / plain-text paths.
 	typedExit := output.ExitCodeOf(err)
 	if output.WriteTypedErrorEnvelope(errOut, err, string(f.ResolvedIdentity)) {
 		return typedExit
@@ -279,58 +255,63 @@ func handleRootError(f *cmdutil.Factory, err error) int {
 		return pfErr.Code
 	}
 
-	if exitErr := asExitError(err); exitErr != nil {
-		if !exitErr.Raw {
-			// Raw errors (e.g. from `api` command via output.MarkRaw)
-			// preserve the original API error detail; skip enrichment
-			// which would clear it.
-			enrichMissingScopeError(f, exitErr)
-			enrichPermissionError(f, exitErr)
+	// Silent-exit signal (e.g. `auth check` predicate, or `update --json`):
+	// stdout already carries the result; honor the requested exit code and
+	// write nothing to stderr.
+	var bareErr *output.BareError
+	if errors.As(err, &bareErr) {
+		return bareErr.Code
+	}
+
+	// Errors reaching here are untyped: every RunE returns a typed errs.* error
+	// and flag-parse errors are typed by the root FlagErrorFunc. The remainder
+	// is either a cobra usage mistake (missing required flag, unknown command,
+	// wrong arg count), which cobra surfaces as a plain error identified by its
+	// stable text — the same external contract unknownFlagName relies on — or an
+	// untyped error that leaked past the typed boundary. Classify the former as
+	// invalid_argument (exit 2, like the explicit guards); treat the latter as an
+	// internal fault (exit 5) rather than blaming the user's input. The message
+	// is preserved either way, and the typed envelope still carries any pending
+	// deprecation notice.
+	var fallback error
+	if isCobraUsageError(err) {
+		fallback = errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err.Error())
+	} else {
+		fallback = errs.NewInternalError(errs.SubtypeUnknown, "%s", err.Error()).WithCause(err)
+	}
+	output.WriteTypedErrorEnvelope(errOut, fallback, string(f.ResolvedIdentity))
+	return output.ExitCodeOf(fallback)
+}
+
+// cobraUsageErrorMarkers are the stable error-text fragments cobra / pflag
+// (pinned at v1.10.2) emit for usage mistakes — missing required flag, unknown
+// command / flag, wrong argument count. Cobra surfaces these as plain errors,
+// not a typed value we can match on, so the dispatcher recognizes them by text;
+// this is the same external contract unknownFlagName already depends on. A
+// residual error matching none of these has leaked the typed boundary and is
+// treated as an internal fault, not a user error.
+var cobraUsageErrorMarkers = []string{
+	"unknown command ",
+	"unknown flag: ",
+	"unknown shorthand",
+	"required flag(s) ",
+	"flag needs an argument",
+	"bad flag syntax:",
+	"no such flag ",
+	"invalid argument ",
+	"arg(s), ", // accepts / requires N arg(s), received / only received M
+}
+
+// isCobraUsageError reports whether err is a cobra / pflag usage mistake,
+// identified by the stable error text of the pinned cobra version.
+func isCobraUsageError(err error) bool {
+	msg := err.Error()
+	for _, m := range cobraUsageErrorMarkers {
+		if strings.Contains(msg, m) {
+			return true
 		}
-		output.WriteErrorEnvelope(errOut, exitErr, string(f.ResolvedIdentity))
-		return exitErr.Code
 	}
-
-	// A backward-compat alias records its deprecation notice in PreRunE, which
-	// runs before cobra's required-flag validation — but a missing required flag
-	// fails before RunE and lands here, where the bare "Error:" line would drop
-	// the notice. When a deprecation is pending, route through the structured
-	// envelope so the migration hint still reaches the caller; all other errors
-	// keep the existing plain output.
-	if deprecation.GetPending() != nil {
-		output.WriteErrorEnvelope(errOut, &output.ExitError{
-			Code:   1,
-			Detail: &output.ErrDetail{Type: "validation", Message: err.Error()},
-		}, string(f.ResolvedIdentity))
-		return 1
-	}
-	fmt.Fprintln(errOut, "Error:", err)
-	return 1
-}
-
-// isOuterTypedError returns true if err is a typed *errs.* error AT THE
-// TOP OF THE CHAIN (not buried inside Unwrap). Used by handleRootError
-// to gate PromoteXxxError so a producer's outer typed envelope is never
-// overwritten by a coarser shape derived from its legacy Cause.
-func isOuterTypedError(err error) bool {
-	_, ok := err.(errs.TypedError)
-	return ok
-}
-
-// asExitError converts known structured error types to *output.ExitError.
-// Returns nil for unrecognized errors (e.g. cobra flag errors).
-//
-// Deprecated: legacy *output.ExitError bridge.
-func asExitError(err error) *output.ExitError {
-	var cfgErr *core.ConfigError
-	if errors.As(err, &cfgErr) {
-		return output.ErrWithHint(cfgErr.Code, cfgErr.Type, cfgErr.Message, cfgErr.Hint)
-	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
-		return exitErr
-	}
-	return nil
+	return false
 }
 
 // installUnknownSubcommandGuard replaces cobra's silent help fallback on
@@ -361,13 +342,10 @@ func installUnknownSubcommandGuard(cmd *cobra.Command) {
 	}
 }
 
-// Deprecated: unknownSubcommandRunE produces a legacy *output.ExitError that
-// predates the typed error contract introduced by errs/. New code MUST NOT
-// add producers of this shape — unknown-subcommand signals should move to
-// a typed *errs.ValidationError (or a dedicated typed error) carrying the
-// agent-protocol metadata as typed extension fields. This helper is retained
-// only while existing dispatch sites are migrated; it will be removed once
-// they have moved to the typed surface.
+// unknownSubcommandRunE replaces cobra's silent help fallback on group commands
+// with a typed *errs.ValidationError: a flag that belongs to a missing
+// subcommand, a misplaced subcommand-only flag, or an unknown subcommand name
+// each fail structured (exit 2) instead of degrading to help + exit 0.
 func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		// A bare group (e.g. `sheets`), or one carrying only group-valid flags
@@ -383,28 +361,13 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		}
 		if unknown := unknownFlagTokens(cmd, rawInvocationArgs); len(unknown) > 0 {
-			return &output.ExitError{
-				Code: output.ExitValidation,
-				Detail: &output.ErrDetail{
-					Type:    "unknown_flag",
-					Message: fmt.Sprintf("unknown flag %s before a subcommand for %q", strings.Join(unknown, ", "), cmd.CommandPath()),
-					Hint:    fmt.Sprintf("flags belong to a subcommand; run `%s --help` to list subcommands and their flags", cmd.CommandPath()),
-					Detail: map[string]any{
-						// Keep the same detail keys as flagDidYouMean's unknown_flag
-						// so a consumer keyed on Type can read a stable shape. The
-						// subcommand isn't resolved here, so suggestions/valid_flags
-						// have no meaningful universe to draw from — emit empty
-						// rather than the group's own (misleading) flags. unknown is
-						// the back-compat singular field; unknown_flags carries the
-						// full list when more than one flag was supplied.
-						"unknown":       strings.Join(unknown, ", "),
-						"unknown_flags": unknown,
-						"command_path":  cmd.CommandPath(),
-						"suggestions":   []string{},
-						"valid_flags":   []string{},
-					},
-				},
+			verr := errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"unknown flag %s before a subcommand for %q", strings.Join(unknown, ", "), cmd.CommandPath()).
+				WithHint("flags belong to a subcommand; run `%s --help` to list subcommands and their flags", cmd.CommandPath())
+			for _, flag := range unknown {
+				verr.WithParams(errs.InvalidParam{Name: flag, Reason: "unknown flag before a subcommand"})
 			}
+			return verr
 		}
 		// The remaining flags are all defined somewhere in the tree. Those valid
 		// on the group itself or inherited (e.g. the global --profile) do not
@@ -416,19 +379,13 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 		if len(misplaced) == 0 {
 			return cmd.Help()
 		}
-		return &output.ExitError{
-			Code: output.ExitValidation,
-			Detail: &output.ErrDetail{
-				Type:    "missing_subcommand",
-				Message: fmt.Sprintf("missing subcommand for %q; flag %s belongs to a subcommand, not the group", cmd.CommandPath(), strings.Join(misplaced, ", ")),
-				Hint:    fmt.Sprintf("run `%s --help` to list subcommands and their flags", cmd.CommandPath()),
-				Detail: map[string]any{
-					"command_path": cmd.CommandPath(),
-					"flags":        misplaced,
-					"suggestions":  []string{},
-				},
-			},
+		verr := errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"missing subcommand for %q; flag %s belongs to a subcommand, not the group", cmd.CommandPath(), strings.Join(misplaced, ", ")).
+			WithHint("run `%s --help` to list subcommands and their flags", cmd.CommandPath())
+		for _, flag := range misplaced {
+			verr.WithParams(errs.InvalidParam{Name: flag, Reason: "flag belongs to a subcommand, not the group"})
 		}
+		return verr
 	}
 	unknown := args[0]
 	available, deprecated := availableSubcommandNames(cmd)
@@ -442,27 +399,12 @@ func unknownSubcommandRunE(cmd *cobra.Command, args []string) error {
 		hint = fmt.Sprintf("did you mean one of: %s? (run `%s --help` for the full list)",
 			strings.Join(suggestions, ", "), cmd.CommandPath())
 	}
-	detail := map[string]any{
-		"unknown":      unknown,
-		"command_path": cmd.CommandPath(),
-		"suggestions":  suggestions,
-		"available":    available,
-	}
-	// Only services with backward-compat aliases (currently sheets) carry a
-	// deprecated bucket; omit the key elsewhere so every other service's
-	// envelope is unchanged.
-	if len(deprecated) > 0 {
-		detail["deprecated"] = deprecated
-	}
-	return &output.ExitError{
-		Code: output.ExitValidation,
-		Detail: &output.ErrDetail{
-			Type:    "unknown_subcommand",
-			Message: msg,
-			Hint:    hint,
-			Detail:  detail,
-		},
-	}
+	// Record the offending subcommand and its ranked candidates as a param with
+	// machine-readable Suggestions so an agent can retry without parsing the
+	// hint; the hint carries the same candidates as prose.
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).
+		WithParams(errs.InvalidParam{Name: unknown, Reason: "unknown subcommand", Suggestions: suggestions}).
+		WithHint("%s", hint)
 }
 
 // flagTokensInArgs returns the flag-like tokens (-x, --foo, --foo=bar) in
@@ -588,47 +530,34 @@ func availableSubcommandNames(cmd *cobra.Command) (available, deprecated []strin
 }
 
 // flagDidYouMean is the root FlagErrorFunc (inherited by all subcommands). It
-// converts cobra's flag-parse errors into the structured ErrorEnvelope: an
-// unknown flag gets a focused "did you mean" hint plus the full valid-flag list
-// in detail (so agents recover even when the typo is semantic, e.g. --query vs
-// --find, where edit distance alone finds nothing). Other flag errors stay
-// structured but generic.
+// converts cobra's flag-parse errors into a typed validation envelope: an
+// unknown flag gets a focused "did you mean" hint (so agents recover even when
+// the typo is semantic, e.g. --query vs --find, where edit distance alone finds
+// nothing) and the offending flag in `params`. Other flag errors stay typed
+// but generic.
 func flagDidYouMean(c *cobra.Command, ferr error) error {
 	name, isUnknown := unknownFlagName(ferr)
 	if !isUnknown {
-		return &output.ExitError{
-			Code: output.ExitValidation,
-			Detail: &output.ErrDetail{
-				Type:    "flag_error",
-				Message: ferr.Error(),
-				Hint:    fmt.Sprintf("run `%s --help` for valid flags", c.CommandPath()),
-			},
-		}
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", ferr.Error()).
+			WithHint("run `%s --help` for valid flags", c.CommandPath())
 	}
 	valid := visibleFlagNames(c)
 	suggestions := suggest.Closest(name, valid, 3)
+	for i := range suggestions {
+		suggestions[i] = "--" + suggestions[i]
+	}
 	hint := fmt.Sprintf("run `%s --help` to see valid flags", c.CommandPath())
 	if len(suggestions) > 0 {
-		for i := range suggestions {
-			suggestions[i] = "--" + suggestions[i]
-		}
 		hint = fmt.Sprintf("did you mean %s? (run `%s --help` for all flags)",
 			strings.Join(suggestions, ", "), c.CommandPath())
 	}
-	return &output.ExitError{
-		Code: output.ExitValidation,
-		Detail: &output.ErrDetail{
-			Type:    "unknown_flag",
-			Message: fmt.Sprintf("unknown flag %q for %q", "--"+name, c.CommandPath()),
-			Hint:    hint,
-			Detail: map[string]any{
-				"unknown":      "--" + name,
-				"command_path": c.CommandPath(),
-				"suggestions":  suggestions,
-				"valid_flags":  valid,
-			},
-		},
-	}
+	// The ranked candidates ride on the param as machine-readable Suggestions so
+	// an agent can retry without parsing the hint; the hint carries the same
+	// candidates as prose. The full valid-flag list stays recoverable via --help.
+	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"unknown flag %q for %q", "--"+name, c.CommandPath()).
+		WithParams(errs.InvalidParam{Name: "--" + name, Reason: "unknown flag", Suggestions: suggestions}).
+		WithHint("%s", hint)
 }
 
 // unknownFlagName extracts the offending long-flag name from cobra's flag-parse
@@ -697,57 +626,4 @@ func installTipsHelpFunc(root *cobra.Command) {
 			fmt.Fprintf(out, "    • %s\n", tip)
 		}
 	})
-}
-
-// enrichPermissionError rewrites the legacy *output.ExitError envelope so its
-// Message + Hint match the per-subtype canonical text produced by the typed
-// dispatcher path (errclass.CanonicalPermissionMessage / errclass.PermissionHint).
-// This guarantees a caller observing the wire envelope cannot tell whether
-// the error reached the dispatcher via the legacy *ExitError bridge or via
-// the typed *errs.PermissionError fast path.
-//
-// Deprecated: legacy *output.ExitError enrichment; typed PermissionError
-// values produced by errclass.BuildAPIError already carry MissingScopes +
-// ConsoleURL directly.
-func enrichPermissionError(f *cmdutil.Factory, exitErr *output.ExitError) {
-	if exitErr.Detail == nil {
-		return
-	}
-	// Only the legacy permission-class envelope types route here. "app_status"
-	// covers 99991662 (app_disabled) / 99991673 (app_unavailable); "permission"
-	// covers the four scope-class codes (99991672 / 99991676 / 99991679 / 230027).
-	if exitErr.Detail.Type != "permission" && exitErr.Detail.Type != "app_status" {
-		return
-	}
-
-	larkCode := exitErr.Detail.Code
-	meta, ok := errclass.LookupCodeMeta(larkCode)
-	if !ok || meta.Category != errs.CategoryAuthorization {
-		return
-	}
-
-	// Extract required scopes from API error detail (shared helper). May be
-	// empty for app-status codes — canonical message + hint still apply.
-	missing := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
-
-	cfg, err := f.Config()
-	if err != nil {
-		return
-	}
-
-	// Reuse the same console URL builder as the typed path so both wire
-	// envelopes carry identical console_url values for the same input.
-	consoleURL := errclass.ConsoleURL(string(cfg.Brand), cfg.AppID, missing)
-
-	// Clear raw API detail — useful info is now in message/hint/console_url.
-	exitErr.Detail.Detail = nil
-
-	identity := string(f.ResolvedIdentity)
-	if identity == "" {
-		identity = "user"
-	}
-
-	exitErr.Detail.Message = errclass.CanonicalPermissionMessage(meta.Subtype, cfg.AppID, missing, exitErr.Detail.Message)
-	exitErr.Detail.Hint = errclass.PermissionHint(missing, identity, meta.Subtype, consoleURL)
-	exitErr.Detail.ConsoleURL = consoleURL
 }

@@ -6,8 +6,8 @@ package cmdutil
 import (
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/i18n"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // ParseLangFlag validates and canonicalizes a --lang value, shared by config
@@ -19,9 +19,10 @@ func ParseLangFlag(raw string) (i18n.Lang, error) {
 	}
 	lang, ok := i18n.Parse(raw)
 	if !ok {
-		return "", output.ErrValidation(
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"invalid --lang %q; valid values: %s",
-			raw, strings.Join(i18n.Codes(), ", "))
+			raw, strings.Join(i18n.Codes(), ", ")).
+			WithParam("--lang")
 	}
 	return lang, nil
 }
