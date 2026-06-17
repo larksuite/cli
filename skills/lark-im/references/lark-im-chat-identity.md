@@ -1,55 +1,26 @@
 # Group Chat Identity Rules
 
-> Warning: The most common source of failure in group operations is choosing the wrong identity. Confirm the identity before performing the action.
+> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication, global parameters, and safety rules.
 
-Group-chat operations support both `--as user` (UAT user identity) and `--as bot` (TAT bot identity). Choosing the correct identity is critical for success.
+Concept doc (no direct command). These cross-cutting identity/ownership rules apply to [`+chat-create`](lark-im-chat-create.md), [`+chat-update`](lark-im-chat-update.md), and the member-management flow (`im chat.members ...`). **The most common cause of group-operation failure is choosing the wrong identity** — decide it before acting.
 
-## Basic Principles
+## Gotchas
 
-- **If the user explicitly specifies an identity:** use exactly what the user requested (`--as user` or `--as bot`) without guessing.
-- **If the user does not specify an identity:** infer the correct identity from context instead of relying on the default.
+- **If the user names an identity, use it verbatim** (`--as user` / `--as bot`) — do not second-guess. Only infer when the user is silent; never just take the default.
+- **Adding members → prefer `--as user`.** Bot visibility is limited and fails when the target is mutually invisible to the bot (**232024** for member-add, **232043** during create). See the create-then-add recipe in [`+chat-create`](lark-im-chat-create.md); do not retry the bot blindly.
+- **Owner-level actions need owner/admin identity** (rename/permissions: **232016 / 232002 / 232017** if under-privileged; **232011** if not in the group).
 
-## Identity Selection by Operation
+## Inferring the owner (when an owner-level action is needed and the owner is unknown)
 
-| Operation | Recommended Identity | Why |
-|------|---------|-----------------------------------|
-| Create group (`+chat-create`) | Depends on the scenario | Infer from context |
-| Add members (member-management flow) | `--as user` | Bot visibility is limited and often fails when the target user is mutually invisible to the bot (232024) |
-| Update group (`+chat-update`) | Owner identity | Permission changes require owner/admin privileges; owner transfer requires owner identity |
+1. Bot created the group, `--owner` **unset** → owner is the bot (`--as bot`).
+2. Bot created the group, `--owner ou_xxx` **set** → owner is that user (`--as user`).
+3. User created the group, `--owner` **unset** → owner is the current user (`--as user`).
+4. Still unclear → **ask** before any owner-level change; don't guess.
 
-## Inferring the Owner
+## When the owner is a third party (neither current user nor bot)
 
-When an owner-level action is needed and the owner is unknown, infer in this order:
+The current identity has no owner privileges. Then:
 
-1. A bot created the group and `--owner` was **not** specified -> the owner is the bot (`--as bot`)
-2. A bot created the group and `--owner ou_xxx` **was** specified -> the owner is that user (`--as user`)
-3. A user created the group and `--owner` was **not** specified -> the owner is the current user (`--as user`)
-4. Still unclear -> ask the user to confirm who owns the group before making owner-level changes
-
-### When the Owner Is Neither the Current User Nor the Bot
-
-If the query shows that the owner is a third-party user (`owner_id` is neither the currently authorized user nor the bot), the current identity does not have owner privileges. In that case:
-
-- **Permission/setting changes:** if the bot is an admin of the group, `--as bot` can still perform admin-level operations such as renaming the group or changing permissions.
-- **Owner-only actions such as owner transfer:** require the actual owner to complete UAT authorization via `lark-cli auth login`, then perform the action as that owner.
-- Explain the limitation clearly to the user instead of retrying blindly.
-
-## Common Pitfalls
-
-### Inviting Members During Group Creation
-
-If a bot creates a group and `--users` includes users who are mutually invisible to the bot, the entire request fails with 232043. Use two steps instead:
-
-1. Create the group with the bot first, excluding invisible users: `lark-cli im +chat-create --name "Group Name"`
-2. Add users later with a user-identity member-management flow
-
-### Insufficient Privileges
-
-- **232016 / 232002 / 232017:** the current identity is not the owner or an admin -> switch to the owner identity
-- **232011:** the current user is not in the group -> use a group-member identity, or join the group first
-- **232024:** the bot and the target user are mutually invisible -> switch to `--as user`
-
-## References
-
-- [lark-im](../SKILL.md) - all IM commands
-- [lark-shared](../../lark-shared/SKILL.md) - authentication and global parameters
+- **Rename / permission / setting changes:** if the bot is a group **admin**, `--as bot` can still perform these admin-level operations.
+- **Owner-only actions (e.g. owner transfer):** the actual owner must complete UAT auth via `lark-cli auth login` first, then act as that owner. There is no bot workaround.
+- Explain the limitation to the user instead of retrying blindly.

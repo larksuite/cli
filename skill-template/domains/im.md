@@ -1,71 +1,46 @@
 ## Core Concepts
 
-- **Message**: A single message in a chat, identified by `message_id` (om_xxx). Supports types: text, post, image, file, audio, video, sticker, interactive (card), share_chat, share_user, merge_forward, etc.
-- **Chat**: A group chat or P2P conversation, identified by `chat_id` (oc_xxx).
-- **Thread**: A reply thread under a message, identified by `thread_id` (om_xxx or omt_xxx).
-- **Reaction**: An emoji reaction on a message.
-- **Flag**: A bookmark on a message or thread.
-- **Feed Shortcut**: A chat pinned to the current user's feed sidebar, identified by `feed_card_id` (an `oc_xxx` open_chat_id for CHAT type).
-- **Feed Group**: A tag that groups feed cards in the feed list, identified by `feed_group_id` (ofg_xxx). Members are feed cards, each identified by `feed_id` + `feed_type`. Two types: `normal` (members managed explicitly) and `rule` (members auto-derived from rules).
-
-## Resource Relationships
-
-```
-Chat (oc_xxx)
-├── Message (om_xxx)
-│   ├── Thread (reply thread)
-│   ├── Reaction (emoji)
-│   └── Resource (image / file / video / audio)
-└── Member (user / bot)
-```
+- **Message** `message_id` (om_xxx) · **Chat** `chat_id` (oc_xxx, group or P2P) · **Thread** `thread_id` (om_xxx / omt_xxx).
+- **Flag** — bookmark on a message/thread (two layers, see below).
+- **Feed Shortcut** `feed_card_id` (oc_xxx) — a chat pinned to the user's feed sidebar.
+- **Feed Group** `feed_group_id` (ofg_xxx) — a tag grouping feed cards (`feed_id`+`feed_type`); `normal` (explicit) / `rule` (auto-derived).
 
 ## Important Notes
 
-### Identity and Token Mapping
+### Identity (user vs bot)
 
-- `--as user` means **user identity** and uses `user_access_token`. Calls run as the authorized end user, so permissions depend on both the app scopes and that user's own access to the target chat/message/resource.
-- `--as bot` means **bot identity** and uses `tenant_access_token`. Calls run as the app bot, so behavior depends on the bot's membership, app visibility, availability range, and bot-specific scopes.
-- If an IM API says it supports both `user` and `bot`, the token type changes who the operator is. The same API can succeed with one identity and fail with the other because owner/admin status, chat membership, tenant boundary, or app availability are checked against the current caller.
+- `--as user` (`user_access_token`): runs as the authorized user; permission = app scopes + that user's own access to the target.
+- `--as bot` (`tenant_access_token`): runs as the app bot; depends on bot's chat membership, app visibility range, bot scopes.
+- When an API supports both, the token decides *who* operates — owner/admin, membership, tenant, visibility are checked against the caller, so the same API can pass on one identity and fail on the other.
 
-### Sender Name Resolution with Bot Identity
+### Sender name resolution
 
-When using bot identity (`--as bot`) to fetch messages (e.g. `+chat-messages-list`, `+threads-messages-list`, `+messages-mget`), sender names may not be resolved (shown as open_id instead of display name). This happens when the bot cannot access the user's contact info.
+As **bot**, the sender may show as `open_id` (bot visibility range doesn't cover it); `--as user` gives real names.
 
-**Root cause**: The bot's app visibility settings do not include the message sender, so the contact API returns no name.
+```bash
+lark-cli im +chat-messages-list --chat-id oc_xxx --as bot   # BAD: sender = open_id
+lark-cli im +chat-messages-list --chat-id oc_xxx --as user  # GOOD: sender = real name
+```
 
-**Solution**: Check the app's visibility settings in the Lark Developer Console — ensure the app's visible range covers the users whose names need to be resolved. Alternatively, use `--as user` to fetch messages with user identity, which typically has broader contact access.
+### Default message enrichment
 
-### Default message enrichment (reactions / update_time)
-
-The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+messages-search`, `+threads-messages-list`) automatically attach a `reactions` block and (for edited messages) `update_time` to each returned message — no separate `im.reactions.batch_query` call is needed. Pass `--no-reactions` to opt out. For the full contract (output shape, the `im:message.reactions:read` scope requirement, and the "missing field ≠ fetch failure" data rules), read [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
-
-### Opt-in resource auto-download (`--download-resources`)
-
-`+chat-messages-list`, `+messages-mget`, and `+threads-messages-list` accept `--download-resources` (**off by default** — no `resources` block and no extra requests when omitted). When set, eligible message resources (image/file/audio/video/media + post-embedded; **stickers excluded**) are downloaded into `./lark-im-resources/` and each message gains a `resources` array of `{message_id, key, type, local_path, size_bytes}`. Downloads are deduped by `(message_id, file_key)`, run with bounded concurrency, and isolate single-resource failures (`error: true` + stderr warning). **Scope:** requires `im:message:readonly` (already declared by the listing commands — no extra scope); works under both user and bot identity. For one-off downloads use [`+messages-resources-download`](references/lark-im-messages-resources-download.md). Full contract: [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
-
-### Card Messages (Interactive)
-
-Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
+The four message-pulling shortcuts auto-attach `reactions` (+ `update_time` for edited messages) — no separate `reactions.batch_query` (needs `im:message.reactions:read`); `--no-reactions` opts out. `+chat-messages-list` / `+messages-mget` / `+threads-messages-list` also accept `--download-resources` (opt-in, off by default) to fetch message binaries into `./lark-im-resources/`. Contract: [`references/lark-im-message-enrichment.md`](references/lark-im-message-enrichment.md).
 
 ### Flag Types
 
-Flags support two layers:
-
-- **Message-layer flag**: `(ItemTypeDefault, FlagTypeMessage)` — regular message bookmark
-- **Feed-layer flag**: `(ItemTypeThread/ItemTypeMsgThread, FlagTypeFeed)` — thread as feed-layer bookmark
-
-Item types for feed-layer flags:
-- **ItemTypeThread** (4) = thread in a topic-style chat
-- **ItemTypeMsgThread** (11) = thread in a regular chat
+Two layers (item_type auto-detected from chat mode — rarely set by hand):
+- **Message-layer** `(ItemTypeDefault, FlagTypeMessage)` — regular message bookmark.
+- **Feed-layer** `(ItemType{Thread|MsgThread}, FlagTypeFeed)` — thread bookmarked at feed level:
+  - **ItemTypeThread** (4) = a topic in a topic-style chat (an entry in the group's Thread tab).
+  - **ItemTypeMsgThread** (11) = a reply thread under a single message in a regular group.
 
 ### Feed Shortcut
 
-Feed shortcuts add chats to the **current user's** feed sidebar. They are distinct from flags:
+Pins a chat to the **current user's** feed sidebar. Limits: **CHAT-type only** (oc_xxx); **user-identity only**; **10 per call** for create/remove; list uses opaque `page_token`.
 
-- **Flag** = bookmark on a message/thread, scoped to the user's bookmark list.
-- **Feed shortcut** = entry in the user's feed sidebar (currently only chats).
+## 不在本 skill 范围
 
-Key limits:
-- Only **CHAT-type** (`feed_card_id` is `oc_xxx`) is exposed via OpenAPI; doc/app/subscription shortcuts exist internally but are not yet whitelisted.
-- All three operations (create/remove/list) are **user-identity only** — they sign with `user_access_token`.
-- Batch size is **10 per call** for create/remove; list is a one-page wrapper with opaque `page_token` pagination.
+- 邮件 → [`lark-mail`](../lark-mail/SKILL.md)｜日程/会议 → [`lark-calendar`](../lark-calendar/SKILL.md)｜会议回放/纪要 → [`lark-vc`](../lark-vc/SKILL.md)
+- 文档评论 → [`lark-drive`](../lark-drive/SKILL.md)｜IM 事件订阅 → [`lark-event`](../lark-event/SKILL.md)｜姓名解析 open_id → [`lark-contact`](../lark-contact/SKILL.md)
+
+群禁言 / 管理员 / 角色 / 解散 / 转让 / 群设置 等群治理 lark-cli im 暂无命令：如实告知“暂不支持”、勿臆造，引导用户到飞书客户端群设置手动操作（高风险写操作，勿擅自走原生 API 代执行）。

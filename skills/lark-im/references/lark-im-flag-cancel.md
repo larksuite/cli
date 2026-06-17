@@ -2,66 +2,13 @@
 
 > **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) for authentication, global parameters, and security rules.
 
-This skill maps to shortcut: `lark-cli im +flag-cancel`. Underlying API: `POST /open-apis/im/v1/flags/cancel`.
+Maps to `lark-cli im +flag-cancel`. **Run `lark-cli im +flag-cancel --help` for the authoritative flags (`--message-id` / `--flag-type` / `--item-type`), defaults, and enums.** This file covers only what `--help` cannot.
 
-## Double-Cancel Behavior (Important)
+## Gotchas
 
-A message can have flags on both layers simultaneously:
-- Message layer: `(default, message)`
-- Feed layer: `(thread, feed)` or `(msg_thread, feed)` depending on chat type
-
-**When no `--flag-type` is specified, the shortcut performs best-effort double-cancel**: the message-layer flag is always removed; the feed-layer flag is also removed when the chat type can be determined (otherwise a warning is printed on stderr and the feed layer is skipped). The server handles cancel requests for non-existent flags idempotently, so this is safe.
-
-**Feed layer item_type is determined by chat_mode**:
-- Topic-style chat (`chat_mode=topic`) → `item_type=thread`
-- Regular chat (`chat_mode=group`) → `item_type=msg_thread`
-
-## Commands
-
-```bash
-# Double-cancel both layers (recommended default)
-lark-cli im +flag-cancel --as user --message-id om_xxx
-
-# Only cancel message layer
-lark-cli im +flag-cancel --as user --message-id om_xxx --flag-type message
-
-# Only cancel feed layer (need to specify item-type)
-lark-cli im +flag-cancel --as user --message-id om_xxx --item-type thread --flag-type feed
-
-# Preview request
-lark-cli im +flag-cancel --as user --message-id om_xxx --dry-run
-```
-
-## Parameters
-
-| Parameter | Required | Description |
-|------|------|------|
-| `--message-id <om_xxx>` | Required | Message ID |
-| `--flag-type <name>` | No | `message` or `feed`; **when omitted, best-effort double-cancel of both layers** |
-| `--item-type <name>` | No | `default\|thread\|msg_thread`; required when `--flag-type feed` |
-| `--as user` | Required | Currently only supports user identity |
-
-## Idempotency
-
-The server doesn't return an error for cancel requests when the flag doesn't exist, so repeated `+cancel` calls are idempotent.
-
-## Permissions
-
-- Required scopes: `im:feed.flag:write`, `im:message.group_msg:get_as_user`, `im:message.p2p_msg:get_as_user`, `im:chat:read`
-- The message/chat read scopes are used by the default double-cancel path to auto-detect the feed-layer item type.
-
-## Note
-
-- **Do not call +flag-list for verification**: If the cancel API returns success, the flag is removed. Calling +flag-list to verify is expensive (requires full pagination) and unnecessary.
-
-## Finding Message ID Efficiently
-
-If you have message content but not the message ID:
-
-1. **Use `+messages-search`** to find the message by content, then extract `message_id` from the result
-2. **Do NOT use `+flag-list`** to find the message — it requires full pagination and is very inefficient
-
-```bash
-# Search by message content to find message_id
-lark-cli im +messages-search --as user --query "message content here" -q '.data.items[0].message_id'
-```
+- **Default is double-cancel (both layers)**: omitting `--flag-type` best-effort cancels both the message-layer flag `(default, message)` and the feed-layer flag `(thread, feed)` or `(msg_thread, feed)`. The server treats cancel of a non-existent flag idempotently — no error — so double-cancel is safe even when only one layer has a flag.
+- **Feed-layer `item_type` is determined by `chat_mode`**: `topic` chat → `item_type=thread`; regular `group` chat → `item_type=msg_thread`. The double-cancel path auto-detects this (requires `im:chat:read`). **Best-effort, not all-or-nothing**: the message layer is always removed; the feed layer is removed only when the chat type can be determined — otherwise a warning is printed on stderr and the feed layer is silently skipped (the command still exits 0). When calling single-layer feed cancel with `--flag-type feed`, you must supply `--item-type` explicitly.
+- **Idempotent**: repeated cancel calls on an already-unflagged message succeed silently.
+- **Do NOT call `+flag-list` for verification**: a success response means the flag was removed. Paginating `+flag-list` to confirm is expensive and unnecessary.
+- **Finding a message ID**: use `+messages-search --query "<keywords>"` to locate the message and extract `message_id`. Do NOT use `+flag-list` — it requires full pagination and won't reliably locate the message.
+- **User identity only** — `--as bot` is not supported.

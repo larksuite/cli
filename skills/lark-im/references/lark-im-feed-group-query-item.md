@@ -1,44 +1,24 @@
 # +feed-group-query-item
 
-> Shortcut for `lark-cli im +feed-group-query-item`. Look up specific feed cards inside one feed group (tag) by ID, enriched with a readable `chat_name`.
+> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication, global parameters, and safety rules.
 
-`+feed-group-query-item` is the only CLI surface for the `feed.groups.batch_query_item` read API — there is no raw `feed.groups batch_query_item` command. It resolves a human-readable `chat_name` for every feed card it returns: a v1 feed card's `feed_id` is always a chat ID (`oc_xxx`), so the shortcut issues a follow-up `POST /open-apis/im/v1/chats/batch_query` and injects `chat_name` into each entry of both `items[]` and `deleted_items[]`.
+Maps to `lark-cli im +feed-group-query-item`. **Run `lark-cli im +feed-group-query-item --help` for the authoritative flags (`--feed-group-id` / `--feed-id` / `--as`); `--feed-id` is a comma-separated list of chat IDs and `feed_type` is fixed to `chat`.** This file covers only what `--help` cannot.
 
-## Identity
+**User identity only** (`--as user`); bot/tenant tokens are rejected. This is the **only** CLI surface for `feed.groups.batch_query_item` — there is no raw command.
 
-User-only. Run with `--as user`.
+## Gotchas
 
-## Scopes
+- **Lightweight ID lookup — prefer it over the list methods when you already hold the IDs.** Use this when you have the `feed_id`s (the `oc_xxx` you passed to `batch_add_item`); reserve `+feed-group-list-item` (paginated, heavier) for discovering IDs you don't have. **No pagination** for this method.
+- **`chat_name` enrichment is unconditional → needs a second scope.** Resolves `chat_name` for each card exactly as `+feed-group-list-item` does (follow-up `chats/batch_query`, injected into both `items[]` and `deleted_items[]`). So this needs `im:chat:read` **in addition to** `im:feed_group_v1:read`; there is no un-enriched path.
+- **Unresolvable cards silently omit `chat_name`** — soft-deleted or no-permission chats just lack the field; the command still exits 0. **p2p (direct) cards also omit it** (server returns an empty `name`); to label one, fetch the chat via `chats/batch_query`, read `p2p_target_id`, and resolve it with a contact lookup.
 
-Because chat-name resolution always runs, this shortcut needs **two** user scopes unconditionally:
+## HELP-GAP — not yet in `--help`/schema; keep until CLI adds it
 
-- `im:feed_group_v1:read` — to read the items
-- `im:chat:read` — to resolve names
-
-`chat_name` resolution always runs, so there is no single-scope, un-enriched path. For the other raw `feed.groups.*` methods, see [lark-im-feed-groups.md](lark-im-feed-groups.md).
-
-## Usage
-
-```bash
-lark-cli im +feed-group-query-item --as user \
-  --feed-group-id ofg_xxx --feed-id oc_a,oc_b
-```
-
-## Flags
-
-| Flag | Required | Description |
-|---|---|---|
-| `--feed-group-id` | Yes | Feed group ID (`ofg_xxx`); path parameter |
-| `--feed-id` | Yes | Comma-separated chat IDs (`oc_xxx`); `feed_type` is fixed to `chat` |
-
-## Output
-
-The command sends `{"items":[{"feed_id":"oc_a","feed_type":"chat"},{"feed_id":"oc_b","feed_type":"chat"}]}`, then enriches the response (`items[]` and `deleted_items[]`) with `chat_name` exactly as `+feed-group-list-item` does. There is no pagination for this method.
-
-A feed card whose chat cannot be resolved (soft-deleted or no permission) simply omits `chat_name` — the command still exits 0. p2p (direct) chats also omit `chat_name`: the server returns an empty `name` for them (the client UI shows the partner's display name instead); if a label is needed, fetch the chat via `chats/batch_query`, read `p2p_target_id`, and resolve it with a contact lookup.
+- **Required scopes**: `im:feed_group_v1:read` **plus** `im:chat:read` (always).
+- **Output fields** (raw envelope): `items[]` (live) / `deleted_items[]` (soft-deleted), each `{feed_id (oc_xxx), feed_type (chat), update_time, chat_name (when resolvable)}`.
 
 ## See also
 
-- [lark-im-feed-groups.md](lark-im-feed-groups.md) — raw `feed.groups.*` APIs, enums, and rule guidance
+- [lark-im-feed-groups.md](lark-im-feed-groups.md) — raw `feed.groups.*` write APIs, enums, and rule guidance
 - [lark-im-feed-group-list.md](lark-im-feed-group-list.md) — list your feed groups
 - [lark-im-feed-group-list-item.md](lark-im-feed-group-list-item.md) — list all feed cards in a group (paginated)

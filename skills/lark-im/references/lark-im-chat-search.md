@@ -1,142 +1,29 @@
 # im +chat-search
 
-> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first to understand authentication, global parameters, and safety rules.
+> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication, global parameters, and safety rules.
 
-Search the list of group chats visible to a user or bot, including chats the user or bot belongs to and public chats visible to them. Supports keyword matching on chat names and member names, including pinyin and prefix fuzzy search.
+Maps to `lark-cli im +chat-search`. **Run `lark-cli im +chat-search --help` for the authoritative flag list (`--query` / `--member-ids` / `--search-types` / `--chat-modes` / `--sort` / `--page-size` / `--page-token` / `--is-manager` / `--exclude-muted` / `--disable-search-by-user`), limits, and enums.** This file covers only what `--help` cannot.
 
-This skill maps to the shortcut: `lark-cli im +chat-search` (internally calls `POST /open-apis/im/v2/chats/search`).
+## Gotchas
 
-## Commands
+- **Visibility-scoped, not global**: only finds chats visible to the current identity (joined chats + visible public chats). A chat the caller can't see won't appear.
+- **At least one of `--query` / `--member-ids`** must be given (either alone, or combined).
+- `--query` containing `-` is auto-wrapped in quotes.
+- **On empty results, do NOT fall back to `+chat-list` / `GET /chats`** — list is not a search API (returns all chats unfiltered, won't locate the target). Refine the keyword or check visibility under the current identity instead.
+- Supports `--as user` (default) and `--as bot` (bot needs bot capability enabled).
+- **`--sort` is always descending** (`create_time` / `update_time` / `member_count`, high→low). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API doesn't support ascending and re-sort the fetched page client-side — do **NOT** invent `member_count_asc` or pass `asc` (rejected).
 
-```bash
-# Search chats by keyword
-lark-cli im +chat-search --query "project"
+## `--exclude-muted` (user identity only)
 
-# Restrict by search types
-lark-cli im +chat-search --query "project" --search-types "private,public_joined"
+Drops do-not-disturb chats; under `--as bot` the filter is silently inactive (mute is per-user / UAT-only). When set, the JSON envelope gains a `filter` sub-object (absent otherwise, so existing consumers are unaffected); the invariant **`fetched_count == returned_count + filtered_count`** always holds. Only confirmed-muted chats count toward `filtered_count`; non-member public groups are retained and surfaced in `hint`. For strict member-only results, combine with `--search-types "private,public_joined,external"`.
 
-# Filter by chat mode (group = regular group, topic = topic/thread group)
-lark-cli im +chat-search --query "project" --chat-modes "topic"
+## Error → remediation
 
-# Filter by member open_ids (with keyword)
-lark-cli im +chat-search --query "project" --member-ids "ou_xxx,ou_yyy"
+- `99991679` (`--as user`): UAT not authorized for `im:chat:read` → `lark-cli auth login --scope "im:chat:read"`.
+- `99991672` (`--as bot`): app lacks `im:chat:read` TAT → enable in the Open Platform console.
+- `232025`: bot capability not activated → enable in the console.
 
-# Search by member open_ids only
-lark-cli im +chat-search --member-ids "ou_xxx,ou_yyy"
+## HELP-GAP — not yet in `--help`/schema; keep until CLI adds it
 
-# Only show chats you created or manage
-lark-cli im +chat-search --query "project" --is-manager
-
-# Set page size
-lark-cli im +chat-search --query "project" --page-size 10
-
-# Pagination
-lark-cli im +chat-search --query "project" --page-token "xxx"
-
-# JSON output
-lark-cli im +chat-search --query "project" --format json
-
-# Preview the request without executing it
-lark-cli im +chat-search --query "project" --dry-run
-```
-
-## Parameters
-
-| Parameter | Required | Limits | Description |
-|------|------|------|------|
-| `--query <keyword>` | No (at least one of `--query` / `--member-ids` required) | Max 64 characters | Search keyword. Supports matching localized chat names, member names, multilingual search, pinyin, and prefix fuzzy search. If the query contains `-`, it is automatically wrapped in quotes |
-| `--search-types <types>` | No | Comma-separated: `private`, `external`, `public_joined`, `public_not_joined` | Restrict the visible chat types returned by search |
-| `--chat-modes <modes>` | No | Comma-separated: `group`, `topic` | Filter by chat mode (server-side): `group` = regular group, `topic` = topic/thread group |
-| `--member-ids <ids>` | No (at least one of `--query` / `--member-ids` required) | Up to 50, format `ou_xxx` | Filter by member open_ids; can be used alone or combined with `--query` |
-| `--is-manager` | No | - | Only show chats you created or manage |
-| `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |
-| `--sort <field>` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
-| `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
-| `--page-token <token>` | No | - | Pagination token from the previous response |
-| `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
-| `--format json` | No | - | Output as JSON |
-| `--dry-run` | No | - | Preview the request without executing it |
-
-> **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
-
-> **CAUTION:** `--sort` is **always descending** — the search API only ranks the chosen field high-to-low (e.g. `member_count` = most members first). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API does not support ascending order; any low-to-high view requires re-sorting the fetched page client-side and is not an upstream sort. Do **not** invent values like `member_count_asc` or pass `asc` (they are rejected).
-
-## Output Fields
-
-| Field | Description |
-|------|------|
-| `chat_id` | Chat ID (`oc_xxx` format) |
-| `name` | Chat name |
-| `description` | Chat description |
-| `owner_id` | Owner ID |
-| `external` | Whether the chat is external |
-| `chat_status` | Chat status (`normal` / `dissolved` / `dissolved_save`) |
-
-## Filtering muted chats
-
-`--exclude-muted` (user identity only) drops chats the current user has set to do-not-disturb. After the search call, the CLI batches the page's chat_ids through `POST /open-apis/im/v1/chat_user_setting/batch_get_mute_status` and filters client-side. Under `--as bot`, the mute API is UAT-only and the filter is silently skipped.
-
-When the flag is set, the JSON envelope gains a `filter` sub-object (absent otherwise, so existing consumers are unaffected); `fetched_count == returned_count + filtered_count` always holds:
-
-```json
-{
-  "chats": [...],
-  "filter": {
-    "applied": "exclude_muted",
-    "fetched_count": 20,
-    "returned_count": 19,
-    "filtered_count": 1,
-    "hint": "Filtered out 1 muted chat(s) on this page (19 remaining, including 2 non-member public group(s)); use --page-token to fetch more."
-  }
-}
-```
-
-Note: only confirmed-muted chats count toward `filtered_count`; non-member public groups are retained and surfaced in `hint`. For strict member-only results, combine with `--search-types "private,public_joined,external"`.
-
-## Usage Scenarios
-
-### Scenario 1: Search chats that contain a keyword
-
-```bash
-lark-cli im +chat-search --query "design review"
-```
-
-### Scenario 2: Search a chat and list recent messages
-
-```bash
-CHAT_ID=$(lark-cli im +chat-search --query "project" --format json | jq -r '.data.chats[0].chat_id')
-lark-cli im +chat-messages-list --chat-id "$CHAT_ID"
-```
-
-### Scenario 3: Search a chat and send a message
-
-```bash
-CHAT_ID=$(lark-cli im +chat-search --query "daily report" --format json | jq -r '.data.chats[0].chat_id')
-lark-cli im +messages-send --chat-id "$CHAT_ID" --text "Today's progress update"
-```
-
-## Common Errors and Troubleshooting
-
-| Symptom | Root Cause | Solution |
-|---------|---------|---------|
-| `--query and --member-ids cannot both be empty` | Both were omitted | Provide at least `--query` or `--member-ids` |
-| Empty results | No visible chats matched the keyword or filters | Relax the keyword or filters and try again |
-| `--page-size must be an integer between 1 and 100` | page-size is out of range or not an integer | Use an integer between 1 and 100 |
-| Permission denied (99991672) | The bot app does not have `im:chat:read` TAT permission enabled | Enable the permission for the app in the Open Platform console |
-| Permission denied (99991679) with `--as user` | UAT is not authorized for `im:chat:read` | Run `lark-cli auth login --scope "im:chat:read"` |
-| `Bot ability is not activated` (232025) | The app does not have bot capability enabled | Enable bot capability in the Open Platform console |
-
-## AI Usage Guidance
-
-When the user asks to search chats, follow these rules:
-
-1. **At least one filter required:** `--query` and `--member-ids` cannot both be empty. Either alone or combined together are valid.
-2. **Search scope is limited:** only chats visible to the current user or bot can be found (joined chats plus public chats). This is not a global search over all chats.
-3. **Control result volume:** the result set may be large. Use `--page-size` deliberately.
-4. **Suggest follow-up actions:** after finding a chat, common next steps include listing recent messages (`im +chat-messages-list`) or sending a message (`im +messages-send`).
-5. **NEVER fall back to chats list:** If `+chat-search` returns empty results, do NOT attempt to use `+chat-list` or `GET /open-apis/im/v1/chats` as a fallback. The list API is not a search API — it returns all chats without keyword filtering and will not help locate the target chat. Instead, ask the user to refine the keyword or check whether the chat is visible to the current identity.
-
-## References
-
-- [lark-im](../SKILL.md) - all IM commands
-- [lark-shared](../../lark-shared/SKILL.md) - authentication and global parameters
+- **Output fields**: `chat_id` (oc_xxx) · `name` · `description` · `owner_id` · `external` · `chat_status` (`normal` / `dissolved` / `dissolved_save`).
+- `--member-ids`: up to 50, format `ou_xxx` (`--help` only says "comma-separated").

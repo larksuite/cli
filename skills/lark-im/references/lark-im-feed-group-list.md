@@ -1,65 +1,24 @@
 # +feed-group-list
 
-> Shortcut for `lark-cli im +feed-group-list`. List the caller's feed groups (tags) with auto-pagination that correctly merges both the live and soft-deleted lists.
+> **Prerequisite:** Read [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) first for authentication, global parameters, and safety rules.
 
-`+feed-group-list` is the only CLI surface for listing feed groups — there is no raw `feed.groups list` command. The list response carries two parallel arrays — `groups` (live) and `deleted_groups` (soft-deleted). The shortcut paginates this dual-list response correctly: its `--page-all` merges **both** arrays across pages (a naive single-array pager would silently drop one list's later pages). It adds no enrichment.
+Maps to `lark-cli im +feed-group-list`. **Run `lark-cli im +feed-group-list --help` for the authoritative flags (`--page-size` / `--page-token` / `--page-all` / `--page-limit` / `--start-time` / `--end-time` / `--as`), the page-size range, and the time format.** This file covers only what `--help` cannot.
 
-## Identity
+**User identity only** (`--as user`); bot/tenant tokens are rejected by the server. This is the **only** CLI surface for listing feed groups — there is no raw `feed.groups list` command.
 
-User-only. Run with `--as user`.
+## Gotchas
 
-## Scopes
+- **Dual-list response, merged by `--page-all`.** The response carries two parallel arrays — `groups` (live) and `deleted_groups` (soft-deleted). `--page-all` merges **both** across pages; a naive single-array pager would silently drop one list's later pages. Incremental-sync consumers must read both arrays. Adds no enrichment.
+- **`--page-token` wins over `--page-all`** when both are set — you get exactly that one page, not a full sweep.
+- **Never infer completeness from counts.** `--page-size` caps `groups` + `deleted_groups` *combined*, so a page may hold fewer live groups than the size suggests, and per-page counts can be smaller still when entries are filtered. Pagination is governed solely by `has_more`.
 
-- `im:feed_group_v1:read`
+## HELP-GAP — not yet in `--help`/schema; keep until CLI adds it
 
-## Usage
-
-```bash
-# First page
-lark-cli im +feed-group-list --as user
-
-# Auto-paginate through all your feed groups (both live and deleted)
-lark-cli im +feed-group-list --as user --page-all
-
-# Within an update-time window
-lark-cli im +feed-group-list --as user --page-all \
-  --start-time 1767196800000 --end-time 1767200000000
-```
-
-## Flags
-
-| Flag | Required | Description |
-|---|---|---|
-| `--page-size` | No | Records per page, 1–50 (default 50). Caps the combined `groups` + `deleted_groups` count, so a page may hold fewer live groups than the size suggests |
-| `--page-token` | No | Continuation token for a specific page |
-| `--page-all` | No | Auto-paginate and merge all pages (both lists) |
-| `--page-limit` | No | Max pages when `--page-all` is set, 1–1000 (default 20) |
-| `--start-time` | No | Update-time window start (Unix milliseconds as a decimal string) |
-| `--end-time` | No | Update-time window end (Unix milliseconds as a decimal string) |
-
-When `--page-token` is set explicitly, it wins over `--page-all` (you get exactly that page).
-
-## Output
-
-JSON keeps the raw envelope; with `--page-all` both lists are returned fully merged:
-
-```json
-{
-  "groups": [
-    { "group_id": "ofg_xxx", "type": "normal", "name": "Releases", "rules": { "rules": [] } }
-  ],
-  "deleted_groups": [
-    { "group_id": "ofg_yyy", "type": "rule", "name": "Old", "rules": { "rules": [] } }
-  ],
-  "page_token": "",
-  "has_more": false
-}
-```
-
-> `page_size` counts live and deleted groups together, and the per-page count can be smaller still when entries are filtered — so never infer completeness from counts. Pagination is governed solely by `has_more`.
+- **Required scope**: `im:feed_group_v1:read`.
+- **Output fields** (raw envelope): `groups[]` / `deleted_groups[]`, each `{group_id (ofg_xxx), type (normal|rule), name, rules{rules[]}}` · `page_token` · `has_more`. The `rules` shape is documented in [lark-im-feed-groups.md](lark-im-feed-groups.md).
 
 ## See also
 
-- [lark-im-feed-groups.md](lark-im-feed-groups.md) — raw `feed.groups.*` APIs, enums, and rule guidance
+- [lark-im-feed-groups.md](lark-im-feed-groups.md) — raw `feed.groups.*` write APIs, enums, and rule guidance
 - [lark-im-feed-group-list-item.md](lark-im-feed-group-list-item.md) — list the feed cards inside one group
 - [lark-im-feed-group-query-item.md](lark-im-feed-group-query-item.md) — look up specific feed cards by ID
