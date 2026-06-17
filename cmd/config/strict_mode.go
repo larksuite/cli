@@ -45,20 +45,20 @@ explicit user confirmation — never run on your own initiative.`,
 			if reset {
 				app := multi.CurrentAppConfig(f.Invocation.Profile)
 				if app == nil {
-					return core.NoActiveProfileError()
+					return noActiveProfileError(f, multi)
 				}
 				return resetStrictMode(f, multi, app, global, args)
 			}
 			if len(args) == 0 {
 				app := multi.CurrentAppConfig(f.Invocation.Profile)
 				if app == nil {
-					return core.NoActiveProfileError()
+					return noActiveProfileError(f, multi)
 				}
 				return showStrictMode(cmd.Context(), f, multi, app)
 			}
 			app := multi.CurrentAppConfig(f.Invocation.Profile)
 			if !global && app == nil {
-				return core.NoActiveProfileError()
+				return noActiveProfileError(f, multi)
 			}
 			return setStrictMode(f, multi, app, args[0], global)
 		},

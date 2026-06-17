@@ -70,6 +70,9 @@ func authListRun(opts *ListOptions) error {
 	}
 
 	app := multi.CurrentAppConfig(f.Invocation.Profile)
+	if app == nil && f.Invocation.Profile != "" && f.Invocation.ProfileSource == core.ProfileSourceProject {
+		return core.ProjectProfileNotFoundError(f.Invocation.Profile, f.Invocation.ProfileConfigPath, multi.ProfileNames())
+	}
 	if app == nil || len(app.Users) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{

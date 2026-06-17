@@ -34,6 +34,103 @@ func setupProfileConfigDir(t *testing.T) string {
 	return dir
 }
 
+func saveProfileTestConfig(t *testing.T) {
+	t.Helper()
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "bytedance",
+		Apps: []core.AppConfig{
+			{Name: "bytedance", AppId: "app_bytedance", AppSecret: core.PlainSecret("secret"), Brand: core.BrandFeishu},
+			{Name: "team-prod", AppId: "app_team", AppSecret: core.PlainSecret("secret"), Brand: core.BrandLark},
+			{Name: "lark-boe", AppId: "app_lark_boe", AppSecret: core.PlainSecret("secret"), Brand: core.BrandLark},
+		},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+}
+
+func TestProfileBindRun_WritesProjectConfigAtGitRoot(t *testing.T) {
+	setupProfileConfigDir(t)
+	saveProfileTestConfig(t)
+
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0700); err != nil {
+		t.Fatalf("Mkdir(.git): %v", err)
+	}
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0700); err != nil {
+		t.Fatalf("MkdirAll(sub): %v", err)
+	}
+	cmdutil.TestChdir(t, sub)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileBindRun(f, "app_team"); err != nil {
+		t.Fatalf("profileBindRun() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(repo, core.ProjectConfigFileName))
+	if err != nil {
+		t.Fatalf("ReadFile(project config): %v", err)
+	}
+	var cfg core.ProjectConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("Unmarshal(project config): %v", err)
+	}
+	if cfg.Profile != "team-prod" {
+		t.Fatalf("project profile = %q, want team-prod", cfg.Profile)
+	}
+}
+
+func TestProfileUnbindRun_RemovesNearestProjectConfig(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0700); err != nil {
+		t.Fatalf("Mkdir(.git): %v", err)
+	}
+	path := filepath.Join(repo, core.ProjectConfigFileName)
+	if err := os.WriteFile(path, []byte(`{"profile":"bytedance"}`), 0600); err != nil {
+		t.Fatalf("WriteFile(project config): %v", err)
+	}
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0700); err != nil {
+		t.Fatalf("MkdirAll(sub): %v", err)
+	}
+	cmdutil.TestChdir(t, sub)
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	if err := profileUnbindRun(f); err != nil {
+		t.Fatalf("profileUnbindRun() error = %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("project config still exists, Stat err = %v", err)
+	}
+}
+
+func TestProfileCurrentRun_ProjectSource(t *testing.T) {
+	configDir := setupProfileConfigDir(t)
+	saveProfileTestConfig(t)
+	projectPath := filepath.Join(t.TempDir(), core.ProjectConfigFileName)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+	f.Invocation = cmdutil.InvocationContext{
+		Profile:           "team-prod",
+		ProfileSource:     core.ProfileSourceProject,
+		ProfileConfigPath: projectPath,
+	}
+	if err := profileCurrentRun(f); err != nil {
+		t.Fatalf("profileCurrentRun() error = %v", err)
+	}
+
+	var got currentProfileOutput
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal(stdout): %v\nstdout=%s", err, stdout.String())
+	}
+	if got.Profile != "team-prod" || got.Source != "project" || got.Config != projectPath || got.AppID != "app_team" {
+		t.Fatalf("current profile = %#v", got)
+	}
+	if got.Config == filepath.Join(configDir, "config.json") {
+		t.Fatalf("project source should report project config, got global path %q", got.Config)
+	}
+}
+
 func TestProfileAddRun_InvalidExistingConfigReturnsError(t *testing.T) {
 	dir := setupProfileConfigDir(t)
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{invalid json"), 0600); err != nil {

@@ -5,6 +5,8 @@ package credential_test
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	extcred "github.com/larksuite/cli/extension/credential"
@@ -79,6 +81,42 @@ type mockDefaultTokenProvider struct {
 
 func (m *mockDefaultTokenProvider) ResolveToken(ctx context.Context, req credential.TokenSpec) (*credential.TokenResult, error) {
 	return &credential.TokenResult{Token: m.token, Scopes: m.scopes}, nil
+}
+
+func TestDefaultAccountProvider_ProjectProfileMissingFailsClosed(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "")
+	t.Setenv(envvars.CliAppSecret, "")
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	if err := core.SaveMultiAppConfig(&core.MultiAppConfig{
+		CurrentApp: "bytedance",
+		Apps: []core.AppConfig{{
+			Name:      "bytedance",
+			AppId:     "cfg_app",
+			AppSecret: core.PlainSecret("cfg_secret"),
+			Brand:     core.BrandFeishu,
+		}},
+	}); err != nil {
+		t.Fatalf("SaveMultiAppConfig: %v", err)
+	}
+
+	defaultAcct := credential.NewDefaultAccountProviderWithSource(
+		func() keychain.KeychainAccess { return &noopKC{} },
+		"missing",
+		core.ProfileSourceProject,
+		"/repo/.lark-cli.json",
+	)
+	_, err := defaultAcct.ResolveAccount(context.Background())
+	if err == nil {
+		t.Fatal("ResolveAccount() error = nil, want project profile not found")
+	}
+	var cfgErr *core.ConfigError
+	if !errors.As(err, &cfgErr) {
+		t.Fatalf("error type = %T, want *core.ConfigError", err)
+	}
+	if !strings.Contains(cfgErr.Message, "configured by project") || !strings.Contains(cfgErr.Hint, "/repo/.lark-cli.json") {
+		t.Fatalf("ConfigError = %#v", cfgErr)
+	}
 }
 
 func TestFullChain_ConfigStrictMode(t *testing.T) {
