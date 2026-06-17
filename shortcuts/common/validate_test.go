@@ -283,18 +283,19 @@ func TestExactlyOne(t *testing.T) {
 	}
 }
 
-func TestParseIntBounded(t *testing.T) {
+func TestValidatePageSizeTyped_IntFlag(t *testing.T) {
 	tests := []struct {
 		name     string
 		val      string
 		min, max int
 		want     int
+		wantErr  bool
 	}{
-		{"within range", "10", 1, 50, 10},
-		{"below min", "0", 1, 50, 1},
-		{"above max", "100", 1, 50, 50},
-		{"at min", "1", 1, 50, 1},
-		{"at max", "50", 1, 50, 50},
+		{"within range", "10", 1, 50, 10, false},
+		{"below min", "0", 1, 50, 0, true},
+		{"above max", "100", 1, 50, 0, true},
+		{"at min", "1", 1, 50, 1, false},
+		{"at max", "50", 1, 50, 50, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -303,9 +304,16 @@ func TestParseIntBounded(t *testing.T) {
 			cmd.ParseFlags(nil)
 			cmd.Flags().Set("page-size", tt.val)
 			rt := &RuntimeContext{Cmd: cmd}
-			got := ParseIntBounded(rt, "page-size", tt.min, tt.max)
+			got, err := ValidatePageSizeTyped(rt, "page-size", 20, tt.min, tt.max)
+			if tt.wantErr {
+				assertValidationParam(t, err, "--page-size")
+				return
+			}
+			if err != nil {
+				t.Fatalf("ValidatePageSizeTyped() error = %v", err)
+			}
 			if got != tt.want {
-				t.Errorf("ParseIntBounded() = %d, want %d", got, tt.want)
+				t.Errorf("ValidatePageSizeTyped() = %d, want %d", got, tt.want)
 			}
 		})
 	}

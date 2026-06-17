@@ -31,9 +31,7 @@ func dryRunDashboardBase(runtime *common.RuntimeContext) *common.DryRunAPI {
 // dryRunDashboardList returns a DryRunAPI for listing dashboards.
 func dryRunDashboardList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -82,9 +80,7 @@ func dryRunDashboardDelete(_ context.Context, runtime *common.RuntimeContext) *c
 // dryRunDashboardBlockList returns a DryRunAPI for listing dashboard blocks.
 func dryRunDashboardBlockList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -171,9 +167,7 @@ func dryRunDashboardBlockDelete(_ context.Context, runtime *common.RuntimeContex
 // executeDashboardList lists all dashboards in a base.
 func executeDashboardList(runtime *common.RuntimeContext) error {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}
@@ -241,9 +235,7 @@ func executeDashboardDelete(runtime *common.RuntimeContext) error {
 // executeDashboardBlockList lists all blocks in a dashboard.
 func executeDashboardBlockList(runtime *common.RuntimeContext) error {
 	params := map[string]interface{}{}
-	if pageSize := strings.TrimSpace(runtime.Str("page-size")); pageSize != "" {
-		params["page_size"] = pageSize
-	}
+	params["page_size"] = runtime.Int("page-size")
 	if pageToken := strings.TrimSpace(runtime.Str("page-token")); pageToken != "" {
 		params["page_token"] = pageToken
 	}

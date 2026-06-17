@@ -186,7 +186,7 @@ func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{
 		offset = 0
 	}
 	body["offset"] = offset
-	body["limit"] = common.ParseIntBounded(runtime, "limit", 1, 200)
+	body["limit"] = getPaginationLimit(runtime)
 	return body, applyRecordQueryToBody(runtime, body)
 }
 
@@ -231,6 +231,17 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	if len(runtime.StrArray("search-field")) == 0 {
 		return baseFlagErrorf("--search-field is required unless --json is used")
 	}
+	if err := validateLimitPageSizeAlias(runtime); err != nil {
+		return err
+	}
+	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 10, 1, 200); err != nil {
+		return err
+	}
+	if runtime.Changed("page-size") {
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 10, 1, 200); err != nil {
+			return err
+		}
+	}
 	return validateRecordQueryOptions(runtime)
 }
 
@@ -240,7 +251,8 @@ func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool
 		len(recordListFields(runtime)) > 0 ||
 		runtime.Str("view-id") != "" ||
 		runtime.Changed("offset") ||
-		runtime.Changed("limit")
+		runtime.Changed("limit") ||
+		runtime.Changed("page-size")
 }
 
 func formatRecordQueryPriorityTip() string {
