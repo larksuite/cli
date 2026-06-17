@@ -24,9 +24,16 @@ build_target() {
     ext=".exe"
   fi
 
+  # linux/windows use the pure-Go TPM signer (sks_signer); cross-compilable with
+  # CGO off. darwin's keychain_signer needs cgo, so previews stay unsigned there.
+  local tags=""
+  if [[ "$goos" == "linux" || "$goos" == "windows" ]]; then
+    tags="-tags sks_signer"
+  fi
+
   local output="$OUT_DIR/bin/lark-cli-${goos}-${goarch}${ext}"
   echo "Building ${goos}/${goarch} -> ${output}"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./main.go
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath ${tags} -ldflags "$LDFLAGS" -o "$output" ./main.go
 }
 
 build_target darwin arm64
