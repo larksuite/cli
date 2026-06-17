@@ -220,7 +220,25 @@ func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand c
 		detail = strings.TrimSpace(string(body))
 	}
 	if result.Error != "" {
-		return "", fmt.Errorf("token endpoint HTTP %d (%s): %s", resp.StatusCode, result.Error, detail)
+		return "", classifyAssertionError(result.Error, resp.StatusCode, detail)
 	}
 	return "", fmt.Errorf("token endpoint HTTP %d (code=%d): %s", resp.StatusCode, result.Code, detail)
+}
+
+// classifyAssertionError maps the OAuth token endpoint's `error` field to a
+// typed or untyped error. Only deterministic client-credential rejections get a
+// typed errs.ConfigError (so runProbePKJWT can tell "this key is not bound to
+// this app" apart from upstream noise); every other error (e.g.
+// temporarily_unavailable) stays untyped and is swallowed by the probe. detail
+// carries only the server's error_description / msg / body text — it never
+// echoes the client_assertion or private key (the assertion lives only in the
+// request form).
+func classifyAssertionError(oauthError string, httpStatus int, detail string) error {
+	switch oauthError {
+	case "invalid_client", "unauthorized_client", "invalid_grant":
+		return errs.NewConfigError(errs.SubtypeInvalidClient,
+			"token endpoint rejected the key (%s): %s", oauthError, detail)
+	default:
+		return fmt.Errorf("token endpoint HTTP %d (%s): %s", httpStatus, oauthError, detail)
+	}
 }
