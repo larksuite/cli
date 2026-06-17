@@ -200,6 +200,29 @@ func cleanupOldConfig(existing *core.MultiAppConfig, f *cmdutil.Factory, skipApp
 	}
 }
 
+// removeStaleSecretForPKJWT clears a secret left in the keychain when the SAME
+// appId is migrated from client_secret to private_key_jwt. cleanupOldConfig
+// explicitly skips a matching appId, and saveAsProfile only cleans up on an
+// appId change, so a same-appId migration would orphan the old secret. This
+// fills that gap. RemoveSecretStore only deletes Source=="keychain" entries, so
+// the new pkjwt tee key handle is never touched.
+func removeStaleSecretForPKJWT(existing *core.MultiAppConfig, profileName, appID string, kc keychain.KeychainAccess) {
+	if existing == nil {
+		return
+	}
+	var prior *core.AppConfig
+	if profileName != "" {
+		if idx := findProfileIndexByName(existing, profileName); idx >= 0 {
+			prior = &existing.Apps[idx]
+		}
+	} else {
+		prior = existing.CurrentAppConfig("")
+	}
+	if prior != nil && prior.AppId == appID && !prior.AppSecret.IsZero() {
+		core.RemoveSecretStore(prior.AppSecret, kc)
+	}
+}
+
 // keyRefFromResult builds the TEE key reference to persist for a private_key_jwt
 // registration result, or nil for client_secret.
 func keyRefFromResult(r *configInitResult) *core.SecretRef {
@@ -451,6 +474,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
 				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 			}
+			removeStaleSecretForPKJWT(existing, opts.ProfileName, result.AppID, f.Keychain)
 			printLangPreferenceConfirmation(opts)
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{"appId": result.AppID, "authMethod": result.AuthMethod, "brand": result.Brand})
 			if err := runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel); err != nil {
@@ -492,6 +516,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 			if err := saveInitConfig(opts.ProfileName, existing, f, result.AppID, core.SecretInput{}, result.Brand, opts.Lang, result.AuthMethod, keyRefFromResult(result)); err != nil {
 				return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 			}
+			removeStaleSecretForPKJWT(existing, opts.ProfileName, result.AppID, f.Keychain)
 			if err := runProbePKJWT(opts.Ctx, f, result.Brand, result.AppID, keysigner.Active(), result.KeyLabel); err != nil {
 				return err
 			}
