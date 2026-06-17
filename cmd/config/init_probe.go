@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -88,5 +89,34 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
+	return nil
+}
+
+// runProbePKJWT does a best-effort key-binding validation after a private_key_jwt
+// config is saved: it signs a client_assertion with the local platform key and
+// mints a token. A typed error (a deterministic server rejection — e.g. the key
+// is not bound to this app) is propagated so `config init` exits non-zero with
+// the canonical envelope; untyped errors (transport / HTTP / parse / timeout)
+// are swallowed (return nil). The mint itself is the probe — no second call.
+func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
+	if factory == nil || signer == nil {
+		return nil
+	}
+	httpClient, err := factory.HttpClient()
+	if err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(parent, probeTimeout)
+	defer cancel()
+
+	if _, err := credential.FetchTATWithAssertion(ctx, httpClient, brand, clientID, signer, keyLabel); err != nil {
+		// Typed = deterministic credential rejection → propagate. Untyped
+		// (transport / HTTP / parse / timeout) is ambiguous → stay silent.
+		if errs.IsTyped(err) {
+			return err
+		}
+		return nil
+	}
 	return nil
 }
