@@ -6,6 +6,7 @@ package okr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -80,13 +81,19 @@ func TestWeightValidate_InvalidLevel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid --level")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--level" {
 		t.Fatalf("expected param --level, got %q", validationErr.Param)
@@ -119,13 +126,19 @@ func TestWeightValidate_MissingObjectiveIDForKRLevel(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing --objective-id when --level=key-result")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--objective-id" {
 		t.Fatalf("expected param --objective-id, got %q", validationErr.Param)
@@ -158,13 +171,19 @@ func TestWeightValidate_InvalidWeightsJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid --weights JSON")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -183,13 +202,19 @@ func TestWeightValidate_EmptyWeightsArray(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty --weights array")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -208,13 +233,19 @@ func TestWeightValidate_NegativeWeight(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for negative weight")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -236,13 +267,19 @@ func TestWeightValidate_WeightGreaterThanOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for weight > 1")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -261,13 +298,19 @@ func TestWeightValidate_TooManyDecimalPlaces(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for weight with more than 3 decimal places")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -289,13 +332,19 @@ func TestWeightValidate_SumGreaterThanOne(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for sum of weights > 1")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -317,13 +366,19 @@ func TestWeightValidate_DuplicateID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate id in --weights")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)
@@ -442,12 +497,13 @@ func TestWeightExecute_Objectives_Success(t *testing.T) {
 
 	// Verify output
 	data := decodeEnvelope(t, stdout)
-	ok, _ := data["ok"].(bool)
-	if !ok {
-		t.Fatal("expected ok=true in output")
+	if data["level"] != "objective" {
+		t.Fatalf("expected level=objective, got %v", data["level"])
 	}
-	dataField, _ := data["data"].(map[string]interface{})
-	weights, _ := dataField["weights"].([]interface{})
+	if data["cycle_id"] != "123" {
+		t.Fatalf("expected cycle_id=123, got %v", data["cycle_id"])
+	}
+	weights, _ := data["weights"].([]interface{})
 	if len(weights) != 2 {
 		t.Fatalf("expected 2 items in weights list, got %d", len(weights))
 	}
@@ -510,10 +566,17 @@ func TestWeightExecute_KeyResults_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify sum is exactly 1.0
+	// Verify output
 	data := decodeEnvelope(t, stdout)
-	dataField, _ := data["data"].(map[string]interface{})
-	weights, _ := dataField["weights"].([]interface{})
+	if data["level"] != "key-result" {
+		t.Fatalf("expected level=key-result, got %v", data["level"])
+	}
+	if data["cycle_id"] != "123" {
+		t.Fatalf("expected cycle_id=123, got %v", data["cycle_id"])
+	}
+	weights, _ := data["weights"].([]interface{})
+
+	// Verify sum is exactly 1.0
 	var sum float64
 	for _, w := range weights {
 		wm, _ := w.(map[string]interface{})
@@ -553,13 +616,19 @@ func TestWeightExecute_IDNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent ID")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--weights" {
 		t.Fatalf("expected param --weights, got %q", validationErr.Param)

@@ -23,8 +23,8 @@ lark-cli okr +weight \
   --level key-result \
   --objective-id 7000000000000000002 \
   --weights '[
-    {"id": "7000000000000000004", "weight": 0.5},
-    {"id": "7000000000000000005", "weight": 0.3}
+    {"id": "7000000000000000004", "weight": 0.6},
+    {"id": "7000000000000000005", "weight": 0.4}
   ]' \
   --as user
 
@@ -74,6 +74,7 @@ lark-cli okr +weight \
   "data": {
     "level": "objective",
     "cycle_id": "7000000000000000001",
+    "total": 3,
     "weights": [
       {"id": "7000000000000000002", "weight": 0.6},
       {"id": "7000000000000000003", "weight": 0.3},

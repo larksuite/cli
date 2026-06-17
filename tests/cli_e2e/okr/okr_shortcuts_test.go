@@ -288,7 +288,7 @@ func TestOKR_BatchCreateLive(t *testing.T) {
 	// Create test objectives
 	created := createTestObjectives(t, ctx, cycleID, suffix)
 
-	// Register cleanup
+	// Register cleanup immediately after create to ensure resources are cleaned up even if later code fails
 	t.Cleanup(func() {
 		cleanupLiveTest(t, created)
 	})
@@ -336,13 +336,14 @@ func TestOKR_ReorderLive(t *testing.T) {
 
 	// Create test objectives (A, then B)
 	created := createTestObjectives(t, ctx, cycleID, suffix)
-	objA := created[0].ObjectiveID
-	objB := created[1].ObjectiveID
 
-	// Register cleanup
+	// Register cleanup immediately after create to ensure resources are cleaned up even if later code fails
 	t.Cleanup(func() {
 		cleanupLiveTest(t, created)
 	})
+
+	objA := created[0].ObjectiveID
+	objB := created[1].ObjectiveID
 
 	// Reorder: swap positions (B at position 1, A at position 2)
 	ops := []map[string]interface{}{
@@ -397,13 +398,14 @@ func TestOKR_WeightLive(t *testing.T) {
 
 	// Create test objectives
 	created := createTestObjectives(t, ctx, cycleID, suffix)
-	objA := created[0].ObjectiveID
-	objB := created[1].ObjectiveID
 
-	// Register cleanup
+	// Register cleanup immediately after create to ensure resources are cleaned up even if later code fails
 	t.Cleanup(func() {
 		cleanupLiveTest(t, created)
 	})
+
+	objA := created[0].ObjectiveID
+	objB := created[1].ObjectiveID
 
 	// Set weights: A=0.6, B=0.4 (sum=1.0)
 	weights := []map[string]interface{}{

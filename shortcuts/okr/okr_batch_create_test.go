@@ -5,6 +5,7 @@ package okr
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
@@ -457,6 +458,22 @@ func TestBatchCreateExecute_APIErrorOnKR_TriggersRollback(t *testing.T) {
 	// Error should mention rollback
 	if !strings.Contains(err.Error(), "rolling back") && !strings.Contains(err.Error(), "rollback") {
 		t.Fatalf("expected error to mention rollback, got: %v", err)
+	}
+	// Assert typed error metadata
+	prob, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if prob.Category != errs.CategoryAPI {
+		t.Fatalf("expected api category (preserved from original error), got %q", prob.Category)
+	}
+	// Assert cause preservation
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected error to wrap APIError, got: %T", err)
+	}
+	if !errors.Is(err, apiErr) {
+		t.Fatal("expected errors.Is to find the wrapped APIError")
 	}
 }
 

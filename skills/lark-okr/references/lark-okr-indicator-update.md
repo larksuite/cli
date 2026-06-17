@@ -39,7 +39,7 @@ lark-cli okr +indicator-update \
 ## 工作流程
 
 1. 使用 `+cycle-list` 和 `+cycle-detail` 获取目标 ID 或 KR ID。
-2. 如需查看当前指标值，使用 `objective.indicators.list` 或 `key_result.indicators.list` 查询。
+2. 如需查看当前指标值，使用 `objective.indicators list` 或 `key_result.indicators list` 查询。
 3. 执行 `+indicator-update` 指定层级、ID 和新值。
 4. 命令自动查询指标 ID 并更新当前值。
 

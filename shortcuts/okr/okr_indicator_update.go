@@ -17,7 +17,10 @@ import (
 // parseIndicatorValue parses and validates the indicator value.
 func parseIndicatorValue(valueStr string) (float64, error) {
 	value, err := strconv.ParseFloat(valueStr, 64)
-	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < -99999999999 || value > 99999999999 {
+	if err != nil {
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--value must be a number between -99999999999 and 99999999999").WithParam("--value").WithCause(err)
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < -99999999999 || value > 99999999999 {
 		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument, "--value must be a number between -99999999999 and 99999999999").WithParam("--value")
 	}
 	return value, nil
@@ -68,21 +71,29 @@ var OKRIndicatorUpdate = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "level", Desc: "level to update: objective | key-result", Enum: []string{"objective", "key-result"}, Required: true},
-		{Name: "id", Desc: "objective or key result ID (int64)", Required: true},
-		{Name: "value", Desc: "new current value for the indicator (number)", Required: true},
+		{Name: "level", Desc: "level to update: objective | key-result, Required.", Enum: []string{"objective", "key-result"}},
+		{Name: "id", Desc: "objective or key result ID (int64), Required."},
+		{Name: "value", Desc: "new current value for the indicator (number), Required."},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
+		if level == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--level is required").WithParam("--level")
+		}
 		if level != "objective" && level != "key-result" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--level must be one of: objective | key-result").WithParam("--level")
 		}
 
 		id := runtime.Str("id")
+		if id == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--id is required").WithParam("--id")
+		}
 		if _, err := strconv.ParseInt(id, 10, 64); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--id must be a valid int64").WithParam("--id")
 		}
-
+		if runtime.Str("value") == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--value is required").WithParam("--value")
+		}
 		if _, err := parseIndicatorValue(runtime.Str("value")); err != nil {
 			return err
 		}

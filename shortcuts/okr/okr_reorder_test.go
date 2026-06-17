@@ -6,6 +6,7 @@ package okr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -151,13 +152,19 @@ func TestReorderValidate_InvalidOpsJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid --ops JSON")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--ops" {
 		t.Fatalf("expected param --ops, got %q", validationErr.Param)
@@ -201,13 +208,19 @@ func TestReorderValidate_DuplicateID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate id in --ops")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--ops" {
 		t.Fatalf("expected param --ops, got %q", validationErr.Param)
@@ -229,13 +242,19 @@ func TestReorderValidate_DuplicatePosition(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for duplicate position in --ops")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--ops" {
 		t.Fatalf("expected param --ops, got %q", validationErr.Param)
@@ -379,12 +398,13 @@ func TestReorderExecute_Objectives_Success(t *testing.T) {
 
 	// Verify output
 	data := decodeEnvelope(t, stdout)
-	ok, _ := data["ok"].(bool)
-	if !ok {
-		t.Fatal("expected ok=true in output")
+	if data["level"] != "objective" {
+		t.Fatalf("expected level=objective, got %v", data["level"])
 	}
-	dataField, _ := data["data"].(map[string]interface{})
-	ordered, _ := dataField["ordered"].([]interface{})
+	if data["cycle_id"] != "123" {
+		t.Fatalf("expected cycle_id=123, got %v", data["cycle_id"])
+	}
+	ordered, _ := data["ordered"].([]interface{})
 	if len(ordered) != 3 {
 		t.Fatalf("expected 3 items in ordered list, got %d", len(ordered))
 	}
@@ -441,8 +461,13 @@ func TestReorderExecute_KeyResults_Success(t *testing.T) {
 
 	// Verify output
 	data := decodeEnvelope(t, stdout)
-	dataField, _ := data["data"].(map[string]interface{})
-	ordered, _ := dataField["ordered"].([]interface{})
+	if data["level"] != "key-result" {
+		t.Fatalf("expected level=key-result, got %v", data["level"])
+	}
+	if data["cycle_id"] != "123" {
+		t.Fatalf("expected cycle_id=123, got %v", data["cycle_id"])
+	}
+	ordered, _ := data["ordered"].([]interface{})
 	if len(ordered) != 2 {
 		t.Fatalf("expected 2 items in ordered list, got %d", len(ordered))
 	}
@@ -529,13 +554,19 @@ func TestReorderExecute_IDNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-existent ID")
 	}
-	_, ok := errs.ProblemOf(err)
+	prob, ok := errs.ProblemOf(err)
 	if !ok {
 		t.Fatalf("expected typed error, got: %v", err)
 	}
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
-		t.Fatalf("expected ValidationError, got: %T", err)
+	if prob.Category != errs.CategoryValidation {
+		t.Fatalf("expected CategoryValidation, got %q", prob.Category)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected error to be *errs.ValidationError, got: %T", err)
+	}
+	if !errors.Is(err, validationErr) {
+		t.Fatal("errors.Is should find the ValidationError in the chain")
 	}
 	if validationErr.Param != "--ops" {
 		t.Fatalf("expected param --ops, got %q", validationErr.Param)

@@ -345,10 +345,12 @@ var OKRBatchCreate = common.Shortcut{
 func buildRollbackError(originalErr error, rollbackErrs []error, created []createdObjective) error {
 	var residualIDs []string
 
-	// Collect objective IDs that might still exist (rollback failed or wasn't attempted)
-	// KRs are automatically deleted with the objective by the backend
-	for _, obj := range created {
-		residualIDs = append(residualIDs, fmt.Sprintf("objective:%s", obj.ObjectiveID))
+	// Only collect residual IDs when rollback had failures
+	// If rollback succeeded (len(rollbackErrs) == 0), all objectives were deleted
+	if len(rollbackErrs) > 0 {
+		for _, obj := range created {
+			residualIDs = append(residualIDs, fmt.Sprintf("objective:%s", obj.ObjectiveID))
+		}
 	}
 
 	msg := fmt.Sprintf("batch create failed, rolling back: %v", originalErr)
@@ -361,6 +363,22 @@ func buildRollbackError(originalErr error, rollbackErrs []error, created []creat
 	}
 	if len(residualIDs) > 0 {
 		msg += fmt.Sprintf("; residual objectives that may need manual cleanup (KRs auto-deleted with objective): %s", strings.Join(residualIDs, ", "))
+	}
+
+	// Preserve the original error's type information if it's already a typed error
+	if prob, ok := errs.ProblemOf(originalErr); ok {
+		switch prob.Category {
+		case errs.CategoryAPI:
+			return errs.NewAPIError(prob.Subtype, "%s", msg).WithCause(originalErr)
+		case errs.CategoryNetwork:
+			return errs.NewNetworkError(prob.Subtype, "%s", msg).WithCause(originalErr)
+		case errs.CategoryValidation:
+			return errs.NewValidationError(prob.Subtype, "%s", msg).WithCause(originalErr)
+		case errs.CategoryInternal:
+			return errs.NewInternalError(prob.Subtype, "%s", msg).WithCause(originalErr)
+		default:
+			return errs.NewInternalError(prob.Subtype, "%s", msg).WithCause(originalErr)
+		}
 	}
 
 	return errs.NewInternalError(errs.SubtypeUnknown, "%s", msg).WithCause(originalErr)

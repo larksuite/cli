@@ -6,6 +6,7 @@ package okr
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -297,6 +298,20 @@ func TestIndicatorUpdateExecute_FetchAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for fetch API failure")
 	}
+	prob, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if prob.Category != errs.CategoryAPI {
+		t.Fatalf("expected CategoryAPI, got %q", prob.Category)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected error to be *errs.APIError, got: %T", err)
+	}
+	if !errors.Is(err, apiErr) {
+		t.Fatal("errors.Is should find the APIError in the chain")
+	}
 }
 
 func TestIndicatorUpdateExecute_PatchAPIError(t *testing.T) {
@@ -333,6 +348,20 @@ func TestIndicatorUpdateExecute_PatchAPIError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for patch API failure")
+	}
+	prob, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if prob.Category != errs.CategoryAPI {
+		t.Fatalf("expected CategoryAPI, got %q", prob.Category)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected error to be *errs.APIError, got: %T", err)
+	}
+	if !errors.Is(err, apiErr) {
+		t.Fatal("errors.Is should find the APIError in the chain")
 	}
 }
 

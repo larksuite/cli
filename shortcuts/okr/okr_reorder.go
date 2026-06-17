@@ -67,7 +67,11 @@ func fetchObjectives(ctx context.Context, runtime *common.RuntimeContext, cycleI
 
 	for {
 		if page > 0 {
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
 		page++
 
@@ -121,7 +125,11 @@ func fetchKeyResults(ctx context.Context, runtime *common.RuntimeContext, object
 
 	for {
 		if page > 0 {
-			time.Sleep(500 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
 		}
 		page++
 
@@ -242,18 +250,24 @@ var OKRReorder = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "level", Desc: "level to reorder: objective | key-result", Enum: []string{"objective", "key-result"}, Required: true},
-		{Name: "cycle-id", Desc: "OKR cycle ID (int64)", Required: true},
+		{Name: "level", Desc: "level to reorder: objective | key-result, Required.", Enum: []string{"objective", "key-result"}},
+		{Name: "cycle-id", Desc: "OKR cycle ID (int64), Required."},
 		{Name: "objective-id", Desc: "objective ID (required when --level=key-result)"},
-		{Name: "ops", Desc: "JSON array of reorder operations: [{\"id\":\"...\",\"position\":1}]", Input: []string{common.File, common.Stdin}, Required: true},
+		{Name: "ops", Desc: "JSON array of reorder operations: [{\"id\":\"...\",\"position\":1}], Required.", Input: []string{common.File, common.Stdin}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		level := runtime.Str("level")
+		if strings.TrimSpace(level) == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--level is required").WithParam("--level")
+		}
 		if level != "objective" && level != "key-result" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--level must be one of: objective | key-result").WithParam("--level")
 		}
 
 		cycleID := runtime.Str("cycle-id")
+		if strings.TrimSpace(cycleID) == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id is required").WithParam("--cycle-id")
+		}
 		if id, err := strconv.ParseInt(cycleID, 10, 64); err != nil || id <= 0 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--cycle-id must be a positive int64").WithParam("--cycle-id")
 		}
@@ -269,6 +283,9 @@ var OKRReorder = common.Shortcut{
 		}
 
 		opsStr := runtime.Str("ops")
+		if strings.TrimSpace(opsStr) == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--ops is required").WithParam("--ops")
+		}
 		if err := common.RejectDangerousCharsTyped("--ops", opsStr); err != nil {
 			return err
 		}
@@ -412,12 +429,10 @@ var OKRReorder = common.Shortcut{
 
 		// Build response
 		result := map[string]interface{}{
-			"ok": true,
-			"data": map[string]interface{}{
-				"level":   level,
-				"total":   total,
-				"ordered": reorderedIDs,
-			},
+			"level":    level,
+			"cycle_id": cycleID,
+			"total":    total,
+			"ordered":  reorderedIDs,
 		}
 
 		runtime.OutFormat(result, nil, func(w io.Writer) {

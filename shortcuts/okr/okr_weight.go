@@ -471,19 +471,17 @@ var OKRWeight = common.Shortcut{
 
 		// Build response
 		result := map[string]interface{}{
-			"ok": true,
-			"data": map[string]interface{}{
-				"level":   level,
-				"total":   total,
-				"weights": normalizedWeights,
-			},
+			"level":    level,
+			"cycle_id": cycleID,
+			"total":    total,
+			"weights":  normalizedWeights,
 		}
 
 		runtime.OutFormat(result, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Successfully updated weights for %d %s(s)\n", total, level)
 			fmt.Fprintln(w, "Weights:")
 			for _, weightEntry := range normalizedWeights {
-				fmt.Fprintf(w, "  %s: %.3f\n", weightEntry["id"], weightEntry["weight"])
+				fmt.Fprintf(w, "  %s: %v\n", weightEntry["id"], weightEntry["weight"])
 			}
 		})
 
