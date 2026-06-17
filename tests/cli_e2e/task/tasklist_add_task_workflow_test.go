@@ -63,7 +63,7 @@ func TestTask_TasklistAddTaskWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String())
 		assert.Equal(t, tasklistGUID, gjson.Get(result.Stdout, "data.task.tasklists.0.tasklist_guid").String())

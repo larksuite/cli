@@ -44,7 +44,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		createdCalendarID = gjson.Get(result.Stdout, "data.calendar.calendar_id").String()
 		require.NotEmpty(t, createdCalendarID)
@@ -80,7 +80,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, createdCalendarID, gjson.Get(result.Stdout, "data.calendar_id").String())
 		assert.Equal(t, calendarSummary, gjson.Get(result.Stdout, "data.summary").String())
 		assert.Equal(t, calendarDescription, gjson.Get(result.Stdout, "data.description").String())
@@ -100,7 +100,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 	})
 
 	t.Run("verify updated calendar as bot", func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, updatedCalendarSummary, gjson.Get(result.Stdout, "data.summary").String())
 	})
 
@@ -130,7 +130,7 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		deletedCalendar = true
 	})
 }
