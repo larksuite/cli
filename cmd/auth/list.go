@@ -45,6 +45,9 @@ func authListRun(opts *ListOptions) error {
 	f := opts.Factory
 
 	multi, _ := core.LoadMultiAppConfig()
+	if err := cmdutil.ProjectProfileError(f.Invocation, multi); err != nil {
+		return err
+	}
 	if multi == nil || len(multi.Apps) == 0 {
 		if opts.JSON {
 			output.PrintJson(f.IOStreams.Out, map[string]interface{}{

@@ -21,6 +21,9 @@ func NewCmdProfile(f *cmdutil.Factory) *cobra.Command {
 	})
 
 	cmd.AddCommand(NewCmdProfileList(f))
+	cmd.AddCommand(NewCmdProfileCurrent(f))
+	cmd.AddCommand(NewCmdProfileBind(f))
+	cmd.AddCommand(NewCmdProfileUnbind(f))
 	cmd.AddCommand(NewCmdProfileUse(f))
 	cmd.AddCommand(NewCmdProfileAdd(f))
 	cmd.AddCommand(NewCmdProfileRemove(f))
