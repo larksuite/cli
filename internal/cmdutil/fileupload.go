@@ -98,12 +98,11 @@ func BuildFormdata(fileIO fileio.FileIO, fieldName, filePath string, isStdin boo
 		if err != nil {
 			return nil, output.ErrValidation("cannot open file: %s", filePath)
 		}
-		defer f.Close()
-		data, err := io.ReadAll(f)
-		if err != nil {
-			return nil, output.ErrValidation("--file: failed to read %s: %v", filePath, err)
-		}
-		fd.AddFile(fieldName, bytes.NewReader(data))
+		// Keep the concrete file reader instead of copying it into a
+		// bytes.Reader. The Lark SDK preserves multipart filenames only when
+		// it receives an *os.File; replacing it with an anonymous reader makes
+		// the SDK fall back to "unknown-file".
+		fd.AddFile(fieldName, f)
 	}
 
 	// Add top-level JSON keys as text form fields.
