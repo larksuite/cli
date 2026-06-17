@@ -89,22 +89,36 @@ func HandleResponse(resp *larkcore.ApiResp, opts ResponseOptions) error {
 		if apiErr := check(result, identity); apiErr != nil {
 			return apiErr
 		}
-		// Content safety scanning
-		scanResult := output.ScanForSafety(opts.CommandPath, result, opts.ErrOut)
-		if scanResult.Blocked {
-			return scanResult.BlockErr
-		}
 		if opts.OutputPath != "" {
+			// File downloads keep the existing raw-response scan path because the
+			// saved payload is the API response body, not the success envelope.
+			scanResult := output.ScanForSafety(opts.CommandPath, result, opts.ErrOut)
+			if scanResult.Blocked {
+				return scanResult.BlockErr
+			}
 			if scanResult.Alert != nil {
 				output.WriteAlertWarning(opts.ErrOut, scanResult.Alert)
 			}
 			return saveAndPrint(opts.FileIO, resp, opts.OutputPath, opts.Out)
 		}
+
+		if opts.JqExpr != "" || opts.Format == output.FormatJSON {
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: opts.CommandPath,
+				Identity:    string(identity),
+				JqExpr:      opts.JqExpr,
+				Out:         opts.Out,
+				ErrOut:      opts.ErrOut,
+			})
+		}
+
+		// Content safety scanning for non-JSON presentation formats.
+		scanResult := output.ScanForSafety(opts.CommandPath, result, opts.ErrOut)
+		if scanResult.Blocked {
+			return scanResult.BlockErr
+		}
 		if scanResult.Alert != nil {
 			output.WriteAlertWarning(opts.ErrOut, scanResult.Alert)
-		}
-		if opts.JqExpr != "" {
-			return output.JqFilter(opts.Out, result, opts.JqExpr)
 		}
 		output.FormatValue(opts.Out, result, opts.Format)
 		return nil

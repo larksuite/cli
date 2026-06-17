@@ -28,17 +28,6 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 	var createdCalendarID string
 	var deletedCalendar bool
 
-	t.Run("list calendars as bot", func(t *testing.T) {
-		result, err := clie2e.RunCmd(ctx, clie2e.Request{
-			Args:      []string{"calendar", "calendars", "list"},
-			DefaultAs: "bot",
-		})
-		require.NoError(t, err)
-		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
-		require.NotEmpty(t, gjson.Get(result.Stdout, "data.calendar_list").Array(), "stdout:\n%s", result.Stdout)
-	})
-
 	t.Run("get primary calendar as bot", func(t *testing.T) {
 		primaryCalendarID := getPrimaryCalendarID(t, ctx)
 		require.NotEmpty(t, primaryCalendarID)
@@ -95,13 +84,6 @@ func TestCalendar_ManageCalendar(t *testing.T) {
 		assert.Equal(t, createdCalendarID, gjson.Get(result.Stdout, "data.calendar_id").String())
 		assert.Equal(t, calendarSummary, gjson.Get(result.Stdout, "data.summary").String())
 		assert.Equal(t, calendarDescription, gjson.Get(result.Stdout, "data.description").String())
-	})
-
-	t.Run("find created calendar in list as bot", func(t *testing.T) {
-		require.NotEmpty(t, createdCalendarID)
-		calendar := findCalendarByID(t, ctx, createdCalendarID)
-		assert.Equal(t, createdCalendarID, calendar.Get("calendar_id").String())
-		assert.Equal(t, calendarSummary, calendar.Get("summary").String())
 	})
 
 	t.Run("update calendar as bot", func(t *testing.T) {

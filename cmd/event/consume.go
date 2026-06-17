@@ -146,14 +146,28 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		fmt.Fprintln(preflightErrOut, "[event] skipped console precheck: app has no published version")
 	}
 
+	// Callback subscriptions live in application/get, not app_versions; fetch the
+	// callback 底账 only for callback-type EventKeys. Weak dependency: on error,
+	// leave subscribedCallbacks nil so the callback precheck skips.
+	var subscribedCallbacks []string
+	if keyDef.SubscriptionType == eventlib.SubTypeCallback {
+		cbs, cbErr := appmeta.FetchSubscribedCallbacks(cmd.Context(), botRuntime, cfg.AppID)
+		if cbErr != nil {
+			fmt.Fprintf(preflightErrOut, "[event] skipped console precheck: %s\n", describeAppMetaErr(cbErr))
+		} else {
+			subscribedCallbacks = cbs
+		}
+	}
+
 	pf := &preflightCtx{
-		factory:  f,
-		appID:    cfg.AppID,
-		brand:    cfg.Brand,
-		eventKey: eventKey,
-		identity: identity,
-		keyDef:   keyDef,
-		appVer:   appVer,
+		factory:             f,
+		appID:               cfg.AppID,
+		brand:               cfg.Brand,
+		eventKey:            eventKey,
+		identity:            identity,
+		keyDef:              keyDef,
+		appVer:              appVer,
+		subscribedCallbacks: subscribedCallbacks,
 	}
 	if err := preflightEventTypes(pf); err != nil {
 		return err
@@ -229,6 +243,9 @@ type preflightCtx struct {
 	identity core.Identity
 	keyDef   *eventlib.KeyDefinition
 	appVer   *appmeta.AppVersion
+	// subscribedCallbacks is the application/get 底账 for callback-type EventKeys;
+	// nil means "not fetched / unavailable" → callback precheck skips (weak dependency).
+	subscribedCallbacks []string
 }
 
 // preflightScopes compares required scopes against session-available scopes (user: UAT stored; bot: appVer.TenantScopes).
@@ -266,46 +283,66 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) error {
 		pf.eventKey, pf.identity, strings.Join(missing, ", ")).
 		WithIdentity(string(pf.identity)).
 		WithMissingScopes(missing...).
-		WithHint("%s", scopeRemediationHint(pf.identity, missing, pf.appID, pf.brand))
+		WithHint("%s", scopeRemediationHint(pf.brand, pf.appID, pf.identity, missing))
 }
 
 // scopeRemediationHint returns an identity-appropriate fix for missing scopes.
-func scopeRemediationHint(identity core.Identity, missing []string, appID string, brand core.LarkBrand) string {
+// Bot: the scan-to-enable link adds the scopes to the app manifest, after which
+// the tenant token carries them. User: the scan link only updates the app
+// manifest — the user's own token still lacks the scopes until it is
+// re-authorized — so direct the user to re-login instead.
+func scopeRemediationHint(brand core.LarkBrand, appID string, identity core.Identity, missing []string) string {
 	if identity.IsBot() {
-		return fmt.Sprintf(
-			"grant these scopes and publish a new app version at: %s",
-			consoleScopeGrantURL(brand, appID, missing),
-		)
+		return fmt.Sprintf("grant these scopes by scanning: %s",
+			addonsHintURL(brand, appID, missingScopeAddons(identity, missing)))
 	}
 	return fmt.Sprintf(
 		"run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		strings.Join(missing, " "),
-	)
+		strings.Join(missing, " "))
 }
 
-// preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed in the app's current published version.
+// preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed
+// in the app's console 底账 — published app_versions for event subscriptions,
+// application/get subscribed_callbacks for callback subscriptions.
 func preflightEventTypes(pf *preflightCtx) error {
-	if pf.appVer == nil || len(pf.keyDef.RequiredConsoleEvents) == 0 {
+	if len(pf.keyDef.RequiredConsoleEvents) == 0 {
 		return nil
 	}
-	subscribed := make(map[string]bool, len(pf.appVer.EventTypes))
-	for _, t := range pf.appVer.EventTypes {
-		subscribed[t] = true
+
+	var subscribed []string
+	noun := "event types"
+	if pf.keyDef.SubscriptionType == eventlib.SubTypeCallback {
+		if pf.subscribedCallbacks == nil {
+			return nil
+		}
+		subscribed = pf.subscribedCallbacks
+		noun = "callbacks"
+	} else {
+		if pf.appVer == nil {
+			return nil
+		}
+		subscribed = pf.appVer.EventTypes
+	}
+
+	have := make(map[string]bool, len(subscribed))
+	for _, t := range subscribed {
+		have[t] = true
 	}
 	var missing []string
 	for _, t := range pf.keyDef.RequiredConsoleEvents {
-		if !subscribed[t] {
+		if !have[t] {
 			missing = append(missing, t)
 		}
 	}
 	if len(missing) == 0 {
 		return nil
 	}
+
+	url := addonsHintURL(pf.brand, pf.appID, missingSubscriptionAddons(pf.keyDef.SubscriptionType, pf.identity, missing))
 	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
-		"EventKey %s requires event types not subscribed in console: %s",
-		pf.keyDef.Key, strings.Join(missing, ", ")).
-		WithHint("subscribe these events and publish a new app version at: %s",
-			consoleEventSubscriptionURL(pf.brand, pf.appID))
+		"EventKey %s requires %s not subscribed in console: %s",
+		pf.keyDef.Key, noun, strings.Join(missing, ", ")).
+		WithHint("subscribe these %s by scanning: %s", noun, url)
 }
 
 // sanitizeOutputDir rejects absolute/parent-escaping paths and ~ (SafeOutputPath treats it as a literal dir name).

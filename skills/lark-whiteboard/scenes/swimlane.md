@@ -28,7 +28,7 @@
 1. **网格对齐是第一优先级**：跨泳道同一阶段必须严格对齐（水平对齐 x；垂直对齐 y）。对齐通过“共享阶段标尺（stage ruler / stage slots）”实现，不靠肉眼估算，也不靠逐节点随意手写坐标
 2. **只生成真实节点**：为保证跨泳道阶段严格对齐，所有阶段统一保留透明的 **stage cell**；仅在真实阶段的 cell 内生成卡片节点，并按阶段索引映射到对应槽位
 3. **泳道底色**：为了增强层级感同时保持界面整洁，**强烈建议所有泳道容器统一使用极浅灰色背景**（如 `fillColor: "#F8F9FA"` 或 `"#FCFCFC"`）。边框使用浅灰色细虚线（`borderDash: "dashed"`, `borderWidth: 1`, `borderColor: "#DEE0E3"`）以明确边界。
-4. **步骤卡片**：使用 `rect`。为建立清晰的视觉层级，卡片**必须填充浅色背景**（参考 `references/style.md` 中的浅色板，如极浅的主题色），边框使用对应的主题主色（`borderWidth: 1-2`），文字使用深色（如 `#1F2329`）以确保可读性。统一圆角；宽高以可读为先，避免过窄导致换行过多
+4. **步骤卡片**：使用 `rect`。为建立清晰的视觉层级，卡片**必须填充浅色背景**（参考 `elements/style.md` 中的浅色板，如极浅的主题色），边框使用对应的主题主色（`borderWidth: 1-2`），文字使用深色（如 `#1F2329`）以确保可读性。统一圆角；宽高以可读为先，避免过窄导致换行过多
 5. **间距**：只要存在 connector 连线，卡片之间的主轴间距必须满足 `gap >= 40`
 
 ### 子节点对齐
@@ -151,16 +151,16 @@
 
 - **泳道背景**：所有泳道容器统一使用极浅灰色（如 `fillColor: "#F8F9FA"` 或 `"#FCFCFC"`），以增强物理容器的层级感，并突出内部的彩色卡片。
 - **泳道边框**：所有泳道外层容器统一使用浅灰色细虚线（`borderColor: "#DEE0E3"`, `borderWidth: 1`, `borderDash: "dashed"`）。
-- **泳道标题**：按 `references/style.md` 经典色板为每条泳道分配不同的主题色，泳道 title 的 `textColor` 使用该主题色。
+- **泳道标题**：按 `elements/style.md` 经典色板为每条泳道分配不同的主题色，泳道 title 的 `textColor` 使用该主题色。
 - **内容节点（rect）**：采用“浅色底 + 主题色边框”策略。`fillColor` 使用与该泳道主题色对应的极浅色（如浅蓝、浅紫等），`borderColor` 使用对应的主题色，文字 `textColor` 统一使用深色 `#1F2329`。
 - **连线（connector）**：连线颜色固定为灰色 `#BBBFC4`，不随泳道颜色变化。当连线带有文字（`label`）时，为防止文字压在边框上难以阅读，必须为连线文字设置纯白背景（`labelFillColor: "#FFFFFF"`）遮挡底纹。
 
-提醒：避免创建“虚拟 frame”（见 `references/schema.md` 的说明）。lane 外层必须具有可见属性以避免在编译时被跳过。
+提醒：避免创建“虚拟 frame”（见 `elements/schema.md` 的说明）。lane 外层必须具有可见属性以避免在编译时被跳过。
 
 
 ## 连线规则（强制参考 connectors.md）
 
-泳道图中所有连线的选择与写法必须严格遵循 `references/connectors.md`，尤其是：
+泳道图中所有连线的选择与写法必须严格遵循 `elements/connectors.md`，尤其是：
 - `connector` 必须放在 `WBDocument.nodes` 顶层，不能嵌套在 `children`
 - 默认优先使用自动绕线：`lineShape: "polyline"` / `"rightAngle"`，且不写 `waypoints`
 - 未指定 `lineShape` 时默认使用 `"rightAngle"`
@@ -171,11 +171,11 @@
 泳道图语境下的落地约束：
 - **默认不写锚点**，交给引擎自动推断；只有需要强制“左→右推进 / 上→下推进”时才写
 - 需要表达“异步/事件流/推送”（如 SSE/Chunk）时：使用 `lineStyle: "dashed"` 并配合 `label` 说明语义；其他参数仍按 connectors.md
-- 避免连接“仅用于布局且可能被优化掉的虚拟 frame”，尽量连接具体步骤卡片的节点 id（参考 `references/schema.md` 的虚拟 frame 陷阱）
+- 避免连接“仅用于布局且可能被优化掉的虚拟 frame”，尽量连接具体步骤卡片的节点 id（参考 `elements/schema.md` 的虚拟 frame 陷阱）
 
 ## 骨架示例
 
-> 示例展示布局的结构与对齐方法；实际节点的样式满足当前布局规则的前提下参考 `references/style.md`
+> 示例展示布局的结构与对齐方法；实际节点的样式满足当前布局规则的前提下参考 `elements/style.md`
 
 - 水平泳道示例：
 

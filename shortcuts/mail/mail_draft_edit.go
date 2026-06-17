@@ -134,7 +134,7 @@ var MailDraftEdit = common.Shortcut{
 		for i := range patch.Ops {
 			switch patch.Ops[i].Op {
 			case "insert_signature":
-				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail)
+				sigResult, sigErr := resolveSignature(ctx, runtime, mailboxID, patch.Ops[i].SignatureID, draftFromEmail, true, true)
 				if sigErr != nil {
 					return sigErr
 				}

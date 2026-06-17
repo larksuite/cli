@@ -17,7 +17,7 @@ import (
 
 // Every NewXxx helper must set the Type discriminator (Decode rejects messages without it).
 func TestConstructors_PinTypeField(t *testing.T) {
-	if got := NewHello(1, "k", []string{"t"}, "v1"); got.Type != MsgTypeHello {
+	if got := NewHello(1, "k", []string{"t"}, "v1", ""); got.Type != MsgTypeHello {
 		t.Errorf("NewHello.Type = %q, want %q", got.Type, MsgTypeHello)
 	}
 	if got := NewHelloAck("v1", true); got.Type != MsgTypeHelloAck || !got.FirstForKey {
@@ -26,7 +26,7 @@ func TestConstructors_PinTypeField(t *testing.T) {
 	if got := NewEvent("im.msg", "e1", "", 7, json.RawMessage(`{}`)); got.Type != MsgTypeEvent || got.Seq != 7 {
 		t.Errorf("NewEvent mismatch: %+v", got)
 	}
-	if got := NewPreShutdownCheck("k"); got.Type != MsgTypePreShutdownCheck || got.EventKey != "k" {
+	if got := NewPreShutdownCheck("k", ""); got.Type != MsgTypePreShutdownCheck || got.EventKey != "k" {
 		t.Errorf("NewPreShutdownCheck mismatch: %+v", got)
 	}
 	if got := NewPreShutdownAck(true); got.Type != MsgTypePreShutdownAck || !got.LastForKey {
@@ -63,7 +63,7 @@ func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 		}
 	}
 	roundtrip(t, NewHelloAck("v1", true), &HelloAck{})
-	roundtrip(t, NewPreShutdownCheck("im.msg"), &PreShutdownCheck{})
+	roundtrip(t, NewPreShutdownCheck("im.msg", ""), &PreShutdownCheck{})
 	roundtrip(t, NewPreShutdownAck(false), &PreShutdownAck{})
 	roundtrip(t, NewStatusQuery(), &StatusQuery{})
 	roundtrip(t, NewStatusResponse(7, 120, 1, []ConsumerInfo{{PID: 99, EventKey: "k"}}), &StatusResponse{})
@@ -103,5 +103,27 @@ func TestReadFrame_PropagatesEOF(t *testing.T) {
 	_, err := ReadFrame(br)
 	if err != io.EOF {
 		t.Errorf("err = %v, want io.EOF", err)
+	}
+}
+
+func TestHelloAckRejected_RoundTrip(t *testing.T) {
+	ack := NewHelloAckRejected("v1", "another consumer (pid 42) is already running for this subscription")
+	if !ack.Rejected || ack.RejectReason == "" {
+		t.Fatalf("NewHelloAckRejected fields: %+v", ack)
+	}
+	var buf bytes.Buffer
+	if err := Encode(&buf, ack); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	msg, err := Decode(bytes.TrimRight(buf.Bytes(), "\n"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got, ok := msg.(*HelloAck)
+	if !ok {
+		t.Fatalf("decoded type = %T, want *HelloAck", msg)
+	}
+	if !got.Rejected || got.RejectReason != ack.RejectReason {
+		t.Errorf("roundtrip = %+v, want Rejected with reason", got)
 	}
 }

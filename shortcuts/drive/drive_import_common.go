@@ -257,6 +257,46 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 	return nil
 }
 
+func appendDriveImportFolderTokenWikiCheckDryRun(dry *common.DryRunAPI, spec driveImportSpec) {
+	folderToken := strings.TrimSpace(spec.FolderToken)
+	if folderToken == "" {
+		return
+	}
+
+	dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		Desc("[0] Validate whether --folder-token is a wiki node").
+		Params(map[string]interface{}{"token": folderToken})
+}
+
+func rejectDriveImportWikiFolderToken(runtime *common.RuntimeContext, folderToken string) error {
+	folderToken = strings.TrimSpace(folderToken)
+	if folderToken == "" {
+		return nil
+	}
+
+	data, err := runtime.CallAPITyped(
+		"GET",
+		"/open-apis/wiki/v2/spaces/get_node",
+		map[string]interface{}{"token": folderToken},
+		nil,
+	)
+	if err == nil {
+		node := common.GetMap(data, "node")
+		if len(node) == 0 {
+			return nil
+		}
+
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--folder-token only supports Drive folder tokens, but the provided token resolves to a wiki node",
+		).
+			WithParam("--folder-token").
+			WithHint("Pass a Drive folder token, or omit --folder-token to import into the Drive root folder. Wiki node tokens are not accepted as import mount folders.")
+	}
+
+	return nil
+}
+
 // driveImportStatus captures the backend fields needed to decide whether the
 // import can be surfaced immediately or requires a follow-up poll.
 type driveImportStatus struct {

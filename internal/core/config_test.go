@@ -132,6 +132,27 @@ func TestResolveConfigFromMulti_AcceptsPlainSecret(t *testing.T) {
 	}
 }
 
+func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
+	raw := &MultiAppConfig{
+		Apps: []AppConfig{
+			{
+				AppId:     "cli_abc",
+				AppSecret: PlainSecret("my-secret"),
+				Brand:     BrandFeishu,
+				Lang:      "en",
+			},
+		},
+	}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Lang != "en" {
+		t.Errorf("Lang = %q, want %q", cfg.Lang, "en")
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),

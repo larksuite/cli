@@ -29,9 +29,10 @@ type Conn struct {
 	writeMu         sync.Mutex // serialises all net.Conn writes (Encode+SetWriteDeadline is a 2-call sequence)
 	eventKey        string
 	eventTypes      []string
+	subID           string
 	pid             int
 	onClose         func(*Conn)
-	checkLastForKey func(eventKey string) bool
+	checkLastForKey func(scope string) bool
 	logger          *log.Logger
 	closed          chan struct{}
 	closeOnce       sync.Once
@@ -41,7 +42,7 @@ type Conn struct {
 }
 
 // NewConn creates a Conn; pass a reader with pre-buffered bytes (handoff from Bus.handleConn) or nil for a fresh one.
-func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []string, pid int) *Conn {
+func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []string, pid int, subID string) *Conn {
 	if reader == nil {
 		reader = bufio.NewReader(conn)
 	}
@@ -52,8 +53,18 @@ func NewConn(conn net.Conn, reader *bufio.Reader, eventKey string, eventTypes []
 		eventKey:   eventKey,
 		eventTypes: eventTypes,
 		pid:        pid,
+		subID:      subID,
 		closed:     make(chan struct{}),
 	}
+}
+
+// SubscriptionID returns the subscription identity. Falls back to EventKey
+// when the stored subID is empty (legacy clients / no-SubscriptionKey EventKeys).
+func (c *Conn) SubscriptionID() string {
+	if c.subID == "" {
+		return c.eventKey
+	}
+	return c.subID
 }
 
 func (c *Conn) SetOnClose(fn func(*Conn)) { c.onClose = fn }
@@ -132,13 +143,19 @@ func (c *Conn) ReaderLoop() {
 }
 
 func (c *Conn) handleControlMessage(msg interface{}) {
-	switch m := msg.(type) {
+	switch msg.(type) {
 	case *protocol.Bye:
 		c.shutdown()
 	case *protocol.PreShutdownCheck:
+		// Use the connection's own authoritative subscription identity rather
+		// than recomputing from the incoming message: a stale or mismatched
+		// PreShutdownCheck must not ask about the wrong scope (which would
+		// suppress or mistrigger per-subscription cleanup). Conn.SubscriptionID()
+		// already falls back to EventKey when its stored subID is empty.
+		scope := c.SubscriptionID()
 		lastForKey := true
 		if c.checkLastForKey != nil {
-			lastForKey = c.checkLastForKey(m.EventKey)
+			lastForKey = c.checkLastForKey(scope)
 		}
 		ack := protocol.NewPreShutdownAck(lastForKey)
 		if err := c.writeFrame(ack); err != nil && c.logger != nil {

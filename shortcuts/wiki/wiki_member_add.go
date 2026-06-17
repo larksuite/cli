@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -65,7 +65,7 @@ var WikiMemberAdd = common.Shortcut{
 			common.MaskToken(spec.MemberID), spec.MemberType, spec.MemberRole, common.MaskToken(spaceID))
 
 		path := fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/members", validate.EncodePathSegment(spaceID))
-		data, err := runtime.CallAPI("POST", path, spec.QueryParams(), spec.RequestBody())
+		data, err := runtime.CallAPITyped("POST", path, spec.QueryParams(), spec.RequestBody())
 		if err != nil {
 			return err
 		}
@@ -131,16 +131,16 @@ func readWikiMemberAddSpec(runtime *common.RuntimeContext) (wikiMemberAddSpec, e
 		return wikiMemberAddSpec{}, err
 	}
 	if spec.MemberID == "" {
-		return wikiMemberAddSpec{}, output.ErrValidation("--member-id is required and cannot be blank")
+		return wikiMemberAddSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--member-id is required and cannot be blank").WithParam("--member-id")
 	}
 	// The space-member API rejects opendepartmentid grants under a
 	// tenant_access_token; surface that as a CLI validation error so callers do
 	// not waste a network round-trip on a server-side 403. The escape hatch is
 	// --as user, which is the only identity the API accepts for departments.
 	if runtime.As().IsBot() && spec.MemberType == "opendepartmentid" {
-		return wikiMemberAddSpec{}, output.ErrValidation(
+		return wikiMemberAddSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--as bot does not support --member-type opendepartmentid; rerun with --as user",
-		)
+		).WithParam("--member-type")
 	}
 	// --member-type / --member-role enum membership is enforced by the
 	// framework's validateEnumFlags (runner.go) before Validate runs, so no

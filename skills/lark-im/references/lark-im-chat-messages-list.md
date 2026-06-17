@@ -24,7 +24,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08
 lark-cli im +chat-messages-list --chat-id oc_xxx --start 2026-03-10 --end 2026-03-11
 
 # Control sort order and page size (max 50)
-lark-cli im +chat-messages-list --chat-id oc_xxx --sort asc --page-size 20
+lark-cli im +chat-messages-list --chat-id oc_xxx --order asc --page-size 20
 
 # Pagination
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token "xxx"
@@ -41,13 +41,15 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--user-id <id>` | One of two | Specify a DM conversation by the other user's open_id (`ou_xxx`); p2p chat_id is resolved automatically. Requires user identity (`--as user`); not supported with bot identity |
 | `--start <time>` | No | Start time (ISO 8601 or date only) |
 | `--end <time>` | No | End time (ISO 8601 or date only) |
-| `--sort <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
+| `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
 | `--page-token <token>` | No | Pagination token |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
 | `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default; no extra requests when omitted |
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
+
+> **CAUTION:** `--order` is the only sort axis — messages are always ordered by creation time, `asc` or `desc`. There is no field axis: the command cannot sort by sender or any other field, so do **not** attempt `--sort sender` or similar (it is rejected). If the user asks to group or sort by sender, fetch with `--order` and aggregate client-side, and tell them this is local post-processing, not a CLI/API sort capability.
 
 ## Resource Rendering
 
@@ -75,8 +77,8 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 | Scenario | Recommendation |
 |------|------|
-| You need context | Call `im +threads-messages-list --sort desc --page-size 10` for the discovered thread_id to inspect recent replies |
-| The user asks for the "full discussion" | Use `im +threads-messages-list --sort asc --page-size 50`, then paginate if needed |
+| You need context | Call `im +threads-messages-list --order desc --page-size 10` for the discovered thread_id to inspect recent replies |
+| The user asks for the "full discussion" | Use `im +threads-messages-list --order asc --page-size 50`, then paginate if needed |
 | You only need an overview | Skip thread expansion |
 
 ## Output Fields

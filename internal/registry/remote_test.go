@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 // waitBackgroundRefresh blocks until any in-flight background refresh started by
@@ -30,7 +31,10 @@ func resetInit() {
 	// reads globals this function mutates (see CI race: TestComputeMinimumScopeSet → Tenant).
 	waitBackgroundRefresh()
 	initOnce = sync.Once{}
-	mergedServices = make(map[string]map[string]interface{})
+	embeddedParseOnce = sync.Once{}
+	servicesTypedOnce = sync.Once{}
+	servicesTyped = nil
+	mergedServices = make(map[string]meta.Service)
 	mergedProjectList = nil
 	embeddedVersion = ""
 	cachedAllScopes = nil
@@ -71,13 +75,12 @@ func hasEmbeddedServices() bool {
 func testRegistry(name string) MergedRegistry {
 	return MergedRegistry{
 		Version: "test-1.0",
-		Services: []map[string]interface{}{
+		Services: []meta.Service{
 			{
-				"name":        name,
-				"version":     "v1",
-				"title":       name + " API",
-				"servicePath": "/open-apis/" + name + "/v1",
-				"resources":   map[string]interface{}{},
+				Name:        name,
+				Version:     "v1",
+				Title:       name + " API",
+				ServicePath: "/open-apis/" + name + "/v1",
 			},
 		},
 	}
@@ -91,9 +94,10 @@ func testCacheJSON(name string) []byte {
 
 // testEnvelopeJSON returns the remote API envelope format: {"msg":"succeeded","data":{...}}.
 func testEnvelopeJSON(name string) []byte {
+	regData, _ := json.Marshal(testRegistry(name))
 	resp := remoteResponse{
 		Msg:  "succeeded",
-		Data: testRegistry(name),
+		Data: regData,
 	}
 	data, _ := json.Marshal(resp)
 	return data
@@ -131,7 +135,7 @@ func TestColdStart_NoEmbedded_SyncFetch(t *testing.T) {
 
 	Init()
 
-	if spec := LoadFromMeta("remote_calendar"); spec == nil {
+	if _, ok := ServiceTyped("remote_calendar"); !ok {
 		t.Fatal("expected remote_calendar from sync fetch")
 	}
 }
@@ -150,7 +154,7 @@ func TestRemoteOff_SkipsRemoteLogic(t *testing.T) {
 	Init()
 
 	// "fake_remote_svc" should not be loaded when remote is off
-	if spec := LoadFromMeta("fake_remote_svc"); spec != nil {
+	if _, ok := ServiceTyped("fake_remote_svc"); ok {
 		t.Error("expected fake_remote_svc to NOT be loaded when remote is off")
 	}
 }
@@ -181,12 +185,12 @@ func TestCacheHit_WithinTTL(t *testing.T) {
 	Init()
 
 	// custom_svc should be loaded from cache overlay
-	if spec := LoadFromMeta("custom_svc"); spec == nil {
+	if _, ok := ServiceTyped("custom_svc"); !ok {
 		t.Error("expected custom_svc from cache overlay")
 	}
 	// Embedded projects should still be present (if compiled in)
 	if hasEmbeddedServices() {
-		if spec := LoadFromMeta("calendar"); spec == nil {
+		if _, ok := ServiceTyped("calendar"); !ok {
 			t.Error("expected calendar from embedded data")
 		}
 	}
@@ -227,7 +231,7 @@ func TestNetworkError_SilentDegradation(t *testing.T) {
 	if len(projects) == 0 {
 		t.Fatal("expected projects after network error")
 	}
-	if spec := LoadFromMeta("cached_svc"); spec == nil {
+	if _, ok := ServiceTyped("cached_svc"); !ok {
 		t.Fatal("expected cached_svc after network error")
 	}
 
@@ -304,19 +308,19 @@ func TestMetaTTL(t *testing.T) {
 
 func TestOverlayMergedServices(t *testing.T) {
 	resetInit()
-	mergedServices = make(map[string]map[string]interface{})
-	mergedServices["existing"] = map[string]interface{}{"name": "existing", "version": "v1"}
+	mergedServices = make(map[string]meta.Service)
+	mergedServices["existing"] = meta.Service{Name: "existing", Version: "v1"}
 
 	reg := &MergedRegistry{
-		Services: []map[string]interface{}{
-			{"name": "existing", "version": "v2"},
-			{"name": "brand_new", "version": "v1"},
+		Services: []meta.Service{
+			{Name: "existing", Version: "v2"},
+			{Name: "brand_new", Version: "v1"},
 		},
 	}
 	overlayMergedServices(reg)
 
 	// existing should be overridden
-	if v := mergedServices["existing"]["version"].(string); v != "v2" {
+	if v := mergedServices["existing"].Version; v != "v2" {
 		t.Errorf("expected existing to be overridden to v2, got %s", v)
 	}
 	// brand_new should be added
@@ -333,18 +337,18 @@ func TestOverlayMergedServicesDoesNotPolluteFollowingInit(t *testing.T) {
 	const leakedExisting = "test_isolation_existing_sentinel"
 	const leakedOverlay = "test_isolation_overlay_sentinel"
 
-	mergedServices = map[string]map[string]interface{}{
-		leakedExisting: {"name": leakedExisting, "version": "v1"},
+	mergedServices = map[string]meta.Service{
+		leakedExisting: {Name: leakedExisting, Version: "v1"},
 	}
-	overlayMergedServices(&MergedRegistry{Services: []map[string]interface{}{{"name": leakedOverlay, "version": "v1"}}})
+	overlayMergedServices(&MergedRegistry{Services: []meta.Service{{Name: leakedOverlay, Version: "v1"}}})
 
 	resetInit()
 	Init()
 
-	if spec := LoadFromMeta(leakedExisting); spec != nil {
+	if _, ok := ServiceTyped(leakedExisting); ok {
 		t.Fatalf("polluted service %q survived resetInit", leakedExisting)
 	}
-	if spec := LoadFromMeta(leakedOverlay); spec != nil {
+	if _, ok := ServiceTyped(leakedOverlay); ok {
 		t.Fatalf("polluted service %q survived resetInit", leakedOverlay)
 	}
 }
@@ -369,6 +373,31 @@ func TestFetchRemoteMerged_200(t *testing.T) {
 	}
 	if reg.Version != "test-1.0" {
 		t.Errorf("expected version test-1.0, got %s", reg.Version)
+	}
+}
+
+// TestFetchRemoteMerged_CacheBytesPreserveUnmodeledKeys pins that the bytes
+// destined for the on-disk cache are the server's data payload verbatim: a key
+// the typed model does not (yet) declare must survive (see remoteResponse for
+// why).
+func TestFetchRemoteMerged_CacheBytesPreserveUnmodeledKeys(t *testing.T) {
+	const payload = `{"msg":"succeeded","data":{"version":"test-1.0","services":[{"name":"svc","servicePath":"/open-apis/svc/v1","resources":{"items":{"methods":{"list":{"httpMethod":"GET","path":"items","parameters":{"status":{"type":"string","enumName":"StatusEnum"}}}}}}}]}}`
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(payload))
+	}))
+	defer ts.Close()
+	testMetaURL = ts.URL
+
+	data, reg, err := fetchRemoteMerged("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if reg == nil || len(reg.Services) != 1 || reg.Services[0].Name != "svc" {
+		t.Fatalf("typed registry not decoded, got %+v", reg)
+	}
+	if !strings.Contains(string(data), `"enumName":"StatusEnum"`) {
+		t.Errorf("cache payload dropped unmodeled key enumName, got:\n%s", data)
 	}
 }
 
@@ -484,7 +513,7 @@ func TestBrandSwitchInvalidatesCache(t *testing.T) {
 
 	// The old feishu_svc should NOT be loaded from stale cache
 	// The new lark_svc from sync fetch should be available
-	if spec := LoadFromMeta("lark_svc"); spec == nil {
+	if _, ok := ServiceTyped("lark_svc"); !ok {
 		t.Error("expected lark_svc after brand switch sync fetch")
 	}
 }

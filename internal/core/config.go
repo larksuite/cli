@@ -265,8 +265,8 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		AppID:       app.AppId,
 		AppSecret:   secret,
 		Brand:       app.Brand,
-		DefaultAs:   app.DefaultAs,
 		Lang:        app.Lang,
+		DefaultAs:   app.DefaultAs,
 	}
 	if len(app.Users) > 0 {
 		cfg.UserOpenId = app.Users[0].UserOpenId

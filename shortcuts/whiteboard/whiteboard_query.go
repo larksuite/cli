@@ -184,10 +184,7 @@ func fetchWhiteboardNodes(runtime *common.RuntimeContext, wbToken string) (*wbNo
 		return nil, err
 	}
 	var nodes wbNodesResp
-	rawNodes, ok := data["nodes"]
-	if !ok {
-		return nil, wbInvalidResponse("get whiteboard nodes failed: missing data.nodes")
-	}
+	rawNodes, _ := data["nodes"]
 	if rawNodes != nil {
 		var ok bool
 		nodes.Data.Nodes, ok = rawNodes.([]interface{})

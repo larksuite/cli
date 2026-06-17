@@ -47,6 +47,7 @@ func TestParseJSONMap(t *testing.T) {
 		wantErr bool
 	}{
 		{"empty input", "", "--params", 0, false},
+		{"json null", "null", "--params", 0, false},
 		{"valid json", `{"a":"1","b":"2"}`, "--params", 2, false},
 		{"invalid json", `{bad}`, "--params", 0, true},
 		{"json array", `[1,2]`, "--data", 0, true},
@@ -60,6 +61,12 @@ func TestParseJSONMap(t *testing.T) {
 			}
 			if !tt.wantErr && len(got) != tt.wantLen {
 				t.Errorf("ParseJSONMap() returned map with %d keys, want %d", len(got), tt.wantLen)
+			}
+			// A successful parse must yield a non-nil, writable map: callers
+			// overlay onto it (params[k]=v), so `null` — which unmarshals to a
+			// nil map without error — must normalize to {} like empty input.
+			if !tt.wantErr && got == nil {
+				t.Error("ParseJSONMap() = nil map on success, want non-nil")
 			}
 		})
 	}

@@ -2,6 +2,10 @@
 
 `docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用。
 
+## 创建文档标题
+
+使用 `docs +create --doc-format markdown` 创建文档时，文档标题必须写成内容开头唯一的一级标题：`# 标题`。正文标题从 `##` 开始，不要使用多个一级标题；否则标题可能无法被提取并显示为 `Untitled`。
+
 ## 转义规则
 
 > **⚠️ 当文本中包含以下字符且不想触发 Markdown 语法时**，需用 `\` 前缀转义。转义分为**无条件转义**（行内任意位置生效）和**位置敏感转义**（仅特定位置才需要）两类。

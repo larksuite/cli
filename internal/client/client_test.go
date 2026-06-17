@@ -124,8 +124,9 @@ func TestStreamPages_NonBatchAPI_NoArrayField(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/contact/v3/users/u123",
 		As:     "bot",
-	}, func(items []interface{}) {
+	}, func(items []interface{}) error {
 		t.Error("onItems should not be called for non-batch API")
+		return nil
 	}, PaginationOptions{})
 
 	if err != nil {
@@ -168,8 +169,9 @@ func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/contact/v3/users",
 		As:     "bot",
-	}, func(items []interface{}) {
+	}, func(items []interface{}) error {
 		streamedItems = append(streamedItems, items...)
+		return nil
 	}, PaginationOptions{})
 
 	if err != nil {
@@ -186,6 +188,58 @@ func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+}
+
+func TestStreamPages_OnItemsErrorStopsPagination(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "1"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "2"}},
+				"has_more": false,
+			},
+		}), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	sentinel := errors.New("stop streaming")
+	var streamedItems []interface{}
+	result, hasItems, err := ac.StreamPages(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/contact/v3/users",
+		As:     "bot",
+	}, func(items []interface{}) error {
+		streamedItems = append(streamedItems, items...)
+		return sentinel
+	}, PaginationOptions{PageDelay: 0})
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want sentinel", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when callback stops pagination", result)
+	}
+	if hasItems {
+		t.Fatal("hasItems = true, want false when callback stops before returning")
+	}
+	if apiCalls != 1 {
+		t.Fatalf("apiCalls = %d, want early stop after first page", apiCalls)
+	}
+	if len(streamedItems) != 1 {
+		t.Fatalf("streamedItems = %d, want first page only", len(streamedItems))
 	}
 }
 

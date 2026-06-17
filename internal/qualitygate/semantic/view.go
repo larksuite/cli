@@ -1,0 +1,475 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package semantic
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/larksuite/cli/internal/qualitygate/facts"
+	"github.com/larksuite/cli/internal/qualitygate/report"
+)
+
+type InputView struct {
+	SchemaVersion  int                    `json:"schema_version"`
+	ChangedSummary ChangedSummary         `json:"changed_summary"`
+	RuleSummary    []RuleSummaryItem      `json:"rule_summary,omitempty"`
+	Commands       []CommandInput         `json:"commands,omitempty"`
+	Skills         []SkillInput           `json:"skills,omitempty"`
+	SkillQuality   []SkillQualityInput    `json:"skill_quality,omitempty"`
+	Errors         []ErrorInput           `json:"errors,omitempty"`
+	Outputs        []OutputInput          `json:"outputs,omitempty"`
+	Examples       []ExampleInput         `json:"examples,omitempty"`
+	Diagnostics    []facts.DiagnosticFact `json:"diagnostics,omitempty"`
+}
+
+type ChangedSummary struct {
+	Commands     int      `json:"commands,omitempty"`
+	Skills       int      `json:"skills,omitempty"`
+	SkillQuality int      `json:"skill_quality,omitempty"`
+	Errors       int      `json:"errors,omitempty"`
+	Outputs      int      `json:"outputs,omitempty"`
+	Examples     int      `json:"examples,omitempty"`
+	Domains      []string `json:"domains,omitempty"`
+	Sources      []string `json:"sources,omitempty"`
+}
+
+type RuleSummaryItem struct {
+	Rule   string        `json:"rule"`
+	Action report.Action `json:"action"`
+	Count  int           `json:"count"`
+}
+
+type CommandInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.CommandFact
+}
+
+func (i CommandInput) ref() string { return i.FactRef }
+
+type SkillInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.SkillFact
+}
+
+func (i SkillInput) ref() string { return i.FactRef }
+
+type SkillQualityInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.SkillQualityFact
+}
+
+func (i SkillQualityInput) ref() string { return i.FactRef }
+
+type ErrorInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.ErrorFact
+}
+
+func (i ErrorInput) ref() string { return i.FactRef }
+
+type OutputInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.OutputFact
+}
+
+func (i OutputInput) ref() string { return i.FactRef }
+
+type ExampleInput struct {
+	FactRef string `json:"fact_ref"`
+	facts.CommandExample
+}
+
+func (i ExampleInput) ref() string { return i.FactRef }
+
+func BuildInputView(f facts.Facts) InputView {
+	selected := newInputSelection(f)
+	selected.addChangedFacts()
+
+	var viewDiagnostics []facts.DiagnosticFact
+	for _, diag := range f.Diagnostics {
+		if !semanticDiagnosticRule(diag.Rule) {
+			continue
+		}
+		context := selected.diagnosticContext(diag)
+		if !includeDiagnosticInView(diag, selected, context) {
+			continue
+		}
+		viewDiagnostics = append(viewDiagnostics, diag)
+		selected.merge(context)
+	}
+
+	return InputView{
+		SchemaVersion:  f.SchemaVersion,
+		ChangedSummary: changedSummary(f),
+		RuleSummary:    ruleSummary(f.Diagnostics),
+		Commands:       selected.commandInputs(),
+		Skills:         selected.skillInputs(),
+		SkillQuality:   selected.skillQualityInputs(),
+		Errors:         selected.errorInputs(),
+		Outputs:        selected.outputInputs(),
+		Examples:       selected.exampleInputs(),
+		Diagnostics:    viewDiagnostics,
+	}
+}
+
+func (s *inputSelection) addChangedFacts() {
+	for i, cmd := range s.f.Commands {
+		if cmd.Changed {
+			s.commands[i] = true
+		}
+	}
+	for i, skill := range s.f.Skills {
+		if skill.Changed {
+			s.skills[i] = true
+		}
+	}
+	for i, skill := range s.f.SkillQuality {
+		if skill.Changed {
+			s.skillQuality[i] = true
+		}
+	}
+	for i, errFact := range s.f.Errors {
+		if errFact.Changed {
+			s.errors[i] = true
+		}
+	}
+	for i, output := range s.f.Outputs {
+		if output.Changed {
+			s.outputs[i] = true
+		}
+	}
+	for i, example := range s.f.Examples {
+		if example.Changed {
+			s.examples[i] = true
+		}
+	}
+}
+
+type inputSelection struct {
+	f            facts.Facts
+	commands     []bool
+	skills       []bool
+	skillQuality []bool
+	errors       []bool
+	outputs      []bool
+	examples     []bool
+}
+
+func newInputSelection(f facts.Facts) *inputSelection {
+	return &inputSelection{
+		f:            f,
+		commands:     make([]bool, len(f.Commands)),
+		skills:       make([]bool, len(f.Skills)),
+		skillQuality: make([]bool, len(f.SkillQuality)),
+		errors:       make([]bool, len(f.Errors)),
+		outputs:      make([]bool, len(f.Outputs)),
+		examples:     make([]bool, len(f.Examples)),
+	}
+}
+
+func (s *inputSelection) diagnosticContext(diag facts.DiagnosticFact) *inputSelection {
+	out := newInputSelection(s.f)
+	for i, cmd := range s.f.Commands {
+		if diagnosticCommandMatches(diag, cmd.Path, cmd.CanonicalPath) ||
+			diagnosticMentions(diag, cmd.Path) ||
+			diagnosticMentions(diag, cmd.CanonicalPath) {
+			out.commands[i] = true
+		}
+	}
+	for i, skill := range s.f.Skills {
+		if diagnosticLocationMatches(diag.File, diag.Line, skill.SourceFile, skill.Line) ||
+			diagnosticCommandMatches(diag, skill.CommandPath) ||
+			diagnosticMentions(diag, skill.CommandPath) {
+			out.skills[i] = true
+		}
+	}
+	for i, skill := range s.f.SkillQuality {
+		if samePath(diag.File, skill.SourceFile) {
+			out.skillQuality[i] = true
+		}
+	}
+	for i, errFact := range s.f.Errors {
+		if diagnosticLocationMatches(diag.File, diag.Line, errFact.File, errFact.Line) ||
+			diagnosticCommandMatches(diag, errFact.CommandPath, errFact.Command) ||
+			diagnosticMentions(diag, errFact.CommandPath) ||
+			diagnosticMentions(diag, errFact.Command) {
+			out.errors[i] = true
+		}
+	}
+	for i, output := range s.f.Outputs {
+		if diagnosticCommandMatches(diag, output.Command) ||
+			diagnosticMentions(diag, output.Command) {
+			out.outputs[i] = true
+		}
+	}
+	for i, example := range s.f.Examples {
+		if diagnosticLocationMatches(diag.File, diag.Line, example.SourceFile, example.Line) ||
+			diagnosticCommandMatches(diag, example.CommandPath) ||
+			diagnosticMentions(diag, example.CommandPath) {
+			out.examples[i] = true
+		}
+	}
+	return out
+}
+
+func includeDiagnosticInView(diag facts.DiagnosticFact, selected, context *inputSelection) bool {
+	if diag.Action != report.ActionWarning {
+		return true
+	}
+	return selected.intersects(context)
+}
+
+func (s *inputSelection) merge(other *inputSelection) {
+	mergeSelections(s.commands, other.commands)
+	mergeSelections(s.skills, other.skills)
+	mergeSelections(s.skillQuality, other.skillQuality)
+	mergeSelections(s.errors, other.errors)
+	mergeSelections(s.outputs, other.outputs)
+	mergeSelections(s.examples, other.examples)
+}
+
+func (s *inputSelection) intersects(other *inputSelection) bool {
+	return selectionsIntersect(s.commands, other.commands) ||
+		selectionsIntersect(s.skills, other.skills) ||
+		selectionsIntersect(s.skillQuality, other.skillQuality) ||
+		selectionsIntersect(s.errors, other.errors) ||
+		selectionsIntersect(s.outputs, other.outputs) ||
+		selectionsIntersect(s.examples, other.examples)
+}
+
+func (s *inputSelection) commandInputs() []CommandInput {
+	out := make([]CommandInput, 0, countSelected(s.commands))
+	for i, ok := range s.commands {
+		if ok {
+			out = append(out, CommandInput{FactRef: factRef("commands", i), CommandFact: s.f.Commands[i]})
+		}
+	}
+	return out
+}
+
+func (s *inputSelection) skillInputs() []SkillInput {
+	out := make([]SkillInput, 0, countSelected(s.skills))
+	for i, ok := range s.skills {
+		if ok {
+			out = append(out, SkillInput{FactRef: factRef("skills", i), SkillFact: s.f.Skills[i]})
+		}
+	}
+	return out
+}
+
+func (s *inputSelection) skillQualityInputs() []SkillQualityInput {
+	out := make([]SkillQualityInput, 0, countSelected(s.skillQuality))
+	for i, ok := range s.skillQuality {
+		if ok {
+			out = append(out, SkillQualityInput{FactRef: factRef("skill_quality", i), SkillQualityFact: s.f.SkillQuality[i]})
+		}
+	}
+	return out
+}
+
+func (s *inputSelection) errorInputs() []ErrorInput {
+	out := make([]ErrorInput, 0, countSelected(s.errors))
+	for i, ok := range s.errors {
+		if ok {
+			out = append(out, ErrorInput{FactRef: factRef("errors", i), ErrorFact: s.f.Errors[i]})
+		}
+	}
+	return out
+}
+
+func (s *inputSelection) outputInputs() []OutputInput {
+	out := make([]OutputInput, 0, countSelected(s.outputs))
+	for i, ok := range s.outputs {
+		if ok {
+			out = append(out, OutputInput{FactRef: factRef("outputs", i), OutputFact: s.f.Outputs[i]})
+		}
+	}
+	return out
+}
+
+func (s *inputSelection) exampleInputs() []ExampleInput {
+	out := make([]ExampleInput, 0, countSelected(s.examples))
+	for i, ok := range s.examples {
+		if ok {
+			out = append(out, ExampleInput{FactRef: factRef("examples", i), CommandExample: s.f.Examples[i]})
+		}
+	}
+	return out
+}
+
+func changedSummary(f facts.Facts) ChangedSummary {
+	domains := map[string]bool{}
+	sources := map[string]bool{}
+	var out ChangedSummary
+	for _, cmd := range f.Commands {
+		if !cmd.Changed {
+			continue
+		}
+		out.Commands++
+		addNonEmpty(domains, cmd.Domain)
+		addNonEmpty(sources, cmd.Source)
+	}
+	for _, skill := range f.Skills {
+		if !skill.Changed {
+			continue
+		}
+		out.Skills++
+		addNonEmpty(domains, skill.Domain)
+		addNonEmpty(sources, skill.Source)
+	}
+	for _, skill := range f.SkillQuality {
+		if !skill.Changed {
+			continue
+		}
+		out.SkillQuality++
+		addNonEmpty(domains, skill.Domain)
+	}
+	for _, errFact := range f.Errors {
+		if !errFact.Changed {
+			continue
+		}
+		out.Errors++
+		addNonEmpty(domains, errFact.Domain)
+		addNonEmpty(sources, errFact.Source)
+	}
+	for _, output := range f.Outputs {
+		if !output.Changed {
+			continue
+		}
+		out.Outputs++
+		addNonEmpty(domains, output.Domain)
+		addNonEmpty(sources, output.Source)
+	}
+	for _, example := range f.Examples {
+		if !example.Changed {
+			continue
+		}
+		out.Examples++
+		addNonEmpty(domains, example.Domain)
+		addNonEmpty(sources, example.Source)
+	}
+	out.Domains = sortedViewSetKeys(domains)
+	out.Sources = sortedViewSetKeys(sources)
+	return out
+}
+
+func ruleSummary(diags []facts.DiagnosticFact) []RuleSummaryItem {
+	counts := map[string]int{}
+	actions := map[string]report.Action{}
+	for _, diag := range diags {
+		key := string(diag.Action) + "\x00" + diag.Rule
+		counts[key]++
+		actions[key] = diag.Action
+	}
+	keys := sortedKeysInt(counts)
+	out := make([]RuleSummaryItem, 0, len(keys))
+	for _, key := range keys {
+		_, rule, _ := strings.Cut(key, "\x00")
+		out = append(out, RuleSummaryItem{
+			Rule:   rule,
+			Action: actions[key],
+			Count:  counts[key],
+		})
+	}
+	return out
+}
+
+func semanticDiagnosticRule(rule string) bool {
+	return rule == "command_naming" ||
+		rule == "flag_naming" ||
+		strings.HasPrefix(rule, "default_output") ||
+		strings.HasPrefix(rule, "skill_") ||
+		strings.HasPrefix(rule, "example_dry_run") ||
+		rule == "no_bare_helper_error"
+}
+
+func diagnosticCommandMatches(diag facts.DiagnosticFact, values ...string) bool {
+	if diag.CommandPath == "" {
+		return false
+	}
+	for _, value := range values {
+		if value != "" && diag.CommandPath == value {
+			return true
+		}
+	}
+	return false
+}
+
+func diagnosticLocationMatches(diagFile string, diagLine int, factFile string, factLine int) bool {
+	if !samePath(diagFile, factFile) {
+		return false
+	}
+	return diagLine == 0 || factLine == 0 || diagLine == factLine
+}
+
+func diagnosticMentions(diag facts.DiagnosticFact, value string) bool {
+	if value == "" {
+		return false
+	}
+	return strings.Contains(diag.Message, value) ||
+		strings.Contains(diag.Suggestion, value)
+}
+
+func samePath(a, b string) bool {
+	return normalizeViewPath(a) == normalizeViewPath(b)
+}
+
+func normalizeViewPath(path string) string {
+	return strings.TrimPrefix(strings.ReplaceAll(path, "\\", "/"), "./")
+}
+
+func factRef(kind string, idx int) string {
+	return fmt.Sprintf("facts.%s[%d]", kind, idx)
+}
+
+func addNonEmpty(set map[string]bool, value string) {
+	if value != "" {
+		set[value] = true
+	}
+}
+
+func countSelected(items []bool) int {
+	var count int
+	for _, item := range items {
+		if item {
+			count++
+		}
+	}
+	return count
+}
+
+func mergeSelections(dst, src []bool) {
+	for i := range dst {
+		dst[i] = dst[i] || src[i]
+	}
+}
+
+func selectionsIntersect(a, b []bool) bool {
+	for i := range a {
+		if a[i] && b[i] {
+			return true
+		}
+	}
+	return false
+}
+
+func sortedViewSetKeys(set map[string]bool) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedKeysInt(set map[string]int) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}

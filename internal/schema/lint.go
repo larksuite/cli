@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 )
 
 var validJSONSchemaTypes = map[string]bool{
@@ -81,7 +81,7 @@ func lintEnvelope(env Envelope) []error {
 	}
 
 	// ---- L3: cross-field self-consistency ----
-	dangerExpected := env.Meta.Risk == cmdutil.RiskWrite || env.Meta.Risk == cmdutil.RiskHighRiskWrite
+	dangerExpected := env.Meta.Risk == core.RiskWrite || env.Meta.Risk == core.RiskHighRiskWrite
 	if env.Meta.Danger != dangerExpected {
 		errs = append(errs, fmt.Errorf("L3: _meta.danger=%v inconsistent with risk=%q", env.Meta.Danger, env.Meta.Risk))
 	}
@@ -92,7 +92,7 @@ func lintEnvelope(env Envelope) []error {
 	if env.InputSchema != nil && env.InputSchema.Properties != nil {
 		_, hasYes = env.InputSchema.Properties.Map["yes"]
 	}
-	wantYes := env.Meta.Risk == cmdutil.RiskHighRiskWrite
+	wantYes := env.Meta.Risk == core.RiskHighRiskWrite
 	if hasYes != wantYes {
 		errs = append(errs, fmt.Errorf("L3: inputSchema `yes` property=%v inconsistent with risk=%q", hasYes, env.Meta.Risk))
 	}
@@ -124,6 +124,9 @@ func walkForL2(props *OrderedProps, errs *[]error) {
 		}
 		if p.Minimum != nil && p.Maximum != nil && *p.Minimum >= *p.Maximum {
 			*errs = append(*errs, fmt.Errorf("L2: field %q minimum (%v) >= maximum (%v)", k, *p.Minimum, *p.Maximum))
+		}
+		if n := len(p.EnumDescriptions); n > 0 && n != len(p.Enum) {
+			*errs = append(*errs, fmt.Errorf("L2: field %q enumDescriptions length (%d) != enum length (%d)", k, n, len(p.Enum)))
 		}
 		if len(p.Required) > 0 && p.Properties != nil {
 			for _, r := range p.Required {

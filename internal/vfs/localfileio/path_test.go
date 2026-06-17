@@ -26,6 +26,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		{"unicode normal", "报告.xlsx", false},
 		{"dot-dot resolves to cwd", "subdir/..", false},
 
+		// ── GIVEN: empty or blank paths → THEN: rejected ──
+		{"empty path", "", true},
+		{"blank path", "   ", true},
+
 		// ── GIVEN: path traversal via .. → THEN: rejected ──
 		{"dot-dot escape", "../../.ssh/authorized_keys", true},
 		{"dot-dot mid path", "subdir/../../etc/passwd", true},
@@ -34,6 +38,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		// ── GIVEN: absolute paths → THEN: rejected ──
 		{"absolute path unix", "/etc/passwd", true},
 		{"absolute path root", "/tmp/evil", true},
+		{"absolute path windows drive", `C:\Users\agent\secret.txt`, true},
+		{"absolute path windows drive slash", "C:/Users/agent/secret.txt", true},
+		{"absolute path windows rooted", `\Users\agent\secret.txt`, true},
+		{"absolute path windows unc", `\\server\share\secret.txt`, true},
 
 		// ── GIVEN: control characters in path → THEN: rejected ──
 		{"null byte", "file\x00.txt", true},
@@ -187,11 +195,23 @@ func TestSafeUploadPath_AllowsTempFileAbsolutePath(t *testing.T) {
 }
 
 func TestSafeUploadPath_RejectsNonTempAbsolutePath(t *testing.T) {
-	// GIVEN: an absolute path outside the temp directory
-	// WHEN / THEN: SafeUploadPath rejects it
-	_, err := SafeInputPath("/etc/passwd")
-	if err == nil {
-		t.Error("expected error for absolute non-temp path, got nil")
+	for _, tt := range []struct {
+		name  string
+		input string
+	}{
+		{"absolute path unix", "/etc/passwd"},
+		{"absolute path windows drive", `C:\Users\agent\secret.txt`},
+		{"absolute path windows drive slash", "C:/Users/agent/secret.txt"},
+		{"absolute path windows rooted", `\Users\agent\secret.txt`},
+		{"absolute path windows unc", `\\server\share\secret.txt`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// WHEN / THEN: SafeInputPath rejects absolute paths on every platform.
+			_, err := SafeInputPath(tt.input)
+			if err == nil {
+				t.Errorf("expected error for absolute path %q, got nil", tt.input)
+			}
+		})
 	}
 }
 

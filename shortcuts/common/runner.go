@@ -23,6 +23,7 @@ import (
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -298,6 +299,14 @@ func (ctx *RuntimeContext) CallAPITyped(method, url string, params map[string]in
 // carry fields a caller needs on failure (e.g. the file_token an overwrite
 // returned, for token-stability handling).
 func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[string]interface{}, error) {
+	return ClassifyAPIResponseWith(resp, ctx.APIClassifyContext())
+}
+
+// ClassifyAPIResponseWith is the RuntimeContext-free form of
+// ClassifyAPIResponse for callers that drive the request outside a running
+// shortcut (e.g. a cobra command holding only a factory) and supply their own
+// classification context.
+func ClassifyAPIResponseWith(resp *larkcore.ApiResp, cc errclass.ClassifyContext) (map[string]interface{}, error) {
 	logID, _ := logIDFromHeader(resp)["log_id"].(string)
 
 	result, parseErr := client.ParseJSONResponse(resp)
@@ -321,7 +330,7 @@ func (ctx *RuntimeContext) ClassifyAPIResponse(resp *larkcore.ApiResp) (map[stri
 		}
 	}
 	out, _ := resultMap["data"].(map[string]interface{})
-	if apiErr := errclass.BuildAPIError(resultMap, ctx.APIClassifyContext()); apiErr != nil {
+	if apiErr := errclass.BuildAPIError(resultMap, cc); apiErr != nil {
 		return out, apiErr
 	}
 	if resp.StatusCode >= 400 {
@@ -404,7 +413,10 @@ func (ctx *RuntimeContext) StreamPages(method, url string, params map[string]int
 		return nil, false, err
 	}
 	req := ctx.buildRequest(method, url, params, data)
-	return ac.StreamPages(ctx.ctx, req, onItems, opts)
+	return ac.StreamPages(ctx.ctx, req, func(items []interface{}) error {
+		onItems(items)
+		return nil
+	}, opts)
 }
 
 func (ctx *RuntimeContext) buildRequest(method, url string, params map[string]interface{}, data interface{}) client.RawApiRequest {
@@ -962,6 +974,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 			return nil
 		}
 	}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)

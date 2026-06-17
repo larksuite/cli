@@ -2,6 +2,107 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.55] - 2026-06-16
+
+### Features
+
+- **vc**: Support agent meeting event workflows (#1483)
+- **drive**: Support exporting Base structure snapshots (#1481)
+- **doc**: Add docx cover resource commands (#1468)
+- **doc**: Support `lang` for docx fetch v2 (#1459)
+- **event**: Optimize subscription precheck, links, and consumer guard (#1447)
+
+### Bug Fixes
+
+- **drive**: Validate drive import folder target (#1485)
+
+## [v1.0.54] - 2026-06-15
+
+### Features
+
+- **mail**: Auto-attach default signature on send/reply/forward (#1415)
+- **drive**: Support `original_creator_ids` filter in search (#1046)
+- **cli**: Simplify proxy plugin warning and gate it on TTY (#1448)
+
+### Bug Fixes
+
+- **doc**: Fix docs fetch and update ergonomics (#1466)
+- **vfs**: Reject blank local paths (#1460)
+- **vfs**: Reject Windows absolute paths cross-platform (#1401)
+- **event**: Clarify remote bus blocker recovery (#1454)
+
+### Refactor
+
+- Converge command pipelines onto a typed metadata model + catalog (#1191)
+
+### Documentation
+
+- **im**: Document `@mention` format per message type (text/post/card) (#1419)
+- **doc**: Clarify lark-doc create title guidance (#1474)
+- **skills**: Add rename prompt for import without `--name` (#1461)
+- **apps**: Drop Miaoda brand word from apps command help text (#1399)
+
+## [v1.0.53] - 2026-06-12
+
+### Features
+
+- **auth**: Revoke user tokens server-side on `auth logout` (#1434)
+- **auth**: Add `--json` flag support to auth subcommands (#1431)
+- **token**: Mint TAT via unified OAuth v3 Token Endpoint (#1408)
+- **note**: Split note into a dedicated domain with `+detail` and `+transcript` flows (#1345, #1417, #1435)
+- **im**: Unify sort flags into `--sort` field and `--order` direction (#1302)
+
+### Bug Fixes
+
+- **apps**: Read release error_logs from `data.error_logs` in `+release-get` (#1436)
+
+### Documentation
+
+- **skills**: Optimize whiteboard skill (#1371)
+- **skills**: Optimize okr skill (#1368)
+
+## [v1.0.52] - 2026-06-11
+
+### Features
+
+- **events**: Per-resource subscription identity + Match hook (#1185)
+- **apps**: Emit typed error envelopes across the apps domain (#1288)
+- **wiki**: Emit typed error envelopes across the wiki domain (#1350)
+- **im**: Add `--chat-modes` filter to chat search (#1317)
+- **apps**: Exclude `.git` directory from `+html-publish` package (#1396)
+- **build**: Support riscv64 prebuilt binaries in release and install pipeline
+
+### Bug Fixes
+
+- **apps**: Support git credential dry-run (#1390)
+- **whiteboard**: Fix parsing empty whiteboard content (#1391)
+- **build**: Make `-race` flag arch-conditional to support riscv64
+
+### Documentation
+
+- **im**: Document `chat.user_setting` batch_query/batch_update (#1339)
+- **im**: Document `chat.managers` and `chat.moderation` API resources (#1294)
+- **skills**: Optimize lark-drive skill routing (#1284)
+- **skills**: Expand cite user guidance and fix typos (#1394)
+
+## [v1.0.51] - 2026-06-10
+
+### Features
+
+- **apps**: Support multi dev modes (#1175)
+- **im**: Complete audio/post rendering and add opt-in `--download-resources` (#1245)
+- **base**: Configure initial base table schema (#1377)
+- **vc**: Add recording event support (#1369)
+- **minutes**: Replace words for transcript (#1372)
+- **markdown**: Emit typed error envelopes across the markdown domain (#1347)
+- **sheets**: Emit typed error envelopes across the sheets domain (#1348)
+- **slides**: Emit typed error envelopes across the slides domain (#1349)
+
+### Documentation
+
+- **skills**: Warn about `@file` absolute path restriction in lark-doc skills (#1375)
+- **skills**: Remove unsupported ⚠️ from callout emoji list (#1374)
+
 ## [v1.0.50] - 2026-06-09
 
 ### Features
@@ -1088,6 +1189,11 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.55]: https://github.com/larksuite/cli/releases/tag/v1.0.55
+[v1.0.54]: https://github.com/larksuite/cli/releases/tag/v1.0.54
+[v1.0.53]: https://github.com/larksuite/cli/releases/tag/v1.0.53
+[v1.0.52]: https://github.com/larksuite/cli/releases/tag/v1.0.52
+[v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51
 [v1.0.50]: https://github.com/larksuite/cli/releases/tag/v1.0.50
 [v1.0.49]: https://github.com/larksuite/cli/releases/tag/v1.0.49
 [v1.0.48]: https://github.com/larksuite/cli/releases/tag/v1.0.48

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // pollWikiAsyncTask is shared infrastructure for every wiki delete shortcut,
@@ -88,29 +88,43 @@ func TestPollWikiAsyncTaskAllPollsFailWrapsWithResumeHint(t *testing.T) {
 	t.Parallel()
 
 	runtime, stderr := newWikiNodeDeleteRuntime(t, core.AsUser)
+	transportErr := errors.New("transport boom")
 	_, ready, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_lost", "delete-node", 2, 0,
 		func(context.Context, string) (wikiAsyncTaskStatus, error) {
-			return wikiAsyncTaskStatus{}, errors.New("transport boom")
+			return wikiAsyncTaskStatus{}, transportErr
 		},
 		"lark-cli drive +task_result --task-id task_lost",
 	)
 	if ready {
 		t.Fatalf("ready = true, want false when every poll failed")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("err = %T %v, want *output.ExitError with detail", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %T %v, want a typed errs.* error", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("exit code = %d, want ExitAPI", exitErr.Code)
+	if p.Subtype != errs.SubtypeUnknown {
+		t.Fatalf("subtype = %q, want unknown for an untyped poll failure", p.Subtype)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "every status poll failed (task_id=task_lost)") ||
-		!strings.Contains(exitErr.Detail.Hint, "lark-cli drive +task_result --task-id task_lost") {
-		t.Fatalf("hint = %q, want resume guidance naming the task", exitErr.Detail.Hint)
+	if !errors.Is(err, transportErr) {
+		t.Fatalf("err does not preserve the transport cause: %v", err)
+	}
+	if !strings.Contains(p.Hint, "every status poll failed (task_id=task_lost)") ||
+		!strings.Contains(p.Hint, "lark-cli drive +task_result --task-id task_lost") {
+		t.Fatalf("hint = %q, want resume guidance naming the task", p.Hint)
 	}
 	if !strings.Contains(stderr.String(), "attempt 2/2 failed") {
 		t.Fatalf("stderr = %q, want per-attempt progress", stderr.String())
+	}
+}
+
+func TestParseWikiAsyncTaskStatusRejectsNilTask(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseWikiAsyncTaskStatus("task_x", nil, "delete_space_result")
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("expected internal/invalid_response, got %v", err)
 	}
 }
 
@@ -118,15 +132,10 @@ func TestPollWikiAsyncTaskPrependsUpstreamExitHint(t *testing.T) {
 	t.Parallel()
 
 	runtime, _ := newWikiNodeDeleteRuntime(t, core.AsUser)
-	upstream := &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "permission",
-			Code:    99991663,
-			Message: "permission denied",
-			Hint:    "grant the wiki:node:retrieve scope",
-		},
-	}
+	// The upstream poll error is a typed error carrying its own hint, mirroring
+	// what runtime.CallAPITyped produces for a permission failure.
+	upstream := errs.NewPermissionError(errs.SubtypePermissionDenied, "permission denied").
+		WithHint("grant the wiki:node:retrieve scope")
 	_, _, err := pollWikiAsyncTask(
 		context.Background(), runtime, "task_perm", "delete-node", 1, 0,
 		func(context.Context, string) (wikiAsyncTaskStatus, error) {
@@ -134,23 +143,23 @@ func TestPollWikiAsyncTaskPrependsUpstreamExitHint(t *testing.T) {
 		},
 		"resume-cmd",
 	)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("err = %T %v, want *output.ExitError", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("err = %T %v, want a typed errs.* error", err, err)
 	}
 	// The upstream hint must lead so the actionable cause is read first, with
-	// the resume guidance appended. Type and exit code propagate from upstream.
-	if !strings.HasPrefix(exitErr.Detail.Hint, "grant the wiki:node:retrieve scope\n") {
-		t.Fatalf("hint = %q, want upstream hint prepended", exitErr.Detail.Hint)
+	// the resume guidance appended. The original typed error propagates in place.
+	if !strings.HasPrefix(p.Hint, "grant the wiki:node:retrieve scope\n") {
+		t.Fatalf("hint = %q, want upstream hint prepended", p.Hint)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "resume-cmd") {
-		t.Fatalf("hint = %q, want resume command appended", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "resume-cmd") {
+		t.Fatalf("hint = %q, want resume command appended", p.Hint)
 	}
-	if exitErr.Detail.Type != "permission" || exitErr.Code != output.ExitAPI {
-		t.Fatalf("exitErr = %+v, want permission/ExitAPI propagated", exitErr)
+	if p.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("subtype = %q, want permission_denied propagated", p.Subtype)
 	}
-	if exitErr.Detail.Message != "permission denied" {
-		t.Fatalf("message = %q, want upstream message preserved", exitErr.Detail.Message)
+	if p.Message != "permission denied" {
+		t.Fatalf("message = %q, want upstream message preserved", p.Message)
 	}
 }
 

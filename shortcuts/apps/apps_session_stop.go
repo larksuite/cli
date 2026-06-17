@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -35,13 +34,13 @@ var AppsSessionStop = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		if strings.TrimSpace(rctx.Str("session-id")) == "" {
-			return output.ErrValidation("--session-id is required")
+			return appsValidationParamError("--session-id", "--session-id is required")
 		}
 		if strings.TrimSpace(rctx.Str("turn-id")) == "" {
-			return output.ErrValidation("--turn-id is required")
+			return appsValidationParamError("--turn-id", "--turn-id is required")
 		}
 		return nil
 	},

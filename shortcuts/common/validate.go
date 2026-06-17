@@ -109,8 +109,15 @@ func ExactlyOneTyped(rt *RuntimeContext, flags ...string) error {
 // ValidatePageSizeTyped validates that the named flag (if set) is an integer within [minVal, maxVal].
 // It returns the parsed value (or defaultVal if the flag is empty) and any validation error.
 func ValidatePageSizeTyped(rt *RuntimeContext, flagName string, defaultVal, minVal, maxVal int) (int, error) {
-	s := rt.Str(flagName)
 	param := "--" + flagName
+	if rt.Cmd == nil {
+		return defaultVal, nil
+	}
+	flag := rt.Cmd.Flags().Lookup(flagName)
+	if flag == nil {
+		return defaultVal, nil
+	}
+	s := flag.Value.String()
 	if s == "" {
 		return defaultVal, nil
 	}
@@ -123,18 +130,6 @@ func ValidatePageSizeTyped(rt *RuntimeContext, flagName string, defaultVal, minV
 			WithParam(param)
 	}
 	return n, nil
-}
-
-// ParseIntBounded parses an int flag and clamps it to [min, max].
-func ParseIntBounded(rt *RuntimeContext, name string, min, max int) int {
-	v := rt.Int(name)
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
 }
 
 // ValidateSafePath ensures path is relative and resolves within the current

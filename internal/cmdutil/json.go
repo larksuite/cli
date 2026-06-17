@@ -34,7 +34,9 @@ func ParseOptionalBody(httpMethod, data string, stdin io.Reader, fileIO fileio.F
 	return body, nil
 }
 
-// ParseJSONMap parses a JSON string into a map. Returns an empty map if input is empty.
+// ParseJSONMap parses a JSON string into a map. Returns an empty (never nil) map
+// for empty input or the JSON literal null, so callers can always overlay onto
+// the result without a nil-map panic.
 // Supports stdin (-), @file, @@-escape, and single-quote stripping via ResolveInput.
 func ParseJSONMap(input, label string, stdin io.Reader, fileIO fileio.FileIO) (map[string]any, error) {
 	resolved, err := ResolveInput(input, stdin, fileIO)
@@ -47,6 +49,11 @@ func ParseJSONMap(input, label string, stdin io.Reader, fileIO fileio.FileIO) (m
 	var result map[string]any
 	if err := json.Unmarshal([]byte(resolved), &result); err != nil {
 		return nil, output.ErrValidation("%s invalid format, expected JSON object", label)
+	}
+	if result == nil {
+		// `null` unmarshals into a nil map without error; normalize it so the
+		// returned map is always writable, matching the empty-input case.
+		return map[string]any{}, nil
 	}
 	return result, nil
 }

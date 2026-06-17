@@ -17,6 +17,7 @@ import (
 
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
@@ -35,16 +36,20 @@ type CacheMeta struct {
 	Brand       string `json:"brand,omitempty"`
 }
 
-// MergedRegistry is the top-level structure of remote_meta.json.
+// MergedRegistry is the top-level structure of remote_meta.json. Services are
+// decoded straight into the typed meta model so embedded, cached, and remote
+// data share one representation (no map intermediary, no re-parse).
 type MergedRegistry struct {
-	Version  string                   `json:"version"`
-	Services []map[string]interface{} `json:"services"`
+	Version  string         `json:"version"`
+	Services []meta.Service `json:"services"`
 }
 
-// remoteResponse is the envelope returned by the remote API.
+// remoteResponse is the envelope returned by the remote API. Data stays raw:
+// the cache must store the server payload verbatim — a typed re-marshal would
+// strip every field the model doesn't (yet) declare and starve future binaries.
 type remoteResponse struct {
-	Msg  string         `json:"msg"`
-	Data MergedRegistry `json:"data"`
+	Msg  string          `json:"msg"`
+	Data json.RawMessage `json:"data"`
 }
 
 // configuredBrand is set by InitWithBrand and determines which API host to use.
@@ -125,22 +130,22 @@ func cacheWritable() bool {
 // --- cache I/O ---
 
 func loadCacheMeta() (CacheMeta, error) {
-	var meta CacheMeta
+	var cm CacheMeta
 	data, err := vfs.ReadFile(cacheMetaPath())
 	if err != nil {
-		return meta, err
+		return cm, err
 	}
-	if err = json.Unmarshal(data, &meta); err != nil {
-		return meta, err
+	if err = json.Unmarshal(data, &cm); err != nil {
+		return cm, err
 	}
-	return meta, nil
+	return cm, nil
 }
 
-func saveCacheMeta(meta CacheMeta) error {
+func saveCacheMeta(cm CacheMeta) error {
 	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
 		return err
 	}
-	data, err := json.Marshal(meta)
+	data, err := json.Marshal(cm)
 	if err != nil {
 		return err
 	}
@@ -163,14 +168,16 @@ func loadCachedMerged() (*MergedRegistry, error) {
 	return &reg, nil
 }
 
-func saveCachedMerged(data []byte, meta CacheMeta) error {
+// saveCachedMerged writes the cache file. data must be the server's data
+// payload verbatim (see remoteResponse) — never a typed re-marshal.
+func saveCachedMerged(data []byte, cm CacheMeta) error {
 	if err := vfs.MkdirAll(cacheDir(), 0700); err != nil {
 		return err
 	}
 	if err := validate.AtomicWrite(cachePath(), data, 0644); err != nil {
 		return err
 	}
-	return saveCacheMeta(meta)
+	return saveCacheMeta(cm)
 }
 
 // --- HTTP fetch ---
@@ -211,18 +218,21 @@ func fetchRemoteMerged(localVersion string) (data []byte, reg *MergedRegistry, e
 		return nil, nil, fmt.Errorf("remote meta: unexpected msg %q", envelope.Msg)
 	}
 
-	// If data.Services is nil, the version is up-to-date (not modified)
-	if envelope.Data.Services == nil {
+	var parsed MergedRegistry
+	if len(envelope.Data) > 0 {
+		if err := json.Unmarshal(envelope.Data, &parsed); err != nil {
+			return nil, nil, fmt.Errorf("remote meta: parse data: %w", err)
+		}
+	}
+
+	// If data.services is nil, the version is up-to-date (not modified)
+	if parsed.Services == nil {
 		return nil, nil, nil
 	}
 
-	// Re-marshal just the data portion for caching
-	dataBytes, err := json.Marshal(envelope.Data)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return dataBytes, &envelope.Data, nil
+	// Cache the data portion verbatim (see remoteResponse for why not a typed
+	// re-marshal).
+	return envelope.Data, &parsed, nil
 }
 
 type httpError struct {
@@ -247,12 +257,12 @@ func doSyncFetch() {
 		})
 		return
 	}
-	meta := CacheMeta{
+	cm := CacheMeta{
 		LastCheckAt: time.Now().Unix(),
 		Version:     reg.Version,
 		Brand:       string(configuredBrand),
 	}
-	_ = saveCachedMerged(data, meta)
+	_ = saveCachedMerged(data, cm)
 	overlayMergedServices(reg)
 }
 
@@ -275,22 +285,22 @@ func triggerBackgroundRefresh() {
 
 func doBackgroundRefresh() {
 	defer func() { _ = recover() }()
-	meta, _ := loadCacheMeta()
-	version := meta.Version
+	cm, _ := loadCacheMeta()
+	version := cm.Version
 	if version == "" {
 		version = embeddedVersion
 	}
 	data, reg, err := fetchRemoteMerged(version)
 	if err != nil {
 		// On error, update last_check_at to avoid retrying every invocation
-		meta.LastCheckAt = time.Now().Unix()
-		_ = saveCacheMeta(meta)
+		cm.LastCheckAt = time.Now().Unix()
+		_ = saveCacheMeta(cm)
 		return
 	}
 	if reg == nil {
 		// Version unchanged — just update check time
-		meta.LastCheckAt = time.Now().Unix()
-		_ = saveCacheMeta(meta)
+		cm.LastCheckAt = time.Now().Unix()
+		_ = saveCacheMeta(cm)
 		return
 	}
 	newMeta := CacheMeta{
@@ -302,21 +312,20 @@ func doBackgroundRefresh() {
 }
 
 // shouldRefresh returns true if the cache TTL has expired.
-func shouldRefresh(meta CacheMeta) bool {
-	if meta.LastCheckAt == 0 {
+func shouldRefresh(cm CacheMeta) bool {
+	if cm.LastCheckAt == 0 {
 		return true
 	}
-	return time.Since(time.Unix(meta.LastCheckAt, 0)) > metaTTL()
+	return time.Since(time.Unix(cm.LastCheckAt, 0)) > metaTTL()
 }
 
 // overlayMergedServices merges remote services into the in-memory map.
 // Remote entries override embedded entries with the same name.
 func overlayMergedServices(reg *MergedRegistry) {
 	for _, svc := range reg.Services {
-		name, ok := svc["name"].(string)
-		if !ok || name == "" {
+		if svc.Name == "" {
 			continue
 		}
-		mergedServices[name] = svc
+		mergedServices[svc.Name] = svc
 	}
 }

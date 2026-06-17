@@ -34,17 +34,20 @@ type SourceStatus struct {
 }
 
 type Hello struct {
-	Type       string   `json:"type"`
-	PID        int      `json:"pid"`
-	EventKey   string   `json:"event_key"`
-	EventTypes []string `json:"event_types"`
-	Version    string   `json:"version"`
+	Type           string   `json:"type"`
+	PID            int      `json:"pid"`
+	EventKey       string   `json:"event_key"`
+	EventTypes     []string `json:"event_types"`
+	Version        string   `json:"version"`
+	SubscriptionID string   `json:"subscription_id,omitempty"` // empty = fallback to EventKey on bus side
 }
 
 type HelloAck struct {
-	Type        string `json:"type"`
-	BusVersion  string `json:"bus_version"`
-	FirstForKey bool   `json:"first_for_key"`
+	Type         string `json:"type"`
+	BusVersion   string `json:"bus_version"`
+	FirstForKey  bool   `json:"first_for_key"`
+	Rejected     bool   `json:"rejected,omitempty"`
+	RejectReason string `json:"reject_reason,omitempty"`
 }
 
 // Event: Seq is per-conn monotonic; gaps signal bus drop-oldest backpressure loss.
@@ -61,10 +64,11 @@ type Bye struct {
 	Type string `json:"type"`
 }
 
-// PreShutdownCheck atomically reserves the cleanup lock for EventKey.
+// PreShutdownCheck atomically reserves the cleanup lock for (EventKey, SubscriptionID).
 type PreShutdownCheck struct {
-	Type     string `json:"type"`
-	EventKey string `json:"event_key"`
+	Type           string `json:"type"`
+	EventKey       string `json:"event_key"`
+	SubscriptionID string `json:"subscription_id,omitempty"` // empty = fallback to EventKey
 }
 
 type PreShutdownAck struct {
@@ -77,10 +81,11 @@ type StatusQuery struct {
 }
 
 type ConsumerInfo struct {
-	PID      int    `json:"pid"`
-	EventKey string `json:"event_key"`
-	Received int64  `json:"received"`
-	Dropped  int64  `json:"dropped"`
+	PID            int    `json:"pid"`
+	EventKey       string `json:"event_key"`
+	SubscriptionID string `json:"subscription_id,omitempty"`
+	Received       int64  `json:"received"`
+	Dropped        int64  `json:"dropped"`
 }
 
 type StatusResponse struct {
@@ -95,13 +100,14 @@ type Shutdown struct {
 	Type string `json:"type"`
 }
 
-func NewHello(pid int, eventKey string, eventTypes []string, version string) *Hello {
+func NewHello(pid int, eventKey string, eventTypes []string, version string, subscriptionID string) *Hello {
 	return &Hello{
-		Type:       MsgTypeHello,
-		PID:        pid,
-		EventKey:   eventKey,
-		EventTypes: eventTypes,
-		Version:    version,
+		Type:           MsgTypeHello,
+		PID:            pid,
+		EventKey:       eventKey,
+		EventTypes:     eventTypes,
+		Version:        version,
+		SubscriptionID: subscriptionID,
 	}
 }
 
@@ -110,6 +116,17 @@ func NewHelloAck(busVersion string, firstForKey bool) *HelloAck {
 		Type:        MsgTypeHelloAck,
 		BusVersion:  busVersion,
 		FirstForKey: firstForKey,
+	}
+}
+
+// NewHelloAckRejected builds a hello_ack that tells the consumer the bus refused
+// registration (e.g. a SingleConsumer EventKey already has a running consumer).
+func NewHelloAckRejected(busVersion, reason string) *HelloAck {
+	return &HelloAck{
+		Type:         MsgTypeHelloAck,
+		BusVersion:   busVersion,
+		Rejected:     true,
+		RejectReason: reason,
 	}
 }
 
@@ -124,8 +141,8 @@ func NewEvent(eventType, eventID, sourceTime string, seq uint64, payload json.Ra
 	}
 }
 
-func NewPreShutdownCheck(eventKey string) *PreShutdownCheck {
-	return &PreShutdownCheck{Type: MsgTypePreShutdownCheck, EventKey: eventKey}
+func NewPreShutdownCheck(eventKey, subscriptionID string) *PreShutdownCheck {
+	return &PreShutdownCheck{Type: MsgTypePreShutdownCheck, EventKey: eventKey, SubscriptionID: subscriptionID}
 }
 
 func NewPreShutdownAck(lastForKey bool) *PreShutdownAck {

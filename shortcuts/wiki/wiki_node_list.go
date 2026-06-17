@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -53,7 +54,7 @@ var WikiNodeList = common.Shortcut{
 		// hint instead of deferring to API-time errors. Matches the contract
 		// used by +node-create and +move.
 		if runtime.As().IsBot() && spaceID == wikiMyLibrarySpaceID {
-			return output.ErrValidation("bot identity does not support --space-id my_library; use an explicit --space-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity does not support --space-id my_library; use an explicit --space-id").WithParam("--space-id")
 		}
 		if err := validateOptionalResourceName(spaceID, "--space-id"); err != nil {
 			return err
@@ -150,7 +151,7 @@ func fetchWikiNodes(runtime *common.RuntimeContext, spaceID string) ([]map[strin
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		data, err := runtime.CallAPI("GET", apiPath, params, nil)
+		data, err := runtime.CallAPITyped("GET", apiPath, params, nil)
 		if err != nil {
 			return nil, false, "", err
 		}

@@ -25,8 +25,8 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/apps/gitcred"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -45,6 +45,11 @@ func TestAppsGitCredentialInitDryRunRequestShape(t *testing.T) {
 			Params map[string]interface{} `json:"params"`
 			Body   interface{}            `json:"body"`
 		} `json:"api"`
+		Mode         string   `json:"mode"`
+		Action       string   `json:"action"`
+		AppID        string   `json:"app_id"`
+		MetadataFile string   `json:"metadata_file"`
+		LocalEffects []string `json:"local_effects"`
 	}
 	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
 		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
@@ -65,6 +70,107 @@ func TestAppsGitCredentialInitDryRunRequestShape(t *testing.T) {
 	if call.Body != nil {
 		t.Fatalf("body = %#v, want nil", call.Body)
 	}
+	if payload.Mode != "api-plus-local-setup" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "initialize_local_git_credential" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if payload.AppID != "app_xxx" {
+		t.Fatalf("app_id = %q", payload.AppID)
+	}
+	if !strings.HasSuffix(payload.MetadataFile, filepath.Join("spark", "app_xxx", "git.json")) {
+		t.Fatalf("metadata_file = %q", payload.MetadataFile)
+	}
+	assertStringSliceEqual(t, payload.LocalEffects, []string{
+		"save the issued PAT in the local system credential store",
+		"write app-scoped git credential metadata",
+		"configure a URL-scoped Git credential helper in global git config when possible",
+	})
+}
+
+func TestAppsGitCredentialListDryRunDescribesLocalReads(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsGitCredentialList,
+		[]string{"+git-credential-list", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var payload struct {
+		Description string        `json:"description"`
+		API         []interface{} `json:"api"`
+		Mode        string        `json:"mode"`
+		Action      string        `json:"action"`
+		StorageRoot string        `json:"storage_root"`
+		Reads       []string      `json:"reads"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	if payload.Description != "Preview local Git credential listing (no API call, read-only local state)." {
+		t.Fatalf("description = %q", payload.Description)
+	}
+	if len(payload.API) != 0 {
+		t.Fatalf("api len = %d, want 0", len(payload.API))
+	}
+	if payload.Mode != "local-read-only" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "list_local_git_credentials" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if !strings.HasSuffix(payload.StorageRoot, filepath.Join("spark")) {
+		t.Fatalf("storage_root = %q", payload.StorageRoot)
+	}
+	assertStringSliceEqual(t, payload.Reads, []string{
+		"scan app-scoped git credential metadata under the CLI config directory",
+		"derive per-app repository URLs and local credential status from local metadata",
+	})
+}
+
+func TestAppsGitCredentialRemoveDryRunDescribesLocalCleanup(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsGitCredentialRemove,
+		[]string{"+git-credential-remove", "--app-id", "app_xxx", "--dry-run", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var payload struct {
+		Description  string        `json:"description"`
+		API          []interface{} `json:"api"`
+		Mode         string        `json:"mode"`
+		Action       string        `json:"action"`
+		AppID        string        `json:"app_id"`
+		MetadataFile string        `json:"metadata_file"`
+		Effects      []string      `json:"effects"`
+	}
+	if err := json.Unmarshal([]byte(stdout.String()), &payload); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, stdout.String())
+	}
+	if payload.Description != "Preview local Git credential cleanup (no API call; would clean up local-only state)." {
+		t.Fatalf("description = %q", payload.Description)
+	}
+	if len(payload.API) != 0 {
+		t.Fatalf("api len = %d, want 0", len(payload.API))
+	}
+	if payload.Mode != "local-cleanup-only" {
+		t.Fatalf("mode = %q", payload.Mode)
+	}
+	if payload.Action != "remove_local_git_credential" {
+		t.Fatalf("action = %q", payload.Action)
+	}
+	if payload.AppID != "app_xxx" {
+		t.Fatalf("app_id = %q", payload.AppID)
+	}
+	if !strings.HasSuffix(payload.MetadataFile, filepath.Join("spark", "app_xxx", "git.json")) {
+		t.Fatalf("metadata_file = %q", payload.MetadataFile)
+	}
+	assertStringSliceEqual(t, payload.Effects, []string{
+		"read app-scoped git credential metadata",
+		"remove the saved PAT from the local system credential store",
+		"remove the app-scoped Git helper from global git config when present",
+		"delete the local metadata record after cleanup succeeds",
+	})
 }
 
 func TestAppsGitCredentialInitRequiresAppID(t *testing.T) {
@@ -107,7 +213,7 @@ func TestParseIssueCredentialDataAcceptsDirectBaseRespShape(t *testing.T) {
 			"expiredTime":1780050600,
 			"BaseResp":{"StatusCode":0,"StatusMessage":"ok"}
 		}`),
-	}, nil)
+	}, nil, errclass.ClassifyContext{})
 	if err != nil {
 		t.Fatalf("parseIssueCredentialData returned error: %v", err)
 	}
@@ -579,9 +685,21 @@ func TestAppsGitCredentialRemoveReturnsStoreError(t *testing.T) {
 	}
 }
 
+func assertStringSliceEqual(t *testing.T, got, want []string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("slice len = %d, want %d; got %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("slice[%d] = %q, want %q; got %#v", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestGitCredentialLocalErrorWrapsOnlyPlainErrors(t *testing.T) {
 	plain := errors.New("git config failed")
-	wrapped := gitCredentialLocalError("List local Miaoda Git credentials", plain)
+	wrapped := gitCredentialLocalError("List local app Git credentials", plain)
 	var configErr *errs.ConfigError
 	if !errors.As(wrapped, &configErr) {
 		t.Fatalf("plain local error wrapped as %T, want *errs.ConfigError", wrapped)
@@ -599,9 +717,9 @@ func TestGitCredentialLocalErrorWrapsOnlyPlainErrors(t *testing.T) {
 		t.Fatalf("typed error was rewrapped: %#v", got)
 	}
 
-	exitErr := output.ErrValidation("bad app")
-	if got := gitCredentialLocalError("action", exitErr); got != exitErr {
-		t.Fatalf("legacy output error was rewrapped: %#v", got)
+	validationErr := errs.NewValidationError(errs.SubtypeInvalidArgument, "bad app")
+	if got := gitCredentialLocalError("action", validationErr); got != error(validationErr) {
+		t.Fatalf("typed validation error was rewrapped: %#v", got)
 	}
 
 	if got := gitCredentialLocalError("action", nil); got != nil {
@@ -807,43 +925,43 @@ func TestGitCredentialHelpersAndParsers(t *testing.T) {
 }
 
 func TestParseIssueCredentialDataErrors(t *testing.T) {
-	if _, err := parseIssueCredentialData(nil, errors.New("transport failed")); err == nil {
+	if _, err := parseIssueCredentialData(nil, errors.New("transport failed"), errclass.ClassifyContext{}); err == nil {
 		t.Fatal("parseIssueCredentialData transport error returned nil")
 	}
-	if _, err := parseIssueCredentialData(nil, nil); err == nil {
+	if _, err := parseIssueCredentialData(nil, nil, errclass.ClassifyContext{}); err == nil {
 		t.Fatal("parseIssueCredentialData nil response returned nil")
 	}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte("{bad json")}, nil); err == nil {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte("{bad json")}, nil, errclass.ClassifyContext{}); err == nil {
 		t.Fatal("parseIssueCredentialData bad json returned nil")
 	}
 	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusBadRequest, RawBody: []byte(`{"msg":"bad request"}`), Header: header}, nil); err == nil || !strings.Contains(err.Error(), "bad request") {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusBadRequest, RawBody: []byte(`{"msg":"bad request"}`), Header: header}, nil, errclass.ClassifyContext{}); err == nil || !strings.Contains(err.Error(), "bad request") {
 		t.Fatalf("HTTP error = %v", err)
 	}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusInternalServerError, RawBody: []byte(`{}`), Header: header}, nil); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusInternalServerError, RawBody: []byte(`{}`), Header: header}, nil, errclass.ClassifyContext{}); err == nil || !strings.Contains(err.Error(), "HTTP 500") {
 		t.Fatalf("HTTP fallback error = %v", err)
 	}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":999,"msg":"failed"}`), Header: header}, nil); err == nil || !strings.Contains(err.Error(), "failed") {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":999,"msg":"failed"}`), Header: header}, nil, errclass.ClassifyContext{}); err == nil || !strings.Contains(err.Error(), "failed") {
 		t.Fatalf("code error = %v", err)
 	}
-	data, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":0}`), Header: header}, nil)
+	data, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":0}`), Header: header}, nil, errclass.ClassifyContext{})
 	if err != nil {
 		t.Fatalf("code zero without data returned error: %v", err)
 	}
 	if data["log_id"] != "log_x" {
 		t.Fatalf("log_id = %v", data["log_id"])
 	}
-	data, err = parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`null`), Header: header}, nil)
+	data, err = parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`null`), Header: header}, nil, errclass.ClassifyContext{})
 	if err != nil {
 		t.Fatalf("null response with log id returned error: %v", err)
 	}
 	if data["log_id"] != "log_x" {
 		t.Fatalf("null response log_id = %v", data["log_id"])
 	}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"BaseResp":{"StatusCode":7,"StatusMessage":"denied"}}`), Header: header}, nil); err == nil || !strings.Contains(err.Error(), "denied") {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"BaseResp":{"StatusCode":7,"StatusMessage":"denied"}}`), Header: header}, nil, errclass.ClassifyContext{}); err == nil || !strings.Contains(err.Error(), "denied") {
 		t.Fatalf("BaseResp error = %v", err)
 	}
-	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"baseResp":{"statusCode":7}}`)}, nil); err == nil || !strings.Contains(err.Error(), "non-zero BaseResp") {
+	if _, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"baseResp":{"statusCode":7}}`)}, nil, errclass.ClassifyContext{}); err == nil || !strings.Contains(err.Error(), "non-zero BaseResp") {
 		t.Fatalf("BaseResp fallback error = %v", err)
 	}
 }
@@ -852,7 +970,7 @@ func TestParseIssueCredentialDataErrors(t *testing.T) {
 // credential issuance failure is flagged retryable and carries the developer-access hint.
 func TestParseIssueCredentialData503IsRetryableWithHint(t *testing.T) {
 	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
-	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusServiceUnavailable, RawBody: []byte(`{"msg":"upstream busy"}`), Header: header}, nil)
+	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusServiceUnavailable, RawBody: []byte(`{"msg":"upstream busy"}`), Header: header}, nil, errclass.ClassifyContext{})
 	if err == nil {
 		t.Fatal("expected 503 error, got nil")
 	}
@@ -872,7 +990,7 @@ func TestParseIssueCredentialData503IsRetryableWithHint(t *testing.T) {
 // non-zero business code (no HTTP status) carries the hint but is not retryable.
 func TestParseIssueCredentialDataBusinessCodeHasHintNotRetryable(t *testing.T) {
 	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
-	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":999,"msg":"no developer access"}`), Header: header}, nil)
+	_, err := parseIssueCredentialData(&larkcore.ApiResp{StatusCode: http.StatusOK, RawBody: []byte(`{"code":999,"msg":"no developer access"}`), Header: header}, nil, errclass.ClassifyContext{})
 	if err == nil {
 		t.Fatal("expected business-code error, got nil")
 	}
@@ -896,11 +1014,10 @@ func TestParseIssueCredentialDataBusinessCodeHasHintNotRetryable(t *testing.T) {
 // server msg and assert (a) Message equals that msg exactly, and (b) neither
 // Message nor Hint contains any token/secret-shaped string.
 //
-// Note: server msg passthrough is the framework's responsibility; apps adds
-// only a static hint. There is no msg redaction in this path (verbatim
-// passthrough is the existing behavior), so this test does not assert a
-// redaction that does not exist — it asserts that apps injects nothing
-// sensitive of its own.
+// Note: server msg passthrough is the shared classifier's responsibility;
+// apps adds only a static hint. There is no msg redaction in this path, so
+// this test does not assert a redaction that does not exist — it asserts
+// that apps injects nothing sensitive of its own.
 func TestParseIssueCredentialDataMessageAddsNoExtraSecret(t *testing.T) {
 	const serverMsg = "permission denied"
 	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
@@ -927,7 +1044,7 @@ func TestParseIssueCredentialDataMessageAddsNoExtraSecret(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := parseIssueCredentialData(tc.resp, nil)
+			_, err := parseIssueCredentialData(tc.resp, nil, errclass.ClassifyContext{})
 			if err == nil {
 				t.Fatal("expected an error, got nil")
 			}
@@ -935,9 +1052,12 @@ func TestParseIssueCredentialDataMessageAddsNoExtraSecret(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected typed errs.Problem, got %T: %v", err, err)
 			}
-			// (a) The server msg is passed through verbatim.
-			if p.Message != serverMsg {
-				t.Fatalf("Message = %q, want server msg %q (verbatim passthrough)", p.Message, serverMsg)
+			// (a) The server msg survives into the message. The business-code
+			// path passes it through verbatim; the HTTP-status path reports
+			// "HTTP <status>: <body>" via the shared classifier, so assert
+			// containment rather than equality.
+			if !strings.Contains(p.Message, serverMsg) {
+				t.Fatalf("Message = %q, want it to contain server msg %q", p.Message, serverMsg)
 			}
 			// apps adds only the static hint — assert that exact static text,
 			// proving apps injects no per-request secret into the hint either.
@@ -1019,4 +1139,46 @@ exit 0
 		t.Fatalf("write fake git: %v", err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// TestParseIssueCredentialData_SharedClassifierCoverage pins the canonical
+// classifications the shared classifier provides on the credential-issue
+// path: a generic missing-scope code becomes a typed permission error with
+// the missing scopes extracted, and an HTTP 503 becomes a retryable
+// network/server_error — neither collapses to api/unknown.
+func TestParseIssueCredentialData_SharedClassifierCoverage(t *testing.T) {
+	header := http.Header{"X-Tt-Logid": []string{"log_x"}}
+
+	t.Run("missing scope classifies as authorization with scopes", func(t *testing.T) {
+		body := `{"code":99991676,"msg":"token scope insufficient","error":{"permission_violations":[{"subject":"spark:app:read"}]}}`
+		_, err := parseIssueCredentialData(&larkcore.ApiResp{
+			StatusCode: http.StatusOK, RawBody: []byte(body), Header: header,
+		}, nil, errclass.ClassifyContext{})
+		var permErr *errs.PermissionError
+		if !errors.As(err, &permErr) {
+			t.Fatalf("want *errs.PermissionError, got %T: %v", err, err)
+		}
+		if permErr.Subtype != errs.SubtypeTokenScopeInsufficient {
+			t.Fatalf("subtype = %q, want %q", permErr.Subtype, errs.SubtypeTokenScopeInsufficient)
+		}
+		if len(permErr.MissingScopes) != 1 || permErr.MissingScopes[0] != "spark:app:read" {
+			t.Fatalf("MissingScopes = %v, want [spark:app:read]", permErr.MissingScopes)
+		}
+	})
+
+	t.Run("http 503 classifies as retryable network server_error", func(t *testing.T) {
+		_, err := parseIssueCredentialData(&larkcore.ApiResp{
+			StatusCode: http.StatusServiceUnavailable, RawBody: []byte(`{"msg":"upstream busy"}`), Header: header,
+		}, nil, errclass.ClassifyContext{})
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("want typed problem, got %T: %v", err, err)
+		}
+		if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkServer {
+			t.Fatalf("classification = %s/%s, want network/server_error", p.Category, p.Subtype)
+		}
+		if !p.Retryable {
+			t.Fatalf("retryable = false, want true for 5xx")
+		}
+	})
 }

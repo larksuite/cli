@@ -5,14 +5,13 @@ package wiki
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -135,7 +134,7 @@ func (api wikiNodeDeleteAPI) ResolveNode(ctx context.Context, token, objType str
 	if objType != "" && objType != "wiki" {
 		params["obj_type"] = objType
 	}
-	data, err := api.runtime.CallAPI("GET", "/open-apis/wiki/v2/spaces/get_node", params, nil)
+	data, err := api.runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", params, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -143,7 +142,7 @@ func (api wikiNodeDeleteAPI) ResolveNode(ctx context.Context, token, objType str
 }
 
 func (api wikiNodeDeleteAPI) DeleteNode(ctx context.Context, spaceID string, spec wikiNodeDeleteSpec) (string, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"DELETE",
 		fmt.Sprintf(
 			"/open-apis/wiki/v2/spaces/%s/nodes/%s",
@@ -160,7 +159,7 @@ func (api wikiNodeDeleteAPI) DeleteNode(ctx context.Context, spaceID string, spe
 }
 
 func (api wikiNodeDeleteAPI) GetDeleteNodeTask(ctx context.Context, taskID string) (wikiAsyncTaskStatus, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": wikiAsyncTaskTypeDeleteNode},
@@ -188,7 +187,7 @@ func readWikiNodeDeleteSpec(runtime *common.RuntimeContext) (wikiNodeDeleteSpec,
 func parseWikiNodeDeleteSpec(rawToken, rawObjType, rawSpaceID string, includeChildren bool) (wikiNodeDeleteSpec, error) {
 	tokenInput := strings.TrimSpace(rawToken)
 	if tokenInput == "" {
-		return wikiNodeDeleteSpec{}, output.ErrValidation("--node-token is required")
+		return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token is required").WithParam("--node-token")
 	}
 
 	spec := wikiNodeDeleteSpec{
@@ -200,14 +199,14 @@ func parseWikiNodeDeleteSpec(rawToken, rawObjType, rawSpaceID string, includeChi
 	if strings.Contains(tokenInput, "://") {
 		u, err := url.Parse(tokenInput)
 		if err != nil || u.Path == "" {
-			return wikiNodeDeleteSpec{}, output.ErrValidation("--node-token URL is malformed: %q", tokenInput)
+			return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token URL is malformed: %q", tokenInput).WithParam("--node-token")
 		}
 		token, urlObjType, ok := tokenAndObjTypeFromWikiURL(u.Path)
 		if !ok {
-			return wikiNodeDeleteSpec{}, output.ErrValidation(
+			return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"unsupported --node-token URL path %q: expected /wiki/, /docx/, /doc/, /sheets/, /base/, /mindnote/, /slides/, or /file/ followed by a token",
 				u.Path,
-			)
+			).WithParam("--node-token")
 		}
 		spec.NodeToken = token
 		spec.SourceKind = "url"
@@ -222,32 +221,32 @@ func parseWikiNodeDeleteSpec(rawToken, rawObjType, rawSpaceID string, includeChi
 		case spec.ObjType == "":
 			spec.ObjType = inferred
 		case spec.ObjType != inferred:
-			return wikiNodeDeleteSpec{}, output.ErrValidation(
+			return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--obj-type %q does not match the obj_type %q implied by the URL path; pass only one",
 				spec.ObjType, inferred,
-			)
+			).WithParam("--obj-type")
 		}
 	} else if strings.ContainsAny(tokenInput, "/?#") {
-		return wikiNodeDeleteSpec{}, output.ErrValidation(
+		return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--node-token must be a raw token or a full URL; partial paths are not accepted: %q",
 			tokenInput,
-		)
+		).WithParam("--node-token")
 	} else {
 		spec.NodeToken = tokenInput
 		spec.SourceKind = "raw"
 	}
 
 	if spec.ObjType == "" {
-		return wikiNodeDeleteSpec{}, output.ErrValidation(
+		return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--obj-type is required (one of: %s)",
 			strings.Join(wikiNodeDeleteObjTypes, ", "),
-		)
+		).WithParam("--obj-type")
 	}
 	if !isValidWikiDeleteObjType(spec.ObjType) {
-		return wikiNodeDeleteSpec{}, output.ErrValidation(
+		return wikiNodeDeleteSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"--obj-type %q is not valid; pick one of: %s",
 			spec.ObjType, strings.Join(wikiNodeDeleteObjTypes, ", "),
-		)
+		).WithParam("--obj-type")
 	}
 	if err := validateOptionalResourceName(spec.NodeToken, "--node-token"); err != nil {
 		return wikiNodeDeleteSpec{}, err
@@ -405,12 +404,12 @@ func wrapWikiNodeDeleteAPIError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
 		return err
 	}
 	var hint string
-	switch exitErr.Detail.Code {
+	switch p.Code {
 	case wikiDeleteNodeErrCodeApprovalRequired:
 		hint = "this wiki node has delete-approval enabled; ask the user to apply via the Wiki UI (CLI cannot bypass approval)"
 	case wikiDeleteNodeErrCodeSubtreeTooLarge:
@@ -419,22 +418,11 @@ func wrapWikiNodeDeleteAPIError(err error) error {
 	if hint == "" {
 		return err
 	}
-	if existing := strings.TrimSpace(exitErr.Detail.Hint); existing != "" {
+	// Append the hint in place so the typed error keeps its category / subtype /
+	// code / log_id (per ERROR_CONTRACT.md "propagate typed errors unchanged").
+	if existing := strings.TrimSpace(p.Hint); existing != "" {
 		hint = existing + "\n" + hint
 	}
-	// ErrWithHint drops the upstream Detail.Code / Detail / Risk fields; build
-	// the ExitError by hand so the Lark error code stays available to logs and
-	// downstream pivots.
-	return &output.ExitError{
-		Code: exitErr.Code,
-		Detail: &output.ErrDetail{
-			Type:       exitErr.Detail.Type,
-			Code:       exitErr.Detail.Code,
-			Message:    exitErr.Detail.Message,
-			Hint:       hint,
-			ConsoleURL: exitErr.Detail.ConsoleURL,
-			Risk:       exitErr.Detail.Risk,
-			Detail:     exitErr.Detail.Detail,
-		},
-	}
+	p.Hint = hint
+	return err
 }

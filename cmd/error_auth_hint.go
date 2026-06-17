@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/apicatalog"
 	internalauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -118,38 +119,37 @@ func resolveDeclaredShortcutScopes(cmd *cobra.Command, identity string) []string
 }
 
 // resolveDeclaredServiceMethodScopes returns the scopes declared by a
-// service/resource/method command from the embedded from_meta registry.
+// service/resource/method command. It reconstructs the catalog path from the
+// command ancestry and resolves it through the same navigation Module the
+// command tree is built from (apicatalog), so it stays correct for nested
+// resources instead of hard-coding a root->service->resource->method depth.
+// Non-method commands (services, resources, shortcuts) resolve to a non-method
+// target and yield no scopes.
 func resolveDeclaredServiceMethodScopes(cmd *cobra.Command, identity string) []string {
-	// Service-method scope lookup only applies to commands mounted as
-	// root -> service -> resource -> method. Non-resource/method commands
-	// intentionally return no scopes here so auth-hint enrichment does not
-	// change runtime semantics for other command shapes.
-	if cmd == nil || cmd.Parent() == nil || cmd.Parent().Parent() == nil || cmd.Parent().Parent().Parent() == nil {
+	if cmd == nil || strings.HasPrefix(cmd.Name(), "+") {
 		return nil
 	}
-	if strings.HasPrefix(cmd.Name(), "+") {
+	path := commandCatalogPath(cmd)
+	if len(path) == 0 {
 		return nil
 	}
+	target, err := registry.RuntimeCatalog().Resolve(path)
+	if err != nil || target.Kind != apicatalog.TargetMethod {
+		return nil
+	}
+	return registry.DeclaredScopesForMethod(target.Method.Method, identity)
+}
 
-	service := cmd.Parent().Parent().Name()
-	resource := cmd.Parent().Name()
-	method := cmd.Name()
-
-	spec := registry.LoadFromMeta(service)
-	if spec == nil {
-		return nil
+// commandCatalogPath reconstructs the catalog path [service, resource..., method]
+// from a command's ancestry, excluding the root command. It is the inverse of
+// the service command tree's construction, so any depth (flat or nested)
+// round-trips through apicatalog.Resolve.
+func commandCatalogPath(cmd *cobra.Command) []string {
+	var path []string
+	for c := cmd; c != nil && c.Parent() != nil; c = c.Parent() {
+		path = append([]string{c.Name()}, path...)
 	}
-	resources, _ := spec["resources"].(map[string]interface{})
-	resMap, _ := resources[resource].(map[string]interface{})
-	if resMap == nil {
-		return nil
-	}
-	methods, _ := resMap["methods"].(map[string]interface{})
-	methodMap, _ := methods[method].(map[string]interface{})
-	if methodMap == nil {
-		return nil
-	}
-	return registry.DeclaredScopesForMethod(methodMap, identity)
+	return path
 }
 
 // shortcutSupportsIdentity reports whether a shortcut supports the requested

@@ -38,7 +38,7 @@ lark-cli apps +html-publish --app-id app_xxx --path ./index.html --dry-run
 - 用户只说“用 HTML 写个 PPT/页面给我看看”时，先生成本地文件或目录，返回路径并问是否发布到妙搭分享；不要默认创建应用或部署。
 - 用户明确说“部署出去/发链接/可分享”时，才创建 `html` 应用并用 `+html-publish`。
 - 用户要发布但没有 app_id 时，先 `+create --app-type html` 创建应用；应用名可从页面/站点主题生成，不要让用户手动提供 app_id。
-- 若产物首页不是 `index.html`，发布前改名或复制为 `index.html`；目录发布时只传干净产物目录，例如 `./dist`，不要把 `.git`、`node_modules`、源码缓存一起带上。
+- 若产物首页不是 `index.html`，发布前改名或复制为 `index.html`；目录发布时只传干净产物目录，例如 `./dist`。`.git` 目录会被自动排除，不会进入压缩包；`node_modules`、源码缓存等仍建议手动精简以控制包体。
 - 重新部署同一个 HTML 应用时复用原 `app_id`，只重新执行 `+html-publish --app-id <id> --path <dir-or-index.html>`。
 
 ## 安全规则

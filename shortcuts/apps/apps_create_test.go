@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -45,6 +46,31 @@ func runAppsShortcut(t *testing.T, sc common.Shortcut, args []string, factory *c
 		stdout.Reset()
 	}
 	return parent.ExecuteContext(context.Background())
+}
+
+func requireAppsProblem(t *testing.T, err error, category errs.Category) *errs.Problem {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != category {
+		t.Fatalf("error category = %q, want %q", p.Category, category)
+	}
+	return p
+}
+
+func requireAppsValidationProblem(t *testing.T, err error) *errs.Problem {
+	t.Helper()
+	return requireAppsProblem(t, err, errs.CategoryValidation)
+}
+
+func requireAppsAPIProblem(t *testing.T, err error) *errs.Problem {
+	t.Helper()
+	return requireAppsProblem(t, err, errs.CategoryAPI)
 }
 
 // +create 测试

@@ -6,6 +6,7 @@ package base
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -57,6 +59,26 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 		_ = cmd.Flags().Set(name, strconv.Itoa(value))
 	}
 	return &common.RuntimeContext{Cmd: cmd, Config: &core.CliConfig{UserOpenId: "ou_test"}}
+}
+
+func assertBasePaginationValidation(t *testing.T, err error, param string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype=%q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if validationErr.Param != param {
+		t.Fatalf("param=%q, want %s", validationErr.Param, param)
+	}
+	if !strings.Contains(validationErr.Message, "must be between") {
+		t.Fatalf("message=%q, want range limit", validationErr.Message)
+	}
 }
 
 func TestBaseAction(t *testing.T) {
@@ -354,6 +376,85 @@ func TestBaseRecordReadHelpGuidesAgents(t *testing.T) {
 				if !strings.Contains(tips, want) {
 					t.Fatalf("tips missing %q:\n%s", want, tips)
 				}
+			}
+		})
+	}
+}
+
+func TestBasePaginationHelpShowsDefaults(t *testing.T) {
+	tests := []struct {
+		name       string
+		shortcut   common.Shortcut
+		flag       string
+		defaultVal string
+		help       string
+	}{
+		{name: "table list", shortcut: BaseTableList, flag: "limit", defaultVal: "50", help: "pagination size, range 1-100"},
+		{name: "field list", shortcut: BaseFieldList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
+		{name: "field search options", shortcut: BaseFieldSearchOptions, flag: "limit", defaultVal: "30", help: "pagination size, range 1-200"},
+		{name: "record list", shortcut: BaseRecordList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
+		{name: "record search", shortcut: BaseRecordSearch, flag: "limit", defaultVal: "10", help: "pagination size, range 1-200"},
+		{name: "view list", shortcut: BaseViewList, flag: "limit", defaultVal: "100", help: "pagination size, range 1-200"},
+		{name: "form list", shortcut: BaseFormsList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
+		{name: "workflow list", shortcut: BaseWorkflowList, flag: "page-size", defaultVal: "100", help: "page size per request, range 1-100"},
+		{name: "record history list", shortcut: BaseRecordHistoryList, flag: "page-size", defaultVal: "30", help: "pagination size, range 1-50"},
+		{name: "dashboard list", shortcut: BaseDashboardList, flag: "page-size", defaultVal: "100", help: "page size, range 1-100"},
+		{name: "dashboard block list", shortcut: BaseDashboardBlockList, flag: "page-size", defaultVal: "20", help: "page size, range 1-100"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+			flag := cmd.Flags().Lookup(tt.flag)
+			if flag == nil {
+				t.Fatalf("flag --%s missing", tt.flag)
+			}
+			if flag.DefValue != tt.defaultVal {
+				t.Fatalf("--%s default=%q, want %q", tt.flag, flag.DefValue, tt.defaultVal)
+			}
+			help := cmd.Flags().FlagUsages()
+			if !strings.Contains(help, tt.help) {
+				t.Fatalf("flag help missing %q:\n%s", tt.help, help)
+			}
+			if !strings.Contains(help, "default "+tt.defaultVal) {
+				t.Fatalf("flag help missing default %s:\n%s", tt.defaultVal, help)
+			}
+			if got := strings.Count(help, "default "+tt.defaultVal); got != 1 {
+				t.Fatalf("flag help default %s count=%d, want 1:\n%s", tt.defaultVal, got, help)
+			}
+		})
+	}
+}
+
+func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+	}{
+		{name: "table list", shortcut: BaseTableList},
+		{name: "field list", shortcut: BaseFieldList},
+		{name: "field search options", shortcut: BaseFieldSearchOptions},
+		{name: "record list", shortcut: BaseRecordList},
+		{name: "record search", shortcut: BaseRecordSearch},
+		{name: "view list", shortcut: BaseViewList},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			parent := &cobra.Command{Use: "base"}
+			tt.shortcut.Mount(parent, &cmdutil.Factory{})
+			cmd := parent.Commands()[0]
+			flag := cmd.Flags().Lookup("page-size")
+			if flag == nil {
+				t.Fatal("flag --page-size missing")
+			}
+			if !flag.Hidden {
+				t.Fatal("flag --page-size must be hidden")
+			}
+			if strings.Contains(cmd.Flags().FlagUsages(), "--page-size") {
+				t.Fatalf("help should not include hidden --page-size:\n%s", cmd.Flags().FlagUsages())
 			}
 		})
 	}
@@ -1106,6 +1207,184 @@ func TestBaseRecordValidate(t *testing.T) {
 		nil,
 	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		runtime  *common.RuntimeContext
+		param    string
+	}{
+		{
+			name:     "table list",
+			shortcut: BaseTableList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 101}),
+			param:    "--limit",
+		},
+		{
+			name:     "field list",
+			shortcut: BaseFieldList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 201}),
+			param:    "--limit",
+		},
+		{
+			name:     "field search options",
+			shortcut: BaseFieldSearchOptions,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "field-id": "fld_1"}, nil, map[string]int{"limit": 201}),
+			param:    "--limit",
+		},
+		{
+			name:     "view list",
+			shortcut: BaseViewList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 201}),
+			param:    "--limit",
+		},
+		{
+			name:     "record list",
+			shortcut: BaseRecordList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"limit": 0}),
+			param:    "--limit",
+		},
+		{
+			name:     "record search",
+			shortcut: BaseRecordSearch,
+			runtime: newBaseTestRuntimeWithArrays(
+				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+				map[string][]string{"search-field": {"Name"}},
+				nil,
+				map[string]int{"limit": 201},
+			),
+			param: "--limit",
+		},
+		{
+			name:     "table list page-size alias",
+			shortcut: BaseTableList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"page-size": 101}),
+			param:    "--page-size",
+		},
+		{
+			name:     "field list page-size alias",
+			shortcut: BaseFieldList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 201}),
+			param:    "--page-size",
+		},
+		{
+			name:     "field search options page-size alias",
+			shortcut: BaseFieldSearchOptions,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "field-id": "fld_1"}, nil, map[string]int{"page-size": 201}),
+			param:    "--page-size",
+		},
+		{
+			name:     "view list page-size alias",
+			shortcut: BaseViewList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 201}),
+			param:    "--page-size",
+		},
+		{
+			name:     "record list page-size alias",
+			shortcut: BaseRecordList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 0}),
+			param:    "--page-size",
+		},
+		{
+			name:     "record search page-size alias",
+			shortcut: BaseRecordSearch,
+			runtime: newBaseTestRuntimeWithArrays(
+				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+				map[string][]string{"search-field": {"Name"}},
+				nil,
+				map[string]int{"page-size": 201},
+			),
+			param: "--page-size",
+		},
+		{
+			name:     "form list",
+			shortcut: BaseFormsList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 101}),
+			param:    "--page-size",
+		},
+		{
+			name:     "workflow list",
+			shortcut: BaseWorkflowList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"page-size": 101}),
+			param:    "--page-size",
+		},
+		{
+			name:     "record history list",
+			shortcut: BaseRecordHistoryList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "record-id": "rec_1"}, nil, map[string]int{"page-size": 51}),
+			param:    "--page-size",
+		},
+		{
+			name:     "dashboard list",
+			shortcut: BaseDashboardList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "page-size": "101"}, nil, nil),
+			param:    "--page-size",
+		},
+		{
+			name:     "dashboard block list",
+			shortcut: BaseDashboardBlockList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "dashboard-id": "dash_1", "page-size": "101"}, nil, nil),
+			param:    "--page-size",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.shortcut.Validate == nil {
+				t.Fatalf("%s missing Validate", tt.shortcut.Command)
+			}
+			assertBasePaginationValidation(t, tt.shortcut.Validate(ctx, tt.runtime), tt.param)
+		})
+	}
+}
+
+func TestBaseLimitPageSizeAliasRejectsConflict(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name     string
+		shortcut common.Shortcut
+		runtime  *common.RuntimeContext
+	}{
+		{
+			name:     "table list",
+			shortcut: BaseTableList,
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b"}, nil, map[string]int{"limit": 50, "page-size": 50}),
+		},
+		{
+			name:     "record search",
+			shortcut: BaseRecordSearch,
+			runtime: newBaseTestRuntimeWithArrays(
+				map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
+				map[string][]string{"search-field": {"Name"}},
+				nil,
+				map[string]int{"limit": 10, "page-size": 10},
+			),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.shortcut.Validate == nil {
+				t.Fatalf("%s missing Validate", tt.shortcut.Command)
+			}
+			err := tt.shortcut.Validate(ctx, tt.runtime)
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected validation error, got %T: %v", err, err)
+			}
+			if validationErr.Param != "--page-size" {
+				t.Fatalf("param=%q, want --page-size", validationErr.Param)
+			}
+			if !strings.Contains(validationErr.Message, "mutually exclusive") {
+				t.Fatalf("message=%q, want mutually exclusive", validationErr.Message)
+			}
+		})
 	}
 }
 

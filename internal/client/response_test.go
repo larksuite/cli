@@ -5,6 +5,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -207,15 +209,54 @@ func TestHandleResponse_JSON(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	err := HandleResponse(resp, ResponseOptions{
-		Out:    &out,
-		ErrOut: &errOut,
-		FileIO: &localfileio.LocalFileIO{},
+		Identity: core.AsBot,
+		Out:      &out,
+		ErrOut:   &errOut,
+		FileIO:   &localfileio.LocalFileIO{},
 	})
 	if err != nil {
 		t.Fatalf("HandleResponse failed: %v", err)
 	}
-	if !bytes.Contains(out.Bytes(), []byte(`"code"`)) {
-		t.Errorf("expected JSON output, got: %s", out.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, out.String())
+	}
+	if got["ok"] != true {
+		t.Fatalf("ok = %v, want true; output: %s", got["ok"], out.String())
+	}
+	if got["identity"] != "bot" {
+		t.Fatalf("identity = %v, want bot; output: %s", got["identity"], out.String())
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code field: %s", out.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("data = %T, want object; output: %s", got["data"], out.String())
+	}
+	if data["id"] != "1" {
+		t.Fatalf("data.id = %v, want 1; output: %s", data["id"], out.String())
+	}
+}
+
+func TestHandleResponse_JSONWithJqUsesSuccessEnvelope(t *testing.T) {
+	body := []byte(`{"code":0,"msg":"ok","data":{"id":"1"}}`)
+	resp := newApiResp(body, map[string]string{"Content-Type": "application/json"})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{
+		Identity: core.AsBot,
+		JqExpr:   ".data.id",
+		Out:      &out,
+		ErrOut:   &errOut,
+		FileIO:   &localfileio.LocalFileIO{},
+	})
+	if err != nil {
+		t.Fatalf("HandleResponse failed: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "1" {
+		t.Fatalf("jq output = %q, want %q", out.String(), "1")
 	}
 }
 
@@ -232,6 +273,12 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for non-zero code")
+	}
+	if _, ok := errs.ProblemOf(err); !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if strings.Contains(out.String(), `"ok": true`) || strings.Contains(out.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", out.String())
 	}
 }
 

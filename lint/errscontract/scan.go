@@ -10,10 +10,15 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+type ScanOptions struct {
+	ChangedFrom string
+}
 
 // ScanRepo is the production entry point for the lintcheck CLI. It walks
 // the repo rooted at root and emits violations covering all four checks.
@@ -26,6 +31,10 @@ import (
 // Returns the violations sorted by File/Line for stable diff against expected
 // output in tests.
 func ScanRepo(root string) ([]Violation, error) {
+	return ScanRepoWithOptions(root, ScanOptions{})
+}
+
+func ScanRepoWithOptions(root string, opts ScanOptions) ([]Violation, error) {
 	allowlist, nameset, err := LoadSubtypeAllowlists(filepath.Join(root, "errs"))
 	if err != nil {
 		// "Subtype allowlist file missing" → skip CheckDeclaredSubtype; CheckAdHocSubtype still
@@ -38,8 +47,23 @@ func ScanRepo(root string) ([]Violation, error) {
 		allowlist = nil
 		nameset = nil
 	}
+	commandErrorAllow, commandErrorAllowDiags, err := LoadLegacyCommandErrorAllowlistWithDiagnostics(root)
+	if err != nil {
+		return nil, fmt.Errorf("load legacy command error allowlist: %w", err)
+	}
+	changedFiles, err := changedFilesFrom(root, opts.ChangedFrom)
+	if err != nil {
+		return nil, err
+	}
+	commandErrorOptions := CommandErrorOptions{
+		Allow:        commandErrorAllow,
+		ChangedFiles: changedFiles,
+		ChangedOnly:  opts.ChangedFrom != "",
+	}
 
 	var all []Violation
+	all = append(all, commandErrorAllowDiags...)
+	observedCommandErrorAllowlist := map[fileLine]bool{}
 
 	// CheckProblemEmbed: errs/ contract parity (types ↔ predicates ↔ tests ↔ docs).
 	if contractViols, err := CheckErrsContract(root); err == nil {
@@ -82,10 +106,7 @@ func ScanRepo(root string) ([]Violation, error) {
 		}
 		if d.IsDir() {
 			// Skip well-known noise directories.
-			name := d.Name()
-			if name == ".git" || name == "node_modules" || name == "vendor" ||
-				name == "tests_e2e" || name == "skill-template" || name == "skills" ||
-				name == "docs" || name == "specs" {
+			if skipLintDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -109,6 +130,13 @@ func ScanRepo(root string) ([]Violation, error) {
 		all = append(all, CheckNoLegacyEnvelopeLiteral(rel, string(src))...)
 		all = append(all, CheckNoLegacyRuntimeAPICall(rel, string(src))...)
 		all = append(all, CheckNoLegacyCommonHelperCall(rel, string(src))...)
+		commandErrorViolations := CheckNoBareCommandErrorWithOptions(rel, string(src), commandErrorOptions)
+		for _, violation := range commandErrorViolations {
+			if violation.Rule == "no_bare_command_error" {
+				observedCommandErrorAllowlist[fileLine{file: filepath.ToSlash(violation.File), line: violation.Line}] = true
+			}
+		}
+		all = append(all, commandErrorViolations...)
 		// Typed-error invariants — self-scope to errs/ + classify.go.
 		all = append(all, CheckNilSafeError(rel, string(src))...)
 		all = append(all, CheckUnwrapSymmetry(rel, string(src))...)
@@ -127,6 +155,11 @@ func ScanRepo(root string) ([]Violation, error) {
 	if walkErr != nil {
 		return nil, walkErr
 	}
+	all = append(all, staleLegacyCommandErrorAllowlistDiagnostics(
+		commandErrorAllow,
+		observedCommandErrorAllowlist,
+		"internal/qualitygate/config/allowlists/legacy-command-errors.txt",
+	)...)
 
 	sort.SliceStable(all, func(i, j int) bool {
 		if all[i].File != all[j].File {
@@ -135,6 +168,88 @@ func ScanRepo(root string) ([]Violation, error) {
 		return all[i].Line < all[j].Line
 	})
 	return all, nil
+}
+
+func LegacyCommandErrorCandidatesForRepo(root string) ([]string, error) {
+	var out []string
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			if skipLintDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if !isCommandBoundaryScope(rel) {
+			return nil
+		}
+		src, err := os.ReadFile(path) //nolint:gosec // repo root is operator-provided.
+		if err != nil {
+			return fmt.Errorf("read %s: %w", path, err)
+		}
+		out = append(out, LegacyCommandErrorCandidates(rel, string(src))...)
+		return nil
+	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func skipLintDir(name string) bool {
+	return name == ".git" || name == "node_modules" || name == "vendor" ||
+		name == "tests_e2e" || name == "skill-template" || name == "skills" ||
+		name == "docs" || name == "specs"
+}
+
+func LoadLegacyCommandErrorAllowlist(root string) (LegacyCommandErrorAllowlist, error) {
+	allow, _, err := LoadLegacyCommandErrorAllowlistWithDiagnostics(root)
+	return allow, err
+}
+
+func LoadLegacyCommandErrorAllowlistWithDiagnostics(root string) (LegacyCommandErrorAllowlist, []Violation, error) {
+	path := filepath.Join(root, "internal", "qualitygate", "config", "allowlists", "legacy-command-errors.txt")
+	data, err := os.ReadFile(path) //nolint:gosec // repo root is operator-provided.
+	if err != nil {
+		if os.IsNotExist(err) {
+			return LegacyCommandErrorAllowlist{}, nil, nil
+		}
+		return nil, nil, err
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		rel = path
+	}
+	allow, diags := ParseLegacyCommandErrorAllowlistWithDiagnostics(string(data), filepath.ToSlash(rel))
+	return allow, diags, nil
+}
+
+func changedFilesFrom(root, from string) (map[string]bool, error) {
+	files := map[string]bool{}
+	if from == "" {
+		return files, nil
+	}
+	cmd := exec.Command("git", "diff", "--name-only", "-z", "--diff-filter=ACMR", from+"...HEAD")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff changed files: %w", err)
+	}
+	// Output is NUL-delimited (-z) so paths containing whitespace stay intact.
+	for _, path := range strings.Split(string(out), "\x00") {
+		if path != "" {
+			files[filepath.ToSlash(path)] = true
+		}
+	}
+	return files, nil
 }
 
 // hasGoMod reports whether the given directory contains a go.mod file at

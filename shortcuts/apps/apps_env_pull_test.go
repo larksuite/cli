@@ -1079,3 +1079,28 @@ func TestEnsureEnvPullParentDir_MkdirError(t *testing.T) {
 		t.Error("MkdirAll over a file component must surface an error")
 	}
 }
+
+// TestExtractEnvPullVars_MissingEnvVarsIsInternalInvalidResponse pins that a
+// response without a usable env_vars field classifies as
+// internal/invalid_response — a broken upstream payload, not a flag problem
+// the agent should retry with different arguments.
+func TestExtractEnvPullVars_MissingEnvVarsIsInternalInvalidResponse(t *testing.T) {
+	for name, data := range map[string]map[string]interface{}{
+		"missing":    {},
+		"wrong type": {"env_vars": "not-an-object"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, _, err := extractEnvPullVars(data)
+			if err == nil {
+				t.Fatalf("expected error for %s env_vars", name)
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+				t.Fatalf("classification = %s/%s, want internal/invalid_response", p.Category, p.Subtype)
+			}
+		})
+	}
+}

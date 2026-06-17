@@ -6,6 +6,7 @@ package signature
 import (
 	"encoding/json"
 	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -53,6 +54,33 @@ func List(runtime *common.RuntimeContext, mailboxID string) ([]Signature, error)
 		return nil, err
 	}
 	return resp.Signatures, nil
+}
+
+// DefaultSendID returns the default send-mail signature ID for the given
+// sender email address. Returns "" if no default is configured.
+// "0" and empty string are treated as "no default" (API convention).
+func DefaultSendID(usages []SignatureUsage, emailAddr string) string {
+	for _, u := range usages {
+		if strings.EqualFold(u.EmailAddress, emailAddr) {
+			if u.SendMailSignatureID != "" && u.SendMailSignatureID != "0" {
+				return u.SendMailSignatureID
+			}
+		}
+	}
+	return ""
+}
+
+// DefaultReplyID returns the default reply/forward signature ID for the given
+// sender email address. Returns "" if no default is configured.
+func DefaultReplyID(usages []SignatureUsage, emailAddr string) string {
+	for _, u := range usages {
+		if strings.EqualFold(u.EmailAddress, emailAddr) {
+			if u.ReplySignatureID != "" && u.ReplySignatureID != "0" {
+				return u.ReplySignatureID
+			}
+		}
+	}
+	return ""
 }
 
 // Get returns a single signature by ID. Returns an error if not found.

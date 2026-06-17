@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 // highRiskDeleteMethod mirrors a simple DELETE API with a required path
-// parameter and risk metadata. The returned map is what service registration
-// reads; the test exercises --yes registration and the gate behavior.
-func highRiskDeleteMethod() map[string]interface{} {
-	return map[string]interface{}{
+// parameter and risk metadata. The test exercises --yes registration and the
+// gate behavior.
+func highRiskDeleteMethod() meta.Method {
+	return meta.FromMap(map[string]interface{}{
 		"path":       "files/{file_token}",
 		"httpMethod": "DELETE",
 		"risk":       "high-risk-write",
@@ -23,11 +24,11 @@ func highRiskDeleteMethod() map[string]interface{} {
 				"type": "string", "location": "path", "required": true,
 			},
 		},
-	}
+	})
 }
 
-func writeMethodNoRisk() map[string]interface{} {
-	return map[string]interface{}{
+func writeMethodNoRisk() meta.Method {
+	return meta.FromMap(map[string]interface{}{
 		"path":       "files/{file_token}",
 		"httpMethod": "DELETE",
 		"parameters": map[string]interface{}{
@@ -35,7 +36,7 @@ func writeMethodNoRisk() map[string]interface{} {
 				"type": "string", "location": "path", "required": true,
 			},
 		},
-	}
+	})
 }
 
 func TestServiceMethod_YesFlagRegisteredForHighRisk(t *testing.T) {

@@ -6,7 +6,7 @@ package wiki
 import (
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -27,10 +27,10 @@ var wikiMemberRoles = []string{"admin", "member"}
 //     tenant_access_token; same contract as +node-list / +node-create)
 func validateWikiMemberSpaceID(runtime *common.RuntimeContext, spaceID string) error {
 	if spaceID == "" {
-		return output.ErrValidation("--space-id is required and cannot be blank")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--space-id is required and cannot be blank").WithParam("--space-id")
 	}
 	if runtime.As().IsBot() && spaceID == wikiMyLibrarySpaceID {
-		return output.ErrValidation("bot identity does not support --space-id my_library; use an explicit --space-id")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity does not support --space-id my_library; use an explicit --space-id").WithParam("--space-id")
 	}
 	return validateOptionalResourceName(spaceID, "--space-id")
 }

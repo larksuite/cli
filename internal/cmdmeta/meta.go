@@ -34,10 +34,24 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
-// domainAnnotationKey is the cobra Annotation key for the business domain.
-// Kept distinct from cmdutil.* keys so this package can evolve without
-// disturbing existing readers.
-const domainAnnotationKey = "cmdmeta.domain"
+// Source identifies how a command entered the repository-owned command tree.
+type Source string
+
+const (
+	SourceBuiltin  Source = "builtin"
+	SourceShortcut Source = "shortcut"
+	SourceService  Source = "service"
+)
+
+const (
+	// domainAnnotationKey is the cobra Annotation key for the business domain.
+	// Kept distinct from cmdutil.* keys so this package can evolve without
+	// disturbing existing readers.
+	domainAnnotationKey = "cmdmeta.domain"
+
+	sourceAnnotationKey    = "cmdmeta.source"
+	generatedAnnotationKey = "cmdmeta.generated"
+)
 
 // Meta groups the three command-level metadata axes consumed by the policy
 // engine and hook selectors.
@@ -93,6 +107,24 @@ func SetDomain(cmd *cobra.Command, domain string) {
 	cmd.Annotations[domainAnnotationKey] = domain
 }
 
+// SetSource stores the command source on a single command. The generated flag
+// is written explicitly so child commands can opt out of inherited service
+// metadata.
+func SetSource(cmd *cobra.Command, source Source, generated bool) {
+	if source == "" {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[sourceAnnotationKey] = string(source)
+	if generated {
+		cmd.Annotations[generatedAnnotationKey] = "true"
+	} else {
+		cmd.Annotations[generatedAnnotationKey] = "false"
+	}
+}
+
 // Domain returns the nearest-ancestor domain for the command. Empty string
 // when no ancestor has the annotation -- this is the "unknown" state the
 // policy engine must treat as ALLOW.
@@ -106,6 +138,33 @@ func Domain(cmd *cobra.Command) string {
 		}
 	}
 	return ""
+}
+
+// SourceOf returns the nearest-ancestor command source.
+func SourceOf(cmd *cobra.Command) (Source, bool) {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations == nil {
+			continue
+		}
+		if v := c.Annotations[sourceAnnotationKey]; v != "" {
+			return Source(v), true
+		}
+	}
+	return "", false
+}
+
+// Generated returns the nearest generated annotation. An explicit false on a
+// child command stops inheritance from a generated parent.
+func Generated(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations == nil {
+			continue
+		}
+		if v, ok := c.Annotations[generatedAnnotationKey]; ok {
+			return v == "true"
+		}
+	}
+	return false
 }
 
 // Risk returns the nearest-ancestor risk level (via cmdutil.GetRisk).

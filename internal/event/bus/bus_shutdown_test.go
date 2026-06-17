@@ -33,7 +33,7 @@ func TestRunShutdownWithMultipleConns(t *testing.T) {
 		server, client := net.Pipe()
 		pipes = append(pipes, server, client)
 
-		bc := NewConn(server, nil, "im.msg", []string{"im.message.receive_v1"}, 1000+i)
+		bc := NewConn(server, nil, "im.msg", []string{"im.message.receive_v1"}, 1000+i, "")
 		bc.SetLogger(logger)
 		hub.RegisterAndIsFirst(bc)
 

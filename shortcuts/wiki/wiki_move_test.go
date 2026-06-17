@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"sync"
@@ -15,11 +14,11 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -181,39 +180,52 @@ func TestValidateWikiMoveSpecRejectsInvalidCombinations(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		spec    wikiMoveSpec
-		wantErr string
+		name       string
+		spec       wikiMoveSpec
+		wantErr    string
+		wantParams []string
 	}{
 		{
-			name:    "node move rejects docs flags",
-			spec:    wikiMoveSpec{NodeToken: "wik_node", ObjType: "sheet", TargetSpaceID: "space_dst"},
-			wantErr: "cannot be combined",
+			name:       "node move rejects docs flags",
+			spec:       wikiMoveSpec{NodeToken: "wik_node", ObjType: "sheet", TargetSpaceID: "space_dst"},
+			wantErr:    "cannot be combined",
+			wantParams: []string{"--obj-type", "--obj-token", "--apply"},
 		},
 		{
-			name:    "node move requires target",
-			spec:    wikiMoveSpec{NodeToken: "wik_node"},
-			wantErr: "cannot both be empty",
+			name:       "node move requires target",
+			spec:       wikiMoveSpec{NodeToken: "wik_node"},
+			wantErr:    "cannot both be empty",
+			wantParams: []string{"--target-parent-token", "--target-space-id"},
 		},
 		{
-			name:    "source space requires node token",
-			spec:    wikiMoveSpec{SourceSpaceID: "space_src", ObjType: "sheet", ObjToken: "sheet_token", TargetSpaceID: "space_dst"},
-			wantErr: "can only be used with --node-token",
+			name:       "requires a move mode",
+			spec:       wikiMoveSpec{TargetSpaceID: "space_dst"},
+			wantErr:    "provide --node-token for wiki node move",
+			wantParams: []string{"--node-token", "--obj-type", "--obj-token"},
 		},
 		{
-			name:    "docs to wiki requires obj type",
-			spec:    wikiMoveSpec{ObjToken: "sheet_token", TargetSpaceID: "space_dst"},
-			wantErr: "--obj-type is required",
+			name:       "source space requires node token",
+			spec:       wikiMoveSpec{SourceSpaceID: "space_src", ObjType: "sheet", ObjToken: "sheet_token", TargetSpaceID: "space_dst"},
+			wantErr:    "can only be used with --node-token",
+			wantParams: []string{"--source-space-id"},
 		},
 		{
-			name:    "docs to wiki requires obj token",
-			spec:    wikiMoveSpec{ObjType: "sheet", TargetSpaceID: "space_dst"},
-			wantErr: "--obj-token is required",
+			name:       "docs to wiki requires obj type",
+			spec:       wikiMoveSpec{ObjToken: "sheet_token", TargetSpaceID: "space_dst"},
+			wantErr:    "--obj-type is required",
+			wantParams: []string{"--obj-type"},
 		},
 		{
-			name:    "docs to wiki requires target space",
-			spec:    wikiMoveSpec{ObjType: "sheet", ObjToken: "sheet_token"},
-			wantErr: "--target-space-id is required",
+			name:       "docs to wiki requires obj token",
+			spec:       wikiMoveSpec{ObjType: "sheet", TargetSpaceID: "space_dst"},
+			wantErr:    "--obj-token is required",
+			wantParams: []string{"--obj-token"},
+		},
+		{
+			name:       "docs to wiki requires target space",
+			spec:       wikiMoveSpec{ObjType: "sheet", ObjToken: "sheet_token"},
+			wantErr:    "--target-space-id is required",
+			wantParams: []string{"--target-space-id"},
 		},
 	}
 
@@ -224,6 +236,9 @@ func TestValidateWikiMoveSpecRejectsInvalidCombinations(t *testing.T) {
 			err := validateWikiMoveSpec(tt.spec)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
+			}
+			if len(tt.wantParams) > 0 {
+				requireWikiValidationParams(t, err, tt.wantParams...)
 			}
 		})
 	}
@@ -837,7 +852,7 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 
 	runtime, stderr := newWikiMoveRuntimeWithScopes(t, core.AsUser, "")
 	client := &fakeWikiMoveClient{
-		taskErrs: []error{output.ErrWithHint(output.ExitAPI, "api_error", "poll failed", "retry original")},
+		taskErrs: []error{errs.NewAPIError(errs.SubtypeServerError, "poll failed").WithHint("retry original")},
 	}
 
 	status, ready, err := pollWikiMoveTask(context.Background(), client, runtime, "task_123")
@@ -850,12 +865,12 @@ func TestPollWikiMoveTaskWrapsRepeatedPollFailuresWithHint(t *testing.T) {
 	if status.TaskID != "task_123" {
 		t.Fatalf("status.TaskID = %q, want %q", status.TaskID, "task_123")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected structured exit error, got %T %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "retry original") || !strings.Contains(exitErr.Detail.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
-		t.Fatalf("hint = %q, want original hint and resume command", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "retry original") || !strings.Contains(p.Hint, wikiMoveTaskResultCommand("task_123", core.AsUser)) {
+		t.Fatalf("hint = %q, want original hint and resume command", p.Hint)
 	}
 	if !strings.Contains(stderr.String(), "Wiki move status attempt 1/1 failed") {
 		t.Fatalf("stderr = %q, want poll failure log", stderr.String())

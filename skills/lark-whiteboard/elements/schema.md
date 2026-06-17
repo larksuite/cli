@@ -1,6 +1,6 @@
 # DSL Schema
 
-> 本文件只说明 **DSL 里能写什么**：节点类型、字段、枚举值、硬约束。布局策略、组合方法、Dagre/Flex 心智模型统一放在 `references/layout.md`。  
+> 本文件只说明 **DSL 里能写什么**：节点类型、字段、枚举值、硬约束。布局策略、组合方法、Dagre/Flex 心智模型统一放在 `elements/layout.md`。
 > `?` 表示该字段在 schema 层是 optional；若需要稳定产出，再参考对应 scene 或 layout 文件中的最佳实践。
 
 **📝 布局引擎核心法则**：
@@ -138,7 +138,7 @@ interface WBDocument {
 > - 图片必须上传到**目标画板**，跨画板的 token 不可用
 > - 同一画板内所有 image 节点应使用统一的 width/height，保持视觉一致
 > - 图片宽高比推荐 3:2（如 240×160），避免变形
-> - 详细上传流程见 [`references/image.md`](image.md)
+> - 详细上传流程见 [`elements/image.md`](../elements/image.md)
 
 ### Text（纯文本节点）
 

@@ -47,11 +47,11 @@ var AppsEnvPull = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: "--app-id is required"}, Param: "app-id"}
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		_, envFile, err := resolveEnvPullTarget(strings.TrimSpace(rctx.Str("project-path")))
 		if err != nil {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
+			return appsValidationParamError("--project-path", "--project-path: %v", err).WithCause(err)
 		}
 		if err := checkEnvPullTarget(envFile); err != nil {
 			return err
@@ -71,7 +71,7 @@ var AppsEnvPull = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		_, envFile, err := resolveEnvPullTarget(strings.TrimSpace(rctx.Str("project-path")))
 		if err != nil {
-			return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("--project-path: %v", err)}, Param: "project-path", Cause: err}
+			return appsValidationParamError("--project-path", "--project-path: %v", err).WithCause(err)
 		}
 		if err := checkEnvPullTarget(envFile); err != nil {
 			return err
@@ -120,7 +120,7 @@ func resolveEnvPullTarget(projectPath string) (string, string, error) {
 	if strings.TrimSpace(projectPath) == "" {
 		cwd, err := os.Getwd() //nolint:forbidigo // shortcuts cannot import internal/vfs; cwd lookup is local-only and bounded.
 		if err != nil {
-			return "", "", fmt.Errorf("cannot determine working directory: %w", err)
+			return "", "", errs.NewInternalError(errs.SubtypeUnknown, "cannot determine working directory: %v", err).WithCause(err)
 		}
 		projectPath = cwd
 	}
@@ -137,13 +137,13 @@ func checkEnvPullTarget(envFile string) error {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("cannot inspect %s: %v", envFile, err)}, Param: "project-path", Cause: err}
+		return appsValidationParamError("--project-path", "cannot inspect %s: %v", envFile, err).WithCause(err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("target %s must be a regular file, not a symlink", envFile)}, Param: "project-path"}
+		return appsValidationParamError("--project-path", "target %s must be a regular file, not a symlink", envFile)
 	}
 	if !info.Mode().IsRegular() {
-		return &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidArgument, Message: fmt.Sprintf("target %s must be a regular file", envFile)}, Param: "project-path"}
+		return appsValidationParamError("--project-path", "target %s must be a regular file", envFile)
 	}
 	return nil
 }
@@ -156,7 +156,7 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 		}
 	}
 	if raw == nil {
-		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidResponse, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "response field env_vars must be an object or array of key/value entries")
 	}
 
 	var skippedKeys []string
@@ -203,7 +203,7 @@ func extractEnvPullVars(data map[string]interface{}) (map[string]string, envPull
 		}
 		return out, info, skippedKeys, nil
 	default:
-		return nil, envPullDatabaseInfo{}, nil, &errs.ValidationError{Problem: errs.Problem{Category: errs.CategoryValidation, Subtype: errs.SubtypeInvalidResponse, Message: "response field env_vars must be an object or array of key/value entries"}}
+		return nil, envPullDatabaseInfo{}, nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "response field env_vars must be an object or array of key/value entries")
 	}
 }
 
