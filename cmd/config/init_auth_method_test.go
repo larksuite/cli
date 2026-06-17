@@ -57,6 +57,21 @@ func TestResolveRegisterAuthMethod(t *testing.T) {
 	}
 }
 
+// TestValidatePKJWTKeyBinding covers the guard that rejects a registration
+// resolving to private_key_jwt with no signing key bound (e.g. an existing
+// secret-based app was selected on the confirm page).
+func TestValidatePKJWTKeyBinding(t *testing.T) {
+	if err := validatePKJWTKeyBinding(core.AuthMethodPrivateKeyJWT, ""); err == nil {
+		t.Error("pkjwt with empty keyLabel: expected error")
+	}
+	if err := validatePKJWTKeyBinding(core.AuthMethodPrivateKeyJWT, "agent-key"); err != nil {
+		t.Errorf("pkjwt with keyLabel: expected nil, got %v", err)
+	}
+	if err := validatePKJWTKeyBinding(core.AuthMethodClientSecret, ""); err != nil {
+		t.Errorf("client_secret: expected nil, got %v", err)
+	}
+}
+
 // TestResolveFinalAuthMethod locks the authoritative-method logic. The 2nd case
 // is the real bug: we requested private_key_jwt but the server resolved to an
 // existing client_secret app — we must persist client_secret, not pkjwt.
