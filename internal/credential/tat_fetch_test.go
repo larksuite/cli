@@ -472,3 +472,45 @@ func TestFetchTATWithAssertion_ServerError(t *testing.T) {
 		t.Fatal("expected error for invalid_client response")
 	}
 }
+
+// Deterministic OAuth client rejections must be typed (ConfigError /
+// SubtypeInvalidClient) so runProbePKJWT can tell "the key is not bound to this
+// app" apart from transport noise.
+func TestFetchTATWithAssertion_DeterministicReject_Typed(t *testing.T) {
+	for _, oauthErr := range []string{"invalid_client", "unauthorized_client", "invalid_grant"} {
+		rt := &stubRoundTripper{respCode: 401, respBody: `{"error":"` + oauthErr + `","error_description":"bad key"}`}
+		hc := &http.Client{Transport: rt}
+		_, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
+		if err == nil {
+			t.Fatalf("%s: expected error", oauthErr)
+		}
+		if !errs.IsTyped(err) {
+			t.Errorf("%s: must be typed, got %T", oauthErr, err)
+		}
+		var cfgErr *errs.ConfigError
+		if !errors.As(err, &cfgErr) || cfgErr.Subtype != errs.SubtypeInvalidClient {
+			t.Errorf("%s: want ConfigError/InvalidClient, got %T %v", oauthErr, err, err)
+		}
+	}
+}
+
+// Unrecognized OAuth errors and non-payload noise stay UNTYPED so the probe
+// treats them as upstream noise and stays silent.
+func TestFetchTATWithAssertion_AmbiguousError_Untyped(t *testing.T) {
+	cases := []string{
+		`{"error":"temporarily_unavailable","error_description":"retry"}`,
+		`{"code":99999,"msg":"weird"}`,
+		`not json`,
+	}
+	for _, body := range cases {
+		rt := &stubRoundTripper{respCode: 503, respBody: body}
+		hc := &http.Client{Transport: rt}
+		_, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
+		if err == nil {
+			t.Fatalf("body %q: expected error", body)
+		}
+		if errs.IsTyped(err) {
+			t.Errorf("body %q: must be UNTYPED, got typed %T", body, err)
+		}
+	}
+}
