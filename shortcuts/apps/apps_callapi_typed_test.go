@@ -12,11 +12,9 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-// TestAppsList_503IsRetryableTypedError pins the typed-error upgrade: a 5xx
-// response from the apps list endpoint must surface as a typed errs.Problem with
-// Retryable == true (via CallAPITyped → httpStatusError). The pre-migration
-// CallAPI path produced a legacy *output.ExitError with no Retryable field, so
-// this test fails until AppsList is migrated to CallAPITyped.
+// TestAppsList_503IsRetryableTypedError pins that a 5xx response from the apps
+// list endpoint surfaces as a typed errs.Problem with Retryable == true (via
+// CallAPITyped → httpStatusError).
 func TestAppsList_503IsRetryableTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

@@ -82,11 +82,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		// cobra Required failures exit with code 1 (distinct from output.ErrValidation
-		// at code 2). Message goes to stderr as plain text, but we read combined output
-		// to stay robust to future runner changes.
-		result.AssertExitCode(t, 1)
-		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "name" not set`)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), `required flag(s) "name" not set`)
 	})
 
 	t.Run("RejectsBlankName", func(t *testing.T) {
@@ -121,8 +118,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 1)
-		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "app-type" not set`)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), `required flag(s) "app-type" not set`)
 	})
 
 	t.Run("RejectsInvalidAppType", func(t *testing.T) {

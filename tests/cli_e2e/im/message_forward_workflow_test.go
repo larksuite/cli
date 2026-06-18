@@ -43,7 +43,7 @@ func TestIM_MessageForwardWorkflowAsUser(t *testing.T) {
 		require.NoError(t, err)
 		skipIfMissingIMForwardPermission(t, result)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		forwardedID := gjson.Get(result.Stdout, "data.message_id").String()
 		require.NotEmpty(t, forwardedID, "stdout:\n%s", result.Stdout)
@@ -84,7 +84,7 @@ func TestIM_MessageForwardWorkflowAsUser(t *testing.T) {
 		require.NoError(t, err)
 		skipIfMissingIMForwardPermission(t, result)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		forwardedID := gjson.Get(result.Stdout, "data.message_id").String()
 		require.NotEmpty(t, forwardedID, "stdout:\n%s", result.Stdout)

@@ -23,7 +23,7 @@ func dryRunViewList(_ context.Context, runtime *common.RuntimeContext) *common.D
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	return dryRunViewBase(runtime).
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/views").
 		Params(map[string]interface{}{"offset": offset, "limit": limit})
@@ -154,7 +154,7 @@ func executeViewList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	views, total, err := listAllViews(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
 	if err != nil {
 		return err

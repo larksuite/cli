@@ -270,15 +270,15 @@ func TestExitForOrphan(t *testing.T) {
 	if err == nil {
 		t.Fatal("flag on + orphan → expected error, got nil")
 	}
-	var exit *output.ExitError
+	var exit *output.BareError
 	if !errorAs(err, &exit) || exit.Code != output.ExitValidation {
 		t.Errorf("exit code = %v, want ExitValidation", err)
 	}
 }
 
 func errorAs(err error, target interface{}) bool {
-	if e, ok := err.(*output.ExitError); ok {
-		if t, ok := target.(**output.ExitError); ok {
+	if e, ok := err.(*output.BareError); ok {
+		if t, ok := target.(**output.BareError); ok {
 			*t = e
 			return true
 		}

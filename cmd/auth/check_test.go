@@ -33,12 +33,9 @@ func TestAuthCheckRun_NotLoggedIn_ExitOneWithStdoutOnly(t *testing.T) {
 	if got := output.ExitCodeOf(err); got != 1 {
 		t.Errorf("exit code = %d, want 1 (predicate 'missing' signal)", got)
 	}
-	var bare *output.ExitError
+	var bare *output.BareError
 	if !errors.As(err, &bare) {
-		t.Fatalf("expected *output.ExitError (ErrBare), got %T: %v", err, err)
-	}
-	if bare.Detail != nil {
-		t.Errorf("ErrBare must carry no Detail (no envelope), got %+v", bare.Detail)
+		t.Fatalf("expected *output.BareError (ErrBare), got %T: %v", err, err)
 	}
 
 	if stderr.Len() != 0 {

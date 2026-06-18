@@ -23,7 +23,7 @@ func getPrimaryCalendarID(t *testing.T, ctx context.Context) string {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	calendarID := gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
 	require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)
@@ -39,7 +39,7 @@ func getCurrentUserPrimaryCalendarID(t *testing.T, ctx context.Context) string {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	calendarID := gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
 	require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/keychain"
 )
 
@@ -103,7 +104,7 @@ func TestResolveConfigFromMulti_RejectsSecretKeyMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for mismatched appId and appSecret keychain key")
 	}
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("expected ConfigError, got %T: %v", err, err)
 	}
@@ -132,6 +133,27 @@ func TestResolveConfigFromMulti_AcceptsPlainSecret(t *testing.T) {
 	}
 }
 
+func TestResolveConfigFromMulti_CarriesLang(t *testing.T) {
+	raw := &MultiAppConfig{
+		Apps: []AppConfig{
+			{
+				AppId:     "cli_abc",
+				AppSecret: PlainSecret("my-secret"),
+				Brand:     BrandFeishu,
+				Lang:      "en",
+			},
+		},
+	}
+
+	cfg, err := ResolveConfigFromMulti(raw, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Lang != "en" {
+		t.Errorf("Lang = %q, want %q", cfg.Lang, "en")
+	}
+}
+
 func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T) {
 	// Keychain ref matches appId, so validation passes.
 	// The subsequent ResolveSecretInput will fail (no real keychain),
@@ -156,7 +178,7 @@ func TestResolveConfigFromMulti_MatchingKeychainRefPassesValidation(t *testing.T
 		t.Fatal("expected error (keychain entry not found), got nil")
 	}
 	// The error should come from keychain resolution, NOT from our mismatch check.
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if errors.As(err, &cfgErr) {
 		if cfgErr.Message == "appId and appSecret keychain key are out of sync" {
 			t.Fatal("error came from mismatch check, but keys should match")

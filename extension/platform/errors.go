@@ -7,9 +7,9 @@ import "fmt"
 
 // CommandDeniedError is the structured error returned by a denyStub. Every
 // pruned-command execution path -- direct invocation, alias expansion,
-// internal call -- returns this exact type. It is wire-compatible with the
-// output.ExitError envelope via the Layer (== error.type) field and the
-// detail map produced by ExitError().
+// internal call -- returns this exact type. The dispatcher converts it to a
+// typed errs.* error; the Layer field carries the denial layer for the
+// envelope.
 //
 // Layer values:
 //

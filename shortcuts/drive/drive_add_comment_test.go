@@ -16,8 +16,8 @@ import (
 
 // assertContentValidationHint asserts err is a typed *errs.ValidationError
 // carrying SubtypeInvalidArgument, Param "--content", and a Hint containing
-// the given substring. The over-cap message now flows through a typed
-// ValidationError instead of the legacy *output.ExitError.Detail shape.
+// the given substring. The over-cap message flows through a typed
+// ValidationError.
 func assertContentValidationHint(t *testing.T, err error, wantHint string) {
 	t.Helper()
 	var valErr *errs.ValidationError

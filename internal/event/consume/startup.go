@@ -53,8 +53,8 @@ func EnsureBus(ctx context.Context, tr transport.IPC, appID, profileName, domain
 			fmt.Fprintf(errOut, "[event] remote connection check: online_instance_cnt=%d\n", count)
 			if count > 0 {
 				return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
-					"another event bus is already connected to this app (%d active connection(s) detected via API); only one bus should run globally to avoid duplicate event delivery", count).
-					WithHint("use `lark-cli event status` to check, or `lark-cli event stop` on the other machine first")
+					"another event bus is already connected to this app (%d remote event connection(s) detected via API); only one bus should run globally to avoid duplicate event delivery", count).
+					WithHint("remote event connection detected; `lark-cli event status` and `lark-cli event stop` only inspect local buses; stop the owner host/process, wait for the platform connection timeout, or use a separate app/profile")
 			}
 		}
 	} else {

@@ -5,13 +5,48 @@ package cmdutil
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
+
+// failingReader always errors on Read, to exercise stdin read-failure paths.
+type failingReader struct{ err error }
+
+func (r *failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+// requireFileValidationError asserts err is a typed *errs.ValidationError with
+// the expected subtype, exit code 2 (legacy ErrValidation parity), and a
+// param diagnostic referencing --file (either Param or one of Params).
+func requireFileValidationError(t *testing.T, err error, wantSubtype errs.Subtype) *errs.ValidationError {
+	t.Helper()
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if valErr.Subtype != wantSubtype {
+		t.Errorf("subtype = %q, want %q", valErr.Subtype, wantSubtype)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation, legacy parity)", got, output.ExitValidation)
+	}
+	mentionsFile := valErr.Param == "--file"
+	for _, p := range valErr.Params {
+		if p.Name == "--file" {
+			mentionsFile = true
+		}
+	}
+	if !mentionsFile {
+		t.Errorf("expected --file in Param/Params, got Param=%q Params=%v", valErr.Param, valErr.Params)
+	}
+	return valErr
+}
 
 func TestParseFileFlag(t *testing.T) {
 	tests := []struct {
@@ -222,6 +257,7 @@ func TestValidateFileFlag(t *testing.T) {
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("error = %q, want containing %q", err.Error(), tt.wantErr)
 			}
+			requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
 		})
 	}
 }
@@ -248,6 +284,19 @@ func TestBuildFormdata(t *testing.T) {
 		if !strings.Contains(err.Error(), "stdin is not available") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "stdin is not available")
 		}
+		requireFileValidationError(t, err, errs.SubtypeFailedPrecondition)
+	})
+
+	t.Run("stdin read failure", func(t *testing.T) {
+		readErr := errors.New("pipe closed")
+		_, err := BuildFormdata(fio, "file", "", true, &failingReader{err: readErr}, nil)
+		if err == nil {
+			t.Fatal("expected error for failing stdin reader")
+		}
+		requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
+		if !errors.Is(err, readErr) {
+			t.Error("underlying read error not reachable via errors.Is; WithCause missing")
+		}
 	})
 
 	t.Run("stdin empty", func(t *testing.T) {
@@ -259,6 +308,7 @@ func TestBuildFormdata(t *testing.T) {
 		if !strings.Contains(err.Error(), "stdin is empty") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "stdin is empty")
 		}
+		requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
 	})
 
 	t.Run("file open success", func(t *testing.T) {
@@ -288,6 +338,10 @@ func TestBuildFormdata(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "cannot open file:") {
 			t.Errorf("error = %q, want containing %q", err.Error(), "cannot open file:")
+		}
+		valErr := requireFileValidationError(t, err, errs.SubtypeInvalidArgument)
+		if valErr.Cause == nil {
+			t.Error("expected the os open error attached as Cause")
 		}
 	})
 

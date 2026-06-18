@@ -23,11 +23,16 @@ var BaseFormsList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
-		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, max 100"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, range 1-100"},
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100)
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms").
+			Params(map[string]interface{}{"page_size": runtime.Int("page-size")}).
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", runtime.Str("table-id"))
 	},

@@ -20,35 +20,29 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// assertExitError checks the full structured error in one assertion. It
-// accepts both *output.ExitError (used by output.ErrWithHint) and the
-// typed errors (ValidationError, ConfigError) — they normalize to the same
-// wantDetail fields. The wantDetail.Type is matched against the typed error's
-// Category string ("validation", "config", etc.).
-func assertExitError(t *testing.T, err error, wantCode int, wantDetail output.ErrDetail) {
+// wantErrDetail is the normalized comparison shape for a typed error's wire
+// fields: Type is the error's Category string ("validation", "config", ...),
+// alongside Message and Hint.
+type wantErrDetail struct {
+	Type    string
+	Message string
+	Hint    string
+}
+
+// assertExitError checks the full structured error in one assertion against a
+// typed error (ValidationError or ConfigError), normalizing its Category /
+// Message / Hint to wantDetail.
+func assertExitError(t *testing.T, err error, wantCode int, wantDetail wantErrDetail) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected error, got nil")
-	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
-		if exitErr.Code != wantCode {
-			t.Errorf("exit code = %d, want %d", exitErr.Code, wantCode)
-		}
-		if exitErr.Detail == nil {
-			t.Fatal("expected non-nil error detail")
-		}
-		if !reflect.DeepEqual(*exitErr.Detail, wantDetail) {
-			t.Errorf("error detail mismatch:\n  got:  %+v\n  want: %+v", *exitErr.Detail, wantDetail)
-		}
-		return
 	}
 	var ve *errs.ValidationError
 	if errors.As(err, &ve) {
 		if got := output.ExitCodeOf(err); got != wantCode {
 			t.Errorf("exit code = %d, want %d", got, wantCode)
 		}
-		gotDetail := output.ErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
+		gotDetail := wantErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
 		if !reflect.DeepEqual(gotDetail, wantDetail) {
 			t.Errorf("validation error mismatch:\n  got:  %+v\n  want: %+v", gotDetail, wantDetail)
 		}
@@ -59,13 +53,13 @@ func assertExitError(t *testing.T, err error, wantCode int, wantDetail output.Er
 		if got := output.ExitCodeOf(err); got != wantCode {
 			t.Errorf("exit code = %d, want %d", got, wantCode)
 		}
-		gotDetail := output.ErrDetail{Type: string(ce.Category), Message: ce.Message, Hint: ce.Hint}
+		gotDetail := wantErrDetail{Type: string(ce.Category), Message: ce.Message, Hint: ce.Hint}
 		if !reflect.DeepEqual(gotDetail, wantDetail) {
 			t.Errorf("config error mismatch:\n  got:  %+v\n  want: %+v", gotDetail, wantDetail)
 		}
 		return
 	}
-	t.Fatalf("error type = %T, want *output.ExitError or *errs.ValidationError / *errs.ConfigError; error = %v", err, err)
+	t.Fatalf("error type = %T, want *errs.ValidationError / *errs.ConfigError; error = %v", err, err)
 }
 
 // assertEnvelope decodes stdout and checks it matches want exactly — every key
@@ -179,15 +173,21 @@ func TestConfigBindRun_InvalidLang(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
 			}
-			exitErr, ok := err.(*output.ExitError)
-			if !ok {
-				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			var valErr *errs.ValidationError
+			if !errors.As(err, &valErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 			}
-			if exitErr.Code != output.ExitValidation {
-				t.Errorf("exit code = %d, want %d (validation)", exitErr.Code, output.ExitValidation)
+			if valErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", valErr.Subtype, errs.SubtypeInvalidArgument)
 			}
-			if !strings.Contains(exitErr.Error(), "invalid --lang") {
-				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			if valErr.Param != "--lang" {
+				t.Errorf("param = %q, want %q", valErr.Param, "--lang")
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", got, output.ExitValidation)
+			}
+			if !strings.Contains(err.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", err.Error())
 			}
 		})
 	}
@@ -365,7 +365,7 @@ func TestConfigBindRun_InvalidSource(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "invalid"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `invalid --source "invalid"; valid values: openclaw, hermes, lark-channel`,
 	})
@@ -382,7 +382,7 @@ func TestConfigBindRun_MissingSourceNonTTY(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	// TestFactory has IsTerminal=false by default
 	err := configBindRun(&BindOptions{Factory: f, Source: ""})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: "cannot determine Agent source: no --source flag and no Agent environment detected",
 		Hint:    "pass --source openclaw|hermes|lark-channel, or run this command inside the corresponding Agent context",
@@ -421,7 +421,7 @@ func TestConfigBindRun_SourceEnvMismatch_OpenClawFlagInHermesEnv(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--source "openclaw" does not match detected Agent environment (hermes)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
@@ -437,7 +437,7 @@ func TestConfigBindRun_SourceEnvMismatch_HermesFlagInOpenClawEnv(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--source "hermes" does not match detected Agent environment (openclaw)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
@@ -566,7 +566,7 @@ func TestConfigBindRun_HermesMissingEnvFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "failed to read Hermes config: open " + envPath + ": no such file or directory",
 		Hint:    "verify Hermes is installed and configured at " + envPath,
@@ -584,7 +584,7 @@ func TestConfigBindRun_OpenClawMissingFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
 	configPath := filepath.Join(openclawHome, ".openclaw", "openclaw.json")
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
 		Hint:    "verify OpenClaw is installed and configured",
@@ -731,7 +731,7 @@ func TestConfigBindRun_SourceEnvMismatch_LarkChannelFlagInOpenClawEnv(t *testing
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--source "lark-channel" does not match detected Agent environment (openclaw)`,
 		Hint:    "remove --source to auto-detect, or run this command in the correct Agent context",
@@ -750,7 +750,7 @@ func TestConfigBindRun_LarkChannelMissingFile(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
 	configPath := filepath.Join(fakeHome, ".lark-channel", "config.json")
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "cannot read " + configPath + ": open " + configPath + ": no such file or directory",
 		Hint:    "verify lark-channel-bridge is installed and configured",
@@ -770,7 +770,7 @@ func TestConfigBindRun_LarkChannelEmptyAppID(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "accounts.app.id missing in " + configPath,
 		Hint:    "run lark-channel-bridge's setup to populate the app credential",
@@ -789,7 +789,7 @@ func TestConfigBindRun_LarkChannelEmptySecret(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "lark-channel"})
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "accounts.app.secret is empty in " + configPath,
 		Hint:    "run lark-channel-bridge's setup to populate the app credential",
@@ -835,17 +835,19 @@ func TestConfigShowRun_AgentWorkspaceNotBound(t *testing.T) {
 		t.Fatal("expected error for unbound workspace")
 	}
 	// Should be a structured ConfigError suggesting config bind, not config init.
-	var cfgErr *core.ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *core.ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
 	// Config errors share ExitAuth (3); the workspace is detected but no
 	// binding exists yet, which is a config error.
-	if cfgErr.Code != output.ExitAuth {
-		t.Errorf("exit code = %d, want %d (config category → ExitAuth)", cfgErr.Code, output.ExitAuth)
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Errorf("exit code = %d, want %d (config category → ExitAuth)", got, output.ExitAuth)
 	}
-	if cfgErr.Type != "openclaw" {
-		t.Errorf("type = %q, want %q", cfgErr.Type, "openclaw")
+	// The workspace name stays out of the wire subtype; it only appears in
+	// the message.
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
 	}
 	if !strings.Contains(cfgErr.Message, "openclaw context detected") {
 		t.Errorf("message missing 'openclaw context detected': %q", cfgErr.Message)
@@ -1187,7 +1189,7 @@ func TestConfigBindRun_OpenClawMultiAccount_TTYFlagMode(t *testing.T) {
 	// iterates a map — ordering is non-deterministic. DeepEqual inline against
 	// each accepted variant so every ErrDetail field (Type, Code, Message,
 	// Hint, ConsoleURL, Detail, and any future addition) is still compared.
-	base := output.ErrDetail{
+	base := wantErrDetail{
 		Type:    "validation",
 		Message: "multiple accounts in openclaw.json; pass --app-id <id>",
 	}
@@ -1203,7 +1205,7 @@ func TestConfigBindRun_OpenClawMultiAccount_TTYFlagMode(t *testing.T) {
 	if !errors.As(err, &ve) {
 		t.Fatalf("error type = %T, want *errs.ValidationError; err = %v", err, err)
 	}
-	got := output.ErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
+	got := wantErrDetail{Type: string(ve.Category), Message: ve.Message, Hint: ve.Hint}
 	if !reflect.DeepEqual(got, wantWorkFirst) && !reflect.DeepEqual(got, wantPersonalFirst) {
 		t.Errorf("error detail did not match any accepted variant:\n  got:  %+v\n  want: %+v OR %+v",
 			got, wantWorkFirst, wantPersonalFirst)
@@ -1230,7 +1232,7 @@ func TestConfigBindRun_OpenClawMultiAccount_WrongAppID(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw", AppID: "nonexistent"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--app-id "nonexistent" not found in openclaw.json`,
 		Hint:    "available app IDs:\n  cli_only_one",
@@ -1250,7 +1252,7 @@ func TestConfigBindRun_InvalidIdentity(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes", Identity: "invalid"})
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `invalid --identity "invalid"; valid values: bot-only, user-default`,
 	})
@@ -1536,7 +1538,7 @@ func TestConfigBindRun_HermesMissingAppID(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "FEISHU_APP_ID not found in " + envPath,
 		Hint:    "run 'hermes setup' to configure Feishu credentials",
@@ -1556,7 +1558,7 @@ func TestConfigBindRun_HermesMissingAppSecret(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "hermes"})
 	envPath := filepath.Join(hermesHome, ".env")
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "FEISHU_APP_SECRET not found in " + envPath,
 		Hint:    "run 'hermes setup' to configure Feishu credentials",
@@ -1582,7 +1584,7 @@ func TestConfigBindRun_OpenClawMissingFeishu(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "openclaw.json missing channels.feishu section",
 		Hint:    "configure Feishu in OpenClaw first",
@@ -1610,7 +1612,7 @@ func TestConfigBindRun_OpenClawEmptyAppSecret(t *testing.T) {
 	openclawPath := filepath.Join(openclawDir, "openclaw.json")
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "appSecret is empty for app cli_no_secret in " + openclawPath,
 		Hint:    "configure channels.feishu.appSecret in openclaw.json",
@@ -1672,7 +1674,7 @@ func TestConfigBindRun_OpenClawDisabledAccount(t *testing.T) {
 
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 	err := configBindRun(&BindOptions{Factory: f, Source: "openclaw"})
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "no Feishu app configured in openclaw.json",
 		Hint:    "configure channels.feishu.appId in openclaw.json",

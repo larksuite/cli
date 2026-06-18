@@ -249,7 +249,7 @@ func TestDocMediaInsertDryRunUsesMultipartForLargeFile(t *testing.T) {
 
 func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
 	// Clipboard path: in-memory bytes (no FilePath) route through
-	// UploadDriveMediaAll when small enough. This also exercises the
+	// UploadDriveMediaAllTyped when small enough. This also exercises the
 	// drive_route_token extra built from docID.
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-upload-content-app"))
 	uploadStub := &httpmock.Stub{
@@ -292,7 +292,7 @@ func TestUploadDocMediaFileWithContentUsesSinglePartUpload(t *testing.T) {
 }
 
 func TestUploadDocMediaFileWithContentUsesMultipart(t *testing.T) {
-	// Clipboard path: in-memory bytes route through UploadDriveMediaMultipart
+	// Clipboard path: in-memory bytes route through UploadDriveMediaMultipartTyped
 	// when size exceeds the single-part threshold.
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-upload-content-multi"))
 	reg.Register(&httpmock.Stub{

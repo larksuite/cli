@@ -4,13 +4,13 @@
 package cmdpolicy_test
 
 import (
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -168,10 +168,15 @@ func TestBuildDeniedByPath_hybridParentOwnAllowedKeepsAlive(t *testing.T) {
 	}
 }
 
-// Apply with the wrapped *output.ExitError exposes BOTH paths consumers
-// rely on:
-//  1. cmd/root.go's envelope writer (errors.As on *output.ExitError)
-//  2. in-process consumers extracting the platform.CommandDeniedError
+// Apply returns a typed *errs.ValidationError that exposes BOTH paths
+// consumers rely on:
+//  1. cmd/root.go's envelope writer (errs.ProblemOf / failed_precondition
+//     subtype + exit code 2)
+//  2. in-process consumers extracting the platform.CommandDeniedError as
+//     the typed error's Cause via errors.As
+//
+// The policy metadata (layer / policy_source / rule_name / reason_code)
+// is folded into the Hint text rather than a separate detail map.
 func TestApply_runEReturnsExitErrorAndCommandDeniedError(t *testing.T) {
 	root := buildTree()
 	denied := map[string]cmdpolicy.Denial{
@@ -191,52 +196,39 @@ func TestApply_runEReturnsExitErrorAndCommandDeniedError(t *testing.T) {
 		t.Fatalf("denied command should return error")
 	}
 
-	// Path 1: envelope-writer view.
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error chain must contain *output.ExitError, got %T", err)
+	// Path 1: typed-envelope view. The denial is a failed_precondition
+	// ValidationError so cmd/root.go renders the structured envelope and
+	// the process exits 2 (ExitValidation).
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error chain must contain *errs.ValidationError, got %T", err)
 	}
-	if exitErr.Detail == nil {
-		t.Fatalf("ExitError.Detail required for envelope to render")
+	if ve.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want %q", ve.Subtype, errs.SubtypeFailedPrecondition)
 	}
-	if exitErr.Detail.Type != "command_denied" {
-		t.Errorf("envelope error.type = %q, want command_denied", exitErr.Detail.Type)
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want ExitValidation (%d)", code, output.ExitValidation)
 	}
-	// JSON envelope shape: detail.reason_code must be present and
-	// match the closed enum.
-	detailMap, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("envelope detail should be map[string]any, got %T", exitErr.Detail.Detail)
+	// The policy metadata is folded into the Hint text: reason_code,
+	// policy_source, and rule_name must all be discoverable there.
+	if !strings.Contains(ve.Hint, "write_not_allowed") {
+		t.Errorf("hint must carry reason_code write_not_allowed, got %q", ve.Hint)
 	}
-	if detailMap["reason_code"] != "write_not_allowed" {
-		t.Errorf("detail.reason_code = %v, want write_not_allowed", detailMap["reason_code"])
+	if !strings.Contains(ve.Hint, "plugin:secaudit") {
+		t.Errorf("hint must carry policy_source plugin:secaudit, got %q", ve.Hint)
 	}
-	if detailMap["policy_source"] != "plugin:secaudit" {
-		t.Errorf("detail.policy_source = %v, want plugin:secaudit", detailMap["policy_source"])
+	if !strings.Contains(ve.Hint, "secaudit-policy") {
+		t.Errorf("hint must carry rule_name secaudit-policy, got %q", ve.Hint)
 	}
 
-	// Path 2: in-process typed-error view.
+	// Path 2: in-process typed-error view -- the *platform.CommandDeniedError
+	// is preserved as the Cause so errors.As still reaches it.
 	var cd *platform.CommandDeniedError
 	if !errors.As(err, &cd) {
 		t.Fatalf("error chain must expose *platform.CommandDeniedError")
 	}
 	if cd.Path != "docs/+update" || cd.ReasonCode != "write_not_allowed" {
 		t.Errorf("CommandDeniedError = %+v", cd)
-	}
-
-	// Envelope round-trip sanity (the actual JSON cmd/root.go would emit).
-	var buf strings.Builder
-	output.WriteErrorEnvelope(&buf, exitErr, "user")
-	if !strings.Contains(buf.String(), `"type": "command_denied"`) {
-		t.Errorf("envelope JSON missing type=command_denied, got:\n%s", buf.String())
-	}
-	if !strings.Contains(buf.String(), `"reason_code": "write_not_allowed"`) {
-		t.Errorf("envelope JSON missing reason_code, got:\n%s", buf.String())
-	}
-	// Round-trip parse to verify it's well-formed JSON.
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(buf.String()), &parsed); err != nil {
-		t.Fatalf("envelope JSON malformed: %v\n%s", err, buf.String())
 	}
 }
 

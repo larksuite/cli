@@ -8,10 +8,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
@@ -208,8 +210,10 @@ func TestInstall_observerPanicIsolated(t *testing.T) {
 	}
 }
 
-// A Wrapper returning AbortError surfaces as *output.ExitError with
-// type="hook" so cmd/root.go's envelope writer can serialise it.
+// A Wrapper returning AbortError surfaces as a typed
+// *errs.ValidationError (failed_precondition, exit 2) so cmd/root.go's
+// envelope writer can serialise it. The original AbortError is preserved
+// as the Cause so errors.As consumers still reach HookName / Reason.
 func TestInstall_abortErrorBecomesExitError(t *testing.T) {
 	root := &cobra.Command{Use: "lark-cli"}
 	leaf := makeLeaf("+x")
@@ -234,21 +238,28 @@ func TestInstall_abortErrorBecomesExitError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Wrap aborted; expected error")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("AbortError must convert to *output.ExitError, got %T %+v", err, err)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("AbortError must convert to *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "hook" {
-		t.Errorf("envelope type = %q, want hook", exitErr.Detail.Type)
+	if ve.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want %q", ve.Subtype, errs.SubtypeFailedPrecondition)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	if detail["reason_code"] != "aborted" || detail["hook_name"] != "rejecter" {
-		t.Errorf("detail = %+v", detail)
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want ExitValidation (%d)", code, output.ExitValidation)
 	}
-	// The original AbortError must still be reachable via errors.As.
+	// The hook name must be discoverable in the user-facing hint.
+	if !strings.Contains(ve.Hint, "rejecter") {
+		t.Errorf("hint must carry hook name rejecter, got %q", ve.Hint)
+	}
+	// The original AbortError must still be reachable via errors.As, with
+	// its attribution intact.
 	var ab *platform.AbortError
 	if !errors.As(err, &ab) {
-		t.Errorf("error chain should expose *platform.AbortError")
+		t.Fatalf("error chain should expose *platform.AbortError")
+	}
+	if ab.HookName != "rejecter" || ab.Reason != "policy says no" {
+		t.Errorf("AbortError = %+v, want HookName=rejecter Reason=%q", ab, "policy says no")
 	}
 }
 
@@ -317,13 +328,19 @@ func (fakeViewSourceByPath) View(c *cobra.Command) platform.CommandView {
 
 func checkHookName(t *testing.T, err error, want string) {
 	t.Helper()
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError, got %T", err)
+	// The abort surfaces as a typed *errs.ValidationError; the original
+	// (namespaced copy of the) AbortError is preserved as its Cause, so
+	// errors.As reaches the attribution the framework wrote.
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	if detail["hook_name"] != want {
-		t.Errorf("hook_name = %v, want %v", detail["hook_name"], want)
+	var ab *platform.AbortError
+	if !errors.As(err, &ab) {
+		t.Fatalf("error chain should expose *platform.AbortError, got %T", err)
+	}
+	if ab.HookName != want {
+		t.Errorf("hook_name = %v, want %v", ab.HookName, want)
 	}
 }
 

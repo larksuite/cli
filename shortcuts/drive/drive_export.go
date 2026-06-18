@@ -34,6 +34,7 @@ var DriveExport = common.Shortcut{
 		{Name: "doc-type", Desc: "source document type: doc | docx | sheet | bitable | slides", Required: true, Enum: []string{"doc", "docx", "sheet", "bitable", "slides"}},
 		{Name: "file-extension", Desc: "export format: docx | pdf | xlsx | csv | markdown | base (bitable only) | pptx (slides only)", Required: true, Enum: []string{"docx", "pdf", "xlsx", "csv", "markdown", "base", "pptx"}},
 		{Name: "sub-id", Desc: "sub-table/sheet ID, required when exporting sheet/bitable as csv"},
+		{Name: "only-schema", Type: "bool", Desc: "export only bitable schema when --doc-type bitable --file-extension base"},
 		{Name: "file-name", Desc: "preferred output filename (optional)"},
 		{Name: "output-dir", Default: ".", Desc: "local output directory (default: current directory)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
@@ -44,6 +45,7 @@ var DriveExport = common.Shortcut{
 			DocType:       runtime.Str("doc-type"),
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
+			OnlySchema:    runtime.Bool("only-schema"),
 		})
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -52,6 +54,7 @@ var DriveExport = common.Shortcut{
 			DocType:       runtime.Str("doc-type"),
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
+			OnlySchema:    runtime.Bool("only-schema"),
 		}
 		// Markdown export is a special case: docx markdown comes from the V2
 		// docs_ai fetch API directly instead of the Drive export task API.
@@ -78,6 +81,9 @@ var DriveExport = common.Shortcut{
 		if strings.TrimSpace(spec.SubID) != "" {
 			body["sub_id"] = spec.SubID
 		}
+		if spec.OnlySchema {
+			body["only_schema"] = true
+		}
 
 		dr := common.NewDryRunAPI().
 			Desc("3-step orchestration: create export task -> limited polling -> download file").
@@ -95,6 +101,7 @@ var DriveExport = common.Shortcut{
 			DocType:       runtime.Str("doc-type"),
 			FileExtension: runtime.Str("file-extension"),
 			SubID:         runtime.Str("sub-id"),
+			OnlySchema:    runtime.Bool("only-schema"),
 		}
 		outputDir := runtime.Str("output-dir")
 		preferredFileName := strings.TrimSpace(runtime.Str("file-name"))

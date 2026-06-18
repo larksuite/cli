@@ -112,7 +112,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import: %s (%s)\n", fileName, common.FormatSize(fileSize))
 		// upload_all for import works without parent_node; omitting it preserves
 		// the existing root-level import staging behavior.
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
@@ -124,7 +124,7 @@ func uploadMediaForImport(ctx context.Context, runtime *common.RuntimeContext, f
 	fmt.Fprintf(runtime.IO().ErrOut, "Uploading media for import via multipart upload: %s (%s)\n", fileName, common.FormatSize(fileSize))
 	// upload_prepare is stricter than upload_all here and expects parent_node to
 	// be sent explicitly, even when import uses the implicit root staging area.
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
@@ -252,6 +252,46 @@ func validateDriveImportSpec(spec driveImportSpec) error {
 		if err := validate.ResourceName(spec.TargetToken, "--target-token"); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--target-token")
 		}
+	}
+
+	return nil
+}
+
+func appendDriveImportFolderTokenWikiCheckDryRun(dry *common.DryRunAPI, spec driveImportSpec) {
+	folderToken := strings.TrimSpace(spec.FolderToken)
+	if folderToken == "" {
+		return
+	}
+
+	dry.GET("/open-apis/wiki/v2/spaces/get_node").
+		Desc("[0] Validate whether --folder-token is a wiki node").
+		Params(map[string]interface{}{"token": folderToken})
+}
+
+func rejectDriveImportWikiFolderToken(runtime *common.RuntimeContext, folderToken string) error {
+	folderToken = strings.TrimSpace(folderToken)
+	if folderToken == "" {
+		return nil
+	}
+
+	data, err := runtime.CallAPITyped(
+		"GET",
+		"/open-apis/wiki/v2/spaces/get_node",
+		map[string]interface{}{"token": folderToken},
+		nil,
+	)
+	if err == nil {
+		node := common.GetMap(data, "node")
+		if len(node) == 0 {
+			return nil
+		}
+
+		return errs.NewValidationError(
+			errs.SubtypeInvalidArgument,
+			"--folder-token only supports Drive folder tokens, but the provided token resolves to a wiki node",
+		).
+			WithParam("--folder-token").
+			WithHint("Pass a Drive folder token, or omit --folder-token to import into the Drive root folder. Wiki node tokens are not accepted as import mount folders.")
 	}
 
 	return nil

@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -59,7 +60,7 @@ func authListRun(opts *ListOptions) error {
 		// keep the same contract here. We still want the hint to be
 		// workspace-aware, so we pull the message+hint out of
 		// NotConfiguredError() instead of hard-coding it.
-		var cfgErr *core.ConfigError
+		var cfgErr *errs.ConfigError
 		if errors.As(core.NotConfiguredError(), &cfgErr) {
 			fmt.Fprintln(f.IOStreams.ErrOut, cfgErr.Message)
 			if cfgErr.Hint != "" {

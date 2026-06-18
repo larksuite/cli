@@ -65,8 +65,8 @@ func TestUpdateExistingProfileWithoutSecret_AppIdMismatch_EmitsValidationError(t
 
 // wrapUpdateExistingProfileErr is the caller-side classifier for the error
 // returned by updateExistingProfileWithoutSecret. It must preserve typed-error
-// exit semantics (regression: typed ValidationError was being downgraded to
-// InternalError by the legacy *output.ExitError-only passthrough).
+// exit semantics: a typed ValidationError must keep ExitValidation rather than
+// being downgraded to InternalError.
 
 func TestWrapUpdateExistingProfileErr_NilPassesThrough(t *testing.T) {
 	if got := wrapUpdateExistingProfileErr(nil); got != nil {
@@ -87,18 +87,6 @@ func TestWrapUpdateExistingProfileErr_TypedValidationErrorPreserved(t *testing.T
 	var intErr *errs.InternalError
 	if errors.As(got, &intErr) {
 		t.Errorf("typed ValidationError was downgraded to *InternalError: %v", got)
-	}
-}
-
-func TestWrapUpdateExistingProfileErr_LegacyExitErrorPreserved(t *testing.T) {
-	in := &output.ExitError{Code: 7, Err: errors.New("legacy")}
-	got := wrapUpdateExistingProfileErr(in)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected *output.ExitError to pass through, got %T: %v", got, got)
-	}
-	if exitErr.Code != 7 {
-		t.Errorf("Code = %d, want 7", exitErr.Code)
 	}
 }
 
