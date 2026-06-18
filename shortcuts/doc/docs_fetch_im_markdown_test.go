@@ -32,6 +32,21 @@ func TestConvertToIMMarkdownTitle(t *testing.T) {
 			input: `<title>   </title>`,
 			want:  "",
 		},
+		{
+			name:  "title followed by text",
+			input: `<title>Roadmap</title>tail`,
+			want:  "# Roadmaptail",
+		},
+		{
+			name:  "uppercase title is handled case-insensitively",
+			input: `<TITLE>Roadmap</TITLE>`,
+			want:  "# Roadmap",
+		},
+		{
+			name:  "missing closing title is preserved",
+			input: `before<title>Roadmap`,
+			want:  `before<title>Roadmap`,
+		},
 	})
 }
 
@@ -64,6 +79,21 @@ func TestConvertToIMMarkdownCallout(t *testing.T) {
 			input: `<callout emoji="📝"><bookmark name="Spec" href="https://example.com"></bookmark></callout>`,
 			want:  "---\n📝 [Spec](https://example.com)\n---",
 		},
+		{
+			name:  "callout contains grid and cite",
+			input: `<callout emoji="📣"><grid><column><cite type="user" user-id="ou_1" user-name="Alice"></cite></column><column><bookmark name="Spec" href="https://example.com"></bookmark></column></grid></callout>`,
+			want:  "---\n📣 <at user_id=\"ou_1\">Alice</at>\n[Spec](https://example.com)\n---",
+		},
+		{
+			name:  "same-name nested callout with trailing text",
+			input: `<callout emoji="1">a<callout emoji="2">b</callout>c</callout>d`,
+			want:  "---\n1 a---\n2 b\n---c\n---d",
+		},
+		{
+			name:  "missing closing callout is preserved",
+			input: `before<callout emoji="💡">body`,
+			want:  `before<callout emoji="💡">body`,
+		},
 	})
 }
 
@@ -95,6 +125,21 @@ func TestConvertToIMMarkdownGridAndColumn(t *testing.T) {
 			name:  "grid inside callout",
 			input: `<callout emoji="📌"><grid><column>A</column><column>B</column></grid></callout>`,
 			want:  "---\n📌 A\nB\n---",
+		},
+		{
+			name:  "adjacent grids do not merge",
+			input: `<grid><column>A</column></grid><grid><column>B</column></grid>`,
+			want:  "AB",
+		},
+		{
+			name:  "column with nested callout keeps recursive output",
+			input: `<column><callout emoji="💡">Tip</callout></column>`,
+			want:  "---\n💡 Tip\n---\n",
+		},
+		{
+			name:  "missing closing grid is preserved",
+			input: `<grid><column>A</column>`,
+			want:  `<grid><column>A</column>`,
 		},
 	})
 }
@@ -129,9 +174,34 @@ func TestConvertToIMMarkdownTable(t *testing.T) {
 			want:  "| User |\n| - |\n| <at user_id=\"ou_1\">Alice</at> |",
 		},
 		{
+			name:  "table converts nested bookmark and sheet",
+			input: `<table><tr><th>Link</th><th>Sheet</th></tr><tr><td><bookmark name="Spec" href="https://example.com"></bookmark></td><td><sheet token="sht_1" sheet-id="S1"></sheet></td></tr></table>`,
+			want:  "| Link | Sheet |\n| - | - |\n| [Spec](https://example.com) | [sheet S1](https://larkoffice.com/sheets/sht_1) |",
+		},
+		{
+			name:  "table strips nested unknown html but preserves text",
+			input: `<table><tr><th>A</th></tr><tr><td><span color="red">red</span> <u>under</u></td></tr></table>`,
+			want:  "| A |\n| - |\n| red under |",
+		},
+		{
+			name:  "table normalizes markdown hard breaks",
+			input: "<table><tr><th>A</th></tr><tr><td>line1  \nline2</td></tr></table>",
+			want:  "| A |\n| - |\n| line1<br>line2 |",
+		},
+		{
+			name:  "table with only data row treats first row as header",
+			input: `<table><tr><td>A</td><td>B</td></tr></table>`,
+			want:  "| A | B |\n| - | - |",
+		},
+		{
 			name:  "table without rows falls back to inline code",
 			input: `<table><tbody></tbody></table>`,
 			want:  "`<table><tbody></tbody></table>`",
+		},
+		{
+			name:  "missing closing table is preserved",
+			input: `before<table><tr><td>A</td></tr>`,
+			want:  `before<table><tr><td>A</td></tr>`,
 		},
 	})
 }
@@ -165,6 +235,16 @@ func TestConvertToIMMarkdownDiscardTags(t *testing.T) {
 			input: `a<time expire-time="123"></time>b`,
 			want:  "ab",
 		},
+		{
+			name:  "self-closing button discarded",
+			input: `a<button/>b`,
+			want:  "ab",
+		},
+		{
+			name:  "missing closing discard tag is preserved",
+			input: `a<figure>hidden`,
+			want:  `a<figure>hidden`,
+		},
 	})
 }
 
@@ -186,6 +266,16 @@ func TestConvertToIMMarkdownWhiteboard(t *testing.T) {
 			name:  "whiteboard with backticks",
 			input: "<whiteboard token=\"`wb`\"></whiteboard>",
 			want:  "``<whiteboard token=\"`wb`\"></whiteboard>``",
+		},
+		{
+			name:  "whiteboard preserves inner text as opaque",
+			input: `<whiteboard token="wb">not exported</whiteboard>`,
+			want:  "`<whiteboard token=\"wb\">not exported</whiteboard>`",
+		},
+		{
+			name:  "missing closing whiteboard is preserved",
+			input: `<whiteboard token="wb">`,
+			want:  `<whiteboard token="wb">`,
 		},
 	})
 }
@@ -213,6 +303,16 @@ func TestConvertToIMMarkdownSheet(t *testing.T) {
 			name:  "self-closing sheet",
 			input: `<sheet token="sht_token" sheet-id="S1"/>`,
 			want:  "[sheet S1](https://bytedance.larkoffice.com/sheets/sht_token)",
+		},
+		{
+			name:  "sheet token is trimmed",
+			input: `<sheet token="  sht_token  " sheet-id="S1"></sheet>`,
+			want:  "[sheet S1](https://bytedance.larkoffice.com/sheets/sht_token)",
+		},
+		{
+			name:  "sheet inside text",
+			input: `before <sheet token="sht_token"></sheet> after`,
+			want:  "before [sheet](https://bytedance.larkoffice.com/sheets/sht_token) after",
 		},
 	})
 }
@@ -246,6 +346,21 @@ func TestConvertToIMMarkdownBookmark(t *testing.T) {
 			input: `<bookmark name="A [B]" href="https://example.com"></bookmark>`,
 			want:  "[A \\[B\\]](https://example.com)",
 		},
+		{
+			name:  "inner registered tag fallback",
+			input: `<bookmark href="https://example.com"><cite type="user" user-id="ou_1" user-name="Alice"></cite></bookmark>`,
+			want:  "[Alice](https://example.com)",
+		},
+		{
+			name:  "href fallback as label",
+			input: `<bookmark href="https://example.com"></bookmark>`,
+			want:  "[https://example.com](https://example.com)",
+		},
+		{
+			name:  "self-closing bookmark without href",
+			input: `<bookmark name="Example"/>`,
+			want:  "Example",
+		},
 	})
 }
 
@@ -278,6 +393,16 @@ func TestConvertToIMMarkdownCiteUser(t *testing.T) {
 			input: `<cite type="user" user-id="ou_&quot;" user-name="A&B"></cite>`,
 			want:  `<at user_id="ou_&#34;">A&amp;B</at>`,
 		},
+		{
+			name:  "inner text fallback when attrs missing name",
+			input: `<cite type="user" user-id="ou_abc">Alice</cite>`,
+			want:  `<at user_id="ou_abc">Alice</at>`,
+		},
+		{
+			name:  "self-closing user cite",
+			input: `<cite type="user" user-id="ou_abc" user-name="Alice"/>`,
+			want:  `<at user_id="ou_abc">Alice</at>`,
+		},
 	})
 }
 
@@ -305,6 +430,16 @@ func TestConvertToIMMarkdownCiteDoc(t *testing.T) {
 			input: `<cite type="doc" title="Spec"></cite>`,
 			want:  "`<cite type=\"doc\" title=\"Spec\"></cite>`",
 		},
+		{
+			name:  "wiki file type link",
+			input: `<cite type="doc" doc-id="wiki_token" file-type="wiki" title="Wiki"></cite>`,
+			want:  "[Wiki](https://bytedance.larkoffice.com/wiki/wiki_token)",
+		},
+		{
+			name:  "doc title is escaped",
+			input: `<cite type="doc" doc-id="doc_token" title="A [B]"></cite>`,
+			want:  "[A \\[B\\]](https://bytedance.larkoffice.com/docx/doc_token)",
+		},
 	})
 }
 
@@ -327,6 +462,16 @@ func TestConvertToIMMarkdownCiteCitation(t *testing.T) {
 			input: `<cite type="citation">Plain Ref</cite>`,
 			want:  "Plain Ref",
 		},
+		{
+			name:  "inner anchor text strips markup",
+			input: `<cite type="citation"><a href="https://example.com/ref"><b>Ref</b></a></cite>`,
+			want:  "[Ref](https://example.com/ref)",
+		},
+		{
+			name:  "href attr falls back to href label",
+			input: `<cite type="citation" href="https://example.com/ref"></cite>`,
+			want:  "[https://example.com/ref](https://example.com/ref)",
+		},
 	})
 }
 
@@ -343,6 +488,122 @@ func TestConvertToIMMarkdownCiteUnknown(t *testing.T) {
 			name:  "unknown self-closing cite",
 			input: `<cite type="unknown"/>`,
 			want:  "`<cite type=\"unknown\"/>`",
+		},
+	})
+}
+
+func TestConvertToIMMarkdownScannerBoundaries(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "unknown tag preserved with known child untouched",
+			input: `<unknown><bookmark name="Spec" href="https://example.com"></bookmark></unknown>`,
+			want:  `<unknown>[Spec](https://example.com)</unknown>`,
+		},
+		{
+			name:  "registered tag attributes single quotes",
+			input: `<bookmark name='Spec' href='https://example.com'></bookmark>`,
+			want:  "[Spec](https://example.com)",
+		},
+		{
+			name:  "registered tag name with leading text",
+			input: `alpha<title>Beta</title>gamma`,
+			want:  "alpha# Betagamma",
+		},
+		{
+			name:  "xml comment is preserved",
+			input: `a<!-- comment --><title>T</title>`,
+			want:  "a<!-- comment --># T",
+		},
+		{
+			name:  "unregistered br is left intact",
+			input: `a<br/>b`,
+			want:  `a<br/>b`,
+		},
+		{
+			name:  "malformed attribute still allows handler",
+			input: `<bookmark name=Spec href="https://example.com">Inner</bookmark>`,
+			want:  "[Inner](https://example.com)",
+		},
+	})
+}
+
+func TestConvertToIMMarkdownCompositeNesting(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCasesWithContext(t, imMarkdownContext{baseURL: "https://tenant.example.com"}, []imMarkdownCase{
+		{
+			name:  "callout grid table and resources",
+			input: `<callout emoji="📌"><grid><column><table><tr><th>Owner</th><th>Doc</th></tr><tr><td><cite type="user" user-id="ou_1" user-name="Alice"></cite></td><td><cite type="doc" doc-id="doc_1" title="Spec"></cite></td></tr></table></column><column><sheet token="sht_1" sheet-id="S1"></sheet></column></grid></callout>`,
+			want:  "---\n📌 | Owner | Doc |\n| - | - |\n| <at user_id=\"ou_1\">Alice</at> | [Spec](https://tenant.example.com/docx/doc_1) |\n[sheet S1](https://tenant.example.com/sheets/sht_1)\n---",
+		},
+		{
+			name:  "grid inside table cell",
+			input: `<table><tr><th>Outer</th></tr><tr><td><grid><column>A</column><column>B</column></grid></td></tr></table>`,
+			want:  "| Outer |\n| - |\n| A<br>B |",
+		},
+		{
+			name:  "bookmark wraps callout fallback text",
+			input: `<bookmark href="https://example.com"><callout emoji="💡">Tip</callout></bookmark>`,
+			want:  "[💡 Tip](https://example.com)",
+		},
+	})
+}
+
+func TestConvertToIMMarkdownUnclosedFragments(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "unclosed title preserves nested registered tag",
+			input: `before<title><bookmark name="Spec" href="https://example.com"></bookmark>`,
+			want:  `before<title><bookmark name="Spec" href="https://example.com"></bookmark>`,
+		},
+		{
+			name:  "unclosed callout preserves nested registered tag",
+			input: `before<callout emoji="💡"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+			want:  `before<callout emoji="💡"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+		},
+		{
+			name:  "unclosed grid preserves closed child",
+			input: `before<grid><column>A</column>`,
+			want:  `before<grid><column>A</column>`,
+		},
+		{
+			name:  "unclosed column preserves nested registered tag",
+			input: `before<column><bookmark name="Spec" href="https://example.com"></bookmark>`,
+			want:  `before<column><bookmark name="Spec" href="https://example.com"></bookmark>`,
+		},
+		{
+			name:  "unclosed table preserves nested cite",
+			input: `before<table><tr><td><cite type="user" user-id="ou_1" user-name="Alice"></cite></td></tr>`,
+			want:  `before<table><tr><td><cite type="user" user-id="ou_1" user-name="Alice"></cite></td></tr>`,
+		},
+		{
+			name:  "unclosed figure preserves nested source",
+			input: `before<figure><source href="https://example.com/a.md"/>`,
+			want:  `before<figure><source href="https://example.com/a.md"/>`,
+		},
+		{
+			name:  "unclosed whiteboard preserves nested registered tag",
+			input: `before<whiteboard token="wb"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+			want:  `before<whiteboard token="wb"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+		},
+		{
+			name:  "unclosed sheet preserves nested registered tag",
+			input: `before<sheet token="sht"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+			want:  `before<sheet token="sht"><bookmark name="Spec" href="https://example.com"></bookmark>`,
+		},
+		{
+			name:  "unclosed bookmark preserves nested cite",
+			input: `before<bookmark href="https://example.com"><cite type="user" user-id="ou_1" user-name="Alice"></cite>`,
+			want:  `before<bookmark href="https://example.com"><cite type="user" user-id="ou_1" user-name="Alice"></cite>`,
+		},
+		{
+			name:  "unclosed cite preserves inner anchor",
+			input: `before<cite type="citation"><a href="https://example.com/ref">Ref</a>`,
+			want:  `before<cite type="citation"><a href="https://example.com/ref">Ref</a>`,
 		},
 	})
 }

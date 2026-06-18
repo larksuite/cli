@@ -148,9 +148,8 @@ func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 		if !found {
 			// Malformed or truncated fragments are preserved as-is from the opening
 			// tag onward; do not drop content when the XML-ish structure is incomplete.
-			out.WriteString(content[start:openEnd])
-			offset = openEnd
-			continue
+			out.WriteString(content[start:])
+			break
 		}
 		segment := content[start:closeEnd]
 		inner := content[openEnd:closeStart]
@@ -254,7 +253,7 @@ func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, im
 
 func handleIMMarkdownBookmark(segment string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
 	href := strings.TrimSpace(attrs["href"])
-	name := firstNonEmpty(attrs["name"], attrs["title"], markdownPlainText(convertToIMMarkdown(inner, imCtx)), href)
+	name := firstNonEmpty(attrs["name"], attrs["title"], markdownLinkLabelText(convertToIMMarkdown(inner, imCtx)), href)
 	if href == "" {
 		return name
 	}
@@ -392,6 +391,22 @@ func markdownPlainText(s string) string {
 	s = imMarkdownCellBreakRE.ReplaceAllString(s, "\n")
 	s = imMarkdownAnyTagRE.ReplaceAllString(s, "")
 	return strings.TrimSpace(html.UnescapeString(s))
+}
+
+func markdownLinkLabelText(s string) string {
+	text := markdownPlainText(s)
+	if !strings.Contains(text, "---") {
+		return text
+	}
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "---" {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
 }
 
 func markdownLink(text, href string) string {
