@@ -1,0 +1,80 @@
+skills/lark-calendar/SKILL.md
+  s_0741f8b2db01c1::t_36a07e49f73598 49-50 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3287b7ce5818a7df569873","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[49,50]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a57cd05f5c99f9a8b078039a23be3f987b2dad66",
+  "prompts": {},
+  "sessions": {
+    "s_0741f8b2db01c1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a328595ce5818a7df569843",
+        "model": "openrouter-1o__dev"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-calendar/SKILL.md": [
+      {
+        "hash": "s_0741f8b2db01c1::t_36a07e49f73598",
+        "line_ranges": [
+          {
+            "Range": [
+              49,
+              50
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3287b7ce5818a7df569873",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  49,
+                  50
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_0741f8b2db01c1": {
+      "tool": "trae",
+      "conversation_id": "6a328595ce5818a7df569843",
+      "session_id": "6a328595ce5818a7df569843",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_0741f8b2db01c1::t_36a07e49f73598": {
+      "tool": "trae",
+      "conversation_id": "6a328595ce5818a7df569843",
+      "session_id": "6a328595ce5818a7df569843",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_0741f8b2db01c1::t_883b2da37f073f": {
+      "tool": "trae",
+      "conversation_id": "6a328595ce5818a7df569843",
+      "session_id": "6a328595ce5818a7df569843",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_0741f8b2db01c1::t_f677413c20d502": {
+      "tool": "trae",
+      "conversation_id": "6a328595ce5818a7df569843",
+      "session_id": "6a328595ce5818a7df569843",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
