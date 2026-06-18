@@ -10,6 +10,26 @@
 - 仅当用户明确要求“包含已解决评论”“已解决和未解决都要”“全部历史评论”这类语义时，才传 `--solved-status all`。
 - 是否还有下一页以输出里的 `has_more` 为准；`page_token` 只作为 `has_more=true` 时续跑下一页的游标。
 
+### 活跃评论口径（仅 docx）
+
+默认的 `--solved-status false` 只排除已解决评论。对 docx，评论引用的正文被服务端明确标记为已删除后，API 仍可能返回该条目。用户要统计“活跃评论”或希望结果更接近 UI 默认评论视图时，带 `--need-relation`，并在每页排除 `relation.content_deleted=true`（字段详解见 [`lark-drive-comment-location.md`](lark-drive-comment-location.md)）。
+
+> 本指南的“活跃评论”口径 = `is_solved=false` 且 `relation.content_deleted != true`
+
+```bash
+# 当前页活跃评论：未解决 + 引用内容未明确标记为已删除；保留分页字段。
+lark-cli drive +list-comments \
+  --url "<DOCX_URL>" \
+  --solved-status false \
+  --need-relation \
+  --page-size 100 \
+  -q '.data | .items |= map(select(.relation.content_deleted != true)) | .count = (.items | length)'
+```
+
+这段 `-q` 会保留 `has_more` 和 `page_token`。若 `has_more=true`，继续传 `--page-token`，每页应用同一过滤后再汇总。`relation` 缺失或为 `null` 的条目会被保留，表示“未知或不适用”，不代表已确认引用内容仍存在；该口径通常比只使用 `is_solved=false` 更接近 UI 默认评论视图，但不是 UI 可见性的完整或稳定判定。`--need-relation` 仅对 docx 生效。
+
+一次真实 docx 观测中，45 条评论可拆为 8 条已解决、16 条 `content_deleted=true` 和 21 条符合本口径的活跃评论；该结果是观测示例，不代表 API 字段与所有客户端 UI 状态恒等。
+
 ## 命令
 
 ```bash
@@ -51,6 +71,7 @@ lark-cli drive +list-comments --url "<DOCUMENT_URL>" --solved-status all
 ## 统计口径
 
 - 统计“评论数”或“评论卡片数”：统计 `items` 长度；全量统计时对所有分页返回的 `items` 长度累加。
+- 统计“活跃评论数”（仅 docx，按本指南口径）：使用默认或显式的 `--solved-status false`，带 `--need-relation`，逐页排除 `relation.content_deleted=true` 后累加；不要把已解决评论或明确标记为引用内容已删除的评论计入。
 - 统计“回复数”：统计所有 `item.reply_list.replies` 长度之和，再减去 `items` 长度。
 - 统计“总互动数”：统计所有 `item.reply_list.replies` 长度之和，包含每张评论卡片里的首条评论。
 - 任一 `item.has_more=true` 时，先用 `drive +list-replies --comment-id <id>` 把该卡片的回复拉全，再做回复数或总互动数统计，否则会少算。
