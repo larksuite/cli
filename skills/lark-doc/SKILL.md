@@ -36,6 +36,17 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 > - **精准编辑场景**（`docs +update` 的 `str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after` 等局部精修指令）：优先使用 XML（`--doc-format xml`，即默认值）。XML 能稳定表达 block 结构和样式，局部精修更可控；不要因为 Markdown 更简单就自行切换。
 
 ## 快速决策
+- **先判定任务路径**，不要把所有 Docs 任务都默认升级为 `fetch with-ids/full -> block 操作`：
+
+| 用户意图 | 优先路径 |
+|-|-|
+| 按标题、文件名或云空间位置找文档 | 切到 [`lark-drive`](../lark-drive/SKILL.md) 搜索定位文档；拿到 Docx URL/token 后再回到本 skill 读取或编辑内容 |
+| 只读、摘要、确认文档内容 | `docs +fetch` 默认 `simple`；需要局部内容时用 `keyword` / `section` / `range`，不要为只读任务获取 block ID |
+| 明确旧文本 → 新文本的简单替换 | 可直接 `docs +update --command str_replace`；不需要为了拿 block ID 先 fetch |
+| 需要理解并保真改写已有内容 | 按 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md) 选择读取范围；读取待改内容时使用 `--detail full` |
+| 插入到某节、替换/删除/移动某块、生成 block 链接或评论锚点 | 局部 `docs +fetch --detail with-ids` 获取目标 block ID，再执行对应 block 级操作 |
+| 导入/导出云空间文件或普通文件 | 切到 [`lark-drive`](../lark-drive/SKILL.md) import/export；除非用户要求核验在线文档内容，否则不要追加 `docs +fetch` |
+
 - 用户需要“某个 block 的直达链接 / 锚点链接”时：返回 `文档基础 URL#block_id`。如果当前只有文档 URL 没有 block_id，先用 `docs +fetch --detail with-ids` 拿到目标 block 的 id
 - 连续执行多个文档写操作时，必须按 [`lark-doc-update.md`](references/lark-doc-update.md) 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
 - 例：
