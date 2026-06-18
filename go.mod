@@ -30,6 +30,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
+require github.com/ebitengine/purego v0.10.1
+
 require (
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
