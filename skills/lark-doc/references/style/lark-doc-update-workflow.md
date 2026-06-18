@@ -19,13 +19,10 @@
 ### 步骤一：分析与画板识别（串行）
 
 1. **选择操作路径与读取范围**（节省上下文的关键）：
-   - 用户给出明确旧文本和新文本，且不需要理解上下文 → 直接用 `docs +update --command str_replace`，不要先 fetch block ID
-   - 只需要生成 block 链接、评论锚点，或执行插入/替换/删除/移动等 block 级操作 → 局部 `docs +fetch --api-version v2 --detail with-ids` 获取目标 block ID
-   - 需要理解并保真改写已有内容 → 读取待改范围时使用 `--detail full`，以保留样式、引用、图片、附件和资源块信息
-   - 用户只改某一节 / 文档较大 → 先 `docs +fetch --api-version v2 --scope outline --max-depth 2` 拿目录，再按目标标题 `section --start-block-id <标题id>` 精读该节；`--detail` 按上面的只读 / 块级定位 / 保真改写规则选择
-   - 需要精确跨节区间 → `docs +fetch --api-version v2 --scope range --start-block-id xxx --end-block-id yyy`（或 `--end-block-id -1` 读到末尾）
-   - 用户只给了模糊关键词 → `docs +fetch --api-version v2 --scope keyword --keyword xxx --context-before 1 --context-after 1` 定位；需要编辑该内容时再按上面的 `full` / `with-ids` 规则读取
-   - 用户明确要改整篇 → `docs +fetch --api-version v2 --detail full`
+   - 明确旧文本 → 新文本：直接 `str_replace`，不要先 fetch block ID
+   - block 链接 / 评论锚点 / 块级操作：局部 fetch `with-ids`
+   - 保真改写已有内容：按 `outline` / `keyword` / `section` / `range` 收敛范围后，用 `--detail full` 读取待改内容
+   - 整篇改写才 fetch 全文 `full`；否则优先局部读取
    - 详见 [`lark-doc-fetch.md`](../lark-doc-fetch.md) "意图引导：选择正确的 --scope"
 2. 系统性评估：用户想改什么、现有文档风格是什么、哪些内容需要保留、哪些问题影响理解
 3. **画板意图识别**：逐章节扫描，按 `lark-doc-style.md`「画板意图识别」表判断哪些段落的信息适合用图表达。重要信息优先画板化，记录需要插图的章节（block ID）、推荐画板类型、mermaid/SVG路径和源内容片段

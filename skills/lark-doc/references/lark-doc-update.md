@@ -46,18 +46,12 @@
 
 ## Block ID 生命周期
 
-执行写操作后，不要默认继续复用之前 fetch 到的 block ID。按下表判断是否需要重新 `docs +fetch --api-version v2 --detail with-ids`（需要样式 / 引用元数据时用 `--detail full`）：
+写操作后不要默认复用之前 fetch 到的 block ID：
 
-| 指令 | 对 block ID 的影响 | 后续操作规则 |
-|------|-------------------|--------------|
-| `overwrite` | 清空文档后全文重建；所有旧 block ID 都应视为失效 | 后续任何 block 级操作前必须重新 fetch |
-| `block_replace` | 目标 block 及其子 block 会被服务端整块替换；旧 ID 不保证继续可用 | 不要复用被替换 block 的旧 ID；继续编辑附近内容前重新 fetch |
-| `block_delete` | 被删除 block 及其子 block ID 立即失效 | 不要复用被删除 ID；删除后继续按位置 / 章节编辑时重新 fetch |
-| `block_insert_after` | 锚点 block ID 通常保留；插入的新内容会生成新 block ID | 如果要继续操作新插入内容，先重新 fetch 获取新 ID |
-| `append` | 等价于 `block_insert_after --block-id -1`；新增末尾内容会生成新 block ID | 如果要继续操作追加内容，先重新 fetch 获取新 ID |
-| `block_copy_insert_after` | 源 block 和锚点 block ID 保留；复制出的 block 是新 ID | 如果要继续操作复制出的内容，先重新 fetch 获取新 ID |
-| `block_move_after` | 被移动 block 的 ID 通常保留，但文档顺序、章节范围和 range 结果已变化 | 后续依赖位置、章节或区间时重新 fetch |
-| `str_replace` | 简单行内替换通常不改变 block ID；Markdown 跨行 / 大段替换可能影响多个 block 的结构 | 替换后还要做 block 级操作时，尤其是跨行 / 大段替换后，先重新 fetch |
+- `overwrite` / `block_replace` / `block_delete`：受影响旧 ID 失效，继续 block 级操作前重新 fetch
+- `block_insert_after` / `append` / `block_copy_insert_after`：锚点 / 源 ID 通常保留，新内容是新 ID；要操作新内容先重新 fetch
+- `block_move_after`：被移动 ID 通常保留，但位置、章节、range 语义变化；后续依赖位置时重新 fetch
+- `str_replace`：简单行内替换通常不改变 ID；跨行 / 大段替换后如继续 block 级操作，先重新 fetch
 
 ## 指令示例
 
