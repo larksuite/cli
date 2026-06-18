@@ -12,168 +12,16 @@
 // copy — so the private key can sign but can never be exported. Signing is
 // RSASSA-PKCS1v15-SHA256 (RS256).
 //
-// Build with:  go build -tags keychain_signer
-// Without the tag, this file is excluded and the open-source build stays
-// CGO-free with no registered signer (client_secret only).
+// Unlike the original revision, this implementation calls the Security and
+// CoreFoundation frameworks via RUNTIME FFI (github.com/ebitengine/purego)
+// instead of cgo. The security model is identical (the private key is still a
+// non-extractable keychain key and every signature is produced by the OS via
+// SecKeyCreateSignature), but the binary builds with CGO_ENABLED=0 and can be
+// cross-compiled for darwin from any host — so release binaries no longer
+// require a native macOS build runner.
+//
+// Build with:  go build -tags keychain_signer   (no cgo required)
 package keysigner
-
-/*
-#cgo LDFLAGS: -framework Security -framework CoreFoundation
-#include <CoreFoundation/CoreFoundation.h>
-#include <Security/Security.h>
-#include <stdlib.h>
-#include <string.h>
-
-static CFDataRef cf_data(const void *bytes, int len) {
-	return CFDataCreate(kCFAllocatorDefault, bytes, len);
-}
-
-static int add_keychain_search_list(CFMutableDictionaryRef query, const char *keychainPath) {
-	SecKeychainRef keychain = NULL;
-	OSStatus status = SecKeychainOpen(keychainPath, &keychain);
-	if (status != errSecSuccess) {
-		return (int)status;
-	}
-
-	const void *values[] = { keychain };
-	CFArrayRef searchList = CFArrayCreate(kCFAllocatorDefault, values, 1, &kCFTypeArrayCallBacks);
-	CFRelease(keychain);
-	if (searchList == NULL) {
-		return -2;
-	}
-
-	CFDictionarySetValue(query, kSecMatchSearchList, searchList);
-	CFRelease(searchList);
-	return 0;
-}
-
-static int find_private_key_by_app_label(const unsigned char *appLabel, int appLabelLen, const char *keychainPath, SecKeyRef *outKey) {
-	CFDataRef cfAppLabel = cf_data(appLabel, appLabelLen);
-	if (cfAppLabel == NULL) {
-		return -2;
-	}
-
-	CFMutableDictionaryRef query = CFDictionaryCreateMutable(
-		kCFAllocatorDefault,
-		0,
-		&kCFTypeDictionaryKeyCallBacks,
-		&kCFTypeDictionaryValueCallBacks
-	);
-	CFDictionarySetValue(query, kSecClass, kSecClassKey);
-	CFDictionarySetValue(query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
-	CFDictionarySetValue(query, kSecAttrKeyType, kSecAttrKeyTypeRSA);
-	CFDictionarySetValue(query, kSecAttrApplicationLabel, cfAppLabel);
-	CFDictionarySetValue(query, kSecReturnRef, kCFBooleanTrue);
-	int searchResult = add_keychain_search_list(query, keychainPath);
-	if (searchResult != 0) {
-		CFRelease(query);
-		CFRelease(cfAppLabel);
-		return searchResult;
-	}
-
-	CFTypeRef item = NULL;
-	OSStatus status = SecItemCopyMatching(query, &item);
-	CFRelease(query);
-	CFRelease(cfAppLabel);
-	if (status != errSecSuccess) {
-		return (int)status;
-	}
-
-	*outKey = (SecKeyRef)item;
-	return 0;
-}
-
-static int set_private_key_label(const unsigned char *appLabel, int appLabelLen, const char *keychainPath, const char *label) {
-	CFDataRef cfAppLabel = cf_data(appLabel, appLabelLen);
-	CFStringRef cfLabel = CFStringCreateWithCString(kCFAllocatorDefault, label, kCFStringEncodingUTF8);
-	if (cfAppLabel == NULL || cfLabel == NULL) {
-		if (cfAppLabel != NULL) CFRelease(cfAppLabel);
-		if (cfLabel != NULL) CFRelease(cfLabel);
-		return -2;
-	}
-
-	CFMutableDictionaryRef query = CFDictionaryCreateMutable(
-		kCFAllocatorDefault,
-		0,
-		&kCFTypeDictionaryKeyCallBacks,
-		&kCFTypeDictionaryValueCallBacks
-	);
-	CFDictionarySetValue(query, kSecClass, kSecClassKey);
-	CFDictionarySetValue(query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
-	CFDictionarySetValue(query, kSecAttrKeyType, kSecAttrKeyTypeRSA);
-	CFDictionarySetValue(query, kSecAttrApplicationLabel, cfAppLabel);
-	int searchResult = add_keychain_search_list(query, keychainPath);
-	if (searchResult != 0) {
-		CFRelease(query);
-		CFRelease(cfAppLabel);
-		CFRelease(cfLabel);
-		return searchResult;
-	}
-
-	CFMutableDictionaryRef attrs = CFDictionaryCreateMutable(
-		kCFAllocatorDefault,
-		0,
-		&kCFTypeDictionaryKeyCallBacks,
-		&kCFTypeDictionaryValueCallBacks
-	);
-	CFDictionarySetValue(attrs, kSecAttrLabel, cfLabel);
-
-	OSStatus status = SecItemUpdate(query, attrs);
-	CFRelease(query);
-	CFRelease(attrs);
-	CFRelease(cfAppLabel);
-	CFRelease(cfLabel);
-	return (int)status;
-}
-
-static int sign_with_nonextractable_key(const unsigned char *appLabel, int appLabelLen, const char *keychainPath, const unsigned char *digest, int digestLen, unsigned char **sigOut, long *sigLen) {
-	SecKeyRef privateKey = NULL;
-	int result = find_private_key_by_app_label(appLabel, appLabelLen, keychainPath, &privateKey);
-	if (result != 0) {
-		return result;
-	}
-
-	CFDataRef digestData = CFDataCreate(kCFAllocatorDefault, digest, digestLen);
-	if (digestData == NULL) {
-		CFRelease(privateKey);
-		return -2;
-	}
-
-	CFErrorRef error = NULL;
-	CFDataRef signature = SecKeyCreateSignature(
-		privateKey,
-		kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256,
-		digestData,
-		&error
-	);
-	CFRelease(digestData);
-	if (signature == NULL) {
-		CFRelease(privateKey);
-		if (error != NULL) {
-			int code = (int)CFErrorGetCode(error);
-			CFRelease(error);
-			return code;
-		}
-		return -1;
-	}
-
-	CFIndex len = CFDataGetLength(signature);
-	unsigned char *sigBuf = malloc((size_t)len);
-	if (sigBuf == NULL) {
-		CFRelease(signature);
-		CFRelease(privateKey);
-		return -2;
-	}
-	memcpy(sigBuf, CFDataGetBytePtr(signature), (size_t)len);
-	CFRelease(signature);
-	*sigOut = sigBuf;
-	*sigLen = len;
-
-	CFRelease(privateKey);
-	return 0;
-}
-*/
-import "C"
 
 import (
 	"context"
@@ -190,11 +38,218 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"unsafe"
 
+	"github.com/ebitengine/purego"
 	"github.com/larksuite/cli/internal/vfs"
 )
+
+// ---- Security / CoreFoundation runtime bindings (purego, no cgo) ----
+
+const (
+	cfFrameworkPath  = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
+	secFrameworkPath = "/System/Library/Frameworks/Security.framework/Security"
+
+	// kCFStringEncodingUTF8 (CFStringBuiltInEncodings).
+	cfStringEncodingUTF8 = 0x08000100
+
+	// OSStatus values.
+	errSecSuccess = 0
+)
+
+var (
+	ffiOnce sync.Once
+	ffiErr  error
+
+	cfDataCreate          func(alloc uintptr, bytes *byte, length int) uintptr
+	cfDataGetLength       func(d uintptr) int
+	cfDataGetBytePtr      func(d uintptr) unsafe.Pointer
+	cfStringCreate        func(alloc uintptr, cstr *byte, encoding uint32) uintptr
+	cfArrayCreate         func(alloc uintptr, values *uintptr, numValues int, cb uintptr) uintptr
+	cfDictCreateMutable   func(alloc uintptr, capacity int, keyCB, valCB uintptr) uintptr
+	cfDictSetValue        func(dict, key, val uintptr)
+	cfRelease             func(ref uintptr)
+	cfErrorGetCode        func(e uintptr) int
+	secKeychainOpen       func(path *byte, out *uintptr) int32
+	secItemCopyMatching   func(query uintptr, result *uintptr) int32
+	secItemUpdate         func(query, attrs uintptr) int32
+	secKeyCreateSignature func(key, algo, data uintptr, errOut *uintptr) uintptr
+
+	// CFTypeRef data-symbol constants (deref to obtain the held ref value).
+	kSecClass                uintptr
+	kSecClassKey             uintptr
+	kSecAttrKeyClass         uintptr
+	kSecAttrKeyClassPrivate  uintptr
+	kSecAttrKeyType          uintptr
+	kSecAttrKeyTypeRSA       uintptr
+	kSecAttrApplicationLabel uintptr
+	kSecReturnRef            uintptr
+	kSecMatchSearchList      uintptr
+	kSecAttrLabel            uintptr
+	kCFBooleanTrue           uintptr
+	algRSAPKCS1SHA256        uintptr
+
+	// Struct-symbol constants (passed BY ADDRESS, not dereferenced).
+	cbTypeArray uintptr
+	cbDictKey   uintptr
+	cbDictValue uintptr
+)
+
+// loadFFI resolves the framework functions and constants once. Any failure
+// (framework missing, symbol absent) is returned to every caller so signing
+// fails cleanly rather than crashing.
+func loadFFI() error {
+	ffiOnce.Do(func() {
+		cf, err := purego.Dlopen(cfFrameworkPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			ffiErr = fmt.Errorf("keysigner: dlopen CoreFoundation: %w", err)
+			return
+		}
+		sec, err := purego.Dlopen(secFrameworkPath, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err != nil {
+			ffiErr = fmt.Errorf("keysigner: dlopen Security: %w", err)
+			return
+		}
+
+		purego.RegisterLibFunc(&cfDataCreate, cf, "CFDataCreate")
+		purego.RegisterLibFunc(&cfDataGetLength, cf, "CFDataGetLength")
+		purego.RegisterLibFunc(&cfDataGetBytePtr, cf, "CFDataGetBytePtr")
+		purego.RegisterLibFunc(&cfStringCreate, cf, "CFStringCreateWithCString")
+		purego.RegisterLibFunc(&cfArrayCreate, cf, "CFArrayCreate")
+		purego.RegisterLibFunc(&cfDictCreateMutable, cf, "CFDictionaryCreateMutable")
+		purego.RegisterLibFunc(&cfDictSetValue, cf, "CFDictionarySetValue")
+		purego.RegisterLibFunc(&cfRelease, cf, "CFRelease")
+		purego.RegisterLibFunc(&cfErrorGetCode, cf, "CFErrorGetCode")
+		purego.RegisterLibFunc(&secKeychainOpen, sec, "SecKeychainOpen")
+		purego.RegisterLibFunc(&secItemCopyMatching, sec, "SecItemCopyMatching")
+		purego.RegisterLibFunc(&secItemUpdate, sec, "SecItemUpdate")
+		purego.RegisterLibFunc(&secKeyCreateSignature, sec, "SecKeyCreateSignature")
+
+		// CFStringRef/CFBooleanRef constants: Dlsym gives the address of the
+		// exported variable; deref once to read the ref it holds.
+		derefs := []struct {
+			dst    *uintptr
+			handle uintptr
+			name   string
+		}{
+			{&kSecClass, sec, "kSecClass"},
+			{&kSecClassKey, sec, "kSecClassKey"},
+			{&kSecAttrKeyClass, sec, "kSecAttrKeyClass"},
+			{&kSecAttrKeyClassPrivate, sec, "kSecAttrKeyClassPrivate"},
+			{&kSecAttrKeyType, sec, "kSecAttrKeyType"},
+			{&kSecAttrKeyTypeRSA, sec, "kSecAttrKeyTypeRSA"},
+			{&kSecAttrApplicationLabel, sec, "kSecAttrApplicationLabel"},
+			{&kSecReturnRef, sec, "kSecReturnRef"},
+			{&kSecMatchSearchList, sec, "kSecMatchSearchList"},
+			{&kSecAttrLabel, sec, "kSecAttrLabel"},
+			{&kCFBooleanTrue, cf, "kCFBooleanTrue"},
+			{&algRSAPKCS1SHA256, sec, "kSecKeyAlgorithmRSASignatureDigestPKCS1v15SHA256"},
+		}
+		for _, d := range derefs {
+			sym, e := purego.Dlsym(d.handle, d.name)
+			if e != nil || sym == 0 {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s: %v", d.name, e)
+				return
+			}
+			// deref of a stable dylib data-symbol address (not Go-managed memory), so safe.
+			*d.dst = *(*uintptr)(unsafe.Pointer(sym)) //nolint:govet // unsafeptr: see comment above
+		}
+
+		// Callback structs are passed by address (no deref).
+		addrs := []struct {
+			dst    *uintptr
+			handle uintptr
+			name   string
+		}{
+			{&cbTypeArray, cf, "kCFTypeArrayCallBacks"},
+			{&cbDictKey, cf, "kCFTypeDictionaryKeyCallBacks"},
+			{&cbDictValue, cf, "kCFTypeDictionaryValueCallBacks"},
+		}
+		for _, a := range addrs {
+			sym, e := purego.Dlsym(a.handle, a.name)
+			if e != nil || sym == 0 {
+				ffiErr = fmt.Errorf("keysigner: dlsym %s: %v", a.name, e)
+				return
+			}
+			*a.dst = sym
+		}
+	})
+	return ffiErr
+}
+
+// cstr returns a pointer to a NUL-terminated copy of s. The backing array stays
+// alive while the returned pointer is reachable.
+func cstr(s string) *byte {
+	b := append([]byte(s), 0)
+	return &b[0]
+}
+
+// cfBytes wraps Go bytes in a CFData (CFDataCreate copies the bytes). Caller
+// releases the returned CFDataRef.
+func cfBytes(b []byte) uintptr {
+	var p *byte
+	if len(b) > 0 {
+		p = &b[0]
+	}
+	d := cfDataCreate(0, p, len(b))
+	runtime.KeepAlive(b)
+	return d
+}
+
+// keychainSearchArray opens the dedicated keychain file and wraps it in a
+// CFArray for kSecMatchSearchList. Caller releases the returned array.
+//
+// NOTE: SecKeychainOpen / the file-based keychain are deprecated by Apple in
+// favor of the data-protection keychain. They still function on current macOS;
+// migrating off them is tracked separately and is independent of the cgo→purego
+// change (the original cgo version used the same APIs).
+func keychainSearchArray(keychainPath string) (uintptr, error) {
+	var kc uintptr
+	if st := secKeychainOpen(cstr(keychainPath), &kc); st != errSecSuccess {
+		return 0, keychainError("open keychain", int(st))
+	}
+	vals := [1]uintptr{kc}
+	arr := cfArrayCreate(0, &vals[0], 1, cbTypeArray)
+	cfRelease(kc) // the array retains it
+	if arr == 0 {
+		return 0, fmt.Errorf("keysigner: CFArrayCreate(search list) failed")
+	}
+	return arr, nil
+}
+
+// findPrivateKey locates the non-extractable private key by its application
+// label within the dedicated keychain. Caller releases the returned SecKeyRef.
+func findPrivateKey(appLabel []byte, keychainPath string) (uintptr, error) {
+	search, err := keychainSearchArray(keychainPath)
+	if err != nil {
+		return 0, err
+	}
+	defer cfRelease(search)
+
+	labelData := cfBytes(appLabel)
+	defer cfRelease(labelData)
+
+	q := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
+	if q == 0 {
+		return 0, fmt.Errorf("keysigner: CFDictionaryCreateMutable(query) failed")
+	}
+	defer cfRelease(q)
+	cfDictSetValue(q, kSecClass, kSecClassKey)
+	cfDictSetValue(q, kSecAttrKeyClass, kSecAttrKeyClassPrivate)
+	cfDictSetValue(q, kSecAttrKeyType, kSecAttrKeyTypeRSA)
+	cfDictSetValue(q, kSecAttrApplicationLabel, labelData)
+	cfDictSetValue(q, kSecReturnRef, kCFBooleanTrue)
+	cfDictSetValue(q, kSecMatchSearchList, search)
+
+	var keyRef uintptr
+	if st := secItemCopyMatching(q, &keyRef); st != errSecSuccess {
+		return 0, keychainError("find private key", int(st))
+	}
+	return keyRef, nil
+}
 
 // securityBin is invoked by absolute path so a poisoned PATH cannot hijack it.
 const securityBin = "/usr/bin/security"
@@ -222,6 +277,9 @@ func (keychainSigner) PublicKey(_ context.Context, ref KeyRef) (crypto.PublicKey
 }
 
 func (keychainSigner) Sign(_ context.Context, ref KeyRef, signingInput []byte) ([]byte, string, error) {
+	if err := loadFFI(); err != nil {
+		return nil, "", err
+	}
 	md, err := readKeyMetadata(ref.Label)
 	if err != nil {
 		return nil, "", err
@@ -231,35 +289,42 @@ func (keychainSigner) Sign(_ context.Context, ref KeyRef, signingInput []byte) (
 		return nil, "", fmt.Errorf("keysigner: decode app label: %w", err)
 	}
 	if len(appLabel) == 0 {
-		// Guard the &appLabel[0] CGO pointer below against corrupted metadata.
+		// Guard the &appLabel[0] pointer below against corrupted metadata.
 		return nil, "", fmt.Errorf("keysigner: key metadata for %q has empty app label", ref.Label)
 	}
 	keychain, err := ensureKeychain()
 	if err != nil {
 		return nil, "", err
 	}
-	cKeychain := C.CString(keychain)
-	defer C.free(unsafe.Pointer(cKeychain))
+
+	keyRef, err := findPrivateKey(appLabel, keychain)
+	if err != nil {
+		return nil, "", err
+	}
+	defer cfRelease(keyRef)
 
 	digest := sha256.Sum256(signingInput)
-	var sig *C.uchar
-	var sigLen C.long
-	status := C.sign_with_nonextractable_key(
-		(*C.uchar)(unsafe.Pointer(&appLabel[0])),
-		C.int(len(appLabel)),
-		cKeychain,
-		(*C.uchar)(unsafe.Pointer(&digest[0])),
-		C.int(len(digest)),
-		&sig,
-		&sigLen,
-	)
-	if status != 0 {
-		return nil, "", keychainError("sign with non-extractable key", int(status))
-	}
-	defer C.free(unsafe.Pointer(sig))
+	digestData := cfBytes(digest[:])
+	defer cfRelease(digestData)
 
+	var errRef uintptr
+	sigRef := secKeyCreateSignature(keyRef, algRSAPKCS1SHA256, digestData, &errRef)
+	if sigRef == 0 {
+		code := 0
+		if errRef != 0 {
+			code = cfErrorGetCode(errRef)
+			cfRelease(errRef)
+		}
+		return nil, "", fmt.Errorf("keysigner: SecKeyCreateSignature failed (CFError %d)", code)
+	}
+	defer cfRelease(sigRef)
+
+	n := cfDataGetLength(sigRef)
+	bp := cfDataGetBytePtr(sigRef)
+	out := make([]byte, n)
+	copy(out, unsafe.Slice((*byte)(bp), n))
 	// RS256: the SecKey PKCS1v15-SHA256 signature is the JOSE signature as-is.
-	return C.GoBytes(unsafe.Pointer(sig), C.int(sigLen)), AlgRS256, nil
+	return out, AlgRS256, nil
 }
 
 // keyMetadata records the public key + the keychain application-label used to
@@ -329,18 +394,43 @@ func createKeychainKey(label string) (crypto.PublicKey, error) {
 }
 
 func setKeychainKeyLabel(appLabel []byte, keychain, label string) error {
-	cKeychain := C.CString(keychain)
-	defer C.free(unsafe.Pointer(cKeychain))
-	cLabel := C.CString(label)
-	defer C.free(unsafe.Pointer(cLabel))
-	status := C.set_private_key_label(
-		(*C.uchar)(unsafe.Pointer(&appLabel[0])),
-		C.int(len(appLabel)),
-		cKeychain,
-		cLabel,
-	)
-	if status != 0 {
-		return keychainError("set keychain key label", int(status))
+	if err := loadFFI(); err != nil {
+		return err
+	}
+	search, err := keychainSearchArray(keychain)
+	if err != nil {
+		return err
+	}
+	defer cfRelease(search)
+
+	labelData := cfBytes(appLabel)
+	defer cfRelease(labelData)
+
+	q := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
+	if q == 0 {
+		return fmt.Errorf("keysigner: CFDictionaryCreateMutable(query) failed")
+	}
+	defer cfRelease(q)
+	cfDictSetValue(q, kSecClass, kSecClassKey)
+	cfDictSetValue(q, kSecAttrKeyClass, kSecAttrKeyClassPrivate)
+	cfDictSetValue(q, kSecAttrKeyType, kSecAttrKeyTypeRSA)
+	cfDictSetValue(q, kSecAttrApplicationLabel, labelData)
+	cfDictSetValue(q, kSecMatchSearchList, search)
+
+	cfLabel := cfStringCreate(0, cstr(label), cfStringEncodingUTF8)
+	if cfLabel == 0 {
+		return fmt.Errorf("keysigner: CFStringCreateWithCString failed")
+	}
+	defer cfRelease(cfLabel)
+	attrs := cfDictCreateMutable(0, 0, cbDictKey, cbDictValue)
+	if attrs == 0 {
+		return fmt.Errorf("keysigner: CFDictionaryCreateMutable(attrs) failed")
+	}
+	defer cfRelease(attrs)
+	cfDictSetValue(attrs, kSecAttrLabel, cfLabel)
+
+	if st := secItemUpdate(q, attrs); st != errSecSuccess {
+		return keychainError("set keychain key label", int(st))
 	}
 	return nil
 }

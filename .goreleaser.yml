@@ -48,14 +48,14 @@ builds:
       - windows
     goarch:
       - arm64
-  # macOS: the keychain_signer needs cgo (Security.framework). The whole release
-  # runs on a macOS runner (see release.yml) so this builds natively; linux and
-  # windows above stay CGO-free and cross-compile fine from the same host.
+  # macOS: the keychain_signer calls Security.framework via runtime FFI (purego),
+  # so it is CGO-free and cross-compiles from the same ubuntu runner as
+  # linux/windows — no native macOS build runner required.
   - id: darwin
     binary: lark-cli
     main: .
     env:
-      - CGO_ENABLED=1
+      - CGO_ENABLED=0
     flags:
       - -trimpath
       - -tags=keychain_signer
