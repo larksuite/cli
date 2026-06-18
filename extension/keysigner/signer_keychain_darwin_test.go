@@ -24,9 +24,10 @@ func TestKeychainSignerRegistered(t *testing.T) {
 
 // TestKeychainSignerRoundTrip creates a real non-extractable RSA key, signs, and
 // verifies RS256 against the returned public key. Gated by LARK_KEYCHAIN_IT
-// because it mutates the macOS login session's keychain store. Run with:
+// because it mutates the dedicated lark-cli keychain store. The signer is now
+// cgo-free (purego runtime FFI), so it runs with CGO_ENABLED=0. Run with:
 //
-//	LARK_KEYCHAIN_IT=1 CGO_ENABLED=1 go test -tags keychain_signer -run RoundTrip ./extension/keysigner/
+//	LARK_KEYCHAIN_IT=1 CGO_ENABLED=0 go test -tags keychain_signer -run RoundTrip ./extension/keysigner/
 func TestKeychainSignerRoundTrip(t *testing.T) {
 	if os.Getenv("LARK_KEYCHAIN_IT") == "" {
 		t.Skip("set LARK_KEYCHAIN_IT=1 to run (mutates the macOS keychain)")
