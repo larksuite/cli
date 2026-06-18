@@ -15,36 +15,18 @@ type imMarkdownContext struct {
 	baseURL string
 }
 
-type imMarkdownTagHandler interface {
-	IsSelfClosing(opening string, attrs map[string]string) bool
-	CloseRE() *regexp.Regexp
-	Handle(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
-}
-
 type imMarkdownHandleFunc func(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
 
-type defaultIMMarkdownTagHandler struct {
+type imMarkdownTagHandler struct {
 	closeRE *regexp.Regexp
 	handle  imMarkdownHandleFunc
 }
 
-func newIMMarkdownTagHandler(tag string, handle imMarkdownHandleFunc) imMarkdownTagHandler {
-	return defaultIMMarkdownTagHandler{
+func registerIMMarkdownHandler(tag string, handle imMarkdownHandleFunc) {
+	imMarkdownHandlers[tag] = imMarkdownTagHandler{
 		closeRE: regexp.MustCompile(`(?is)<(/?)` + regexp.QuoteMeta(tag) + `(?:\s[^<>]*?)?\s*/?>`),
 		handle:  handle,
 	}
-}
-
-func (h defaultIMMarkdownTagHandler) IsSelfClosing(opening string, _ map[string]string) bool {
-	return isSelfClosingIMMarkdownTag(opening)
-}
-
-func (h defaultIMMarkdownTagHandler) CloseRE() *regexp.Regexp {
-	return h.closeRE
-}
-
-func (h defaultIMMarkdownTagHandler) Handle(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
-	return h.handle(segment, inner, attrs, imCtx)
 }
 
 var (
@@ -57,24 +39,22 @@ var (
 	imMarkdownLinkRE      = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
 )
 
-var imMarkdownHandlers map[string]imMarkdownTagHandler
+var imMarkdownHandlers = map[string]imMarkdownTagHandler{}
 
 func init() {
-	imMarkdownHandlers = map[string]imMarkdownTagHandler{
-		"title":      newIMMarkdownTagHandler("title", handleIMMarkdownTitle),
-		"callout":    newIMMarkdownTagHandler("callout", handleIMMarkdownCallout),
-		"grid":       newIMMarkdownTagHandler("grid", handleIMMarkdownPassthroughContainer),
-		"column":     newIMMarkdownTagHandler("column", handleIMMarkdownColumn),
-		"table":      newIMMarkdownTagHandler("table", handleIMMarkdownTable),
-		"figure":     newIMMarkdownTagHandler("figure", handleIMMarkdownDiscard),
-		"source":     newIMMarkdownTagHandler("source", handleIMMarkdownDiscard),
-		"button":     newIMMarkdownTagHandler("button", handleIMMarkdownDiscard),
-		"time":       newIMMarkdownTagHandler("time", handleIMMarkdownDiscard),
-		"whiteboard": newIMMarkdownTagHandler("whiteboard", handleIMMarkdownInlineCode),
-		"sheet":      newIMMarkdownTagHandler("sheet", handleIMMarkdownSheet),
-		"bookmark":   newIMMarkdownTagHandler("bookmark", handleIMMarkdownBookmark),
-		"cite":       newIMMarkdownTagHandler("cite", handleIMMarkdownCite),
-	}
+	registerIMMarkdownHandler("title", handleIMMarkdownTitle)
+	registerIMMarkdownHandler("callout", handleIMMarkdownCallout)
+	registerIMMarkdownHandler("grid", handleIMMarkdownPassthroughContainer)
+	registerIMMarkdownHandler("column", handleIMMarkdownColumn)
+	registerIMMarkdownHandler("table", handleIMMarkdownTable)
+	registerIMMarkdownHandler("figure", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("source", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("button", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("time", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("whiteboard", handleIMMarkdownInlineCode)
+	registerIMMarkdownHandler("sheet", handleIMMarkdownSheet)
+	registerIMMarkdownHandler("bookmark", handleIMMarkdownBookmark)
+	registerIMMarkdownHandler("cite", handleIMMarkdownCite)
 }
 
 func isIMMarkdownFetch(runtime interface{ Str(string) string }) bool {
@@ -102,6 +82,9 @@ func newIMMarkdownContext(docInput string) imMarkdownContext {
 	return imMarkdownContext{baseURL: base}
 }
 
+// imMarkdownBaseURLFromInput keeps the tenant host from --doc when it is a URL
+// so generated doc/sheet links point back to the same tenant. parseDocumentRef
+// intentionally strips host information, so it cannot serve this formatting path.
 func imMarkdownBaseURLFromInput(raw string) (string, bool) {
 	if raw == "" {
 		return "", false
@@ -131,6 +114,8 @@ func imMarkdownBaseURLFromInput(raw string) (string, bool) {
 func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 	var out strings.Builder
 	for offset := 0; offset < len(content); {
+		// Scan only to the next XML-like opening tag. Plain Markdown text between
+		// registered tags is copied unchanged, so ordinary Markdown is not re-parsed.
 		loc := imMarkdownTagStartRE.FindStringSubmatchIndex(content[offset:])
 		if loc == nil {
 			out.WriteString(content[offset:])
@@ -141,6 +126,8 @@ func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 		tag := strings.ToLower(content[offset+loc[2] : offset+loc[3]])
 		handler, ok := imMarkdownHandlers[tag]
 		if !ok {
+			// Unknown tags are left intact. im-markdown only downgrades tags with
+			// explicit handlers so future server output does not get guessed at.
 			out.WriteString(content[offset:openEnd])
 			offset = openEnd
 			continue
@@ -149,21 +136,25 @@ func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 		out.WriteString(content[offset:start])
 		opening := content[start:openEnd]
 		attrs := parseIMMarkdownAttrs(opening)
-		if handler.IsSelfClosing(opening, attrs) {
-			out.WriteString(handler.Handle(opening, "", attrs, imCtx))
+		if isSelfClosingIMMarkdownTag(opening) {
+			out.WriteString(handler.handle(opening, "", attrs, imCtx))
 			offset = openEnd
 			continue
 		}
 
+		// Use the handler's precompiled close regexp to find the matching end tag.
+		// Depth tracking keeps nested same-name containers paired correctly.
 		closeStart, closeEnd, found := findIMMarkdownClosingTag(content, openEnd, handler)
 		if !found {
+			// Malformed or truncated fragments are preserved as-is from the opening
+			// tag onward; do not drop content when the XML-ish structure is incomplete.
 			out.WriteString(content[start:openEnd])
 			offset = openEnd
 			continue
 		}
 		segment := content[start:closeEnd]
 		inner := content[openEnd:closeStart]
-		out.WriteString(handler.Handle(segment, inner, attrs, imCtx))
+		out.WriteString(handler.handle(segment, inner, attrs, imCtx))
 		offset = closeEnd
 	}
 	return out.String()
@@ -171,7 +162,7 @@ func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 
 func findIMMarkdownClosingTag(content string, from int, handler imMarkdownTagHandler) (int, int, bool) {
 	depth := 1
-	for _, loc := range handler.CloseRE().FindAllStringSubmatchIndex(content[from:], -1) {
+	for _, loc := range handler.closeRE.FindAllStringSubmatchIndex(content[from:], -1) {
 		start := from + loc[0]
 		end := from + loc[1]
 		token := content[start:end]
@@ -182,7 +173,7 @@ func findIMMarkdownClosingTag(content string, from int, handler imMarkdownTagHan
 			}
 			continue
 		}
-		if !handler.IsSelfClosing(token, nil) {
+		if !isSelfClosingIMMarkdownTag(token) {
 			depth++
 		}
 	}
