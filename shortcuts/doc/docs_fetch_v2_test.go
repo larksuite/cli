@@ -141,36 +141,54 @@ func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 	}
 }
 
+func TestDocsFetchIMMarkdownRequestsMarkdownFromAPI(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchShortcutTestRuntime(t, "", map[string]string{
+		"doc-format": "im-markdown",
+	})
+	if err := validateFetchV2(context.Background(), runtime); err != nil {
+		t.Fatalf("validateFetchV2() error = %v", err)
+	}
+
+	dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
+	if got, want := dry.API[0].Body["format"], "markdown"; got != want {
+		t.Fatalf("dry-run format = %#v, want %q", got, want)
+	}
+}
+
 func TestDocsFetchMarkdownDetailDowngradesToSimple(t *testing.T) {
 	t.Parallel()
 
-	for _, detail := range []string{"with-ids", "full"} {
-		t.Run(detail, func(t *testing.T) {
-			t.Parallel()
+	for _, format := range []string{"markdown", "im-markdown"} {
+		for _, detail := range []string{"with-ids", "full"} {
+			t.Run(format+"/"+detail, func(t *testing.T) {
+				t.Parallel()
 
-			runtime := newFetchShortcutTestRuntime(t, "", map[string]string{
-				"doc-format": "markdown",
-				"detail":     detail,
+				runtime := newFetchShortcutTestRuntime(t, "", map[string]string{
+					"doc-format": format,
+					"detail":     detail,
+				})
+				if err := validateFetchV2(context.Background(), runtime); err != nil {
+					t.Fatalf("validateFetchV2() error = %v", err)
+				}
+
+				dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
+				exportOption, _ := dry.API[0].Body["export_option"].(map[string]interface{})
+				if exportOption == nil {
+					t.Fatalf("missing export_option: %#v", dry.API[0].Body)
+				}
+				if got := exportOption["export_block_id"]; got != false {
+					t.Fatalf("export_block_id = %#v, want false after markdown detail downgrade", got)
+				}
+				if got := exportOption["export_style_attrs"]; got != false {
+					t.Fatalf("export_style_attrs = %#v, want false after markdown detail downgrade", got)
+				}
+				if got := exportOption["export_cite_extra_data"]; got != false {
+					t.Fatalf("export_cite_extra_data = %#v, want false after markdown detail downgrade", got)
+				}
 			})
-			if err := validateFetchV2(context.Background(), runtime); err != nil {
-				t.Fatalf("validateFetchV2() error = %v", err)
-			}
-
-			dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
-			exportOption, _ := dry.API[0].Body["export_option"].(map[string]interface{})
-			if exportOption == nil {
-				t.Fatalf("missing export_option: %#v", dry.API[0].Body)
-			}
-			if got := exportOption["export_block_id"]; got != false {
-				t.Fatalf("export_block_id = %#v, want false after markdown detail downgrade", got)
-			}
-			if got := exportOption["export_style_attrs"]; got != false {
-				t.Fatalf("export_style_attrs = %#v, want false after markdown detail downgrade", got)
-			}
-			if got := exportOption["export_cite_extra_data"]; got != false {
-				t.Fatalf("export_cite_extra_data = %#v, want false after markdown detail downgrade", got)
-			}
-		})
+		}
 	}
 }
 
@@ -258,6 +276,61 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInPrettyOutput(t *testing.T) {
 		!strings.Contains(got, "returning markdown output") ||
 		!strings.Contains(got, "ignoring the unsupported detail option") {
 		t.Fatalf("stderr missing downgrade warning: %q", got)
+	}
+}
+
+func TestDocsFetchIMMarkdownConvertsContentInJSONOutput(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-im-markdown"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchIMMarkdown/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{
+					"document_id": "doxcnFetchIMMarkdown",
+					"revision_id": float64(1),
+					"content": strings.Join([]string{
+						`<title>Doc Title</title>`,
+						`<callout emoji="💡">Read **this**.</callout>`,
+						`<bookmark name="Example" href="https://example.com"></bookmark>`,
+					}, "\n\n"),
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "doxcnFetchIMMarkdown",
+		"--doc-format", "im-markdown",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v\nraw=%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	doc, _ := data["document"].(map[string]interface{})
+	content, _ := doc["content"].(string)
+	for _, want := range []string{
+		"# Doc Title",
+		"---\n**💡 说明**\nRead **this**.\n---",
+		"[Example](https://example.com)",
+	} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("converted content missing %q:\n%s", want, content)
+		}
+	}
+	if strings.Contains(content, "<title>") || strings.Contains(content, "<callout") || strings.Contains(content, "<bookmark") {
+		t.Fatalf("converted content still contains downgraded XML tags:\n%s", content)
 	}
 }
 
