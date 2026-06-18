@@ -322,7 +322,7 @@ func TestDocsFetchIMMarkdownConvertsContentInJSONOutput(t *testing.T) {
 	content, _ := doc["content"].(string)
 	for _, want := range []string{
 		"# Doc Title",
-		"---\n**💡 说明**\nRead **this**.\n---",
+		"---\n💡 Read **this**.\n---",
 		"[Example](https://example.com)",
 	} {
 		if !strings.Contains(content, want) {

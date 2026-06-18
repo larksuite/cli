@@ -15,7 +15,37 @@ type imMarkdownContext struct {
 	baseURL string
 }
 
-type imMarkdownHandler func(segment, inner string, attrs map[string]string, ctx imMarkdownContext) string
+type imMarkdownTagHandler interface {
+	IsSelfClosing(opening string, attrs map[string]string) bool
+	CloseRE() *regexp.Regexp
+	Handle(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
+}
+
+type imMarkdownHandleFunc func(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
+
+type defaultIMMarkdownTagHandler struct {
+	closeRE *regexp.Regexp
+	handle  imMarkdownHandleFunc
+}
+
+func newIMMarkdownTagHandler(tag string, handle imMarkdownHandleFunc) imMarkdownTagHandler {
+	return defaultIMMarkdownTagHandler{
+		closeRE: regexp.MustCompile(`(?is)<(/?)` + regexp.QuoteMeta(tag) + `(?:\s[^<>]*?)?\s*/?>`),
+		handle:  handle,
+	}
+}
+
+func (h defaultIMMarkdownTagHandler) IsSelfClosing(opening string, _ map[string]string) bool {
+	return isSelfClosingIMMarkdownTag(opening)
+}
+
+func (h defaultIMMarkdownTagHandler) CloseRE() *regexp.Regexp {
+	return h.closeRE
+}
+
+func (h defaultIMMarkdownTagHandler) Handle(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
+	return h.handle(segment, inner, attrs, imCtx)
+}
 
 var (
 	imMarkdownTagStartRE  = regexp.MustCompile(`(?s)<([A-Za-z][A-Za-z0-9:_-]*)(?:\s[^<>]*?)?\s*/?>`)
@@ -27,24 +57,23 @@ var (
 	imMarkdownLinkRE      = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
 )
 
-var imMarkdownHandlers map[string]imMarkdownHandler
+var imMarkdownHandlers map[string]imMarkdownTagHandler
 
 func init() {
-	imMarkdownHandlers = map[string]imMarkdownHandler{
-		"title":      handleIMMarkdownTitle,
-		"br":         handleIMMarkdownBreak,
-		"callout":    handleIMMarkdownCallout,
-		"grid":       handleIMMarkdownPassthroughContainer,
-		"column":     handleIMMarkdownColumn,
-		"table":      handleIMMarkdownTable,
-		"figure":     handleIMMarkdownDiscard,
-		"source":     handleIMMarkdownDiscard,
-		"button":     handleIMMarkdownDiscard,
-		"time":       handleIMMarkdownDiscard,
-		"whiteboard": handleIMMarkdownInlineCode,
-		"sheet":      handleIMMarkdownSheet,
-		"bookmark":   handleIMMarkdownBookmark,
-		"cite":       handleIMMarkdownCite,
+	imMarkdownHandlers = map[string]imMarkdownTagHandler{
+		"title":      newIMMarkdownTagHandler("title", handleIMMarkdownTitle),
+		"callout":    newIMMarkdownTagHandler("callout", handleIMMarkdownCallout),
+		"grid":       newIMMarkdownTagHandler("grid", handleIMMarkdownPassthroughContainer),
+		"column":     newIMMarkdownTagHandler("column", handleIMMarkdownColumn),
+		"table":      newIMMarkdownTagHandler("table", handleIMMarkdownTable),
+		"figure":     newIMMarkdownTagHandler("figure", handleIMMarkdownDiscard),
+		"source":     newIMMarkdownTagHandler("source", handleIMMarkdownDiscard),
+		"button":     newIMMarkdownTagHandler("button", handleIMMarkdownDiscard),
+		"time":       newIMMarkdownTagHandler("time", handleIMMarkdownDiscard),
+		"whiteboard": newIMMarkdownTagHandler("whiteboard", handleIMMarkdownInlineCode),
+		"sheet":      newIMMarkdownTagHandler("sheet", handleIMMarkdownSheet),
+		"bookmark":   newIMMarkdownTagHandler("bookmark", handleIMMarkdownBookmark),
+		"cite":       newIMMarkdownTagHandler("cite", handleIMMarkdownCite),
 	}
 }
 
@@ -66,13 +95,40 @@ func applyFetchIMMarkdown(data map[string]interface{}, docInput string) {
 
 func newIMMarkdownContext(docInput string) imMarkdownContext {
 	base := "https://larkoffice.com"
-	if u, err := url.Parse(strings.TrimSpace(docInput)); err == nil && u.Scheme != "" && u.Host != "" {
-		base = u.Scheme + "://" + u.Host
+	raw := strings.TrimSpace(docInput)
+	if extracted, ok := imMarkdownBaseURLFromInput(raw); ok {
+		base = extracted
 	}
 	return imMarkdownContext{baseURL: base}
 }
 
-func convertToIMMarkdown(content string, ctx imMarkdownContext) string {
+func imMarkdownBaseURLFromInput(raw string) (string, bool) {
+	if raw == "" {
+		return "", false
+	}
+	if u, err := url.Parse(raw); err == nil && u.Scheme != "" && u.Host != "" {
+		return u.Scheme + "://" + u.Host, true
+	}
+	for _, marker := range []string{"/docx/", "/wiki/", "/doc/"} {
+		idx := strings.Index(raw, marker)
+		if idx <= 0 {
+			continue
+		}
+		candidate := strings.Trim(raw[:idx], "/")
+		if candidate == "" {
+			continue
+		}
+		if u, err := url.Parse(candidate); err == nil && u.Scheme != "" && u.Host != "" {
+			return u.Scheme + "://" + u.Host, true
+		}
+		if u, err := url.Parse("https://" + candidate); err == nil && u.Host != "" && strings.Contains(u.Host, ".") {
+			return "https://" + u.Host, true
+		}
+	}
+	return "", false
+}
+
+func convertToIMMarkdown(content string, imCtx imMarkdownContext) string {
 	var out strings.Builder
 	for offset := 0; offset < len(content); {
 		loc := imMarkdownTagStartRE.FindStringSubmatchIndex(content[offset:])
@@ -93,13 +149,13 @@ func convertToIMMarkdown(content string, ctx imMarkdownContext) string {
 		out.WriteString(content[offset:start])
 		opening := content[start:openEnd]
 		attrs := parseIMMarkdownAttrs(opening)
-		if isSelfClosingIMMarkdownTag(opening) {
-			out.WriteString(handler(opening, "", attrs, ctx))
+		if handler.IsSelfClosing(opening, attrs) {
+			out.WriteString(handler.Handle(opening, "", attrs, imCtx))
 			offset = openEnd
 			continue
 		}
 
-		closeStart, closeEnd, found := findIMMarkdownClosingTag(content, openEnd, tag)
+		closeStart, closeEnd, found := findIMMarkdownClosingTag(content, openEnd, handler)
 		if !found {
 			out.WriteString(content[start:openEnd])
 			offset = openEnd
@@ -107,16 +163,15 @@ func convertToIMMarkdown(content string, ctx imMarkdownContext) string {
 		}
 		segment := content[start:closeEnd]
 		inner := content[openEnd:closeStart]
-		out.WriteString(handler(segment, inner, attrs, ctx))
+		out.WriteString(handler.Handle(segment, inner, attrs, imCtx))
 		offset = closeEnd
 	}
 	return out.String()
 }
 
-func findIMMarkdownClosingTag(content string, from int, tag string) (int, int, bool) {
-	pattern := regexp.MustCompile(`(?is)<(/?)` + regexp.QuoteMeta(tag) + `(?:\s[^<>]*?)?\s*/?>`)
+func findIMMarkdownClosingTag(content string, from int, handler imMarkdownTagHandler) (int, int, bool) {
 	depth := 1
-	for _, loc := range pattern.FindAllStringSubmatchIndex(content[from:], -1) {
+	for _, loc := range handler.CloseRE().FindAllStringSubmatchIndex(content[from:], -1) {
 		start := from + loc[0]
 		end := from + loc[1]
 		token := content[start:end]
@@ -127,7 +182,7 @@ func findIMMarkdownClosingTag(content string, from int, tag string) (int, int, b
 			}
 			continue
 		}
-		if !isSelfClosingIMMarkdownTag(token) {
+		if !handler.IsSelfClosing(token, nil) {
 			depth++
 		}
 	}
@@ -150,36 +205,36 @@ func isSelfClosingIMMarkdownTag(tag string) bool {
 	return strings.HasSuffix(strings.TrimSpace(tag), "/>")
 }
 
-func handleIMMarkdownTitle(_ string, inner string, _ map[string]string, ctx imMarkdownContext) string {
-	text := strings.TrimSpace(markdownPlainText(convertToIMMarkdown(inner, ctx)))
+func handleIMMarkdownTitle(_ string, inner string, _ map[string]string, _ imMarkdownContext) string {
+	text := strings.TrimSpace(inner)
 	if text == "" {
 		return ""
 	}
 	return "# " + text
 }
 
-func handleIMMarkdownBreak(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
-	return "  \n"
-}
-
-func handleIMMarkdownCallout(_ string, inner string, attrs map[string]string, ctx imMarkdownContext) string {
-	body := strings.TrimSpace(convertToIMMarkdown(inner, ctx))
-	label := strings.TrimSpace(attrs["emoji"] + " 说明")
-	if label == "" {
-		label = "说明"
+func handleIMMarkdownCallout(_ string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	emoji := strings.TrimSpace(attrs["emoji"])
+	if emoji != "" {
+		if body == "" {
+			body = emoji
+		} else {
+			body = emoji + " " + body
+		}
 	}
 	if body == "" {
-		return fmt.Sprintf("---\n**%s**\n---", label)
+		return "---\n---"
 	}
-	return fmt.Sprintf("---\n**%s**\n%s\n---", label, body)
+	return fmt.Sprintf("---\n%s\n---", body)
 }
 
-func handleIMMarkdownPassthroughContainer(_ string, inner string, _ map[string]string, ctx imMarkdownContext) string {
-	return strings.TrimSpace(convertToIMMarkdown(inner, ctx))
+func handleIMMarkdownPassthroughContainer(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
 }
 
-func handleIMMarkdownColumn(_ string, inner string, _ map[string]string, ctx imMarkdownContext) string {
-	body := strings.TrimSpace(convertToIMMarkdown(inner, ctx))
+func handleIMMarkdownColumn(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
 	if body == "" {
 		return ""
 	}
@@ -194,7 +249,7 @@ func handleIMMarkdownInlineCode(segment string, _ string, _ map[string]string, _
 	return imMarkdownInlineCode(segment)
 }
 
-func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, ctx imMarkdownContext) string {
+func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, imCtx imMarkdownContext) string {
 	token := strings.TrimSpace(attrs["token"])
 	if token == "" {
 		return imMarkdownInlineCode(segment)
@@ -203,19 +258,19 @@ func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, ct
 	if sheetID := strings.TrimSpace(attrs["sheet-id"]); sheetID != "" {
 		label = "sheet " + sheetID
 	}
-	return fmt.Sprintf("[%s](%s/sheets/%s)", escapeMarkdownLinkText(label), strings.TrimRight(ctx.baseURL, "/"), token)
+	return fmt.Sprintf("[%s](%s/sheets/%s)", escapeMarkdownLinkText(label), strings.TrimRight(imCtx.baseURL, "/"), token)
 }
 
-func handleIMMarkdownBookmark(segment string, inner string, attrs map[string]string, ctx imMarkdownContext) string {
+func handleIMMarkdownBookmark(segment string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
 	href := strings.TrimSpace(attrs["href"])
-	name := firstNonEmpty(attrs["name"], attrs["title"], markdownPlainText(convertToIMMarkdown(inner, ctx)), href)
+	name := firstNonEmpty(attrs["name"], attrs["title"], markdownPlainText(convertToIMMarkdown(inner, imCtx)), href)
 	if href == "" {
 		return name
 	}
 	return markdownLink(name, href)
 }
 
-func handleIMMarkdownCite(segment string, inner string, attrs map[string]string, ctx imMarkdownContext) string {
+func handleIMMarkdownCite(segment string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
 	switch strings.ToLower(strings.TrimSpace(attrs["type"])) {
 	case "user":
 		userID := firstNonEmpty(attrs["user-id"], attrs["open-id"], attrs["id"])
@@ -234,7 +289,7 @@ func handleIMMarkdownCite(segment string, inner string, attrs map[string]string,
 			return imMarkdownInlineCode(segment)
 		}
 		fileType := strings.Trim(strings.ToLower(firstNonEmpty(attrs["file-type"], "docx")), "/")
-		return markdownLink(title, strings.TrimRight(ctx.baseURL, "/")+"/"+fileType+"/"+docID)
+		return markdownLink(title, strings.TrimRight(imCtx.baseURL, "/")+"/"+fileType+"/"+docID)
 	case "citation":
 		if text, href, ok := extractIMMarkdownInnerLink(inner); ok {
 			return markdownLink(text, href)
@@ -242,13 +297,13 @@ func handleIMMarkdownCite(segment string, inner string, attrs map[string]string,
 		if href := firstNonEmpty(attrs["href"], attrs["url"]); href != "" {
 			return markdownLink(firstNonEmpty(attrs["title"], attrs["name"], href), href)
 		}
-		return markdownPlainText(convertToIMMarkdown(inner, ctx))
+		return markdownPlainText(convertToIMMarkdown(inner, imCtx))
 	default:
 		return imMarkdownInlineCode(segment)
 	}
 }
 
-func handleIMMarkdownTable(segment string, inner string, _ map[string]string, ctx imMarkdownContext) string {
+func handleIMMarkdownTable(segment string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
 	rowMatches := imMarkdownRowsRE.FindAllStringSubmatch(inner, -1)
 	if len(rowMatches) == 0 {
 		return imMarkdownInlineCode(segment)
@@ -262,7 +317,7 @@ func handleIMMarkdownTable(segment string, inner string, _ map[string]string, ct
 		}
 		row := make([]string, 0, len(cellMatches))
 		for _, cellMatch := range cellMatches {
-			row = append(row, normalizeIMMarkdownTableCell(convertToIMMarkdown(cellMatch[1], ctx)))
+			row = append(row, normalizeIMMarkdownTableCell(convertToIMMarkdown(cellMatch[1], imCtx)))
 		}
 		rows = append(rows, row)
 	}

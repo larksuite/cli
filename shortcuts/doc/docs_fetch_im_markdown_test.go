@@ -11,7 +11,7 @@ import (
 func TestConvertToIMMarkdownDowngradesRegisteredFragments(t *testing.T) {
 	t.Parallel()
 
-	ctx := imMarkdownContext{baseURL: "https://bytedance.larkoffice.com"}
+	imCtx := imMarkdownContext{baseURL: "https://bytedance.larkoffice.com"}
 	input := strings.Join([]string{
 		`<title>Roadmap</title>`,
 		`<grid><column width-ratio="0.5">### Left</column><column width-ratio="0.5">Right</column></grid>`,
@@ -23,7 +23,7 @@ func TestConvertToIMMarkdownDowngradesRegisteredFragments(t *testing.T) {
 		`<figure view-type="Preview"><source href="https://example.com/a.md"/></figure>`,
 	}, "\n")
 
-	got := convertToIMMarkdown(input, ctx)
+	got := convertToIMMarkdown(input, imCtx)
 
 	for _, want := range []string{
 		"# Roadmap",
@@ -51,14 +51,50 @@ func TestConvertToIMMarkdownPreservesNestedCalloutContent(t *testing.T) {
 
 	got := convertToIMMarkdown(`<callout emoji="✅"><p>Done</p><callout emoji="💡">Nested</callout></callout>`, imMarkdownContext{})
 	for _, want := range []string{
-		"**✅ 说明**",
+		"✅ <p>Done</p>",
 		"Done",
-		"**💡 说明**",
+		"💡 Nested",
 		"Nested",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("converted nested callout missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestNewIMMarkdownContextExtractsBaseURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "full URL",
+			input: "https://bytedance.larkoffice.com/docx/doc_token?from=copy",
+			want:  "https://bytedance.larkoffice.com",
+		},
+		{
+			name:  "URL without scheme",
+			input: "bytedance.larkoffice.com/docx/doc_token",
+			want:  "https://bytedance.larkoffice.com",
+		},
+		{
+			name:  "token",
+			input: "doc_token",
+			want:  "https://larkoffice.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := newIMMarkdownContext(tt.input).baseURL; got != tt.want {
+				t.Fatalf("baseURL = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
