@@ -25,7 +25,7 @@
 
 #### 引用路径格式
 
-```
+```text
 $.{stepId}
 $.{stepId}.{pathId}
 $.{stepId}.{pathId}.{childPathId}
@@ -118,7 +118,7 @@ $.{stepId}.{pathId}.{childPathId}.{grandChildPathId}
 
 条件限制：
 
-- 若场景为单聊（`receive_scene = "Chat"`），则 `SenderGroup` 和 `MessageLink` 不可用
+- 若场景为单聊（`receive_scene = "chat"`），则 `SenderGroup` 和 `MessageLink` 不可用
 
 ---
 
@@ -280,7 +280,7 @@ HTTPClientAction 的输出取决于 `response_type`：
 
 下钻引用示例：
 
-```
+```text
 $.{stepId}.{fieldId} → 字段值本身
 $.{stepId}.{fieldId}.fieldId → 字段 ID（string）
 $.{stepId}.{fieldId}.fieldName    → 字段名称（string）

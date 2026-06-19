@@ -23,8 +23,6 @@ var BaseRecordList = common.Shortcut{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
-		{Name: "field-names", Type: "string_array", Hidden: true},
-		{Name: "fields", Type: "string_array", Hidden: true},
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordFilterAliasFlag(),

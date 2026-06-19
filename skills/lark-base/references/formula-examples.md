@@ -17,7 +17,7 @@
 
 **Formula**:
 
-```
+```text
 IF(
   [Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) >= 1,
   "Sold " & [Sales].COUNTIF(CurrentValue.[SalespersonID] = [EmployeeID]) & " orders",
@@ -51,7 +51,7 @@ IF(
 
 **Formula**:
 
-```
+```text
 [OrderItems].[Product].[ProductName].UNIQUE().ARRAYJOIN(",")
 ```
 
@@ -80,7 +80,7 @@ IF(
 
 **Formula**:
 
-```
+```text
 FIRST(
   [Tasks].FILTER(CurrentValue.[Project] = [ProjectName]).SORTBY([Tasks].[Priority], TRUE).[TaskName]
 )

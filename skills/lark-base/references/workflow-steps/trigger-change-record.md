@@ -6,7 +6,7 @@
 {
   "table_name": "任务表",
   "trigger_control_list": [],
-  "condition": null
+  "condition_list": null
 }
 ```
 
@@ -14,7 +14,7 @@
 |------|------|------|
 | `table_name` | 是 | 监控的数据表名 |
 | `trigger_control_list` | 否 | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 否 | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系；不需要过滤时填 `null` 或省略，**不要传 `[]`**——空数组会被 API 拒绝（`recordInfo.conditions must be non-empty`） |
 
 ---
 

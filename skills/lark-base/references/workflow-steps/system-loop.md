@@ -18,8 +18,6 @@
 
 ---
 
----
-
 ## 相关
 
 - 返回 [Workflow schema index](../lark-base-workflow-schema.md)

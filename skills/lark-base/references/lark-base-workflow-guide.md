@@ -142,6 +142,8 @@ Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。�
 
 ## 常见错误
 
+下表是构造 workflow 时最常踩的坑，按出现频率排序，按错误信息或场景就近匹配；任何一条命中都先停下来按右列处理，不要继续往下加节点。
+
 | 错误 | 处理 |
 |---|---|
 | 查询/启停也读 schema | 停下，直接用 `+workflow-list/get/enable/disable` |
@@ -151,6 +153,10 @@ Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。�
 | SetRecordAction/FindRecordAction 缺定位条件 | 提供 `filter_info` 或 `ref_info` |
 | HTTPClientAction 后续节点引用不到字段 | `response_type: "json"` 时填写 `response_value` 声明输出字段 |
 | Loop 内引用错路径 | 用 `$.{loopStepId}.item.{fieldId}` 和 `$.{loopStepId}.index` |
+| `recordInfo.conditions must be non-empty`（`condition_list` 为 `[]`）| 改用 `null` 或省略该字段；空数组会被 API 拒绝 |
+| `client token is empty` | 每次请求传入唯一 `client_token`（时间戳或随机字符串）|
+| `Undefined Step Type` | 用 schema 路由表里的真实 type，例如 `AddRecordTrigger` 而非 `CreateRecordTrigger` |
+| `valueType 'text' not allowed for fieldType '3'` | select 字段值用 `value_type: "option"`，不要用 `text` |
 
 ## 参考
 

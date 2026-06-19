@@ -205,28 +205,18 @@ func resolveFieldListTableRefs(runtime *common.RuntimeContext, baseToken string,
 		return nil, baseValidationErrorf("--table-id is required")
 	}
 	resolved := make([]fieldListTableRef, 0, len(refs))
-	needsTableList := false
 	for _, raw := range refs {
 		ref := strings.TrimSpace(raw)
 		if ref == "" {
 			return nil, baseValidationErrorf("--table-id must not be empty")
 		}
-		if !isBaseTableID(ref) {
-			needsTableList = true
-		}
 		resolved = append(resolved, fieldListTableRef{input: ref, id: ref})
-	}
-	if !needsTableList {
-		return resolved, nil
 	}
 	tables, err := listEveryTable(runtime, baseToken)
 	if err != nil {
 		return nil, err
 	}
 	for i, tableRef := range resolved {
-		if isBaseTableID(tableRef.input) {
-			continue
-		}
 		table, err := resolveTableRef(tables, tableRef.input)
 		if err != nil {
 			return nil, baseValidationErrorf("table %q not found; run +table-list to verify the table name or pass the tbl... ID", tableRef.input)
@@ -239,10 +229,6 @@ func resolveFieldListTableRefs(runtime *common.RuntimeContext, baseToken string,
 		resolved[i].name = tableNameFromMap(table)
 	}
 	return resolved, nil
-}
-
-func isBaseTableID(ref string) bool {
-	return strings.HasPrefix(strings.TrimSpace(ref), "tbl")
 }
 
 // compactFields projects each field to the keys an agent needs for selection
@@ -370,12 +356,17 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	if total == 0 {
 		total = len(options)
 	}
-	runtime.Out(map[string]interface{}{
-		"field_id":   fieldRef,
-		"field_name": fieldRef,
-		"keyword":    fieldSearchOptionsKeyword(runtime),
-		"options":    options,
-		"total":      total,
-	}, nil)
+	out := map[string]interface{}{
+		"keyword": fieldSearchOptionsKeyword(runtime),
+		"options": options,
+		"total":   total,
+	}
+	if v := strings.TrimSpace(runtime.Str("field-id")); v != "" {
+		out["field_id"] = v
+	}
+	if v := strings.TrimSpace(runtime.Str("field-name")); v != "" {
+		out["field_name"] = v
+	}
+	runtime.Out(out, nil)
 	return nil
 }

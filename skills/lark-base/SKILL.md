@@ -141,7 +141,7 @@ done
 
 ### Dashboard / Workflow / Role
 
-- Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [lark-base-dashboard-block-data-config.md](references/lark-base-dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等操作要点见 [lark-base-dashboard.md](references/lark-base-dashboard.md) 的「执行要点」。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
+- Dashboard 的复杂点是 block 的 `data_config`：创建/更新 block 前读 [lark-base-dashboard-block-data-config.md](references/lark-base-dashboard-block-data-config.md)，组件串行创建；布局/换图表类型/删除具名图表等写操作要点见 [lark-base-dashboard-write.md](references/lark-base-dashboard-write.md)。`+dashboard-block-get-data` 只返回图表数据，元数据用 `+dashboard-block-get`。
 - Workflow 的复杂点是 `steps`：先读入口 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md)，用其中的最短路径和场景表完成查询/启停/常见创建修改；需要具体 step 字段再按需读 schema 小文件；创建后 `+workflow-get` 回读验证。
 - Role 的复杂点是权限 JSON：先读 [lark-base-role-guide.md](references/lark-base-role-guide.md)（含安全边界），权限 JSON SSOT 读 [role-config.md](references/role-config.md)；删除角色、关闭高级权限前确认目标和影响。
 

@@ -5,7 +5,6 @@ package base
 
 import (
 	"context"
-	"encoding/json"
 	"net/url"
 	"strconv"
 	"strings"
@@ -46,11 +45,11 @@ func validateRecordSelection(runtime *common.RuntimeContext) error {
 }
 
 func resolveRecordSelection(runtime *common.RuntimeContext) (recordSelection, error) {
-	recordIDs := recordIDFlags(runtime)
-	fieldIDs := recordFieldFlags(runtime)
+	recordIDs := runtime.StrArray("record-id")
+	fieldIDs := runtime.StrArray("field-id")
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if len(recordIDs) > 0 && jsonRaw != "" {
-		return recordSelection{}, baseFlagErrorf("--record-id/--record-ids and --json are mutually exclusive")
+		return recordSelection{}, baseFlagErrorf("--record-id and --json are mutually exclusive")
 	}
 	if jsonRaw != "" {
 		pc := newParseCtx(runtime)
@@ -144,73 +143,6 @@ func normalizeRecordGetSelectFields(values interface{}) ([]string, error) {
 		allowNil:      true,
 		allowEmpty:    true,
 	})
-}
-
-func recordIDFlags(runtime *common.RuntimeContext) []string {
-	return mergeReferenceSources(
-		runtime.StrArray("record-id"),
-		normalizePluralReferenceValues(runtime.StrArray("record-ids")),
-	)
-}
-
-func recordFieldFlags(runtime *common.RuntimeContext) []string {
-	return mergeReferenceSources(
-		runtime.StrArray("field-id"),
-		normalizePluralReferenceValues(runtime.StrArray("field-names")),
-		normalizePluralReferenceValues(runtime.StrArray("fields")),
-	)
-}
-
-// mergeReferenceSources concatenates flag sources, dropping values from later
-// sources that an earlier source already provided — so the same reference
-// passed through both a canonical flag and its plural alias is sent only once.
-// Duplicates inside a single source are kept on purpose: repeating a value on
-// one flag is a user mistake that downstream validation should keep rejecting.
-func mergeReferenceSources(sources ...[]string) []string {
-	var out []string
-	seenBefore := map[string]struct{}{}
-	for _, source := range sources {
-		for _, value := range source {
-			if _, ok := seenBefore[value]; ok {
-				continue
-			}
-			out = append(out, value)
-		}
-		for _, value := range source {
-			seenBefore[value] = struct{}{}
-		}
-	}
-	return out
-}
-
-// normalizePluralReferenceValues expands each raw value of a plural alias flag
-// (--field-names / --fields / --record-ids) into individual references. Plural
-// flags carry list semantics, so an ASCII comma is always a separator (eval
-// traces show comma-joined values are exclusively lists, mostly field names);
-// a JSON string array is also accepted. Names that contain a literal ASCII
-// comma must use the singular flag (--field-id), which never splits. Fullwidth
-// "，" and "、" are untouched, so ordinary Chinese names are safe here too.
-func normalizePluralReferenceValues(values []string) []string {
-	var out []string
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if strings.HasPrefix(value, "[") {
-			var parsed []string
-			if err := json.Unmarshal([]byte(value), &parsed); err == nil {
-				out = append(out, parsed...)
-				continue
-			}
-		}
-		for _, part := range strings.Split(value, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				out = append(out, part)
-			}
-		}
-	}
-	return out
 }
 
 func normalizeStringList(values interface{}, opts stringListNormalizeOptions) ([]string, error) {
@@ -443,7 +375,7 @@ func validateRecordJSON(runtime *common.RuntimeContext) error {
 }
 
 func recordListFields(runtime *common.RuntimeContext) []string {
-	return recordFieldFlags(runtime)
+	return runtime.StrArray("field-id")
 }
 
 func executeRecordList(runtime *common.RuntimeContext) error {

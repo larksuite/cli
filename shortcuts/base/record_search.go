@@ -26,8 +26,6 @@ var BaseRecordSearch = common.Shortcut{
 		{Name: "query", Desc: "deprecated alias for --keyword", Hidden: true},
 		{Name: "search-field", Type: "string_array", Desc: "field ID or name to search; repeat for multiple fields; required unless --json is used"},
 		recordListFieldRefFlag(),
-		{Name: "field-names", Type: "string_array", Hidden: true},
-		{Name: "fields", Type: "string_array", Hidden: true},
 		recordListViewRefFlag(),
 		recordFilterFlag(),
 		recordFilterAliasFlag(),

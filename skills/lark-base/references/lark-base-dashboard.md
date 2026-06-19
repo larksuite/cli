@@ -16,7 +16,7 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成组�
 | 查看仪表盘整体 | `+dashboard-get` | 返回 dashboard 元数据和组件列表 |
 | 列出组件 | `+dashboard-block-list` | 只要组件清单时优先用它 |
 | 查看组件元数据 | `+dashboard-block-get` | 返回组件 name/type/data_config/layout 等 |
-| 读取图表最终数据 | `+dashboard-block-get-data` | 返回图表计算结果；不需要 `--dashboard-id`，也不返回 name/type/data_config |
+| 读取图表最终数据 | `+dashboard-block-get-data` | 返回图表计算结果；不需要 `--dashboard-id`，也不返回 name/type/data_config；返回字段含义详见 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md) |
 
 ## 读取路径
 
@@ -38,5 +38,5 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成组�
 ## 注意
 
 - dashboard 的 ID 是 Base 资源目录层的 `blk...`；dashboard 内组件的 `block_id` 通常是 `cht...`，不要混用。
-- `+dashboard-block-get-data` 只适合 chart/statistics 等有计算结果的组件；需要元数据先用 `+dashboard-block-get`。
+- `+dashboard-block-get-data` 只适合 chart/statistics 等有计算结果的组件；需要元数据先用 `+dashboard-block-get`；解析返回结构时按需读 [lark-base-dashboard-block-get-data.md](lark-base-dashboard-block-get-data.md)。
 - 创建/更新/删除/重排等写操作读 [lark-base-dashboard-write.md](lark-base-dashboard-write.md)。

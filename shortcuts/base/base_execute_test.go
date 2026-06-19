@@ -1050,6 +1050,16 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"tables": []interface{}{
+					map[string]interface{}{"id": "tbl_x", "name": "Tasks"},
+				}, "total": 1},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
 			URL:    "limit=1&offset=0",
 			Body: map[string]interface{}{
 				"code": 0,
@@ -1100,6 +1110,17 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"tables": []interface{}{
+					map[string]interface{}{"id": "tbl_a", "name": "Customers"},
+					map[string]interface{}{"id": "tbl_b", "name": "Tasks"},
+				}, "total": 2},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
 			Body: map[string]interface{}{
 				"code": 0,
@@ -1135,8 +1156,9 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"tables": []interface{}{
+					map[string]interface{}{"id": "tbl_a", "name": "Customers"},
 					map[string]interface{}{"id": "tbl_orders", "name": "Orders"},
-				}, "total": 1},
+				}, "total": 2},
 			},
 		})
 		reg.Register(&httpmock.Stub{
@@ -1170,6 +1192,16 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 
 	t.Run("list batch default keeps full fields", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"tables": []interface{}{
+					map[string]interface{}{"id": "tbl_b", "name": "Tasks"},
+				}, "total": 1},
+			},
+		})
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
@@ -1690,28 +1722,21 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list fields alias projects columns", func(t *testing.T) {
-		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records?field_id=Name&limit=100&offset=0",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"items": []interface{}{}, "has_more": false},
-			},
-		})
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
-		}
-	})
-
-	t.Run("list fields alias works in dry-run", func(t *testing.T) {
+	t.Run("plural alias flags rejected", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout); err != nil {
-			t.Fatalf("err=%v", err)
+		listErr := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
+		if listErr == nil || !strings.Contains(listErr.Error(), "unknown flag: --fields") {
+			t.Fatalf("expected --fields rejected on +record-list, got err=%v", listErr)
 		}
-		if got := stdout.String(); !strings.Contains(got, "field_id=Name") {
-			t.Fatalf("stdout=%s", got)
+		factory2, stdout2, _ := newExecuteFactory(t)
+		searchErr := runShortcut(t, BaseRecordSearch, []string{"+record-search", "--base-token", "app_x", "--table-id", "tbl_x", "--keyword", "x", "--search-field", "Name", "--field-names", "Name"}, factory2, stdout2)
+		if searchErr == nil || !strings.Contains(searchErr.Error(), "unknown flag: --field-names") {
+			t.Fatalf("expected --field-names rejected on +record-search, got err=%v", searchErr)
+		}
+		factory3, stdout3, _ := newExecuteFactory(t)
+		getErr := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-ids", "rec_1"}, factory3, stdout3)
+		if getErr == nil || !strings.Contains(getErr.Error(), "unknown flag: --record-ids") {
+			t.Fatalf("expected --record-ids rejected on +record-get, got err=%v", getErr)
 		}
 	})
 
@@ -3244,8 +3269,31 @@ func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_amount", "--keyword", "已", "--limit", "10"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
+	got := stdout.String()
+	if !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
 		t.Fatalf("stdout=%s", got)
+	}
+	if !strings.Contains(got, `"field_id": "fld_amount"`) || strings.Contains(got, `"field_name"`) {
+		t.Fatalf("expected field_id only when --field-id given; stdout=%s", got)
+	}
+}
+
+func TestBaseFieldExecuteSearchOptionsByName(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/Status/options",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"options": []interface{}{map[string]interface{}{"id": "opt_1", "name": "Done"}}, "total": 1},
+		},
+	})
+	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-name", "Status"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"field_name": "Status"`) || strings.Contains(got, `"field_id"`) {
+		t.Fatalf("expected field_name only when --field-name given; stdout=%s", got)
 	}
 }
 

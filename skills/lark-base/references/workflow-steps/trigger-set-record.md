@@ -20,7 +20,7 @@
 | `record_watch_info` | 否  | 记录级过滤条件（修改前值匹配），为空则监听全部 |
 | `field_watch_info` | 是  | 字段级监控条件列表，至少一个 |
 | `trigger_control_list` | 否  | 触发控制，可选值：`pasteUpdate` / `automationBatchUpdate` / `syncUpdate` / `appendImport` |
-| `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系 |
+| `condition_list` | 否  | 过滤条件数组，数组中每个元素为 AndCondition 结构，多个 AndCondition 之间为 OR 关系；不需要过滤时填 `null` 或省略，**不要传 `[]`**——空数组会被 API 拒绝（`recordInfo.conditions must be non-empty`） |
 
 `FieldWatchItem`：
 
