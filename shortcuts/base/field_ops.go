@@ -10,12 +10,6 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-type fieldListTableRef struct {
-	input string
-	id    string
-	name  string
-}
-
 func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	offset := runtime.Int("offset")
 	if offset < 0 {
@@ -142,11 +136,11 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	baseToken := baseTokenOrRaw(runtime)
-	tableRef, err := resolveFieldListTableRefs(runtime, baseToken, []string{baseTableID(runtime)})
-	if err != nil {
-		return err
+	tableID := strings.TrimSpace(baseTableID(runtime))
+	if tableID == "" {
+		return baseValidationErrorf("--table-id is required")
 	}
-	fields, total, err := listAllFields(runtime, baseToken, tableRef[0].id, offset, limit)
+	fields, total, err := listAllFields(runtime, baseToken, tableID, offset, limit)
 	if err != nil {
 		return err
 	}
@@ -167,13 +161,21 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 	}
 	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
 	baseToken := baseTokenOrRaw(runtime)
-	tableRefs, err := resolveFieldListTableRefs(runtime, baseToken, runtime.StrArray("table-id"))
-	if err != nil {
-		return err
+	rawRefs := runtime.StrArray("table-id")
+	if len(rawRefs) == 0 {
+		return baseValidationErrorf("--table-id is required")
 	}
-	results := make([]map[string]interface{}, 0, len(tableRefs))
-	for _, tableRef := range tableRefs {
-		fields, total, err := listAllFields(runtime, baseToken, tableRef.id, offset, limit)
+	tableIDs := make([]string, 0, len(rawRefs))
+	for _, raw := range rawRefs {
+		ref := strings.TrimSpace(raw)
+		if ref == "" {
+			return baseValidationErrorf("--table-id must not be empty")
+		}
+		tableIDs = append(tableIDs, ref)
+	}
+	results := make([]map[string]interface{}, 0, len(tableIDs))
+	for _, tableID := range tableIDs {
+		fields, total, err := listAllFields(runtime, baseToken, tableID, offset, limit)
 		if err != nil {
 			return err
 		}
@@ -183,52 +185,14 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 		if runtime.Bool("compact") {
 			fields = compactFields(fields)
 		}
-		result := map[string]interface{}{
-			"table_id": tableRef.id,
+		results = append(results, map[string]interface{}{
+			"table_id": tableID,
 			"fields":   fields,
 			"total":    total,
-		}
-		if tableRef.input != tableRef.id {
-			result["table_ref"] = tableRef.input
-		}
-		if tableRef.name != "" {
-			result["table_name"] = tableRef.name
-		}
-		results = append(results, result)
+		})
 	}
 	runtime.Out(map[string]interface{}{"tables": results, "total": len(results)}, nil)
 	return nil
-}
-
-func resolveFieldListTableRefs(runtime *common.RuntimeContext, baseToken string, refs []string) ([]fieldListTableRef, error) {
-	if len(refs) == 0 {
-		return nil, baseValidationErrorf("--table-id is required")
-	}
-	resolved := make([]fieldListTableRef, 0, len(refs))
-	for _, raw := range refs {
-		ref := strings.TrimSpace(raw)
-		if ref == "" {
-			return nil, baseValidationErrorf("--table-id must not be empty")
-		}
-		resolved = append(resolved, fieldListTableRef{input: ref, id: ref})
-	}
-	tables, err := listEveryTable(runtime, baseToken)
-	if err != nil {
-		return nil, err
-	}
-	for i, tableRef := range resolved {
-		table, err := resolveTableRef(tables, tableRef.input)
-		if err != nil {
-			return nil, baseValidationErrorf("table %q not found; run +table-list to verify the table name or pass the tbl... ID", tableRef.input)
-		}
-		tableIDValue := tableID(table)
-		if tableIDValue == "" {
-			return nil, baseValidationErrorf("table %q resolved without a table ID; run +table-list and pass the tbl... ID", tableRef.input)
-		}
-		resolved[i].id = tableIDValue
-		resolved[i].name = tableNameFromMap(table)
-	}
-	return resolved, nil
 }
 
 // compactFields projects each field to the keys an agent needs for selection

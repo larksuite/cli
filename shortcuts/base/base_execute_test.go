@@ -1050,16 +1050,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"tables": []interface{}{
-					map[string]interface{}{"id": "tbl_x", "name": "Tasks"},
-				}, "total": 1},
-			},
-		})
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
 			URL:    "limit=1&offset=0",
 			Body: map[string]interface{}{
 				"code": 0,
@@ -1076,21 +1066,11 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
-	t.Run("list resolves table name", func(t *testing.T) {
+	t.Run("list passes table name through to API", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"tables": []interface{}{
-					map[string]interface{}{"id": "tbl_orders", "name": "Orders"},
-				}, "total": 1},
-			},
-		})
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_orders/fields",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/Orders/fields",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"fields": []interface{}{
@@ -1108,17 +1088,6 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 
 	t.Run("list batch multiple tables", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"tables": []interface{}{
-					map[string]interface{}{"id": "tbl_a", "name": "Customers"},
-					map[string]interface{}{"id": "tbl_b", "name": "Tasks"},
-				}, "total": 2},
-			},
-		})
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
@@ -1148,19 +1117,8 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
-	t.Run("list batch resolves table names", func(t *testing.T) {
+	t.Run("list batch passes mixed ids and names", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"tables": []interface{}{
-					map[string]interface{}{"id": "tbl_a", "name": "Customers"},
-					map[string]interface{}{"id": "tbl_orders", "name": "Orders"},
-				}, "total": 2},
-			},
-		})
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
@@ -1173,7 +1131,7 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		})
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_orders/fields",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/Orders/fields",
 			Body: map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{"fields": []interface{}{
@@ -1185,23 +1143,13 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 			t.Fatalf("err=%v", err)
 		}
 		got := stdout.String()
-		if !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "tbl_orders"`) || !strings.Contains(got, `"table_ref": "Orders"`) || !strings.Contains(got, `"table_name": "Orders"`) {
+		if !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "Orders"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})
 
 	t.Run("list batch default keeps full fields", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
-		reg.Register(&httpmock.Stub{
-			Method: "GET",
-			URL:    "/open-apis/base/v3/bases/app_x/tables",
-			Body: map[string]interface{}{
-				"code": 0,
-				"data": map[string]interface{}{"tables": []interface{}{
-					map[string]interface{}{"id": "tbl_b", "name": "Tasks"},
-				}, "total": 1},
-			},
-		})
 		reg.Register(&httpmock.Stub{
 			Method: "GET",
 			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
