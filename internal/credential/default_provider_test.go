@@ -19,18 +19,16 @@ func TestDefaultAccountProvider_Implements(t *testing.T) {
 	var _ DefaultAccountResolver = &DefaultAccountProvider{}
 }
 
-// TestClassifyTATResponseCode_10003_MapsToInvalidClient pins that the TAT
-// endpoint's "invalid param" code surfaces as CategoryConfig/InvalidClient.
-// Reason: a bad or non-existent app_id triggers 10003 on the TAT mint endpoint,
-// which from the user's perspective is the same actionable failure as 10014
-// ("app secret invalid") — both mean the configured credentials cannot mint a
-// tenant access token. The global codemeta intentionally does not map 10003
-// because in other Lark endpoints 10003 carries unrelated semantics (e.g. task
-// API uses it for permission denied), so the override is local to this site.
-func TestClassifyTATResponseCode_10003_MapsToInvalidClient(t *testing.T) {
-	err := classifyTATResponseCode(10003, "invalid param", "feishu", "cli_app_x")
+// TestClassifyTATResponseCode_InvalidClient_MapsToInvalidClient pins that the
+// unified Token Endpoint's OAuth2 invalid_client error surfaces as
+// CategoryConfig/InvalidClient — the configured app_id/app_secret cannot mint a
+// tenant access token, the same actionable failure the legacy 10003/10014 codes
+// produced. The numeric code is intentionally not asserted: the v3 endpoint may
+// return invalid_client with no Lark code (code defaults to 0).
+func TestClassifyTATResponseCode_InvalidClient_MapsToInvalidClient(t *testing.T) {
+	err := classifyTATResponseCode(0, "invalid_client", "client authentication failed", "feishu", "cli_app_x")
 	if err == nil {
-		t.Fatal("expected non-nil error for code=10003")
+		t.Fatal("expected non-nil error for invalid_client")
 	}
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
@@ -42,22 +40,16 @@ func TestClassifyTATResponseCode_10003_MapsToInvalidClient(t *testing.T) {
 	if cfgErr.Subtype != errs.SubtypeInvalidClient {
 		t.Errorf("Subtype = %q, want %q", cfgErr.Subtype, errs.SubtypeInvalidClient)
 	}
-	if cfgErr.Code != 10003 {
-		t.Errorf("Code = %d, want 10003", cfgErr.Code)
-	}
 	if cfgErr.Hint == "" {
 		t.Error("Hint must be non-empty so the user gets a recovery action")
 	}
 }
 
-// TestClassifyTATResponseCode_10014_RoutesViaCodeMeta pins that 10014 still
-// goes through the global BuildAPIError path (codemeta entry) so the override
-// for 10003 does not regress the existing mapping.
-func TestClassifyTATResponseCode_10014_RoutesViaCodeMeta(t *testing.T) {
-	err := classifyTATResponseCode(10014, "app secret invalid", "feishu", "cli_app_x")
-	if err == nil {
-		t.Fatal("expected non-nil error for code=10014")
-	}
+// TestClassifyTATResponseCode_UnauthorizedClient_MapsToInvalidClient pins that
+// unauthorized_client is treated as the same credential failure as
+// invalid_client.
+func TestClassifyTATResponseCode_UnauthorizedClient_MapsToInvalidClient(t *testing.T) {
+	err := classifyTATResponseCode(0, "unauthorized_client", "client not authorized", "feishu", "cli_app_x")
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("expected *errs.ConfigError, got %T: %v", err, err)
@@ -65,21 +57,38 @@ func TestClassifyTATResponseCode_10014_RoutesViaCodeMeta(t *testing.T) {
 	if cfgErr.Subtype != errs.SubtypeInvalidClient {
 		t.Errorf("Subtype = %q, want %q", cfgErr.Subtype, errs.SubtypeInvalidClient)
 	}
-	if cfgErr.Code != 10014 {
-		t.Errorf("Code = %d, want 10014", cfgErr.Code)
-	}
 }
 
-// TestClassifyTATResponseCode_UnknownCodeFallsThrough pins that codes outside
-// the credential set fall through to the generic BuildAPIError fallback
-// (CategoryAPI/SubtypeUnknown) — the override is narrow and intentional.
-func TestClassifyTATResponseCode_UnknownCodeFallsThrough(t *testing.T) {
-	err := classifyTATResponseCode(99999999, "some unknown failure", "feishu", "cli_app_x")
+// TestClassifyTATResponseCode_OtherErrorFallsThrough pins that OAuth errors
+// outside the credential set fall through to the generic BuildAPIError fallback
+// — still typed, but not a ConfigError. The mapping is narrow and intentional.
+func TestClassifyTATResponseCode_OtherErrorFallsThrough(t *testing.T) {
+	err := classifyTATResponseCode(20068, "invalid_scope", "unauthorized scope", "feishu", "cli_app_x")
 	if err == nil {
-		t.Fatal("expected non-nil error for unmapped code")
+		t.Fatal("expected non-nil error for invalid_scope")
 	}
 	var cfgErr *errs.ConfigError
 	if errors.As(err, &cfgErr) {
-		t.Fatalf("unmapped code must not be classified as ConfigError, got %T", err)
+		t.Fatalf("invalid_scope must not be classified as ConfigError, got %T", err)
+	}
+}
+
+// TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped pins the code-0
+// backstop: a non-credential OAuth error (e.g. invalid_scope) that arrives with no
+// numeric code (code 0) must still produce a non-nil typed error. BuildAPIError
+// returns nil for code 0 (Feishu's success convention); without the backstop,
+// FetchTAT would surface this deterministic rejection as ("", nil) — an empty token
+// with no error.
+func TestClassifyTATResponseCode_CodeZeroOtherError_StillTyped(t *testing.T) {
+	err := classifyTATResponseCode(0, "invalid_scope", "the requested scope is not granted", "feishu", "cli_app_x")
+	if err == nil {
+		t.Fatal("expected non-nil error for code-0 invalid_scope (must not be swallowed as success)")
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+	var cfgErr *errs.ConfigError
+	if errors.As(err, &cfgErr) {
+		t.Fatalf("code-0 invalid_scope must not be a ConfigError, got %T", err)
 	}
 }

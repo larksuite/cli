@@ -124,6 +124,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 - `<img>` / `<source>` 带 `url` 时，直接用该 URL 下载即可（普通 HTTP GET），无需走 shortcut。
 - 没有 `url`、或只想预览 → `docs +media-preview --token <token> --output ./preview_media`
 - 明确下载，或目标是 `<whiteboard>`（画板只能走 shortcut） → `docs +media-download --token <token> --output ./downloaded_media`
+- 文档封面图不是正文素材；下载/更新/删除封面图 → `docs resource-download/resource-update/resource-delete --type cover`
 
 ## 嵌入电子表格 / 多维表格
 
@@ -135,3 +136,4 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 - [lark-doc-update](lark-doc-update.md) — 更新文档
 - [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
 - [lark-doc-media-download](lark-doc-media-download.md) — 下载素材/画板缩略图
+- [lark-doc-resource-cover](lark-doc-resource-cover.md) — 读取、更新、删除文档封面图

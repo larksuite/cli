@@ -15,7 +15,7 @@ func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
 		Params(map[string]interface{}{"offset": offset, "limit": limit}).
@@ -28,7 +28,7 @@ func dryRunFieldListBatch(_ context.Context, runtime *common.RuntimeContext) *co
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := runtime.Int("limit")
 	dry := common.NewDryRunAPI()
 	for _, tableIDValue := range runtime.StrArray("table-id") {
 		dry.GET(baseV3Path("bases", baseTokenOrRaw(runtime), "tables", tableIDValue, "fields")).
@@ -77,13 +77,11 @@ func dryRunFieldDelete(_ context.Context, runtime *common.RuntimeContext) *commo
 }
 
 func dryRunFieldSearchOptions(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	limit := getPaginationLimit(runtime)
 	fieldRef := fieldSearchOptionsRef(runtime)
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
-		"limit":  runtime.Int("limit"),
-	}
-	if params["limit"].(int) <= 0 {
-		params["limit"] = 30
+		"limit":  limit,
 	}
 	if keyword := strings.TrimSpace(fieldSearchOptionsKeyword(runtime)); keyword != "" {
 		params["query"] = keyword
@@ -134,7 +132,7 @@ func executeFieldList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	baseToken := baseTokenOrRaw(runtime)
 	tableID := strings.TrimSpace(baseTableID(runtime))
 	if tableID == "" {
@@ -159,7 +157,7 @@ func executeFieldListBatch(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := runtime.Int("limit")
 	baseToken := baseTokenOrRaw(runtime)
 	rawRefs := runtime.StrArray("table-id")
 	if len(rawRefs) == 0 {
@@ -301,12 +299,10 @@ func executeFieldSearchOptions(runtime *common.RuntimeContext) error {
 	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	fieldRef := fieldSearchOptionsRef(runtime)
+	limit := getPaginationLimit(runtime)
 	params := map[string]interface{}{
 		"offset": runtime.Int("offset"),
-		"limit":  runtime.Int("limit"),
-	}
-	if params["limit"].(int) <= 0 {
-		params["limit"] = 30
+		"limit":  limit,
 	}
 	if keyword := strings.TrimSpace(fieldSearchOptionsKeyword(runtime)); keyword != "" {
 		params["query"] = keyword

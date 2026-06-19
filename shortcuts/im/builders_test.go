@@ -841,7 +841,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"page-size": "10",
 		}, nil)
 		got := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":10`) {
+		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":"10"`) {
 			t.Fatalf("ImThreadsMessagesList.DryRun() = %s", got)
 		}
 	})
@@ -901,7 +901,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatList dry run includes endpoint and params", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"user-id-type": "open_id",
-			"sort-type":    "ByCreateTimeAsc",
+			"sort":         "create_time",
 		}, nil)
 		got := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) {

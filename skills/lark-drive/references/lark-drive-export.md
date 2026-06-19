@@ -76,6 +76,14 @@ lark-cli drive +export \
   --file-extension base \
   --output-dir ./exports
 
+# 导出多维表格结构为 .base 快照（仅导出表结构，不导出记录数据）
+lark-cli drive +export \
+  --token "<BITABLE_TOKEN>" \
+  --doc-type bitable \
+  --file-extension base \
+  --only-schema \
+  --output-dir ./exports
+
 # 允许覆盖已存在文件
 lark-cli drive +export \
   --token "<DOCX_TOKEN>" \
@@ -92,6 +100,7 @@ lark-cli drive +export \
 | `--doc-type` | 是 | 源文档类型：`doc` / `docx` / `sheet` / `bitable` / `slides` |
 | `--file-extension` | 是 | 导出格式：`docx` / `pdf` / `xlsx` / `csv` / `markdown` / `base` / `pptx` |
 | `--sub-id` | 条件必填 | 当 `sheet` / `bitable` 导出为 `csv` 时必填 |
+| `--only-schema` | 否 | 仅当 `--doc-type bitable --file-extension base` 时可用；只导出多维表格结构，不导出记录数据 |
 | `--file-name` | 否 | 覆盖默认本地文件名；如未带扩展名，会按 `--file-extension` 自动补齐 |
 | `--output-dir` | 否 | 本地输出目录，默认当前目录 |
 | `--overwrite` | 否 | 覆盖已存在文件 |
@@ -100,6 +109,7 @@ lark-cli drive +export \
 
 - `markdown` 只支持 `docx`
 - `base` 只支持 `bitable`
+- `--only-schema` 只支持 `bitable` 导出为 `.base`，用于仅导出表结构
 - `pptx` 只支持 `slides`
 - `slides` 支持导出为 `pptx` / `pdf`
 - `sheet` / `bitable` 导出为 `csv` 时必须带 `--sub-id`

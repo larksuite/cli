@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -146,6 +147,18 @@ func TestLintEnvelope_L2_TypeChecks(t *testing.T) {
 				e.InputSchema.Properties.Map["n"] = Property{Type: "integer", Minimum: &min, Maximum: &max}
 			},
 			wantSub: "minimum",
+		},
+		{
+			name: "enumDescriptions length must match enum",
+			mutate: func(e *Envelope) {
+				e.InputSchema.Properties.Order = []string{"k"}
+				e.InputSchema.Properties.Map["k"] = Property{
+					Type:             "string",
+					Enum:             []interface{}{"a", "b", "c"},
+					EnumDescriptions: []string{"only one"}, // misaligned with 3 enum values
+				}
+			},
+			wantSub: "enumDescriptions",
 		},
 		{
 			// Regression guard: walkForL2 must recurse into the params/data
@@ -334,9 +347,8 @@ func TestAllEnvelopesPass(t *testing.T) {
 	knownEnvelopes := map[string]bool{}
 	// Use embedded data only so the gate is deterministic across machines
 	// (matches Task 17b: envelope assembly is overlay-independent).
-	for _, svc := range registry.EmbeddedServiceNames() {
-		spec := registry.EmbeddedSpec(svc)
-		envs := AssembleService(svc, spec, nil)
+	for _, svc := range registry.EmbeddedServicesTyped() {
+		envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
 		for _, env := range envs {
 			errs := lintEnvelope(env)
 			if len(errs) == 0 {
@@ -366,7 +378,7 @@ func TestAllEnvelopesPass(t *testing.T) {
 	}
 
 	// L4 coverage report (warn-only via t.Logf)
-	all := AssembleAll(nil)
+	all := Envelopes(registry.EmbeddedCatalog().WalkMethods(nil))
 	c := measureCoverage(all)
 	for metric, rate := range c {
 		baseline := coverageBaseline[metric]

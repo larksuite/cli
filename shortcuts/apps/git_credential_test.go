@@ -699,7 +699,7 @@ func assertStringSliceEqual(t *testing.T, got, want []string) {
 
 func TestGitCredentialLocalErrorWrapsOnlyPlainErrors(t *testing.T) {
 	plain := errors.New("git config failed")
-	wrapped := gitCredentialLocalError("List local Miaoda Git credentials", plain)
+	wrapped := gitCredentialLocalError("List local app Git credentials", plain)
 	var configErr *errs.ConfigError
 	if !errors.As(wrapped, &configErr) {
 		t.Fatalf("plain local error wrapped as %T, want *errs.ConfigError", wrapped)

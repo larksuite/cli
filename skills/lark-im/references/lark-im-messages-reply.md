@@ -222,11 +222,27 @@ lark-cli im +messages-reply --message-id om_xxx --text "Let me take a look at th
 
 The reply appears in the target message's thread and does not show up in the main chat stream.
 
-## @Mention Format (text / post)
+## @Mention Format
 
-- Recommended format: `<at user_id="ou_xxx">name</at>`
+The `<at>` syntax differs by message type. The shortcut only normalizes mentions for `text` and `post`; `interactive` card content is passed through verbatim, so cards must use the card-native syntax below.
+
+### `text`
+
+- `<at user_id="ou_xxx">name</at>` — the inner text is the mentioned user's display name and is optional (`<at user_id="ou_xxx"></at>` also works)
 - @all: `<at user_id="all"></at>`
-- The shortcut normalizes common variants like `<at id=...>` and `<at open_id=...>` into `user_id`, but `user_id` remains the recommended documented form
+
+### `post`
+
+- Inside a `text` or `md` element, the same inline form as `text` works: `<at user_id="ou_xxx">name</at>`
+- Or use a dedicated `at` element node: `{"tag":"at","user_id":"ou_xxx"}` (use `"all"` to mention everyone)
+
+### `interactive` (card)
+
+Card content is **not** normalized — use the card-native `<at>` syntax inside a `lark_md` / `markdown` element:
+
+- single user by open_id: `<at id=ou_xxx></at>`
+- multiple users: `<at ids=ou_xxx1,ou_xxx2></at>`
+- by email: `<at email=user@example.com></at>`
 
 ## Notes
 

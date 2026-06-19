@@ -141,3 +141,19 @@ func TestSetDomain_emptyIsNoop(t *testing.T) {
 		t.Fatalf("Domain(child) = %q, want inherited 'docs'", got)
 	}
 }
+
+func TestSourceGenerated_childFalseStopsParentGeneratedInheritance(t *testing.T) {
+	parent := &cobra.Command{Use: "docs"}
+	child := &cobra.Command{Use: "+fetch"}
+	parent.AddCommand(child)
+
+	cmdmeta.SetSource(parent, cmdmeta.SourceService, true)
+	cmdmeta.SetSource(child, cmdmeta.SourceShortcut, false)
+
+	if source, ok := cmdmeta.SourceOf(child); !ok || source != cmdmeta.SourceShortcut {
+		t.Fatalf("SourceOf(child) = (%q,%v), want (shortcut,true)", source, ok)
+	}
+	if cmdmeta.Generated(child) {
+		t.Fatal("Generated(child) = true, want false")
+	}
+}

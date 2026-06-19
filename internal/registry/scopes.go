@@ -6,16 +6,63 @@ package registry
 import (
 	"sort"
 	"strings"
+
+	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 )
 
-// IdentityToAccessToken maps the --identity flag value to the corresponding
-// accessTokens value used in from_meta JSON files. Bot identity uses
-// tenant_access_token, so "bot" maps to "tenant".
-func IdentityToAccessToken(identity string) string {
-	if identity == "bot" {
-		return "tenant"
+// methodsForProjects walks the runtime catalog once and returns the methods in
+// the given projects that are reachable by the identity. Catalog navigation is
+// owned by apicatalog; the collectors below only apply scope policy.
+func methodsForProjects(projects []string, identity string) []apicatalog.MethodRef {
+	want := make(map[string]bool, len(projects))
+	for _, p := range projects {
+		want[p] = true
 	}
-	return identity
+	wantToken := meta.TokenForIdentity(identity)
+	supported := func(m meta.Method) bool { return m.SupportsToken(wantToken) }
+	// Walk only the requested services (in catalog name order) instead of every
+	// service's methods then discarding the rest.
+	var out []apicatalog.MethodRef
+	for _, svc := range RuntimeCatalog().Services() {
+		if want[svc.Name] {
+			out = append(out, apicatalog.ServiceMethods(svc, supported)...)
+		}
+	}
+	return out
+}
+
+// bestScope returns the highest-priority scope from scopes (minimum privilege),
+// or "" when scopes is empty.
+func bestScope(scopes []string, priorities map[string]int) string {
+	best := ""
+	bestScore := -1
+	for _, s := range scopes {
+		score := DefaultScopeScore
+		if v, ok := priorities[s]; ok {
+			score = v
+		}
+		if score > bestScore {
+			bestScore = score
+			best = s
+		}
+	}
+	return best
+}
+
+// FilterForStrictMode returns a method filter enforcing the strict-mode forced
+// identity, or nil when strict mode is inactive (no filtering). The
+// token/identity vocabulary (meta.TokenForIdentity) and the "no accessTokens =
+// permissive" predicate (meta.Method.SupportsToken) both live in meta, so this
+// only composes them — schema completion/render and service commands never
+// re-derive identity semantics.
+func FilterForStrictMode(mode core.StrictMode) apicatalog.MethodFilter {
+	if !mode.IsActive() {
+		return nil
+	}
+	token := meta.TokenForIdentity(string(mode.ForcedIdentity()))
+	return func(m meta.Method) bool { return m.SupportsToken(token) }
 }
 
 // FilterScopes filters scopes by domain and permission level.
@@ -76,71 +123,45 @@ func FilterScopes(allScopes []string, domains []string, permissions []string) []
 	return result
 }
 
+var cachedAllScopes map[string][]string
+
+// CollectAllScopesFromMeta collects all unique scopes from from_meta/*.json
+// for the given identity ("user" or "tenant"). Results are deduplicated and sorted.
+func CollectAllScopesFromMeta(identity string) []string {
+	if cachedAllScopes == nil {
+		cachedAllScopes = make(map[string][]string)
+	}
+	if cached, ok := cachedAllScopes[identity]; ok {
+		return cached
+	}
+
+	wantToken := meta.TokenForIdentity(identity)
+	supported := func(m meta.Method) bool { return m.SupportsToken(wantToken) }
+	scopeSet := make(map[string]bool)
+	for _, ref := range RuntimeCatalog().WalkMethods(supported) {
+		for _, s := range ref.Method.Scopes {
+			scopeSet[s] = true
+		}
+	}
+
+	result := make([]string, 0, len(scopeSet))
+	for s := range scopeSet {
+		result = append(result, s)
+	}
+	sort.Strings(result)
+	cachedAllScopes[identity] = result
+	return result
+}
+
 // CollectScopesForProjects collects the recommended scope for each API method
 // in the specified from_meta projects. For each method, only the scope with
 // the highest priority score is selected.
 func CollectScopesForProjects(projects []string, identity string) []string {
 	priorities := LoadScopePriorities()
 	scopeSet := make(map[string]bool)
-	for _, project := range projects {
-		spec := LoadFromMeta(project)
-		if spec == nil {
-			continue
-		}
-		resources, ok := spec["resources"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for _, resSpec := range resources {
-			resMap, ok := resSpec.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			methods, ok := resMap["methods"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for _, methodSpec := range methods {
-				methodMap, ok := methodSpec.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if tokens, ok := methodMap["accessTokens"].([]interface{}); ok {
-					supported := false
-					for _, t := range tokens {
-						if ts, ok := t.(string); ok && ts == IdentityToAccessToken(identity) {
-							supported = true
-							break
-						}
-					}
-					if !supported {
-						continue
-					}
-				}
-				scopes, ok := methodMap["scopes"].([]interface{})
-				if !ok || len(scopes) == 0 {
-					continue
-				}
-				bestScope := ""
-				bestScore := -1
-				for _, s := range scopes {
-					str, ok := s.(string)
-					if !ok {
-						continue
-					}
-					score := DefaultScopeScore
-					if v, exists := priorities[str]; exists {
-						score = v
-					}
-					if score > bestScore {
-						bestScore = score
-						bestScope = str
-					}
-				}
-				if bestScope != "" {
-					scopeSet[bestScope] = true
-				}
-			}
+	for _, ref := range methodsForProjects(projects, identity) {
+		if best := bestScope(ref.Method.Scopes, priorities); best != "" {
+			scopeSet[best] = true
 		}
 	}
 
@@ -165,78 +186,25 @@ func CollectScopesWithSources(projects []string, identity string) ([]string, map
 	scopeSet := make(map[string]bool)
 	sources := make(map[string]*ScopeSource)
 
-	for _, project := range projects {
-		spec := LoadFromMeta(project)
-		if spec == nil {
+	for _, ref := range methodsForProjects(projects, identity) {
+		m := ref.Method
+		best := bestScope(m.Scopes, priorities)
+		if best == "" {
 			continue
 		}
-		resources, ok := spec["resources"].(map[string]interface{})
-		if !ok {
-			continue
+		scopeSet[best] = true
+		if sources[best] == nil {
+			sources[best] = &ScopeSource{}
 		}
-		for resName, resSpec := range resources {
-			resMap, ok := resSpec.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			methods, ok := resMap["methods"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for methodName, methodSpec := range methods {
-				methodMap, ok := methodSpec.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if tokens, ok := methodMap["accessTokens"].([]interface{}); ok {
-					supported := false
-					for _, t := range tokens {
-						if ts, ok := t.(string); ok && ts == IdentityToAccessToken(identity) {
-							supported = true
-							break
-						}
-					}
-					if !supported {
-						continue
-					}
-				}
-				scopes, ok := methodMap["scopes"].([]interface{})
-				if !ok || len(scopes) == 0 {
-					continue
-				}
-				bestScope := ""
-				bestScore := -1
-				for _, s := range scopes {
-					str, ok := s.(string)
-					if !ok {
-						continue
-					}
-					score := DefaultScopeScore
-					if v, exists := priorities[str]; exists {
-						score = v
-					}
-					if score > bestScore {
-						bestScore = score
-						bestScope = str
-					}
-				}
-				if bestScope != "" {
-					scopeSet[bestScope] = true
-					if sources[bestScope] == nil {
-						sources[bestScope] = &ScopeSource{}
-					}
-					methodID := GetStrFromMap(methodMap, "id")
-					if methodID == "" {
-						methodID = project + "." + resName + "." + methodName
-					}
-					httpMethod := GetStrFromMap(methodMap, "httpMethod")
-					if httpMethod == "" {
-						httpMethod = "?"
-					}
-					sources[bestScope].APIs = append(sources[bestScope].APIs, httpMethod+" "+methodID)
-				}
-			}
+		methodID := m.ID
+		if methodID == "" {
+			methodID = ref.ServiceName() + "." + ref.ResourceName() + "." + ref.MethodName()
 		}
+		httpMethod := m.HTTPMethod
+		if httpMethod == "" {
+			httpMethod = "?"
+		}
+		sources[best].APIs = append(sources[best].APIs, httpMethod+" "+methodID)
 	}
 
 	// Sort API lists for stable output
@@ -267,92 +235,27 @@ type CommandEntry struct {
 //   - If the method has a "requiredScopes" field, all of those scopes are needed (conjunction).
 //   - Otherwise, only the highest-priority scope from "scopes" is shown (minimum privilege).
 func CollectCommandScopes(projects []string, identity string) []CommandEntry {
-	priorities := LoadScopePriorities()
 	var entries []CommandEntry
 
-	for _, project := range projects {
-		spec := LoadFromMeta(project)
-		if spec == nil {
+	for _, ref := range methodsForProjects(projects, identity) {
+		m := ref.Method
+		if len(m.Scopes) == 0 {
 			continue
 		}
-		resources, ok := spec["resources"].(map[string]interface{})
-		if !ok {
+
+		// Effective-scope policy (requiredScopes conjunction, else recommended)
+		// lives once in DeclaredScopesForMethod.
+		effectiveScopes := DeclaredScopesForMethod(m, identity)
+		if len(effectiveScopes) == 0 {
 			continue
 		}
-		for resName, resSpec := range resources {
-			resMap, ok := resSpec.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			methods, ok := resMap["methods"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for methodName, methodSpec := range methods {
-				methodMap, ok := methodSpec.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if tokens, ok := methodMap["accessTokens"].([]interface{}); ok {
-					supported := false
-					for _, t := range tokens {
-						if ts, ok := t.(string); ok && ts == IdentityToAccessToken(identity) {
-							supported = true
-							break
-						}
-					}
-					if !supported {
-						continue
-					}
-				}
-				rawScopes, ok := methodMap["scopes"].([]interface{})
-				if !ok || len(rawScopes) == 0 {
-					continue
-				}
 
-				// Check for requiredScopes (conjunction — all needed)
-				var effectiveScopes []string
-				if reqRaw, ok := methodMap["requiredScopes"].([]interface{}); ok && len(reqRaw) > 0 {
-					for _, s := range reqRaw {
-						if str, ok := s.(string); ok {
-							effectiveScopes = append(effectiveScopes, str)
-						}
-					}
-				} else {
-					// Pick the single best scope (minimum privilege)
-					bestScope := ""
-					bestScore := -1
-					for _, s := range rawScopes {
-						str, ok := s.(string)
-						if !ok {
-							continue
-						}
-						score := DefaultScopeScore
-						if v, exists := priorities[str]; exists {
-							score = v
-						}
-						if score > bestScore {
-							bestScore = score
-							bestScope = str
-						}
-					}
-					if bestScope != "" {
-						effectiveScopes = []string{bestScope}
-					}
-				}
-				if len(effectiveScopes) == 0 {
-					continue
-				}
-
-				httpMethod := GetStrFromMap(methodMap, "httpMethod")
-				entries = append(entries, CommandEntry{
-					Command:    resName + " " + methodName,
-					Type:       "api",
-					Scopes:     effectiveScopes,
-					HTTPMethod: httpMethod,
-				})
-			}
-		}
+		entries = append(entries, CommandEntry{
+			Command:    ref.ResourceName() + " " + ref.MethodName(),
+			Type:       "api",
+			Scopes:     effectiveScopes,
+			HTTPMethod: m.HTTPMethod,
+		})
 	}
 
 	sort.Slice(entries, func(i, j int) bool {

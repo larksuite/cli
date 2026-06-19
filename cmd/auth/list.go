@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -18,6 +19,7 @@ import (
 // ListOptions holds all inputs for auth list.
 type ListOptions struct {
 	Factory *cmdutil.Factory
+	JSON    bool
 }
 
 // NewCmdAuthList creates the auth list subcommand.
@@ -34,6 +36,7 @@ func NewCmdAuthList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Co
 			return authListRun(opts)
 		},
 	}
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmdutil.SetRisk(cmd, "read")
 
 	return cmd
@@ -44,12 +47,20 @@ func authListRun(opts *ListOptions) error {
 
 	multi, _ := core.LoadMultiAppConfig()
 	if multi == nil || len(multi.Apps) == 0 {
+		if opts.JSON {
+			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+				"ok":     true,
+				"users":  []map[string]interface{}{},
+				"reason": "not_configured",
+			})
+			return nil
+		}
 		// auth list is a read-only probe; the "configured but no users"
 		// branch below already returns exit 0 with a stderr hint, so we
 		// keep the same contract here. We still want the hint to be
 		// workspace-aware, so we pull the message+hint out of
 		// NotConfiguredError() instead of hard-coding it.
-		var cfgErr *core.ConfigError
+		var cfgErr *errs.ConfigError
 		if errors.As(core.NotConfiguredError(), &cfgErr) {
 			fmt.Fprintln(f.IOStreams.ErrOut, cfgErr.Message)
 			if cfgErr.Hint != "" {
@@ -61,6 +72,14 @@ func authListRun(opts *ListOptions) error {
 
 	app := multi.CurrentAppConfig(f.Invocation.Profile)
 	if app == nil || len(app.Users) == 0 {
+		if opts.JSON {
+			output.PrintJson(f.IOStreams.Out, map[string]interface{}{
+				"ok":     true,
+				"users":  []map[string]interface{}{},
+				"reason": "not_logged_in",
+			})
+			return nil
+		}
 		fmt.Fprintln(f.IOStreams.ErrOut, "No logged-in users. Run `lark-cli auth login` to log in.")
 		return nil
 	}

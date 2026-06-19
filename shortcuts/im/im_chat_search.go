@@ -35,7 +35,8 @@ var ImChatSearch = common.Shortcut{
 		{Name: "member-ids", Desc: "filter by member open_ids, comma-separated"},
 		{Name: "is-manager", Type: "bool", Desc: "only show chats you created or manage"},
 		{Name: "disable-search-by-user", Type: "bool", Desc: "disable search-by-member-name (default: search by member name first, then group name)"},
-		{Name: "sort-by", Desc: "sort field (descending)", Enum: []string{"create_time_desc", "update_time_desc", "member_count_desc"}},
+		{Name: "sort", Desc: "sort field (always descending): create_time | update_time | member_count", Enum: []string{"create_time", "update_time", "member_count"}},
+		{Name: "sort-by", Hidden: true, Desc: "alias of --sort (hidden)", Enum: []string{"create_time_desc", "update_time_desc", "member_count_desc"}},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size (1-100)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "exclude-muted", Type: "bool", Desc: "(user identity only) drop chats the current user has muted (do-not-disturb); bot identity returns all chats unfiltered"},
@@ -209,8 +210,8 @@ var ImChatSearch = common.Shortcut{
 // buildSearchChatBody builds the JSON request body for POST /im/v2/chats/search
 // from the runtime flag values. The query string is normalized via
 // normalizeChatSearchQuery (hyphenated terms get quoted). The "filter" object
-// is omitted when no filter flags are set; "sorter" is omitted when --sort-by
-// is empty.
+// is omitted when no filter flags are set; "sorter" is omitted when --sort
+// (and its hidden alias --sort-by) is unset.
 func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{}
 
@@ -256,9 +257,18 @@ func buildSearchChatBody(runtime *common.RuntimeContext) map[string]interface{} 
 		body["filter"] = filter
 	}
 
-	// Build sorters (always descending)
-	if sortBy := runtime.Str("sort-by"); sortBy != "" {
-		body["sorter"] = sortBy
+	// Build sorter (always descending). --sort maps field -> field_desc; the hidden
+	// --sort-by alias is already the upstream value (pass-through). Omitted when unset.
+	sorter := map[string]string{
+		"create_time":  "create_time_desc",
+		"update_time":  "update_time_desc",
+		"member_count": "member_count_desc",
+	}[runtime.Str("sort")]
+	if old, ok := aliasFlagValue(runtime, "sort-by", "sort"); ok {
+		sorter = old
+	}
+	if sorter != "" {
+		body["sorter"] = sorter
 	}
 
 	return body

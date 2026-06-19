@@ -835,7 +835,7 @@ func TestAppsInit_EmptyRepo_TwoCommits(t *testing.T) {
 		t.Fatalf("unexpected: %v", err)
 	}
 	msgs := commitMessages(f.calls)
-	want := []string{"chore: initialize app project code", "chore: initialize miaoda app config"}
+	want := []string{"chore: initialize app project code", "chore: initialize app config"}
 	if len(msgs) != 2 || msgs[0] != want[0] || msgs[1] != want[1] {
 		t.Fatalf("commit messages = %v, want %v", msgs, want)
 	}
@@ -896,7 +896,7 @@ func TestAppsInit_EmptyRepo_ConfigOnly_SingleCommit(t *testing.T) {
 		t.Fatalf("unexpected: %v", err)
 	}
 	msgs := commitMessages(f.calls)
-	if len(msgs) != 1 || msgs[0] != "chore: initialize miaoda app config" {
+	if len(msgs) != 1 || msgs[0] != "chore: initialize app config" {
 		t.Fatalf("commit messages = %v, want one config commit", msgs)
 	}
 }
@@ -916,7 +916,7 @@ func TestAppsInit_NonEmpty_SingleInitCommit(t *testing.T) {
 		t.Fatalf("unexpected: %v", err)
 	}
 	msgs := commitMessages(f.calls)
-	if len(msgs) != 1 || msgs[0] != "chore: initialize miaoda app repository" {
+	if len(msgs) != 1 || msgs[0] != "chore: initialize app repository" {
 		t.Fatalf("commit messages = %v, want one upgrade commit", msgs)
 	}
 	for _, c := range f.calls {

@@ -50,8 +50,16 @@ func TestEnsureBus_RemoteBusAlreadyConnectedIsFailedPrecondition(t *testing.T) {
 	if ve.Subtype != errs.SubtypeFailedPrecondition {
 		t.Errorf("subtype = %s, want %s", ve.Subtype, errs.SubtypeFailedPrecondition)
 	}
-	if !strings.Contains(ve.Hint, "event stop") {
-		t.Errorf("hint should point at `event stop`, got: %q", ve.Hint)
+	wantHints := []string{
+		"remote event connection",
+		"`lark-cli event status` and `lark-cli event stop` only inspect local buses",
+		"stop the owner host/process",
+		"wait for the platform connection timeout",
+	}
+	for _, want := range wantHints {
+		if !strings.Contains(ve.Hint, want) {
+			t.Errorf("hint missing %q\ngot: %q", want, ve.Hint)
+		}
 	}
 }
 

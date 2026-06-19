@@ -114,16 +114,20 @@ func TestDriveImportDryRunUsesExtensionlessDefaultName(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal dry run json: %v", err)
 	}
-	if len(got.API) != 3 {
-		t.Fatalf("expected 3 API calls, got %d", len(got.API))
+	if len(got.API) != 4 {
+		t.Fatalf("expected 4 API calls, got %d", len(got.API))
 	}
 
-	uploadName, _ := got.API[0].Body["file_name"].(string)
+	if got.API[0].Body != nil {
+		t.Fatalf("wiki probe should not have a request body, got %#v", got.API[0].Body)
+	}
+
+	uploadName, _ := got.API[1].Body["file_name"].(string)
 	if uploadName != "base-import.xlsx" {
 		t.Fatalf("upload file_name = %q, want %q", uploadName, "base-import.xlsx")
 	}
 
-	importName, _ := got.API[1].Body["file_name"].(string)
+	importName, _ := got.API[2].Body["file_name"].(string)
 	if importName != "base-import" {
 		t.Fatalf("import task file_name = %q, want %q", importName, "base-import")
 	}

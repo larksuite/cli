@@ -26,7 +26,8 @@ var BaseFieldSearchOptions = common.Shortcut{
 		{Name: "keyword", Desc: "keyword for option query"},
 		{Name: "query", Hidden: true},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
-		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, default 30"},
+		{Name: "limit", Type: "int", Default: "30", Desc: "pagination size, range 1-200"},
+		pageSizeLimitAliasFlag(),
 	},
 	Tips: []string{
 		`Example: lark-cli base +field-search-options --base-token <base_token> --table-id <table_id> --field-id "Status" --keyword "Do"`,
@@ -39,6 +40,17 @@ var BaseFieldSearchOptions = common.Shortcut{
 		}
 		if strings.TrimSpace(runtime.Str("keyword")) != "" && strings.TrimSpace(runtime.Str("query")) != "" {
 			return baseFlagErrorf("--query is a deprecated alias for --keyword; use only one")
+		}
+		if err := validateLimitPageSizeAlias(runtime); err != nil {
+			return err
+		}
+		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 30, 1, 200); err != nil {
+			return err
+		}
+		if runtime.Changed("page-size") {
+			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 30, 1, 200); err != nil {
+				return err
+			}
 		}
 		return nil
 	},

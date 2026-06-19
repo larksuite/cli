@@ -89,7 +89,7 @@ def main():
     count = len(data.get("services", []))
     print(f"fetch-meta: OK, {count} services from remote API", file=sys.stderr)
 
-    with open(OUT_PATH, "w") as fp:
+    with open(OUT_PATH, "w", encoding="utf-8", newline="\n") as fp:
         json.dump(data, fp, ensure_ascii=False, indent=2)
         fp.write("\n")
 

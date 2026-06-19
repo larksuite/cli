@@ -27,8 +27,8 @@ const defaultInitBranch = "sprint/default"
 // the non-empty (`app sync`) path stays a single commit.
 const (
 	commitMsgAppCode   = "chore: initialize app project code"
-	commitMsgAppConfig = "chore: initialize miaoda app config"
-	commitMsgUpgrade   = "chore: initialize miaoda app repository"
+	commitMsgAppConfig = "chore: initialize app config"
+	commitMsgUpgrade   = "chore: initialize app repository"
 )
 
 // scaffold kinds returned by runScaffold and consumed by commitAndPushIfDirty.
@@ -49,11 +49,11 @@ const (
 // can swap in a fakeCommandRunner. Production uses execCommandRunner.
 var initRunner commandRunner = execCommandRunner{}
 
-// AppsInit initializes a Miaoda app's code and local development environment.
+// AppsInit initializes an app's code and local development environment.
 var AppsInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+init",
-	Description: "Initialize a Miaoda app's code and local development environment",
+	Description: "Initialize an app's code and local development environment",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +init --app-id <app_id> --dir <dir>",
@@ -73,7 +73,7 @@ var AppsInit = common.Shortcut{
 		// envelope. The spec and the E2E assert exit-2 + a structured
 		// {"ok":false,"error":{...}} envelope for missing --app-id, so the empty
 		// check lives in Validate (typed validation error -> exit 2).
-		{Name: "app-id", Desc: "Miaoda app ID"},
+		{Name: "app-id", Desc: "app ID"},
 		{Name: "dir", Desc: "clone target directory; absolute or relative path (default ./<app-id>)"},
 		{Name: "template", Desc: "code-init template for an empty repo; optional — if omitted, derived from the app's tech stack"},
 	},
@@ -87,7 +87,7 @@ var AppsInit = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		template := resolveTemplate(rctx, appID)
 		dry := common.NewDryRunAPI().
-			Desc("Initialize Miaoda app code (credential-init, clone, checkout, npx code-init, optional commit/push)").
+			Desc("Initialize app code (credential-init, clone, checkout, npx code-init, optional commit/push)").
 			Set("credential_init", fmt.Sprintf("apps +git-credential-init --app-id %s --format json", appID)).
 			Set("checkout", "git checkout "+defaultInitBranch).
 			Set("scaffold", fmt.Sprintf("empty repo: npx -y --prefer-online %s app init --template %s --app-id %s; non-empty: npx -y --prefer-online %s app sync + .spark/meta.json app_id patch + conditional skills sync --local", miaodaCLIPkg, template, appID, miaodaCLIPkg)).
@@ -191,7 +191,7 @@ func ensureEmptyDir(dir string) error {
 	return nil
 }
 
-// isAlreadyInitialized reports whether dir is an already-initialized Miaoda app
+// isAlreadyInitialized reports whether dir is an already-initialized app
 // repo, detected by the presence of <dir>/.spark/meta.json (regardless of its
 // app_id value). Used to short-circuit +init into a friendly no-op.
 func isAlreadyInitialized(dir string) bool {
@@ -379,7 +379,7 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 	}
 
 	// Already-initialized short-circuit: a dir containing .spark/meta.json is an
-	// initialized Miaoda app repo -> skip clone/scaffold/commit, but still refresh
+	// initialized app repo -> skip clone/scaffold/commit, but still refresh
 	// the local env so a re-run picks up the latest startup env vars.
 	if isAlreadyInitialized(dir) {
 		initLogf(rctx, "Already initialized at %s — refreshing local environment", dir)
@@ -556,7 +556,7 @@ func issueCredentials(ctx context.Context, rctx *common.RuntimeContext, appID st
 // commitAndPushIfDirty commits and pushes only when the working tree has
 // changes; a clean tree is a no-op (returns false,false). For the empty-repo
 // init path (scaffoldKind == "init") it splits the scaffolded tree into two
-// commits — app project code, then Miaoda config (.spark/.agent) — skipping
+// commits — app project code, then app config (.spark/.agent) — skipping
 // either commit when that group has no changes (no empty commits). Other paths
 // commit once. Push is a single `git push origin <branch>` for all commits.
 func commitAndPushIfDirty(ctx context.Context, dir, scaffoldKind string) (committed, pushed bool, err error) {
@@ -621,7 +621,7 @@ func stageAndCommit(ctx context.Context, dir, message string, pathspecs ...strin
 
 // classifyPorcelain parses `git status --porcelain` output and partitions the
 // changed paths into the "app code" group (anything outside .spark/ and .agent/)
-// and the "Miaoda config" group (.spark/ and .agent/). It returns the exact
+// and the "app config" group (.spark/ and .agent/). It returns the exact
 // porcelain paths so callers can stage them verbatim: porcelain never lists
 // gitignored files, so `git add -- <these paths>` never trips git's ignored-path
 // error. (Naming an ignored dir explicitly — or combining a "." pathspec with
@@ -658,7 +658,7 @@ func porcelainPath(line string) string {
 	return p
 }
 
-// isConfigPath reports whether p is the Miaoda app-config group: the .spark or
+// isConfigPath reports whether p is the app-config group: the .spark or
 // .agent directory itself, or anything under them. ".sparkrc" is NOT config.
 func isConfigPath(p string) bool {
 	return p == ".spark" || p == ".agent" ||

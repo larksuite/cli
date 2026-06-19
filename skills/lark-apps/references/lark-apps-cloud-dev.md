@@ -24,7 +24,7 @@
 - `latest_turn.status`：最近一轮的状态，只有 `running` / `completed` / `failed` / `cancelled`。
 - `latest_turn.turn_id`：最近一轮的句柄（`+session-stop --turn-id` 用它）。
 - `latest_turn.user_message`：本轮用户发的消息。
-- `latest_turn.messages`：这一轮里妙搭 Agent 执行产生的消息列表，按时序排列、每条带 `role`（用户消息、模型回复、工具调用等都在内，role 取值如 `user` / `assistant` / `tool`）。要回看本轮做了什么、结果如何，读这个列表。
+- `latest_turn.messages`：本轮完成后回看全貌的消息列表，按时序排列、每条带 `role`（用户消息、模型回复、工具调用等都在内，role 取值如 `user` / `assistant` / `tool`）。注意它在 `latest_turn` 仍 running/初始化期可能为空——该轮**进行中**的实时进展改用 `+session-messages-list --turn-id <latest_turn.turn_id>` 读（见下方轮询规则）。
 - `queued_messages` / `queued_count`：还没开始跑、排在后面的消息。
 - `next_poll_after_ms`：建议的下次轮询间隔（毫秒，固定值）；非空时优先用它。
 
@@ -36,6 +36,7 @@
 - `failed` / `cancelled` 时转述错误字段或 hint，由用户决定是否重试，不要静默重发。
 - 不知道某 app 有哪些 session 时，先 `+session-list --app-id <id>`，再选最近活跃的或让用户确认，别直接猜 `session_id`。
 - 要中止正在运行的一轮，从 `+session-get` 的 `latest_turn.turn_id` 取值，再调用 `+session-stop --turn-id <turn_id>`。
+- 状态与节奏看 `+session-get`，本轮实时内容看 `+session-messages-list`：想在 running 期间向用户播报"云端 Agent 此刻在做什么"，用 `+session-messages-list --turn-id <latest_turn.turn_id>` 读已产出的增量消息（running 期间即可读，不必等本轮结束）。复用上面的轮询节奏、不另起更密的轮询；续拉时把上次响应的 `next_page_token` 作 `--page-token` 只取新消息，转述时简述进展、不原样打印整段消息或工具输出。
 
 ### 典型链路
 

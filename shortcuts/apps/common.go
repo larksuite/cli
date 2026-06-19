@@ -12,12 +12,12 @@ import (
 // appsService 是 CLI 命令的 service 前缀（lark-cli apps ...）。
 const appsService = "apps"
 
-// apiBasePath is the registered OAPI prefix for the Miaoda apps domain.
+// apiBasePath is the registered OAPI prefix for the apps domain.
 const apiBasePath = "/open-apis/spark/v1"
 
 // appIDListHint is the shared recovery hint for commands whose most likely
 // failure cause is a wrong/inaccessible --app-id. It points at +list to find
-// the correct Miaoda app id. The app_/cli_ format rule is taught in
+// the correct app id. The app_/cli_ format rule is taught in
 // lark-apps SKILL.md ("app_id 获取"); the hint stays lean and does not repeat it.
 const appIDListHint = "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`"
 

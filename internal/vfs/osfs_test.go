@@ -93,6 +93,21 @@ func TestOsFsBasicOperations(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
+	// MkdirTemp + RemoveAll (non-empty directory)
+	tmpDir, err := fs.MkdirTemp(dir, "tmp-dir-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	if err := fs.WriteFile(filepath.Join(tmpDir, "inner.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("WriteFile in temp dir: %v", err)
+	}
+	if err := fs.RemoveAll(tmpDir); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+	if _, err := fs.Stat(tmpDir); !os.IsNotExist(err) {
+		t.Fatalf("RemoveAll should delete the directory tree, stat err = %v", err)
+	}
+
 	// Getwd
 	if _, err := fs.Getwd(); err != nil {
 		t.Fatalf("Getwd: %v", err)

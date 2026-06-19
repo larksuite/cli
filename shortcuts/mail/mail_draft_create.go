@@ -56,6 +56,7 @@ var MailDraftCreate = common.Shortcut{
 		{Name: "request-receipt", Type: "bool", Desc: "Request a read receipt (Message Disposition Notification, RFC 3798) addressed to the sender. Recipient mail clients may prompt the user, send automatically, or silently ignore — delivery of a receipt is not guaranteed."},
 		{Name: "template-id", Desc: "Optional. Apply a saved template by ID (decimal integer string) before composing. The template's subject/body/to/cc/bcc/attachments are merged with user-supplied flags (user flags win). Requires --as user."},
 		signatureFlag,
+		noSignatureFlag,
 		priorityFlag,
 		eventSummaryFlag, eventStartFlag, eventEndFlag, eventLocationFlag,
 		showLintDetailsFlag,
@@ -92,7 +93,7 @@ var MailDraftCreate = common.Shortcut{
 		if !hasTemplate && strings.TrimSpace(runtime.Str("subject")) == "" {
 			return mailValidationParamError("--subject", "--subject is required; pass the final email subject (or use --template-id)")
 		}
-		if err := validateSignatureWithPlainText(runtime.Bool("plain-text"), runtime.Str("signature-id")); err != nil {
+		if err := validateNoSignatureConflict(runtime.Bool("no-signature"), runtime.Str("signature-id")); err != nil {
 			return err
 		}
 		if err := validateEventFlags(runtime); err != nil {
@@ -180,12 +181,22 @@ var MailDraftCreate = common.Shortcut{
 		if strings.TrimSpace(input.Body) == "" {
 			return mailValidationParamError("--body", "effective body is empty after applying template; pass --body explicitly")
 		}
-		sigResult, err := resolveSignature(ctx, runtime, mailboxID, runtime.Str("signature-id"), runtime.Str("from"))
+		signatureID := runtime.Str("signature-id")
+		noSignature := runtime.Bool("no-signature")
+		senderEmail := resolveComposeSenderEmail(runtime)
+		// Auto-resolve default signature when neither --no-signature nor --signature-id is set.
+		if noSignature {
+			signatureID = ""
+		} else if signatureID == "" {
+			signatureID = autoResolveSignatureID(runtime, mailboxID, senderEmail, false)
+		}
+		sigResult, err := resolveSignature(ctx, runtime, mailboxID, signatureID, senderEmail,
+			runtime.Str("signature-id") != "", !input.PlainText)
 		if err != nil {
 			return err
 		}
 		rawEML, lintApplied, lintBlocked, err := buildRawEMLForDraftCreate(ctx, runtime, input, sigResult, priority,
-			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments)
+			templateLargeAttachmentIDs, mailboxID, templateID, templateInlineAttachments, templateSmallAttachments, senderEmail)
 		if err != nil {
 			return err
 		}
@@ -241,13 +252,19 @@ func buildRawEMLForDraftCreate(
 	mailboxID, templateID string,
 	templateInlineAttachments []templateInlineRef,
 	templateSmallAttachments []templateAttachmentRef,
+	senderEmailHint string,
 ) (rawEMLOut string, lintApplied, lintBlocked []lint.Finding, err error) {
 	// Initialise lint findings as empty (non-nil) slices so callers can
 	// surface them through the envelope unconditionally even on the
 	// plain-text branch.
 	lintApplied, lintBlocked = emptyLintFindings()
 
-	senderEmail := resolveComposeSenderEmail(runtime)
+	// Use the pre-resolved senderEmail when available (avoids a duplicate
+	// profile API call when Execute already fetched it for auto-resolve).
+	senderEmail := senderEmailHint
+	if senderEmail == "" {
+		senderEmail = resolveComposeSenderEmail(runtime)
+	}
 	if senderEmail == "" {
 		return "", lintApplied, lintBlocked, mailValidationParamError("--from", "unable to determine sender email; please specify --from explicitly")
 	}
@@ -290,7 +307,7 @@ func buildRawEMLForDraftCreate(
 	var composedHTMLBody string
 	var composedTextBody string
 	if input.PlainText {
-		composedTextBody = input.Body
+		composedTextBody = injectPlainTextSignature(input.Body, sigResult)
 		bld = bld.TextBody([]byte(composedTextBody))
 	} else if bodyIsHTML(input.Body) || sigResult != nil {
 		htmlBody := input.Body

@@ -102,7 +102,7 @@ func findTaskInTasklist(t *testing.T, ctx context.Context, tasklistGUID string, 
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		taskItem := gjson.Get(result.Stdout, `data.items.#(guid=="`+taskGUID+`")`)
 		if taskItem.Exists() {

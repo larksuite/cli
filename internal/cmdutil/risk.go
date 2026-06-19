@@ -3,17 +3,20 @@
 
 package cmdutil
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/larksuite/cli/internal/core"
+	"github.com/spf13/cobra"
+)
 
 const riskLevelAnnotationKey = "risk_level"
 
-// Risk level constants — the three-tier convention used across the CLI.
-// Use these in place of string literals so the typo radius is one place,
-// not every call site.
+// Risk level constants — aliases of the canonical core.Risk* values, re-exported
+// here so command code gets the risk vocabulary and the SetRisk/GetRisk helpers
+// from one package. core is the single source of truth.
 const (
-	RiskRead          = "read"
-	RiskWrite         = "write"
-	RiskHighRiskWrite = "high-risk-write"
+	RiskRead          = core.RiskRead
+	RiskWrite         = core.RiskWrite
+	RiskHighRiskWrite = core.RiskHighRiskWrite
 )
 
 // SetRisk stores a command's static risk level on cobra annotations so the

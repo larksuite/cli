@@ -12,7 +12,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsList lists Miaoda apps visible to the calling user (cursor pagination).
+// AppsList lists apps visible to the calling user (cursor pagination).
 //
 // Supports name fuzzy match (--keyword), ownership-dimension filter
 // (--ownership: all / mine / shared), and app-type filter (--app-type). See
@@ -22,7 +22,7 @@ import (
 var AppsList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+list",
-	Description: "List Miaoda apps visible to the calling user (cursor pagination)",
+	Description: "List apps visible to the calling user (cursor pagination)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +list",
@@ -42,7 +42,7 @@ var AppsList = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET(apiBasePath + "/apps").
-			Desc("List Miaoda apps").
+			Desc("List apps").
 			Params(buildAppsListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

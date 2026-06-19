@@ -19,33 +19,44 @@ import (
 	extcred "github.com/larksuite/cli/extension/credential"
 )
 
-// classifyTATResponseCode wraps a non-zero TAT endpoint response code into the
-// canonical typed error. The TAT mint endpoint reports invalid credentials
-// with two distinct codes:
+// classifyTATResponseCode wraps a deterministic (non-transient) failure from the
+// unified Token Endpoint into the canonical typed errs.* error. The v3 endpoint
+// reports failures using the OAuth 2.0 model — an `error` string plus an
+// optional numeric `code` — instead of the legacy `{code, msg}` shape.
 //
-//   - 10003: bad app_id format or non-existent app_id ("invalid param")
-//   - 10014: invalid app_secret ("app secret invalid")
-//
-// Both surface as CategoryConfig/InvalidClient from the user's perspective —
-// the configured credentials cannot mint a tenant access token. 10014 is
-// globally mapped in codemeta (TAT-mint-specific variant of OAuth 99991543).
-// 10003 is NOT globally mapped because in other Lark endpoints it carries
-// unrelated semantics (e.g. task API uses 10003 for permission denied), so
-// the override stays local to this TAT call site instead of leaking into the
-// shared codemeta table.
-func classifyTATResponseCode(code int, msg, brand, appID string) error {
-	if code == 10003 {
+// invalid_client / unauthorized_client mean the configured app_id/app_secret
+// cannot mint a token; from the user's perspective that is the same actionable
+// CategoryConfig/InvalidClient failure the legacy 10003/10014 codes produced.
+// Every other deterministic error falls through to BuildAPIError, which still
+// yields a typed error so probe callers (errs.IsTyped) surface it rather than
+// swallowing it. Transient/server-side failures (5xx / server_error) are
+// filtered out by FetchTAT before this is called, so they stay untyped.
+func classifyTATResponseCode(code int, oauthErr, errDesc, brand, appID string) error {
+	msg := errDesc
+	if msg == "" {
+		msg = oauthErr
+	}
+	switch oauthErr {
+	case "invalid_client", "unauthorized_client":
 		return errs.NewConfigError(errs.SubtypeInvalidClient, "%s", msg).
 			WithCode(code).
 			WithHint("%s", errclass.ConfigHint(errs.SubtypeInvalidClient))
 	}
-	return errclass.BuildAPIError(map[string]any{
+	if err := errclass.BuildAPIError(map[string]any{
 		"code": code,
 		"msg":  msg,
 	}, errclass.ClassifyContext{
 		Brand: brand,
 		AppID: appID,
-	})
+	}); err != nil {
+		return err
+	}
+	// BuildAPIError returns nil for code 0 (Feishu's success convention), but this
+	// function is only reached once FetchTAT has ruled out success — a non-credential
+	// OAuth error (e.g. invalid_scope) can arrive with code 0 and is still a
+	// deterministic rejection. Back it with a typed APIError so callers never receive
+	// the ("", nil) "empty token, no error" pair.
+	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).WithCode(code)
 }
 
 // DefaultAccountProvider resolves account from config.json via keychain.
@@ -146,8 +157,8 @@ func (p *DefaultTokenProvider) resolveUAT(ctx context.Context) (*TokenResult, er
 	return &TokenResult{Token: token, Scopes: scopes}, nil
 }
 
-// resolveTAT resolves a tenant access token. Result is cached after first call.
-// NOTE: Uses sync.Once — only the context from the first call is used.
+// resolveTAT resolves a tenant access token. The result is cached after the first
+// call via sync.Once — only the context from the first call is used.
 func (p *DefaultTokenProvider) resolveTAT(ctx context.Context) (*TokenResult, error) {
 	p.tatOnce.Do(func() {
 		p.tatResult, p.tatErr = p.doResolveTAT(ctx)

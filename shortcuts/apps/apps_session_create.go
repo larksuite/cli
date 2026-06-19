@@ -13,11 +13,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsSessionCreate creates a new session under an existing Miaoda app.
+// AppsSessionCreate creates a new session under an existing app.
 var AppsSessionCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-create",
-	Description: "Create a session under a Miaoda app",
+	Description: "Create a session under an app",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +session-create --app-id <app_id>",
@@ -37,7 +37,7 @@ var AppsSessionCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			POST(sessionsPath(rctx.Str("app-id"))).
-			Desc("Create a session under a Miaoda app")
+			Desc("Create a session under an app")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		data, err := rctx.CallAPITyped("POST", sessionsPath(rctx.Str("app-id")), nil, nil)

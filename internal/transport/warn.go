@@ -10,8 +10,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/larksuite/cli/internal/envvars"
 )
 
 // Proxy environment constants control shared transport proxy behavior.
@@ -79,16 +77,8 @@ func WarnIfProxied(w io.Writer) {
 		// Shared), so its warning and disable instructions take precedence.
 		// Emitting the env-proxy warning here would be misleading: it tells the
 		// user to set LARK_CLI_NO_PROXY=1, which does NOT disable the plugin proxy.
-		if addr, caPath, enabled := proxyPluginStatus(); enabled {
-			fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin enabled: all requests (including credentials) are forced through %s. To disable, set %s=false or remove %s.\n",
-				redactProxyURL(addr), envvars.CliProxyEnable, Path())
-			if strings.TrimSpace(caPath) != "" {
-				// A custom CA means upstream TLS can be intercepted/inspected by
-				// the proxy (MITM). Surface it so the operator is aware traffic
-				// (including Bearer tokens) is decryptable on this host.
-				fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin trusts a custom CA (%s); TLS to upstreams can be intercepted/inspected by this proxy.\n",
-					caPath)
-			}
+		if _, _, enabled := proxyPluginStatus(); enabled {
+			fmt.Fprintln(w, "[lark-cli] [WARN] proxy plugin enabled: all requests are forced through proxy.")
 			return
 		}
 		if os.Getenv(EnvNoProxy) != "" {

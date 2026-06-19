@@ -15,7 +15,7 @@ func dryRunTableList(_ context.Context, runtime *common.RuntimeContext) *common.
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 100)
+	limit := getPaginationLimit(runtime)
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token/tables").
 		Params(map[string]interface{}{"offset": offset, "limit": limit}).
@@ -62,7 +62,7 @@ func executeTableList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 100)
+	limit := getPaginationLimit(runtime)
 	baseToken := baseTokenOrRaw(runtime)
 	tables, total, err := listAllTables(runtime, baseToken, offset, limit)
 	if err != nil {

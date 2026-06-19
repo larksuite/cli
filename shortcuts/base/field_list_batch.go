@@ -24,6 +24,10 @@ var BaseFieldListBatch = common.Shortcut{
 		{Name: "compact", Type: "bool", Desc: "return compact field objects (id/name/type/style/options) for lower context cost; default returns full field objects"},
 	},
 	DryRun: dryRunFieldListBatch,
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200)
+		return err
+	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeFieldListBatch(runtime)
 	},

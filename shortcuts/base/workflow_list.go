@@ -21,7 +21,7 @@ var BaseWorkflowList = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "status", Desc: "filter by status", Enum: []string{"enabled", "disabled"}},
-		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, max 100"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size per request, range 1-100"},
 		{Name: "compact", Type: "bool", Desc: "return compact workflow_id/title/status/trigger_type fields for lower context cost; default returns full workflow metadata"},
 	},
 	Tips: []string{
@@ -32,7 +32,8 @@ var BaseWorkflowList = common.Shortcut{
 		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
-		return nil
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100)
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		body := map[string]interface{}{

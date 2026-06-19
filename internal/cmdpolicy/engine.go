@@ -9,9 +9,9 @@
 // aggregation), which the Apply step consumes to install denyStubs.
 //
 // This package only implements the user-layer half. Strict-mode is handled
-// by cmd/prune.go, which produces command_denied envelopes of the same
-// shape via BuildDenialError so external agents can dispatch on
-// detail.layer / reason_code uniformly regardless of which layer rejected
+// by cmd/prune.go, which produces typed validation errors of the same shape
+// (failed_precondition, *platform.CommandDeniedError preserved as Cause) so
+// external agents see a uniform envelope regardless of which layer rejected
 // the call.
 package cmdpolicy
 

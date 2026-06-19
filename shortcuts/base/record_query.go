@@ -83,18 +83,23 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 // habitually carry over to base record commands; accepting it here keeps
 // pagination naming forgiving across domains.
 func recordPageLimit(runtime *common.RuntimeContext) int {
-	if runtime.Changed("page-size") && !runtime.Changed("limit") {
-		return common.ParseIntBounded(runtime, "page-size", 1, 200)
-	}
-	return common.ParseIntBounded(runtime, "limit", 1, 200)
+	return getPaginationLimit(runtime)
 }
 
 func validateRecordPageLimit(runtime *common.RuntimeContext) error {
-	if runtime.Changed("limit") && runtime.Changed("page-size") {
-		return baseFlagErrorf("--page-size is a deprecated alias for --limit; use only one")
+	if err := validateLimitPageSizeAlias(runtime); err != nil {
+		return err
 	}
 	if strings.TrimSpace(runtime.Str("page-token")) != "" {
 		return baseFlagErrorf("this command uses offset pagination, not page tokens; did you mean --offset/--limit? (use --offset <n> for the next page)")
+	}
+	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+		return err
+	}
+	if runtime.Changed("page-size") {
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -233,7 +238,7 @@ func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{
 		offset = 0
 	}
 	body["offset"] = offset
-	body["limit"] = recordPageLimit(runtime)
+	body["limit"] = getPaginationLimit(runtime)
 	return body, applyRecordQueryToBody(runtime, body)
 }
 
@@ -283,6 +288,14 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
 		return baseFlagErrorf("--search-field is required unless --json is used")
+	}
+	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 10, 1, 200); err != nil {
+		return err
+	}
+	if runtime.Changed("page-size") {
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 10, 1, 200); err != nil {
+			return err
+		}
 	}
 	return validateRecordQueryOptions(runtime)
 }

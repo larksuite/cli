@@ -30,10 +30,12 @@ func (OsFs) OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) 
 func (OsFs) CreateTemp(dir, pattern string) (*os.File, error) { return os.CreateTemp(dir, pattern) }
 
 // Directory/File management
-func (OsFs) MkdirAll(path string, perm fs.FileMode) error { return os.MkdirAll(path, perm) }
-func (OsFs) ReadDir(name string) ([]os.DirEntry, error)   { return os.ReadDir(name) }
-func (OsFs) Remove(name string) error                     { return os.Remove(name) }
-func (OsFs) Rename(oldpath, newpath string) error         { return os.Rename(oldpath, newpath) }
+func (OsFs) MkdirAll(path string, perm fs.FileMode) error  { return os.MkdirAll(path, perm) }
+func (OsFs) MkdirTemp(dir, pattern string) (string, error) { return os.MkdirTemp(dir, pattern) }
+func (OsFs) ReadDir(name string) ([]os.DirEntry, error)    { return os.ReadDir(name) }
+func (OsFs) Remove(name string) error                      { return os.Remove(name) }
+func (OsFs) RemoveAll(path string) error                   { return os.RemoveAll(path) }
+func (OsFs) Rename(oldpath, newpath string) error          { return os.Rename(oldpath, newpath) }
 
 // Path resolution
 func (OsFs) EvalSymlinks(path string) (string, error) { return filepath.EvalSymlinks(path) }

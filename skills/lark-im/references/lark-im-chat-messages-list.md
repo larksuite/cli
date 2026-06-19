@@ -24,7 +24,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --start "2026-03-10T00:00:00+08
 lark-cli im +chat-messages-list --chat-id oc_xxx --start 2026-03-10 --end 2026-03-11
 
 # Control sort order and page size (max 50)
-lark-cli im +chat-messages-list --chat-id oc_xxx --sort asc --page-size 20
+lark-cli im +chat-messages-list --chat-id oc_xxx --order asc --page-size 20
 
 # Pagination
 lark-cli im +chat-messages-list --chat-id oc_xxx --page-token "xxx"
@@ -41,7 +41,7 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 | `--user-id <id>` | One of two | Specify a DM conversation by the other user's open_id (`ou_xxx`); p2p chat_id is resolved automatically. Requires user identity (`--as user`); not supported with bot identity |
 | `--start <time>` | No | Start time (ISO 8601 or date only) |
 | `--end <time>` | No | End time (ISO 8601 or date only) |
-| `--sort <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
+| `--order <order>` | No | Sort order: `asc` / `desc` (default `desc`) |
 | `--page-size <n>` | No | Page size (default 50, max 50) |
 | `--page-token <token>` | No | Pagination token |
 | `--no-reactions` | No | Skip auto-fetching the `reactions` block |
@@ -49,9 +49,11 @@ lark-cli im +chat-messages-list --chat-id oc_xxx --format json
 
 > Rule: `--chat-id` and `--user-id` are mutually exclusive. You must provide exactly one of them.
 
+> **CAUTION:** `--order` is the only sort axis — messages are always ordered by creation time, `asc` or `desc`. There is no field axis: the command cannot sort by sender or any other field, so do **not** attempt `--sort sender` or similar (it is rejected). If the user asks to group or sort by sender, fetch with `--order` and aggregate client-side, and tell them this is local post-processing, not a CLI/API sort capability.
+
 ## Resource Rendering
 
-Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `[Image: img_xxx]`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
+Messages are rendered into human-readable text for inspection. Image messages are shown as placeholders such as `![Image](img_xxx)`; files, audio, and videos are rendered with resource keys in the content (e.g. `<audio key="file_xxx" duration="Xs"/>`). By default resource binaries are **not** downloaded.
 
 Two ways to get the binaries:
 - **In one pass:** add `--download-resources` to this command — every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) is downloaded into `./lark-im-resources/` and a `resources` block (`{message_id, key, type, local_path, size_bytes}`) is attached to each message. See [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in).
@@ -59,7 +61,7 @@ Two ways to get the binaries:
 
 | Resource Type | Marker in Content | Behavior |
 |---------|-------------|------|
-| Image | `[Image: img_xxx]` | `--download-resources`, or manually `im +messages-resources-download --type image` |
+| Image | `![Image](img_xxx)` | `--download-resources`, or manually `im +messages-resources-download --type image` |
 | File | `<file key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Audio | `<audio key="file_xxx" duration="Xs"/>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
 | Video | `<video key="file_xxx" .../>` | `--download-resources`, or manually `im +messages-resources-download --type file` |
@@ -75,8 +77,8 @@ lark-cli im +threads-messages-list --thread omt_xxx
 
 | Scenario | Recommendation |
 |------|------|
-| You need context | Call `im +threads-messages-list --sort desc --page-size 10` for the discovered thread_id to inspect recent replies |
-| The user asks for the "full discussion" | Use `im +threads-messages-list --sort asc --page-size 50`, then paginate if needed |
+| You need context | Call `im +threads-messages-list --order desc --page-size 10` for the discovered thread_id to inspect recent replies |
+| The user asks for the "full discussion" | Use `im +threads-messages-list --order asc --page-size 50`, then paginate if needed |
 | You only need an overview | Skip thread expansion |
 
 ## Output Fields
