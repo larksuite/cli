@@ -88,6 +88,7 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 	if err != nil {
 		return nil, err
 	}
+	normalizeRichTextSegmentStyles(cells)
 	input := map[string]interface{}{
 		"excel_id": token,
 		"range":    strings.TrimSpace(runtime.Str("range")),
@@ -104,6 +105,82 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 		return nil, err
 	}
 	return input, nil
+}
+
+func normalizeRichTextSegmentStyles(cells []interface{}) {
+	for _, rowValue := range cells {
+		row, ok := rowValue.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, cellValue := range row {
+			cell, ok := cellValue.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			segments, ok := cell["rich_text"].([]interface{})
+			if !ok {
+				continue
+			}
+			for _, segmentValue := range segments {
+				segment, ok := segmentValue.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				style, ok := segment["style"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				segmentStyle := map[string]interface{}{}
+				if existing, ok := segment["segmentStyle"].(map[string]interface{}); ok {
+					for k, v := range existing {
+						segmentStyle[k] = v
+					}
+				}
+				mergeRichTextStyle(segmentStyle, style)
+				if len(segmentStyle) > 0 {
+					segment["segmentStyle"] = segmentStyle
+				}
+				delete(segment, "style")
+			}
+		}
+	}
+}
+
+func mergeRichTextStyle(segmentStyle map[string]interface{}, style map[string]interface{}) {
+	if v, ok := style["font_color"]; ok {
+		segmentStyle["foreColor"] = v
+	}
+	if v, ok := style["font_size"]; ok {
+		segmentStyle["fontSize"] = v
+	}
+	if v, ok := style["font_weight"].(string); ok {
+		switch v {
+		case "bold":
+			segmentStyle["bold"] = true
+		case "normal":
+			segmentStyle["bold"] = false
+		}
+	}
+	if v, ok := style["font_style"].(string); ok {
+		switch v {
+		case "italic":
+			segmentStyle["italic"] = true
+		case "normal":
+			segmentStyle["italic"] = false
+		}
+	}
+	if v, ok := style["font_line"].(string); ok {
+		switch v {
+		case "line-through":
+			segmentStyle["strikeThrough"] = true
+		case "underline":
+			segmentStyle["underline"] = true
+		case "none":
+			segmentStyle["strikeThrough"] = false
+			segmentStyle["underline"] = false
+		}
+	}
 }
 
 // CellsSetStyle stamps a single style block across every cell in --range.

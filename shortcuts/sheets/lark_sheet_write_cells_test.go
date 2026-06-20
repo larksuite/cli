@@ -115,6 +115,42 @@ func TestWriteCellsShortcuts_DryRun(t *testing.T) {
 	}
 }
 
+func TestCellsSet_RichTextStyleTranslatedToSegmentStyle(t *testing.T) {
+	t.Parallel()
+
+	body := parseDryRunBody(t, CellsSet, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--range", "A1",
+		"--cells", `[[{"rich_text":[{"type":"text","text":"OLD","style":{"font_line":"line-through"}},{"type":"text","text":"NEW","style":{"font_color":"#00B050"}}]}]]`,
+	})
+	input := decodeToolInput(t, body, "set_cell_range")
+	cells, _ := input["cells"].([]interface{})
+	row0, _ := cells[0].([]interface{})
+	cell, _ := row0[0].(map[string]interface{})
+	rt, _ := cell["rich_text"].([]interface{})
+	if len(rt) != 2 {
+		t.Fatalf("rich_text len = %d, want 2: %#v", len(rt), cell["rich_text"])
+	}
+
+	oldSeg, _ := rt[0].(map[string]interface{})
+	if _, hasStyle := oldSeg["style"]; hasStyle {
+		t.Fatalf("old segment still has style field: %#v", oldSeg)
+	}
+	oldStyle, _ := oldSeg["segmentStyle"].(map[string]interface{})
+	if oldStyle["strikeThrough"] != true {
+		t.Fatalf("old segment segmentStyle.strikeThrough = %v, want true (segment=%#v)", oldStyle["strikeThrough"], oldSeg)
+	}
+
+	newSeg, _ := rt[1].(map[string]interface{})
+	if _, hasStyle := newSeg["style"]; hasStyle {
+		t.Fatalf("new segment still has style field: %#v", newSeg)
+	}
+	newStyle, _ := newSeg["segmentStyle"].(map[string]interface{})
+	if newStyle["foreColor"] != "#00B050" {
+		t.Fatalf("new segment segmentStyle.foreColor = %v, want #00B050 (segment=%#v)", newStyle["foreColor"], newSeg)
+	}
+}
+
 // TestDropdownSet_CellsShape inspects the 3×1 matrix produced from
 // --range A2:A4 to confirm the data_validation prototype is replicated.
 // Also covers --colors / --highlight emitting the canonical
