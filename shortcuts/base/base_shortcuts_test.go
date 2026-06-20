@@ -81,6 +81,27 @@ func assertBasePaginationValidation(t *testing.T, err error, param string) {
 	}
 }
 
+func assertValidationProblem(t *testing.T, err error, param string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != param {
+		t.Fatalf("param=%q, want %q", validationErr.Param, param)
+	}
+}
+
 func TestFieldSearchOptionsAlias(t *testing.T) {
 	runtime := newBaseTestRuntime(map[string]string{"field-name": "Status"}, nil, nil)
 	if got := fieldSearchOptionsRef(runtime); got != "Status" {
@@ -196,6 +217,15 @@ func TestShortcutsCatalog(t *testing.T) {
 			t.Fatalf("command[%d]=%q want=%q", index, shortcuts[index].Command, command)
 		}
 	}
+}
+
+func TestFieldListBatchIncludesWikiConditionalScope(t *testing.T) {
+	for _, scope := range BaseFieldListBatch.ConditionalScopes {
+		if scope == "wiki:node:retrieve" {
+			return
+		}
+	}
+	t.Fatalf("BaseFieldListBatch conditional scopes = %#v, want wiki:node:retrieve", BaseFieldListBatch.ConditionalScopes)
 }
 
 func TestShortcutsDryRunCoverage(t *testing.T) {
@@ -1184,19 +1214,25 @@ func TestBaseRecordValidate(t *testing.T) {
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--filter-json must be a JSON object") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--filter-json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"F1"},{"field":"F2"},{"field":"F3"},{"field":"F4"},{"field":"F5"},{"field":"F6"},{"field":"F7"},{"field":"F8"},{"field":"F9"},{"field":"F10"},{"field":"F11"}]`},
 		nil,
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--sort-json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
-		t.Fatalf("err=%v", err)
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err != nil {
+		assertValidationProblem(t, err, "--keyword")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
@@ -1219,8 +1255,10 @@ func TestBaseRecordValidate(t *testing.T) {
 		map[string][]string{"search-field": {"Name"}},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "use only one") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--query")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
 		map[string]string{
@@ -1238,8 +1276,10 @@ func TestBaseRecordValidate(t *testing.T) {
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 }
 
@@ -1360,7 +1400,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "dashboard block list",
 			shortcut: BaseDashboardBlockList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "dashboard-id": "dash_1", "page-size": "101"}, nil, nil),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "dashboard-id": "blk_1", "page-size": "101"}, nil, nil),
 			param:    "--page-size",
 		},
 	}

@@ -132,6 +132,169 @@ Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。�
 }
 ```
 
+## 复杂例子：定时查找、循环分支并发送消息
+
+需要组合多类节点时，保留一个端到端草图对齐 `children.links` 与 `next`。构造前按本例先画出完整节点集合，再一次性读取 `trigger-timer.md`、`action-find-record.md`、`system-loop.md`、`branch-switch.md`、`action-lark-message.md`、`action-generate-ai-text.md` 和 common refs。
+
+```json
+{
+  "client_token": "wf-daily-order-notify",
+  "title": "每日订单分级通知",
+  "steps": [
+    {
+      "id": "step_timer",
+      "type": "TimerTrigger",
+      "title": "每天早上9点触发",
+      "next": "step_find_orders",
+      "data": {
+        "rule": "DAILY",
+        "start_time": "2025-01-01 09:00",
+        "is_never_end": true
+      }
+    },
+    {
+      "id": "step_find_orders",
+      "type": "FindRecordAction",
+      "title": "查找待处理订单",
+      "next": "step_loop",
+      "data": {
+        "table_name": "订单表",
+        "field_names": ["订单号", "客户名称", "金额", "销售负责人"],
+        "should_proceed_when_no_results": false,
+        "filter_info": {
+          "conjunction": "and",
+          "conditions": [
+            {
+              "field_name": "状态",
+              "operator": "is",
+              "value": [{ "value_type": "option", "value": { "name": "待处理" } }]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "step_loop",
+      "type": "Loop",
+      "title": "遍历每个订单",
+      "children": {
+        "links": [{ "kind": "loop_start", "to": "step_classify" }]
+      },
+      "next": "step_summary",
+      "data": {
+        "loop_mode": "continue",
+        "max_loop_times": 500,
+        "data": [{ "value_type": "ref", "value": "$.step_find_orders.fieldRecords" }]
+      }
+    },
+    {
+      "id": "step_classify",
+      "type": "SwitchBranch",
+      "title": "按金额分类",
+      "children": {
+        "links": [
+          { "kind": "case", "to": "step_vip_notify", "label": "vip", "desc": "金额大于等于10万" },
+          { "kind": "case", "to": "step_normal_notify", "label": "normal", "desc": "金额小于10万" }
+        ]
+      },
+      "next": null,
+      "data": {
+        "mode": "exclusive",
+        "no_match_action": "fail",
+        "child_branch_list": [
+          {
+            "name": "VIP订单",
+            "condition": {
+              "conjunction": "or",
+              "conditions": [
+                {
+                  "conjunction": "and",
+                  "conditions": [
+                    {
+                      "left_value": { "value_type": "ref", "value": "$.step_loop.item.fldAmount" },
+                      "operator": "isGreaterEqual",
+                      "right_value": [{ "value_type": "number", "value": 100000 }]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "name": "普通订单",
+            "condition": {
+              "conjunction": "or",
+              "conditions": [
+                {
+                  "conjunction": "and",
+                  "conditions": [
+                    {
+                      "left_value": { "value_type": "ref", "value": "$.step_loop.item.fldAmount" },
+                      "operator": "isLess",
+                      "right_value": [{ "value_type": "number", "value": 100000 }]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "step_vip_notify",
+      "type": "LarkMessageAction",
+      "title": "VIP订单通知",
+      "next": null,
+      "data": {
+        "receiver": [{ "value_type": "ref", "value": "$.step_loop.item.fldSales" }],
+        "send_to_everyone": false,
+        "title": [{ "value_type": "text", "value": "VIP大额订单" }],
+        "content": [
+          { "value_type": "text", "value": "您有一笔 VIP 订单，金额：" },
+          { "value_type": "ref", "value": "$.step_loop.item.fldAmount" },
+          { "value_type": "text", "value": "，客户：" },
+          { "value_type": "ref", "value": "$.step_loop.item.fldCustomer" }
+        ],
+        "btn_list": []
+      }
+    },
+    {
+      "id": "step_normal_notify",
+      "type": "LarkMessageAction",
+      "title": "普通订单通知",
+      "next": null,
+      "data": {
+        "receiver": [{ "value_type": "ref", "value": "$.step_loop.item.fldSales" }],
+        "send_to_everyone": false,
+        "title": [{ "value_type": "text", "value": "新订单通知" }],
+        "content": [
+          { "value_type": "text", "value": "您有一笔新订单，金额：" },
+          { "value_type": "ref", "value": "$.step_loop.item.fldAmount" }
+        ],
+        "btn_list": []
+      }
+    },
+    {
+      "id": "step_summary",
+      "type": "GenerateAiTextAction",
+      "title": "生成日报",
+      "next": null,
+      "data": {
+        "prompt": [{ "value_type": "text", "value": "请生成今日订单处理日报" }]
+      }
+    }
+  ]
+}
+```
+
+接线要点：
+
+- `step_loop.children.links` 用 `loop_start` 指向循环体入口，`step_loop.next` 表示循环全部结束后的后继。
+- 循环体内使用 `$.step_loop.item.<fieldId>` 引用当前记录字段，字段 ID 先用 `+field-list --compact` 确认。
+- `SwitchBranch.children.links` 的 `case` 目标与 `child_branch_list` 顺序保持一致；两路以内也可改用 `IfElseBranch`。
+- 分支内 action 的 `next:null` 表示该分支结束后回到所属 branch/loop 语义，不要给 action 再写 `children`。
+
 ## 修改现有 workflow
 
 1. `+workflow-list` 后按标题定位 `workflow_id`。

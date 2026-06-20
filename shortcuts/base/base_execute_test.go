@@ -1066,6 +1066,40 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("list compact projects single table fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{
+						"id":      "fld_status",
+						"name":    "Status",
+						"type":    "select",
+						"formula": "SHOULD_DROP",
+						"options": []interface{}{
+							map[string]interface{}{"name": "Todo", "color": "red"},
+						},
+					},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "tbl_x", "--compact"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"fld_status"`) || !strings.Contains(got, `"Status"`) || !strings.Contains(got, `"options"`) || !strings.Contains(got, `"Todo"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		for _, notWant := range []string{`"color"`, `"formula"`, "SHOULD_DROP"} {
+			if strings.Contains(got, notWant) {
+				t.Fatalf("stdout should be compact, found %s: %s", notWant, got)
+			}
+		}
+	})
+
 	t.Run("list passes table name through to API", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{

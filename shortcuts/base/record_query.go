@@ -134,7 +134,7 @@ func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, e
 		return nil, baseFlagErrorf("%s must be a JSON array or an object with sort_config array", label)
 	}
 	if len(sortConfig) > recordSortMaxCount {
-		return nil, baseFlagErrorf("sort supports at most %d sort conditions; got %d", recordSortMaxCount, len(sortConfig))
+		return nil, baseFlagErrorf("%s supports at most %d sort conditions; got %d", label, recordSortMaxCount, len(sortConfig))
 	}
 	return sortConfig, nil
 }
