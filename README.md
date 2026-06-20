@@ -269,6 +269,16 @@ We recommend using the Lark/Feishu bot integrated with this tool as a private co
 
 Please fully understand all usage risks. By using this tool, you are deemed to voluntarily assume all related responsibilities.
 
+## Community Integrations
+
+Tools built by the community that extend lark-cli for specific use cases.
+
+| Tool | Description | Auth boundary | Scope |
+|------|-------------|---------------|-------|
+| [lark-mcp](https://github.com/yyu0310/lark-mcp) | MCP server for Claude Desktop App — wraps lark-cli so Claude can query Lark content directly | lark-cli OAuth token store; zero credentials in MCP config, safe to share | Read-only: wiki spaces, wiki nodes, doc read, IM search |
+
+Want to add your integration? Open an issue or PR with the same four-column format.
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=larksuite/cli&type=Date)](https://star-history.com/#larksuite/cli&Date)
