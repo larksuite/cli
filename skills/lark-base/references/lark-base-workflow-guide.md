@@ -98,7 +98,7 @@ Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。�
 
 ## 最小例子：新增记录后发送消息
 
-只读 `trigger-add-record.md` 和 `action-lark-message.md` 即可。
+只读 [workflow-steps/trigger-add-record.md](workflow-steps/trigger-add-record.md) 和 [workflow-steps/action-lark-message.md](workflow-steps/action-lark-message.md) 即可。
 
 ```json
 {
@@ -134,7 +134,7 @@ Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。�
 
 ## 复杂例子：定时查找、循环分支并发送消息
 
-需要组合多类节点时，保留一个端到端草图对齐 `children.links` 与 `next`。构造前按本例先画出完整节点集合，再一次性读取 `trigger-timer.md`、`action-find-record.md`、`system-loop.md`、`branch-switch.md`、`action-lark-message.md`、`action-generate-ai-text.md` 和 common refs。
+需要组合多类节点时，先画一个端到端草图，明确 `children.links` 与 `next` 的衔接，再按草图涉及的节点类型读取对应的 ref（例如本例用到 [workflow-steps/trigger-timer.md](workflow-steps/trigger-timer.md)、[workflow-steps/action-find-record.md](workflow-steps/action-find-record.md)、[workflow-steps/system-loop.md](workflow-steps/system-loop.md)、[workflow-steps/branch-switch.md](workflow-steps/branch-switch.md)、[workflow-steps/action-lark-message.md](workflow-steps/action-lark-message.md)、[workflow-steps/action-generate-ai-text.md](workflow-steps/action-generate-ai-text.md) 以及 [workflow-steps/common-types-and-refs.md](workflow-steps/common-types-and-refs.md)）。
 
 ```json
 {
