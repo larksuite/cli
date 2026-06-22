@@ -481,6 +481,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+decline-receipt`](references/lark-mail-decline-receipt.md) | Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
+| [`+reorder-rules`](references/lark-mail-rule-reorder.md) | Reorder mail rules safely. Prefer this over raw `user_mailbox.rules reorder` because it lists current rules, fills the complete `rule_ids` order, and avoids missing-ID backend errors. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
 | [`+lint-html`](references/lark-mail-lint-html.md) | Lint mail HTML body for compatibility / safety / Feishu-native rules. Returns warnings/errors and (default) auto-fixed HTML. Read-only: no draft, no API call. Use this BEFORE creating a draft to preview what the writing-path lint would change, or as a CI gate for static HTML templates. |
@@ -560,10 +561,12 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 
 ### user_mailbox.rules
 
+> 调整收信规则顺序时优先使用 `lark-cli mail +reorder-rules`。原生 `user_mailbox.rules reorder` 必须传当前全部规则 ID 的完整有序排列，少传会被后端拒绝；shortcut 会先 list 当前规则并自动补齐。登录时需申请：`lark-cli auth login --scope "mail:user_mailbox.rule:write mail:user_mailbox.rule:read"`。
+
   - `create` — 创建收信规则
   - `delete` — 删除收信规则
   - `list` — 列出收信规则
-  - `reorder` — 对收信规则进行排序
+  - `reorder` — 对收信规则进行排序（低层 API；优先用 `+reorder-rules`）
   - `update` — 更新收信规则
 
 ### user_mailbox.sent_messages
