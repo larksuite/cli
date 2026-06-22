@@ -20,13 +20,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func newTestApiCmd(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command {
+	cmd := NewCmdApi(f, runF)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	return cmd
+}
+
+func newTestRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "lark-cli",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+	}
+}
+
 func TestApiCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -54,7 +69,7 @@ func TestApiCmd_DryRun(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--dry-run"})
 	err := cmd.Execute()
 	if err != nil {
@@ -77,7 +92,7 @@ func TestApiCmd_NullParamsWithPageSize(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--params", "null", "--page-size", "50", "--as", "bot", "--dry-run"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("--params null with --page-size should not error, got: %v", err)
@@ -98,7 +113,7 @@ func TestApiCmd_BotMode(t *testing.T) {
 		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"result": "success"}},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -125,7 +140,7 @@ func TestApiCmd_MissingArgs(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET"}) // missing path
 	err := cmd.Execute()
 	if err == nil {
@@ -138,7 +153,7 @@ func TestApiCmd_InvalidParamsJSON(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--params", "{bad"})
 	err := cmd.Execute()
 	if err == nil {
@@ -151,7 +166,7 @@ func TestApiValidArgsFunction(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	fn := cmd.ValidArgsFunction
 
 	tests := []struct {
@@ -217,7 +232,7 @@ func TestNewCmdApi_StrictModeHidesAsFlag(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
 		t.Fatal("expected --as flag to be registered")
@@ -236,7 +251,7 @@ func TestApiCmd_PageLimitDefault(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -255,7 +270,7 @@ func TestApiCmd_ParamsAndDataBothStdinConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--params", "-", "--data", "-"})
 	err := cmd.Execute()
 	if err == nil {
@@ -272,7 +287,7 @@ func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return apiRun(opts)
 	})
@@ -297,7 +312,7 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 		ContentType: "application/octet-stream",
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/drive/v1/files/xxx/download", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -328,7 +343,7 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users/u123", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err != nil {
@@ -368,7 +383,7 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/im/v1/chats/oc_xxx/announcement", "--as", "bot", "--page-all"})
 	err := cmd.Execute()
 	// Should return an error
@@ -409,7 +424,7 @@ func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err != nil {
@@ -448,7 +463,7 @@ func TestApiCmd_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err == nil {
@@ -483,7 +498,7 @@ func TestApiCmd_PageAll_BatchAPI_DefaultJSONEnvelope(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -549,8 +564,8 @@ func TestApiCmd_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -600,8 +615,8 @@ func TestApiCmd_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -656,8 +671,8 @@ func TestApiCmd_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := root.Execute()
 	if err == nil {
@@ -721,7 +736,7 @@ func TestApiCmd_JqFlag_Parsing(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -741,7 +756,7 @@ func TestApiCmd_JqFlag_ShortForm(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -760,7 +775,7 @@ func TestApiCmd_JqAndOutputConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--output", "file.bin"})
@@ -791,7 +806,7 @@ func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test/jq", "--as", "bot", "--jq", ".data.items[].name"})
 	err := cmd.Execute()
 	if err != nil {
@@ -812,7 +827,7 @@ func TestApiCmd_JqAndFormatConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--format", "ndjson"})
@@ -830,7 +845,7 @@ func TestApiCmd_JqInvalidExpression(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", "invalid["})
@@ -859,7 +874,7 @@ func TestApiCmd_PageAll_WithJq(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--jq", ".data.items[].id"})
 	err := cmd.Execute()
 	if err != nil {
@@ -880,7 +895,7 @@ func TestApiCmd_MethodUppercase(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -899,7 +914,7 @@ func TestApiCmd_FileFlagParsing(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -917,7 +932,7 @@ func TestApiCmd_FileAndOutputConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "photo.jpg", "--output", "out.json"})
@@ -934,7 +949,7 @@ func TestApiCmd_FileWithGET(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--file", "photo.jpg"})
@@ -951,7 +966,7 @@ func TestApiCmd_FileStdinConflictWithData(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "-", "--data", "-"})
@@ -974,7 +989,7 @@ func TestApiCmd_DryRunWithFile(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"POST", "/open-apis/im/v1/images", "--file", "image=" + tmpFile, "--data", `{"image_type":"message"}`, "--dry-run", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -1015,7 +1030,7 @@ func TestApiCmd_PermissionError_DerivesFirstClassFields(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/docx/v1/documents/test", "--as", "bot"})
 	err := cmd.Execute()
 	if err == nil {
@@ -1041,7 +1056,7 @@ func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
