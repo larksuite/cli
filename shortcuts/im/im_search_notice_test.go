@@ -16,6 +16,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TestImChatSearchExecutePassesThroughNotice verifies long chat queries reach
+// the server and the returned notice is preserved in JSON output.
 func TestImChatSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 	longQuery := strings.Repeat("q", 81)
@@ -55,6 +57,8 @@ func TestImChatSearchExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
+// TestImMessagesSearchExecutePassesThroughNotice verifies message search
+// preserves server notices even when the result set is empty.
 func TestImMessagesSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
@@ -86,6 +90,8 @@ func TestImMessagesSearchExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
+// newChatSearchNoticeTestCommand builds a chat-search command with typed flags
+// matching the real shortcut so notice tests exercise real request assembly.
 func newChatSearchNoticeTestCommand(t *testing.T, query string) *cobra.Command {
 	t.Helper()
 
@@ -106,6 +112,8 @@ func newChatSearchNoticeTestCommand(t *testing.T, query string) *cobra.Command {
 	return cmd
 }
 
+// decodeShortcutData extracts the JSON envelope data object written by a
+// shortcut test runtime.
 func decodeShortcutData(t *testing.T, runtime *common.RuntimeContext) map[string]interface{} {
 	t.Helper()
 

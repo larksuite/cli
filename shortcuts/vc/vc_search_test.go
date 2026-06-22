@@ -266,6 +266,8 @@ func TestSearch_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearch_ExecutePassesThroughNotice verifies meeting search preserves API
+// notices in JSON output.
 func TestSearch_ExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 

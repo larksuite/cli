@@ -401,6 +401,8 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 	return autoPaginate, pageLimit
 }
 
+// searchMessages fetches message search pages and returns the first server
+// notice alongside pagination state so Execute can surface it in every branch.
 func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 	pageToken := ""

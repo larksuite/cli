@@ -263,6 +263,8 @@ func TestIsMediaKey(t *testing.T) {
 	}
 }
 
+// TestShortcutValidateBranches covers shortcut validation branches that are
+// easier to exercise directly than through mounted commands.
 func TestShortcutValidateBranches(t *testing.T) {
 
 	t.Run("ImChatCreate valid", func(t *testing.T) {

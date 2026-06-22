@@ -12,6 +12,8 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestDocsSearchExecutePassesThroughNotice verifies search API notices are
+// preserved in docs +search JSON output.
 func TestDocsSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
