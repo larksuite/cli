@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -977,8 +978,15 @@ func TestSheetDeleteDimensionExecuteAPIError(t *testing.T) {
 		"--yes",
 		"--as", "user",
 	}, f, nil)
-	if err == nil {
-		t.Fatal("expected API error, got nil")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error type = %T, want typed problem", err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Fatalf("got category=%q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Code != 90001 {
+		t.Fatalf("got code=%d, want 90001", p.Code)
 	}
 }
 
@@ -1012,11 +1020,13 @@ func TestSheetDeleteDimensionWithoutYesRequiresConfirmation(t *testing.T) {
 		"--end-index", "7",
 		"--as", "user",
 	}, f, nil)
-	if err == nil {
-		t.Fatal("expected confirmation-required error without --yes, got nil")
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error type = %T, want typed problem (gate must produce a typed confirmation error)", err)
 	}
-	if !strings.Contains(err.Error(), "requires confirmation") {
-		t.Fatalf("expected confirmation-required error, got: %v", err)
+	if p.Category != errs.CategoryConfirmation || p.Subtype != errs.SubtypeConfirmationRequired {
+		t.Fatalf("got category=%q subtype=%q, want %q/%q",
+			p.Category, p.Subtype, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired)
 	}
 }
 
