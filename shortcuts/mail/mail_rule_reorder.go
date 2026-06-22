@@ -36,7 +36,7 @@ var MailRuleReorder = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "mailbox", Default: "me", Desc: "Mailbox email address or 'me' (default: me)"},
-		{Name: "rule-ids", Desc: "Comma-separated rule IDs in the desired order; missing rule IDs are filled automatically", Required: true},
+		{Name: "rule-ids", Desc: "Comma-separated rule IDs in the desired order; missing rule IDs are filled automatically"},
 		{Name: "append", Type: "bool", Desc: "Place --rule-ids at the end instead of the front"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {

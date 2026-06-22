@@ -132,6 +132,7 @@ func TestMailRuleReorderEmptyAndDuplicateRuleIDs(t *testing.T) {
 		args []string
 		want string
 	}{
+		{name: "missing flag", args: []string{"+reorder-rules"}, want: "--rule-ids is required"},
 		{name: "empty parsed", args: []string{"+reorder-rules", "--rule-ids", " , "}, want: "required"},
 		{name: "duplicate", args: []string{"+reorder-rules", "--rule-ids", "A,B,A"}, want: "duplicate rule id: A"},
 	}
@@ -147,6 +148,9 @@ func TestMailRuleReorderEmptyAndDuplicateRuleIDs(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+			if strings.Contains(err.Error(), "required flag") || strings.Contains(err.Error(), "Available Commands:") {
+				t.Fatalf("error = %v, want structured validation without cobra usage", err)
 			}
 		})
 	}
