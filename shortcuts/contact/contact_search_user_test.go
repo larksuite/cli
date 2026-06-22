@@ -562,8 +562,7 @@ func mountAndRun(t *testing.T, s common.Shortcut, args []string, f *cmdutil.Fact
 	return parent.Execute()
 }
 
-// searchUserStub returns a representative user search response, including a
-// server notice so JSON contract tests pin the pass-through field.
+// searchUserStub returns a representative user search response with a notice.
 func searchUserStub() *httpmock.Stub {
 	return &httpmock.Stub{
 		Method: "POST",
@@ -593,6 +592,7 @@ func searchUserStub() *httpmock.Stub {
 	}
 }
 
+// TestSearchUser_Integration_PrettyRendersExpectedColumns verifies human output columns.
 func TestSearchUser_Integration_PrettyRendersExpectedColumns(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(searchUserStub())
@@ -617,8 +617,7 @@ func TestSearchUser_Integration_PrettyRendersExpectedColumns(t *testing.T) {
 	}
 }
 
-// TestSearchUser_Integration_JSONStructuredFields verifies the JSON envelope
-// exposes normalized user fields and preserves the search API notice.
+// TestSearchUser_Integration_JSONStructuredFields verifies normalized JSON and notices.
 func TestSearchUser_Integration_JSONStructuredFields(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(searchUserStub())
@@ -1366,6 +1365,7 @@ func TestSearchUser_Integration_NoAutoPaginationFlags(t *testing.T) {
 	}
 }
 
+// TestFanout_FilterAppliedToEachQuery verifies shared fanout filters reach every request.
 func TestFanout_FilterAppliedToEachQuery(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	stub := &httpmock.Stub{
@@ -1407,8 +1407,7 @@ func TestFanout_FilterAppliedToEachQuery(t *testing.T) {
 	}
 }
 
-// TestFanout_PartialFailure_ExitZero verifies one failed fanout query does not
-// fail the command and successful query notices remain visible.
+// TestFanout_PartialFailure_ExitZero verifies partial fanout failures keep notices.
 func TestFanout_PartialFailure_ExitZero(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, searchUserDefaultConfig())
 	reg.Register(&httpmock.Stub{

@@ -12,8 +12,7 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-// TestDocsSearchExecutePassesThroughNotice verifies search API notices are
-// preserved in docs +search JSON output.
+// TestDocsSearchExecutePassesThroughNotice verifies docs +search preserves notices.
 func TestDocsSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
@@ -49,6 +48,7 @@ func TestDocsSearchExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
+// TestAddIsoTimeFieldsSupportsJSONNumber verifies JSON numbers get ISO fields.
 func TestAddIsoTimeFieldsSupportsJSONNumber(t *testing.T) {
 	t.Parallel()
 

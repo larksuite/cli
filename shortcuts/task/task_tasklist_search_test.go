@@ -126,8 +126,7 @@ func TestSearchTasklist_DryRun(t *testing.T) {
 	}
 }
 
-// TestSearchTasklist_Execute verifies tasklist search output, detail
-// enrichment, and notice pass-through for successful search responses.
+// TestSearchTasklist_Execute verifies tasklist search output, enrichment, and notices.
 func TestSearchTasklist_Execute(t *testing.T) {
 	tests := []struct {
 		name      string

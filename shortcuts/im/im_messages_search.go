@@ -386,6 +386,7 @@ func buildMessagesSearchRequest(runtime *common.RuntimeContext) (*messagesSearch
 	}, nil
 }
 
+// messagesSearchPaginationConfig derives auto-pagination mode and page limit.
 func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginate bool, pageLimit int) {
 	autoPaginate = runtime.Bool("page-all")
 	if runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-limit") {
@@ -401,8 +402,7 @@ func messagesSearchPaginationConfig(runtime *common.RuntimeContext) (autoPaginat
 	return autoPaginate, pageLimit
 }
 
-// searchMessages fetches message search pages and returns the first server
-// notice alongside pagination state so Execute can surface it in every branch.
+// searchMessages fetches message search pages and returns the first server notice.
 func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) ([]interface{}, bool, string, bool, int, string, error) {
 	autoPaginate, pageLimit := messagesSearchPaginationConfig(runtime)
 	pageToken := ""
@@ -459,6 +459,7 @@ func searchMessages(runtime *common.RuntimeContext, req *messagesSearchRequest) 
 	return allItems, lastHasMore, lastPageToken, truncatedByLimit, pageLimit, notice, nil
 }
 
+// batchMGetMessages fetches message details in API-sized batches.
 func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]interface{}, error) {
 	var items []interface{}
 	for _, batch := range chunkStrings(messageIds, messagesSearchMGetBatchSize) {
@@ -472,6 +473,7 @@ func batchMGetMessages(runtime *common.RuntimeContext, messageIds []string) ([]i
 	return items, nil
 }
 
+// batchQueryChatContexts fetches chat metadata best-effort for message rows.
 func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) map[string]map[string]interface{} {
 	chatContexts := map[string]map[string]interface{}{}
 	// Best-effort: a failed chunk only loses its own entries.
@@ -481,6 +483,7 @@ func batchQueryChatContexts(runtime *common.RuntimeContext, chatIds []string) ma
 	return chatContexts
 }
 
+// chunkStrings splits a string slice into fixed-size batches.
 func chunkStrings(items []string, chunkSize int) [][]string {
 	if len(items) == 0 || chunkSize <= 0 {
 		return nil

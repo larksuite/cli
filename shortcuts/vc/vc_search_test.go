@@ -255,6 +255,7 @@ func TestSearch_Validation_InvalidPageSize(t *testing.T) {
 	}
 }
 
+// TestSearch_DryRun verifies meeting search dry-run includes the API path.
 func TestSearch_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCSearch, []string{"+search", "--query", "test", "--dry-run", "--as", "user"}, f, stdout)
@@ -266,8 +267,7 @@ func TestSearch_DryRun(t *testing.T) {
 	}
 }
 
-// TestSearch_ExecutePassesThroughNotice verifies meeting search preserves API
-// notices in JSON output.
+// TestSearch_ExecutePassesThroughNotice verifies meeting search notice output.
 func TestSearch_ExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
@@ -303,6 +303,7 @@ func TestSearch_ExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
+// TestSearch_InvalidTimeRange verifies invalid meeting search time input fails.
 func TestSearch_InvalidTimeRange(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCSearch, []string{"+search", "--start", "bad-time", "--as", "user"}, f, nil)

@@ -191,6 +191,7 @@ var ContactSearchUser = common.Shortcut{
 	Execute: executeSearchUser,
 }
 
+// executeSearchUser dispatches contact search to single-query or fanout mode.
 func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("queries")) != "" {
 		return executeSearchUserFanout(ctx, runtime)
@@ -198,8 +199,7 @@ func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) erro
 	return executeSearchUserSingle(ctx, runtime)
 }
 
-// executeSearchUserSingle performs the single-query search path and preserves
-// server notices in structured output for callers that need retry guidance.
+// executeSearchUserSingle performs one contact search and preserves server notices.
 func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext) error {
 	body, err := buildSearchUserBody(runtime)
 	if err != nil {

@@ -20,8 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
-// TestDriveSearchExecutePassesThroughNotice verifies search API notices are
-// preserved in drive +search JSON output.
+// TestDriveSearchExecutePassesThroughNotice verifies drive +search preserves notices.
 func TestDriveSearchExecutePassesThroughNotice(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
@@ -57,8 +56,7 @@ func TestDriveSearchExecutePassesThroughNotice(t *testing.T) {
 	}
 }
 
-// TestClampOpenedTimeWindow covers the 3-month / 1-year boundary logic that
-// narrows --opened-since / --opened-until and generates the multi-slice notice.
+// TestClampOpenedTimeWindow covers opened-time clamping and slice notices.
 func TestClampOpenedTimeWindow(t *testing.T) {
 	t.Parallel()
 

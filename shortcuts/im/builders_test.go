@@ -26,9 +26,7 @@ func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	return string(b)
 }
 
-// newTestRuntimeContext builds a *common.RuntimeContext backed by a cobra
-// command whose flags are populated from the provided string and bool maps,
-// for unit-testing shortcut bodies, validators, and dry-run shapes.
+// newTestRuntimeContext builds a RuntimeContext with string and bool test flags.
 func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -59,8 +57,7 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
-// newChatSearchTestRuntimeContext registers +chat-search flags using the same
-// types as the real shortcut command. In particular, --page-size is an int flag.
+// newChatSearchTestRuntimeContext builds a chat-search RuntimeContext with typed flags.
 func newChatSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -91,9 +88,7 @@ func newChatSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
-// newMessagesSearchTestRuntimeContext is the messages-search variant of
-// newTestRuntimeContext: registers the search-specific --page-size flag
-// before applying caller-provided values.
+// newMessagesSearchTestRuntimeContext builds a messages-search RuntimeContext.
 func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -263,8 +258,7 @@ func TestIsMediaKey(t *testing.T) {
 	}
 }
 
-// TestShortcutValidateBranches covers shortcut validation branches that are
-// easier to exercise directly than through mounted commands.
+// TestShortcutValidateBranches covers direct shortcut validation branches.
 func TestShortcutValidateBranches(t *testing.T) {
 
 	t.Run("ImChatCreate valid", func(t *testing.T) {
@@ -631,6 +625,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 }
 
+// TestMessagesSearchPaginationConfig verifies page-all and page-limit behavior.
 func TestMessagesSearchPaginationConfig(t *testing.T) {
 	t.Run("default single page", func(t *testing.T) {
 		runtime := newMessagesSearchTestRuntimeContext(t, nil, nil)
@@ -674,8 +669,7 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 }
 
-// TestShortcutDryRunShapes verifies that each shortcut's DryRun function
-// produces the expected API path, query parameters, and request body.
+// TestShortcutDryRunShapes verifies shortcut dry-run API paths and payloads.
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}

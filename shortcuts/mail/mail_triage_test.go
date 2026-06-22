@@ -1478,8 +1478,7 @@ func boolPtr(v bool) *bool { return &v }
 
 // --- mailbox_id preservation tests ---
 
-// TestMailTriageStructuredOutputPreservesMailboxID verifies structured triage
-// output keeps mailbox context and preserves search notices when present.
+// TestMailTriageStructuredOutputPreservesMailboxID verifies mailbox and notice metadata.
 func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1579,6 +1578,7 @@ func TestMailTriageStructuredOutputPreservesMailboxID(t *testing.T) {
 	}
 }
 
+// TestMailTriageMissingMessageMetadataStillGetsMailboxID verifies fallback rows keep mailbox IDs.
 func TestMailTriageMissingMessageMetadataStillGetsMailboxID(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	defer reg.Verify(t)
@@ -1611,6 +1611,7 @@ func TestMailTriageMissingMessageMetadataStillGetsMailboxID(t *testing.T) {
 	}
 }
 
+// TestMailTriageTableOutputPreservesMailboxContext verifies public mailbox table hints.
 func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -1661,8 +1662,7 @@ func TestMailTriageTableOutputPreservesMailboxContext(t *testing.T) {
 	}
 }
 
-// TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr verifies pretty
-// output keeps stdout tabular while routing search notices to stderr.
+// TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr verifies stderr notices.
 func TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr(t *testing.T) {
 	const notice = "The query is too long and has been truncated to the first 50 characters for search."
 
@@ -1688,6 +1688,7 @@ func TestMailTriageDefaultTableOutputPrintsSearchNoticeToStderr(t *testing.T) {
 	}
 }
 
+// decodeMailTriageJSONOutput decodes structured triage output for assertions.
 func decodeMailTriageJSONOutput(t *testing.T, stdout interface{ Bytes() []byte }) map[string]interface{} {
 	t.Helper()
 	var data map[string]interface{}
@@ -1697,6 +1698,7 @@ func decodeMailTriageJSONOutput(t *testing.T, stdout interface{ Bytes() []byte }
 	return data
 }
 
+// mailTriageMessagesFromOutput extracts triage messages as object maps.
 func mailTriageMessagesFromOutput(t *testing.T, data map[string]interface{}) []map[string]interface{} {
 	t.Helper()
 	rawMessages, ok := data["messages"].([]interface{})
@@ -1749,8 +1751,7 @@ func registerMailTriageBatchStub(reg *httpmock.Registry, mailbox string, message
 	})
 }
 
-// registerMailTriageSearchStub registers a mailbox search response with
-// optional server notice metadata for triage output tests.
+// registerMailTriageSearchStub registers a mailbox search response for triage tests.
 func registerMailTriageSearchStub(reg *httpmock.Registry, mailbox string, items []interface{}, hasMore bool, pageToken string, notices ...string) {
 	data := map[string]interface{}{
 		"items":    items,

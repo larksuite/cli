@@ -153,8 +153,7 @@ func TestSearchTask_DryRun(t *testing.T) {
 	}
 }
 
-// TestSearchTask_Execute verifies task search output, detail enrichment, and
-// notice pass-through for successful search responses.
+// TestSearchTask_Execute verifies task search output, enrichment, and notices.
 func TestSearchTask_Execute(t *testing.T) {
 	tests := []struct {
 		name      string
