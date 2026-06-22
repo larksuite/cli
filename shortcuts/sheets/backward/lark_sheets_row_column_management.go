@@ -309,9 +309,11 @@ var SheetDeleteDimension = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+delete-dimension",
 	Description: "Delete rows or columns",
-	Risk:        "write",
-	Scopes:      []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
-	AuthTypes:   []string{"user", "bot"},
+	// Deleting rows/columns is an irreversible structural change, so it
+	// requires the same confirmation gate (--yes) as +delete-sheet.
+	Risk:      "high-risk-write",
+	Scopes:    []string{"sheets:spreadsheet:write_only", "sheets:spreadsheet:read"},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "url", Desc: "spreadsheet URL"},
 		{Name: "spreadsheet-token", Desc: "spreadsheet token"},

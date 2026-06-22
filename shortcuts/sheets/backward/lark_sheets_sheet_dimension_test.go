@@ -6,6 +6,7 @@ package backward
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -911,6 +912,7 @@ func TestSheetDeleteDimensionExecuteSuccess(t *testing.T) {
 		"--dimension", "ROWS",
 		"--start-index", "3",
 		"--end-index", "7",
+		"--yes",
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -948,6 +950,7 @@ func TestSheetDeleteDimensionExecuteWithURL(t *testing.T) {
 		"--dimension", "COLUMNS",
 		"--start-index", "1",
 		"--end-index", "2",
+		"--yes",
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -971,9 +974,107 @@ func TestSheetDeleteDimensionExecuteAPIError(t *testing.T) {
 		"--dimension", "ROWS",
 		"--start-index", "3",
 		"--end-index", "7",
+		"--yes",
 		"--as", "user",
 	}, f, nil)
 	if err == nil {
 		t.Fatal("expected API error, got nil")
+	}
+}
+
+// ── DeleteDimension: high-risk-write confirmation gate (issue #50) ────────────
+
+// TestSheetDeleteDimensionRiskIsHighRiskWrite locks the risk level so a
+// regression cannot silently drop +delete-dimension back below the confirmation
+// gate. Deleting rows/columns is an irreversible structural change and must
+// share the same risk tier as +delete-sheet.
+func TestSheetDeleteDimensionRiskIsHighRiskWrite(t *testing.T) {
+	t.Parallel()
+	if SheetDeleteDimension.Risk != "high-risk-write" {
+		t.Fatalf("SheetDeleteDimension.Risk = %q, want \"high-risk-write\"", SheetDeleteDimension.Risk)
+	}
+}
+
+// TestSheetDeleteDimensionWithoutYesRequiresConfirmation verifies that running
+// +delete-dimension without --yes is blocked by the high-risk confirmation gate
+// and never reaches the server. No HTTP stub is registered on purpose: the gate
+// must short-circuit before Execute, so any outbound request would itself be a
+// failure. Reaching a "requires confirmation" error proves the gate fired first.
+func TestSheetDeleteDimensionWithoutYesRequiresConfirmation(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+
+	err := mountAndRunSheets(t, SheetDeleteDimension, []string{
+		"+delete-dimension",
+		"--spreadsheet-token", "shtTOKEN",
+		"--sheet-id", "sheet1",
+		"--dimension", "ROWS",
+		"--start-index", "3",
+		"--end-index", "7",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected confirmation-required error without --yes, got nil")
+	}
+	if !strings.Contains(err.Error(), "requires confirmation") {
+		t.Fatalf("expected confirmation-required error, got: %v", err)
+	}
+}
+
+// TestSheetDeleteDimensionWithYesExecutes verifies that passing --yes satisfies
+// the confirmation gate and the delete is performed.
+func TestSheetDeleteDimensionWithYesExecutes(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	called := false
+	reg.Register(&httpmock.Stub{
+		Method:  "DELETE",
+		URL:     "/open-apis/sheets/v2/spreadsheets/shtTOKEN/dimension_range",
+		Body:    map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{"delCount": float64(5), "majorDimension": "ROWS"}},
+		OnMatch: func(*http.Request) { called = true },
+	})
+
+	err := mountAndRunSheets(t, SheetDeleteDimension, []string{
+		"+delete-dimension",
+		"--spreadsheet-token", "shtTOKEN",
+		"--sheet-id", "sheet1",
+		"--dimension", "ROWS",
+		"--start-index", "3",
+		"--end-index", "7",
+		"--yes",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error with --yes: %v", err)
+	}
+	if !called {
+		t.Fatal("API should be called once confirmation is satisfied with --yes")
+	}
+	if !strings.Contains(stdout.String(), `"delCount"`) {
+		t.Fatalf("stdout missing delCount: %s", stdout.String())
+	}
+}
+
+// TestSheetDeleteDimensionDryRunBypassesConfirmation verifies that --dry-run
+// previews the delete without --yes and without hitting the server: dry-run is
+// the sanctioned safe-preview path for high-risk operations, so the confirmation
+// gate must not block it. No HTTP stub is registered: a dry-run that reached the
+// network would be a failure.
+func TestSheetDeleteDimensionDryRunBypassesConfirmation(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+
+	err := mountAndRunSheets(t, SheetDeleteDimension, []string{
+		"+delete-dimension",
+		"--spreadsheet-token", "shtTOKEN",
+		"--sheet-id", "sheet1",
+		"--dimension", "ROWS",
+		"--start-index", "3",
+		"--end-index", "7",
+		"--dry-run",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("dry-run should not require --yes, got: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "DELETE") {
+		t.Fatalf("dry-run output should preview the DELETE request: %s", stdout.String())
 	}
 }
