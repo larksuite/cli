@@ -43,6 +43,23 @@ func TestBuildCreateBodyIncludesSceneFromContext(t *testing.T) {
 	}
 }
 
+func TestBuildCreateBodyPrependsTitleToContent(t *testing.T) {
+	t.Parallel()
+
+	runtime := newCreateBodyTestRuntime(context.Background())
+	if err := runtime.Cmd.Flags().Set("title", "A & B <C>"); err != nil {
+		t.Fatalf("set title: %v", err)
+	}
+	if err := runtime.Cmd.Flags().Set("content", "## Body"); err != nil {
+		t.Fatalf("set content: %v", err)
+	}
+
+	body := buildCreateBody(runtime)
+	if got, want := body["content"], "<title>A &amp; B &lt;C&gt;</title>\n## Body"; got != want {
+		t.Fatalf("content = %#v, want %q", got, want)
+	}
+}
+
 func TestBuildUpdateBodyIncludesSceneFromContext(t *testing.T) {
 	t.Parallel()
 
@@ -845,6 +862,7 @@ func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[s
 func newCreateBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+create"}
 	cmd.Flags().String("doc-format", "xml", "")
+	cmd.Flags().String("title", "", "")
 	cmd.Flags().String("content", "<title>hello</title>", "")
 	cmd.Flags().String("parent-token", "", "")
 	cmd.Flags().String("parent-position", "", "")

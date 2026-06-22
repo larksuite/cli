@@ -11,6 +11,7 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
@@ -105,4 +106,32 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDocs_CreateTitleDryRunPrependsContent(t *testing.T) {
+	// Fake creds are enough — dry-run short-circuits before any real API call.
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+create",
+			"--title", "Dry Run & Title",
+			"--doc-format", "markdown",
+			"--content", "## Body",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	require.Equal(t, "/open-apis/docs_ai/v1/documents", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "markdown", gjson.Get(out, "api.0.body.format").String(), "stdout:\n%s", out)
+	require.Equal(t, "<title>Dry Run &amp; Title</title>\n## Body", gjson.Get(out, "api.0.body.content").String(), "stdout:\n%s", out)
 }
