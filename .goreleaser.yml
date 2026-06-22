@@ -48,9 +48,9 @@ builds:
       - windows
     goarch:
       - arm64
-  # macOS: the keychain_signer calls Security.framework via runtime FFI (purego),
-  # so it is CGO-free and cross-compiles from the same ubuntu runner as
-  # linux/windows — no native macOS build runner required.
+  # macOS: the keychain signer calls Security.framework via runtime FFI (purego),
+  # so it is CGO-free, compiled into every darwin build (no build tag), and
+  # cross-compiles from the same ubuntu runner as linux/windows.
   - id: darwin
     binary: lark-cli
     main: .
@@ -58,7 +58,6 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-      - -tags=keychain_signer
     ldflags:
       - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
     goos:

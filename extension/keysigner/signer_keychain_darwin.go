@@ -1,9 +1,9 @@
-//go:build darwin && keychain_signer
+//go:build darwin
 
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// macOS non-exportable Keychain signer (build tag `keychain_signer`).
+// macOS non-exportable Keychain signer (compiled into every darwin build).
 //
 // It does NOT use the Secure Enclave / hardware TEE (which would require
 // code-signing entitlements that are unfriendly to open source). Instead it
@@ -20,7 +20,7 @@
 // cross-compiled for darwin from any host — so release binaries no longer
 // require a native macOS build runner.
 //
-// Build with:  go build -tags keychain_signer   (no cgo required)
+// Build with:  go build   (cgo-free; compiled into every darwin build, no tag)
 package keysigner
 
 import (
