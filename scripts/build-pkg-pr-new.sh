@@ -24,8 +24,9 @@ build_target() {
     ext=".exe"
   fi
 
-  # linux/windows use the pure-Go TPM signer (sks_signer); cross-compilable with
-  # CGO off. darwin's keychain_signer needs cgo, so previews stay unsigned there.
+  # linux/windows need -tags sks_signer for the pure-Go TPM signer. darwin's
+  # keychain signer is compiled into every darwin build (cgo-free, no tag), so
+  # darwin previews are signed automatically with no extra flag.
   local tags=""
   if [[ "$goos" == "linux" || "$goos" == "windows" ]]; then
     tags="-tags sks_signer"
