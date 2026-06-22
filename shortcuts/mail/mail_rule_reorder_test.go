@@ -5,6 +5,7 @@ package mail
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -145,6 +146,23 @@ func TestMailRuleReorderEmptyAndDuplicateRuleIDs(t *testing.T) {
 			}
 			if got := output.ExitCodeOf(err); got != output.ExitValidation {
 				t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %T %[1]v, want *errs.ValidationError", err)
+			}
+			if validationErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if validationErr.Param != "--rule-ids" {
+				t.Fatalf("param = %q, want --rule-ids", validationErr.Param)
+			}
+			problem, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf(%T) ok = false, want true", err)
+			}
+			if problem.Category != errs.CategoryValidation {
+				t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want substring %q", err, tt.want)
