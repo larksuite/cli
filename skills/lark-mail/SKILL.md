@@ -483,6 +483,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+send-receipt`](references/lark-mail-send-receipt.md) | Send a read-receipt reply for an incoming message that requested one (i.e. carries the READ_RECEIPT_REQUEST label). Body is auto-generated (subject / recipient / send time / read time) to match the Lark client's receipt format — callers cannot customize it, matching the industry norm that read-receipt bodies are system-generated templates, not free-form replies. Intended for agent use after the user confirms. |
 | [`+decline-receipt`](references/lark-mail-decline-receipt.md) | Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
+| [`+rule-reorder`](references/lark-mail-rule-reorder.md) | Reorder inbox rules from a partial rule ID prefix. Prefer this shortcut when the user provides only the rules to move first; it lists current rules, appends the remaining IDs in current order, then calls the raw reorder API with a complete `rule_ids` array. |
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
@@ -566,7 +567,7 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `create` — 创建收信规则
   - `delete` — 删除收信规则
   - `list` — 列出收信规则
-  - `reorder` — 对收信规则进行排序
+  - `reorder` — 对收信规则进行排序；需要完整 `rule_ids` 透传时使用。若用户只给出想前置的局部规则顺序，优先用 `mail +rule-reorder` 自动补齐剩余 ID。
   - `update` — 更新收信规则
 
 ### user_mailbox.sent_messages
