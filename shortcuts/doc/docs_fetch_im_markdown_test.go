@@ -97,6 +97,33 @@ func TestConvertToIMMarkdownCallout(t *testing.T) {
 	})
 }
 
+func TestConvertToIMMarkdownBlockquote(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "single paragraph",
+			input: `<blockquote><p>quote <a href="https://example.com">link</a></p></blockquote>`,
+			want:  "> quote [link](https://example.com)",
+		},
+		{
+			name:  "multiple paragraphs keep line breaks",
+			input: `<blockquote><p>first</p><p><b>second</b></p></blockquote>`,
+			want:  "> first\n> **second**",
+		},
+		{
+			name:  "nested blockquote keeps nested markers",
+			input: `<blockquote><p>outer</p><blockquote><p>inner</p></blockquote></blockquote>`,
+			want:  "> outer\n> > inner",
+		},
+		{
+			name:  "plain adjacent paragraphs outside blockquote stay compact",
+			input: `<p>first</p><p>second</p>`,
+			want:  "firstsecond",
+		},
+	})
+}
+
 func TestConvertToIMMarkdownGridAndColumn(t *testing.T) {
 	t.Parallel()
 

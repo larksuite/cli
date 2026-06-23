@@ -12,7 +12,8 @@ import (
 )
 
 type imMarkdownContext struct {
-	baseURL string
+	baseURL         string
+	blockquoteDepth int
 }
 
 type imMarkdownHandleFunc func(segment, inner string, attrs map[string]string, imCtx imMarkdownContext) string
@@ -119,6 +120,15 @@ func newIMMarkdownContext(docInput string) imMarkdownContext {
 		base = extracted
 	}
 	return imMarkdownContext{baseURL: base}
+}
+
+func (c imMarkdownContext) withBlockquote() imMarkdownContext {
+	c.blockquoteDepth++
+	return c
+}
+
+func (c imMarkdownContext) inBlockquote() bool {
+	return c.blockquoteDepth > 0
 }
 
 // imMarkdownBaseURLFromInput keeps the tenant host from --doc when it is a URL
@@ -257,7 +267,14 @@ func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
 }
 
 func handleIMMarkdownParagraph(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
-	return strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	if imCtx.inBlockquote() {
+		return body + "\n"
+	}
+	return body
 }
 
 func handleIMMarkdownLineBreak(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
@@ -301,7 +318,7 @@ func handleIMMarkdownCallout(_ string, inner string, attrs map[string]string, im
 }
 
 func handleIMMarkdownBlockquote(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
-	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx.withBlockquote()))
 	if body == "" {
 		return ""
 	}
