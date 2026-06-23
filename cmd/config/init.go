@@ -14,12 +14,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 )
