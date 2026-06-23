@@ -24,19 +24,13 @@ build_target() {
     ext=".exe"
   fi
 
-  # linux and windows/amd64 need -tags sks_signer for the pure-Go TPM signer.
-  # windows/arm64 is excluded: sks's Windows COM dependency (go-ole v1.2.5) has
-  # no arm64 VARIANT, so arm64 ships without the TPM signer (client_secret only)
-  # — mirroring the windows-arm64 build in .goreleaser.yml. darwin's keychain
-  # signer is compiled into every darwin build (cgo-free, no tag).
-  local tags=""
-  if [[ "$goos" == "linux" ]] || [[ "$goos" == "windows" && "$goarch" == "amd64" ]]; then
-    tags="-tags sks_signer"
-  fi
-
+  # The platform key signers are compiled in by build constraint, no tags:
+  # darwin keychain (//go:build darwin) and linux/windows-amd64 TPM
+  # (//go:build linux || (windows && amd64)). windows/arm64 arch-excludes the TPM
+  # signer (go-ole has no arm64) and falls back to client_secret only.
   local output="$OUT_DIR/bin/lark-cli-${goos}-${goarch}${ext}"
   echo "Building ${goos}/${goarch} -> ${output}"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath ${tags} -ldflags "$LDFLAGS" -o "$output" ./main.go
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$LDFLAGS" -o "$output" ./main.go
 }
 
 build_target darwin arm64
