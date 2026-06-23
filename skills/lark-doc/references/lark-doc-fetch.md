@@ -91,7 +91,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 }
 ```
 
-`content` 的格式由 `--doc-format` 决定。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+`content` 的格式由 `--doc-format` 决定；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
 
 ## 参数
 
@@ -99,7 +99,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 |------|------|------|
 | `--api-version` | 是 | 固定传 `v2` |
 | `--doc` | 是 | 文档 URL 或 token（支持 `/docx/` 和 `/wiki/`） |
-| `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `text` |
+| `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `text` \| `im-markdown`（仅用于获取内容后在 `lark-im` 场景下使用） |
 | `--detail` | 否 | `simple`（默认）\| `with-ids` \| `full` |
 | `--revision-id` | 否 | 文档版本号，`-1` = 最新（默认） |
 | `--scope` | 否 | `outline` \| `range` \| `keyword` \| `section`（省略 = 读整篇） |

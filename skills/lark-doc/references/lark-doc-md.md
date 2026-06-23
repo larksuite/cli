@@ -1,6 +1,6 @@
 # Markdown 格式参考
 
-`docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用。
+`docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用；fetch 的 `--doc-format im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用，不作为 create/update 写入格式。
 
 ## 创建文档标题
 
