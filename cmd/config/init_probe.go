@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // probeTimeout is the total wall-clock budget for the credential probe step

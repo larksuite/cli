@@ -13,9 +13,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // fakeAuthSigner is a real in-memory ECDSA P-256 signer for client-auth tests.

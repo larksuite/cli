@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/larksuite/cli/extension/keysigner"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }

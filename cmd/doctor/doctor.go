@@ -16,12 +16,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/identitydiag"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/transport"

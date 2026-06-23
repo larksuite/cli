@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // ClientAuth describes how to authenticate the OAuth client at the token

@@ -17,11 +17,11 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/keysigner"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/transport"
 )
