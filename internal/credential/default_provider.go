@@ -17,7 +17,7 @@ import (
 	"github.com/larksuite/cli/internal/keychain"
 
 	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/keysigner"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // classifyTATResponseCode wraps a deterministic (non-transient) failure from the

@@ -21,8 +21,8 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // stubRoundTripper lets us assert request shape and return canned responses.

@@ -15,10 +15,10 @@ import (
 	"github.com/spf13/cobra"
 
 	extcred "github.com/larksuite/cli/extension/credential"
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
 )
