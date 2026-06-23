@@ -267,9 +267,11 @@ func init() { Register(keychainSigner{}) }
 // (prober-less) signer as "no TEE signer in this build".
 func (keychainSigner) ProbeHardware(_ context.Context) (HardwareInfo, error) {
 	info := HardwareInfo{Backend: "keychain", VendorName: "macOS Keychain"}
-	if _, err := os.Stat(securityBin); err != nil {
+	// A missing security tool is a status (Available=false via Reason), not a
+	// probe error — so we deliberately return a nil error here.
+	if _, err := vfs.Stat(securityBin); err != nil {
 		info.Reason = securityBin + " not found"
-		return info, nil
+		return info, nil //nolint:nilerr // absence is reported via Reason, not as an error
 	}
 	info.Available = true
 	return info, nil

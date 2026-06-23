@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/larksuite/cli/extension/keysigner"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 // fakeSigner is a real in-memory ECDSA P-256 signer, so tests exercise the full
