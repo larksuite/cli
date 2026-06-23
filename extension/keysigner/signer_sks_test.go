@@ -1,4 +1,4 @@
-//go:build (linux || windows) && sks_signer
+//go:build linux || (windows && amd64)
 
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
