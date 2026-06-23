@@ -472,6 +472,18 @@ func TestConvert_EnumDescriptions(t *testing.T) {
 	if bare.EnumDescriptions != nil {
 		t.Errorf("bare enum must have nil EnumDescriptions, got %v", bare.EnumDescriptions)
 	}
+
+	// enum + options both present -> enumDescriptions backfilled, aligned, "" where absent
+	both := Convert(meta.Field{Type: "string", Enum: []any{"1", "2", "3"}, Options: []meta.Option{
+		{Value: "1", Description: "from"},
+		{Value: "2", Description: "to"},
+	}})
+	if !reflect.DeepEqual(both.Enum, []interface{}{"1", "2", "3"}) {
+		t.Errorf("both Enum = %v", both.Enum)
+	}
+	if !reflect.DeepEqual(both.EnumDescriptions, []string{"from", "to", ""}) {
+		t.Errorf("both EnumDescriptions = %v, want [from to \"\"] aligned with enum", both.EnumDescriptions)
+	}
 }
 
 func TestBuildMeta_AffordanceFromMethod(t *testing.T) {

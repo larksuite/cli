@@ -113,7 +113,8 @@ type EnumOption struct {
 }
 
 // EnumOptions returns the field's allowed values paired with their descriptions
-// — from enum, or from options when enum is absent — coerced to the canonical
+// — from enum (with descriptions backfilled from options when the field carries
+// both forms), or from options when enum is absent — coerced to the canonical
 // type and ordered: numeric and boolean values are sorted; string values keep
 // source order (which can encode priority). Uncoercible literals are dropped.
 // Returns nil when the field declares no enum constraint.
@@ -122,9 +123,14 @@ func (f Field) EnumOptions() []EnumOption {
 	var out []EnumOption
 	switch {
 	case len(f.Enum) > 0:
+		// key by raw literal so enum "1" and option 1 align across JSON types
+		desc := make(map[string]string, len(f.Options))
+		for _, o := range f.Options {
+			desc[fmt.Sprintf("%v", o.Value)] = o.Description
+		}
 		for _, e := range f.Enum {
 			if v, ok := coerceLiteral(ct, e); ok {
-				out = append(out, EnumOption{Value: v})
+				out = append(out, EnumOption{Value: v, Description: desc[fmt.Sprintf("%v", e)]})
 			}
 		}
 	case len(f.Options) > 0:
