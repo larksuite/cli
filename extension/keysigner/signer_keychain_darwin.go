@@ -259,6 +259,22 @@ type keychainSigner struct{}
 
 func init() { Register(keychainSigner{}) }
 
+// ProbeHardware reports the macOS Keychain backend backing this signer. The
+// keychain signer is compiled into every darwin build and needs no special
+// hardware, so it reports available whenever the Security tooling is present.
+// It performs no key access, so it never prompts. Implementing HardwareProber
+// is what lets `doctor` report the signer as present rather than treating the
+// (prober-less) signer as "no TEE signer in this build".
+func (keychainSigner) ProbeHardware(_ context.Context) (HardwareInfo, error) {
+	info := HardwareInfo{Backend: "keychain", VendorName: "macOS Keychain"}
+	if _, err := os.Stat(securityBin); err != nil {
+		info.Reason = securityBin + " not found"
+		return info, nil
+	}
+	info.Available = true
+	return info, nil
+}
+
 func (keychainSigner) EnsureKey(_ context.Context, ref KeyRef) (crypto.PublicKey, error) {
 	if md, err := readKeyMetadata(ref.Label); err == nil {
 		return decodePublicKey(md.PublicKey)
