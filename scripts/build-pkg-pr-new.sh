@@ -24,11 +24,13 @@ build_target() {
     ext=".exe"
   fi
 
-  # linux/windows need -tags sks_signer for the pure-Go TPM signer. darwin's
-  # keychain signer is compiled into every darwin build (cgo-free, no tag), so
-  # darwin previews are signed automatically with no extra flag.
+  # linux and windows/amd64 need -tags sks_signer for the pure-Go TPM signer.
+  # windows/arm64 is excluded: sks's Windows COM dependency (go-ole v1.2.5) has
+  # no arm64 VARIANT, so arm64 ships without the TPM signer (client_secret only)
+  # — mirroring the windows-arm64 build in .goreleaser.yml. darwin's keychain
+  # signer is compiled into every darwin build (cgo-free, no tag).
   local tags=""
-  if [[ "$goos" == "linux" || "$goos" == "windows" ]]; then
+  if [[ "$goos" == "linux" ]] || [[ "$goos" == "windows" && "$goarch" == "amd64" ]]; then
     tags="-tags sks_signer"
   fi
 
