@@ -1,8 +1,11 @@
 version: 2
 
 builds:
-  # Linux & Windows: pure-Go TPM 2.0 signer (sks_signer), cross-compiled with
-  # CGO disabled — the binaries ship the platform key signer for private_key_jwt.
+  # Linux & Windows: pure-Go TPM 2.0 signer is compiled in by default (no build
+  # tag), cross-compiled with CGO disabled — the binaries ship the platform key
+  # signer for private_key_jwt. windows/arm64 is the one exception: the sks
+  # Windows dependency stack (go-ole) has no arm64 support, so the signer file is
+  # arch-excluded there and that binary falls back to client_secret only.
   - id: linux
     binary: lark-cli
     main: .
@@ -10,7 +13,6 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-      - -tags=sks_signer
     ldflags:
       - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
     goos:
@@ -18,9 +20,6 @@ builds:
     goarch:
       - amd64
       - arm64
-  # windows/amd64 carries the sks signer. windows/arm64 ships unsigned: the sks
-  # dependency stack (certtostore -> go-ole) has no windows/arm64 support, so it
-  # falls back to client_secret only (same as before this change).
   - id: windows
     binary: lark-cli
     main: .
@@ -28,25 +27,12 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-      - -tags=sks_signer
     ldflags:
       - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
     goos:
       - windows
     goarch:
       - amd64
-  - id: windows-arm64
-    binary: lark-cli
-    main: .
-    env:
-      - CGO_ENABLED=0
-    flags:
-      - -trimpath
-    ldflags:
-      - -s -w -X github.com/larksuite/cli/internal/build.Version={{ .Version }} -X github.com/larksuite/cli/internal/build.Date={{ .Date }}
-    goos:
-      - windows
-    goarch:
       - arm64
   # macOS: the keychain signer calls Security.framework via runtime FFI (purego),
   # so it is CGO-free, compiled into every darwin build (no build tag), and
