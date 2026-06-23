@@ -99,7 +99,14 @@ var AppsInit = common.Shortcut{
 			dry.Set("dir_error", err.Error())
 			dir = defaultCloneDir(appID)
 		} else if isAlreadyInitialized(dir) {
-			dry.Set("already_initialized", true)
+			if existing, e := ensureInitDirMatchesApp(dir, appID); e != nil {
+				if existing != "" {
+					dry.Set("app_id_mismatch", existing)
+				}
+				dry.Set("dir_error", e.Error())
+			} else {
+				dry.Set("already_initialized", true)
+			}
 		} else if e := ensureEmptyDir(dir); e != nil {
 			dry.Set("dir_error", e.Error())
 		}
@@ -197,6 +204,61 @@ func ensureEmptyDir(dir string) error {
 func isAlreadyInitialized(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, metaRelPath)) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Stat rejects absolute paths.
 	return err == nil && !info.IsDir()
+}
+
+// readMetaAppID 读取 <dir>/.spark/meta.json 的 app_id，用于判断目标目录是否同一个妙搭应用。
+// 返回 (appID, isSparkProject, err)：
+//   - meta.json 不存在             → ("", false, nil)   非妙搭工程
+//   - 读取/解析失败（损坏/不可读）  → ("", false, err)   无法确认是否妙搭工程
+//   - 解析成功                     → (trim 后的 app_id, true, nil)（app_id 缺失/为空时为 ""）
+func readMetaAppID(dir string) (string, bool, error) {
+	b, err := os.ReadFile(filepath.Join(dir, metaRelPath)) //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); path is under the validated clone dir, and FileIO.Open rejects absolute paths.
+	if os.IsNotExist(err) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, appsFileIOError(err, "read %s failed: %v", metaRelPath, err)
+	}
+	var m struct {
+		AppID string `json:"app_id"`
+	}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return "", false, appsFileIOError(err, "parse %s failed: %v", metaRelPath, err)
+	}
+	return strings.TrimSpace(m.AppID), true, nil
+}
+
+// ensureInitDirMatchesApp 校验「已存在的目标目录」能否被 appID 安全复用：
+//   - 不是妙搭工程（无 meta.json）        → nil（交给 ensureEmptyDir 判空/非空）
+//   - 是妙搭工程且 app_id 与 appID 一致    → nil（走已初始化短路，复用本地代码）
+//   - 是妙搭工程但 app_id 不一致（含为空）  → 报错，提示换目录
+//   - meta.json 损坏/不可读，无法确认      → 报错（fail closed），提示换目录
+//
+// 返回值 existing 是目录里已存在的 app_id（仅"已是另一个 app"的拒绝场景非空），供调用方在
+// dry-run 里回填 app_id_mismatch，避免二次读 meta.json。
+func ensureInitDirMatchesApp(dir, appID string) (existing string, err error) {
+	existing, isSpark, readErr := readMetaAppID(dir)
+	if readErr != nil {
+		return "", appsValidationParamError("--dir",
+			"target directory %q already exists but its %s is unreadable or corrupted; cannot confirm it belongs to app %s, refusing to use it",
+			dir, metaRelPath, appID).
+			WithHint("choose a different --dir, or repair/remove the directory, before running +init").
+			WithCause(readErr)
+	}
+	if !isSpark || existing == appID {
+		return existing, nil
+	}
+	if existing == "" {
+		// meta 存在但缺 app_id：更可能是同一应用上次 +init 中断留下的半成品，而非另一个 app。
+		return "", appsValidationParamError("--dir",
+			"target directory %q has a %s without an app_id; cannot confirm it belongs to app %s, refusing to use it",
+			dir, metaRelPath, appID).
+			WithHint("remove the directory and re-run +init, or choose a different --dir")
+	}
+	return existing, appsValidationParamError("--dir",
+		"target directory %q is already initialized for a different app (%s); refusing to initialize app %s into it",
+		dir, existing, appID).
+		WithHint("choose a different --dir (or cd into the matching project) before running +init")
 }
 
 // ensureMetaAppID patches <dir>/.spark/meta.json to include app_id when the file
@@ -375,6 +437,11 @@ func appsInitExecute(ctx context.Context, rctx *common.RuntimeContext) error {
 
 	dir, err := resolveTargetPath(rctx, appID)
 	if err != nil {
+		return err
+	}
+
+	// 异 app 目录护栏：拒绝把当前 app 初始化进另一个 app 的已初始化工程。
+	if _, err := ensureInitDirMatchesApp(dir, appID); err != nil {
 		return err
 	}
 
