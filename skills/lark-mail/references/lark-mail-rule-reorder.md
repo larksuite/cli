@@ -90,7 +90,7 @@ lark-cli mail +reorder-rules --rule-ids C,A --dry-run
 }
 ```
 
-没有任何收信规则且未提供有效规则 ID 时返回 no-op success，不会调用 reorder；如果提供了 `--rule-ids`，会返回校验错误。
+`--rule-ids` 必须至少包含一个有效规则 ID。当前邮箱没有任何收信规则时，传入任意规则 ID 都会返回校验错误，不会调用 reorder。
 
 ## 常见错误
 
