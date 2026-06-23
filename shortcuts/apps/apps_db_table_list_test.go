@@ -14,12 +14,11 @@ import (
 
 // TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope 验证 server 业务错误
 // （code != 0，如单环境 app 查 env=dev 返 "Invalid DB Branch"）被 CLI 透出成
-// typed error —— 用 BOE 实测的错误码 / 文案做输入。
+// typed error —— 用真实观测到的错误码 / 文案做输入。
 //
-// 迁移到 runtime.CallAPITyped 后，非零 code 的业务错误由 errclass.BuildAPIError
-// 归类为 typed errs.* error（wire type 为 "api" 类别，不再是 legacy 的
-// *output.ExitError / "api_error"），但仍保留 code 与 message。与 drive/okr 等
-// 已迁移域一致：用 errs.ProblemOf 读 typed envelope，断言不弱化。
+// 非零 code 的业务错误由 errclass.BuildAPIError 归类为 typed errs.* error
+// （wire type 为 "api" 类别），保留 code 与 message。与 drive/okr 等域一致：
+// 用 errs.ProblemOf 读 typed envelope，断言不弱化。
 func TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

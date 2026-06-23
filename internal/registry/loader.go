@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/meta"
 )
 
 //go:embed scope_priorities.json scope_overrides.json
@@ -22,68 +23,42 @@ var registryFS embed.FS
 // embeddedMetaJSON is set by loader_embedded.go when meta_data.json is compiled in.
 var embeddedMetaJSON []byte
 
-// EmbeddedMetaJSON returns the raw embedded meta_data.json bytes for callers
-// that need to parse key order or other JSON-level structure not exposed by
-// LoadFromMeta (which loses map insertion order).
-func EmbeddedMetaJSON() []byte {
-	return embeddedMetaJSON
-}
-
 var (
-	embeddedServicesMap  map[string]map[string]interface{} // service name -> spec
-	embeddedServiceNames []string                          // sorted
-	embeddedParseOnce    sync.Once
+	embeddedServices       []meta.Service          // parsed once, sorted by name (no overlay)
+	embeddedServicesByName map[string]meta.Service // same, keyed by name
+	embeddedVersion        string                  // version from embedded meta_data.json
+	embeddedParseOnce      sync.Once
 )
 
-// parseEmbeddedServices parses embeddedMetaJSON into a service name → spec map
-// without touching mergedServices. Safe to call multiple times (sync.Once).
-func parseEmbeddedServices() {
+// parseEmbedded decodes the embedded meta_data.json into the typed model exactly
+// once. It is the single parse of the embedded bytes: both the overlay-free
+// envelope path (EmbeddedServicesTyped) and the merged command/scope path
+// (loadEmbeddedIntoMerged) build from this result, so the JSON is never parsed
+// twice and no map round-trip is needed downstream.
+func parseEmbedded() {
 	embeddedParseOnce.Do(func() {
-		embeddedServicesMap = make(map[string]map[string]interface{})
-		if len(embeddedMetaJSON) == 0 {
-			return
+		reg, _ := meta.Parse(embeddedMetaJSON)
+		embeddedVersion = reg.Version
+		embeddedServices = reg.Services
+		sort.Slice(embeddedServices, func(i, j int) bool { return embeddedServices[i].Name < embeddedServices[j].Name })
+		embeddedServicesByName = make(map[string]meta.Service, len(embeddedServices))
+		for _, svc := range embeddedServices {
+			embeddedServicesByName[svc.Name] = svc
 		}
-		var wrapper struct {
-			Services []map[string]interface{} `json:"services"`
-		}
-		if err := json.Unmarshal(embeddedMetaJSON, &wrapper); err != nil {
-			return
-		}
-		for _, svc := range wrapper.Services {
-			name, _ := svc["name"].(string)
-			if name == "" {
-				continue
-			}
-			embeddedServicesMap[name] = svc
-		}
-		embeddedServiceNames = make([]string, 0, len(embeddedServicesMap))
-		for name := range embeddedServicesMap {
-			embeddedServiceNames = append(embeddedServiceNames, name)
-		}
-		sort.Strings(embeddedServiceNames)
 	})
 }
 
-// EmbeddedSpec returns the embedded spec for one service, or nil if unknown.
-// Bypasses remote overlay — used for deterministic envelope output.
-func EmbeddedSpec(serviceName string) map[string]interface{} {
-	parseEmbeddedServices()
-	return embeddedServicesMap[serviceName]
-}
-
-// EmbeddedServiceNames returns sorted embedded service names (no overlay).
-// Returns a defensive copy — callers must not mutate the package-level slice.
-func EmbeddedServiceNames() []string {
-	parseEmbeddedServices()
-	out := make([]string, len(embeddedServiceNames))
-	copy(out, embeddedServiceNames)
-	return out
+// EmbeddedServicesTyped returns the embedded services (no remote overlay) as the
+// typed meta model, sorted by name. This is the overlay-free parse boundary the
+// schema envelope builds from — deterministic across machines.
+func EmbeddedServicesTyped() []meta.Service {
+	parseEmbedded()
+	return embeddedServices
 }
 
 var (
-	mergedServices    = make(map[string]map[string]interface{}) // project name → parsed spec
-	mergedProjectList []string                                  // sorted project names
-	embeddedVersion   string                                    // version from embedded meta_data.json
+	mergedServices    = make(map[string]meta.Service) // project name → typed service (embedded + overlay)
+	mergedProjectList []string                        // sorted project names
 	initOnce          sync.Once
 )
 
@@ -106,8 +81,8 @@ func InitWithBrand(brand core.LarkBrand) {
 		// 2. Remote overlay
 		if remoteEnabled() && cacheWritable() {
 			// Check if brand changed since last cache
-			meta, metaErr := loadCacheMeta()
-			brandChanged := metaErr == nil && meta.Brand != "" && meta.Brand != string(brand)
+			cm, metaErr := loadCacheMeta()
+			brandChanged := metaErr == nil && cm.Brand != "" && cm.Brand != string(brand)
 
 			if !brandChanged {
 				if cached, err := loadCachedMerged(); err == nil {
@@ -117,7 +92,7 @@ func InitWithBrand(brand core.LarkBrand) {
 			if len(mergedServices) == 0 || brandChanged {
 				// No data at all or brand changed — must sync fetch
 				doSyncFetch()
-			} else if shouldRefresh(meta) || metaErr != nil {
+			} else if shouldRefresh(cm) || metaErr != nil {
 				// Have embedded/cached data; refresh in background if TTL expired or first run
 				triggerBackgroundRefresh()
 			}
@@ -127,18 +102,13 @@ func InitWithBrand(brand core.LarkBrand) {
 	})
 }
 
-// loadEmbeddedIntoMerged parses the embedded meta_data.json and populates
-// mergedServices. No-op if meta_data.json is not compiled in.
+// loadEmbeddedIntoMerged seeds mergedServices from the embedded typed services
+// (the same parse EmbeddedServicesTyped uses). No-op if no services compiled in.
 func loadEmbeddedIntoMerged() {
-	if len(embeddedMetaJSON) == 0 {
-		return
+	parseEmbedded()
+	for name, svc := range embeddedServicesByName {
+		mergedServices[name] = svc
 	}
-	var reg MergedRegistry
-	if err := json.Unmarshal(embeddedMetaJSON, &reg); err != nil {
-		return
-	}
-	embeddedVersion = reg.Version
-	overlayMergedServices(&reg)
 }
 
 // rebuildProjectList rebuilds the sorted list of project names from mergedServices.
@@ -150,83 +120,32 @@ func rebuildProjectList() {
 	sort.Strings(mergedProjectList)
 }
 
-var cachedAllScopes map[string][]string
+var (
+	servicesTyped     []meta.Service
+	servicesTypedOnce sync.Once
+)
 
-// CollectAllScopesFromMeta collects all unique scopes from from_meta/*.json
-// for the given identity ("user" or "tenant"). Results are deduplicated and sorted.
-func CollectAllScopesFromMeta(identity string) []string {
-	if cachedAllScopes == nil {
-		cachedAllScopes = make(map[string][]string)
-	}
-	if cached, ok := cachedAllScopes[identity]; ok {
-		return cached
-	}
-
-	scopeSet := make(map[string]bool)
-	for _, project := range ListFromMetaProjects() {
-		spec := LoadFromMeta(project)
-		if spec == nil {
-			continue
+// ServicesTyped returns the merged registry (embedded + remote overlay) as typed
+// meta.Services, sorted by name. The merged store is already typed, so this just
+// projects it into a sorted slice — no map round-trip. This is the typed entry
+// the command tree and scope computation build from.
+func ServicesTyped() []meta.Service {
+	servicesTypedOnce.Do(func() {
+		Init()
+		servicesTyped = make([]meta.Service, 0, len(mergedProjectList))
+		for _, name := range mergedProjectList {
+			servicesTyped = append(servicesTyped, mergedServices[name])
 		}
-		resources, ok := spec["resources"].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		for _, resSpec := range resources {
-			resMap, ok := resSpec.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			methods, ok := resMap["methods"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			for _, methodSpec := range methods {
-				methodMap, ok := methodSpec.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				// Check if method supports the requested identity
-				if tokens, ok := methodMap["accessTokens"].([]interface{}); ok {
-					supported := false
-					for _, t := range tokens {
-						if ts, ok := t.(string); ok && ts == IdentityToAccessToken(identity) {
-							supported = true
-							break
-						}
-					}
-					if !supported {
-						continue
-					}
-				}
-				// Collect scopes
-				scopes, ok := methodMap["scopes"].([]interface{})
-				if !ok {
-					continue
-				}
-				for _, s := range scopes {
-					if str, ok := s.(string); ok {
-						scopeSet[str] = true
-					}
-				}
-			}
-		}
-	}
-
-	result := make([]string, 0, len(scopeSet))
-	for s := range scopeSet {
-		result = append(result, s)
-	}
-	sort.Strings(result)
-	cachedAllScopes[identity] = result
-	return result
+	})
+	return servicesTyped
 }
 
-// LoadFromMeta loads a service schema by project name.
-// It returns data from the merged registry (embedded + cached remote overlay).
-func LoadFromMeta(project string) map[string]interface{} {
+// ServiceTyped returns one merged service (embedded + overlay) by name, or false
+// if unknown.
+func ServiceTyped(name string) (meta.Service, bool) {
 	Init()
-	return mergedServices[project]
+	svc, ok := mergedServices[name]
+	return svc, ok
 }
 
 // ListFromMetaProjects lists available service project names (sorted).

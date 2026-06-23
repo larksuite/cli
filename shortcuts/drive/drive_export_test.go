@@ -52,6 +52,15 @@ func TestValidateDriveExportSpec(t *testing.T) {
 			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base"},
 		},
 		{
+			name: "base bitable only schema ok",
+			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base", OnlySchema: true},
+		},
+		{
+			name:    "only schema non base rejected",
+			spec:    driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "xlsx", OnlySchema: true},
+			wantErr: "--only-schema is only used",
+		},
+		{
 			name: "slides pptx ok",
 			spec: driveExportSpec{Token: "slides123", DocType: "slides", FileExtension: "pptx"},
 		},
@@ -612,6 +621,7 @@ func TestDriveExportBitableBaseAsyncSuccess(t *testing.T) {
 		"--token", "bitable123",
 		"--doc-type", "bitable",
 		"--file-extension", "base",
+		"--only-schema",
 		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
@@ -627,6 +637,9 @@ func TestDriveExportBitableBaseAsyncSuccess(t *testing.T) {
 	}
 	if createBody["type"] != "bitable" {
 		t.Fatalf("export_tasks body type = %v, want %q", createBody["type"], "bitable")
+	}
+	if createBody["only_schema"] != true {
+		t.Fatalf("export_tasks body only_schema = %v, want true", createBody["only_schema"])
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "crm.base"))

@@ -313,14 +313,16 @@ func cleanupFeedShortcuts(parentT *testing.T, defaultAs string, chatIDs ...strin
 }
 
 // TestIM_FeedShortcutDryRun covers all three shortcuts in --dry-run mode
-// using fake credentials. This is the only test that runs without a real
-// user token because dry-run short-circuits before any network call.
+// using env-only identity hints. strict_mode/default_as lock the command to
+// user identity without injecting a fake user token that would trigger
+// user_info verification during startup.
 func TestIM_FeedShortcutDryRun(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
-	t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "fake_user_token")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "user")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

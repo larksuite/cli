@@ -80,7 +80,7 @@ func TestMail_DraftSendWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		primaryEmail = gjson.Get(result.Stdout, "data.primary_email_address").String()
 		require.NotEmpty(t, primaryEmail, "stdout:\n%s", result.Stdout)

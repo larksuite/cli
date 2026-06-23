@@ -16,8 +16,8 @@ import (
 
 // assertContentValidationHint asserts err is a typed *errs.ValidationError
 // carrying SubtypeInvalidArgument, Param "--content", and a Hint containing
-// the given substring. The over-cap message now flows through a typed
-// ValidationError instead of the legacy *output.ExitError.Detail shape.
+// the given substring. The over-cap message flows through a typed
+// ValidationError.
 func assertContentValidationHint(t *testing.T, err error, wantHint string) {
 	t.Helper()
 	var valErr *errs.ValidationError
@@ -134,6 +134,20 @@ func TestParseCommentDocRef(t *testing.T) {
 			wantToken: "fileToken",
 		},
 		{
+			name:      "raw token with type bitable",
+			input:     "baseToken",
+			docType:   "bitable",
+			wantKind:  "base",
+			wantToken: "baseToken",
+		},
+		{
+			name:      "raw token with type base alias",
+			input:     "baseToken",
+			docType:   "base",
+			wantKind:  "base",
+			wantToken: "baseToken",
+		},
+		{
 			name:    "raw token without type",
 			input:   "xxxxxx",
 			wantErr: "--type is required",
@@ -155,6 +169,18 @@ func TestParseCommentDocRef(t *testing.T) {
 			input:     "https://example.larksuite.com/file/boxcn123?from=share",
 			wantKind:  "file",
 			wantToken: "boxcn123",
+		},
+		{
+			name:      "base url",
+			input:     "https://example.larksuite.com/base/baseToken123?table=tbl1",
+			wantKind:  "base",
+			wantToken: "baseToken123",
+		},
+		{
+			name:      "bitable url",
+			input:     "https://example.larksuite.com/bitable/baseToken456?table=tbl1",
+			wantKind:  "base",
+			wantToken: "baseToken456",
 		},
 		{
 			name:    "unsupported url",
@@ -726,6 +752,35 @@ func TestBuildCommentCreateV2RequestSheetOverridesBlockID(t *testing.T) {
 	}
 }
 
+func TestBuildBaseCommentCreateV2Request(t *testing.T) {
+	t.Parallel()
+	replyElements := []map[string]interface{}{
+		{"type": "text", "text": "base comment"},
+	}
+	got := buildBaseCommentCreateV2Request(replyElements, baseAnchor{
+		BlockID:      "tbl9mp6fj9kDKHQV",
+		BaseRecordID: "recBIBgGmb",
+		BaseViewID:   "vewc46MG1R",
+	})
+
+	if got["file_type"] != "bitable" {
+		t.Fatalf("expected file_type bitable, got %#v", got["file_type"])
+	}
+	anchor, ok := got["anchor"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected anchor map, got %#v", got["anchor"])
+	}
+	if anchor["block_id"] != "tbl9mp6fj9kDKHQV" {
+		t.Fatalf("expected block_id tbl9mp6fj9kDKHQV, got %#v", anchor["block_id"])
+	}
+	if anchor["base_record_id"] != "recBIBgGmb" {
+		t.Fatalf("expected base_record_id recBIBgGmb, got %#v", anchor["base_record_id"])
+	}
+	if anchor["base_view_id"] != "vewc46MG1R" {
+		t.Fatalf("expected base_view_id vewc46MG1R, got %#v", anchor["base_view_id"])
+	}
+}
+
 // ── Sheet cell ref parsing tests ────────────────────────────────────────────
 
 func TestParseSheetCellRef(t *testing.T) {
@@ -985,6 +1040,78 @@ func TestFileCommentValidateRejectsSelectionWithEllipsis(t *testing.T) {
 	}
 }
 
+func TestBaseCommentValidateMissingBlockID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/base/baseToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--as", "user",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "--block-id is required") {
+		t.Fatalf("expected block-id required error, got: %v", err)
+	}
+}
+
+func TestBaseCommentValidateMalformedBlockID(t *testing.T) {
+	cases := []string{
+		"tbl9mp6fj9kDKHQV",
+		"tbl9mp6fj9kDKHQV!recBIBgGmb",
+		"tbl9mp6fj9kDKHQV!!vewc46MG1R",
+	}
+	for _, blockID := range cases {
+		t.Run(blockID, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			err := mountAndRunDrive(t, DriveAddComment, []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/base/baseToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--block-id", blockID,
+				"--as", "user",
+			}, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), "<table-id>!<record-id>!<view-id>") {
+				t.Fatalf("expected block-id format error, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestBaseCommentValidateRejectsIncompatibleFlags(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "full comment",
+			args:    []string{"--full-comment"},
+			wantErr: "--full-comment is not applicable for base(bitable) comments",
+		},
+		{
+			name:    "selection",
+			args:    []string{"--selection-with-ellipsis", "some text"},
+			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+			args := []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/base/baseToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+				"--as", "user",
+			}
+			args = append(args, tc.args...)
+			err := mountAndRunDrive(t, DriveAddComment, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected %q error, got: %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 // ── Slides comment execute tests ────────────────────────────────────────────
 
 func TestSlidesCommentExecuteSuccess(t *testing.T) {
@@ -1192,6 +1319,87 @@ func TestSheetCommentViaWikiMissingBlockID(t *testing.T) {
 	}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "--block-id is required") {
 		t.Fatalf("expected block-id required error, got: %v", err)
+	}
+}
+
+func TestBaseCommentExecuteSuccess(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	createStub := &httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/baseToken/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"comment_id": "baseComment123",
+				"reply_id":   "baseReply123",
+				"created_at": 1700000000,
+			},
+		},
+	}
+	reg.Register(createStub)
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/base/baseToken",
+		"--content", `[{"type":"text","text":"请看这条记录"}]`,
+		"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var requestBody map[string]interface{}
+	if err := json.Unmarshal(createStub.CapturedBody, &requestBody); err != nil {
+		t.Fatalf("failed to decode captured body: %v\nbody:\n%s", err, string(createStub.CapturedBody))
+	}
+	if got := mustStringField(t, requestBody, "file_type", "request.file_type"); got != "bitable" {
+		t.Fatalf("request file_type = %q, want bitable", got)
+	}
+	anchor := mustMapValue(t, requestBody["anchor"], "request.anchor")
+	if got := mustStringField(t, anchor, "block_id", "request.anchor.block_id"); got != "tbl9mp6fj9kDKHQV" {
+		t.Fatalf("request block_id = %q, want tbl9mp6fj9kDKHQV", got)
+	}
+	if got := mustStringField(t, anchor, "base_record_id", "request.anchor.base_record_id"); got != "recBIBgGmb" {
+		t.Fatalf("request base_record_id = %q, want recBIBgGmb", got)
+	}
+	if got := mustStringField(t, anchor, "base_view_id", "request.anchor.base_view_id"); got != "vewc46MG1R" {
+		t.Fatalf("request base_view_id = %q, want vewc46MG1R", got)
+	}
+
+	out := decodeJSONMap(t, stdout.String())
+	data := mustMapValue(t, out["data"], "data")
+	if got := mustStringField(t, data, "file_type", "data.file_type"); got != "bitable" {
+		t.Fatalf("stdout file_type = %q, want bitable\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "comment_mode", "data.comment_mode"); got != "base_record" {
+		t.Fatalf("stdout comment_mode = %q, want base_record\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, data, "reply_id", "data.reply_id"); got != "baseReply123" {
+		t.Fatalf("stdout reply_id = %q, want baseReply123\nstdout:\n%s", got, stdout.String())
+	}
+}
+
+func TestBaseCommentExecuteBareToken(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/drive/v1/files/baseBareToken/new_comments",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{"comment_id": "baseBareComment"},
+		},
+	})
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "baseBareToken",
+		"--type", "bitable",
+		"--content", `[{"type":"text","text":"ok"}]`,
+		"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "baseBareComment") {
+		t.Fatalf("stdout missing comment_id: %s", stdout.String())
 	}
 }
 
@@ -1433,6 +1641,40 @@ func TestDryRunSlidesDirectURL(t *testing.T) {
 	}
 }
 
+func TestDryRunBaseDirectURL(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
+	err := mountAndRunDrive(t, DriveAddComment, []string{
+		"+add-comment",
+		"--doc", "https://example.larksuite.com/base/baseToken",
+		"--content", `[{"type":"text","text":"test"}]`,
+		"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "record-local comment") {
+		t.Fatalf("dry-run output missing record-local comment: %s", stdout.String())
+	}
+	out := decodeJSONMap(t, stdout.String())
+	api := mustSliceValue(t, out["api"], "api")
+	call := mustMapValue(t, api[0], "api[0]")
+	body := mustMapValue(t, call["body"], "api[0].body")
+	anchor := mustMapValue(t, body["anchor"], "api[0].body.anchor")
+	if got := mustStringField(t, body, "file_type", "api[0].body.file_type"); got != "bitable" {
+		t.Fatalf("dry-run body.file_type = %q, want bitable\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, anchor, "block_id", "api[0].body.anchor.block_id"); got != "tbl9mp6fj9kDKHQV" {
+		t.Fatalf("dry-run body.anchor.block_id = %q, want tbl9mp6fj9kDKHQV\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, anchor, "base_record_id", "api[0].body.anchor.base_record_id"); got != "recBIBgGmb" {
+		t.Fatalf("dry-run body.anchor.base_record_id = %q, want recBIBgGmb\nstdout:\n%s", got, stdout.String())
+	}
+	if got := mustStringField(t, anchor, "base_view_id", "api[0].body.anchor.base_view_id"); got != "vewc46MG1R" {
+		t.Fatalf("dry-run body.anchor.base_view_id = %q, want vewc46MG1R\nstdout:\n%s", got, stdout.String())
+	}
+}
+
 func TestDryRunWikiResolvesToSlides(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -1636,25 +1878,92 @@ func TestResolveWikiToDocxFullComment(t *testing.T) {
 	}
 }
 
-func TestResolveWikiToUnsupportedType(t *testing.T) {
-	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
-	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "success",
-			"data": map[string]interface{}{
-				"node": map[string]interface{}{"obj_type": "bitable", "obj_token": "bitToken"},
-			},
+func TestResolveWikiToBaseComment(t *testing.T) {
+	for _, objType := range []string{"bitable", "base"} {
+		t.Run(objType, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{
+						"node": map[string]interface{}{"obj_type": objType, "obj_token": "bitToken"},
+					},
+				},
+			})
+			reg.Register(&httpmock.Stub{
+				Method: "POST", URL: "/open-apis/drive/v1/files/bitToken/new_comments",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{"comment_id": "wikiBaseComment", "reply_id": "wikiBaseReply"},
+				},
+			})
+			err := mountAndRunDrive(t, DriveAddComment, []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/wiki/wikiToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--block-id", "tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R",
+				"--as", "user",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(stdout.String(), "wikiBaseComment") {
+				t.Fatalf("stdout missing comment_id: %s", stdout.String())
+			}
+			out := decodeJSONMap(t, stdout.String())
+			data := mustMapValue(t, out["data"], "data")
+			if got := mustStringField(t, data, "file_type", "data.file_type"); got != "bitable" {
+				t.Fatalf("stdout file_type = %q, want bitable\nstdout:\n%s", got, stdout.String())
+			}
+			if got := mustStringField(t, data, "wiki_token", "data.wiki_token"); got != "wikiToken" {
+				t.Fatalf("stdout wiki_token = %q, want wikiToken\nstdout:\n%s", got, stdout.String())
+			}
+		})
+	}
+}
+
+func TestResolveWikiToBaseRejectsIncompatibleFlags(t *testing.T) {
+	cases := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "full comment",
+			args:    []string{"--full-comment"},
+			wantErr: "--full-comment is not applicable for base(bitable) comments",
 		},
-	})
-	err := mountAndRunDrive(t, DriveAddComment, []string{
-		"+add-comment",
-		"--doc", "https://example.larksuite.com/wiki/wikiToken",
-		"--content", `[{"type":"text","text":"test"}]`,
-		"--as", "user",
-	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only support doc/docx/file/sheet/slides") {
-		t.Fatalf("expected unsupported type error, got: %v", err)
+		{
+			name:    "selection",
+			args:    []string{"--selection-with-ellipsis", "some text"},
+			wantErr: "--selection-with-ellipsis is not applicable for base(bitable) comments",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+			reg.Register(&httpmock.Stub{
+				Method: "GET", URL: "/open-apis/wiki/v2/spaces/get_node",
+				Body: map[string]interface{}{
+					"code": 0, "msg": "success",
+					"data": map[string]interface{}{
+						"node": map[string]interface{}{"obj_type": "bitable", "obj_token": "bitToken"},
+					},
+				},
+			})
+			args := []string{
+				"+add-comment",
+				"--doc", "https://example.larksuite.com/wiki/wikiToken",
+				"--content", `[{"type":"text","text":"test"}]`,
+				"--as", "user",
+			}
+			args = append(args, tc.args...)
+			err := mountAndRunDrive(t, DriveAddComment, args, f, stdout)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected %q error, got: %v", tc.wantErr, err)
+			}
+		})
 	}
 }
 
@@ -1735,7 +2044,7 @@ func TestDocOldFormatLocalCommentRejected(t *testing.T) {
 		"--block-id", "blk_123",
 		"--as", "user",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "only support docx, sheet, and slides") {
+	if err == nil || !strings.Contains(err.Error(), "only support docx, sheet, slides, and base(bitable)") {
 		t.Fatalf("expected local comment rejection for old doc, got: %v", err)
 	}
 }

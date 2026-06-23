@@ -194,7 +194,7 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		spreadsheetToken = gjson.Get(result.Stdout, "data.spreadsheet.spreadsheet_token").String()
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token should not be empty, stdout: %s", result.Stdout)
@@ -218,7 +218,7 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, spreadsheetToken, gjson.Get(result.Stdout, "data.spreadsheet.token").String())
 		assert.NotEmpty(t, gjson.Get(result.Stdout, "data.spreadsheet.url").String())
@@ -236,7 +236,7 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		// Verify the title was updated by fetching the spreadsheet
 		getResult, err := clie2e.RunCmd(ctx, clie2e.Request{
@@ -246,7 +246,7 @@ func TestSheets_SpreadsheetsResource(t *testing.T) {
 		})
 		require.NoError(t, err)
 		getResult.AssertExitCode(t, 0)
-		getResult.AssertStdoutStatus(t, 0)
+		getResult.AssertStdoutStatus(t, true)
 
 		// Verify the title was actually updated
 		assert.Equal(t, updatedTitle, gjson.Get(getResult.Stdout, "data.spreadsheet.title").String())

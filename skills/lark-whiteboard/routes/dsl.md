@@ -8,7 +8,7 @@
 Step 1: 路由 & 读取知识
   - 读对应 scene 指南 — 了解结构特征和布局策略
   - 确定布局策略（见下方快速判断）和构建方式
-  - 读 references/ 核心模块 — 语法、布局、配色、排版、连线
+  - 读 elements/ 核心模块 — 语法、布局、配色、排版、连线
 
 Step 2: 生成完整 DSL（含颜色）
   - 按 content.md 规划信息量和分组
@@ -37,7 +37,7 @@ Step 3: 渲染 & 审查 → 交付
   - 交付：向用户报告 board_token 写入成功
 ```
 
-**布局策略快速判断**（详见 `references/layout.md`）：
+**布局策略快速判断**（详见 `elements/layout.md`）：
 
 先定**主布局**，再定子布局：**结构化信息**优先用 Flex，**关系链路**优先用 Dagre，**灵活定位**用绝对布局。
 
@@ -47,14 +47,14 @@ Step 3: 渲染 & 审查 → 交付
 
 ### 核心参考（必读）
 
-| 模块     | 文件                       | 说明                            |
-| -------- | -------------------------- | ------------------------------- |
-| DSL 语法 | `references/schema.md`     | 节点类型、属性、尺寸值          |
-| 内容规划 | `references/content.md`    | 信息提取、密度决策、连线预判    |
-| 布局系统 | `references/layout.md`     | 网格方法论、Flex 映射、间距规则 |
-| 排版规则 | `references/typography.md` | 字号层级、对齐、行距            |
-| 连线系统 | `references/connectors.md` | 拓扑规划、锚点选择              |
-| 配色系统 | `references/style.md`      | 多色板、视觉层级                |
+| 模块     | 文件                         | 说明                            |
+| -------- |----------------------------| ------------------------------- |
+| DSL 语法 | `elements/schema.md`       | 节点类型、属性、尺寸值          |
+| 内容规划 | `elements/content.md`    | 信息提取、密度决策、连线预判    |
+| 布局系统 | `elements/layout.md`     | 网格方法论、Flex 映射、间距规则 |
+| 排版规则 | `elements/typography.md` | 字号层级、对齐、行距            |
+| 连线系统 | `elements/connectors.md` | 拓扑规划、锚点选择              |
+| 配色系统 | `elements/style.md`      | 多色板、视觉层级                |
 
 ### 场景指南（按类型选读一个）
 
@@ -73,7 +73,7 @@ Step 3: 渲染 & 审查 → 交付
 | 循环/飞轮图 | `scenes/flywheel.md`     | 增长飞轮、闭环链路                     |
 | 里程碑      | `scenes/milestone.md`    | 时间线、版本演进                       |
 | 流程图      | `scenes/flowchart.md`    | 业务流、状态机、带条件判断的链路       |
-| 图片展示    | `scenes/photo-showcase.md` | 用户显式要求图片/配图/插图时（需先完成 `references/image.md` 的图片准备） |
+| 图片展示    | `scenes/photo-showcase.md` | 用户显式要求图片/配图/插图时（需先完成 `elements/image.md` 的图片准备） |
 
 ## 渲染前自查
 

@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // saveAndRestoreWorkspace ensures package-level currentWorkspace is reset
@@ -24,12 +26,15 @@ func TestNotConfiguredError_Local(t *testing.T) {
 	SetCurrentWorkspace(WorkspaceLocal)
 
 	err := NotConfiguredError()
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
-	if cfgErr.Type != "config" || cfgErr.Message != "not configured" {
-		t.Errorf("unexpected detail: %+v", cfgErr)
+	if cfgErr.Category != errs.CategoryConfig || cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("category/subtype = %q/%q, want config/not_configured", cfgErr.Category, cfgErr.Subtype)
+	}
+	if cfgErr.Message != "not configured" {
+		t.Errorf("message = %q, want %q", cfgErr.Message, "not configured")
 	}
 	if !strings.Contains(cfgErr.Hint, "config init --new") {
 		t.Errorf("local hint should suggest config init --new; got %q", cfgErr.Hint)
@@ -44,12 +49,17 @@ func TestNotConfiguredError_OpenClaw(t *testing.T) {
 	SetCurrentWorkspace(WorkspaceOpenClaw)
 
 	err := NotConfiguredError()
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
-	if cfgErr.Type != "openclaw" {
-		t.Errorf("type = %q, want %q", cfgErr.Type, "openclaw")
+	// The wire subtype stays not_configured; the workspace name only appears
+	// in the message, never in the typed taxonomy.
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+	}
+	if !strings.Contains(cfgErr.Message, "openclaw") {
+		t.Errorf("message must name the openclaw workspace; got %q", cfgErr.Message)
 	}
 	// Hint must point at --help (read first, confirm with user, then bind),
 	// NOT a directly-executable bind command — binding is policy-laden
@@ -67,12 +77,15 @@ func TestNotConfiguredError_Hermes(t *testing.T) {
 	SetCurrentWorkspace(WorkspaceHermes)
 
 	err := NotConfiguredError()
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
-	if cfgErr.Type != "hermes" {
-		t.Errorf("type = %q, want %q", cfgErr.Type, "hermes")
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
+	}
+	if !strings.Contains(cfgErr.Message, "hermes") {
+		t.Errorf("message must name the hermes workspace; got %q", cfgErr.Message)
 	}
 	if !strings.Contains(cfgErr.Hint, "config bind --help") {
 		t.Errorf("hermes hint must point to `config bind --help`; got %q", cfgErr.Hint)
@@ -84,9 +97,9 @@ func TestNoActiveProfileError_Local(t *testing.T) {
 	SetCurrentWorkspace(WorkspaceLocal)
 
 	err := NoActiveProfileError()
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
 	if cfgErr.Message != "no active profile" {
 		t.Errorf("message = %q, want %q", cfgErr.Message, "no active profile")
@@ -98,9 +111,9 @@ func TestNoActiveProfileError_AgentSuggestsBind(t *testing.T) {
 	SetCurrentWorkspace(WorkspaceOpenClaw)
 
 	err := NoActiveProfileError()
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
 	if !strings.Contains(cfgErr.Hint, "config bind --help") {
 		t.Errorf("agent hint must point to `config bind --help`; got %q", cfgErr.Hint)
@@ -136,9 +149,12 @@ func TestLoadOrNotConfigured_FileMissing_ReturnsNotConfigured(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	if cfgErr.Subtype != errs.SubtypeNotConfigured {
+		t.Errorf("subtype = %q, want not_configured", cfgErr.Subtype)
 	}
 	if cfgErr.Message != "not configured" {
 		t.Errorf("message = %q, want \"not configured\"", cfgErr.Message)
@@ -164,9 +180,13 @@ func TestLoadOrNotConfigured_CorruptFile_PreservesCause(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for corrupt config")
 	}
-	var cfgErr *ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
+	}
+	// A malformed file maps to invalid_config, not not_configured.
+	if cfgErr.Subtype != errs.SubtypeInvalidConfig {
+		t.Errorf("subtype = %q, want invalid_config", cfgErr.Subtype)
 	}
 	if !strings.Contains(cfgErr.Message, "failed to load config") {
 		t.Errorf("corrupt-file message must say 'failed to load config'; got %q", cfgErr.Message)
@@ -177,5 +197,9 @@ func TestLoadOrNotConfigured_CorruptFile_PreservesCause(t *testing.T) {
 	}
 	if strings.Contains(cfgErr.Hint, "config init") || strings.Contains(cfgErr.Hint, "config bind") {
 		t.Errorf("corrupt-file hint must not redirect to init/bind; got %q", cfgErr.Hint)
+	}
+	// The underlying parse failure stays reachable through the unwrap chain.
+	if cfgErr.Cause == nil {
+		t.Error("Cause must wrap the underlying load error for errors.Is/Unwrap")
 	}
 }

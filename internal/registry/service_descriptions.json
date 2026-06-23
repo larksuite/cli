@@ -47,6 +47,10 @@
     "en": { "title": "Minutes", "description": "Minutes content and metadata retrieval" },
     "zh": { "title": "妙记", "description": "妙记信息获取、内容查询" }
   },
+  "note": {
+    "en": { "title": "Note", "description": "Meeting note detail and unified transcript retrieval" },
+    "zh": { "title": "会议纪要", "description": "会议纪要详情与 unified 逐字稿查询" }
+  },
   "sheets": {
     "en": { "title": "Sheets", "description": "Spreadsheet operations" },
     "zh": { "title": "电子表格", "description": "电子表格操作" }

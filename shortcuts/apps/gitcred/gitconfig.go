@@ -5,10 +5,10 @@ package gitcred
 
 import (
 	"context"
-	"fmt"
 	"os/exec"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -38,7 +38,7 @@ func (g GlobalGitConfig) SetHelper(ctx context.Context, gitHTTPURL, appID string
 		return err
 	}
 	if hadHelper && previousHelper != helper && !g.isManagedHelper(previousHelper) {
-		return fmt.Errorf("git credential helper already configured for %s; refusing to overwrite non-lark helper", normalizedURL)
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "git credential helper already configured for %s; refusing to overwrite non-lark helper", normalizedURL)
 	}
 	if err := exec.CommandContext(ctx, "git", "config", "--global", helperKey, helper).Run(); err != nil {
 		return err
@@ -106,7 +106,7 @@ func gitConfigGet(ctx context.Context, key string) (string, bool, error) {
 	if isGitConfigGetMissing(err) {
 		return "", false, nil
 	}
-	return "", false, fmt.Errorf("get %s: %w", key, err)
+	return "", false, errs.NewInternalError(errs.SubtypeExternalTool, "git config get %s failed: %v", key, err).WithCause(err)
 }
 
 func gitConfigUnset(ctx context.Context, key string) error {
@@ -114,7 +114,7 @@ func gitConfigUnset(ctx context.Context, key string) error {
 		if isGitConfigUnsetMissing(err) {
 			return nil
 		}
-		return fmt.Errorf("unset %s: %w", key, err)
+		return errs.NewInternalError(errs.SubtypeExternalTool, "git config unset %s failed: %v", key, err).WithCause(err)
 	}
 	return nil
 }

@@ -26,6 +26,14 @@ func RegisterKey(def KeyDefinition) {
 		panic(fmt.Sprintf("EventKey %s: EventType must not be empty", def.Key))
 	}
 
+	if def.SubscriptionType == "" {
+		def.SubscriptionType = SubTypeEvent
+	}
+	if def.SubscriptionType != SubTypeEvent && def.SubscriptionType != SubTypeCallback {
+		panic(fmt.Sprintf("EventKey %s: SubscriptionType must be %q or %q; got %q",
+			def.Key, SubTypeEvent, SubTypeCallback, def.SubscriptionType))
+	}
+
 	validateSchema(def)
 	validateParams(def)
 	validateAuth(def)

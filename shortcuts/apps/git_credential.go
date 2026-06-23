@@ -6,7 +6,6 @@ package apps
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -22,10 +21,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/apps/gitcred"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -35,12 +35,12 @@ const gitCredentialIssuePath = apiBasePath + "/apps/:app_id/git_info"
 
 // gitCredentialIssueHint is the actionable next-step attached to a failed
 // Git-credential issuance. A 5xx is flagged retryable separately at the call site.
-const gitCredentialIssueHint = "failed to issue the Git credential: verify --app-id is correct and you have developer access to this Miaoda app; a 5xx is a transient server error and is safe to retry"
+const gitCredentialIssueHint = "failed to issue the Git credential: verify --app-id is correct and you have developer access to this app; a 5xx is a transient server error and is safe to retry"
 
 var AppsGitCredentialInit = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-init",
-	Description: "Initialize Git credentials and a URL-scoped Git helper for a Miaoda app repository",
+	Description: "Initialize Git credentials and a URL-scoped Git helper for an app repository",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-init --app-id <app_id>",
@@ -49,19 +49,22 @@ var AppsGitCredentialInit = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
-		return validate.ResourceName(strings.TrimSpace(rctx.Str("app-id")), "--app-id")
+		if err := validate.ResourceName(strings.TrimSpace(rctx.Str("app-id")), "--app-id"); err != nil {
+			return appsValidationParamError("--app-id", "%v", err).WithCause(err)
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(gitCredentialIssuePath).
-			Desc("Issue a Miaoda Git repository PAT").
+			Desc("Issue an app Git repository PAT").
 			Set("mode", "api-plus-local-setup").
 			Set("action", "initialize_local_git_credential").
 			Set("app_id", appID).
@@ -78,7 +81,7 @@ var AppsGitCredentialInit = common.Shortcut{
 		manager := newGitCredentialManager(appID, rctx.Factory.Keychain, runtimeIssuer{rctx: rctx})
 		result, err := manager.Init(ctx, profileFromConfig(rctx.Config), appID)
 		if err != nil {
-			return gitCredentialLocalError("Initialize local Miaoda Git credential", err)
+			return gitCredentialLocalError("Initialize local app Git credential", err)
 		}
 		payload := map[string]interface{}{
 			"app_id":         result.AppID,
@@ -116,7 +119,7 @@ var AppsGitCredentialInit = common.Shortcut{
 var AppsGitCredentialRemove = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-remove",
-	Description: "Remove local Git credentials and the URL-scoped Git helper for a Miaoda app repository",
+	Description: "Remove local Git credentials and the URL-scoped Git helper for an app repository",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-remove --app-id <app_id>",
@@ -125,13 +128,16 @@ var AppsGitCredentialRemove = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
-		return validate.ResourceName(strings.TrimSpace(rctx.Str("app-id")), "--app-id")
+		if err := validate.ResourceName(strings.TrimSpace(rctx.Str("app-id")), "--app-id"); err != nil {
+			return appsValidationParamError("--app-id", "%v", err).WithCause(err)
+		}
+		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID := strings.TrimSpace(rctx.Str("app-id"))
@@ -153,7 +159,7 @@ var AppsGitCredentialRemove = common.Shortcut{
 		manager := newGitCredentialManager(appID, rctx.Factory.Keychain, nil)
 		result, err := manager.Remove(ctx, profileFromConfig(rctx.Config), appID)
 		if err != nil {
-			return gitCredentialLocalError("Remove local Miaoda Git credential", err)
+			return gitCredentialLocalError("Remove local app Git credential", err)
 		}
 		payload := map[string]interface{}{
 			"app_id":  result.AppID,
@@ -187,7 +193,7 @@ var AppsGitCredentialRemove = common.Shortcut{
 var AppsGitCredentialList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+git-credential-list",
-	Description: "List local Git credentials for Miaoda app repositories",
+	Description: "List local Git credentials for app repositories",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +git-credential-list",
@@ -209,7 +215,7 @@ var AppsGitCredentialList = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		records, err := listGitCredentialRecords(rctx.Factory.Keychain, time.Now)
 		if err != nil {
-			return gitCredentialLocalError("List local Miaoda Git credentials", err)
+			return gitCredentialLocalError("List local app Git credentials", err)
 		}
 		payload := map[string]interface{}{
 			"count":       len(records),
@@ -246,7 +252,7 @@ func InstallOnApps(parent *cobra.Command, f *cmdutil.Factory) {
 func newGitCredentialHelperCommand(f *cmdutil.Factory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:    "git-credential-helper get|store|erase",
-		Short:  "Git credential helper for Miaoda app repositories",
+		Short:  "Git credential helper for app repositories",
 		Hidden: true,
 		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -254,7 +260,7 @@ func newGitCredentialHelperCommand(f *cmdutil.Factory) *cobra.Command {
 			return runGitCredentialHelper(cmd.Context(), f, strings.TrimSpace(appID), args[0])
 		},
 	}
-	cmd.Flags().String("app-id", "", "Miaoda app ID")
+	cmd.Flags().String("app-id", "", "app ID")
 	_ = cmd.Flags().MarkHidden("app-id")
 	return cmd
 }
@@ -268,7 +274,7 @@ func (i runtimeIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 		HttpMethod: http.MethodGet,
 		ApiPath:    issuePath(appID),
 	})
-	data, err := parseIssueCredentialData(resp, err)
+	data, err := parseIssueCredentialData(resp, err, i.rctx.APIClassifyContext())
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +291,8 @@ func (i factoryIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 		return nil, err
 	}
 	if cfg.UserOpenId == "" {
-		return nil, output.ErrAuth("not logged in: run `lark-cli auth login --scope \"spark:app:read\"`")
+		return nil, errs.NewAuthenticationError(errs.SubtypeTokenMissing, "not logged in").
+			WithHint("run `lark-cli auth login --scope \"spark:app:read\"`")
 	}
 	ac, err := i.f.NewAPIClientWithConfig(cfg)
 	if err != nil {
@@ -296,7 +303,11 @@ func (i factoryIssuer) Issue(ctx context.Context, appID string, profile gitcred.
 		ApiPath:    issuePath(appID),
 	}
 	resp, err := ac.DoSDKRequest(ctx, req, core.AsUser)
-	data, err := parseIssueCredentialData(resp, err)
+	data, err := parseIssueCredentialData(resp, err, errclass.ClassifyContext{
+		Brand:    string(cfg.Brand),
+		AppID:    cfg.AppID,
+		Identity: string(core.AsUser),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -414,11 +425,9 @@ func gitCredentialLocalError(action string, err error) error {
 	if err == nil {
 		return nil
 	}
+	// Typed errors pass through unchanged; everything the apps domain and the
+	// shared runtime produce is typed, so there is no legacy envelope to forward.
 	if _, ok := errs.UnwrapTypedError(err); ok {
-		return err
-	}
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) {
 		return err
 	}
 	return &errs.ConfigError{Problem: errs.Problem{
@@ -448,64 +457,43 @@ func issuedFromData(appID string, data map[string]interface{}) (*gitcred.IssuedC
 		issued.AppID = appID
 	}
 	if issued.GitHTTPURL == "" {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing gitURL")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response missing gitURL")
 	}
 	if issued.PAT == "" {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "Issue Miaoda Git credential: response missing token")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response missing token")
 	}
 	return issued, nil
 }
 
-func parseIssueCredentialData(resp *larkcore.ApiResp, err error) (map[string]any, error) {
+// parseIssueCredentialData turns the git-credential issue response into the
+// credential data map. A standard Lark envelope (top-level "code") and any
+// HTTP error status route through the shared response classifier, so generic
+// codes (missing scope, app not authorized) and 5xx statuses keep their
+// canonical category/subtype/retryable classification. The endpoint's
+// non-standard success shapes — direct git info or a BaseResp wrapper — are
+// handled locally.
+func parseIssueCredentialData(resp *larkcore.ApiResp, err error, cc errclass.ClassifyContext) (map[string]any, error) {
 	if err != nil {
-		return nil, err
+		return nil, client.WrapDoAPIError(err)
 	}
 	detail := logIDDetail(resp)
 	if resp == nil || len(resp.RawBody) == 0 {
-		return nil, &errs.InternalError{Problem: errs.Problem{
-			Category: errs.CategoryInternal,
-			Subtype:  errs.SubtypeUnknown,
-			Message:  "Issue Miaoda Git credential: empty response body",
-		}}
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse,
+			"Issue app Git credential: empty response body")
 	}
 	var result map[string]any
-	if jsonErr := json.Unmarshal(resp.RawBody, &result); jsonErr != nil {
-		return nil, &errs.InternalError{Problem: errs.Problem{
-			Category: errs.CategoryInternal,
-			Subtype:  errs.SubtypeUnknown,
-			Message:  fmt.Sprintf("Issue Miaoda Git credential: unmarshal response: %s", jsonErr),
-		}, Cause: jsonErr}
-	}
-	if resp.StatusCode >= http.StatusBadRequest {
-		msg := firstString(result, "msg", "message")
-		if msg == "" {
-			msg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	jsonErr := json.Unmarshal(resp.RawBody, &result)
+	_, hasCode := result["code"]
+	if jsonErr != nil || hasCode || resp.StatusCode >= http.StatusBadRequest {
+		data, cerr := common.ClassifyAPIResponseWith(resp, cc)
+		if cerr != nil {
+			return nil, withAppsHint(cerr, gitCredentialIssueHint)
 		}
-		return nil, &errs.APIError{Problem: errs.Problem{
-			Category:  errs.CategoryAPI,
-			Subtype:   errs.SubtypeUnknown,
-			Code:      resp.StatusCode,
-			Message:   msg,
-			LogID:     logIDString(resp),
-			Hint:      gitCredentialIssueHint,
-			Retryable: resp.StatusCode >= http.StatusInternalServerError,
-		}}
-	}
-	if _, hasCode := result["code"]; hasCode {
-		code := firstInt64(result, "code")
-		if code != 0 {
-			return nil, &errs.APIError{Problem: errs.Problem{
-				Category: errs.CategoryAPI,
-				Subtype:  errs.SubtypeUnknown,
-				Code:     int(code),
-				Message:  firstString(result, "msg", "message"),
-				LogID:    logIDString(resp),
-				Hint:     gitCredentialIssueHint,
-			}}
-		}
-		if data, ok := result["data"].(map[string]any); ok {
+		if data != nil {
 			result = data
 		}
+		// data == nil: a code==0 envelope whose fields sit beside "code" instead
+		// of under "data" — keep the locally-unmarshalled top-level object.
 	} else if err := checkGitInfoBaseResp(result, logIDString(resp)); err != nil {
 		return nil, err
 	}
@@ -534,13 +522,11 @@ func checkGitInfoBaseResp(result map[string]any, logID string) error {
 		if message == "" {
 			message = "Git credential API returned non-zero BaseResp status"
 		}
-		return &errs.APIError{Problem: errs.Problem{
-			Category: errs.CategoryAPI,
-			Subtype:  errs.SubtypeUnknown,
-			Code:     int(code),
-			Message:  "Issue Miaoda Git credential: " + message,
-			LogID:    logID,
-		}}
+		baseErr := errs.NewAPIError(errs.SubtypeUnknown, "Issue app Git credential: %s", message).WithCode(int(code))
+		if logID != "" {
+			baseErr = baseErr.WithLogID(logID)
+		}
+		return baseErr
 	}
 	return nil
 }
@@ -578,6 +564,9 @@ func firstInt64(data map[string]interface{}, keys ...string) int64 {
 			return int64(v)
 		case float64:
 			return int64(v)
+		case json.Number:
+			n, _ := v.Int64()
+			return n
 		case string:
 			n, _ := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 			return n

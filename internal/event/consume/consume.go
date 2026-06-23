@@ -16,6 +16,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
 )
 
@@ -102,6 +103,9 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		return errs.NewInternalError(errs.SubtypeUnknown,
 			"event bus handshake failed: %s", err).WithCause(err)
 	}
+	if rejErr := rejectionError(ack, opts.EventKey); rejErr != nil {
+		return rejErr
+	}
 
 	var cleanup func() error
 	if ack.FirstForKey && keyDef.PreConsume != nil {
@@ -169,6 +173,17 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	writeReadyMarker(errOut, opts)
 
 	return consumeLoop(ctx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
+}
+
+// rejectionError converts a rejected hello_ack into a structured precondition
+// error; returns nil when the ack is absent or not a rejection.
+func rejectionError(ack *protocol.HelloAck, eventKey string) error {
+	if ack == nil || !ack.Rejected {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"cannot start consumer: %s", ack.RejectReason).
+		WithHint("EventKey %s allows only one consumer; run `lark-cli event status` to find the running one, then stop it before retrying", eventKey)
 }
 
 func truncateDuration(d time.Duration) time.Duration {

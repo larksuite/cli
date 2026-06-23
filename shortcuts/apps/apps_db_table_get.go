@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -36,7 +35,7 @@ var AppsDBTableGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app id", Required: true},
+		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "table", Desc: "table name", Required: true},
 		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 	},
@@ -45,7 +44,7 @@ var AppsDBTableGet = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("table")) == "" {
-			return output.ErrValidation("--table is required")
+			return appsValidationParamError("--table", "--table is required")
 		}
 		return nil
 	},
@@ -53,7 +52,7 @@ var AppsDBTableGet = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(appTablePath(appID, strings.TrimSpace(rctx.Str("table")))).
-			Desc("Get Miaoda app db table schema").
+			Desc("Get app db table schema").
 			Params(buildDBTableGetParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

@@ -73,6 +73,7 @@ const (
 const (
 	SubtypeChallengeRequired Subtype = "challenge_required" // user must complete browser challenge / MFA
 	SubtypeAccessDenied      Subtype = "access_denied"      // policy denies access outright
+	SubtypeContentSafety     Subtype = "content_safety"     // content-safety scanner blocked output in block mode
 )
 
 // CategoryInternal subtypes
@@ -80,6 +81,7 @@ const (
 	SubtypeSDKError        Subtype = "sdk_error"        // lark SDK Do() returned an unexpected error
 	SubtypeInvalidResponse Subtype = "invalid_response" // SDK response body not parsable as JSON
 	SubtypeFileIO          Subtype = "file_io"          // local file I/O failure (mkdir / write / read)
+	SubtypeExternalTool    Subtype = "external_tool"    // an external tool the CLI shells out to (git, npx) failed at runtime; the tool output is in the message
 	SubtypeStorage         Subtype = "storage"          // local persistence failure (e.g. config file save)
 	// Generic untyped error lifted to InternalError uses SubtypeUnknown.
 )

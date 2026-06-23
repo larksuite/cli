@@ -15,7 +15,7 @@ import (
 
 const dbTableListHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
 
-// AppsDBTableList lists tables in a Miaoda app's database.
+// AppsDBTableList lists tables in an app's database.
 //
 // GET /apps/{app_id}/tables（cursor 分页），response items[] 含 estimated_row_count /
 // size_bytes optional 字段，默认返回，不必额外传 query。
@@ -29,7 +29,7 @@ const dbTableListHint = "verify --app-id is correct; if targeting --env dev, cre
 var AppsDBTableList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-table-list",
-	Description: "List tables in a Miaoda app database (cursor pagination)",
+	Description: "List tables in an app database (cursor pagination)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +db-table-list --app-id <app_id>",
@@ -39,7 +39,7 @@ var AppsDBTableList = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app id", Required: true},
+		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
@@ -52,7 +52,7 @@ var AppsDBTableList = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(appTablesPath(appID)).
-			Desc("List Miaoda app db tables").
+			Desc("List app db tables").
 			Params(buildDBTableListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

@@ -8,11 +8,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -156,19 +158,23 @@ func TestPluginPipeline_wrapAbortReachesEnvelope(t *testing.T) {
 	}
 
 	err = leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "hook" {
-		t.Errorf("envelope type = %q, want hook", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	if detail["reason_code"] != "aborted" {
-		t.Errorf("detail.reason_code = %v, want aborted", detail["reason_code"])
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if detail["hook_name"] != "policy-plugin.policy" {
-		t.Errorf("detail.hook_name = %v, want policy-plugin.policy", detail["hook_name"])
+	// The namespaced hook name and the abort semantics are preserved in the
+	// message so a caller can identify which plugin hook rejected the call.
+	if !strings.Contains(verr.Message, "policy-plugin.policy") {
+		t.Errorf("message should name the aborting hook policy-plugin.policy, got %q", verr.Message)
+	}
+	if !strings.Contains(verr.Message, "aborted") {
+		t.Errorf("message should describe the abort, got %q", verr.Message)
 	}
 
 	// errors.As must still reach the original AbortError so consumers
@@ -409,15 +415,20 @@ func TestPluginConflictGuard_MultipleRestrictAbortsCLI(t *testing.T) {
 		t.Fatalf("no runnable leaf in command tree")
 	}
 	err := leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "plugin_conflict" {
-		t.Errorf("envelope type = %q, want plugin_conflict", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	if rc := exitErr.Detail.Detail.(map[string]any)["reason_code"]; rc != "multiple_restrict_plugins" {
-		t.Errorf("reason_code = %v, want multiple_restrict_plugins", rc)
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	// reason_code multiple_restrict_plugins is folded into the hint so the
+	// operator can distinguish a multi-Restrict conflict from a bad rule.
+	if !strings.Contains(verr.Hint, "multiple_restrict_plugins") {
+		t.Errorf("hint should surface reason_code multiple_restrict_plugins, got %q", verr.Hint)
 	}
 }
 
@@ -447,15 +458,20 @@ func TestPluginConflictGuard_InvalidRuleAbortsCLI(t *testing.T) {
 		t.Fatalf("no runnable leaf in command tree")
 	}
 	err := leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "plugin_install" {
-		t.Errorf("envelope type = %q, want plugin_install", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	if rc := exitErr.Detail.Detail.(map[string]any)["reason_code"]; rc != "invalid_rule" {
-		t.Errorf("reason_code = %v, want invalid_rule", rc)
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	// reason_code invalid_rule is folded into the hint, distinct from the
+	// multiple_restrict_plugins conflict path.
+	if !strings.Contains(verr.Hint, "invalid_rule") {
+		t.Errorf("hint should surface reason_code invalid_rule, got %q", verr.Hint)
 	}
 }
 
@@ -484,19 +500,24 @@ func TestPluginLifecycleGuard_StartupErrorAbortsCLI(t *testing.T) {
 
 	leaf := findRunnableLeaf(root)
 	err := leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "plugin_lifecycle" {
-		t.Errorf("envelope type = %q, want plugin_lifecycle", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	d := exitErr.Detail.Detail.(map[string]any)
-	if d["reason_code"] != "lifecycle_failed" {
-		t.Errorf("reason_code = %v, want lifecycle_failed", d["reason_code"])
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if d["hook_name"] != "lc.start" {
-		t.Errorf("hook_name = %v, want lc.start", d["hook_name"])
+	// reason_code lifecycle_failed (vs lifecycle_panic) and the failing
+	// hook name are folded into the hint so audit / on-call can tell the
+	// failure mode and which hook failed.
+	if !strings.Contains(verr.Hint, "lifecycle_failed") {
+		t.Errorf("hint should surface reason_code lifecycle_failed, got %q", verr.Hint)
+	}
+	if !strings.Contains(verr.Hint, "lc.start") {
+		t.Errorf("hint should name the failing hook lc.start, got %q", verr.Hint)
 	}
 }
 
@@ -520,12 +541,20 @@ func TestPluginLifecycleGuard_StartupPanicAbortsCLI(t *testing.T) {
 	}
 	leaf := findRunnableLeaf(root)
 	err := leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	if rc := exitErr.Detail.Detail.(map[string]any)["reason_code"]; rc != "lifecycle_panic" {
-		t.Errorf("reason_code = %v, want lifecycle_panic", rc)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	// A panicking startup hook is distinguished from a returned error by
+	// reason_code lifecycle_panic in the hint.
+	if !strings.Contains(verr.Hint, "lifecycle_panic") {
+		t.Errorf("hint should surface reason_code lifecycle_panic, got %q", verr.Hint)
 	}
 }
 
@@ -579,19 +608,24 @@ func TestWrapperPanic_BecomesHookPanicEnvelope(t *testing.T) {
 	}()
 
 	err = leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "hook" {
-		t.Errorf("envelope type = %q, want hook", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	d := exitErr.Detail.Detail.(map[string]any)
-	if d["reason_code"] != "panic" {
-		t.Errorf("reason_code = %v, want panic", d["reason_code"])
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if d["hook_name"] != "p.boom" {
-		t.Errorf("hook_name = %v, want p.boom (namespaced)", d["hook_name"])
+	// The recovered panic surfaces as a structured error naming the
+	// namespaced hook (p.boom) and describing the panic, so the process
+	// never crashes and the caller can attribute the failure.
+	if !strings.Contains(verr.Message, "p.boom") {
+		t.Errorf("message should name the namespaced hook p.boom, got %q", verr.Message)
+	}
+	if !strings.Contains(verr.Message, "panic") {
+		t.Errorf("message should describe the panic, got %q", verr.Message)
 	}
 }
 
@@ -653,19 +687,24 @@ func TestWrapperFactoryPanic_BecomesHookPanicEnvelope(t *testing.T) {
 	}()
 
 	err = leaf.RunE(leaf, nil)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "hook" {
-		t.Errorf("envelope type = %q, want hook", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	d := exitErr.Detail.Detail.(map[string]any)
-	if d["reason_code"] != "panic" {
-		t.Errorf("reason_code = %v, want panic", d["reason_code"])
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if d["hook_name"] != "fac.bad-factory" {
-		t.Errorf("hook_name = %v, want fac.bad-factory (namespaced)", d["hook_name"])
+	// A panic in the wrapper FACTORY (not just the inner handler) is
+	// recovered into the same structured panic error, naming the
+	// namespaced hook fac.bad-factory.
+	if !strings.Contains(verr.Message, "fac.bad-factory") {
+		t.Errorf("message should name the namespaced hook fac.bad-factory, got %q", verr.Message)
+	}
+	if !strings.Contains(verr.Message, "panic") {
+		t.Errorf("message should describe the panic, got %q", verr.Message)
 	}
 }
 

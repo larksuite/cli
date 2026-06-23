@@ -12,11 +12,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsSessionList lists sessions under a Miaoda app (cursor pagination, single page).
+// AppsSessionList lists sessions under an app (cursor pagination, single page).
 var AppsSessionList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+session-list",
-	Description: "List sessions under a Miaoda app (cursor pagination)",
+	Description: "List sessions under an app (cursor pagination)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +session-list --app-id <app_id>",
@@ -32,14 +32,14 @@ var AppsSessionList = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET(sessionsPath(rctx.Str("app-id"))).
-			Desc("List sessions under a Miaoda app").
+			Desc("List sessions under an app").
 			Params(buildSessionListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

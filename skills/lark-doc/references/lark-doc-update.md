@@ -3,10 +3,11 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先用 Read 工具读取以下文件，缺一不可：
 > 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
-> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
-> **未读完以上文件就生成内容会导致格式错误或样式不达标。**
+> **需要使用 callout、grid、table、whiteboard 等富 block，或用户明确要求美化/重排版时，再参考 [`lark-doc-style.md`](style/lark-doc-style.md)。该文件是表达组件参考，不是固定模板。**
+>
+> **未读完以上文件就生成内容会导致格式错误。**
 
 通过八种指令精确更新飞书云文档。支持字符串级别和 block 级别的操作。
 
@@ -112,6 +113,8 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace 
   --block-id "目标 block_id" \
   --content '<p>替换后的段落内容</p>'
 ```
+
+> `block_replace` 由服务端执行整块替换，目标 block 的 ID 不保证在替换后继续可用。后续如果还要在替换后的块附近继续 `block_insert_after`、`range` 或其他 block 级操作，先重新 `docs +fetch --detail with-ids` 获取最新 block ID，不要复用旧 ID。
 
 ### block_delete — 删除指定 block
 
@@ -234,12 +237,13 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
 - **保护不可重建的内容**：图片、画板、电子表格等以 token 形式存储，替换时避开这些 block
 - **str_replace 的 replacement 支持富文本**：可以用行内标签 `<b>`、`<a>`、`<cite>`、`<latex>` 等替换普通文本为富文本
 - **同一 block 只能被 replace 一次**：多次修改同一 block 请合并为一次 block_replace
+- **block_replace 后重新获取 ID**：`block_replace` 成功后旧 block ID 不保证继续可用；继续做相邻块操作前，重新 `docs +fetch --detail with-ids`
 - **block_delete 支持批量**：用逗号分隔多个 block_id 一次删除
 - **复杂结构重组**：将多个段落转换为 grid / table 等复杂布局时，分步操作比 overwrite 更安全：
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
   2. 用 `block_delete` 批量删除旧的 block
   3. 这样可以保留文档中其他不相关的内容（图片、评论等）
-- **视觉丰富度**：插入或替换内容时，同样遵循 [`lark-doc-style.md`](style/lark-doc-style.md) 中的样式指南，主动使用结构化 block
+- **表达形式**：插入或替换内容时，优先沿用用户要求和已有文档风格；需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要为了固定丰富度主动添加组件
 
 ## 参考
 

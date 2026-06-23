@@ -121,7 +121,7 @@ const (
 var DriveAddComment = common.Shortcut{
 	Service:     "drive",
 	Command:     "+add-comment",
-	Description: "Add a comment to doc/docx/file/sheet/slides; file targets support selected extensions and full comments only",
+	Description: "Add a comment to doc/docx/file/sheet/slides/base(bitable); file targets support selected extensions and full comments only",
 	Risk:        "write",
 	Scopes: []string{
 		"drive:drive.metadata:readonly",
@@ -131,12 +131,12 @@ var DriveAddComment = common.Shortcut{
 	},
 	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides URL, or wiki URL that resolves to doc/docx/file/sheet/slides", Required: true},
-		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides (required when --doc is a bare token; auto-detected for URLs)", Enum: []string{"doc", "docx", "file", "sheet", "slides"}},
+		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides/base/bitable URL, or wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", Required: true},
+		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides, bitable, base (required when --doc is a bare token; auto-detected for URLs; use bitable as the wire value, base is accepted as a compatibility alias)", Enum: []string{"doc", "docx", "file", "sheet", "slides", "bitable", "base"}},
 		{Name: "content", Desc: "reply_elements JSON string", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "full-comment", Type: "bool", Desc: "create a full-document comment; also the default when no location is provided"},
 		{Name: "selection-with-ellipsis", Desc: "target content locator (plain text or 'start...end')"},
-		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell> (e.g. a281f9!D6); for slides: <slide-block-type>!<xml-id> (e.g. shape!bPq)"},
+		{Name: "block-id", Desc: "for docx: anchor block ID; for sheet: <sheetId>!<cell>; for slides: <slide-block-type>!<xml-id>; for base(bitable): <table-id>!<record-id>!<view-id>"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		docRef, err := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
@@ -145,6 +145,17 @@ var DriveAddComment = common.Shortcut{
 		}
 
 		if _, err := parseCommentReplyElements(runtime.Str("content")); err != nil {
+			return err
+		}
+
+		if docRef.Kind == "base" {
+			if runtime.Bool("full-comment") {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--full-comment")
+			}
+			if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>").WithParam("--selection-with-ellipsis")
+			}
+			_, err := parseBaseCommentAnchor(runtime)
 			return err
 		}
 
@@ -188,7 +199,7 @@ var DriveAddComment = common.Shortcut{
 			return validateFileCommentMode(mode, "")
 		}
 		if mode == commentModeLocal && docRef.Kind == "doc" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, slides, and base(bitable); old doc format only supports full comments")
 		}
 
 		return nil
@@ -213,6 +224,23 @@ var DriveAddComment = common.Shortcut{
 			}
 			resolvedKind = target.FileType
 			resolvedToken = target.FileToken
+		}
+
+		if resolvedKind == "base" {
+			anchor, err := parseBaseCommentAnchor(runtime)
+			if err != nil {
+				return common.NewDryRunAPI().Set("error", err.Error())
+			}
+			commentBody := buildBaseCommentCreateV2Request(replyElements, anchor)
+			desc := "1-step request: create base(bitable) record-local comment"
+			if isWiki {
+				desc = "2-step orchestration: resolve wiki -> create base(bitable) record-local comment"
+			}
+			return common.NewDryRunAPI().
+				Desc(desc).
+				POST("/open-apis/drive/v1/files/:file_token/new_comments").
+				Body(commentBody).
+				Set("file_token", resolvedToken)
 		}
 
 		// Sheet comment dry-run.
@@ -352,6 +380,14 @@ var DriveAddComment = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		// Sheet comment: direct URL or token fast path.
 		docRef, _ := parseCommentDocRef(runtime.Str("doc"), runtime.Str("type"))
+		if docRef.Kind == "base" {
+			return executeBaseComment(runtime, resolvedCommentTarget{
+				DocID:      docRef.Token,
+				FileToken:  docRef.Token,
+				FileType:   "base",
+				ResolvedBy: "base",
+			})
+		}
 		if docRef.Kind == "sheet" {
 			return executeSheetComment(runtime, docRef)
 		}
@@ -374,6 +410,9 @@ var DriveAddComment = common.Shortcut{
 		}
 		if target.FileType == "slides" {
 			return executeSlidesComment(runtime, commentDocRef{Kind: "slides", Token: target.FileToken})
+		}
+		if target.FileType == "base" {
+			return executeBaseComment(runtime, target)
 		}
 		if target.FileType == "file" {
 			return executeFileComment(runtime, target)
@@ -482,6 +521,12 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	if token, ok := extractURLToken(raw, "/sheets/"); ok {
 		return commentDocRef{Kind: "sheet", Token: token}, nil
 	}
+	if token, ok := extractURLToken(raw, "/base/"); ok {
+		return commentDocRef{Kind: "base", Token: token}, nil
+	}
+	if token, ok := extractURLToken(raw, "/bitable/"); ok {
+		return commentDocRef{Kind: "base", Token: token}, nil
+	}
 	if token, ok := extractURLToken(raw, "/file/"); ok {
 		return commentDocRef{Kind: "file", Token: token}, nil
 	}
@@ -495,7 +540,7 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 		return commentDocRef{Kind: "doc", Token: token}, nil
 	}
 	if strings.Contains(raw, "://") {
-		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides", raw).WithParam("--doc")
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides/base/bitable URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", raw).WithParam("--doc")
 	}
 	if strings.ContainsAny(raw, "/?#") {
 		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a token with --type, or a wiki URL", raw).WithParam("--doc")
@@ -504,7 +549,10 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 	// Bare token: --type is required.
 	docType = strings.TrimSpace(docType)
 	if docType == "" {
-		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --doc is a bare token (allowed values: doc, docx, file, sheet, slides)").WithParam("--type")
+		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--type is required when --doc is a bare token (allowed values: doc, docx, file, sheet, slides, bitable, base; use bitable as the wire value, base is accepted as a compatibility alias)").WithParam("--type")
+	}
+	if docType == "bitable" || docType == "base" {
+		return commentDocRef{Kind: "base", Token: raw}, nil
 	}
 	return commentDocRef{Kind: docType, Token: raw}, nil
 }
@@ -515,11 +563,11 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		return resolvedCommentTarget{}, err
 	}
 
-	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "file" || docRef.Kind == "sheet" || docRef.Kind == "slides" {
+	if docRef.Kind == "docx" || docRef.Kind == "doc" || docRef.Kind == "file" || docRef.Kind == "sheet" || docRef.Kind == "slides" || docRef.Kind == "base" {
 		if mode == commentModeLocal {
 			switch docRef.Kind {
 			case "doc":
-				return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, and slides; old doc format only supports full comments")
+				return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "local comments only support docx, sheet, slides, and base(bitable); old doc format only supports full comments")
 			case "file":
 				if err := validateFileCommentMode(mode, ""); err != nil {
 					return resolvedCommentTarget{}, err
@@ -557,6 +605,22 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	if objType == "slides" && strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
 		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for slide comments; use --block-id <slide-block-type>!<xml-id>", objType)
 	}
+	if objType == "bitable" || objType == "base" {
+		if runtime.Bool("full-comment") {
+			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --full-comment is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--full-comment")
+		}
+		if strings.TrimSpace(runtime.Str("selection-with-ellipsis")) != "" {
+			return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but --selection-with-ellipsis is not applicable for base(bitable) comments; use --block-id <table-id>!<record-id>!<view-id>", objType).WithParam("--selection-with-ellipsis")
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to base: %s\n", common.MaskToken(objToken))
+		return resolvedCommentTarget{
+			DocID:      objToken,
+			FileToken:  objToken,
+			FileType:   "base",
+			ResolvedBy: "wiki",
+			WikiToken:  docRef.Token,
+		}, nil
+	}
 	if objType == "sheet" {
 		// Sheet comments are handled via the sheet fast path in Execute.
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -592,10 +656,10 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 		}, nil
 	}
 	if mode == commentModeLocal && objType != "docx" {
-		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but local comments only support docx, sheet, and slides; for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but local comments only support docx, sheet, slides, and base(bitable); for sheet use --block-id <sheetId>!<cell>, for slides use --block-id <slide-block-type>!<xml-id>, for base use --block-id <table-id>!<record-id>!<view-id>", objType)
 	}
 	if mode == commentModeFull && objType != "docx" && objType != "doc" {
-		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides", objType)
+		return resolvedCommentTarget{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but comments only support doc/docx/file/sheet/slides/base(bitable)", objType)
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to %s: %s\n", objType, common.MaskToken(objToken))
@@ -787,6 +851,12 @@ type sheetAnchor struct {
 	Row     int
 }
 
+type baseAnchor struct {
+	BlockID      string
+	BaseRecordID string
+	BaseViewID   string
+}
+
 func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, replyElements []map[string]interface{}, sheet *sheetAnchor) map[string]interface{} {
 	body := map[string]interface{}{
 		"file_type":      fileType,
@@ -813,11 +883,43 @@ func buildCommentCreateV2Request(fileType, blockID, slideBlockType string, reply
 	return body
 }
 
+func buildBaseCommentCreateV2Request(replyElements []map[string]interface{}, anchor baseAnchor) map[string]interface{} {
+	return map[string]interface{}{
+		"file_type":      "bitable",
+		"reply_elements": replyElements,
+		"anchor": map[string]interface{}{
+			"block_id":       anchor.BlockID,
+			"base_record_id": anchor.BaseRecordID,
+			"base_view_id":   anchor.BaseViewID,
+		},
+	}
+}
+
 func anchorBlockIDForDryRun(blockID string) string {
 	if strings.TrimSpace(blockID) != "" {
 		return strings.TrimSpace(blockID)
 	}
 	return "<anchor_block_id>"
+}
+
+func parseBaseCommentAnchor(runtime *common.RuntimeContext) (baseAnchor, error) {
+	blockID := strings.TrimSpace(runtime.Str("block-id"))
+	if blockID == "" {
+		return baseAnchor{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id is required for base(bitable) record-local comments (format: <table-id>!<record-id>!<view-id>, e.g. tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R)").WithParam("--block-id")
+	}
+	return parseBaseBlockRef(blockID)
+}
+
+func parseBaseBlockRef(blockID string) (baseAnchor, error) {
+	parts := strings.Split(strings.TrimSpace(blockID), "!")
+	if len(parts) != 3 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" || strings.TrimSpace(parts[2]) == "" {
+		return baseAnchor{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "base(bitable) record-local comments require --block-id in <table-id>!<record-id>!<view-id> format, e.g. tbl9mp6fj9kDKHQV!recBIBgGmb!vewc46MG1R").WithParam("--block-id")
+	}
+	return baseAnchor{
+		BlockID:      strings.TrimSpace(parts[0]),
+		BaseRecordID: strings.TrimSpace(parts[1]),
+		BaseViewID:   strings.TrimSpace(parts[2]),
+	}, nil
 }
 
 func parseSlidesBlockRef(blockID string) (string, string, error) {
@@ -1026,6 +1128,53 @@ func executeSheetComment(runtime *common.RuntimeContext, docRef commentDocRef) e
 	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
 		out["created_at"] = createdAt
 	}
+	runtime.Out(out, nil)
+	return nil
+}
+
+func executeBaseComment(runtime *common.RuntimeContext, target resolvedCommentTarget) error {
+	replyElements, err := parseCommentReplyElements(runtime.Str("content"))
+	if err != nil {
+		return err
+	}
+	anchor, err := parseBaseCommentAnchor(runtime)
+	if err != nil {
+		return err
+	}
+
+	requestPath := fmt.Sprintf("/open-apis/drive/v1/files/%s/new_comments", validate.EncodePathSegment(target.FileToken))
+	requestBody := buildBaseCommentCreateV2Request(replyElements, anchor)
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating base(bitable) record-local comment in %s (table=%s, record=%s, view=%s)\n",
+		common.MaskToken(target.FileToken), anchor.BlockID, anchor.BaseRecordID, anchor.BaseViewID)
+
+	data, err := runtime.CallAPITyped("POST", requestPath, nil, requestBody)
+	if err != nil {
+		return err
+	}
+
+	out := map[string]interface{}{
+		"file_token":     target.FileToken,
+		"file_type":      "bitable",
+		"resolved_by":    target.ResolvedBy,
+		"comment_mode":   "base_record",
+		"base_block_id":  anchor.BlockID,
+		"base_record_id": anchor.BaseRecordID,
+		"base_view_id":   anchor.BaseViewID,
+	}
+	if commentID := data["comment_id"]; commentID != nil {
+		out["comment_id"] = commentID
+	}
+	if replyID := data["reply_id"]; replyID != nil {
+		out["reply_id"] = replyID
+	}
+	if createdAt := firstPresentValue(data, "created_at", "create_time"); createdAt != nil {
+		out["created_at"] = createdAt
+	}
+	if target.WikiToken != "" {
+		out["wiki_token"] = target.WikiToken
+	}
+
 	runtime.Out(out, nil)
 	return nil
 }

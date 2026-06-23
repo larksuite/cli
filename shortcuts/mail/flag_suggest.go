@@ -233,7 +233,7 @@ func suggestShorthand(c string, names []flagName) []Candidate {
 	return out
 }
 
-// buildHint returns a one-line hint suitable for the ErrorEnvelope.
+// buildHint returns a one-line hint suitable for a typed error's Hint field.
 // When at least one candidate exists, the top hit is named; otherwise
 // the user is directed to --help.
 func buildHint(c *cobra.Command, matches []Candidate) string {

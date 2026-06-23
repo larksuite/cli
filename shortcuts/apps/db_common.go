@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -37,7 +36,7 @@ func appDbEnvCreatePath(appID string) string {
 func requireAppID(raw string) (string, error) {
 	id := strings.TrimSpace(raw)
 	if id == "" {
-		return "", output.ErrValidation("--app-id is required")
+		return "", appsValidationParamError("--app-id", "--app-id is required")
 	}
 	return id, nil
 }

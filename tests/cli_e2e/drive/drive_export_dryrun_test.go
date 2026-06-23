@@ -99,3 +99,44 @@ func TestDriveExportDryRun_MarkdownFetchAPI(t *testing.T) {
 		t.Fatalf("output_dir=%q, want ./md-exports\nstdout:\n%s", got, out)
 	}
 }
+
+func TestDriveExportDryRun_BitableBaseOnlySchema(t *testing.T) {
+	setDriveDryRunConfigEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+export",
+			"--token", "bitableDryRunExport",
+			"--doc-type", "bitable",
+			"--file-extension", "base",
+			"--only-schema",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	out := result.Stdout
+	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/export_tasks" {
+		t.Fatalf("url=%q, want export_tasks\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.body.token").String(); got != "bitableDryRunExport" {
+		t.Fatalf("body.token=%q, want bitableDryRunExport\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.body.type").String(); got != "bitable" {
+		t.Fatalf("body.type=%q, want bitable\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.body.file_extension").String(); got != "base" {
+		t.Fatalf("body.file_extension=%q, want base\nstdout:\n%s", got, out)
+	}
+	if got := gjson.Get(out, "api.0.body.only_schema").Bool(); !got {
+		t.Fatalf("body.only_schema=%v, want true\nstdout:\n%s", got, out)
+	}
+}

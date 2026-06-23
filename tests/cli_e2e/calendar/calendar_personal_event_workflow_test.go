@@ -39,7 +39,7 @@ func TestCalendar_PersonalEventWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		calendarID = gjson.Get(result.Stdout, "data.calendars.0.calendar.calendar_id").String()
 		require.NotEmpty(t, calendarID, "stdout:\n%s", result.Stdout)
@@ -96,7 +96,7 @@ func TestCalendar_PersonalEventWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, eventID, gjson.Get(result.Stdout, "data.event.event_id").String())
 		assert.Equal(t, eventSummary, gjson.Get(result.Stdout, "data.event.summary").String())

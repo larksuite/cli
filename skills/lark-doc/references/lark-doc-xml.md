@@ -10,6 +10,10 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 | `<title>` | 文档标题（每篇唯一）| `align` |
 | `<checkbox>` | 待办项| `done="true"\|"false"` |
 
+## 创建文档标题
+
+使用 `docs +create` 创建 XML 文档时，文档标题必须写成 `<title>标题</title>`，且每篇文档只写一个 `<title>`。
+
 ## 容器标签
 |标签|说明|关键属性|
 |-|-|-|
@@ -76,6 +80,10 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
      <li>第二项</li>
    </ul>
    ```
+
+## 代码块
+- 代码块必须写成 `<pre lang="xxx" caption="可选说明"><code>代码内容</code></pre>`。
+- 不要将代码文本直接放在 `<pre>` 下；应放在内层 `<code>` 中。
 
 
 ## 用户名写入规则
