@@ -37,24 +37,63 @@ var (
 	imMarkdownCellBreakRE = regexp.MustCompile(`(?i)<br\s*/?>`)
 	imMarkdownAnyTagRE    = regexp.MustCompile(`(?s)</?([A-Za-z][A-Za-z0-9:_-]*)(?:\s[^<>]*?)?>`)
 	imMarkdownLinkRE      = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
+	imMarkdownCodeBlockRE = regexp.MustCompile(`(?is)^\s*<code(?:\s[^<>]*?)?>(.*?)</code>\s*$`)
+	imMarkdownLiOpenRE    = regexp.MustCompile(`(?is)<li(?:\s[^<>]*?)?>`)
+	imMarkdownLiCloseRE   = regexp.MustCompile(`(?is)<(/?)li(?:\s[^<>]*?)?\s*/?>`)
 )
 
 var imMarkdownHandlers = map[string]imMarkdownTagHandler{}
 
 func init() {
 	registerIMMarkdownHandler("title", handleIMMarkdownTitle)
+	for level := 1; level <= 9; level++ {
+		registerIMMarkdownHandler(fmt.Sprintf("h%d", level), handleIMMarkdownHeading(level))
+	}
+	registerIMMarkdownHandler("p", handleIMMarkdownParagraph)
+	registerIMMarkdownHandler("br", handleIMMarkdownLineBreak)
+	registerIMMarkdownHandler("ul", handleIMMarkdownUnorderedList)
+	registerIMMarkdownHandler("ol", handleIMMarkdownOrderedList)
+	registerIMMarkdownHandler("li", handleIMMarkdownListItem)
 	registerIMMarkdownHandler("callout", handleIMMarkdownCallout)
+	registerIMMarkdownHandler("blockquote", handleIMMarkdownBlockquote)
 	registerIMMarkdownHandler("grid", handleIMMarkdownPassthroughContainer)
 	registerIMMarkdownHandler("column", handleIMMarkdownColumn)
 	registerIMMarkdownHandler("table", handleIMMarkdownTable)
+	registerIMMarkdownHandler("colgroup", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("col", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("pre", handleIMMarkdownPre)
+	registerIMMarkdownHandler("code", handleIMMarkdownCode)
+	registerIMMarkdownHandler("latex", handleIMMarkdownLatex)
+	registerIMMarkdownHandler("hr", handleIMMarkdownHorizontalRule)
+	registerIMMarkdownHandler("img", handleIMMarkdownImage)
 	registerIMMarkdownHandler("figure", handleIMMarkdownDiscard)
-	registerIMMarkdownHandler("source", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("source", handleIMMarkdownSource)
 	registerIMMarkdownHandler("button", handleIMMarkdownDiscard)
 	registerIMMarkdownHandler("time", handleIMMarkdownDiscard)
 	registerIMMarkdownHandler("whiteboard", handleIMMarkdownInlineCode)
 	registerIMMarkdownHandler("sheet", handleIMMarkdownSheet)
+	registerIMMarkdownHandler("task", handleIMMarkdownConditionalResourceLabel("任务", "task-id", "guid", "token", "id"))
+	registerIMMarkdownHandler("chat_card", handleIMMarkdownConditionalResourceLabel("群聊卡片", "chat-id", "chat_id", "id"))
+	registerIMMarkdownHandler("bitable", handleIMMarkdownResourceLabel("多维表格"))
+	registerIMMarkdownHandler("base_refer", handleIMMarkdownResourceLabel("多维表格"))
+	registerIMMarkdownHandler("okr", handleIMMarkdownResourceLabel("OKR"))
+	registerIMMarkdownHandler("poll", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("agenda", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("folder_manager", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("wiki_catalog", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("wiki_recent_update", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("chart_refer_host_perm", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("synced_reference", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("synced-source", handleIMMarkdownDiscard)
+	registerIMMarkdownHandler("mindnote", handleIMMarkdownDiscard)
 	registerIMMarkdownHandler("bookmark", handleIMMarkdownBookmark)
 	registerIMMarkdownHandler("cite", handleIMMarkdownCite)
+	registerIMMarkdownHandler("b", handleIMMarkdownStrong)
+	registerIMMarkdownHandler("em", handleIMMarkdownEmphasis)
+	registerIMMarkdownHandler("del", handleIMMarkdownDelete)
+	registerIMMarkdownHandler("u", handleIMMarkdownPlainInline)
+	registerIMMarkdownHandler("span", handleIMMarkdownPlainInline)
+	registerIMMarkdownHandler("a", handleIMMarkdownAnchor)
 }
 
 func isIMMarkdownFetch(runtime interface{ Str(string) string }) bool {
@@ -195,12 +234,54 @@ func isSelfClosingIMMarkdownTag(tag string) bool {
 	return strings.HasSuffix(strings.TrimSpace(tag), "/>")
 }
 
-func handleIMMarkdownTitle(_ string, inner string, _ map[string]string, _ imMarkdownContext) string {
-	text := strings.TrimSpace(inner)
+func handleIMMarkdownTitle(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	text := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
 	if text == "" {
 		return ""
 	}
 	return "# " + text
+}
+
+func handleIMMarkdownHeading(level int) imMarkdownHandleFunc {
+	return func(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+		text := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+		if text == "" {
+			return ""
+		}
+		markdownLevel := level
+		if markdownLevel > 6 {
+			markdownLevel = 6
+		}
+		return strings.Repeat("#", markdownLevel) + " " + text
+	}
+}
+
+func handleIMMarkdownParagraph(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+}
+
+func handleIMMarkdownLineBreak(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
+	return "\n"
+}
+
+func handleIMMarkdownUnorderedList(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return convertIMMarkdownListItems(inner, false, imCtx)
+}
+
+func handleIMMarkdownOrderedList(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return convertIMMarkdownListItems(inner, true, imCtx)
+}
+
+func handleIMMarkdownListItem(_ string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
+	prefix := "-"
+	if seq := strings.TrimSpace(attrs["seq"]); seq != "" && seq != "auto" {
+		prefix = strings.TrimSuffix(seq, ".") + "."
+	}
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	return prefix + " " + indentIMMarkdownListContinuation(body) + "\n"
 }
 
 func handleIMMarkdownCallout(_ string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
@@ -217,6 +298,22 @@ func handleIMMarkdownCallout(_ string, inner string, attrs map[string]string, im
 		return "---\n---"
 	}
 	return fmt.Sprintf("---\n%s\n---", body)
+}
+
+func handleIMMarkdownBlockquote(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			lines[i] = ">"
+			continue
+		}
+		lines[i] = "> " + line
+	}
+	return strings.Join(lines, "\n")
 }
 
 func handleIMMarkdownPassthroughContainer(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
@@ -239,6 +336,65 @@ func handleIMMarkdownInlineCode(segment string, _ string, _ map[string]string, _
 	return imMarkdownInlineCode(segment)
 }
 
+func handleIMMarkdownPre(_ string, inner string, attrs map[string]string, _ imMarkdownContext) string {
+	lang := strings.TrimSpace(attrs["lang"])
+	code := strings.TrimSpace(inner)
+	if match := imMarkdownCodeBlockRE.FindStringSubmatch(code); match != nil {
+		code = match[1]
+	}
+	return imMarkdownFencedCode(html.UnescapeString(code), lang)
+}
+
+func handleIMMarkdownCode(_ string, inner string, _ map[string]string, _ imMarkdownContext) string {
+	return imMarkdownInlineCode(markdownPlainText(inner))
+}
+
+func handleIMMarkdownLatex(_ string, inner string, _ map[string]string, _ imMarkdownContext) string {
+	expr := strings.TrimSpace(markdownPlainText(inner))
+	if expr == "" {
+		return ""
+	}
+	return "$" + strings.ReplaceAll(expr, "$", `\$`) + "$"
+}
+
+func handleIMMarkdownHorizontalRule(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
+	return "---"
+}
+
+func handleIMMarkdownImage(_ string, _ string, attrs map[string]string, _ imMarkdownContext) string {
+	href := firstNonEmpty(attrs["href"], attrs["src"], attrs["url"])
+	if href == "" {
+		return ""
+	}
+	alt := firstNonEmpty(attrs["alt"], attrs["name"], attrs["title"])
+	return fmt.Sprintf("![%s](%s)", escapeMarkdownLinkText(alt), escapeMarkdownLinkDestination(href))
+}
+
+func handleIMMarkdownSource(_ string, _ string, attrs map[string]string, _ imMarkdownContext) string {
+	name := strings.TrimSpace(attrs["name"])
+	if name == "" {
+		return ""
+	}
+	return imMarkdownInlineCode(name)
+}
+
+func handleIMMarkdownResourceLabel(label string) imMarkdownHandleFunc {
+	return func(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
+		return imMarkdownInlineCode(label)
+	}
+}
+
+func handleIMMarkdownConditionalResourceLabel(label string, attrNames ...string) imMarkdownHandleFunc {
+	return func(_ string, _ string, attrs map[string]string, _ imMarkdownContext) string {
+		for _, attrName := range attrNames {
+			if strings.TrimSpace(attrs[attrName]) != "" {
+				return imMarkdownInlineCode(label)
+			}
+		}
+		return ""
+	}
+}
+
 func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, imCtx imMarkdownContext) string {
 	token := strings.TrimSpace(attrs["token"])
 	if token == "" {
@@ -258,6 +414,43 @@ func handleIMMarkdownBookmark(segment string, inner string, attrs map[string]str
 		return name
 	}
 	return markdownLink(name, href)
+}
+
+func handleIMMarkdownStrong(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	return "**" + body + "**"
+}
+
+func handleIMMarkdownEmphasis(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	return "*" + body + "*"
+}
+
+func handleIMMarkdownDelete(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	body := strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+	if body == "" {
+		return ""
+	}
+	return "~~" + body + "~~"
+}
+
+func handleIMMarkdownPlainInline(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
+	return strings.TrimSpace(convertToIMMarkdown(inner, imCtx))
+}
+
+func handleIMMarkdownAnchor(_ string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
+	href := strings.TrimSpace(attrs["href"])
+	text := firstNonEmpty(markdownLinkLabelText(convertToIMMarkdown(inner, imCtx)), attrs["name"], attrs["title"], href)
+	if href == "" {
+		return text
+	}
+	return markdownLink(text, href)
 }
 
 func handleIMMarkdownCite(segment string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
@@ -371,6 +564,66 @@ func padIMMarkdownTableRow(row []string, cols int) []string {
 	return padded
 }
 
+func convertIMMarkdownListItems(inner string, ordered bool, imCtx imMarkdownContext) string {
+	var out strings.Builder
+	for offset, index := 0, 1; offset < len(inner); {
+		loc := imMarkdownLiOpenRE.FindStringIndex(inner[offset:])
+		if loc == nil {
+			break
+		}
+		openStart := offset + loc[0]
+		openEnd := offset + loc[1]
+		opening := inner[openStart:openEnd]
+		closeStart, closeEnd, found := findIMMarkdownListItemClosingTag(inner, openEnd)
+		if !found {
+			break
+		}
+		body := strings.TrimSpace(convertToIMMarkdown(inner[openEnd:closeStart], imCtx))
+		if body != "" {
+			prefix := "-"
+			if ordered {
+				attrs := parseIMMarkdownAttrs(opening)
+				if seq := strings.TrimSpace(attrs["seq"]); seq != "" && seq != "auto" {
+					prefix = strings.TrimSuffix(seq, ".") + "."
+				} else {
+					prefix = fmt.Sprintf("%d.", index)
+				}
+				index++
+			}
+			out.WriteString(prefix)
+			out.WriteString(" ")
+			out.WriteString(indentIMMarkdownListContinuation(body))
+			out.WriteString("\n")
+		}
+		offset = closeEnd
+	}
+	return strings.TrimRight(out.String(), "\n")
+}
+
+func findIMMarkdownListItemClosingTag(content string, from int) (int, int, bool) {
+	depth := 1
+	for _, loc := range imMarkdownLiCloseRE.FindAllStringSubmatchIndex(content[from:], -1) {
+		start := from + loc[0]
+		end := from + loc[1]
+		token := content[start:end]
+		if loc[2] >= 0 && content[from+loc[2]:from+loc[3]] == "/" {
+			depth--
+			if depth == 0 {
+				return start, end, true
+			}
+			continue
+		}
+		if !isSelfClosingIMMarkdownTag(token) {
+			depth++
+		}
+	}
+	return 0, 0, false
+}
+
+func indentIMMarkdownListContinuation(body string) string {
+	return strings.ReplaceAll(body, "\n", "\n  ")
+}
+
 func extractIMMarkdownInnerLink(inner string) (string, string, bool) {
 	match := imMarkdownLinkRE.FindStringSubmatch(inner)
 	if match == nil {
@@ -410,7 +663,8 @@ func markdownLinkLabelText(s string) string {
 }
 
 func markdownLink(text, href string) string {
-	return fmt.Sprintf("[%s](%s)", escapeMarkdownLinkText(firstNonEmpty(text, href)), strings.TrimSpace(href))
+	cleanHref := strings.TrimSpace(href)
+	return fmt.Sprintf("[%s](%s)", escapeMarkdownLinkText(firstNonEmpty(text, cleanHref)), escapeMarkdownLinkDestination(cleanHref))
 }
 
 func escapeMarkdownLinkText(text string) string {
@@ -418,6 +672,12 @@ func escapeMarkdownLinkText(text string) string {
 	text = strings.ReplaceAll(text, `[`, `\[`)
 	text = strings.ReplaceAll(text, `]`, `\]`)
 	return text
+}
+
+func escapeMarkdownLinkDestination(href string) string {
+	href = strings.ReplaceAll(href, `\`, `\\`)
+	href = strings.ReplaceAll(href, `)`, `\)`)
+	return href
 }
 
 func imMarkdownInlineCode(s string) string {
@@ -434,7 +694,36 @@ func imMarkdownInlineCode(s string) string {
 		run = 0
 	}
 	fence := strings.Repeat("`", maxRun+1)
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") {
+		return fence + " " + s + " " + fence
+	}
 	return fence + s + fence
+}
+
+func imMarkdownFencedCode(code, lang string) string {
+	maxRun := 0
+	for _, line := range strings.Split(code, "\n") {
+		if run := leadingBacktickRun(line); run > maxRun {
+			maxRun = run
+		}
+	}
+	fenceLen := maxRun + 1
+	if fenceLen < 3 {
+		fenceLen = 3
+	}
+	fence := strings.Repeat("`", fenceLen)
+	return fence + strings.TrimSpace(lang) + "\n" + strings.Trim(code, "\n") + "\n" + fence
+}
+
+func leadingBacktickRun(s string) int {
+	run := 0
+	for _, r := range s {
+		if r != '`' {
+			break
+		}
+		run++
+	}
+	return run
 }
 
 func firstNonEmpty(values ...string) string {

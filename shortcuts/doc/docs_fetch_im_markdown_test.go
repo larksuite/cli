@@ -23,9 +23,9 @@ func TestConvertToIMMarkdownTitle(t *testing.T) {
 			want:  "# Roadmap",
 		},
 		{
-			name:  "preserve title inner markup",
+			name:  "convert title inner markup",
 			input: `<title><b>Bold</b> Title</title>`,
-			want:  "# <b>Bold</b> Title",
+			want:  "# **Bold** Title",
 		},
 		{
 			name:  "empty title",
@@ -156,7 +156,7 @@ func TestConvertToIMMarkdownTable(t *testing.T) {
 		{
 			name:  "table strips attrs and preserves cell line break",
 			input: `<table><tr><th vertical-align="top">A</th><th>B</th></tr><tr><td rowspan="2">1</td><td><b>two</b><br/>lines</td></tr></table>`,
-			want:  "| A | B |\n| - | - |\n| 1 | two<br>lines |",
+			want:  "| A | B |\n| - | - |\n| 1 | **two**<br>lines |",
 		},
 		{
 			name:  "table escapes pipe",
@@ -226,6 +226,11 @@ func TestConvertToIMMarkdownDiscardTags(t *testing.T) {
 			want:  "ab",
 		},
 		{
+			name:  "source name becomes inline code",
+			input: "a<source name=\"report`v1`.pdf\" href=\"https://example.com/a.md\"/>b",
+			want:  "a``report`v1`.pdf``b",
+		},
+		{
 			name:  "button discarded",
 			input: `a<button>Click</button>b`,
 			want:  "ab",
@@ -233,6 +238,16 @@ func TestConvertToIMMarkdownDiscardTags(t *testing.T) {
 		{
 			name:  "time discarded",
 			input: `a<time expire-time="123"></time>b`,
+			want:  "ab",
+		},
+		{
+			name:  "colgroup discarded",
+			input: `a<colgroup><col width="120"/></colgroup>b`,
+			want:  "ab",
+		},
+		{
+			name:  "col discarded",
+			input: `a<col width="120"/>b`,
 			want:  "ab",
 		},
 		{
@@ -517,9 +532,9 @@ func TestConvertToIMMarkdownScannerBoundaries(t *testing.T) {
 			want:  "a<!-- comment --># T",
 		},
 		{
-			name:  "unregistered br is left intact",
+			name:  "br becomes newline",
 			input: `a<br/>b`,
-			want:  `a<br/>b`,
+			want:  "a\nb",
 		},
 		{
 			name:  "malformed attribute still allows handler",
@@ -632,6 +647,46 @@ func TestConvertToIMMarkdownDeepRegisteredContainers(t *testing.T) {
 	}
 }
 
+func TestConvertToIMMarkdownDocumentExpectedTagsAndEscaping(t *testing.T) {
+	t.Parallel()
+
+	imCtx := imMarkdownContext{baseURL: "https://bytedance.larkoffice.com"}
+	input := strings.Join([]string{
+		`<h1>Roadmap <span text-color="red">Q1</span></h1>`,
+		`<h7>Deep Heading</h7>`,
+		`<p>plain<br/>next <b>Bold</b> <em>Italic</em> <del>Gone</del> <u>Under</u> <span background-color="yellow">Plain</span> <a href="https://example.com/a(b)">A [B]</a></p>`,
+		`<blockquote><p>quote <a type="url-preview" href="https://example.com/card">Card</a></p></blockquote>`,
+		`<ul><li>first</li><li><b>second</b></li></ul>`,
+		`<ol><li seq="auto">one</li><li seq="3">three</li></ol>`,
+		`<pre lang="Go"><code>fmt.Println(&quot;hi&quot;)` + "\n```" + `</code></pre>`,
+		`<p><code>` + "`edge`" + `</code> <latex>E=mc^2</latex> <hr/> <img href="https://example.com/i(1).png" alt="A [img]"/></p>`,
+		`<source name="report` + "`v1`" + `.pdf"/><source href="https://example.com/no-name"/>`,
+		`<task task-id="task_1"></task><task></task><chat_card chat-id="chat_1"></chat_card><chat_card></chat_card>`,
+		`<bitable></bitable><base_refer></base_refer><okr></okr><poll></poll><agenda></agenda><folder_manager></folder_manager><wiki_catalog></wiki_catalog><wiki_recent_update></wiki_recent_update><chart_refer_host_perm></chart_refer_host_perm><synced_reference></synced_reference><synced-source></synced-source><mindnote></mindnote>`,
+	}, "\n")
+
+	want := strings.Join([]string{
+		`# Roadmap Q1`,
+		`###### Deep Heading`,
+		`plain`,
+		`next **Bold** *Italic* ~~Gone~~ Under Plain [A \[B\]](https://example.com/a(b\))`,
+		`> quote [Card](https://example.com/card)`,
+		`- first`,
+		`- **second**`,
+		`1. one`,
+		`3. three`,
+		"````Go\nfmt.Println(\"hi\")\n```\n````",
+		"`` `edge` `` $E=mc^2$ --- ![A \\[img\\]](https://example.com/i(1\\).png)",
+		"``report`v1`.pdf``",
+		"`任务``群聊卡片`",
+		"`多维表格``多维表格``OKR`",
+	}, "\n")
+
+	if got := convertToIMMarkdown(input, imCtx); got != want {
+		t.Fatalf("convertToIMMarkdown() = %q, want %q", got, want)
+	}
+}
+
 func TestConvertToIMMarkdownMixedDocumentSmoke(t *testing.T) {
 	t.Parallel()
 
@@ -653,7 +708,7 @@ func TestConvertToIMMarkdownMixedDocumentSmoke(t *testing.T) {
 		"# Roadmap",
 		"### Left",
 		"Right",
-		"| A | B |\n| - | - |\n| 1 | two<br>lines |",
+		"| A | B |\n| - | - |\n| 1 | **two**<br>lines |",
 		`<at user_id="ou_abc">Alice</at>`,
 		"[Spec](https://bytedance.larkoffice.com/docx/doc_token)",
 		"[Ref](https://example.com/ref)",
