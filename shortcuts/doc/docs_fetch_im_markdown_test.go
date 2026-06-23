@@ -216,6 +216,11 @@ func TestConvertToIMMarkdownTable(t *testing.T) {
 			want:  "| A |\n| - |\n| line1<br>line2 |",
 		},
 		{
+			name:  "table cell keeps nested table whole",
+			input: `<table><tr><th>Outer</th></tr><tr><td>before <table><tr><th>Inner</th></tr><tr><td>x</td></tr></table> after</td></tr></table>`,
+			want:  "| Outer |\n| - |\n| before \\| Inner \\|<br>\\| - \\|<br>\\| x \\| after |",
+		},
+		{
 			name:  "table with only data row treats first row as header",
 			input: `<table><tr><td>A</td><td>B</td></tr></table>`,
 			want:  "| A | B |\n| - | - |",
@@ -389,6 +394,16 @@ func TestConvertToIMMarkdownBookmark(t *testing.T) {
 			want:  "[A \\[B\\]](https://example.com)",
 		},
 		{
+			name:  "href is percent encoded",
+			input: `<bookmark name="Spec" href="https://example.com/wiki/A B (draft)?q=x y#frag(1)"></bookmark>`,
+			want:  "[Spec](https://example.com/wiki/A%20B%20%28draft%29?q=x%20y#frag%281%29)",
+		},
+		{
+			name:  "href keeps existing percent escapes",
+			input: `<bookmark name="Spec" href="https://example.com/wiki/A%20B"></bookmark>`,
+			want:  "[Spec](https://example.com/wiki/A%20B)",
+		},
+		{
 			name:  "inner registered tag fallback",
 			input: `<bookmark href="https://example.com"><cite type="user" user-id="ou_1" user-name="Alice"></cite></bookmark>`,
 			want:  "[Alice](https://example.com)",
@@ -459,8 +474,8 @@ func TestConvertToIMMarkdownCiteDoc(t *testing.T) {
 		},
 		{
 			name:  "href wins",
-			input: `<cite type="doc" href="https://example.com/doc" title="Spec"></cite>`,
-			want:  "[Spec](https://example.com/doc)",
+			input: `<cite type="doc" href="https://example.com/doc (draft)" title="Spec"></cite>`,
+			want:  "[Spec](https://example.com/doc%20%28draft%29)",
 		},
 		{
 			name:  "default title and file type",
@@ -559,9 +574,9 @@ func TestConvertToIMMarkdownScannerBoundaries(t *testing.T) {
 			want:  "a<!-- comment --># T",
 		},
 		{
-			name:  "br becomes newline",
+			name:  "br is preserved",
 			input: `a<br/>b`,
-			want:  "a\nb",
+			want:  "a<br/>b",
 		},
 		{
 			name:  "malformed attribute still allows handler",
@@ -584,6 +599,11 @@ func TestConvertToIMMarkdownCompositeNesting(t *testing.T) {
 			name:  "grid inside table cell",
 			input: `<table><tr><th>Outer</th></tr><tr><td><grid><column>A</column><column>B</column></grid></td></tr></table>`,
 			want:  "| Outer |\n| - |\n| A<br>B |",
+		},
+		{
+			name:  "table inside table cell",
+			input: `<table><tr><th>Outer</th><th>Tail</th></tr><tr><td><table><tr><th>Inner</th></tr><tr><td>x</td></tr></table></td><td>done</td></tr></table>`,
+			want:  "| Outer | Tail |\n| - | - |\n| \\| Inner \\|<br>\\| - \\|<br>\\| x \\| | done |",
 		},
 		{
 			name:  "bookmark wraps callout fallback text",
@@ -695,15 +715,14 @@ func TestConvertToIMMarkdownDocumentExpectedTagsAndEscaping(t *testing.T) {
 	want := strings.Join([]string{
 		`# Roadmap Q1`,
 		`###### Deep Heading`,
-		`plain`,
-		`next **Bold** *Italic* ~~Gone~~ Under Plain [A \[B\]](https://example.com/a(b\))`,
+		`plain<br/>next **Bold** *Italic* ~~Gone~~ Under Plain [A \[B\]](https://example.com/a%28b%29)`,
 		`> quote [Card](https://example.com/card)`,
 		`- first`,
 		`- **second**`,
 		`1. one`,
 		`3. three`,
 		"````Go\nfmt.Println(\"hi\")\n```\n````",
-		"`` `edge` `` $E=mc^2$ --- ![A \\[img\\]](https://example.com/i(1\\).png)",
+		"`` `edge` `` $E=mc^2$ --- ![A \\[img\\]](https://example.com/i%281%29.png)",
 		"``report`v1`.pdf``",
 		"`任务``群聊卡片`",
 		"`多维表格``多维表格``OKR`",

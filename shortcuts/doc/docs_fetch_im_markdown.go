@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 type imMarkdownContext struct {
@@ -33,8 +34,8 @@ func registerIMMarkdownHandler(tag string, handle imMarkdownHandleFunc) {
 var (
 	imMarkdownTagStartRE  = regexp.MustCompile(`(?s)<([A-Za-z][A-Za-z0-9:_-]*)(?:\s[^<>]*?)?\s*/?>`)
 	imMarkdownAttrRE      = regexp.MustCompile(`([A-Za-z_:][A-Za-z0-9_:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
-	imMarkdownRowsRE      = regexp.MustCompile(`(?is)<tr\b[^>]*>(.*?)</tr>`)
-	imMarkdownCellsRE     = regexp.MustCompile(`(?is)<t[dh]\b[^>]*>(.*?)</t[dh]>`)
+	imMarkdownRowTagRE    = regexp.MustCompile(`(?is)<(/?)tr\b[^>]*?\s*/?>`)
+	imMarkdownCellTagRE   = regexp.MustCompile(`(?is)<(/?)t[dh]\b[^>]*?\s*/?>`)
 	imMarkdownCellBreakRE = regexp.MustCompile(`(?i)<br\s*/?>`)
 	imMarkdownAnyTagRE    = regexp.MustCompile(`(?s)</?([A-Za-z][A-Za-z0-9:_-]*)(?:\s[^<>]*?)?>`)
 	imMarkdownLinkRE      = regexp.MustCompile(`(?is)<a\b[^>]*\bhref=(?:"([^"]*)"|'([^']*)')[^>]*>(.*?)</a>`)
@@ -51,7 +52,6 @@ func init() {
 		registerIMMarkdownHandler(fmt.Sprintf("h%d", level), handleIMMarkdownHeading(level))
 	}
 	registerIMMarkdownHandler("p", handleIMMarkdownParagraph)
-	registerIMMarkdownHandler("br", handleIMMarkdownLineBreak)
 	registerIMMarkdownHandler("ul", handleIMMarkdownUnorderedList)
 	registerIMMarkdownHandler("ol", handleIMMarkdownOrderedList)
 	registerIMMarkdownHandler("li", handleIMMarkdownListItem)
@@ -277,10 +277,6 @@ func handleIMMarkdownParagraph(_ string, inner string, _ map[string]string, imCt
 	return body
 }
 
-func handleIMMarkdownLineBreak(_ string, _ string, _ map[string]string, _ imMarkdownContext) string {
-	return "\n"
-}
-
 func handleIMMarkdownUnorderedList(_ string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
 	return convertIMMarkdownListItems(inner, false, imCtx)
 }
@@ -421,7 +417,7 @@ func handleIMMarkdownSheet(segment string, _ string, attrs map[string]string, im
 	if sheetID := strings.TrimSpace(attrs["sheet-id"]); sheetID != "" {
 		label = "sheet " + sheetID
 	}
-	return fmt.Sprintf("[%s](%s/sheets/%s)", escapeMarkdownLinkText(label), strings.TrimRight(imCtx.baseURL, "/"), token)
+	return markdownLink(label, strings.TrimRight(imCtx.baseURL, "/")+"/sheets/"+token)
 }
 
 func handleIMMarkdownBookmark(segment string, inner string, attrs map[string]string, imCtx imMarkdownContext) string {
@@ -504,20 +500,23 @@ func handleIMMarkdownCite(segment string, inner string, attrs map[string]string,
 }
 
 func handleIMMarkdownTable(segment string, inner string, _ map[string]string, imCtx imMarkdownContext) string {
-	rowMatches := imMarkdownRowsRE.FindAllStringSubmatch(inner, -1)
-	if len(rowMatches) == 0 {
+	// Rows and cells are matched with tag-depth tracking instead of non-greedy
+	// regex captures. A table nested inside a cell can contain its own </tr> and
+	// </td>; treating those as the outer row/cell boundary corrupts the table.
+	rowBodies := extractIMMarkdownElementBodies(inner, imMarkdownRowTagRE)
+	if len(rowBodies) == 0 {
 		return imMarkdownInlineCode(segment)
 	}
 
-	rows := make([][]string, 0, len(rowMatches))
-	for _, rowMatch := range rowMatches {
-		cellMatches := imMarkdownCellsRE.FindAllStringSubmatch(rowMatch[1], -1)
-		if len(cellMatches) == 0 {
+	rows := make([][]string, 0, len(rowBodies))
+	for _, rowBody := range rowBodies {
+		cellBodies := extractIMMarkdownElementBodies(rowBody, imMarkdownCellTagRE)
+		if len(cellBodies) == 0 {
 			continue
 		}
-		row := make([]string, 0, len(cellMatches))
-		for _, cellMatch := range cellMatches {
-			row = append(row, normalizeIMMarkdownTableCell(convertToIMMarkdown(cellMatch[1], imCtx)))
+		row := make([]string, 0, len(cellBodies))
+		for _, cellBody := range cellBodies {
+			row = append(row, normalizeIMMarkdownTableCell(convertToIMMarkdown(cellBody, imCtx)))
 		}
 		rows = append(rows, row)
 	}
@@ -542,6 +541,58 @@ func handleIMMarkdownTable(segment string, inner string, _ map[string]string, im
 		writeIMMarkdownTableRow(&out, padIMMarkdownTableRow(row, cols))
 	}
 	return strings.TrimRight(out.String(), "\n")
+}
+
+// extractIMMarkdownElementBodies returns the inner content of each top-level
+// element matched by tagRE. tagRE must expose the optional closing slash as its
+// first capture group, matching the row/cell regexes above.
+func extractIMMarkdownElementBodies(content string, tagRE *regexp.Regexp) []string {
+	var bodies []string
+	for offset := 0; offset < len(content); {
+		loc := tagRE.FindStringSubmatchIndex(content[offset:])
+		if loc == nil {
+			break
+		}
+		openStart := offset + loc[0]
+		openEnd := offset + loc[1]
+		opening := content[openStart:openEnd]
+		if loc[2] >= 0 && content[offset+loc[2]:offset+loc[3]] == "/" {
+			offset = openEnd
+			continue
+		}
+		if isSelfClosingIMMarkdownTag(opening) {
+			bodies = append(bodies, "")
+			offset = openEnd
+			continue
+		}
+		closeStart, closeEnd, found := findIMMarkdownElementClosingTag(content, openEnd, tagRE)
+		if !found {
+			break
+		}
+		bodies = append(bodies, content[openEnd:closeStart])
+		offset = closeEnd
+	}
+	return bodies
+}
+
+func findIMMarkdownElementClosingTag(content string, from int, tagRE *regexp.Regexp) (int, int, bool) {
+	depth := 1
+	for _, loc := range tagRE.FindAllStringSubmatchIndex(content[from:], -1) {
+		start := from + loc[0]
+		end := from + loc[1]
+		token := content[start:end]
+		if loc[2] >= 0 && content[from+loc[2]:from+loc[3]] == "/" {
+			depth--
+			if depth == 0 {
+				return start, end, true
+			}
+			continue
+		}
+		if !isSelfClosingIMMarkdownTag(token) {
+			depth++
+		}
+	}
+	return 0, 0, false
 }
 
 func normalizeIMMarkdownTableCell(cell string) string {
@@ -692,9 +743,66 @@ func escapeMarkdownLinkText(text string) string {
 }
 
 func escapeMarkdownLinkDestination(href string) string {
-	href = strings.ReplaceAll(href, `\`, `\\`)
-	href = strings.ReplaceAll(href, `)`, `\)`)
-	return href
+	// Lark/Feishu IM Markdown does not reliably parse raw spaces or parentheses
+	// inside (...). Keep URL delimiters like :/?#&= intact, but percent-encode
+	// characters that can terminate or split the Markdown link destination.
+	var out strings.Builder
+	out.Grow(len(href))
+	for i := 0; i < len(href); {
+		if href[i] == '%' {
+			if i+2 < len(href) && isHexDigit(href[i+1]) && isHexDigit(href[i+2]) {
+				out.WriteString(href[i : i+3])
+				i += 3
+			} else {
+				writePercentEncodedByte(&out, href[i])
+				i++
+			}
+			continue
+		}
+		if href[i] < utf8.RuneSelf {
+			if shouldPercentEncodeIMMarkdownURLByte(href[i]) {
+				writePercentEncodedByte(&out, href[i])
+			} else {
+				out.WriteByte(href[i])
+			}
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(href[i:])
+		if r == utf8.RuneError && size == 1 {
+			writePercentEncodedByte(&out, href[i])
+			i++
+			continue
+		}
+		for _, b := range []byte(href[i : i+size]) {
+			writePercentEncodedByte(&out, b)
+		}
+		i += size
+	}
+	return out.String()
+}
+
+func shouldPercentEncodeIMMarkdownURLByte(b byte) bool {
+	if b <= ' ' || b >= 0x7f {
+		return true
+	}
+	switch b {
+	case '(', ')', '<', '>', '"', '\\', '^', '`', '{', '|', '}':
+		return true
+	default:
+		return false
+	}
+}
+
+func writePercentEncodedByte(out *strings.Builder, b byte) {
+	const hex = "0123456789ABCDEF"
+	out.WriteByte('%')
+	out.WriteByte(hex[b>>4])
+	out.WriteByte(hex[b&0x0f])
+}
+
+func isHexDigit(b byte) bool {
+	return ('0' <= b && b <= '9') || ('a' <= b && b <= 'f') || ('A' <= b && b <= 'F')
 }
 
 func imMarkdownInlineCode(s string) string {
