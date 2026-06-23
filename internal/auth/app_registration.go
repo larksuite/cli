@@ -132,7 +132,7 @@ func RequestAppRegistrationInit(ctx context.Context, httpClient *http.Client) (*
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("app registration init failed: read body: %v", err)
+		return nil, fmt.Errorf("app registration init failed: read body: %w", err)
 	}
 
 	var data map[string]interface{}
