@@ -8,9 +8,9 @@ import (
 	"crypto"
 	"testing"
 
-	"github.com/larksuite/cli/extension/keysigner"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keysigner"
 )
 
 type authMethodTestSigner struct{}
