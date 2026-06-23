@@ -61,6 +61,15 @@ The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+m
 
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
 
+### Sharing Chats / Generating Chat URLs
+
+Group share links must come from `chats.link`. **Never hand-construct `applink.feishu.cn/...?chatId=oc_xxx` style URLs from a `chat_id`** — they don't navigate. The API returns a tenant-specific join link (host varies); pass it through as-is.
+
+```bash
+lark-cli im chats link --params '{"chat_id":"oc_xxx"}'
+# default 7-day validity; pass --data '{"validity_period":"year"|"permanently"}' to extend
+```
+
 ### Flag Types
 
 Flags support two layers:
