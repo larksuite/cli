@@ -201,6 +201,12 @@ func TestBaseFieldUpdateRisk(t *testing.T) {
 	}
 }
 
+func TestBaseFormSubmitRisk(t *testing.T) {
+	if BaseFormSubmit.Risk != "high-risk-write" {
+		t.Fatalf("risk=%q want=%q", BaseFormSubmit.Risk, "high-risk-write")
+	}
+}
+
 func TestBaseDeleteShortcutsRisk(t *testing.T) {
 	cases := map[string]string{
 		BaseFieldDelete.Command:            BaseFieldDelete.Risk,
@@ -1908,8 +1914,8 @@ func TestBaseFormSubmitShortcut(t *testing.T) {
 		if s.Service != "base" {
 			t.Fatalf("Service=%q want base", s.Service)
 		}
-		if s.Risk != "write" {
-			t.Fatalf("Risk=%q want write", s.Risk)
+		if s.Risk != "high-risk-write" {
+			t.Fatalf("Risk=%q want high-risk-write", s.Risk)
 		}
 		if !s.HasFormat {
 			t.Fatal("HasFormat should be true")
@@ -2209,6 +2215,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"+form-submit",
 			"--share-token", "shr_exec1",
 			"--json", `{"fields":{"Name":"Alice","Rating":5}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2277,6 +2284,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_exec6",
 			"--base-token", "bas_exec6",
 			"--json", `{"attachments":{"File":["./nonexistent.pdf"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
@@ -2325,6 +2333,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_dedup",
 			"--base-token", "bas_dedup",
 			"--json", `{"attachments":{"FieldA":["./shared.pdf"],"FieldB":["./shared.pdf"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2372,6 +2381,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_para1",
 			"--base-token", "bas_para1",
 			"--json", `{"attachments":{"Doc":["./doc.txt"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2406,6 +2416,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_err",
 			"--base-token", "bas_err",
 			"--json", `{"attachments":{"Bad":["./bad.txt"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {

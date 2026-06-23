@@ -72,6 +72,23 @@ lark-cli base +form-submit \
 | `--format` | 否 | 输出格式：json（默认）\| pretty \| table \| ndjson \| csv |
 | `--as` | 否 | 身份：user（默认）\| bot |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
+| `--yes` | 条件必填 | 确认提交。本命令为高风险写操作，不带 `--yes` 时不会提交，而是返回 `confirmation_required` 错误（退出码 10）；务必先用 `--dry-run` 预览并请用户确认内容后再加 `--yes` 提交 |
+
+### 提交前预览与确认（高风险写）
+
+`+form-submit` 是不可撤销的高风险写操作。Agent 必须遵循「预览 → 用户确认 → 提交」流程：
+
+```bash
+# 1️⃣ 预览将要提交的字段内容（不提交）
+lark-cli base +form-submit --share-token <share_token> --json '{"fields":{...}}' --dry-run
+
+# 2️⃣ 把 dry-run 输出的字段内容展示给用户，等用户确认无误
+
+# 3️⃣ 用户确认后再加 --yes 实际提交
+lark-cli base +form-submit --share-token <share_token> --json '{"fields":{...}}' --yes
+```
+
+不带 `--yes` 直接提交会被拦截并返回 `confirmation_required`（退出码 10），不会写入任何数据。
 
 ### --json 结构说明
 
