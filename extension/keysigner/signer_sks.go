@@ -1,10 +1,10 @@
-//go:build (linux || windows) && sks_signer
+//go:build linux || (windows && amd64)
 
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// TPM 2.0 signer (build tag `sks_signer`), backed by
-// github.com/facebookincubator/sks.
+// TPM 2.0 signer (compiled into every linux and windows/amd64 build, no build
+// tag required), backed by github.com/facebookincubator/sks.
 //
 // sks holds a non-exportable ECDSA P-256 key in the platform TPM and signs
 // SHA-256 digests. On Linux it talks to /dev/tpmrm0; on Windows it uses the
@@ -14,10 +14,10 @@
 // registration (DefaultKeyLabel) and reused for subsequent app registrations and
 // every client_assertion on the same device.
 //
-// Build with:  go build -tags sks_signer
-// Without the tag this file is excluded, no signer registers (keysigner.Active()
-// is nil), and the build stays free of the TPM dependency stack — client_secret
-// auth only. This mirrors the macOS keychain signer's `keychain_signer` gating.
+// Excluded from windows/arm64: the sks Windows dependency stack (go-ole) has no
+// arm64 VARIANT and fails to compile, so windows/arm64 falls back to
+// client_secret only (keysigner.Active() is nil). On darwin the keychain signer
+// is used instead. CGO is never required.
 package keysigner
 
 import (
