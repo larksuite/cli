@@ -63,7 +63,7 @@ func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, authMetho
 		return runExistingAppForm(f, msg)
 	}
 
-	return runCreateAppFlow(ctx, f, "", authMethodFlag, msg)
+	return runCreateAppFlow(ctx, f, "", authMethodFlag, msg, "")
 }
 
 // runExistingAppForm shows a huh form for manually entering App ID / App Secret / Brand.
@@ -204,7 +204,10 @@ func resolveRegisterAuthMethod(f *cmdutil.Factory, flag string) (string, error) 
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
 // authMethodFlag is the raw --auth-method value ("" when unset).
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, authMethodFlag string, msg *initMsg) (*configInitResult, error) {
+// restoreAppID, when non-empty, is sent on the registration begin request so the
+// server re-registers that existing app (credential recovery) instead of creating
+// a new one. Empty preserves the normal new-app flow.
+func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, authMethodFlag string, msg *initMsg, restoreAppID string) (*configInitResult, error) {
 	var larkBrand core.LarkBrand
 	if brandOverride != "" {
 		larkBrand = brandOverride
@@ -272,6 +275,9 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 			AuthAttestation: attestation,
 		}
 	}
+
+	// Restore flow: re-register the existing app instead of creating a new one.
+	beginOpts.RestoreAppID = restoreAppID
 
 	authResp, err := larkauth.RequestAppRegistration(ctx, httpClient, larkBrand, beginOpts, f.IOStreams.ErrOut)
 	if err != nil {

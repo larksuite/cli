@@ -14,6 +14,21 @@ import (
 	"github.com/larksuite/cli/internal/output"
 )
 
+// TestRunRestoreFlow_NothingToRestore covers the early guards that return before
+// any network/registration call: no config at all, and a config whose resolved
+// app has no app id (nothing to send on begin).
+func TestRunRestoreFlow_NothingToRestore(t *testing.T) {
+	// No config on disk.
+	if err := runRestoreFlow(&ConfigInitOptions{}, nil, nil, nil); err == nil {
+		t.Fatal("expected error when there is no config to restore")
+	}
+	// Config present but the resolved app has no app id.
+	existing := &core.MultiAppConfig{Apps: []core.AppConfig{{AppId: ""}}}
+	if err := runRestoreFlow(&ConfigInitOptions{}, existing, nil, nil); err == nil {
+		t.Fatal("expected error when the resolved app has no app id")
+	}
+}
+
 // updateExistingProfileWithoutSecret guards four blank-input scenarios. Each
 // must surface as *ValidationError(SubtypeInvalidArgument) per RFC 6749 §5.2:
 // SubtypeInvalidClient is reserved for IAM rejection of malformed credentials,
