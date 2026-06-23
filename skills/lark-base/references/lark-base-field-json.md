@@ -9,7 +9,7 @@
 - `--json` 必须是 JSON 对象。
 - 顶层统一使用：`type` + `name` + 类型特有字段。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
-- 字段默认值配置的写法在各字段 fewshot 里；`type=specific_value` 的默认值统一沿用记录写入 CellValue 的格式，复杂值先看 CellValue 格式说明 [lark-base-cell-value.md](lark-base-cell-value.md)。
+- 字段默认值使用 `default_value`，直接传对应 CellValue；支持范围只有 `text`、`number`、静态 `select`、`datetime`、`user`。清空默认值传 `null`；省略表示创建时不设置、更新时不修改。
 - 不要使用旧结构：`field_name`、`property`、`ui_type`、数字枚举 `type`。
 - `+field-update` 使用同样的字段 JSON 结构，但语义是 `PUT`；这是高风险写入操作，建议先 `+field-get` 再按目标状态全量提交，并带 `--yes`。
 - `type=formula` 或 `type=lookup` 创建/更新前，必须先读对应 guide。
@@ -28,12 +28,12 @@
 
 | 类型 | 最小必填字段 | 常见补充字段 |
 |------|--------------|-------------|
-| `text` | `type` `name` | `style.type` `defaultValue` |
-| `number` | `type` `name` | `style` `defaultValue` |
-| `select` | `type` `name` | `multiple` + `options` + 静态 `defaultValue`，或 `multiple` + `dynamic_options_source` |
-| `datetime` | `type` `name` | `style.format` `defaultValue` |
+| `text` | `type` `name` | `style.type` `default_value` |
+| `number` | `type` `name` | `style` `default_value` |
+| `select` | `type` `name` | `multiple` + `options` + 静态 `default_value`，或 `multiple` + `dynamic_options_source` |
+| `datetime` | `type` `name` | `style.format` `default_value` |
 | `created_at` / `updated_at` | `type` `name` | `style.format` |
-| `user` / `group_chat` | `type` `name` | `multiple`；仅 `user` 支持 `defaultValue` |
+| `user` / `group_chat` | `type` `name` | `multiple`；仅 `user` 支持 `default_value` |
 | `created_by` / `updated_by` | `type` `name` | 无 |
 | `link` | `type` `name` `link_table` | `bidirectional` `bidirectional_link_field_name` |
 | `formula` | `type` `name` `expression` | 无 |
@@ -48,13 +48,15 @@
 ### 3.1 text
 
 文本字段；电话、超链接、邮箱、条码也都属于 `text`，通过 `style.type` 区分。
+支持 `default_value`：静态 Markdown 文本字符串；`phone` style 必须是合法电话号码；`url` style 传一个 Markdown 链接或裸 URL；`email` style 必须是合法邮箱字符串，不要传 Markdown 链接或 `mailto:`。
 
 最小写法（默认 `style.type` 为 `plain`）：
 
 ```json
 {
   "type": "text",
-  "name": "标题"
+  "name": "标题",
+  "default_value": "默认标题"
 }
 ```
 
@@ -66,7 +68,7 @@
   "type": "text",
   "name": "标题",
   "description": "主标题字段",
-  "defaultValue": { "type": "specific_value", "cell_value": "未命名" }
+  "default_value": "未命名"
 }
 ```
 
@@ -75,7 +77,8 @@
 {
   "type": "text",
   "name": "联系电话",
-  "style": { "type": "phone" }
+  "style": { "type": "phone" },
+  "default_value": "+8613800000000"
 }
 ```
 
@@ -83,17 +86,17 @@
 {
   "type": "text",
   "name": "官网",
-  "style": { "type": "url" }
+  "style": { "type": "url" },
+  "default_value": "[官网](https://example.com)"
 }
 ```
 
-`style.type=email` 时默认值是合法邮箱字符串。
 ```json
 {
   "type": "text",
   "name": "邮箱",
   "style": { "type": "email" },
-  "defaultValue": { "type": "specific_value", "cell_value": "owner@example.com" }
+  "default_value": "owner@example.com"
 }
 ```
 
@@ -102,13 +105,15 @@
 ### 3.2 number
 
 数字字段；货币、进度、评分都属于 `number`，通过 `style.type` 区分。
+支持 `default_value`：静态 JSON number；所有 number style 都按这个规则写。
 
 最小写法（默认 `style.type` 为 `plain`）：
 
 ```json
 {
   "type": "number",
-  "name": "工时"
+  "name": "工时",
+  "default_value": 8
 }
 ```
 
@@ -133,7 +138,7 @@
     "percentage": false,
     "thousands_separator": true
   },
-  "defaultValue": { "type": "specific_value", "cell_value": 8 }
+  "default_value": 8
 }
 ```
 
@@ -167,7 +172,7 @@
   "type": "number",
   "name": "完成度",
   "style": { "type": "progress", "percentage": true, "color": "Blue" },
-  "defaultValue": { "type": "specific_value", "cell_value": 0.65 }
+  "default_value": 0.65
 }
 ```
 
@@ -196,6 +201,7 @@
 #### 静态选项
 
 支持字段：`multiple`、`options`
+支持 `default_value`：静态选项名数组；即使 `multiple=false` 也写数组，如 `["Todo"]`。
 
 默认值 / 约束：
 - `multiple` 默认 `false`
@@ -205,14 +211,14 @@
 - `options[].hue` 可用：`Red`、`Orange`、`Yellow`、`Lime`、`Green`、`Turquoise`、`Wathet`、`Blue`、`Carmine`、`Purple`、`Gray` 缺省值为 `Blue`
 - `options[].lightness` 可用：`Lighter`、`Light`、`Standard`、`Dark`、`Darker` 缺省值为 `Lighter`
 - 选项里没有 `id`，只有 `name`。
-- 支持默认值配置：`cell_value` 填选项名数组。
+- 支持 `default_value` 配置：填选项名数组。
 
 ```json
 {
   "type": "select",
   "name": "状态",
   "multiple": false,
-  "defaultValue": { "type": "specific_value", "cell_value": ["Todo"] },
+  "default_value": ["Todo"],
   "options": [
     { "name": "Todo", "hue": "Blue", "lightness": "Lighter" },
     { "name": "Done", "hue": "Green", "lightness": "Light" }
@@ -223,6 +229,7 @@
 #### 动态选项
 
 支持字段：`multiple`、`dynamic_options_source`
+动态选项不支持 `default_value`。
 
 默认值 / 约束：
 - `multiple` 默认 `false`
@@ -231,7 +238,7 @@
 - `dynamic_options_source.field_id` 填来源字段 id 或字段名
 - `dynamic_options_source` 仅创建支持；更新已有字段时不要传
 - 引用选项条件 / 级联筛选条件：这个功能在 Base 前端支持，属于 UI-only 属性，OpenAPI 里不支持，CLI 不能读取、创建或更新；不要根据接口返回缺失判断未配置
-- 动态选项不支持配置 `defaultValue`。
+- 动态选项不支持配置 `default_value`。
 
 ```json
 {
@@ -248,15 +255,15 @@
 ### 3.4 datetime
 
 手动填写的日期/时间字段。系统时间用 `created_at` / `updated_at`。
-支持默认值配置：`specific_value` 固定时间，或 `record_created_time` 自动填充记录创建时间；固定时间 `cell_value` 用 `YYYY-MM-DD HH:mm:ss` 字符串。
-`datetime + record_created_time` 是创建时自动填充时间到单元格中，后续可修改单元格；`created_at` 系统字段读取底层只读元信息，单元格无法修改。
+支持 `default_value`：静态时间字符串，或 `{ "$slot": "record_created_time" }`。`datetime + record_created_time` 是自动填充可编辑单元格；`created_at` 是只读创建时间元信息。
 
 最小写法：
 
 ```json
 {
   "type": "datetime",
-  "name": "截止时间"
+  "name": "截止时间",
+  "default_value": "2026-03-24 10:00:00"
 }
 ```
 
@@ -273,15 +280,7 @@
   "type": "datetime",
   "name": "截止时间",
   "style": { "format": "yyyy-MM-dd HH:mm" },
-  "defaultValue": { "type": "specific_value", "cell_value": "2026-03-24 10:00:00" }
-}
-```
-
-```json
-{
-  "type": "datetime",
-  "name": "单元格自动填充创建时刻",
-  "defaultValue": { "type": "record_created_time" }
+  "default_value": { "$slot": "record_created_time" }
 }
 ```
 
@@ -306,17 +305,18 @@
 ### 3.6 user / group_chat
 
 人员字段和群字段都支持 `multiple`。
+`user` 支持 `default_value`：人员 CellValue 数组，元素可用 `{ "id": "ou_xxx" }` 或 `{ "$slot": "current_user" }`；不要猜用户 ID。`group_chat` 不支持默认值。
 
 默认值 / 约束：
 - `multiple` 默认 `true`
-- `user` 字段支持 `defaultValue` 配置，`group_chat` 字段不支持 `defaultValue` 配置。
+- `user` 字段支持 `default_value` 配置，`group_chat` 字段不支持 `default_value` 配置。
 
 ```json
 {
   "type": "user",
   "name": "负责人",
   "multiple": true,
-  "defaultValue": { "type": "specific_value", "cell_value": [{ "id": "ou_xxx" }] }
+  "default_value": [{ "$slot": "current_user" }, { "id": "ou_xxx" }]
 }
 ```
 
@@ -524,4 +524,4 @@ Object（对象字段）、Button（按钮字段）、Stage（流程字段）暂
 - `number` 的精度、货币、进度、评分配置都放在 `style` 下，不要写顶层 `precision`。
 - `datetime` 是手动日期字段；系统时间请改用 `created_at` / `updated_at`。
 - `formula` / `lookup` 没读 guide 前不要直接写。
-- 只有 `text`、`number`、`select`、`datetime`、`user` 类型支持 `defaultValue`；清空统一传 `"defaultValue": null`。其他字段类型不支持配置默认值，传入会自动忽略。
+- 只有 `text`、`number`、静态 `select`、`datetime`、`user` 支持 `default_value`；清空统一传 `"default_value": null`。其他字段类型不要配置默认值。
