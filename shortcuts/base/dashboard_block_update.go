@@ -12,26 +12,27 @@ import (
 )
 
 var BaseDashboardBlockUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-update",
-	Description: "Update a dashboard block",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:update"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-update",
+	Description:       "Update a dashboard block",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:update"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		blockIDFlag(true),
 		{Name: "name", Desc: "new block name"},
-		{Name: "data-config", Desc: "data_config JSON object; read dashboard-block-data-config.md for the SSOT"},
+		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-data-config.md for the SSOT"},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
 	Tips: []string{
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 		`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-		"Read dashboard-block-data-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
+		"Read lark-base-dashboard-block-data-config.md as the SSOT for data_config templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Use +dashboard-block-get first to inspect the current data_config before replacing nested values.",
 		"Block type cannot be changed; delete and recreate the block to change chart type.",
 		"data_config update merges top-level keys, but each provided key is replaced as a whole.",
@@ -74,7 +75,7 @@ var BaseDashboardBlockUpdate = common.Shortcut{
 			PATCH("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
 			Params(params).
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id")).
 			Set("block_id", runtime.Str("block-id"))
 	},

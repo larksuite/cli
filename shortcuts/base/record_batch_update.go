@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordBatchUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-batch-update",
-	Description: "Batch update records",
-	Risk:        "write",
-	Scopes:      []string{"base:record:update"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-batch-update",
+	Description:       "Batch update records",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:update"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

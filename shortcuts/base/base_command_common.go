@@ -10,7 +10,7 @@ func authTypes() []string {
 }
 
 func baseTokenFlag(required bool) common.Flag {
-	return common.Flag{Name: "base-token", Desc: "base token", Required: required}
+	return common.Flag{Name: "base-token", Desc: "base token or /base|/wiki URL", Required: required}
 }
 
 func tableRefFlag(required bool) common.Flag {

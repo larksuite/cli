@@ -10,14 +10,15 @@ import (
 )
 
 var BaseViewGetGroup = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-get-group",
-	Description: "Get view group configuration",
-	Risk:        "read",
-	Scopes:      []string{"base:view:read"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
-	DryRun:      dryRunViewGetGroup,
+	Service:           "base",
+	Command:           "+view-get-group",
+	Description:       "Get view group configuration",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:read"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
+	DryRun:            dryRunViewGetGroup,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewGetProperty(runtime, "group", "group")
 	},

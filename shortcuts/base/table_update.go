@@ -10,12 +10,13 @@ import (
 )
 
 var BaseTableUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+table-update",
-	Description: "Rename a table by ID or name",
-	Risk:        "write",
-	Scopes:      []string{"base:table:update"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+table-update",
+	Description:       "Rename a table by ID or name",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:update"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

@@ -55,15 +55,15 @@ func TestDryRunBaseBlockOps(t *testing.T) {
 	createRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "type": "docx", "name": "Spec", "parent-id": "bfl_1"}, nil, nil)
 	assertDryRunContains(t, dryRunBaseBlockCreate(ctx, createRT), "POST /open-apis/base/v3/bases/app_x/blocks", `"type":"docx"`, `"name":"Spec"`, `"parent_id":"bfl_1"`)
 
-	moveRootRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1"}, nil, nil)
-	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveRootRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/move", `"parent_id":null`)
+	moveRootRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "cht_1"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveRootRT), "POST /open-apis/base/v3/bases/app_x/blocks/cht_1/move", `"parent_id":null`)
 
-	moveAfterRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1", "parent-id": "bfl_1", "after-id": "blk_0"}, nil, nil)
-	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveAfterRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/move", `"parent_id":"bfl_1"`, `"after_id":"blk_0"`)
+	moveAfterRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "cht_1", "parent-id": "bfl_1", "after-id": "blk_0"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockMove(ctx, moveAfterRT), "POST /open-apis/base/v3/bases/app_x/blocks/cht_1/move", `"parent_id":"bfl_1"`, `"after_id":"blk_0"`)
 
-	renameRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "blk_1", "name": "New name"}, nil, nil)
-	assertDryRunContains(t, dryRunBaseBlockRename(ctx, renameRT), "POST /open-apis/base/v3/bases/app_x/blocks/blk_1/rename", `"name":"New name"`)
-	assertDryRunContains(t, dryRunBaseBlockDelete(ctx, renameRT), "DELETE /open-apis/base/v3/bases/app_x/blocks/blk_1")
+	renameRT := newBaseTestRuntime(map[string]string{"base-token": "app_x", "block-id": "cht_1", "name": "New name"}, nil, nil)
+	assertDryRunContains(t, dryRunBaseBlockRename(ctx, renameRT), "POST /open-apis/base/v3/bases/app_x/blocks/cht_1/rename", `"name":"New name"`)
+	assertDryRunContains(t, dryRunBaseBlockDelete(ctx, renameRT), "DELETE /open-apis/base/v3/bases/app_x/blocks/cht_1")
 }
 
 func TestDryRunFieldOps(t *testing.T) {
@@ -75,6 +75,14 @@ func TestDryRunFieldOps(t *testing.T) {
 		map[string]int{"offset": -2, "limit": 200},
 	)
 	assertDryRunContains(t, dryRunFieldList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields", "offset=0", "limit=200")
+
+	batchListRT := newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "app_x"},
+		map[string][]string{"table-id": {"tbl_1", "tbl_2"}},
+		nil,
+		map[string]int{"offset": 0, "limit": 50},
+	)
+	assertDryRunContains(t, dryRunFieldListBatch(ctx, batchListRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields", "GET /open-apis/base/v3/bases/app_x/tables/tbl_2/fields", "limit=50")
 
 	rt := newBaseTestRuntime(
 		map[string]string{
@@ -340,8 +348,8 @@ func TestDryRunDashboardOps(t *testing.T) {
 	rt := newBaseTestRuntime(
 		map[string]string{
 			"base-token":   "app_x",
-			"dashboard-id": "dash_1",
-			"block-id":     "blk_1",
+			"dashboard-id": "blk_1",
+			"block-id":     "cht_1",
 			"name":         "Main",
 			"theme-style":  "light",
 			"type":         "bar",
@@ -354,16 +362,16 @@ func TestDryRunDashboardOps(t *testing.T) {
 	)
 
 	assertDryRunContains(t, dryRunDashboardList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards", "page_size=50", "page_token=pt_1")
-	assertDryRunContains(t, dryRunDashboardGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/dash_1")
+	assertDryRunContains(t, dryRunDashboardGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/blk_1")
 	assertDryRunContains(t, dryRunDashboardCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards")
-	assertDryRunContains(t, dryRunDashboardUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1")
-	assertDryRunContains(t, dryRunDashboardDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1")
+	assertDryRunContains(t, dryRunDashboardUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/blk_1")
+	assertDryRunContains(t, dryRunDashboardDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/blk_1")
 
-	assertDryRunContains(t, dryRunDashboardBlockList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "page_size=50", "page_token=pt_1")
-	assertDryRunContains(t, dryRunDashboardBlockGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
-	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks", "user_id_type=open_id")
-	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1", "user_id_type=open_id")
-	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/dash_1/blocks/blk_1")
+	assertDryRunContains(t, dryRunDashboardBlockList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/blk_1/blocks", "page_size=50", "page_token=pt_1")
+	assertDryRunContains(t, dryRunDashboardBlockGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards/blk_1/blocks/cht_1", "user_id_type=open_id")
+	assertDryRunContains(t, dryRunDashboardBlockCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/dashboards/blk_1/blocks", "user_id_type=open_id")
+	assertDryRunContains(t, dryRunDashboardBlockUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/dashboards/blk_1/blocks/cht_1", "user_id_type=open_id")
+	assertDryRunContains(t, dryRunDashboardBlockDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/dashboards/blk_1/blocks/cht_1")
 }
 
 func TestDryRunViewOps(t *testing.T) {

@@ -13,13 +13,14 @@ import (
 )
 
 var BaseFormQuestionsList = common.Shortcut{
-	Service:     "base",
-	Command:     "+form-questions-list",
-	Description: "List questions of a form in a Base table",
-	Risk:        "read",
-	Scopes:      []string{"base:form:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+form-questions-list",
+	Description:       "List questions of a form in a Base table",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:form:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "table-id", Desc: "table ID", Required: true},
@@ -31,12 +32,12 @@ var BaseFormQuestionsList = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms/:form_id/questions").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("table_id", runtime.Str("table-id")).
 			Set("form_id", runtime.Str("form-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		tableId := runtime.Str("table-id")
 		formId := runtime.Str("form-id")
 

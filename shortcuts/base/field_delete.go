@@ -10,13 +10,14 @@ import (
 )
 
 var BaseFieldDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+field-delete",
-	Description: "Delete a field by ID or name",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:field:delete"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
+	Service:           "base",
+	Command:           "+field-delete",
+	Description:       "Delete a field by ID or name",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:field:delete"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true), fieldRefFlag(true)},
 	Tips: []string{
 		baseHighRiskYesTip,
 		`Example: lark-cli base +field-delete --base-token <base_token> --table-id <table_id> --field-id "Status" --yes`,

@@ -20,14 +20,14 @@ var baseCreateDefaultTableDeleteDelay = time.Second
 func dryRunBaseGet(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		GET("/open-apis/base/v3/bases/:base_token").
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 }
 
 func dryRunBaseCopy(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	d := common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/copy").
 		Body(buildBaseCopyBody(runtime)).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 	if runtime.IsBot() {
 		d.Desc("After Base copy succeeds in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on the new Base.")
 	}
@@ -73,7 +73,7 @@ func validateBaseCreate(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseGet(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", runtime.Str("base-token")), nil, nil)
+	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseTokenOrRaw(runtime)), nil, nil)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func executeBaseGet(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseCopy(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "copy"), nil, buildBaseCopyBody(runtime))
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "copy"), nil, buildBaseCopyBody(runtime))
 	if err != nil {
 		return err
 	}

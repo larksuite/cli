@@ -10,12 +10,13 @@ import (
 )
 
 var BaseTableList = common.Shortcut{
-	Service:     "base",
-	Command:     "+table-list",
-	Description: "List tables in a base",
-	Risk:        "read",
-	Scopes:      []string{"base:table:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+table-list",
+	Description:       "List tables in a base",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},

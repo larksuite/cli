@@ -10,13 +10,14 @@ import (
 )
 
 var BaseTableDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+table-delete",
-	Description: "Delete a table by ID or name",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:table:delete"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true)},
+	Service:           "base",
+	Command:           "+table-delete",
+	Description:       "Delete a table by ID or name",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:delete"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true)},
 	Tips: []string{
 		`Example: lark-cli base +table-delete --base-token <base_token> --table-id "Old Tasks" --yes`,
 		"table-id accepts a table ID (tbl...) or the table name in the current Base.",

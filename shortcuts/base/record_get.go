@@ -11,12 +11,13 @@ import (
 )
 
 var BaseRecordGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-get",
-	Description: "Get one or more records by ID",
-	Risk:        "read",
-	Scopes:      []string{"base:record:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-get",
+	Description:       "Get one or more records by ID",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

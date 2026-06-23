@@ -5,28 +5,34 @@ package base
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
 
 var BaseRecordList = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-list",
-	Description: "List records in a table",
-	Risk:        "read",
-	Scopes:      []string{"base:record:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-list",
+	Description:       "List records in a table",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
 		recordListFieldRefFlag(),
 		recordListViewRefFlag(),
 		recordFilterFlag(),
+		recordFilterAliasFlag(),
 		recordSortFlag(),
+		recordSortAliasFlag(),
+		{Name: "json", Hidden: true},
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
-		pageSizeLimitAliasFlag(),
+		{Name: "page-size", Type: "int", Default: "0", Desc: "deprecated alias for --limit", Hidden: true},
+		{Name: "page-token", Hidden: true},
 		recordReadFormatFlag(),
 	},
 	Tips: []string{
@@ -46,16 +52,11 @@ var BaseRecordList = common.Shortcut{
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
 		}
-		if err := validateLimitPageSizeAlias(runtime); err != nil {
+		if err := validateRecordPageLimit(runtime); err != nil {
 			return err
 		}
-		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
-			return err
-		}
-		if runtime.Changed("page-size") {
-			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
-				return err
-			}
+		if strings.TrimSpace(runtime.Str("json")) != "" {
+			return baseFlagErrorf("+record-list does not support --json; use --filter-json for filters and --sort-json for sorting")
 		}
 		return validateRecordQueryOptions(runtime)
 	},

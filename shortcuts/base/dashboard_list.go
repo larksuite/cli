@@ -11,13 +11,14 @@ import (
 )
 
 var BaseDashboardList = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-list",
-	Description: "List dashboards in a base",
-	Risk:        "read",
-	Scopes:      []string{"base:dashboard:read"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-list",
+	Description:       "List dashboards in a base",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:read"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "page-size", Type: "int", Default: "100", Desc: "page size, range 1-100"},
@@ -39,7 +40,7 @@ var BaseDashboardList = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/dashboards").
 			Params(params).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardList(runtime)

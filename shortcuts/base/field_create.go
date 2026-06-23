@@ -10,12 +10,13 @@ import (
 )
 
 var BaseFieldCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+field-create",
-	Description: "Create a field",
-	Risk:        "write",
-	Scopes:      []string{"base:field:create"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+field-create",
+	Description:       "Create a field",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:field:create"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

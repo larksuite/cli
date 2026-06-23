@@ -16,13 +16,14 @@ import (
 )
 
 var BaseRoleGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+role-get",
-	Description: "Get full config of a role",
-	Risk:        "read",
-	Scopes:      []string{"base:role:read"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+role-get",
+	Description:       "Get full config of a role",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:role:read"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "role-id", Desc: "role ID (e.g. rolxxxxxx4)", Required: true},
@@ -32,7 +33,7 @@ var BaseRoleGet = common.Shortcut{
 		"Use before +role-update to inspect the current full permission config.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("role-id")) == "" {
@@ -43,11 +44,11 @@ var BaseRoleGet = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/roles/:role_id").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("role_id", runtime.Str("role-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		roleId := runtime.Str("role-id")
 
 		apiResp, err := runtime.DoAPI(&larkcore.ApiReq{

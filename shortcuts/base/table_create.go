@@ -10,12 +10,13 @@ import (
 )
 
 var BaseTableCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+table-create",
-	Description: "Create a table and optional fields/views",
-	Risk:        "write",
-	Scopes:      []string{"base:table:create", "base:field:read", "base:field:create", "base:field:update", "base:view:write_only"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+table-create",
+	Description:       "Create a table and optional fields/views",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:create", "base:field:read", "base:field:create", "base:field:update", "base:view:write_only"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "table name", Required: true},

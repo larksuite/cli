@@ -12,13 +12,14 @@ import (
 )
 
 var BaseFormCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+form-create",
-	Description: "Create a form in a Base table",
-	Risk:        "write",
-	Scopes:      []string{"base:form:create"},
-	AuthTypes:   []string{"user", "bot"},
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+form-create",
+	Description:       "Create a form in a Base table",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:form:create"},
+	AuthTypes:         []string{"user", "bot"},
+	HasFormat:         true,
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "Base token (base_token)", Required: true},
 		{Name: "table-id", Desc: "table ID", Required: true},
@@ -31,11 +32,11 @@ var BaseFormCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/forms").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("table_id", runtime.Str("table-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		tableId := runtime.Str("table-id")
 		name := runtime.Str("name")
 		description := runtime.Str("description")

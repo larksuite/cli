@@ -1,46 +1,130 @@
 # Workflow guide
 
-本文档是 Workflow 的入口指南，帮助选择步骤组合、理解创建/更新边界，并引导到 steps JSON SSOT。
+本文档是 Workflow 的操作地图：先用它决定最短路径，再按需打开 schema 小文件。Guide 要一次读完后能完成大多数查询、启停和常见创建/修改；schema 才是零件手册。
 
-> **配套文档**:
-> - Workflow 的数据结构参考：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)
-> - 创建/更新时重点构造 `title`、`status` 和 `steps`；复杂度集中在 `steps[].type/data/next`
+## 先判断任务类型
 
----
+| 目标 | 最短路径 | 是否读 schema |
+|---|---|---|
+| 列出 workflow | `+workflow-list --base-token <base>`；需要筛选启停状态时用 `--status` | 不读 |
+| 查看一个 workflow | 先 `+workflow-list` 后按标题本地匹配 `workflow_id`，再 `+workflow-get --workflow-id <wkf>` | 不读，除非要解释完整 `steps` |
+| 启用/停用 workflow | `+workflow-list --status <enabled|disabled>` 定位，再 `+workflow-enable/disable` | 不读 |
+| 创建简单 workflow | 读本 guide，按下方场景表打开必要 step schema | 只读命中的 step |
+| 修改 workflow | `+workflow-get` 取现状，保留无关字段，只改目标 step；复杂 step 再读 schema | 只读被改的 step |
+| 解释复杂 `steps` | 先用本 guide 的结构速记理解连线，再按 step type 打开 schema | 按需读 |
 
-## 快速开始
+不要默认看 `--help`。只有命令报错、参数名不确定、或要确认复杂写入参数时，才看当前命令的 help。
 
-### 最简单的 Workflow
+## 资源发现顺序
 
-新增记录时发送消息通知：
+1. 从用户链接提取 `base_token`。
+2. 需要知道文档内资源时用 `+base-block-list` 或 `+table-list`；不要两者都跑，除非一个结果不够。
+3. 字段发现默认用 `+field-list --compact`；只有需要公式、lookup 或完整字段配置时再 `+field-get`。
+4. 多表字段发现用 `+field-list-batch --compact --table-id <id1> --table-id <id2>`。
+5. workflow 定位用 `+workflow-list` 读取列表，再按 `title` 本地匹配；当前命令没有 `--title` flag。
+
+## Workflow 结构速记
 
 ```json
 {
-  "client_token": "1704067200",
-  "title": "新订单自动通知",
+  "client_token": "unique-create-token",
+  "title": "工作流标题",
   "steps": [
     {
-      "id": "trigger_1",
+      "id": "step_trigger",
       "type": "AddRecordTrigger",
-      "title": "监控新订单",
-      "next": "action_1",
+      "title": "触发器",
+      "next": "step_action",
+      "data": {}
+    },
+    {
+      "id": "step_action",
+      "type": "LarkMessageAction",
+      "title": "动作",
+      "next": null,
+      "data": {}
+    }
+  ]
+}
+```
+
+- `id` 要稳定、可读，被 `next` 和 `children.links[].to` 引用。
+- 普通 trigger/action 用 `next` 串联；最后一个节点 `next:null`。
+- `IfElseBranch` / `SwitchBranch` / `Loop` 用 `children.links` 表达分支或循环入口。
+- Action 节点不要设置 `children`。
+- `ref` 引用前置 step 的输出，字段下钻通常是 `$.{stepId}.{fieldId}`；循环内当前项常用 `$.{loopStepId}.item.{fieldId}`。
+- `+workflow-create` 需要唯一 `client_token`；新 workflow 创建后默认 disabled，用户需要启用时再调用 `+workflow-enable`。
+- `+workflow-update` 是完整替换；从 `+workflow-get` 返回中保留不想改的 `title/status/steps`。
+
+## Step 选型
+
+创建/修改前先产出一个草图：列出全部节点 `id/type/next/children`，把会用到的 `type` 去重后，再一次性读取对应的 step md 文档。不要“读一个 step、想一轮、再读下一个 step”；这会增加轮次和上下文重放。
+
+| 用户说法 | 选型 |
+|---|---|
+| 新增记录时 | `AddRecordTrigger` |
+| 记录被修改时 | `SetRecordTrigger` |
+| 新增或修改都触发、或拿不准 | `ChangeRecordTrigger` |
+| 每天/每周/每月/固定时间 | `TimerTrigger` |
+| 日期字段到期提醒 | `ReminderTrigger` |
+| 点击按钮 | `ButtonTrigger` |
+| 收到群消息/私聊消息 | `LarkMessageTrigger` |
+| 新增一条记录 | `AddRecordAction` |
+| 更新当前或查找到的记录 | `SetRecordAction` |
+| 查找多条记录再处理 | `FindRecordAction`，多条时接 `Loop` |
+| 分两路判断 | `IfElseBranch` |
+| 多档位/多类别判断 | `SwitchBranch` |
+| 发送飞书消息 | `LarkMessageAction` |
+| 调外部接口 | `HTTPClientAction` |
+| 等待一段时间 | `Delay` |
+| AI 生成文本 | `GenerateAiTextAction` |
+
+用户描述"修改为 X **或** 新增 X 时"这类同条件多来源需求，是单个 `ChangeRecordTrigger` + `condition_list` 的典型场景，一条工作流即可表达，不要拆成 `AddRecordTrigger` 和 `SetRecordTrigger` 两条工作流。
+
+## 常见场景
+
+| 场景 | 推荐步骤 | 需要读的 schema |
+|---|---|---|
+| 新增记录后发通知 | `AddRecordTrigger -> LarkMessageAction` | `trigger-add-record.md`, `action-lark-message.md` |
+| 记录变化后更新同一行字段 | `ChangeRecordTrigger -> SetRecordAction` | `trigger-change-record.md`, `action-set-record.md`; 条件复杂再读 common refs |
+| 金额/状态分档处理 | `AddRecordTrigger -> SwitchBranch -> SetRecordAction...` | `trigger-add-record.md`, `branch-switch.md`, `action-set-record.md`, common conditions |
+| 二选一判断 | `... -> IfElseBranch -> ...` | `branch-if-else.md`, common conditions |
+| 定时汇总并逐人通知 | `TimerTrigger -> FindRecordAction -> Loop -> LarkMessageAction` | `trigger-timer.md`, `action-find-record.md`, `system-loop.md`, `action-lark-message.md`, common refs |
+| 群消息触发后回复 | `LarkMessageTrigger -> FindRecordAction/Loop -> LarkMessageAction` | `trigger-lark-message.md`, `action-find-record.md`, `system-loop.md`, `action-lark-message.md` |
+| 按钮触发外部系统 | `ButtonTrigger -> HTTPClientAction -> AddRecordAction` | `trigger-button.md`, `action-http-client.md`, `action-add-record.md` |
+| 调用 AI 生成内容并写回 | `... -> GenerateAiTextAction -> SetRecordAction` | `action-generate-ai-text.md`, `action-set-record.md`, common refs |
+
+Schema 入口：[lark-base-workflow-schema.md](lark-base-workflow-schema.md)。不要一次性打开所有 step 文件；先确定本次 workflow 的完整 step type 集合，再一次性打开这些文件。只有确定会写 `ref`、条件、字段值或节点输出引用时，才把 `common-types-and-refs.md` 加入同一批读取。
+
+## 最小例子：新增记录后发送消息
+
+只读 [workflow-steps/trigger-add-record.md](workflow-steps/trigger-add-record.md) 和 [workflow-steps/action-lark-message.md](workflow-steps/action-lark-message.md) 即可。
+
+```json
+{
+  "client_token": "wf-unique-token",
+  "title": "新订单通知",
+  "steps": [
+    {
+      "id": "trig_new_order",
+      "type": "AddRecordTrigger",
+      "title": "新增订单时",
+      "next": "act_notify",
       "data": {
         "table_name": "订单表",
         "watched_field_name": "订单号"
       }
     },
     {
-      "id": "action_1",
+      "id": "act_notify",
       "type": "LarkMessageAction",
       "title": "发送通知",
       "next": null,
       "data": {
-        "receiver": [{ "value_type": "user", "value": {"id": "ou_xxxx", "name": "张三"} }],
+        "receiver": [{ "value_type": "user", "value": { "id": "ou_xxx" } }],
         "send_to_everyone": false,
         "title": [{ "value_type": "text", "value": "新订单提醒" }],
-        "content": [
-          { "value_type": "text", "value": "收到新订单" }
-        ],
+        "content": [{ "value_type": "text", "value": "收到新订单" }],
         "btn_list": []
       }
     }
@@ -48,435 +132,13 @@
 }
 ```
 
----
+## 复杂例子：定时查找、循环分支并发送消息
 
-## 场景速查表
-
-| 场景 | 步骤组合 | 示例 |
-|------|---------|------|
-| 新增触发+通知 | AddRecordTrigger → LarkMessageAction | [下方](#示例1-新增记录触发--发送消息) |
-| 按钮点击+调用外部接口+写入日志 | ButtonTrigger → HTTPClientAction → AddRecordAction | [下方](#示例-6-按钮触发--调用外部接口--写入同步日志) |
-| 定时+循环 | TimerTrigger → FindRecordAction → Loop → LarkMessageAction | [下方](#示例2-定时触发--查找记录--循环遍历--发送消息) |
-| 条件判断 | ... → IfElseBranch → 分支处理 | [下方](#示例3-条件分支-ifelsebranch) |
-| 多路分类 | ... → SwitchBranch → 多分支处理 | [下方](#示例4-多路分支-switchbranch) |
-| 复杂组合 | 定时+查找+循环+分支+消息 | [下方](#示例5-组合场景-定时查找循环分支消息) |
-
----
-
-## 完整示例
-
-### 示例 1: 新增记录触发 + 发送消息
-
-**场景**: 当订单表新增记录时，发送飞书消息通知负责人。
+需要组合多类节点时，先画一个端到端草图，明确 `children.links` 与 `next` 的衔接，再按草图涉及的节点类型读取对应的 ref（例如本例用到 [workflow-steps/trigger-timer.md](workflow-steps/trigger-timer.md)、[workflow-steps/action-find-record.md](workflow-steps/action-find-record.md)、[workflow-steps/system-loop.md](workflow-steps/system-loop.md)、[workflow-steps/branch-switch.md](workflow-steps/branch-switch.md)、[workflow-steps/action-lark-message.md](workflow-steps/action-lark-message.md)、[workflow-steps/action-generate-ai-text.md](workflow-steps/action-generate-ai-text.md) 以及 [workflow-steps/common-types-and-refs.md](workflow-steps/common-types-and-refs.md)）。
 
 ```json
 {
-  "client_token": "1704067201",
-  "title": "新订单自动通知",
-  "steps": [
-    {
-      "id": "step_trigger",
-      "type": "AddRecordTrigger",
-      "title": "新增订单时触发",
-      "next": "step_notify",
-      "data": {
-        "table_name": "订单表",
-        "watched_field_name": "订单号",
-        "condition_list": null
-      }
-    },
-    {
-      "id": "step_notify",
-      "type": "LarkMessageAction",
-      "title": "发送订单通知",
-      "next": null,
-      "data": {
-        "receiver": [{ "value_type": "ref", "value": "$.step_trigger.fldManager" }],
-        "send_to_everyone": false,
-        "title": [{ "value_type": "text", "value": "新订单提醒" }],
-        "content": [
-          { "value_type": "text", "value": "客户 " },
-          { "value_type": "ref", "value": "$.step_trigger.fldCustomer" },
-          { "value_type": "text", "value": " 创建了新订单，金额：¥" },
-          { "value_type": "ref", "value": "$.step_trigger.fldAmount" }
-        ],
-        "btn_list": [
-          {
-            "text": "查看订单",
-            "btn_action": "openLink",
-            "link": [{ "value_type": "ref", "value": "$.step_trigger.recordLink" }]
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-**关键点**:
-- `AddRecordTrigger` 监控 `table_name` 表的 `watched_field_name` 字段
-- 使用 `ref` 引用触发器输出的字段值（注意是 fieldId，不是字段名）
-- `recordLink` 是触发器内置输出，表示记录链接
-
----
-
-### 示例 2: 定时触发 + 查找记录 + 循环遍历 + 发送消息
-
-**场景**: 每天早上 9 点，查找所有待处理订单，给每个客户发送提醒。
-
-```json
-{
-  "client_token": "1704067202",
-  "title": "每日待处理订单提醒",
-  "steps": [
-    {
-      "id": "step_timer",
-      "type": "TimerTrigger",
-      "title": "每天早上9点触发",
-      "next": "step_find_orders",
-      "data": {
-        "rule": "DAILY",
-        "start_time": "2025-01-01 09:00",
-        "is_never_end": true
-      }
-    },
-    {
-      "id": "step_find_orders",
-      "type": "FindRecordAction",
-      "title": "查找所有待处理订单",
-      "next": "step_loop_customers",
-      "data": {
-        "table_name": "订单表",
-        "field_names": ["客户名称", "订单金额", "客户联系方式"],
-        "should_proceed_when_no_results": false,
-        "filter_info": {
-          "conjunction": "and",
-          "conditions": [
-            {
-              "field_name": "状态",
-              "operator": "is",
-              "value": [{ "value_type": "option", "value": { "name": "待处理" } }]
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "step_loop_customers",
-      "type": "Loop",
-      "title": "遍历每个订单",
-      "children": {
-        "links": [
-          { "kind": "loop_start", "to": "step_send_reminder" }
-        ]
-      },
-      "next": null,
-      "data": {
-        "loop_mode": "continue",
-        "max_loop_times": 100,
-        "data": [{
-          "value_type": "ref",
-          "value": "$.step_find_orders.fieldRecords"
-        }]
-      }
-    },
-    {
-      "id": "step_send_reminder",
-      "type": "LarkMessageAction",
-      "title": "发送催办消息",
-      "next": null,
-      "data": {
-        "receiver": [{
-          "value_type": "ref",
-          "value": "$.step_loop_customers.item.fldContact"
-        }],
-        "send_to_everyone": false,
-        "title": [{ "value_type": "text", "value": "订单处理提醒" }],
-        "content": [
-          { "value_type": "text", "value": "您好，您的订单 " },
-          { "value_type": "ref", "value": "$.step_loop_customers.item.fldName" },
-          { "value_type": "text", "value": " 金额 ¥" },
-          { "value_type": "ref", "value": "$.step_loop_customers.item.fldAmount" },
-          { "value_type": "text", "value": " 正在处理中。" }
-        ],
-        "btn_list": []
-      }
-    }
-  ]
-}
-```
-
-**关键点**:
-- `Loop.data` 必须传入 `ref` 类型的数据源（通常是 FindRecordAction 的 `fieldRecords`）
-- `Loop.children.links` 必须包含 `kind: "loop_start"` 的链接指向循环体
-- 循环体内用 `$.{loopStepId}.item.{fieldId}` 引用当前遍历记录的字段
-- `$.{loopStepId}.index` 获取当前索引（从 0 开始）
-
----
-
-### 示例 3: 条件分支（IfElseBranch）
-
-**场景**: 根据订单金额判断，大额订单通知主管审批，小额订单自动通过。
-
-```json
-{
-  "client_token": "1704067203",
-  "title": "订单金额自动判断",
-  "steps": [
-    {
-      "id": "step_trigger",
-      "type": "AddRecordTrigger",
-      "title": "新增订单时触发",
-      "next": "step_check_amount",
-      "data": {
-        "table_name": "订单表",
-        "watched_field_name": "订单金额"
-      }
-    },
-    {
-      "id": "step_check_amount",
-      "type": "IfElseBranch",
-      "title": "判断是否为大额订单",
-      "children": {
-        "links": [
-          { "kind": "if_true", "to": "step_notify_manager", "label": "high", "desc": "金额>=10000" },
-          { "kind": "if_false", "to": "step_auto_approve", "label": "normal", "desc": "金额<10000" }
-        ]
-      },
-      "next": "step_log",
-      "data": {
-        "condition": {
-          "conjunction": "or",
-          "conditions": [
-            {
-              "conjunction": "and",
-              "conditions": [
-                {
-                  "left_value": { "value_type": "ref", "value": "$.step_trigger.fldAmount" },
-                  "operator": "isGreaterEqual",
-                  "right_value": [{ "value_type": "number", "value": 10000 }]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "step_notify_manager",
-      "type": "LarkMessageAction",
-      "title": "通知主管审批大额订单",
-      "next": "step_log",
-      "data": {
-        "receiver": [{ "value_type": "user", "value": {"id": "ou_manager", "name": "主管"} }],
-        "send_to_everyone": false,
-        "title": [{ "value_type": "text", "value": "大额订单待审批" }],
-        "content": [
-          { "value_type": "text", "value": "有大额订单 ¥" },
-          { "value_type": "ref", "value": "$.step_trigger.fldAmount" },
-          { "value_type": "text", "value": " 需要您审批" }
-        ],
-        "btn_list": []
-      }
-    },
-    {
-      "id": "step_auto_approve",
-      "type": "SetRecordAction",
-      "title": "自动标记小额订单为已审核",
-      "next": "step_log",
-      "data": {
-        "table_name": "订单表",
-        "ref_info": { "step_id": "step_trigger" },
-        "field_values": [
-          {
-            "field_name": "审批状态",
-            "value": [{ "value_type": "option", "value": { "name": "已自动审核" } }]
-          }
-        ]
-      }
-    },
-    {
-      "id": "step_log",
-      "type": "GenerateAiTextAction",
-      "title": "生成订单处理日志",
-      "next": null,
-      "data": {
-        "prompt": [
-          { "value_type": "text", "value": "请生成订单处理日志，金额：" },
-          { "value_type": "ref", "value": "$.step_trigger.fldAmount" }
-        ]
-      }
-    }
-  ]
-}
-```
-
-**关键点**:
-- `IfElseBranch.children.links` 必须包含 `if_true` 和 `if_false` 两个分支
-- `next` 指向两个分支汇合后的步骤（可选，为 null 则分支结束）
-- `condition` 使用 OrGroup 结构，支持 `(A and B) or (C and D)` 的复杂条件
-- 分支内可以用 `ref_info` 引用触发记录，用 `filter_info` 批量筛选记录
-
----
-
-### 示例 4: 多路分支（SwitchBranch）
-
-**场景**: 根据订单优先级（P0/P1/P2）执行不同的处理流程。
-
-```json
-{
-  "client_token": "1704067204",
-  "title": "按优先级分类处理订单",
-  "steps": [
-    {
-      "id": "step_trigger",
-      "type": "AddRecordTrigger",
-      "title": "新增订单时触发",
-      "next": "step_classify",
-      "data": {
-        "table_name": "订单表",
-        "watched_field_name": "优先级"
-      }
-    },
-    {
-      "id": "step_classify",
-      "type": "SwitchBranch",
-      "title": "按优先级分类",
-      "children": {
-        "links": [
-          { "kind": "case", "to": "step_p0_handler", "label": "p0", "desc": "P0-紧急" },
-          { "kind": "case", "to": "step_p1_handler", "label": "p1", "desc": "P1-高优先级" },
-          { "kind": "case", "to": "step_p2_handler", "label": "p2", "desc": "P2-普通" },
-          { "kind": "case", "to": "step_other_handler", "label": "other", "desc": "其他" }
-        ]
-      },
-      "next": null,
-      "data": {
-        "mode": "exclusive",
-        "no_match_action": "classifyToOther",
-        "child_branch_list": [
-          {
-            "name": "P0-紧急",
-            "condition": {
-              "conjunction": "or",
-              "conditions": [
-                {
-                  "conjunction": "and",
-                  "conditions": [
-                    {
-                      "left_value": { "value_type": "ref", "value": "$.step_trigger.fldPriority" },
-                      "operator": "is",
-                      "right_value": [{ "value_type": "option", "value": { "name": "P0" } }]
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "name": "P1-高优先级",
-            "condition": {
-              "conjunction": "or",
-              "conditions": [
-                {
-                  "conjunction": "and",
-                  "conditions": [
-                    {
-                      "left_value": { "value_type": "ref", "value": "$.step_trigger.fldPriority" },
-                      "operator": "is",
-                      "right_value": [{ "value_type": "option", "value": { "name": "P1" } }]
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          {
-            "name": "P2-普通",
-            "condition": {
-              "conjunction": "or",
-              "conditions": [
-                {
-                  "conjunction": "and",
-                  "conditions": [
-                    {
-                      "left_value": { "value_type": "ref", "value": "$.step_trigger.fldPriority" },
-                      "operator": "is",
-                      "right_value": [{ "value_type": "option", "value": { "name": "P2" } }]
-                    }
-                  ]
-                }
-              ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "id": "step_p0_handler",
-      "type": "LarkMessageAction",
-      "title": "P0紧急处理",
-      "next": null,
-      "data": {
-        "receiver": [{ "value_type": "user", "value": {"id": "ou_director", "name": "总监"} }],
-        "send_to_everyone": false,
-        "title": [{ "value_type": "text", "value": "🚨 P0 紧急订单" }],
-        "content": [{ "value_type": "text", "value": "有新的 P0 紧急订单需要立即处理" }],
-        "btn_list": []
-      }
-    },
-    {
-      "id": "step_p1_handler",
-      "type": "SetRecordAction",
-      "title": "标记高优先级",
-      "next": null,
-      "data": {
-        "table_name": "订单表",
-        "ref_info": { "step_id": "step_trigger" },
-        "field_values": [
-          { "field_name": "处理状态", "value": [{ "value_type": "text", "value": "高优先级待处理" }] }
-        ]
-      }
-    },
-    {
-      "id": "step_p2_handler",
-      "type": "Delay",
-      "title": "普通订单延迟处理",
-      "next": null,
-      "data": { "duration": 60 }
-    },
-    {
-      "id": "step_other_handler",
-      "type": "SetRecordAction",
-      "title": "标记其他订单",
-      "next": null,
-      "data": {
-        "table_name": "订单表",
-        "ref_info": { "step_id": "step_trigger" },
-        "field_values": [
-          { "field_name": "处理状态", "value": [{ "value_type": "text", "value": "待分类" }] }
-        ]
-      }
-    }
-  ]
-}
-```
-
-**关键点**:
-- `SwitchBranch` 适合 3 路及以上的分支场景（少于 3 路用 `IfElseBranch` 更简洁）
-- `children.links` 中 `kind: "case"` 的 `label` 对应 `child_branch_list` 中的条件
-- `mode: "exclusive"` 表示排他执行（第一个匹配的分支执行后停止）
-- `no_match_action: "classifyToOther"` 表示无匹配时走最后一个 `case`（兜底分支）
-
----
-
-### 示例 5: 组合场景（定时+查找+循环+分支+消息）
-
-**场景**: 每天早上 9 点，查找昨天的订单，按金额分级，给不同级别的销售发送不同的通知。
-
-```json
-{
-  "client_token": "1704067205",
+  "client_token": "wf-daily-order-notify",
   "title": "每日订单分级通知",
   "steps": [
     {
@@ -493,7 +155,7 @@
     {
       "id": "step_find_orders",
       "type": "FindRecordAction",
-      "title": "查找昨天所有订单",
+      "title": "查找待处理订单",
       "next": "step_loop",
       "data": {
         "table_name": "订单表",
@@ -502,7 +164,11 @@
         "filter_info": {
           "conjunction": "and",
           "conditions": [
-            { "field_name": "创建时间", "operator": "isGreaterEqual", "value": [{ "value_type": "date", "value": "yesterday" }] }
+            {
+              "field_name": "状态",
+              "operator": "is",
+              "value": [{ "value_type": "option", "value": { "name": "待处理" } }]
+            }
           ]
         }
       }
@@ -512,9 +178,7 @@
       "type": "Loop",
       "title": "遍历每个订单",
       "children": {
-        "links": [
-          { "kind": "loop_start", "to": "step_classify" }
-        ]
+        "links": [{ "kind": "loop_start", "to": "step_classify" }]
       },
       "next": "step_summary",
       "data": {
@@ -529,8 +193,8 @@
       "title": "按金额分类",
       "children": {
         "links": [
-          { "kind": "case", "to": "step_vip_notify", "label": "vip", "desc": "VIP >= 10万" },
-          { "kind": "case", "to": "step_normal_notify", "label": "normal", "desc": "普通 < 10万" }
+          { "kind": "case", "to": "step_vip_notify", "label": "vip", "desc": "金额大于等于10万" },
+          { "kind": "case", "to": "step_normal_notify", "label": "normal", "desc": "金额小于10万" }
         ]
       },
       "next": null,
@@ -585,9 +249,9 @@
       "data": {
         "receiver": [{ "value_type": "ref", "value": "$.step_loop.item.fldSales" }],
         "send_to_everyone": false,
-        "title": [{ "value_type": "text", "value": "🌟 VIP大额订单" }],
+        "title": [{ "value_type": "text", "value": "VIP大额订单" }],
         "content": [
-          { "value_type": "text", "value": "恭喜！您有一笔 VIP 订单 ¥" },
+          { "value_type": "text", "value": "您有一笔 VIP 订单，金额：" },
           { "value_type": "ref", "value": "$.step_loop.item.fldAmount" },
           { "value_type": "text", "value": "，客户：" },
           { "value_type": "ref", "value": "$.step_loop.item.fldCustomer" }
@@ -605,7 +269,7 @@
         "send_to_everyone": false,
         "title": [{ "value_type": "text", "value": "新订单通知" }],
         "content": [
-          { "value_type": "text", "value": "您有一笔新订单 ¥" },
+          { "value_type": "text", "value": "您有一笔新订单，金额：" },
           { "value_type": "ref", "value": "$.step_loop.item.fldAmount" }
         ],
         "btn_list": []
@@ -617,214 +281,47 @@
       "title": "生成日报",
       "next": null,
       "data": {
-        "prompt": [
-          { "value_type": "text", "value": "请生成昨日订单处理日报" }
-        ]
+        "prompt": [{ "value_type": "text", "value": "请生成今日订单处理日报" }]
       }
     }
   ]
 }
 ```
 
----
+接线要点：
 
-### 示例 6: 按钮触发 + 调用外部接口 + 写入同步日志
+- `step_loop.children.links` 用 `loop_start` 指向循环体入口，`step_loop.next` 表示循环全部结束后的后继。
+- 循环体内使用 `$.step_loop.item.<fieldId>` 引用当前记录字段，字段 ID 先用 `+field-list --compact` 确认。
+- `SwitchBranch.children.links` 的 `case` 目标与 `child_branch_list` 顺序保持一致；两路以内也可改用 `IfElseBranch`。
+- 分支内 action 的 `next:null` 表示该分支结束后回到所属 branch/loop 语义，不要给 action 再写 `children`。
 
-**场景**: 在「客户线索表」里给每条记录配置一个“同步到 CRM”按钮。销售点击按钮后，Workflow 调用外部 CRM 接口同步当前线索，再在「同步日志表」新增一条记录，方便后续审计和排查。
+## 修改现有 workflow
 
-```json
-{
-  "client_token": "1704067206",
-  "title": "线索一键同步到 CRM",
-  "steps": [
-    {
-      "id": "step_button_trigger",
-      "type": "ButtonTrigger",
-      "title": "点击同步到 CRM 按钮时触发",
-      "next": "step_call_crm_api",
-      "data": {
-        "button_type": "buttonField",
-        "table_name": "客户线索表"
-      }
-    },
-    {
-      "id": "step_call_crm_api",
-      "type": "HTTPClientAction",
-      "title": "调用 CRM 同步接口",
-      "next": "step_add_sync_log",
-      "data": {
-        "method": "POST",
-        "url": [
-          { "value_type": "text", "value": "https://api.example-crm.com/v1/leads/sync" }
-        ],
-        "headers": [
-          { "key": "Content-Type", "value": [{ "value_type": "text", "value": "application/json" }] },
-          { "key": "X-System", "value": [{ "value_type": "text", "value": "lark_base_workflow" }] }
-        ],
-        "body_type": "raw",
-        "raw_body": [
-          { "value_type": "text", "value": "{\"lead_name\":\"" },
-          { "value_type": "ref", "value": "$.step_button_trigger.fldLeadName" },
-          { "value_type": "text", "value": "\",\"mobile\":\"" },
-          { "value_type": "ref", "value": "$.step_button_trigger.fldMobile" },
-          { "value_type": "text", "value": "\",\"company\":\"" },
-          { "value_type": "ref", "value": "$.step_button_trigger.fldCompany" },
-          { "value_type": "text", "value": "\",\"owner\":\"" },
-          { "value_type": "ref", "value": "$.step_button_trigger.fldOwner" },
-          { "value_type": "text", "value": "\",\"source_record_id\":\"" },
-          { "value_type": "ref", "value": "$.step_button_trigger.recordId" },
-          { "value_type": "text", "value": "\"}" }
-        ],
-        "response_type": "json",
-        "response_value": "{\"success\":true,\"message\":\"lead synced successfully\"}"
-      }
-    },
-    {
-      "id": "step_add_sync_log",
-      "type": "AddRecordAction",
-      "title": "写入同步日志",
-      "next": null,
-      "data": {
-        "table_name": "同步日志表",
-        "field_values": [
-          {
-            "field_name": "线索名称",
-            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldLeadName" }]
-          },
-          {
-            "field_name": "手机号",
-            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldMobile" }]
-          },
-          {
-            "field_name": "公司名称",
-            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldCompany" }]
-          },
-          {
-            "field_name": "负责人",
-            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.fldOwner" }]
-          },
-          {
-            "field_name": "来源记录ID",
-            "value": [{ "value_type": "ref", "value": "$.step_button_trigger.recordId" }]
-          },
-          {
-            "field_name": "同步状态",
-            "value": [{ "value_type": "text", "value": "已提交 CRM 同步" }]
-          },
-          {
-            "field_name": "同步是否成功",
-            "value": [{ "value_type": "ref", "value": "$.step_call_crm_api.body.success" }]
-          },
-          {
-            "field_name": "同步结果说明",
-            "value": [{ "value_type": "ref", "value": "$.step_call_crm_api.body.message" }]
-          },
-          {
-            "field_name": "备注",
-            "value": [{ "value_type": "text", "value": "由按钮触发自动发起同步请求" }]
-          }
-        ]
-      }
-    }
-  ]
-}
-```
+1. `+workflow-list` 后按标题定位 `workflow_id`。
+2. `+workflow-get --workflow-id <wkf>` 获取完整定义。
+3. 只修改目标 step，保留其他 steps 的 `id/type/title/data/next/children`。
+4. 用 `+workflow-update` 提交完整定义。
+5. 若只启停，不走 update，直接 `+workflow-enable/disable`。
 
-**关键点**:
-- `ButtonTrigger` 适合“人工确认后再执行”的场景，比如同步 CRM、推送 ERP、发起审批等
-- `button_type: "buttonField"` 表示按钮挂在记录上，因此可以直接引用当前记录的字段和值
-- `HTTPClientAction.raw_body` 可以通过 `text + ref + text` 的方式动态拼接 JSON 请求体
-- `HTTPClientAction` 的输出引用规则是：`response_type=none` 时不可引用；`response_type=text` 时只能用 `$.stepId` 引整个文本；`response_type=json` 时用 `$.stepId.body` 引整个 body、用 `$.stepId.body.字段名` 引 body 中字段，同时 `$.stepId.status_code` 表示 HTTP 返回状态码
-- `HTTPClientAction.response_value` 中声明了哪些字段，后续节点就只能引用这些字段；例如 `$.step_call_crm_api.body.success`、`$.step_call_crm_api.body.message`
-- `AddRecordAction` 常用于写日志表、操作审计表、同步结果表，便于追踪谁在什么时候触发了外部调用
-- 示例里的 `fldLeadName` / `fldMobile` / `fldCompany` / `fldOwner` 只是占位的 fieldId，请以实际表字段 ID 为准
+## 常见错误
 
----
+下表是构造 workflow 时最常踩的坑，按出现频率排序，按错误信息或场景就近匹配；任何一条命中都先停下来按右列处理，不要继续往下加节点。
 
-## 构造技巧
-
-### Loop 构造要点
-
-1. **数据源**: `Loop.data` 必须传入 `ref` 类型，通常是 `FindRecordAction` 的 `fieldRecords`
-2. **循环体**: `children.links` 必须包含 `kind: "loop_start"` 指向循环体入口
-3. **引用**: 循环体内用 `$.{loopStepId}.item.{fieldId}` 引用当前元素
-4. **索引**: 用 `$.{loopStepId}.index` 获取当前索引（从 0 开始）
-
-### 分支构造要点
-
-1. **IfElseBranch**:
-   - 适合二元判断（是/否、大于/小于）
-   - `children.links` 必须包含 `if_true` 和 `if_false`
-   - 可以用 `next` 指向汇合点
-
-2. **SwitchBranch**:
-   - 适合多路分类（3路及以上）
-   - `label` 对应 `child_branch_list` 中的条件顺序
-   - 建议加一个兜底分支（其他）
-
-### 字段值构造
-
-| 字段类型 | value_type | 示例 |
-|---------|------------|------|
-| 文本 | `text` | `{"value_type": "text", "value": "张三"}` |
-| 数字 | `number` | `{"value_type": "number", "value": 100}` |
-| 单选 | `option` | `{"value_type": "option", "value": {"name": "已完成"}}` |
-| 人员 | `user` | `{"value_type": "user", "value": {"id": "ou_xxxx"}}` |
-| 引用 | `ref` | `{"value_type": "ref", "value": "$.step_1.fldxxx"}` |
-
----
-
-## 常见错误避免
-
-### Top 10 高频错误
-
-| # | 错误信息 | 原因 | 解决方案 |
-|---|---------|------|---------|
-| 1 | `path "xxx" does not exist in the output path tree` | ref 引用路径错误或 stepId 不存在 | 检查 stepId 是否在 steps 数组中；使用 fieldId 而非字段名；确保路径以 `$.` 开头 |
-| 2 | `recordInfo.conditions must be non-empty` | `condition_list` 为空数组 `[]` | 改用 `null` 或省略该字段 |
-| 3 | `At least one of filter info and ref info is required` | SetRecordAction/FindRecordAction 缺少定位条件 | 必须提供 `filter_info` 或 `ref_info` 之一 |
-| 4 | `client token is empty` | 缺少 `client_token` | 每次请求传入唯一值（时间戳或随机字符串） |
-| 5 | `valueType 'text' not allowed for fieldType '3'` | select 类型字段值格式错误 | 改用 `option` 类型 |
-| 6 | `Undefined Step Type` | 使用了不支持的 StepType | 使用 `AddRecordTrigger` 而非 `CreateRecordTrigger` |
-| 7 | `prompt references an unknown reference from step` | 引用的 stepId 不存在 | 确保引用的 step 在同一 workflow 的 steps 数组中 |
-| 8 | `[2200] Internal Error` | 1. steps[].id 重复 2. next/children.links 引用了不存在的 step | 确保所有 step id 唯一；检查引用关系 |
-| 9 | 工作流结构不完整 | Branch/Loop 节点缺少 `children` | 仅 Branch（IfElseBranch/SwitchBranch）和 Loop 节点需要 `children`，Trigger/Action 节点无需设置 |
-| 10 | 嵌套分支过于复杂 | 多层 IfElseBranch 嵌套 | 3+ 路分支用 SwitchBranch 替代嵌套 IfElseBranch |
-
-### 其他常见错误
-
-**1. condition_list 为空数组**
-```json
-// ❌ 错误
-{ "condition_list": [] }
-
-// ✅ 正确
-{ "condition_list": null }
-// 或省略该字段
-```
-
-**2. filter_info 和 ref_info 同时提供**
-```json
-// ❌ 错误
-{ "filter_info": {...}, "ref_info": {...} }
-
-// ✅ 正确（二选一）
-{ "filter_info": {...}, "ref_info": null }
-{ "filter_info": null, "ref_info": {...} }
-```
-
-**3. 使用字段名而非 fieldId**
-```json
-// ❌ 错误
-{ "value": "$.step_1.客户名称" }
-
-// ✅ 正确
-{ "value": "$.step_1.fldXXXXXXXX" }
-```
-
----
+| 错误 | 处理 |
+|---|---|
+| 查询/启停也读 schema | 停下，直接用 `+workflow-list/get/enable/disable` |
+| 为多个可能命令批量看 help | 只看当前报错或即将执行的一个命令 |
+| 把字段名当 field ID 写入 ref | 先 `+field-list --compact`，ref 下钻优先用 field ID |
+| 分支/循环没有 `children.links` | 按 branch/loop schema 补 `if_true/if_false/case/loop_start` |
+| SetRecordAction/FindRecordAction 缺定位条件 | 提供 `filter_info` 或 `ref_info` |
+| HTTPClientAction 后续节点引用不到字段 | `response_type: "json"` 时填写 `response_value` 声明输出字段 |
+| Loop 内引用错路径 | 用 `$.{loopStepId}.item.{fieldId}` 和 `$.{loopStepId}.index` |
+| `recordInfo.conditions must be non-empty`（`condition_list` 为 `[]`）| 改用 `null` 或省略该字段；空数组会被 API 拒绝 |
+| `client token is empty` | 每次请求传入唯一 `client_token`（时间戳或随机字符串）|
+| `Undefined Step Type` | 用 schema 路由表里的真实 type，例如 `AddRecordTrigger` 而非 `CreateRecordTrigger` |
+| `valueType 'text' not allowed for fieldType '3'` | select 字段值用 `value_type: "option"`，不要用 `text` |
 
 ## 参考
 
-- [lark-base-workflow-schema.md](lark-base-workflow-schema.md) — 字段定义参考
-- 创建/更新前先确认真实表名、字段名和目标 workflow ID；`steps` 结构按 schema 构造，不凭自然语言猜 `type`
+- [lark-base-workflow-schema.md](lark-base-workflow-schema.md)：step type 路由和基础结构。
+- [workflow-steps/common-types-and-refs.md](workflow-steps/common-types-and-refs.md)：ValueInfo、ref、Condition、节点输出；只有构造这些细节时才读。

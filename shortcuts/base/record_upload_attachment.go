@@ -43,12 +43,13 @@ type baseAttachmentUploadTarget struct {
 }
 
 var BaseRecordUploadAttachment = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-upload-attachment",
-	Description: "Upload one or more local files and append the returned file_token values to a Base attachment cell",
-	Risk:        "write",
-	Scopes:      []string{"base:record:update", "base:field:read", "docs:document.media:upload"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-upload-attachment",
+	Description:       "Upload one or more local files and append the returned file_token values to a Base attachment cell",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:update", "base:field:read", "docs:document.media:upload"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
@@ -72,12 +73,13 @@ var BaseRecordUploadAttachment = common.Shortcut{
 }
 
 var BaseRecordDownloadAttachment = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-download-attachment",
-	Description: "Download Base record attachments by record-id, optionally filtering by file-token",
-	Risk:        "read",
-	Scopes:      []string{"base:record:read", "docs:document.media:download"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-download-attachment",
+	Description:       "Download Base record attachments by record-id, optionally filtering by file-token",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:read", "docs:document.media:download"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
@@ -102,12 +104,13 @@ var BaseRecordDownloadAttachment = common.Shortcut{
 }
 
 var BaseRecordRemoveAttachment = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-remove-attachment",
-	Description: "Remove one or more file_token values from a Base record attachment cell",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:record:update", "base:field:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-remove-attachment",
+	Description:       "Remove one or more file_token values from a Base record attachment cell",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:update", "base:field:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),
@@ -142,7 +145,7 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 		Desc("3-step orchestration: validate attachment field → upload local file(s) to Base → append uploaded file token(s) to the attachment cell").
 		GET("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id").
 		Desc("[1] Read target field and ensure it is an attachment field").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("field_id", runtime.Str("field-id"))
 	if baseAttachmentShouldUseMultipart(runtime.FileIO(), filePath) {
@@ -151,7 +154,7 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 			Body(map[string]interface{}{
 				"file_name":   fileName,
 				"parent_type": baseAttachmentParentType,
-				"parent_node": runtime.Str("base-token"),
+				"parent_node": baseTokenOrRaw(runtime),
 				"size":        "<file_size>",
 			}).
 			POST("/open-apis/drive/v1/medias/upload_part").
@@ -174,7 +177,7 @@ func dryRunRecordUploadAttachment(_ context.Context, runtime *common.RuntimeCont
 			Body(map[string]interface{}{
 				"file_name":   fileName,
 				"parent_type": baseAttachmentParentType,
-				"parent_node": runtime.Str("base-token"),
+				"parent_node": baseTokenOrRaw(runtime),
 				"file":        "@" + filePath,
 				"size":        "<file_size>",
 			})
@@ -203,7 +206,7 @@ func dryRunRecordDownloadAttachment(_ context.Context, runtime *common.RuntimeCo
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/get_attachments").
 		Desc("[1] Read attachment metadata for the record").
 		Body(map[string]interface{}{"record_id_list": []string{runtime.Str("record-id")}}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		GET("/open-apis/drive/v1/medias/:file_token/download").
 		Desc("[2] Download attachment media through the Base attachment flow").
@@ -218,7 +221,7 @@ func dryRunRecordRemoveAttachment(_ context.Context, runtime *common.RuntimeCont
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/remove_attachments").
 		Desc("Remove attachment file token(s) from the target attachment cell").
 		Body(body).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime))
 }
 
@@ -270,7 +273,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		return err
 	}
 
-	field, err := fetchBaseField(runtime, runtime.Str("base-token"), baseTableID(runtime), runtime.Str("field-id"))
+	field, err := fetchBaseField(runtime, baseTokenOrRaw(runtime), baseTableID(runtime), runtime.Str("field-id"))
 	if err != nil {
 		return err
 	}
@@ -295,7 +298,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 		}
 		attachment, err := uploadAttachmentToBase(runtime, filePath, fileName, fileInfo.Size(), baseAttachmentUploadTarget{
 			ParentType: baseAttachmentParentType,
-			ParentNode: runtime.Str("base-token"),
+			ParentNode: baseTokenOrRaw(runtime),
 		})
 		if err != nil {
 			return err
@@ -304,7 +307,7 @@ func executeRecordUploadAttachment(runtime *common.RuntimeContext) error {
 	}
 
 	body := buildSingleCellAttachmentsBody(runtime.Str("record-id"), resolvedFieldID, appendItems)
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "append_attachments"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "append_attachments"), nil, body)
 	if err != nil {
 		return err
 	}
@@ -317,7 +320,7 @@ func executeRecordRemoveAttachment(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	field, err := fetchBaseField(runtime, runtime.Str("base-token"), baseTableID(runtime), runtime.Str("field-id"))
+	field, err := fetchBaseField(runtime, baseTokenOrRaw(runtime), baseTableID(runtime), runtime.Str("field-id"))
 	if err != nil {
 		return err
 	}
@@ -329,7 +332,7 @@ func executeRecordRemoveAttachment(runtime *common.RuntimeContext) error {
 		resolvedFieldID = runtime.Str("field-id")
 	}
 	body := buildSingleCellAttachmentsBody(runtime.Str("record-id"), resolvedFieldID, fileTokenPatchItems(tokens))
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "remove_attachments"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "tables", baseTableID(runtime), "remove_attachments"), nil, body)
 	if err != nil {
 		return err
 	}
@@ -342,7 +345,7 @@ func executeRecordDownloadAttachment(ctx context.Context, runtime *common.Runtim
 	if err != nil {
 		return err
 	}
-	attachments, err := fetchBaseAttachments(runtime, runtime.Str("base-token"), baseTableID(runtime), []string{runtime.Str("record-id")})
+	attachments, err := fetchBaseAttachments(runtime, baseTokenOrRaw(runtime), baseTableID(runtime), []string{runtime.Str("record-id")})
 	if err != nil {
 		return err
 	}

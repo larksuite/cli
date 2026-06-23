@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-create",
-	Description: "Create a dashboard in a base",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:create"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-create",
+	Description:       "Create a dashboard in a base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:create"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "name", Desc: "dashboard name", Required: true},
@@ -36,7 +37,7 @@ var BaseDashboardCreate = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/dashboards").
 			Body(body).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeDashboardCreate(runtime)

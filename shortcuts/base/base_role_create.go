@@ -17,12 +17,13 @@ import (
 )
 
 var BaseRoleCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+role-create",
-	Description: "Create a custom role in a Base",
-	Risk:        "write",
-	Scopes:      []string{"base:role:create"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+role-create",
+	Description:       "Create a custom role in a Base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:role:create"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "json", Desc: "role config JSON; read lark-base-role-guide.md and role-config.md before constructing permissions", Required: true},
@@ -33,7 +34,7 @@ var BaseRoleCreate = common.Shortcut{
 		"Create supports custom_role only.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		var body map[string]any
@@ -48,10 +49,10 @@ var BaseRoleCreate = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/roles").
 			Body(body).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		var body map[string]any
 		json.Unmarshal([]byte(runtime.Str("json")), &body)
 

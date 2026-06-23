@@ -20,21 +20,21 @@ func dryRunBaseBlockList(_ context.Context, runtime *common.RuntimeContext) *com
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/blocks/list").
 		Body(buildBaseBlockListBody(runtime)).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 }
 
 func dryRunBaseBlockCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/blocks").
 		Body(buildBaseBlockCreateBody(runtime)).
-		Set("base_token", runtime.Str("base-token"))
+		Set("base_token", baseTokenOrRaw(runtime))
 }
 
 func dryRunBaseBlockMove(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/blocks/:block_id/move").
 		Body(buildBaseBlockMoveBody(runtime)).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("block_id", runtime.Str("block-id"))
 }
 
@@ -42,14 +42,14 @@ func dryRunBaseBlockRename(_ context.Context, runtime *common.RuntimeContext) *c
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/blocks/:block_id/rename").
 		Body(map[string]interface{}{"name": strings.TrimSpace(runtime.Str("name"))}).
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("block_id", runtime.Str("block-id"))
 }
 
 func dryRunBaseBlockDelete(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
 		DELETE("/open-apis/base/v3/bases/:base_token/blocks/:block_id").
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("block_id", runtime.Str("block-id"))
 }
 
@@ -78,7 +78,7 @@ func validateBaseBlockRename(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseBlockList(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "blocks", "list"), nil, buildBaseBlockListBody(runtime))
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "blocks", "list"), nil, buildBaseBlockListBody(runtime))
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func executeBaseBlockList(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseBlockCreate(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "blocks"), nil, buildBaseBlockCreateBody(runtime))
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "blocks"), nil, buildBaseBlockCreateBody(runtime))
 	if err != nil {
 		return err
 	}
@@ -97,7 +97,7 @@ func executeBaseBlockCreate(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseBlockMove(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "blocks", runtime.Str("block-id"), "move"), nil, buildBaseBlockMoveBody(runtime))
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "blocks", runtime.Str("block-id"), "move"), nil, buildBaseBlockMoveBody(runtime))
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func executeBaseBlockMove(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseBlockRename(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "blocks", runtime.Str("block-id"), "rename"), nil, map[string]interface{}{
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseTokenOrRaw(runtime), "blocks", runtime.Str("block-id"), "rename"), nil, map[string]interface{}{
 		"name": strings.TrimSpace(runtime.Str("name")),
 	})
 	if err != nil {
@@ -117,7 +117,7 @@ func executeBaseBlockRename(runtime *common.RuntimeContext) error {
 }
 
 func executeBaseBlockDelete(runtime *common.RuntimeContext) error {
-	data, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", runtime.Str("base-token"), "blocks", runtime.Str("block-id")), nil, nil)
+	data, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseTokenOrRaw(runtime), "blocks", runtime.Str("block-id")), nil, nil)
 	if err != nil {
 		return err
 	}

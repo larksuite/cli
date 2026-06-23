@@ -10,12 +10,13 @@ import (
 )
 
 var BaseViewSetCard = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-set-card",
-	Description: "Set view card configuration",
-	Risk:        "write",
-	Scopes:      []string{"base:view:write_only"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+view-set-card",
+	Description:       "Set view card configuration",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:write_only"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

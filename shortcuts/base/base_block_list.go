@@ -10,12 +10,13 @@ import (
 )
 
 var BaseBaseBlockList = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-block-list",
-	Description: "List blocks in a base",
-	Risk:        "read",
-	Scopes:      []string{"base:block:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+base-block-list",
+	Description:       "List blocks in a base",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:block:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		{Name: "type", Desc: "filter by resource type", Enum: baseBlockTypeEnums},

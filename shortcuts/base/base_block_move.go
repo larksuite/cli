@@ -10,12 +10,13 @@ import (
 )
 
 var BaseBaseBlockMove = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-block-move",
-	Description: "Move a block",
-	Risk:        "write",
-	Scopes:      []string{"base:block:update"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+base-block-move",
+	Description:       "Move a block",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:block:update"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		baseBlockIDFlag(true),

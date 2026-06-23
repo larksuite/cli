@@ -13,19 +13,20 @@ import (
 )
 
 var BaseDashboardBlockCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-create",
-	Description: "Create a block in a dashboard",
-	Risk:        "write",
-	Scopes:      []string{"base:dashboard:create"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-create",
+	Description:       "Create a block in a dashboard",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:create"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
 		{Name: "name", Desc: "block name", Required: true},
-		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read dashboard-block-data-config.md before creating.", Required: true},
-		{Name: "data-config", Desc: "data_config JSON object; read dashboard-block-data-config.md for the SSOT"},
+		{Name: "type", Desc: "block type: column(柱状图)|bar(条形图)|line(折线图)|pie(饼图)|ring(环形图)|area(面积图)|combo(组合图)|scatter(散点图)|funnel(漏斗图)|wordCloud(词云)|radar(雷达图)|statistics(指标卡)|text(文本). Read lark-base-dashboard-block-data-config.md before creating.", Required: true},
+		{Name: "data-config", Desc: "data_config JSON object; read lark-base-dashboard-block-data-config.md for the SSOT"},
 		{Name: "user-id-type", Desc: "user ID type for user fields in filters: open_id / union_id / user_id"},
 		{Name: "no-validate", Type: "bool", Desc: "skip local data_config validation"},
 	},
@@ -34,7 +35,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		`lark-cli base +dashboard-block-create --base-token <base_token> --dashboard-id <dashboard_id> --name "Dashboard Note" --type text --data-config '{"text":"# Sales Dashboard"}'`,
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",
 		"data_config uses table and field names, not table_id or field_id.",
-		"Read dashboard-block-data-config.md as the SSOT for chart templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
+		"Read lark-base-dashboard-block-data-config.md as the SSOT for chart templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
 		"Record the returned block_id; block update/delete/get-data commands need it.",
 		"Create dashboard blocks sequentially; do not parallelize multiple block creates for the same dashboard.",
 	},
@@ -86,7 +87,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 			POST("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks").
 			Params(params).
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

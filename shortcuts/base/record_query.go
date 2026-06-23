@@ -26,12 +26,20 @@ func recordFilterFlag() common.Flag {
 	}
 }
 
+func recordFilterAliasFlag() common.Flag {
+	return common.Flag{Name: "filter", Hidden: true, Input: []string{common.File}}
+}
+
 func recordSortFlag() common.Flag {
 	return common.Flag{
 		Name:  recordSortJSONFlag,
 		Desc:  `sort JSON array or @file, e.g. [{"field":"Updated","desc":true}]; also accepts {"sort_config":[...]}; order is priority; max 10`,
 		Input: []string{common.File},
 	}
+}
+
+func recordSortAliasFlag() common.Flag {
+	return common.Flag{Name: "sort", Hidden: true, Input: []string{common.File}}
 }
 
 func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
@@ -43,7 +51,10 @@ func validateRecordQueryOptions(runtime *common.RuntimeContext) error {
 }
 
 func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) {
-	filterRaw := strings.TrimSpace(runtime.Str(recordFilterJSONFlag))
+	filterRaw, err := recordQueryFlagValue(runtime, recordFilterJSONFlag, "filter")
+	if err != nil {
+		return nil, err
+	}
 	if filterRaw == "" {
 		return nil, nil
 	}
@@ -52,7 +63,10 @@ func parseRecordFilterFlag(runtime *common.RuntimeContext) (interface{}, error) 
 }
 
 func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
-	sortRaw := strings.TrimSpace(runtime.Str(recordSortJSONFlag))
+	sortRaw, err := recordQueryFlagValue(runtime, recordSortJSONFlag, "sort")
+	if err != nil {
+		return nil, err
+	}
 	if sortRaw == "" {
 		return nil, nil
 	}
@@ -62,6 +76,44 @@ func parseRecordSortFlag(runtime *common.RuntimeContext) ([]interface{}, error) 
 		return nil, err
 	}
 	return normalizeRecordSortValue(value, "--"+recordSortJSONFlag)
+}
+
+// recordPageLimit resolves --limit together with the hidden --page-size
+// alias. --page-size is the im domain's pagination flag name, which agents
+// habitually carry over to base record commands; accepting it here keeps
+// pagination naming forgiving across domains.
+func recordPageLimit(runtime *common.RuntimeContext) int {
+	return getPaginationLimit(runtime)
+}
+
+func validateRecordPageLimit(runtime *common.RuntimeContext) error {
+	if err := validateLimitPageSizeAlias(runtime); err != nil {
+		return err
+	}
+	if strings.TrimSpace(runtime.Str("page-token")) != "" {
+		return baseFlagErrorf("this command uses offset pagination, not page tokens; did you mean --offset/--limit? (use --offset <n> for the next page)")
+	}
+	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+		return err
+	}
+	if runtime.Changed("page-size") {
+		if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func recordQueryFlagValue(runtime *common.RuntimeContext, canonical string, alias string) (string, error) {
+	canonicalRaw := strings.TrimSpace(runtime.Str(canonical))
+	aliasRaw := strings.TrimSpace(runtime.Str(alias))
+	if canonicalRaw != "" && aliasRaw != "" {
+		return "", baseFlagErrorf("--%s is a deprecated alias for --%s; use only one", alias, canonical)
+	}
+	if canonicalRaw != "" {
+		return canonicalRaw, nil
+	}
+	return aliasRaw, nil
 }
 
 func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, error) {
@@ -82,7 +134,7 @@ func normalizeRecordSortValue(value interface{}, label string) ([]interface{}, e
 		return nil, baseFlagErrorf("%s must be a JSON array or an object with sort_config array", label)
 	}
 	if len(sortConfig) > recordSortMaxCount {
-		return nil, baseFlagErrorf("sort supports at most %d sort conditions; got %d", recordSortMaxCount, len(sortConfig))
+		return nil, baseFlagErrorf("%s supports at most %d sort conditions; got %d", label, recordSortMaxCount, len(sortConfig))
 	}
 	return sortConfig, nil
 }
@@ -167,7 +219,7 @@ func applyRecordQueryToBody(runtime *common.RuntimeContext, body map[string]inte
 
 func recordSearchFlagBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
-	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+	if keyword := recordSearchKeyword(runtime); keyword != "" {
 		body["keyword"] = keyword
 	}
 	searchFields := runtime.StrArray("search-field")
@@ -217,6 +269,12 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 	if err := validateRecordReadFormat(runtime); err != nil {
 		return err
 	}
+	if err := validateRecordPageLimit(runtime); err != nil {
+		return err
+	}
+	if strings.TrimSpace(runtime.Str("keyword")) != "" && strings.TrimSpace(runtime.Str("query")) != "" {
+		return baseFlagErrorf("--query is a deprecated alias for --keyword; use only one")
+	}
 	jsonRaw := strings.TrimSpace(runtime.Str("json"))
 	if jsonRaw != "" {
 		if recordSearchHasJSONExclusiveFlagInputs(runtime) {
@@ -225,14 +283,11 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 		_, err := recordSearchJSONBody(runtime)
 		return err
 	}
-	if strings.TrimSpace(runtime.Str("keyword")) == "" {
+	if recordSearchKeyword(runtime) == "" {
 		return baseFlagErrorf("--keyword is required unless --json is used")
 	}
 	if len(runtime.StrArray("search-field")) == 0 {
 		return baseFlagErrorf("--search-field is required unless --json is used")
-	}
-	if err := validateLimitPageSizeAlias(runtime); err != nil {
-		return err
 	}
 	if _, err := common.ValidatePageSizeTyped(runtime, "limit", 10, 1, 200); err != nil {
 		return err
@@ -246,13 +301,20 @@ func validateRecordSearchFlags(runtime *common.RuntimeContext) error {
 }
 
 func recordSearchHasJSONExclusiveFlagInputs(runtime *common.RuntimeContext) bool {
-	return strings.TrimSpace(runtime.Str("keyword")) != "" ||
+	return recordSearchKeyword(runtime) != "" ||
 		len(runtime.StrArray("search-field")) > 0 ||
 		len(recordListFields(runtime)) > 0 ||
 		runtime.Str("view-id") != "" ||
 		runtime.Changed("offset") ||
 		runtime.Changed("limit") ||
 		runtime.Changed("page-size")
+}
+
+func recordSearchKeyword(runtime *common.RuntimeContext) string {
+	if keyword := strings.TrimSpace(runtime.Str("keyword")); keyword != "" {
+		return keyword
+	}
+	return strings.TrimSpace(runtime.Str("query"))
 }
 
 func formatRecordQueryPriorityTip() string {

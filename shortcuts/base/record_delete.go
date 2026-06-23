@@ -10,12 +10,13 @@ import (
 )
 
 var BaseRecordDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+record-delete",
-	Description: "Delete one or more records by ID",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:record:delete"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+record-delete",
+	Description:       "Delete one or more records by ID",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:record:delete"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

@@ -13,7 +13,7 @@ import (
 
 func dryRunViewBase(runtime *common.RuntimeContext) *common.DryRunAPI {
 	return common.NewDryRunAPI().
-		Set("base_token", runtime.Str("base-token")).
+		Set("base_token", baseTokenOrRaw(runtime)).
 		Set("table_id", baseTableID(runtime)).
 		Set("view_id", runtime.Str("view-id"))
 }
@@ -155,7 +155,7 @@ func executeViewList(runtime *common.RuntimeContext) error {
 		offset = 0
 	}
 	limit := getPaginationLimit(runtime)
-	views, total, err := listAllViews(runtime, runtime.Str("base-token"), baseTableID(runtime), offset, limit)
+	views, total, err := listAllViews(runtime, baseTokenOrRaw(runtime), baseTableID(runtime), offset, limit)
 	if err != nil {
 		return err
 	}
@@ -167,7 +167,7 @@ func executeViewList(runtime *common.RuntimeContext) error {
 }
 
 func executeViewGet(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	data, err := baseV3Call(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef), nil, nil)
@@ -180,7 +180,7 @@ func executeViewGet(runtime *common.RuntimeContext) error {
 
 func executeViewCreate(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewItems, err := parseObjectList(pc, runtime.Str("json"), "json")
 	if err != nil {
@@ -199,7 +199,7 @@ func executeViewCreate(runtime *common.RuntimeContext) error {
 }
 
 func executeViewDelete(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef), nil, nil)
@@ -211,7 +211,7 @@ func executeViewDelete(runtime *common.RuntimeContext) error {
 }
 
 func executeViewGetProperty(runtime *common.RuntimeContext, segment string, key string) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	data, err := baseV3CallAny(runtime, "GET", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef, segment), nil, nil)
@@ -224,7 +224,7 @@ func executeViewGetProperty(runtime *common.RuntimeContext, segment string, key 
 
 func executeViewSetJSONObject(runtime *common.RuntimeContext, segment string, key string) error {
 	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
@@ -241,7 +241,7 @@ func executeViewSetJSONObject(runtime *common.RuntimeContext, segment string, ke
 
 func executeViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapper string, key string) error {
 	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	raw, err := parseJSONValue(pc, runtime.Str("json"), "json")
@@ -259,7 +259,7 @@ func executeViewSetWrapped(runtime *common.RuntimeContext, segment string, wrapp
 
 func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
 	pc := newParseCtx(runtime)
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
@@ -275,7 +275,7 @@ func executeViewSetVisibleFields(runtime *common.RuntimeContext) error {
 }
 
 func executeViewRename(runtime *common.RuntimeContext) error {
-	baseToken := runtime.Str("base-token")
+	baseToken := baseTokenOrRaw(runtime)
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
 	data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef), nil, map[string]interface{}{"name": runtime.Str("name")})

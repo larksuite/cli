@@ -2,6 +2,8 @@
 
 Block 的 `data_config` 字段因 `type` 不同而变化。本文档是 dashboard block `data_config` 的单一事实来源（SSOT），包含组件类型、字段结构、筛选格式、约束和可复制模板。
 
+`data_config` 是 dashboard block 的数据源配置。先用 `+table-list` 拿表，再用 `+field-list-batch --table-id <表1> --table-id <表2>` **一次批量**拿到相关表字段（不要逐表多次 `+field-list`，每次多余调用都拉高 token）；表用 **name**，不是 table_id；字段用 **field_name**。
+
 ## 支持的组件类型（`type` 枚举）
 
 | type 值 | 说明 |
@@ -40,7 +42,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 |------|------|------|
 | `table_name` | string | 关联数据表名称 |
 | `series` | `[{ "field_name": "xxx", "rollup": "SUM" }]` | 指标/Y 轴（与 `count_all` 二选一）。rollup 支持 `SUM` / `MAX` / `MIN` / `AVERAGE` |
-| `count_all` | boolean | COUNTA 聚合，统计所有记录数（与 `series` 二选一） |
+| `count_all` | boolean | COUNTA 聚合，统计所有**记录条数**（与 `series` 二选一）。注意：用户指标是"数量/人数/金额"且表中存在对应数量语义字段（如「访客人数」「销售额」，一条记录可能代表多个计数单位）时，必须用 `series` + `SUM(该字段)`，不要用 `count_all` 数行数；同一仪表盘内同口径指标统计方式必须一致 |
 | `group_by` | `[{ "field_name": "xxx", "mode": "integrated", "sort": {...} }]` | X 轴分组维度。`mode` 必填，`sort` 可选，见下方说明 |
 | `filter` | object | 筛选条件 |
 | `filter.conjunction` | `"and"` / `"or"` | 筛选逻辑 |

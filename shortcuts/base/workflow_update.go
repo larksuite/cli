@@ -11,12 +11,13 @@ import (
 )
 
 var BaseWorkflowUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+workflow-update",
-	Description: "Replace a workflow's full definition (title and/or steps) in a base",
-	Risk:        "write",
-	Scopes:      []string{"base:workflow:update"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+workflow-update",
+	Description:       "Replace a workflow's full definition (title and/or steps) in a base",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:workflow:update"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "workflow-id", Desc: "workflow ID (wkf... prefix)", Required: true},
@@ -32,7 +33,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("workflow-id")) == "" {
@@ -51,7 +52,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 		return common.NewDryRunAPI().
 			PUT("/open-apis/base/v3/bases/:base_token/workflows/:workflow_id").
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("workflow_id", runtime.Str("workflow-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -61,7 +62,7 @@ var BaseWorkflowUpdate = common.Shortcut{
 			return err
 		}
 		data, err := baseV3Call(runtime, "PUT",
-			baseV3Path("bases", runtime.Str("base-token"), "workflows", runtime.Str("workflow-id")),
+			baseV3Path("bases", baseTokenOrRaw(runtime), "workflows", runtime.Str("workflow-id")),
 			nil,
 			body,
 		)

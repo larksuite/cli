@@ -7,19 +7,22 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
 var BaseDataQuery = common.Shortcut{
-	Service:     "base",
-	Command:     "+data-query",
-	Description: "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
-	Risk:        "read",
-	Scopes:      []string{"base:table:read"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+data-query",
+	Description:       "Query and analyze Base data with JSON DSL (aggregation, filter, sort)",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:table:read"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
+		{Name: "table-id", Hidden: true},
 		{Name: "dsl", Desc: "query JSON DSL; read lark-base-data-query-guide.md first, then lark-base-data-query.md for the full DSL SSOT", Required: true},
 	},
 	Tips: []string{
@@ -28,6 +31,9 @@ var BaseDataQuery = common.Shortcut{
 		"`dimensions` and `measures` cannot both be empty.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if strings.TrimSpace(runtime.Str("table-id")) != "" {
+			return baseFlagErrorf("+data-query does not support --table-id; put table names/fields inside --dsl (read lark-base-data-query-guide.md)")
+		}
 		var dsl map[string]interface{}
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))
 		dec.UseNumber()
@@ -49,10 +55,10 @@ var BaseDataQuery = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST("/open-apis/base/v3/bases/:base_token/data/query").
 			Body(dsl).
-			Set("base_token", runtime.Str("base-token"))
+			Set("base_token", baseTokenOrRaw(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 
 		var dsl map[string]interface{}
 		dec := json.NewDecoder(bytes.NewReader([]byte(runtime.Str("dsl"))))

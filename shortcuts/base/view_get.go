@@ -10,14 +10,15 @@ import (
 )
 
 var BaseViewGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-get",
-	Description: "Get a view by ID or name",
-	Risk:        "read",
-	Scopes:      []string{"base:view:read"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
-	DryRun:      dryRunViewGet,
+	Service:           "base",
+	Command:           "+view-get",
+	Description:       "Get a view by ID or name",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:read"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true), tableRefFlag(true), viewRefFlag(true)},
+	DryRun:            dryRunViewGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewGet(runtime)
 	},

@@ -11,13 +11,14 @@ import (
 )
 
 var BaseDashboardBlockGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-get",
-	Description: "Get a dashboard block by ID",
-	Risk:        "read",
-	Scopes:      []string{"base:dashboard:read"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-get",
+	Description:       "Get a dashboard block by ID",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:read"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -37,7 +38,7 @@ var BaseDashboardBlockGet = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
 			Params(params).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id")).
 			Set("block_id", runtime.Str("block-id"))
 	},

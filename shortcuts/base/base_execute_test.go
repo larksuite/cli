@@ -1066,6 +1066,143 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("list compact projects single table fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{
+						"id":      "fld_status",
+						"name":    "Status",
+						"type":    "select",
+						"formula": "SHOULD_DROP",
+						"options": []interface{}{
+							map[string]interface{}{"name": "Todo", "color": "red"},
+						},
+					},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "tbl_x", "--compact"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"fld_status"`) || !strings.Contains(got, `"Status"`) || !strings.Contains(got, `"options"`) || !strings.Contains(got, `"Todo"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		for _, notWant := range []string{`"color"`, `"formula"`, "SHOULD_DROP"} {
+			if strings.Contains(got, notWant) {
+				t.Fatalf("stdout should be compact, found %s: %s", notWant, got)
+			}
+		}
+	})
+
+	t.Run("list passes table name through to API", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/Orders/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_name", "name": "Name", "type": "text"},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldList, []string{"+field-list", "--base-token", "app_x", "--table-id", "Orders"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"fields"`) || !strings.Contains(got, `"name": "Name"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list batch multiple tables", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_a", "name": "Name", "type": "text", "style": map[string]interface{}{"type": "plain"}},
+				}, "total": 1},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_b", "name": "Status", "type": "select", "options": []interface{}{map[string]interface{}{"name": "Todo", "color": "red"}}},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldListBatch, []string{"+field-list-batch", "--base-token", "app_x", "--table-id", "tbl_a", "--table-id", "tbl_b", "--compact"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"tables"`) || !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"options": [`) || !strings.Contains(got, `"Todo"`) || !strings.Contains(got, `"style"`) || strings.Contains(got, `"color"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list batch passes mixed ids and names", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_a/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_a", "name": "Name", "type": "text"},
+				}, "total": 1},
+			},
+		})
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/Orders/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_order", "name": "Status", "type": "select"},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldListBatch, []string{"+field-list-batch", "--base-token", "app_x", "--table-id", "tbl_a", "--table-id", "Orders"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"table_id": "tbl_a"`) || !strings.Contains(got, `"table_id": "Orders"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list batch default keeps full fields", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_b/fields",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"fields": []interface{}{
+					map[string]interface{}{"id": "fld_b", "name": "Status", "type": "select", "options": []interface{}{map[string]interface{}{"name": "Todo", "color": "red"}}},
+				}, "total": 1},
+			},
+		})
+		if err := runShortcut(t, BaseFieldListBatch, []string{"+field-list-batch", "--base-token", "app_x", "--table-id", "tbl_b"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"table_id": "tbl_b"`) || !strings.Contains(got, `"color": "red"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -1434,6 +1571,48 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
+	t.Run("search accepts query alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		searchStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/search",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Title"},
+					"field_id_list":  []interface{}{"fld_title"},
+					"record_id_list": []interface{}{"rec_1"},
+					"data":           []interface{}{[]interface{}{"Created by AI"}},
+					"has_more":       false,
+				},
+			},
+		}
+		reg.Register(searchStub)
+		if err := runShortcut(
+			t,
+			BaseRecordSearch,
+			[]string{
+				"+record-search",
+				"--base-token", "app_x",
+				"--table-id", "tbl_x",
+				"--query", "Created",
+				"--search-field", "Title",
+				"--format", "json",
+			},
+			factory,
+			stdout,
+		); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		var body map[string]interface{}
+		if err := json.Unmarshal(searchStub.CapturedBody, &body); err != nil {
+			t.Fatalf("captured body json err=%v body=%s", err, string(searchStub.CapturedBody))
+		}
+		if body["keyword"] != "Created" {
+			t.Fatalf("captured body=%#v", body)
+		}
+	})
+
 	t.Run("search with filter json file", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		tmp := t.TempDir()
@@ -1525,19 +1704,21 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 	})
 
-	t.Run("list legacy fields flag rejected", func(t *testing.T) {
+	t.Run("plural alias flags rejected", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
-			t.Fatalf("err=%v", err)
+		listErr := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name"}, factory, stdout)
+		if listErr == nil || !strings.Contains(listErr.Error(), "unknown flag: --fields") {
+			t.Fatalf("expected --fields rejected on +record-list, got err=%v", listErr)
 		}
-	})
-
-	t.Run("list legacy fields flag rejected in dry-run", func(t *testing.T) {
-		factory, stdout, _ := newExecuteFactory(t)
-		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--fields", "Name", "--dry-run"}, factory, stdout)
-		if err == nil || !strings.Contains(err.Error(), "unknown flag: --fields") {
-			t.Fatalf("err=%v", err)
+		factory2, stdout2, _ := newExecuteFactory(t)
+		searchErr := runShortcut(t, BaseRecordSearch, []string{"+record-search", "--base-token", "app_x", "--table-id", "tbl_x", "--keyword", "x", "--search-field", "Name", "--field-names", "Name"}, factory2, stdout2)
+		if searchErr == nil || !strings.Contains(searchErr.Error(), "unknown flag: --field-names") {
+			t.Fatalf("expected --field-names rejected on +record-search, got err=%v", searchErr)
+		}
+		factory3, stdout3, _ := newExecuteFactory(t)
+		getErr := runShortcut(t, BaseRecordGet, []string{"+record-get", "--base-token", "app_x", "--table-id", "tbl_x", "--record-ids", "rec_1"}, factory3, stdout3)
+		if getErr == nil || !strings.Contains(getErr.Error(), "unknown flag: --record-ids") {
+			t.Fatalf("expected --record-ids rejected on +record-get, got err=%v", getErr)
 		}
 	})
 
@@ -3070,8 +3251,31 @@ func TestBaseFieldExecuteSearchOptions(t *testing.T) {
 	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_amount", "--keyword", "已", "--limit", "10"}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
-	if got := stdout.String(); !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
+	got := stdout.String()
+	if !strings.Contains(got, `"options"`) || !strings.Contains(got, `"已完成"`) {
 		t.Fatalf("stdout=%s", got)
+	}
+	if !strings.Contains(got, `"field_id": "fld_amount"`) || strings.Contains(got, `"field_name"`) {
+		t.Fatalf("expected field_id only when --field-id given; stdout=%s", got)
+	}
+}
+
+func TestBaseFieldExecuteSearchOptionsByName(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/Status/options",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"options": []interface{}{map[string]interface{}{"id": "opt_1", "name": "Done"}}, "total": 1},
+		},
+	})
+	if err := runShortcut(t, BaseFieldSearchOptions, []string{"+field-search-options", "--base-token", "app_x", "--table-id", "tbl_x", "--field-name", "Status"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	got := stdout.String()
+	if !strings.Contains(got, `"field_name": "Status"`) || strings.Contains(got, `"field_id"`) {
+		t.Fatalf("expected field_name only when --field-name given; stdout=%s", got)
 	}
 }
 

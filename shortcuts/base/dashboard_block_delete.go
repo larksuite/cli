@@ -10,13 +10,14 @@ import (
 )
 
 var BaseDashboardBlockDelete = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-delete",
-	Description: "Delete a dashboard block",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:dashboard:delete"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-delete",
+	Description:       "Delete a dashboard block",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:delete"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -29,7 +30,7 @@ var BaseDashboardBlockDelete = common.Shortcut{
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			DELETE("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks/:block_id").
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id")).
 			Set("block_id", runtime.Str("block-id"))
 	},

@@ -17,12 +17,13 @@ import (
 )
 
 var BaseRoleUpdate = common.Shortcut{
-	Service:     "base",
-	Command:     "+role-update",
-	Description: "Update a role config (delta merge, only changed fields needed)",
-	Risk:        "high-risk-write",
-	Scopes:      []string{"base:role:update"},
-	AuthTypes:   []string{"user", "bot"},
+	Service:           "base",
+	Command:           "+role-update",
+	Description:       "Update a role config (delta merge, only changed fields needed)",
+	Risk:              "high-risk-write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:role:update"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "base-token", Desc: "base token", Required: true},
 		{Name: "role-id", Desc: "role ID (e.g. rolxxxxxx4)", Required: true},
@@ -35,7 +36,7 @@ var BaseRoleUpdate = common.Shortcut{
 		"Use lark-base-role-guide.md as the entry guide and role-config.md as the role permission JSON SSOT.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if strings.TrimSpace(runtime.Str("base-token")) == "" {
+		if strings.TrimSpace(baseTokenOrRaw(runtime)) == "" {
 			return baseFlagErrorf("--base-token must not be blank")
 		}
 		if strings.TrimSpace(runtime.Str("role-id")) == "" {
@@ -54,11 +55,11 @@ var BaseRoleUpdate = common.Shortcut{
 			Desc("Delta merge: only changed fields are updated, others remain unchanged").
 			PUT("/open-apis/base/v3/bases/:base_token/roles/:role_id").
 			Body(body).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("role_id", runtime.Str("role-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		baseToken := runtime.Str("base-token")
+		baseToken := baseTokenOrRaw(runtime)
 		roleId := runtime.Str("role-id")
 		var body map[string]any
 		json.Unmarshal([]byte(runtime.Str("json")), &body)

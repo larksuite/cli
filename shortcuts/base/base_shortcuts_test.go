@@ -81,6 +81,44 @@ func assertBasePaginationValidation(t *testing.T, err error, param string) {
 	}
 }
 
+func assertValidationProblem(t *testing.T, err error, param string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("category/subtype=%s/%s", p.Category, p.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != param {
+		t.Fatalf("param=%q, want %q", validationErr.Param, param)
+	}
+}
+
+func TestFieldSearchOptionsAlias(t *testing.T) {
+	runtime := newBaseTestRuntime(map[string]string{"field-name": "Status"}, nil, nil)
+	if got := fieldSearchOptionsRef(runtime); got != "Status" {
+		t.Fatalf("field ref=%q", got)
+	}
+	if err := BaseFieldSearchOptions.Validate(context.Background(), runtime); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestFieldSearchOptionsRequiresFieldRef(t *testing.T) {
+	err := BaseFieldSearchOptions.Validate(context.Background(), newBaseTestRuntime(map[string]string{}, nil, nil))
+	if err == nil || !strings.Contains(err.Error(), "--field-id is required") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestBaseAction(t *testing.T) {
 	t.Run("missing action", func(t *testing.T) {
 		runtime := newBaseTestRuntime(map[string]string{"get": ""}, map[string]bool{"list": false}, nil)
@@ -157,7 +195,7 @@ func TestShortcutsCatalog(t *testing.T) {
 	want := []string{
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
-		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
+		"+field-list", "+field-list-batch", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
 		"+view-list", "+view-get", "+view-create", "+view-delete", "+view-get-filter", "+view-set-filter", "+view-get-visible-fields", "+view-set-visible-fields", "+view-get-group", "+view-set-group", "+view-get-sort", "+view-set-sort", "+view-get-timebar", "+view-set-timebar", "+view-get-card", "+view-set-card", "+view-rename",
 		"+record-list", "+record-search", "+record-get", "+record-upsert", "+record-batch-create", "+record-batch-update", "+record-share-link-create", "+record-upload-attachment", "+record-download-attachment", "+record-remove-attachment", "+record-delete",
 		"+record-history-list",
@@ -179,6 +217,15 @@ func TestShortcutsCatalog(t *testing.T) {
 			t.Fatalf("command[%d]=%q want=%q", index, shortcuts[index].Command, command)
 		}
 	}
+}
+
+func TestFieldListBatchIncludesWikiConditionalScope(t *testing.T) {
+	for _, scope := range BaseFieldListBatch.ConditionalScopes {
+		if scope == "wiki:node:retrieve" {
+			return
+		}
+	}
+	t.Fatalf("BaseFieldListBatch conditional scopes = %#v, want wiki:node:retrieve", BaseFieldListBatch.ConditionalScopes)
 }
 
 func TestShortcutsDryRunCoverage(t *testing.T) {
@@ -542,7 +589,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				`--type text --data-config '{"text":"# Sales Dashboard"}'`,
 				"+table-list and +field-list",
 				"not table_id or field_id",
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"sequentially",
 			},
@@ -553,7 +600,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				`lark-cli base +dashboard-block-update --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id> --name "Total Sales"`,
 				`--data-config '{"series":[{"field_name":"Amount","rollup":"SUM"}]}'`,
-				"dashboard-block-data-config.md as the SSOT",
+				"lark-base-dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
 				"Block type cannot be changed",
 				"top-level keys",
@@ -1167,19 +1214,25 @@ func TestBaseRecordValidate(t *testing.T) {
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--filter-json must be a JSON object") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--filter-json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "sort-json": `[{"field":"F1"},{"field":"F2"},{"field":"F3"},{"field":"F4"},{"field":"F5"},{"field":"F6"},{"field":"F7"},{"field":"F8"},{"field":"F9"},{"field":"F10"},{"field":"F11"}]`},
 		nil,
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "sort supports at most 10 sort conditions") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--sort-json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
-	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--keyword is required unless --json is used") {
-		t.Fatalf("err=%v", err)
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, nil)); err != nil {
+		assertValidationProblem(t, err, "--keyword")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice"},
@@ -1188,6 +1241,24 @@ func TestBaseRecordValidate(t *testing.T) {
 		nil,
 	)); err != nil {
 		t.Fatalf("record search flag validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "query": "Alice"},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		nil,
+	)); err != nil {
+		t.Fatalf("record search query alias validate err=%v", err)
+	}
+	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntimeWithArrays(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "keyword": "Alice", "query": "Bob"},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		nil,
+	)); err != nil {
+		assertValidationProblem(t, err, "--query")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 	if err := BaseRecordSearch.Validate(ctx, newBaseTestRuntime(
 		map[string]string{
@@ -1205,8 +1276,10 @@ func TestBaseRecordValidate(t *testing.T) {
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"keyword":"Alice","search_fields":["Name"]}`, "keyword": "Bob"},
 		nil,
 		nil,
-	)); err == nil || !strings.Contains(err.Error(), "--json is mutually exclusive") {
-		t.Fatalf("err=%v", err)
+	)); err != nil {
+		assertValidationProblem(t, err, "--json")
+	} else {
+		t.Fatal("expected validation error, got nil")
 	}
 }
 
@@ -1327,7 +1400,7 @@ func TestBasePaginationValidationRejectsOutOfRange(t *testing.T) {
 		{
 			name:     "dashboard block list",
 			shortcut: BaseDashboardBlockList,
-			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "dashboard-id": "dash_1", "page-size": "101"}, nil, nil),
+			runtime:  newBaseTestRuntime(map[string]string{"base-token": "b", "dashboard-id": "blk_1", "page-size": "101"}, nil, nil),
 			param:    "--page-size",
 		},
 	}

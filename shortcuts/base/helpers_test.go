@@ -4,6 +4,7 @@
 package base
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -493,6 +494,45 @@ func TestCanonicalSelectAndCompareHelpers(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 	if _, err := resolveTableRef([]map[string]interface{}{{"id": "tbl_1", "name": "Orders"}}, "Missing"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestFieldSearchOptionsKeywordQueryAlias(t *testing.T) {
+	ctx := context.Background()
+	if err := BaseFieldSearchOptions.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"field-id": "Status", "keyword": "A", "query": "B"}, nil, nil,
+	)); err == nil || !strings.Contains(err.Error(), "use only one") {
+		t.Fatalf("err=%v", err)
+	}
+	queryOnly := newBaseTestRuntime(map[string]string{"field-id": "Status", "query": "Do"}, nil, nil)
+	if err := BaseFieldSearchOptions.Validate(ctx, queryOnly); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := fieldSearchOptionsKeyword(queryOnly); got != "Do" {
+		t.Fatalf("keyword=%q", got)
+	}
+}
+
+func TestRecordPageSizeAlias(t *testing.T) {
+	ctx := context.Background()
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1"},
+		nil,
+		map[string]int{"limit": 20, "page-size": 20},
+	)); err == nil || !strings.Contains(err.Error(), "use only one") {
+		t.Fatalf("err=%v", err)
+	}
+	psOnly := newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1"}, nil, map[string]int{"page-size": 7})
+	if err := BaseRecordList.Validate(ctx, psOnly); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if got := recordPageLimit(psOnly); got != 7 {
+		t.Fatalf("limit=%d", got)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1", "page-token": "tok"}, nil, nil,
+	)); err == nil || !strings.Contains(err.Error(), "did you mean --offset/--limit") {
 		t.Fatalf("err=%v", err)
 	}
 }

@@ -10,15 +10,16 @@ import (
 )
 
 var BaseBaseGet = common.Shortcut{
-	Service:     "base",
-	Command:     "+base-get",
-	Description: "Get a base resource",
-	Risk:        "read",
-	Scopes:      []string{"base:app:read"},
-	AuthTypes:   authTypes(),
-	Flags:       []common.Flag{baseTokenFlag(true)},
+	Service:           "base",
+	Command:           "+base-get",
+	Description:       "Get a base resource",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:app:read"},
+	AuthTypes:         authTypes(),
+	Flags:             []common.Flag{baseTokenFlag(true)},
 	Tips: []string{
-		"Use a real Base token; workspace tokens and wiki tokens are not accepted by this command.",
+		"Accepts a Base token, a /base/ URL, or a /wiki/ URL (wiki links auto-resolve to the underlying bitable); workspace tokens are not accepted.",
 	},
 	DryRun: dryRunBaseGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

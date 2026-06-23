@@ -10,12 +10,13 @@ import (
 )
 
 var BaseViewCreate = common.Shortcut{
-	Service:     "base",
-	Command:     "+view-create",
-	Description: "Create one or more views",
-	Risk:        "write",
-	Scopes:      []string{"base:view:write_only"},
-	AuthTypes:   authTypes(),
+	Service:           "base",
+	Command:           "+view-create",
+	Description:       "Create one or more views",
+	Risk:              "write",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:view:write_only"},
+	AuthTypes:         authTypes(),
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		tableRefFlag(true),

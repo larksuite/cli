@@ -386,6 +386,14 @@ func baseV3Path(parts ...string) string {
 }
 
 func baseV3Raw(runtime *common.RuntimeContext, method, path string, params map[string]interface{}, data interface{}) (map[string]interface{}, error) {
+	// Surface --base-token resolution failures (e.g. a /wiki/ URL that does not
+	// point to a bitable) with a clear message before issuing the request,
+	// instead of letting an unresolved token reach the API as an opaque error.
+	if strings.TrimSpace(runtime.Str("base-token")) != "" {
+		if _, err := baseToken(runtime); err != nil {
+			return nil, err
+		}
+	}
 	queryParams := make(larkcore.QueryParams)
 	for k, v := range params {
 		switch val := v.(type) {
@@ -1178,5 +1186,5 @@ func formatDataConfigErrors(problems []string) error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- "))
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/lark-base-dashboard-block-data-config.md", strings.Join(problems, "\n- "))
 }

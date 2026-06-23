@@ -11,13 +11,14 @@ import (
 )
 
 var BaseDashboardBlockList = common.Shortcut{
-	Service:     "base",
-	Command:     "+dashboard-block-list",
-	Description: "List blocks in a dashboard",
-	Risk:        "read",
-	Scopes:      []string{"base:dashboard:read"},
-	AuthTypes:   authTypes(),
-	HasFormat:   true,
+	Service:           "base",
+	Command:           "+dashboard-block-list",
+	Description:       "List blocks in a dashboard",
+	Risk:              "read",
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	Scopes:            []string{"base:dashboard:read"},
+	AuthTypes:         authTypes(),
+	HasFormat:         true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
 		dashboardIDFlag(true),
@@ -41,7 +42,7 @@ var BaseDashboardBlockList = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET("/open-apis/base/v3/bases/:base_token/dashboards/:dashboard_id/blocks").
 			Params(params).
-			Set("base_token", runtime.Str("base-token")).
+			Set("base_token", baseTokenOrRaw(runtime)).
 			Set("dashboard_id", runtime.Str("dashboard-id"))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
