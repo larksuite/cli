@@ -24,9 +24,11 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 	t.Cleanup(cancel)
 
 	tests := []struct {
-		name    string
-		args    []string
-		wantURL string
+		name           string
+		args           []string
+		wantURL        string
+		wantExtraParam string
+		wantRefLabel   string
 	}{
 		{
 			name: "create",
@@ -54,7 +56,8 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--doc", "doxcnDryRunE2E",
 				"--dry-run",
 			},
-			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch",
+			wantURL:        "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E/fetch",
+			wantExtraParam: `{"enable_user_cite_reference_map":true}`,
 		},
 		{
 			name: "update",
@@ -66,6 +69,19 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 				"--dry-run",
 			},
 			wantURL: "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+		},
+		{
+			name: "update reference-map",
+			args: []string{
+				"docs", "+update",
+				"--doc", "doxcnDryRunE2E",
+				"--command", "append",
+				"--content", `<p><widget data-ref="r1"></widget></p>`,
+				"--reference-map", `{"widget":{"r1":{"label":"widget-ref-value"}}}`,
+				"--dry-run",
+			},
+			wantURL:      "/open-apis/docs_ai/v1/documents/doxcnDryRunE2E",
+			wantRefLabel: "widget-ref-value",
 		},
 		{
 			name: "block_delete batch",
@@ -103,6 +119,14 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			}
 			if strings.Contains(combined, "--api-version") {
 				t.Fatalf("dry-run output should not ask for --api-version\nstdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+			}
+			if tt.wantExtraParam != "" {
+				extraParam := gjson.Get(result.Stdout, "api.0.body.extra_param").String()
+				require.JSONEq(t, tt.wantExtraParam, extraParam, "stdout:\n%s", result.Stdout)
+			}
+			if tt.wantRefLabel != "" {
+				got := gjson.Get(result.Stdout, "api.0.body.reference_map.widget.r1.label").String()
+				require.Equal(t, tt.wantRefLabel, got, "stdout:\n%s", result.Stdout)
 			}
 		})
 	}

@@ -162,6 +162,9 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
 	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
+	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "Weekly Notes.md"))
 	if err != nil {
@@ -212,6 +215,9 @@ func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	}
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-notes.md"))
@@ -283,6 +289,9 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 			if !strings.Contains(out, `"output_dir": "./exports"`) {
 				t.Fatalf("stdout missing output_dir metadata: %s", out)
 			}
+			if tt.name == "markdown" && strings.Contains(out, `"extra_param"`) {
+				t.Fatalf("markdown dry-run must not enable docs fetch extra_param: %s", out)
+			}
 		})
 	}
 }
@@ -332,6 +341,9 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	}
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "docx123.md"))
