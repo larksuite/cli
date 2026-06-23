@@ -54,6 +54,7 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | `--ranges` | string + File + Stdin（简单 JSON） | required | 目标范围 JSON 数组，每项必须带 sheet 前缀（如 `["'Sheet1'!A1:B2","'Sheet2'!D1:D10"]`）；前缀必须是 sheet 显示名（如 `Sheet1`），不接受 sheet reference_id；支持跨 sheet；所有 range 应用同一组 style |
 | `--background-color` | string | optional | 背景颜色（十六进制，如 `#ffffff`） |
 | `--font-color` | string | optional | 字体颜色（十六进制，如 `#000000`） |
+| `--font-family` | string | optional | 字体名称（如 `Arial`、`微软雅黑`） |
 | `--font-size` | float64 | optional | 字体大小（px，例：10、12、14） |
 | `--font-style` | string | optional | 字体样式（可选值：`normal` / `italic`） |
 | `--font-weight` | string | optional | 字重（可选值：`normal` / `bold`） |

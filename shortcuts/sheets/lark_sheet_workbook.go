@@ -1246,7 +1246,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 
 func workbookCreateCellStyleField(name string) bool {
 	switch name {
-	case "font_color", "font_size", "font_weight", "font_style", "font_line",
+	case "font_color", "font_family", "font_size", "font_weight", "font_style", "font_line",
 		"background_color", "horizontal_alignment", "vertical_alignment",
 		"number_format", "word_wrap":
 		return true

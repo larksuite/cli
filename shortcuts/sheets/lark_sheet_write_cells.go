@@ -111,10 +111,10 @@ func cellsSetInput(runtime flagView, token, sheetID, sheetName string) (map[stri
 
 // CellsSetStyle stamps a single style block across every cell in --range.
 // Style is composed from a dozen flat flags (background-color, font-color,
-// font-size, font-style, font-weight, font-line, horizontal-alignment,
-// vertical-alignment, word-wrap, number-format) plus --border-styles for
-// the only field that still needs a nested object. At least one flag must
-// be set.
+// font-family, font-size, font-style, font-weight, font-line,
+// horizontal-alignment, vertical-alignment, word-wrap, number-format) plus
+// --border-styles for the only field that still needs a nested object. At
+// least one flag must be set.
 var CellsSetStyle = common.Shortcut{
 	Service:     "sheets",
 	Command:     "+cells-set-style",

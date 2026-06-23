@@ -404,7 +404,7 @@ func requireJSONArray(runtime flagView, name string) ([]interface{}, error) {
 
 // ─── style flags (shared by +cells-set-style and +cells-batch-set-style) ─
 
-// buildCellStyleFromFlags reads the 11 flat style flags and returns the
+// buildCellStyleFromFlags reads the 12 flat style flags and returns the
 // cell_styles map expected by set_cell_range. Skips any flag the user
 // didn't set so partial styles work.
 func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
@@ -414,6 +414,9 @@ func buildCellStyleFromFlags(runtime flagView) map[string]interface{} {
 	}
 	if v := runtime.Str("font-color"); v != "" {
 		style["font_color"] = v
+	}
+	if v := runtime.Str("font-family"); v != "" {
+		style["font_family"] = v
 	}
 	if runtime.Changed("font-size") && runtime.Float64("font-size") > 0 {
 		style["font_size"] = runtime.Float64("font-size")

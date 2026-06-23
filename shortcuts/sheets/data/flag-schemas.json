@@ -241,6 +241,10 @@
                     "description": "字体颜色（十六进制，例如 \"#000000\"）",
                     "type": "string"
                   },
+                  "font_family": {
+                    "description": "字体名称/字族（例如 \"Arial\"、\"微软雅黑\"、\"宋体\"）",
+                    "type": "string"
+                  },
                   "font_size": {
                     "description": "字体大小（单位：px/像素，例如 10、12、14）",
                     "type": "number"
@@ -6498,6 +6502,9 @@
                   "font_color": {
                     "type": "string"
                   },
+                  "font_family": {
+                    "type": "string"
+                  },
                   "font_line": {
                     "enum": [
                       "none",
@@ -6865,6 +6872,9 @@
                     }
                   },
                   "font_color": {
+                    "type": "string"
+                  },
+                  "font_family": {
                     "type": "string"
                   },
                   "font_line": {

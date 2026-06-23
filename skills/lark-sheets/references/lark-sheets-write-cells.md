@@ -13,7 +13,7 @@
 
 **完整继承清单**（写新列 / 新行时 cells 数组必须同时携带）：
 
-1. `cell_styles.font_size` / `cell_styles.font_weight` / `cell_styles.font_color` / `cell_styles.font_style`（字号 / 粗细 / 颜色 / 斜体等）
+1. `cell_styles.font_family` / `cell_styles.font_size` / `cell_styles.font_weight` / `cell_styles.font_color` / `cell_styles.font_style`（字体名称 / 字号 / 粗细 / 颜色 / 斜体等）
 2. `cell_styles.horizontal_alignment` / `cell_styles.vertical_alignment`（H-Align / V-Align）—— 漏继承会导致新列对齐与原列不一致（常见）
 3. `cell_styles.number_format`（小数位 / 千分位 / 百分比 / 日期格式）—— 漏继承会导致同列数值格式混乱
 4. `cell_styles.background_color`（背景色）
@@ -265,6 +265,7 @@ _公共四件套 · 系统：`--dry-run`_
 | `--range` | string | required | 目标范围（A1 格式，如 `A1:B2`） |
 | `--background-color` | string | optional | 背景颜色（十六进制，如 `#ffffff`） |
 | `--font-color` | string | optional | 字体颜色（十六进制，如 `#000000`） |
+| `--font-family` | string | optional | 字体名称（如 `Arial`、`微软雅黑`） |
 | `--font-size` | float64 | optional | 字体大小（px，例：10、12、14） |
 | `--font-style` | string | optional | 字体样式（可选值：`normal` / `italic`） |
 | `--font-weight` | string | optional | 字重（可选值：`normal` / `bold`） |
@@ -330,7 +331,7 @@ _【维度】行列数必须与 range 完全一致：'A1:C2'→[[_,_,_],[_,_,_]]
 - `value` (oneOf?) — 静态单元格值（文本、数字、布尔）
 - `formula` (string?) — 以 '=' 开头的单元格公式（例如：'=SUM(A1:A10)'）
 - `note` (string?) — 单元格批注/备注
-- `cell_styles` (object?) — 单元格样式属性，包括字体、颜色、对齐方式和数字格式 { font_color?: string, font_size?: number, font_weight?: enum, font_style?: enum, font_line?: enum, …共 10 项 }
+- `cell_styles` (object?) — 单元格样式属性，包括字体、颜色、对齐方式和数字格式 { font_color?: string, font_family?: string, font_size?: number, font_weight?: enum, font_style?: enum, …共 11 项 }
 - `border_styles` (object?) — 单元格边框配置，含 top/bottom/left/right 四个方向，每个方向的结构相同（见 top） { top?: object, bottom?: object, left?: object, right?: object }
 - `rich_text` (array<object>?) — 富文本内容 each: { type: enum, text: string, style?: object, link?: string, mention_token?: string, …共 17 项 }
 - `multiple_values` (array<object>?) — 多值内容，用于支持多选的列表验证单元格 each: { value: oneOf, format?: string }
@@ -373,7 +374,7 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 
 **数组项**（类型 object）：
 - `cell_merges` (array<object>?) — 单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all each: { merge_type?: enum, range: string }
-- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border_styles?: object, font_color?: string, font_line?: enum, font_size?: number, …共 12 项 }
+- `cell_styles` (array<object>?) — 单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐 each: { background_color?: string, border_styles?: object, font_color?: string, font_family?: string, font_line?: enum, …共 13 项 }
 - `col_sizes` (array<object>?) — 列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size each: { range: string, size?: number, type: enum }
 - `name` (string) — 子表名
 - `row_sizes` (array<object>?) — 行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size each: { range: string, size?: number, type: enum }

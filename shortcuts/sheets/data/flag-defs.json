@@ -1712,6 +1712,13 @@
         "desc": "Font color (hex, e.g. `#000000`)"
       },
       {
+        "name": "font-family",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font family name (e.g. `Arial`, `Microsoft YaHei`)"
+      },
+      {
         "name": "font-size",
         "kind": "own",
         "type": "float64",
@@ -2758,6 +2765,13 @@
         "type": "string",
         "required": "optional",
         "desc": "Font color (hex, e.g. `#000000`)"
+      },
+      {
+        "name": "font-family",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Font family name (e.g. `Arial`, `Microsoft YaHei`)"
       },
       {
         "name": "font-size",
