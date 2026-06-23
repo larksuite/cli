@@ -50,6 +50,9 @@ var MailRuleReorder = common.Shortcut{
 		if err != nil {
 			return api.Set("error", mailDecorateProblemMessage(err, "list rules").Error())
 		}
+		if err := validateRuleIDsExist(given, currentIDs); err != nil {
+			return api.Set("error", err.Error())
+		}
 		if len(currentIDs) == 0 {
 			return api.
 				Set("dry_run", true).
@@ -57,9 +60,6 @@ var MailRuleReorder = common.Shortcut{
 				Set("reason", "no rules").
 				Set("before", []string{}).
 				Set("after", []string{})
-		}
-		if bad := firstUnknownRuleID(given, currentIDs); bad != "" {
-			return api.Set("error", unknownRuleIDError(bad, currentIDs).Error())
 		}
 		final := reorderRuleIDs(currentIDs, given, runtime.Bool("append"))
 		return api.
@@ -86,6 +86,9 @@ var MailRuleReorder = common.Shortcut{
 		if err != nil {
 			return mailDecorateProblemMessage(err, "list rules")
 		}
+		if err := validateRuleIDsExist(given, currentIDs); err != nil {
+			return err
+		}
 		if len(currentIDs) == 0 {
 			runtime.Out(map[string]interface{}{
 				"reordered": false,
@@ -95,9 +98,6 @@ var MailRuleReorder = common.Shortcut{
 			}, nil)
 			return nil
 		}
-		if bad := firstUnknownRuleID(given, currentIDs); bad != "" {
-			return unknownRuleIDError(bad, currentIDs)
-		}
 
 		final := reorderRuleIDs(currentIDs, given, runtime.Bool("append"))
 		if _, err := runtime.CallAPITyped("POST", mailboxPath(mailboxID, "rules", "reorder"), nil, map[string]interface{}{
@@ -105,7 +105,7 @@ var MailRuleReorder = common.Shortcut{
 		}); err != nil {
 			return mailAppendProblemHint(
 				mailDecorateProblemMessage(err, "reorder rules"),
-				`If you are calling the raw reorder API directly, use mail +reorder-rules to list and fill the complete rule_ids order automatically.`,
+				`The mail rule set may have changed between list and reorder; list the latest rules and retry mail +reorder-rules.`,
 			)
 		}
 
@@ -148,17 +148,20 @@ func fetchMailRuleOrder(runtime *common.RuntimeContext, mailboxID string) ([]str
 	if err != nil {
 		return nil, nil, err
 	}
-	items, _ := data["items"].([]interface{})
+	items, ok := data["items"].([]interface{})
+	if !ok {
+		return nil, nil, mailInvalidResponseError("list rules response missing items array")
+	}
 	currentIDs := make([]string, 0, len(items))
 	nameMap := make(map[string]string, len(items))
-	for _, item := range items {
+	for i, item := range items {
 		rule, ok := item.(map[string]interface{})
 		if !ok {
-			continue
+			return nil, nil, mailInvalidResponseError("list rules response item %d is not an object", i)
 		}
 		id := strVal(rule["id"])
 		if id == "" {
-			continue
+			return nil, nil, mailInvalidResponseError("list rules response item %d missing string id", i)
 		}
 		currentIDs = append(currentIDs, id)
 		if name := strVal(rule["name"]); name != "" {
@@ -166,6 +169,16 @@ func fetchMailRuleOrder(runtime *common.RuntimeContext, mailboxID string) ([]str
 		}
 	}
 	return currentIDs, nameMap, nil
+}
+
+func validateRuleIDsExist(given, current []string) error {
+	if len(given) == 0 || len(current) > 0 {
+		if bad := firstUnknownRuleID(given, current); bad != "" {
+			return unknownRuleIDError(bad, current)
+		}
+		return nil
+	}
+	return mailValidationParamError("--rule-ids", "mailbox has no mail rules; rule id %q cannot be reordered", given[0])
 }
 
 func firstUnknownRuleID(given, current []string) string {

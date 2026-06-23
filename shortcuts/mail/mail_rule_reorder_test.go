@@ -109,6 +109,23 @@ func TestMailRuleReorderFullOrderInput(t *testing.T) {
 	assertRuleIDsBody(t, reorderStub.CapturedBody, []string{"C", "A", "B"})
 }
 
+func TestMailRuleReorderSameOrderStillPosts(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	registerRuleList(t, reg, "me", []mailRuleSummary{{ID: "A"}, {ID: "B"}, {ID: "C"}})
+	reorderStub := registerRuleReorder(reg, "me", 200)
+
+	err := runMountedMailShortcut(t, MailRuleReorder, []string{
+		"+reorder-rules", "--rule-ids", "A,B,C",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutEnvelopeData(t, stdout)
+	assertStringSlice(t, data["after"], []string{"A", "B", "C"})
+	assertStringSlice(t, data["moved"], []string{})
+	assertRuleIDsBody(t, reorderStub.CapturedBody, []string{"A", "B", "C"})
+}
+
 func TestMailRuleReorderUnknownID(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	registerRuleList(t, reg, "me", []mailRuleSummary{{ID: "A"}, {ID: "B"}})
@@ -232,26 +249,74 @@ func TestMailRuleReorderReorderFailure(t *testing.T) {
 		t.Fatalf("error = %v, want reorder context", err)
 	}
 	problem, ok := errs.ProblemOf(err)
-	if !ok || !strings.Contains(problem.Hint, "+reorder-rules") {
-		t.Fatalf("hint = %q, want +reorder-rules", problem.Hint)
+	if !ok || !strings.Contains(problem.Hint, "rule set may have changed") || !strings.Contains(problem.Hint, "retry") {
+		t.Fatalf("hint = %q, want retry stale-rule guidance", problem.Hint)
 	}
 }
 
-func TestMailRuleReorderEmptyRuleSetNoop(t *testing.T) {
+func TestMailRuleReorderEmptyRuleSetRejectsInput(t *testing.T) {
 	f, stdout, _, reg := mailShortcutTestFactory(t)
 	registerRuleList(t, reg, "me", nil)
 
 	err := runMountedMailShortcut(t, MailRuleReorder, []string{
 		"+reorder-rules", "--rule-ids", "A",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected error")
 	}
-	data := decodeShortcutEnvelopeData(t, stdout)
-	if data["reordered"] != false || data["reason"] != "no rules" {
-		t.Fatalf("data = %#v, want no-op", data)
+	if got := output.ExitCodeOf(err); got != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d", got, output.ExitValidation)
 	}
-	assertStringSlice(t, data["after"], []string{})
+	if msg := err.Error(); !strings.Contains(msg, "no mail rules") || !strings.Contains(msg, "A") {
+		t.Fatalf("error = %v, want empty-rule validation", err)
+	}
+}
+
+func TestMailRuleReorderInvalidListResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		data map[string]interface{}
+		want string
+	}{
+		{
+			name: "items missing",
+			data: map[string]interface{}{},
+			want: "missing items array",
+		},
+		{
+			name: "item not object",
+			data: map[string]interface{}{"items": []interface{}{"bad"}},
+			want: "item 0 is not an object",
+		},
+		{
+			name: "id not string",
+			data: map[string]interface{}{"items": []interface{}{map[string]interface{}{"id": float64(1)}}},
+			want: "item 0 missing string id",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "GET",
+				URL:    "open-apis/mail/v1/user_mailboxes/me/rules",
+				Body: map[string]interface{}{
+					"code": 0,
+					"data": tt.data,
+				},
+			})
+
+			err := runMountedMailShortcut(t, MailRuleReorder, []string{
+				"+reorder-rules", "--rule-ids", "A",
+			}, f, stdout)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if msg := err.Error(); !strings.Contains(msg, tt.want) {
+				t.Fatalf("error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
 }
 
 func registerRuleList(t *testing.T, reg *httpmock.Registry, mailbox string, rules []mailRuleSummary) {

@@ -49,6 +49,8 @@ lark-cli mail +reorder-rules --rule-ids C,A --dry-run
 
 ## 返回值
 
+成功提交时输出标准 envelope：
+
 ```json
 {
   "ok": true,
@@ -69,7 +71,26 @@ lark-cli mail +reorder-rules --rule-ids C,A --dry-run
 }
 ```
 
-没有任何收信规则时返回 no-op success，不会调用 reorder。
+`--dry-run` 不提交 reorder，输出预览对象本身，不包裹在 `ok/data` 内：
+
+```json
+{
+  "dry_run": true,
+  "before": ["A", "B", "C", "D"],
+  "after": ["C", "A", "B", "D"],
+  "moved": [
+    {"id": "C", "from": 2, "to": 0},
+    {"id": "A", "from": 0, "to": 1},
+    {"id": "B", "from": 1, "to": 2}
+  ],
+  "rule_name_map": {
+    "A": "Invoices",
+    "C": "VIP"
+  }
+}
+```
+
+没有任何收信规则且未提供有效规则 ID 时返回 no-op success，不会调用 reorder；如果提供了 `--rule-ids`，会返回校验错误。
 
 ## 常见错误
 
@@ -78,6 +99,8 @@ lark-cli mail +reorder-rules --rule-ids C,A --dry-run
 | `--rule-ids is required` | 未提供有效规则 ID，或只传了空逗号 | 传入至少一个规则 ID，如 `--rule-ids A` |
 | `duplicate rule id` | `--rule-ids` 内有重复 ID | 去重后重试 |
 | `rule id "... " not found; valid rule ids: ...` | 传入了当前规则集中不存在的 ID | 使用错误提示里的合法 ID 重试 |
+| `mailbox has no mail rules` | 当前邮箱没有任何收信规则，但传入了要重排的 ID | 先创建规则，或确认邮箱是否正确 |
+| `rule set may have changed` | list 与 reorder 之间规则集被并发增删，后端拒绝旧全集 | 重新执行命令，让 shortcut 基于最新规则集补齐 |
 | 403 / missing scope | 登录 token 没有规则 read/write scope | 重新执行 `lark-cli auth login --scope "mail:user_mailbox.rule:write mail:user_mailbox.rule:read"` |
 
 ## 相关命令
