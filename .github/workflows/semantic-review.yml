@@ -47,10 +47,13 @@ jobs:
               throw new Error(`ambiguous workflow_run pull request bindings: ${runPRs.length}`);
             }
             let prNumber = Number(runPRs[0]?.number || 0);
-            let eventBaseSha = runPRs[0]?.base?.sha || "";
+            const eventBaseSha = runPRs[0]?.base?.sha || "";
             const eventHeadSha = runPRs[0]?.head?.sha || "";
-            const targetHeadSha = eventHeadSha || run.head_sha;
+            const targetHeadSha = run.head_sha;
             if (!/^[a-f0-9]{40}$/i.test(targetHeadSha)) throw new Error("invalid PR head sha");
+            if (eventHeadSha && eventHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+              core.notice("PR quality summary using workflow_run head_sha because workflow_run pull request head differs from the CI run head");
+            }
 
             const factsArtifactPattern = /^quality-gate-facts-([a-f0-9]{40})-([a-f0-9]{40})$/i;
             const { data: artifactData } = await github.rest.actions.listWorkflowRunArtifacts({
@@ -71,11 +74,11 @@ jobs:
               if (artifactHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
                 artifactError = "facts artifact head sha does not match verified PR head sha";
                 factsArtifactName = "";
-              } else if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
-                artifactError = "facts artifact base sha does not match workflow_run pull request base sha";
-                factsArtifactName = "";
               } else {
                 artifactBaseSha = parsedBaseSha;
+                if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
+                  core.notice("PR quality summary using facts artifact base because workflow_run pull request base differs from the CI facts artifact base");
+                }
               }
             }
             if (!prNumber) {
@@ -123,7 +126,7 @@ jobs:
               core.setOutput("stale", "true");
               return;
             }
-            const baseSha = eventBaseSha || artifactBaseSha || pr.base.sha;
+            const baseSha = artifactBaseSha || eventBaseSha || pr.base.sha;
             if (!/^[a-f0-9]{40}$/i.test(baseSha)) throw new Error("invalid PR base sha");
             if ((eventBaseSha || artifactBaseSha) && pr.base.sha !== baseSha) {
               core.notice("PR quality summary skipped: workflow_run is stale for this PR base");
@@ -255,10 +258,13 @@ jobs:
               throw new Error(`ambiguous workflow_run pull request bindings: ${runPRs.length}`);
             }
             let prNumber = Number(runPRs[0]?.number || 0);
-            let eventBaseSha = runPRs[0]?.base?.sha || "";
+            const eventBaseSha = runPRs[0]?.base?.sha || "";
             const eventHeadSha = runPRs[0]?.head?.sha || "";
-            const targetHeadSha = eventHeadSha || run.head_sha;
+            const targetHeadSha = run.head_sha;
             if (!/^[a-f0-9]{40}$/i.test(targetHeadSha)) throw new Error("invalid PR head sha");
+            if (eventHeadSha && eventHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+              core.notice("semantic review using workflow_run head_sha because workflow_run pull request head differs from the CI run head");
+            }
 
             const factsArtifactPattern = /^quality-gate-facts-([a-f0-9]{40})-([a-f0-9]{40})$/i;
             const { data: artifactData } = await github.rest.actions.listWorkflowRunArtifacts({
@@ -279,11 +285,11 @@ jobs:
               if (artifactHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
                 artifactError = "facts artifact head sha does not match verified PR head sha";
                 factsArtifactName = "";
-              } else if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
-                artifactError = "facts artifact base sha does not match workflow_run pull request base sha";
-                factsArtifactName = "";
               } else {
                 artifactBaseSha = parsedBaseSha;
+                if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
+                  core.notice("semantic review using facts artifact base because workflow_run pull request base differs from the CI facts artifact base");
+                }
               }
             }
             if (!prNumber) {
@@ -331,7 +337,7 @@ jobs:
               core.setOutput("stale", "true");
               return;
             }
-            const baseSha = eventBaseSha || artifactBaseSha || pr.base.sha;
+            const baseSha = artifactBaseSha || eventBaseSha || pr.base.sha;
             if (!/^[a-f0-9]{40}$/i.test(baseSha)) throw new Error("invalid PR base sha");
             if ((eventBaseSha || artifactBaseSha) && pr.base.sha !== baseSha) {
               core.notice("semantic review skipped: workflow_run is stale for this PR base");
