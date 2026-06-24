@@ -202,6 +202,100 @@ describe("semantic-review-publish", () => {
     assert.equal(selectInlineTarget({ evidence: ["facts.errors[0]"] }, facts, changedLineIndex), null);
   });
 
+  it("maps public content evidence to changed files but not virtual metadata", () => {
+    const restrictedScope = "pri" + "vate";
+    const facts = {
+      public_content: [
+        {
+          rule: "public_content_semantic_candidate",
+          action: "WARNING",
+          file: "docs/public-roadmap.md",
+          line: 4,
+          source: "file",
+        },
+        {
+          rule: "public_content_semantic_candidate",
+          action: "WARNING",
+          file: "pull_request_metadata",
+          line: 1,
+          source: "metadata",
+        },
+        {
+          rule: "public_content_automation_branch",
+          action: "WARNING",
+          file: "branch",
+          line: 1,
+          source: "branch",
+        },
+        {
+          rule: "public_content_change_id_trailer",
+          action: "REJECT",
+          file: "commit:1234abc",
+          line: 3,
+          source: "commit",
+        },
+      ],
+    };
+    const changedLineIndex = buildChangedLineIndex([{
+      filename: "docs/public-roadmap.md",
+      patch: [
+        "@@ -3,2 +3,3 @@",
+        " context",
+        "+Specific " + restrictedScope + " roadmap detail",
+      ].join("\n"),
+    }]);
+
+    assert.deepEqual(
+      selectInlineTarget({ evidence: ["facts.public_content[0]"] }, facts, changedLineIndex),
+      { path: "docs/public-roadmap.md", line: 4 },
+    );
+    assert.equal(selectInlineTarget({ evidence: ["facts.public_content[1]"] }, facts, changedLineIndex), null);
+    assert.equal(selectInlineTarget({ evidence: ["facts.public_content[2]"] }, facts, changedLineIndex), null);
+    assert.equal(selectInlineTarget({ evidence: ["facts.public_content[3]"] }, facts, changedLineIndex), null);
+
+    const markdown = buildSummaryMarkdown({
+      block_mode: true,
+      blockers: [{
+        category: "public_content_leakage",
+        severity: "major",
+        review_action: "must_fix",
+        evidence: ["facts.public_content[1]"],
+        fingerprint: "public-content-metadata",
+        message: "PR metadata contains " + restrictedScope + " rollout detail",
+        suggested_action: "Move " + restrictedScope + " detail to an internal channel.",
+      }],
+      warnings: [],
+    }, facts);
+    assert.match(markdown, /pull_request_metadata:1/);
+
+    const virtualMarkdown = buildSummaryMarkdown({
+      block_mode: true,
+      blockers: [
+        {
+          category: "public_content_leakage",
+          severity: "major",
+          review_action: "must_fix",
+          evidence: ["facts.public_content[2]"],
+          fingerprint: "public-content-branch",
+          message: "Branch name looks automation-owned.",
+          suggested_action: "Use a maintainer-owned public branch name.",
+        },
+        {
+          category: "public_content_leakage",
+          severity: "major",
+          review_action: "must_fix",
+          evidence: ["facts.public_content[3]"],
+          fingerprint: "public-content-commit",
+          message: "Commit trailer contains " + restrictedScope + " review metadata.",
+          suggested_action: "Remove " + restrictedScope + " review metadata from commits.",
+        },
+      ],
+      warnings: [],
+    }, facts);
+    assert.match(virtualMarkdown, /branch:1/);
+    assert.match(virtualMarkdown, /commit:1234abc:3/);
+  });
+
   it("builds finding markers from stable fingerprints and evidence identity", () => {
     const factsA = {
       skills: [{
@@ -612,6 +706,35 @@ describe("semantic-review-publish", () => {
       assert.equal(calls.checks.length, 0);
       assert.equal(calls.comments.length, 0);
       assert.match(calls.notices[0], /PR base changed before publishing/);
+    });
+  });
+
+  it("skips publishing when the PR closes after verification", async () => {
+    await withPublishTempDir(async ({ calls }) => {
+      fs.writeFileSync("decision.json", JSON.stringify({
+        block_mode: true,
+        blockers: [],
+        warnings: [],
+      }), "utf8");
+
+      await publish({
+        github: fakeGithub(calls, {
+          currentPullRequest: {
+            state: "closed",
+            head: { sha: "0123456789abcdef0123456789abcdef01234567" },
+            base: {
+              sha: "fedcba9876543210fedcba9876543210fedcba98",
+              repo: { id: 123 },
+            },
+          },
+        }),
+        context: workflowRunContext(),
+        core: silentCore(calls),
+      });
+
+      assert.equal(calls.checks.length, 0);
+      assert.equal(calls.comments.length, 0);
+      assert.match(calls.notices[0], /PR is no longer open before publishing/);
     });
   });
 
@@ -2223,8 +2346,8 @@ function fakeGithub(calls, options = {}) {
         },
       },
       pulls: {
-        get: async () => ({
-          data: Array.isArray(options.currentPullRequests)
+        get: async () => {
+          const pull = Array.isArray(options.currentPullRequests)
             ? options.currentPullRequests[Math.min(pullGetCount++, options.currentPullRequests.length - 1)]
             : options.currentPullRequest || {
             head: { sha: process.env.SEMANTIC_REVIEW_HEAD_SHA },
@@ -2232,8 +2355,9 @@ function fakeGithub(calls, options = {}) {
               sha: process.env.SEMANTIC_REVIEW_BASE_SHA,
               repo: { id: 123 },
             },
-          },
-        }),
+          };
+          return { data: { state: "open", ...pull } };
+        },
         listFiles() {},
         listReviewComments() {},
         createReviewComment: async (args) => {

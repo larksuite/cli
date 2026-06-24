@@ -175,7 +175,7 @@ function inlineCode(value) {
 }
 
 function parseEvidenceRef(ref) {
-  const match = /^facts\.(commands|skills|errors|outputs)\[(\d+)\]$/.exec(String(ref || ""));
+  const match = /^facts\.(commands|skills|errors|outputs|public_content)\[(\d+)\]$/.exec(String(ref || ""));
   if (!match) {
     return null;
   }
@@ -228,6 +228,20 @@ function evidenceLocation(facts, ref) {
     case "commands":
       if (item.path) {
         return { kind: parsed.kind, command: item.path, label: item.path };
+      }
+      return null;
+    case "public_content":
+      if (item.file && Number.isInteger(item.line) && item.line > 0) {
+        const label = `${item.file}:${item.line}`;
+        if (item.file === "branch" || item.file === "pull_request_metadata" || String(item.file).startsWith("commit:")) {
+          return { kind: parsed.kind, label };
+        }
+        return {
+          kind: parsed.kind,
+          path: item.file,
+          line: item.line,
+          label,
+        };
       }
       return null;
     default:
@@ -845,6 +859,10 @@ async function publishTargetStillCurrent(github, context, core, target, phase = 
     repo: context.repo.repo,
     pull_number: target.pr,
   });
+  if (pr.state !== "open") {
+    core.notice(`semantic review skipped: PR is no longer open before ${phase}`);
+    return false;
+  }
   if (pr.head.sha !== target.headSha) {
     core.notice(`semantic review skipped: PR head changed before ${phase}`);
     return false;

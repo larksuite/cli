@@ -5,26 +5,42 @@
 set -euo pipefail
 
 workflow=".github/workflows/ci.yml"
+job_section() {
+  local job="$1"
+  awk -v job="$job" '
+    $0 == "  " job ":" { in_job = 1; print; next }
+    in_job && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+  ' "$workflow"
+}
 workflow_permissions="$(awk '
   /^permissions:/ { in_permissions = 1; print; next }
   in_permissions && /^[^[:space:]]/ { exit }
   in_permissions { print }
 ' "$workflow")"
+fast_gate_section="$(job_section fast-gate)"
+unit_test_section="$(job_section unit-test)"
 lint_section="$(awk '
   /^  lint:/ { in_job = 1 }
   in_job { print }
-  /^  deterministic-gate:/ { exit }
+  /^  script-test:/ { exit }
 ' "$workflow")"
+script_test_section="$(job_section script-test)"
 deterministic_section="$(awk '
   /^  deterministic-gate:/ { in_job = 1 }
   in_job { print }
   /^  coverage:/ { exit }
 ' "$workflow")"
+coverage_job_section="$(job_section coverage)"
+deadcode_section="$(job_section deadcode)"
+dry_run_section="$(job_section e2e-dry-run)"
 section="$(awk '
   /^  e2e-live:/ { in_job = 1 }
   in_job { print }
   /^  security:/ { exit }
 ' "$workflow")"
+security_section="$(job_section security)"
+license_header_section="$(job_section license-header)"
 results_section="$(awk '
   /^  results:/ { in_job = 1 }
   in_job { print }
@@ -98,13 +114,94 @@ if ! grep -Fq "make quality-gate" <<<"$deterministic_section"; then
   exit 1
 fi
 
+if ! grep -Fq "Write public content metadata" <<<"$deterministic_section"; then
+  echo "deterministic-gate should write PR title/body metadata before quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "types: [opened, synchronize, reopened, edited]" "$workflow"; then
+  echo "CI pull_request trigger should include edited so PR title/body changes are rescanned"
+  exit 1
+fi
+
+if ! grep -Fq "script-test:" <<<"$script_test_section"; then
+  echo "CI should run make script-test so workflow and publisher contract tests are not local-only"
+  exit 1
+fi
+
+if ! grep -Fq "make script-test" <<<"$script_test_section"; then
+  echo "script-test job should invoke make script-test"
+  exit 1
+fi
+
+if ! grep -Fq "actions/setup-node" <<<"$script_test_section"; then
+  echo "script-test job should install Node for JavaScript workflow tests"
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
+  echo "script-test must not reference secrets"
+  exit 1
+fi
+
+if grep -Fq "metadata-gate:" "$workflow"; then
+  echo "metadata-gate should not run alongside deterministic-gate because both would upload the same facts artifact"
+  exit 1
+fi
+
+if grep -Fq "github.event.action != 'edited'" <<<"$fast_gate_section"; then
+  echo "fast-gate must run on pull_request edited events so title/body edits cannot replace failed CI with a light success"
+  exit 1
+fi
+
+for full_job in \
+  "$unit_test_section" \
+  "$lint_section" \
+  "$script_test_section" \
+  "$deterministic_section" \
+  "$coverage_job_section" \
+  "$dry_run_section" \
+  "$security_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$full_job"; then
+    echo "full CI jobs must run on pull_request edited events; do not skip title/body-only edits"
+    exit 1
+  fi
+done
+
+for pull_request_job in "$deadcode_section" "$license_header_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$pull_request_job"; then
+    echo "pull_request-only CI jobs must run on edited events"
+    exit 1
+  fi
+done
+
+if grep -Fq '${{ secrets.' <<<"$deterministic_section"; then
+  echo "deterministic-gate must not reference secrets"
+  exit 1
+fi
+
+if ! grep -Fq "PUBLIC_CONTENT_METADATA=" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass public content metadata into make quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "PR_BRANCH:" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass the pull request branch into public content metadata"
+  exit 1
+fi
+
 if ! grep -Fq "name: quality-gate-facts-\${{ github.event.pull_request.base.sha }}-\${{ github.event.pull_request.head.sha }}" <<<"$deterministic_section"; then
   echo "deterministic-gate should upload base/head-bound quality-gate-facts for semantic review"
   exit 1
 fi
 
-if ! grep -Fq "needs: [unit-test, lint, deterministic-gate]" "$workflow"; then
-  echo "E2E jobs should wait for deterministic-gate"
+if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate]" "$workflow"; then
+  echo "E2E jobs should wait for script-test and deterministic-gate"
+  exit 1
+fi
+
+if ! grep -Fq "script-test" <<<"$results_section"; then
+  echo "results job should include script-test"
   exit 1
 fi
 
@@ -207,6 +304,11 @@ fi
 
 if ! grep -Fq "go run ./internal/qualitygate/cmd/manifest-export" <<<"$make_output"; then
   echo "quality-gate should generate command manifests through manifest-export"
+  exit 1
+fi
+
+if ! grep -Fq -- "--public-content-metadata .tmp/quality-gate/public-content-metadata.json" <<<"$make_output"; then
+  echo "quality-gate check should consume public content metadata"
   exit 1
 fi
 

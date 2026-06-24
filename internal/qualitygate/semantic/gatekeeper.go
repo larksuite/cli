@@ -10,9 +10,10 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/internal/qualitygate/facts"
+	"github.com/larksuite/cli/internal/qualitygate/report"
 )
 
-var evidencePattern = regexp.MustCompile(`^facts\.(commands|skills|errors|outputs)\[(\d+)\]$`)
+var evidencePattern = regexp.MustCompile(`^facts\.(commands|skills|errors|outputs|public_content)\[(\d+)\]$`)
 
 func Decide(f facts.Facts, r Review, p Policy) Decision {
 	return DecideWithWaivers(f, r, p, Waivers{})
@@ -172,6 +173,16 @@ func evidenceFingerprint(f facts.Facts, ev string) string {
 			"has_default_limit:" + strconv.FormatBool(out.HasDefaultLimit),
 			"has_decision_field:" + strconv.FormatBool(out.HasDecisionField),
 		}, ":")
+	case "public_content":
+		item := f.PublicContent[idx]
+		return strings.Join([]string{
+			"public_content",
+			"rule:" + item.Rule,
+			"action:" + string(item.Action),
+			"file:" + item.File,
+			"line:" + strconv.Itoa(item.Line),
+			"source:" + item.Source,
+		}, ":")
 	default:
 		return "ref:" + ev
 	}
@@ -201,7 +212,7 @@ func validFinding(f Finding) bool {
 
 func allowedCategory(category string) bool {
 	switch category {
-	case "error_hint", "default_output", "naming", "skill_quality":
+	case "error_hint", "default_output", "naming", "skill_quality", "public_content_leakage":
 		return true
 	default:
 		return false
@@ -247,6 +258,12 @@ func reproducibleEvidence(f facts.Facts, category, kind string, idx int) bool {
 		}
 		skill := f.Skills[idx]
 		return skill.ReferencesInvalidCommand
+	case "public_content_leakage":
+		if kind != "public_content" {
+			return false
+		}
+		item := f.PublicContent[idx]
+		return item.Action == report.ActionReject || item.Rule == "public_content_semantic_candidate"
 	default:
 		return false
 	}
@@ -277,6 +294,8 @@ func evidenceExists(f facts.Facts, kind string, idx int) bool {
 		return idx < len(f.Errors)
 	case "outputs":
 		return idx < len(f.Outputs)
+	case "public_content":
+		return idx < len(f.PublicContent)
 	default:
 		return false
 	}

@@ -15,18 +15,20 @@ import (
 	manifestexamples "github.com/larksuite/cli/internal/qualitygate/examples"
 	"github.com/larksuite/cli/internal/qualitygate/facts"
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
+	"github.com/larksuite/cli/internal/qualitygate/publiccontent"
 	"github.com/larksuite/cli/internal/qualitygate/report"
 	"github.com/larksuite/cli/internal/qualitygate/skillscan"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
 type Options struct {
-	Repo             string
-	CLIBin           string
-	ChangedFrom      string
-	FactsOut         string
-	ManifestPath     string
-	CommandIndexPath string
+	Repo                      string
+	CLIBin                    string
+	ChangedFrom               string
+	FactsOut                  string
+	ManifestPath              string
+	CommandIndexPath          string
+	PublicContentMetadataPath string
 }
 
 func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, error) {
@@ -98,9 +100,60 @@ func Run(ctx context.Context, opts Options) ([]report.Diagnostic, facts.Facts, e
 	if opts.ChangedFrom != "" {
 		diags = append(diags, errorDiags...)
 	}
+	publicContent, err := publiccontent.Collect(ctx, publiccontent.Options{
+		Repo:         opts.Repo,
+		ChangedFrom:  opts.ChangedFrom,
+		MetadataPath: opts.PublicContentMetadataPath,
+	})
+	if err != nil {
+		return nil, facts.Facts{}, err
+	}
+	diags = append(diags, publicContentDiagnostics(publicContent)...)
 	diags = filterPRDiagnostics(opts.Repo, opts.ChangedFrom, scope, m, diags)
 
-	return diags, facts.BuildWithCommandLookup(m, commandIndex, skillFacts, skillQualityFacts, errorFacts, exampleFacts, outputFacts, diags, scope.Files), nil
+	builtFacts := facts.BuildWithCommandLookup(m, commandIndex, skillFacts, skillQualityFacts, errorFacts, exampleFacts, outputFacts, diags, scope.Files)
+	return diags, facts.WithPublicContent(builtFacts, publicContentFacts(publicContent)), nil
+}
+
+func publicContentDiagnostics(items []publiccontent.Finding) []report.Diagnostic {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]report.Diagnostic, 0, len(items))
+	for _, item := range items {
+		if item.Rule == "public_content_semantic_candidate" {
+			continue
+		}
+		out = append(out, report.Diagnostic{
+			Rule:       item.Rule,
+			Action:     item.Action,
+			File:       item.File,
+			Line:       item.Line,
+			Message:    item.Message,
+			Suggestion: item.Suggestion,
+		})
+	}
+	return out
+}
+
+func publicContentFacts(items []publiccontent.Finding) []facts.PublicContentFact {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]facts.PublicContentFact, 0, len(items))
+	for _, item := range items {
+		out = append(out, facts.PublicContentFact{
+			Rule:       item.Rule,
+			Action:     item.Action,
+			File:       item.File,
+			Line:       item.Line,
+			Source:     item.Source,
+			Excerpt:    item.Excerpt,
+			Message:    item.Message,
+			Suggestion: item.Suggestion,
+		})
+	}
+	return out
 }
 
 func readManifestInput(path, kind, flag string) (manifest.Manifest, error) {
@@ -167,6 +220,9 @@ func filterPRDiagnostics(repo, changedFrom string, scope qdiff.Scope, m manifest
 }
 
 func prDiagnosticRelevant(repo string, changedFiles map[string]bool, commandScope diagnosticCommandScope, m manifest.Manifest, diag report.Diagnostic) bool {
+	if strings.HasPrefix(diag.Rule, "public_content_") {
+		return true
+	}
 	file := normalizeDiagnosticFile(repo, diag.File)
 	if file != "" && changedFiles[file] {
 		return true

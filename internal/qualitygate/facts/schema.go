@@ -13,14 +13,15 @@ import (
 )
 
 type Facts struct {
-	SchemaVersion int                `json:"schema_version"`
-	Commands      []CommandFact      `json:"commands,omitempty"`
-	Skills        []SkillFact        `json:"skills,omitempty"`
-	SkillQuality  []SkillQualityFact `json:"skill_quality,omitempty"`
-	Errors        []ErrorFact        `json:"errors,omitempty"`
-	Outputs       []OutputFact       `json:"outputs,omitempty"`
-	Examples      []CommandExample   `json:"examples,omitempty"`
-	Diagnostics   []DiagnosticFact   `json:"diagnostics,omitempty"`
+	SchemaVersion int                 `json:"schema_version"`
+	Commands      []CommandFact       `json:"commands,omitempty"`
+	Skills        []SkillFact         `json:"skills,omitempty"`
+	SkillQuality  []SkillQualityFact  `json:"skill_quality,omitempty"`
+	Errors        []ErrorFact         `json:"errors,omitempty"`
+	Outputs       []OutputFact        `json:"outputs,omitempty"`
+	Examples      []CommandExample    `json:"examples,omitempty"`
+	PublicContent []PublicContentFact `json:"public_content,omitempty"`
+	Diagnostics   []DiagnosticFact    `json:"diagnostics,omitempty"`
 }
 
 type CommandFact struct {
@@ -107,6 +108,17 @@ type OutputFact struct {
 	HasDefaultLimit  bool     `json:"has_default_limit,omitempty"`
 	HasFieldSelector bool     `json:"has_field_selector,omitempty"`
 	HasDecisionField bool     `json:"has_decision_field,omitempty"`
+}
+
+type PublicContentFact struct {
+	Rule       string        `json:"rule"`
+	Action     report.Action `json:"action"`
+	File       string        `json:"file"`
+	Line       int           `json:"line"`
+	Source     string        `json:"source,omitempty"`
+	Excerpt    string        `json:"excerpt,omitempty"`
+	Message    string        `json:"message,omitempty"`
+	Suggestion string        `json:"suggestion,omitempty"`
 }
 
 type DryRunRequest struct {
@@ -204,6 +216,11 @@ func BuildWithCommandLookup(m manifest.Manifest, commandLookup manifest.Manifest
 		Examples:      exampleFacts,
 		Diagnostics:   DiagnosticsFromReport(diags),
 	}
+}
+
+func WithPublicContent(f Facts, publicContent []PublicContentFact) Facts {
+	f.PublicContent = publicContent
+	return f
 }
 
 type commandScope struct {

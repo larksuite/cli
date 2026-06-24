@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -70,6 +71,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
@@ -86,6 +88,23 @@ jobs:
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$QUALITY_GATE_CHANGED_FROM"
       - name: Run errs/ lint guards (lintcheck)
         run: go run -C lint . --changed-from "$QUALITY_GATE_CHANGED_FROM" ..
+
+  script-test:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run script tests
+        run: make script-test
 
   deterministic-gate:
     needs: fast-gate
@@ -109,8 +128,28 @@ jobs:
         env:
           QUALITY_GATE_CHANGED_FROM: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
         run: echo "QUALITY_GATE_CHANGED_FROM=$(bash scripts/resolve-changed-from.sh)" >> "$GITHUB_ENV"
+      - name: Write public content metadata
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          mkdir -p .tmp/quality-gate
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open(".tmp/quality-gate/public-content-metadata.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "title": os.environ.get("PR_TITLE", ""),
+                  "body": os.environ.get("PR_BODY", ""),
+                  "branch": os.environ.get("PR_BRANCH", ""),
+              }, f)
+              f.write("\n")
+          PY
       - name: Run CLI deterministic gate
-        run: make quality-gate
+        run: PUBLIC_CONTENT_METADATA=.tmp/quality-gate/public-content-metadata.json make quality-gate
       - name: Upload quality gate facts
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -220,7 +259,7 @@ jobs:
 
   # ── Layer 3: E2E Gate ──────────────────────────────────────────────
   e2e-dry-run:
-    needs: [unit-test, lint, deterministic-gate]
+    needs: [unit-test, lint, script-test, deterministic-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -241,7 +280,7 @@ jobs:
         run: go test -v -count=1 -timeout=5m ./tests/cli_e2e/... -run 'DryRun|Regression'
 
   e2e-live:
-    needs: [unit-test, lint, deterministic-gate]
+    needs: [unit-test, lint, script-test, deterministic-gate]
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
     permissions:
@@ -333,7 +372,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
+    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -345,6 +384,7 @@ jobs:
           echo "| L1 | fast-gate | ${{ needs.fast-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | unit-test | ${{ needs.unit-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | script-test | ${{ needs.script-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deterministic-gate | ${{ needs.deterministic-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deadcode | ${{ needs.deadcode.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -361,6 +401,7 @@ jobs:
             "${{ needs.fast-gate.result }}" \
             "${{ needs.unit-test.result }}" \
             "${{ needs.lint.result }}" \
+            "${{ needs.script-test.result }}" \
             "${{ needs.deterministic-gate.result }}" \
             "${{ needs.coverage.result }}" \
             "${{ needs.deadcode.result }}" \

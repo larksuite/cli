@@ -229,6 +229,36 @@ function requireSafePath(value, path) {
   return file;
 }
 
+function requirePublicContentFile(value, path) {
+  const file = requireString(value, path);
+  if (file === "branch" || file === "pull_request_metadata" || /^commit:[0-9a-f]{7,40}$/.test(file)) {
+    return file;
+  }
+  if (file.startsWith("commit:")) {
+    throw new Error(`facts JSON ${path} must be a valid public content location`);
+  }
+  requireSafePath(file, path);
+  if (
+    file === "" ||
+    file === "." ||
+    file.startsWith("./") ||
+    file.includes("\\") ||
+    file.includes("\0") ||
+    file.split("/").includes(".git") ||
+    /^[A-Za-z][A-Za-z0-9+.-]*:/.test(file)
+  ) {
+    throw new Error(`facts JSON ${path} must be a repository-relative path`);
+  }
+  return file;
+}
+
+function requirePositiveLine(value, path) {
+  requireLine(value, path);
+  if (value === 0) {
+    throw new Error(`facts JSON ${path} must be a positive line number`);
+  }
+}
+
 function requireStringArray(value, path, { optional = false } = {}) {
   if (value === undefined || value === null) {
     if (optional) {
@@ -420,6 +450,20 @@ function verifyFactsJSON(data) {
   }
   for (const [i, value] of requireArray(facts, "examples").entries()) {
     verifyCommandExample(value, `examples[${i}]`);
+  }
+  for (const [i, value] of requireArray(facts, "public_content").entries()) {
+    const item = requireObject(value, `public_content[${i}]`);
+    requireString(item.rule, `public_content[${i}].rule`);
+    const action = requireString(item.action, `public_content[${i}].action`);
+    if (!VALID_ACTIONS.has(action)) {
+      throw new Error(`facts JSON public_content[${i}].action is invalid`);
+    }
+    requirePublicContentFile(item.file, `public_content[${i}].file`);
+    requirePositiveLine(item.line, `public_content[${i}].line`);
+    requireString(item.source, `public_content[${i}].source`, { optional: true });
+    requireString(item.excerpt, `public_content[${i}].excerpt`, { optional: true });
+    requireString(item.message, `public_content[${i}].message`, { optional: true });
+    requireString(item.suggestion, `public_content[${i}].suggestion`, { optional: true });
   }
   for (const [i, value] of requireArray(facts, "diagnostics").entries()) {
     const item = requireObject(value, `diagnostics[${i}]`);
