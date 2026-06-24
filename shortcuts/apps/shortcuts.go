@@ -32,5 +32,14 @@ func Shortcuts() []common.Shortcut {
 		AppsSessionStop,
 		AppsSessionMessagesList,
 		AppsChat,
+		// open API key management
+		AppsOpenAPIKeyList,
+		AppsOpenAPIKeyGet,
+		AppsOpenAPIKeyCreate,
+		AppsOpenAPIKeyUpdate,
+		AppsOpenAPIKeyEnable,
+		AppsOpenAPIKeyDisable,
+		AppsOpenAPIKeyDelete,
+		AppsOpenAPIKeyReset,
 	}
 }
