@@ -11,18 +11,35 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// updateFlagDefs returns the flag type map for +openapi-key-update tests.
+func updateFlagDefs() map[string]string {
+	return map[string]string{
+		"app-id":        "string",
+		"key-id":        "string",
+		"name":          "string",
+		"scope-all":     "bool",
+		"scope-api":     "string_array",
+		"scope":         "string",
+		"allow-preview": "bool",
+	}
+}
+
 func TestOpenAPIKeyUpdate_RequiresOneField(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t,
-		map[string]string{"app-id": "string", "key-id": "string", "name": "string", "scope": "string", "allow-preview": "bool"},
+		updateFlagDefs(),
 		map[string]string{"app-id": "app_x", "key-id": "1"})
-	if err := AppsOpenAPIKeyUpdate.Validate(context.Background(), rctx); err == nil {
+	err := AppsOpenAPIKeyUpdate.Validate(context.Background(), rctx)
+	if err == nil {
 		t.Errorf("update with no changeable field must fail validation")
+	}
+	if err != nil && !strings.Contains(err.Error(), "at least one of --name / --scope-all / --scope-api / --scope / --allow-preview is required") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 
 func TestOpenAPIKeyUpdateExecute_Redacts(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t,
-		map[string]string{"app-id": "string", "key-id": "string", "name": "string", "scope": "string", "allow-preview": "bool"},
+		updateFlagDefs(),
 		map[string]string{"app-id": "app_x", "key-id": "1", "name": "partner-prod"})
 	reg.Register(&httpmock.Stub{
 		Method: "PATCH",

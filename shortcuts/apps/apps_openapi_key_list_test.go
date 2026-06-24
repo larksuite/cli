@@ -36,6 +36,8 @@ func newOpenAPIKeyRCtx(t *testing.T, flagDefs map[string]string, flags map[strin
 			cmd.Flags().Bool(name, false, "")
 		case "int":
 			cmd.Flags().Int(name, 0, "")
+		case "string_array":
+			cmd.Flags().StringArray(name, nil, "")
 		default:
 			cmd.Flags().String(name, "", "")
 		}

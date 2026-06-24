@@ -26,17 +26,23 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "key-id", Desc: "API key ID", Required: true},
 		{Name: "name", Desc: "new name"},
-		{Name: "scope", Desc: "raw JSON forwarded into config.request_scope"},
-		{Name: "allow-preview", Type: "bool", Desc: "config.is_allow_access_preview"},
+		{Name: "scope-all", Type: "bool", Desc: "grant access to all /openapi/** routes (requestScope.allowAll)"},
+		{Name: "scope-api", Type: "string_array", Desc: "grant one route, repeatable: 'METHOD /openapi/path' (from the app's docs/openapi.json)"},
+		{Name: "scope", Desc: "advanced: raw JSON for config.requestScope (mutually exclusive with --scope-all/--scope-api)"},
+		{Name: "allow-preview", Type: "bool", Desc: "allow preview-env access (config.isAllowAccessPreview)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if err := oapiKeyValidateKeyID(rctx); err != nil {
 			return err
 		}
-		if strings.TrimSpace(rctx.Str("name")) == "" && rctx.Str("scope") == "" && !rctx.Changed("allow-preview") {
-			return appsValidationParamError("--name", "at least one of --name / --scope / --allow-preview is required")
+		if strings.TrimSpace(rctx.Str("name")) == "" &&
+			!rctx.Bool("scope-all") &&
+			len(rctx.StrArray("scope-api")) == 0 &&
+			strings.TrimSpace(rctx.Str("scope")) == "" &&
+			!rctx.Changed("allow-preview") {
+			return appsValidationParamError("--name", "at least one of --name / --scope-all / --scope-api / --scope / --allow-preview is required")
 		}
-		return oapiKeyValidateScope(rctx)
+		return oapiKeyValidateScopeFlags(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		body, _ := buildOpenAPIKeyUpdateBody(rctx)
@@ -48,7 +54,7 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		body, err := buildOpenAPIKeyUpdateBody(rctx)
 		if err != nil {
-			return appsValidationParamError("--scope", "--scope must be valid JSON: %v", err)
+			return appsValidationParamError("--scope", "invalid scope: %v", err)
 		}
 		data, err := rctx.CallAPITyped("PATCH", oapiKeyItemURL(rctx), nil, body)
 		if err != nil {
@@ -64,7 +70,7 @@ func buildOpenAPIKeyUpdateBody(rctx *common.RuntimeContext) (map[string]interfac
 	if name := strings.TrimSpace(rctx.Str("name")); name != "" {
 		body["name"] = name
 	}
-	cfg, err := buildKeyConfig(rctx.Str("scope"), rctx.Changed("allow-preview"), rctx.Bool("allow-preview"))
+	cfg, err := buildKeyConfig(rctx.Bool("scope-all"), rctx.StrArray("scope-api"), rctx.Str("scope"), rctx.Changed("allow-preview"), rctx.Bool("allow-preview"))
 	if err != nil {
 		return nil, err
 	}
