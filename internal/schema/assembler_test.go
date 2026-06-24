@@ -9,7 +9,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 
+	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/registry"
@@ -501,6 +503,31 @@ func TestBuildMeta_AffordanceFromMethod(t *testing.T) {
 	}
 	if len(m.Affordance.UseWhen) != 1 || m.Affordance.UseWhen[0] != "trigger" {
 		t.Errorf("UseWhen = %v", m.Affordance.UseWhen)
+	}
+}
+
+// EnvelopeOf injects affordance from the CLI overlay (looked up lazily by
+// service + method id), so a method whose metadata carries none still gets
+// guidance in its envelope when an overlay entry exists.
+func TestEnvelopeOf_AffordanceFromOverlay(t *testing.T) {
+	// The overlay source is the top-level affordance/ tree, injected at startup;
+	// inject a fixture so this unit test does not depend on the shipped content.
+	// Reset afterwards (this binary installs no source by default) for isolation.
+	t.Cleanup(func() { affordance.SetSource(nil) })
+	affordance.SetSource(fstest.MapFS{"approval.md": &fstest.MapFile{Data: []byte(
+		"# approval\n> skill: lark-approval\n\n## instances get\n查询某审批实例的状态与进度。\n\n### Examples\n\n**按 code 查询**\n```bash\nlark-cli approval instances get --instance-code \"x\"\n```\n")}})
+	env := synthEnvelope("approval", []string{"instances"}, meta.Method{ID: "instances.get", Name: "get"})
+	if env.Meta == nil || env.Meta.Affordance == nil {
+		t.Fatal("expected affordance from the approval overlay, got none")
+	}
+	if len(env.Meta.Affordance.UseWhen) == 0 || len(env.Meta.Affordance.Examples) == 0 {
+		t.Errorf("overlay affordance missing use_when/examples: %+v", env.Meta.Affordance)
+	}
+
+	// A method id with no overlay entry carries no affordance.
+	bare := synthEnvelope("approval", []string{"instances"}, meta.Method{ID: "instances.no_such_method", Name: "x"})
+	if bare.Meta != nil && bare.Meta.Affordance != nil {
+		t.Errorf("method without overlay should have no affordance, got %+v", bare.Meta.Affordance)
 	}
 }
 

@@ -170,6 +170,10 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.SetOut(cfg.streams.Out)
 	rootCmd.SetErr(cfg.streams.ErrOut)
 
+	// Root-only usage template (curated Usage synopsis + skills footer); see
+	// rootUsageTemplate.
+	rootCmd.SetUsageTemplate(rootUsageTemplate)
+
 	installTipsHelpFunc(rootCmd)
 	rootCmd.SilenceErrors = true
 	// SilenceUsage as a static field (not only in PersistentPreRun) so it also
@@ -204,6 +208,8 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 		}
 	}
 	shortcuts.RegisterShortcutsWithContext(ctx, rootCmd, f)
+
+	groupRootCommands(rootCmd)
 
 	installUnknownSubcommandGuard(rootCmd)
 
