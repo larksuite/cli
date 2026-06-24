@@ -966,14 +966,14 @@ func TestBaseRecordExecuteUpsertUpdate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
 	updateStub := &httpmock.Stub{
 		Method: "PATCH",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/records/rec_x?user_id_type=open_id",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{"record_id": "rec_x", "fields": map[string]interface{}{"Name": "Alice"}},
 		},
 	}
 	reg.Register(updateStub)
-	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
+	if err := runShortcut(t, BaseRecordUpsert, []string{"+record-upsert", "--base-token", "app_x", "--table-id", "tbl_x", "--record-id", "rec_x", "--user-id-type", "open_id", "--json", `{"Name":"Alice"}`}, factory, stdout); err != nil {
 		t.Fatalf("err=%v", err)
 	}
 	body := decodeCapturedJSONBody(t, updateStub)

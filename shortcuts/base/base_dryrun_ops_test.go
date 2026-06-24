@@ -196,10 +196,10 @@ func TestDryRunRecordOps(t *testing.T) {
 	assertDryRunContains(t, dryRunRecordSearch(ctx, searchPageSizeAliasRT), `"limit":25`)
 
 	upsertCreateRT := newBaseTestRuntime(
-		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`, "user-id-type": "open_id"},
 		nil, nil,
 	)
-	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records")
+	assertDryRunContains(t, dryRunRecordUpsert(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "user_id_type=open_id")
 	assertDryRunContains(t, dryRunRecordBatchCreate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_create")
 	assertDryRunContains(t, dryRunRecordBatchUpdate(ctx, upsertCreateRT), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/records/batch_update")
 

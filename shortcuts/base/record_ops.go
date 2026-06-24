@@ -256,9 +256,11 @@ func dryRunRecordSearch(_ context.Context, runtime *common.RuntimeContext) *comm
 func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
 	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
+	params := recordUpsertParams(runtime)
 	if recordID := runtime.Str("record-id"); recordID != "" {
 		return common.NewDryRunAPI().
 			PATCH("/open-apis/base/v3/bases/:base_token/tables/:table_id/records/:record_id").
+			Params(params).
 			Body(body).
 			Set("base_token", runtime.Str("base-token")).
 			Set("table_id", baseTableID(runtime)).
@@ -266,9 +268,17 @@ func dryRunRecordUpsert(_ context.Context, runtime *common.RuntimeContext) *comm
 	}
 	return common.NewDryRunAPI().
 		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/records").
+		Params(params).
 		Body(body).
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
+}
+
+func recordUpsertParams(runtime *common.RuntimeContext) map[string]interface{} {
+	if userIDType := runtime.Str("user-id-type"); userIDType != "" {
+		return map[string]interface{}{"user_id_type": userIDType}
+	}
+	return nil
 }
 
 func dryRunRecordBatchCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -460,15 +470,16 @@ func executeRecordUpsert(runtime *common.RuntimeContext) error {
 	}
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
+	params := recordUpsertParams(runtime)
 	if recordID := runtime.Str("record-id"); recordID != "" {
-		data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseToken, "tables", tableIDValue, "records", recordID), nil, body)
+		data, err := baseV3Call(runtime, "PATCH", baseV3Path("bases", baseToken, "tables", tableIDValue, "records", recordID), params, body)
 		if err != nil {
 			return err
 		}
 		runtime.Out(map[string]interface{}{"record": data, "updated": true}, nil)
 		return nil
 	}
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "records"), nil, body)
+	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", baseToken, "tables", tableIDValue, "records"), params, body)
 	if err != nil {
 		return err
 	}

@@ -61,6 +61,15 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 	return &common.RuntimeContext{Cmd: cmd, Config: &core.CliConfig{UserOpenId: "ou_test"}}
 }
 
+func baseShortcutHasFlag(shortcut common.Shortcut, name string) bool {
+	for _, flag := range shortcut.Flags {
+		if flag.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func assertBasePaginationValidation(t *testing.T, err error, param string) {
 	t.Helper()
 	if err == nil {
@@ -1155,6 +1164,9 @@ func TestBaseRecordValidate(t *testing.T) {
 	}
 	if err := BaseRecordUpsert.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "tbl_1", "json": `{"Name":"Alice"}`}, nil, nil)); err != nil {
 		t.Fatalf("record upsert map validate err=%v", err)
+	}
+	if !baseShortcutHasFlag(BaseRecordUpsert, "user-id-type") {
+		t.Fatalf("record upsert should expose user-id-type flag")
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `{"logic":"and","conditions":[["Status","==","Todo"]]}`},
