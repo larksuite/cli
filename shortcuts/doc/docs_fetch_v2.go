@@ -51,9 +51,20 @@ func dryRunFetchV2(_ context.Context, runtime *common.RuntimeContext) *common.Dr
 	// Validate has already accepted --doc; parseDocumentRef cannot fail here.
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
 	body := buildFetchBody(runtime)
+	dry := common.NewDryRunAPI()
+	if ref.Kind == "wiki" {
+		dry.Desc("2-step: resolve wiki node, then fetch document")
+		dry.GET(wikiGetNodePath).
+			Desc("[1] Resolve wiki node to underlying document").
+			Params(map[string]interface{}{"token": ref.Token})
+		dry.POST("/open-apis/docs_ai/v1/documents/<obj_token from step 1>/fetch").
+			Desc("[2] OpenAPI: fetch resolved document").
+			Body(body)
+		return dry
+	}
+
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", ref.Token)
-	return common.NewDryRunAPI().
-		POST(apiPath).
+	return dry.POST(apiPath).
 		Desc("OpenAPI: fetch document").
 		Body(body).
 		Set("document_id", ref.Token)
@@ -61,8 +72,12 @@ func dryRunFetchV2(_ context.Context, runtime *common.RuntimeContext) *common.Dr
 
 func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
+	documentID, err := resolveDocumentID(runtime, ref)
+	if err != nil {
+		return err
+	}
 
-	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", ref.Token)
+	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", documentID)
 	body := buildFetchBody(runtime)
 
 	data, err := doDocAPI(runtime, "POST", apiPath, body)

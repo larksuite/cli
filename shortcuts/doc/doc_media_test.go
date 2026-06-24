@@ -819,6 +819,7 @@ type docDryRunOutput struct {
 	Description string `json:"description"`
 	API         []struct {
 		Desc   string                 `json:"desc"`
+		Method string                 `json:"method"`
 		URL    string                 `json:"url"`
 		Params map[string]interface{} `json:"params"`
 		Body   map[string]interface{} `json:"body"`

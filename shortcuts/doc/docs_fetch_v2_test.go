@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -124,6 +125,37 @@ func TestDocsFetchDryRunDefaultsToV2Endpoint(t *testing.T) {
 	}
 }
 
+func TestDocsFetchDryRunWikiAddsResolveStep(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchShortcutTestRuntime(t, "", map[string]string{
+		"doc": "https://tenant.feishu.cn/wiki/wikcnABC?from=wiki",
+	})
+	if err := validateFetchV2(context.Background(), runtime); err != nil {
+		t.Fatalf("validateFetchV2() error = %v", err)
+	}
+
+	dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
+	if len(dry.API) != 2 {
+		t.Fatalf("expected 2 dry-run API calls, got %d", len(dry.API))
+	}
+	if got, want := dry.API[0].Method, "GET"; got != want {
+		t.Fatalf("resolve method = %q, want %q", got, want)
+	}
+	if got, want := dry.API[0].URL, "/open-apis/wiki/v2/spaces/get_node"; got != want {
+		t.Fatalf("resolve URL = %q, want %q", got, want)
+	}
+	if got, want := dry.API[0].Params["token"], "wikcnABC"; got != want {
+		t.Fatalf("resolve token = %#v, want %q", got, want)
+	}
+	if got := dry.API[1].URL; strings.Contains(got, "wikcnABC") {
+		t.Fatalf("fetch URL used raw wiki token: %q", got)
+	}
+	if got := dry.API[1].URL; !strings.Contains(got, "<obj_token from step 1>") {
+		t.Fatalf("fetch URL missing resolved token placeholder: %q", got)
+	}
+}
+
 func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +170,92 @@ func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 	}
 	if got, want := dry.API[0].URL, "/open-apis/docs_ai/v1/documents/doxcnFetchDryRun/fetch"; got != want {
 		t.Fatalf("dry-run URL = %q, want %q", got, want)
+	}
+}
+
+func TestDocsFetchWikiUsesResolvedDocumentToken(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-wiki"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "docx",
+					"obj_token": "doxcnREAL",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnREAL/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{
+					"document_id": "doxcnREAL",
+					"content":     "<docx>resolved</docx>",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "https://tenant.feishu.cn/wiki/wikcnABC",
+		"--format", "pretty",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	if got := stdout.String(); got != "<docx>resolved</docx>\n" {
+		t.Fatalf("stdout = %q, want resolved document content", got)
+	}
+}
+
+func TestDocsFetchWikiRejectsNonDocumentNode(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-wiki-sheet"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "sheet",
+					"obj_token": "shtcnREAL",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "https://tenant.feishu.cn/wiki/wikcnABC",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected non-document validation error, got nil")
+	}
+	reg.Verify(t)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--doc")
+
+	for _, want := range []string{"sheet", "docs +fetch requires a doc/docx wiki node", "sheets", "drive +inspect"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q: %v", want, err)
+		}
 	}
 }
 
