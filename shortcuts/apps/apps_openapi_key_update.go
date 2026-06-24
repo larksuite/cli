@@ -5,6 +5,7 @@ package apps
 
 import (
 	"context"
+	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -32,7 +33,7 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 		if err := oapiKeyValidateKeyID(rctx); err != nil {
 			return err
 		}
-		if rctx.Str("name") == "" && rctx.Str("scope") == "" && !rctx.Changed("allow-preview") {
+		if strings.TrimSpace(rctx.Str("name")) == "" && rctx.Str("scope") == "" && !rctx.Changed("allow-preview") {
 			return appsValidationParamError("--name", "at least one of --name / --scope / --allow-preview is required")
 		}
 		return oapiKeyValidateScope(rctx)
@@ -60,7 +61,7 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 // buildOpenAPIKeyUpdateBody builds {name?, config?} with only provided fields.
 func buildOpenAPIKeyUpdateBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
-	if name := rctx.Str("name"); name != "" {
+	if name := strings.TrimSpace(rctx.Str("name")); name != "" {
 		body["name"] = name
 	}
 	cfg, err := buildKeyConfig(rctx.Str("scope"), rctx.Changed("allow-preview"), rctx.Bool("allow-preview"))
