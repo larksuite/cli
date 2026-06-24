@@ -8,8 +8,8 @@
 |---|---|---|---|
 | `+openapi-key-list` | 列出应用所有 API Key（脱敏） | `--app-id`, `--limit`, `--offset` | 不返回 |
 | `+openapi-key-get` | 查看单个 Key 详情（脱敏） | `--app-id`, `--key-id` | 不返回 |
-| `+openapi-key-create` | 创建新 Key，**原始密钥一次性可见** | `--app-id`, `--name` (必填), `--scope`, `--allow-preview` | 顶层 `data.api_key` |
-| `+openapi-key-update` | 改名或改 config（不改 status） | `--app-id`, `--key-id`, `--name`/`--scope`/`--allow-preview` 至少一个 | 不返回 |
+| `+openapi-key-create` | 创建新 Key，**原始密钥一次性可见** | `--app-id`, `--name` (必填), `--scope-all`, `--scope-api`, `--scope`, `--allow-preview` | 顶层 `data.api_key` |
+| `+openapi-key-update` | 改名或改 config（不改 status） | `--app-id`, `--key-id`, `--name`/`--scope-all`/`--scope-api`/`--scope`/`--allow-preview` 至少一个 | 不返回 |
 | `+openapi-key-enable` | 启用 Key（status→1） | `--app-id`, `--key-id` | 不返回 |
 | `+openapi-key-disable` | 停用 Key（status→0），**泄露/疑似泄露优先用这个而非 delete** | `--app-id`, `--key-id` | 不返回 |
 | `+openapi-key-delete` | 永久删除 Key（不可逆） | `--app-id`, `--key-id`, `--yes` | — |
@@ -28,9 +28,33 @@
 
 CLI 不保存原始密钥。密钥在 `create` / `reset` 时仅随响应返回一次。**密钥丢失不能用 `get` 找回**——唯一恢复方式是 `+openapi-key-reset` 重新生成新密钥（旧密钥同时失效）。
 
-## scope 透传
+## scope 结构与 CLI 表达
 
-`--scope` 接受 raw JSON 字符串，透传进后端 `config.request_scope`，CLI 只校验是合法 JSON、不解释其内部结构。错误的 JSON 结构会被后端以 400 拒绝，CLI 透传该错误。调用方需按后端真实 shape 自行提供 JSON。
+后端 `config.requestScope` 的真实结构（camelCase）：
+
+```json
+{
+  "allowAll": true,
+  "httpInfos": [
+    { "httpMethod": "GET", "httpPath": "/openapi/some-path" }
+  ]
+}
+```
+
+- `allowAll=true`：放开该应用所有 `/openapi/**` 路由；`httpInfos` 此时忽略。
+- `allowAll=false`：按 `httpInfos` 逐条授权，每条需 `httpMethod`（大写）+ `httpPath`（`/openapi/` 开头）。
+
+CLI 提供三种互斥的 scope 表达方式：
+
+| flag | 用途 | 备注 |
+|---|---|---|
+| `--scope-all` | `allowAll=true`，放开所有路由 | bool flag，显式传 `--scope-all=false` 也算"已设置" |
+| `--scope-api 'METHOD /openapi/path'` | 逐条授权一个路由，可重复 | 路由从应用 `docs/openapi.json` 取 |
+| `--scope '<raw requestScope JSON>'` | 高级逃生口，直传 requestScope JSON | CLI 只校验合法 JSON；`--scope` 与 `--scope-all`/`--scope-api` 互斥 |
+
+### scope 值来源
+
+妙搭应用的 `/openapi/**` 路由定义在应用仓库，并同步维护在 `docs/openapi.json`（`paths` 下每个 `"/openapi/..."` 条目 + HTTP 方法）。要授权哪些路由，读目标应用自己的 `docs/openapi.json`，取 `(httpMethod, httpPath)` 对。CLI 本身不提供 API 路由发现功能（P1 规划中）。
 
 ## 高风险操作
 
@@ -47,7 +71,7 @@ CLI 不保存原始密钥。密钥在 `create` / `reset` 时仅随响应返回�
 | "key 泄露了，先停掉" | `+openapi-key-disable`（不是 delete） |
 | "key 丢了/忘了，再给我一个" | `+openapi-key-reset`（不是 create 新 key；reset 轮换密钥、保留原 key 配置） |
 | "我的 key 密钥是什么" | 解释：list/get 不回显原始密钥，只能用 `+openapi-key-reset` 轮换 |
-| "给应用创建一个有权限限制的 key" | `+openapi-key-create --name ... --scope '<json>'`（JSON 结构按后端文档） |
+| "给应用创建一个有权限限制的 key" | `+openapi-key-create --name ... --scope-api 'GET /openapi/...'`（路由取自应用 `docs/openapi.json`） |
 
 ## 不在本 skill 范围
 

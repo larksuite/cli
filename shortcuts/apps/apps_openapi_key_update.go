@@ -36,7 +36,7 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("name")) == "" &&
-			!rctx.Bool("scope-all") &&
+			!rctx.Changed("scope-all") &&
 			len(rctx.StrArray("scope-api")) == 0 &&
 			strings.TrimSpace(rctx.Str("scope")) == "" &&
 			!rctx.Changed("allow-preview") {
