@@ -315,9 +315,8 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
 | Flag | Type | 必填 | 说明 |
 | --- | --- | --- | --- |
-| `--sheets` | string + File + Stdin（复合 JSON） | xor | Typed 表格协议（pandas-DataFrame-shaped）JSON，与 `--dataframe` 互斥：顶层 sheets 数组，每项 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`。Agents 通常用 `{**json.loads(df.to_json(orient="split")), "dtypes": df.dtypes.astype(str).to_dict()}` 一行构造。`dtypes` 值是 pandas dtype 字符串（`int64`、`float64`、`Int64`、`bool`、`boolean`、`datetime64[ns]`、`object`、...），CLI 端映射成内部 string/number/date/bool —— 省略 `dtypes` 时该列按文本写入（适合原始 CSV-shaped 数据）。`formats[col]` 是 Excel number_format 字符串（如 `#,##0.00`、`0.0%`、`yyyy-mm`）；缺省时 date 列用 `yyyy-mm-dd`，string 列用文本格式 `@`。 |
-| `--dataframe` | string | xor | 单 sheet 类型保真表格的二进制入口，从一个 Arrow IPC 文件（即 Feather v2，pandas `df.to_feather()` 直接写出）读入，与 `--sheets` 互斥。用 `@<path>` 传文件或 `-` 读二进制 stdin（同其他输入 flag 的约定）。Arrow 字节按原样读 —— 不做 TrimSpace / BOM strip，IPC magic 字节完整保留（区别于文本类输入 flag）。列类型从 Arrow schema 推导（int*/uint*/float* → number，date32/date64/timestamp → date，utf8/large_utf8 → string，bool → bool）；每列的 `number_format` 可写在 Arrow Field metadata 里（`pa.field("price", pa.float64(), metadata={b"number_format": b"$#,##0.00"})`）。子表走默认落点：名为 `Sheet1`（缺则新建），从 A1 起覆盖写并带表头。要换子表名 / 起始位置 / 写入方式，或要写多子表，请改用 `--sheets`。 |
-| `--styles` | string + File + Stdin（复合 JSON） | optional | 类型保真写入后再应用的视觉处理操作 JSON：顶层 `{styles:[...]}`，每项对应一个被写入的子表、含 `name`，并至少给 `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges` 之一。`cell_styles` 用 A1 单元格 range + 扁平样式字段（字段同 +cells-set-style，含 number_format / 颜色 / 对齐 / border_styles）；row/col sizes 用行/列范围 + type/size；merges 用单元格 range + 可选 merge_type。styles 数组的长度/顺序/name 必须与被写入的子表对应：配 --sheets 时与 --sheets.sheets 对应；配 --dataframe（单子表，名为 Sheet1）时只给一个 name 为 `Sheet1` 的 styles 项。完整 cell_styles 字段结构跑 `+table-put --print-schema --flag-name styles`。 |
+| `--sheets` | string + File + Stdin（复合 JSON） | required | Typed 表格协议（pandas-DataFrame-shaped）JSON：顶层 sheets 数组，每项 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`。Agents 通常用 `{**json.loads(df.to_json(orient="split")), "dtypes": df.dtypes.astype(str).to_dict()}` 一行构造。`dtypes` 值是 pandas dtype 字符串（`int64`、`float64`、`Int64`、`bool`、`boolean`、`datetime64[ns]`、`object`、...），CLI 端映射成内部 string/number/date/bool —— 省略 `dtypes` 时该列按文本写入（适合原始 CSV-shaped 数据）。`formats[col]` 是 Excel number_format 字符串（如 `#,##0.00`、`0.0%`、`yyyy-mm`）；缺省时 date 列用 `yyyy-mm-dd`，string 列用文本格式 `@`。 |
+| `--styles` | string + File + Stdin（复合 JSON） | optional | 类型保真写入后再应用的视觉处理操作 JSON：顶层 `{styles:[...]}`，每项对应一个被写入的子表、含 `name`，并至少给 `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges` 之一。`cell_styles` 用 A1 单元格 range + 扁平样式字段（字段同 +cells-set-style，含 number_format / 颜色 / 对齐 / border_styles）；row/col sizes 用行/列范围 + type/size；merges 用单元格 range + 可选 merge_type。styles 数组的长度/顺序/name 必须与被写入的子表对应（与 --sheets.sheets 一一对应）。完整 cell_styles 字段结构跑 `+table-put --print-schema --flag-name styles`。 |
 
 ## Schemas
 
@@ -544,44 +543,9 @@ payload = {"sheets": [{
 
 > **dtype 速查**：`int64`/`float64`（数值）、`Int64`（含空值的整数，nullable）、`bool`/`boolean`、`datetime64[ns]`（date，默认 `yyyy-mm-dd`）、`object`（string）。pandas dtype 字符串原样塞进 dtypes 即可，CLI 端按前缀匹配（`int*`/`uint*`/`Int*`/`float*` → number 等）。未识别 dtype 兜底为 string。
 
-#### `--dataframe`（Arrow IPC / Feather v2 二进制入口）
-
-`--dataframe` 与 `--sheets` 互斥、功能等价，但走二进制 wire——pandas `df.to_feather()` 写出的 Arrow IPC 文件直接喂 CLI，类型从 Arrow schema 自动恢复，**不用再手填 dtypes/formats**，也自动绕过 NaT / NaN / `datetime64[ns, tz]` 的 JSON 序列化坑。子表落点固定为 `Sheet1`、A1 起覆盖写、带表头；要换子表名 / 起始位置 / 多子表，回到 `--sheets` JSON 协议。
-
-```bash
-# 文件（cwd 相对路径；受 SafePath 沙箱约束，不接受绝对路径）
-lark-cli sheets +table-put --url "<表URL>" --dataframe @./in.arrow
-# stdin 二进制（不落盘）
-python prepare.py | lark-cli sheets +table-put --url "<表URL>" --dataframe -
-```
-
-```python
-import io, subprocess, pandas as pd
-df = pd.DataFrame({"date": pd.to_datetime(["2024-01-15"]), "amount": [1234.5], "id": ["00123"]})
-
-# 1) 文件
-df.to_feather("./in.arrow")  # 写到当前目录
-subprocess.run(["lark-cli","sheets","+table-put","--url",URL,"--dataframe","@./in.arrow"], check=True)
-
-# 2) stdin（不落盘）—— pandas 写 BytesIO，subprocess 把 buf 灌进去
-buf = io.BytesIO(); df.to_feather(buf)
-subprocess.run(["lark-cli","sheets","+table-put","--url",URL,"--dataframe","-"],
-               input=buf.getvalue(), check=True)
-```
-
-> 每列的 `number_format` 写在 Arrow Field metadata 里，CLI 端自动透传到飞书显示格式（千分位 / 百分比 / 自定义日期等）：
-> ```python
-> import pyarrow as pa, pyarrow.feather as feather
-> table = pa.Table.from_pandas(df)
-> schema = table.schema.set(
->     table.schema.get_field_index("amount"),
->     pa.field("amount", pa.float64(), metadata={b"number_format": b"#,##0.00"}))
-> feather.write_feather(table.cast(schema), "./in.arrow")
-> ```
-
 #### `--styles`（写入时同时套样式）
 
-`--styles` 在 typed 写入后顺带应用视觉处理，省掉一次 `+cells-set-style` 往返。协议与 `+workbook-create --styles` **完全同构**（详见 workbook reference）：顶层 `{styles:[...]}`，数组每项对应一个被写入的子表、含 `name`，并按能力拆成四类可选数组——`cell_styles`（A1 单元格 range + 扁平样式字段，含 `number_format` / 颜色 / 对齐 / `border_styles`，随内容在同一次写入里一并应用）、`cell_merges`、`row_sizes`、`col_sizes`。styles 数组的长度 / 顺序 / name 必须与被写入的子表对应：配 `--sheets` 时与 `--sheets.sheets` 对齐；配 `--dataframe`（单子表，名为 `Sheet1`）时只给一个 name 为 `Sheet1` 的 styles 项。
+`--styles` 在 typed 写入后顺带应用视觉处理，省掉一次 `+cells-set-style` 往返。协议与 `+workbook-create --styles` **完全同构**（详见 workbook reference）：顶层 `{styles:[...]}`，数组每项对应一个被写入的子表、含 `name`，并按能力拆成四类可选数组——`cell_styles`（A1 单元格 range + 扁平样式字段，含 `number_format` / 颜色 / 对齐 / `border_styles`，随内容在同一次写入里一并应用）、`cell_merges`、`row_sizes`、`col_sizes`。styles 数组的长度 / 顺序 / name 必须与被写入的子表对应（与 `--sheets.sheets` 一一对应）。
 
 ```bash
 lark-cli sheets +table-put --url "<表URL>" \
@@ -596,6 +560,6 @@ lark-cli sheets +table-put --url "<表URL>" \
 
 ### Validate / DryRun / Execute 约束
 
-- `Validate`：XOR 公共四件套；`+cells-set` 的 `--cells` 必须能解析为 JSON 二维矩阵且行列数与 `--range` 完全一致；`+cells-set-style` 的样式 flag 至少一个非空（或带 `--border-styles`）；`+cells-set-image` 的 `--range` 必须是单 cell（起止 cell 相同）；`+csv-put` 的 `--csv` 必须能按 RFC 4180 解析；`+table-put` 给了 `--styles` 则按子表名 / 顺序 / 数量与 `--sheets`（或 `--dataframe` 的单子表 `Sheet1`）对齐校验；防爆参数上限校验。
+- `Validate`：XOR 公共四件套；`+cells-set` 的 `--cells` 必须能解析为 JSON 二维矩阵且行列数与 `--range` 完全一致；`+cells-set-style` 的样式 flag 至少一个非空（或带 `--border-styles`）；`+cells-set-image` 的 `--range` 必须是单 cell（起止 cell 相同）；`+csv-put` 的 `--csv` 必须能按 RFC 4180 解析；`+table-put` 给了 `--styles` 则按子表名 / 顺序 / 数量与 `--sheets.sheets` 对齐校验；防爆参数上限校验。
 - `DryRun`：输出目标 range + 推断尺寸 + 是否覆盖非空 cell 警告，零网络副作用。
 - `Execute`：写后不自动回读；如需确认，自行调用 `+cells-get --range <写入区域> --include value,formula` 抽样核对。

@@ -87,29 +87,18 @@ var TablePut = common.Shortcut{
 	Tips: []string{
 		"Writes into an existing spreadsheet — pass --url or --spreadsheet-token. To create a new workbook first, use +workbook-create, then point --spreadsheet-token here.",
 		"Payload sheets are matched to existing sub-sheets by name (created when absent). Date columns take ISO yyyy-mm-dd strings — converted to real dates (serial + date format).",
-		"Two equivalent producers: --sheets (multi-sheet JSON, the pandas-split convention) or --dataframe (single-sheet Arrow IPC binary, what `df.to_feather()` writes). Mutually exclusive; pick by what your producer already emits.",
 		"--styles applies number formats, colors, merges, and row/col sizes in the same call (same shape as +workbook-create's --styles): one styles item per written sheet, name-matched. Skips the separate +cells-set-style round-trip.",
 	},
 }
 
-// resolveTablePayload picks between --sheets (JSON, multi-sheet) and
-// --dataframe (Arrow IPC, single-sheet), enforces XOR, and returns the
+// resolveTablePayload parses --sheets (typed JSON, multi-sheet) into the
 // unified internal tablePayload. Both +table-put and +workbook-create funnel
 // through here so the two entry points stay in lockstep; Validate / Execute /
 // DryRun / workbookCreateData all share this one decision. Network-free.
 func resolveTablePayload(rctx *common.RuntimeContext) (*tablePayload, error) {
 	sheetsGiven := rctx.Changed("sheets") && strings.TrimSpace(rctx.Str("sheets")) != ""
-	dfGiven := rctx.Changed("dataframe") && strings.TrimSpace(rctx.Str("dataframe")) != ""
-	if sheetsGiven && dfGiven {
-		return nil, common.ValidationErrorf("--sheets and --dataframe are mutually exclusive")
-	}
-	if !sheetsGiven && !dfGiven {
-		// Mirror the original "--sheets is required" message but list both
-		// alternatives so users discover the binary entry from the error.
-		return nil, common.ValidationErrorf("one of --sheets or --dataframe is required")
-	}
-	if dfGiven {
-		return parseDataframePayload(rctx)
+	if !sheetsGiven {
+		return nil, common.ValidationErrorf("--sheets is required")
 	}
 	return parseTablePutPayload(rctx)
 }
@@ -1044,15 +1033,6 @@ var TableGet = common.Shortcut{
 		if strings.TrimSpace(runtime.Str("sheet-id")) != "" && strings.TrimSpace(runtime.Str("sheet-name")) != "" {
 			return common.ValidationErrorf("--sheet-id and --sheet-name are mutually exclusive")
 		}
-		// --dataframe-out is Arrow IPC, which carries one schema per file — a
-		// whole-workbook read can't ride that shape. Surface the constraint
-		// before we round-trip to the API instead of after the read fails to
-		// encode.
-		if strings.TrimSpace(runtime.Str("dataframe-out")) != "" {
-			if strings.TrimSpace(runtime.Str("sheet-id")) == "" && strings.TrimSpace(runtime.Str("sheet-name")) == "" {
-				return common.ValidationErrorf("--dataframe-out requires --sheet-id or --sheet-name (single-sheet only); for the whole workbook, drop --dataframe-out and use the default JSON output")
-			}
-		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -1104,38 +1084,12 @@ var TableGet = common.Shortcut{
 			}
 			sheets = append(sheets, spec)
 		}
-		// Arrow IPC binary branch: Validate already guards single-sheet so the
-		// sheets slice has exactly one entry here. Stdout mode owns stdout for
-		// the binary stream — no envelope, raw Arrow only. File mode writes
-		// the Arrow blob to disk and still emits the lark-cli JSON envelope
-		// (output_path / bytes / sheet_name) so scripted callers can detect
-		// success the same way they do for every other shortcut.
-		if dfOut := strings.TrimSpace(runtime.Str("dataframe-out")); dfOut != "" {
-			spec, _ := sheets[0].(map[string]interface{})
-			data, err := encodeSheetMapToArrowIPC(spec)
-			if err != nil {
-				return common.ValidationErrorf("--dataframe-out: encode arrow: %v", err).WithCause(err)
-			}
-			if err := writeDataframeOut(runtime, dfOut, data); err != nil {
-				return err
-			}
-			if dfOut == "-" {
-				return nil
-			}
-			runtime.Out(map[string]interface{}{
-				"output_path": strings.TrimPrefix(dfOut, "@"),
-				"bytes":       len(data),
-				"sheet_name":  spec["name"],
-			}, nil)
-			return nil
-		}
 		runtime.Out(map[string]interface{}{"sheets": sheets}, nil)
 		return nil
 	},
 	Tips: []string{
 		"Output is the same shape +table-put consumes — pipe it back in, or load sheets[].rows into a DataFrame keyed by columns[].name.",
 		"Column types are inferred per column, but only when every non-empty cell agrees; a column mixing types (e.g. numbers + \"暂无\") degrades to string — lossless and round-trips cleanly. Numeric coercion of dirty cells is the caller's job (pandas to_numeric(errors=\"coerce\") on the string column).",
-		"For a pandas round-trip, use --dataframe-out (single sheet, Arrow IPC / Feather v2) — `@./x.arrow` writes a file, `-` streams binary to stdout for `pd.read_feather(BytesIO(stdout))`. Multi-sheet reads stay on the JSON path.",
 	},
 }
 

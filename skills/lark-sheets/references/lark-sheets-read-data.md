@@ -132,7 +132,6 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 | `--sheet-name` | string | optional | 只读该子表（按名）；省略则读所有子表 |
 | `--range` | string | optional | 读取的 A1 范围；省略则读每个子表的完整 used range（会跨过表中部的整行空行 / 整列空列，不会被截断） |
 | `--no-header` | bool | optional | 把第一行当数据而非表头（列名取 col1/col2 …） |
-| `--dataframe-out` | string | optional | 以一份 Arrow IPC 文件（Feather v2）格式输出 typed 表格，替代默认的 JSON 输出。用 `@<path>` 传文件或 `-` 写二进制 stdout（同其他 binary I/O flag 的约定）。是 `+table-put` / `+workbook-create` 入口 `--dataframe` 的镜像 —— pandas 端 `pd.read_feather("x.arrow")` 或 `pd.read_feather(io.BytesIO(stdout))` 一行读回。仅支持单 sheet：必须给 `--sheet-id` 或 `--sheet-name`；读整本 workbook 仍走默认 JSON。列类型沿用 typed 读回（string/number/date/bool）；`number_format` 以 Arrow Field metadata 保留，Arrow 文件可直接喂回 `+table-put --dataframe`。 |
 
 ## Examples
 
@@ -203,34 +202,6 @@ df_sales = sheets["销售"]
 ```
 
 > 显示格式（千分位、百分比、自定义日期）在 `sheet["formats"]`，pandas 不消费；改完数据 round-trip 回去时透传给 `+table-put` 即可，飞书侧显示不变。
-
-#### `--dataframe-out`（Arrow IPC / Feather v2 二进制读出）
-
-`--dataframe-out` 是 `+table-put` 入口 `--dataframe` 的镜像：把 typed 读回直接编码成 Arrow IPC 文件，pandas 端一行 `pd.read_feather()` 读回——省掉 JSON 解析 + `astype(dtypes)`，列类型 / `number_format` 走 Arrow schema + Field metadata 保真。**仅支持单 sheet**（Arrow 文件一 schema 容器），必须给 `--sheet-id` 或 `--sheet-name`；读整本 workbook 仍走默认 JSON。
-
-```bash
-# 文件
-lark-cli sheets +table-get --url "<表URL>" --sheet-name "销售" --dataframe-out @./out.arrow
-# binary stdout（不落盘）
-lark-cli sheets +table-get --url "<表URL>" --sheet-name "销售" --dataframe-out -
-```
-
-```python
-import io, pandas as pd, subprocess
-
-# 1) 文件
-subprocess.run(["lark-cli","sheets","+table-get","--url",URL,
-                "--sheet-name","销售","--dataframe-out","@./out.arrow"], check=True)
-df = pd.read_feather("./out.arrow")
-
-# 2) stdin/stdout 管道（不落盘）—— 跟 --dataframe 写入侧对称的一行
-res = subprocess.run(["lark-cli","sheets","+table-get","--url",URL,
-                      "--sheet-name","销售","--dataframe-out","-"],
-                     capture_output=True, check=True)
-df = pd.read_feather(io.BytesIO(res.stdout))
-```
-
-> `number_format` 进 Arrow Field metadata（key=`number_format`），Arrow 文件可以直接喂回 `+table-put --dataframe` round-trip 写回，types / formats 一路保真。
 
 #### round-trip：读 → 改 → 写回（写读对偶）
 

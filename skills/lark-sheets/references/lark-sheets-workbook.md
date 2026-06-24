@@ -139,9 +139,8 @@ _系统：`--dry-run`_
 | `--title` | string | required | 新 spreadsheet 标题 |
 | `--folder-token` | string | optional | 目标文件夹 token；省略时放在云空间根目录 |
 | `--values` | string + File + Stdin（简单 JSON） | optional | untyped 初始数据，一个 JSON 二维数组（表头并入第一行）：`[["列A","列B"],["alice",95]]`；值原样写入、类型由飞书自动识别，走与 --sheets 相同的分批 `+cells-set`；配 --styles 控制格式/颜色/合并/行列尺寸 |
-| `--sheets` | string + File + Stdin（复合 JSON） | optional | 建表后写入的 typed 表格协议 JSON（同 +table-put）：顶层 sheets 数组，每项 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`。Agents 通常用 `{**json.loads(df.to_json(orient="split")), "dtypes": df.dtypes.astype(str).to_dict()}` 一行构造。与 --values、--dataframe 互斥；新表默认子表复用为第一个子表，日期/数字类型保真。 |
+| `--sheets` | string + File + Stdin（复合 JSON） | optional | 建表后写入的 typed 表格协议 JSON（同 +table-put）：顶层 sheets 数组，每项 `{name, start_cell?, mode?, header?, allow_overwrite?, columns:["colA","colB",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`。Agents 通常用 `{**json.loads(df.to_json(orient="split")), "dtypes": df.dtypes.astype(str).to_dict()}` 一行构造。与 --values 互斥；新表默认子表复用为第一个子表，日期/数字类型保真。 |
 | `--styles` | string + File + Stdin（复合 JSON） | optional | 建表时同时写入的视觉处理操作 JSON：顶层 `{styles:[...]}`，每项对应一个目标子表、含 `name`，并至少给 `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges` 之一。`cell_styles` 用 A1 单元格 range + 扁平样式字段（字段同 +cells-set-style，含 number_format / 颜色 / 对齐 / border_styles）；row/col sizes 用行/列范围 + type/size；merges 用单元格 range + 可选 merge_type。与 --sheets 搭配时 styles 数组长度/顺序/name 必须与 --sheets.sheets 对应；与 --values 搭配时只给一个 styles 项（其 name 忽略）。完整 cell_styles 字段结构跑 `+workbook-create --print-schema --flag-name styles`。 |
-| `--dataframe` | string | optional | 单 sheet 类型保真表格的二进制入口，从一个 Arrow IPC 文件（Feather v2，pandas `df.to_feather()` 直接写出）读入，与 --values / --sheets 互斥。用 `@<path>` 传文件或 `-` 读二进制 stdin（同其他输入 flag 的约定）。Arrow 字节按原样读 —— 不做 TrimSpace / BOM strip，IPC magic 字节完整保留（区别于文本类输入 flag）。列类型从 Arrow schema 推导；每列的 `number_format` 可写在 Arrow Field metadata 里。建表后写入默认子表（`Sheet1` —— 直接复用，不残留空 Sheet1）。要多子表或换落点，请改用 `--sheets`。 |
 
 ### `+workbook-export`
 
@@ -200,7 +199,7 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 
 ### `+workbook-create`
 
-新建电子表格，可选预填数据。三种数据入口（untyped `--values` / typed `--sheets` JSON / typed `--dataframe` Arrow 二进制）**三方互斥**，按需选一——三者都走同一条分批写入：
+新建电子表格，可选预填数据。两种数据入口（untyped `--values` / typed `--sheets` JSON）**互斥**，按需选一——两者都走同一条分批写入：
 
 ```bash
 # 1) untyped：--values（一个二维数组，表头并入第一行；值原样写、类型由飞书自动识别，
@@ -218,16 +217,9 @@ lark-cli sheets +workbook-create --title "交易" --sheets '{
      "formats":{"金额":"#,##0.00"},
      "data":[["2024-01-15",1234.5,"00123"]]}
   ]}'
-
-# 3) typed binary：--dataframe（pandas df.to_feather 直接出，Arrow IPC / Feather v2）。
-#    单子表（落点固定为新表的默认子表，原地复用、不残留空 Sheet1），列类型从 Arrow
-#    schema 自动恢复，无需手填 dtypes/formats；要多子表回到 --sheets。
-lark-cli sheets +workbook-create --title "交易" --dataframe @./in.arrow
-# 或走 stdin（不落盘）：
-python prepare.py | lark-cli sheets +workbook-create --title "交易" --dataframe -
 ```
 
-`--sheets` 协议与 `+table-put` 完全同构（字段含义见 lark-sheets-write-cells 的 `+table-put`，大 payload 走 stdin / `@file`）；`--dataframe` 是同一份 typed 数据的二进制 wire（Arrow IPC，详见同 reference 的 `+table-put` 段落的 `--dataframe` 小节），按 producer 已有的 API 选——pandas 走 `--dataframe`，多子表 / 手拼 JSON 走 `--sheets`。关键差异：**新建工作簿的默认子表会被复用为第一个子表**（重命名后承载数据），不会残留空 `Sheet1`；其余子表按需新建。它把 `+table-put` 单独做不到的"建表 + typed 写入"合到一条命令，是「pandas 算完直接落地一张带真日期的新表」的首选。回读校验用 `+table-get`（与 `--sheets` 同构、可 round-trip；pandas 用户也可走 `--dataframe-out` 直拿 Arrow 文件）。
+`--sheets` 协议与 `+table-put` 完全同构（字段含义见 lark-sheets-write-cells 的 `+table-put`，大 payload 走 stdin / `@file`）。关键差异：**新建工作簿的默认子表会被复用为第一个子表**（重命名后承载数据），不会残留空 `Sheet1`；其余子表按需新建。它把 `+table-put` 单独做不到的"建表 + typed 写入"合到一条命令，是「pandas 算完直接落地一张带真日期的新表」的首选。回读校验用 `+table-get`（与 `--sheets` 同构、可 round-trip）。
 
 > 💡 pandas DataFrame 走 `--sheets` 时直接 `from sheets_df import df_to_sheet`（[`scripts/sheets_df.py`](../scripts/sheets_df.py)，与 `+table-put` 共用同一份 helper），多子表场景 helper 优势更明显：
 > ```python

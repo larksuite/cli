@@ -318,39 +318,7 @@ jobs:
         continue-on-error: true
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
       - name: Check dependency licenses
-        # --ignore github.com/apache/arrow/go/v17: Arrow is Apache-2.0 overall,
-        # but its LICENSE.txt also inlines the c-ares 3rdparty notice (Arrow's
-        # python wheels statically link c-ares) — and go-licenses' classifier
-        # parses the whole file as a single license, so it reports the module
-        # as "LicenseRef-C-Ares / Unknown". The follow-up step pins the actual
-        # license type by inspecting the LICENSE.txt itself, so the wholesale
-        # --ignore here doesn't become a free pass for future Arrow re-licensing.
-        # Required by sheets +table-put / +table-get / +workbook-create --dataframe (Arrow IPC ingest).
-        run: go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown --ignore github.com/apache/arrow/go/v17
-      - name: Assert Apache Arrow LICENSE.txt remains Apache-2.0
-        # Independent re-check that the go-licenses ignore above is purely a
-        # classifier workaround, not a free pass: confirm Arrow's LICENSE.txt
-        # still opens with the Apache License and still inlines the c-ares
-        # notice that is the actual reason go-licenses misreports the module.
-        # If Arrow ever re-licenses its primary license or drops the c-ares
-        # notice (meaning go-licenses might start reporting a different /
-        # genuinely problematic identifier instead), this step fails and a
-        # human must re-evaluate the --ignore.
-        run: |
-          set -euo pipefail
-          LICENSE_PATH="$(go env GOMODCACHE)/github.com/apache/arrow/go/v17@v17.0.0/LICENSE.txt"
-          if [ ! -f "$LICENSE_PATH" ]; then
-            echo "::error::Apache Arrow LICENSE.txt not found at $LICENSE_PATH" >&2
-            exit 1
-          fi
-          if ! head -50 "$LICENSE_PATH" | grep -q 'Apache License' ; then
-            echo "::error::Apache Arrow LICENSE.txt no longer leads with the Apache License — re-evaluate the go-licenses --ignore" >&2
-            exit 1
-          fi
-          if ! grep -q '3rdparty dependency c-ares' "$LICENSE_PATH" ; then
-            echo "::error::Apache Arrow LICENSE.txt no longer inlines the c-ares notice — go-licenses may now report a different identifier; re-evaluate the --ignore" >&2
-            exit 1
-          fi
+        run: go run github.com/google/go-licenses/v2@v2.0.1 check ./... --disallowed_types=forbidden,restricted,reciprocal,unknown
 
   license-header:
     if: ${{ github.event_name == 'pull_request' }}

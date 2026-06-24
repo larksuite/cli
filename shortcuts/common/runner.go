@@ -49,20 +49,8 @@ type RuntimeContext struct {
 	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
 	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
-	stdinConsumed bool                              // set when any flag has consumed stdin (`-`); used so out-of-band binary readers (e.g. sheets +table-put --dataframe) can refuse a second stdin consumer instead of racing for an already-empty stream
+	stdinConsumed bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
 }
-
-// StdinConsumed reports whether stdin has already been consumed by an Input
-// flag's `-` form via resolveInputFlags. Out-of-band binary readers that read
-// stdin themselves (currently sheets +table-put / +workbook-create --dataframe)
-// must check this before reading — a process has a single stdin, so two
-// consumers would race and one would see an empty stream.
-func (ctx *RuntimeContext) StdinConsumed() bool { return ctx.stdinConsumed }
-
-// MarkStdinConsumed marks stdin as consumed. Out-of-band binary readers must
-// call this after they read stdin so a later Input-flag `-` is rejected cleanly
-// instead of racing on an empty stream.
-func (ctx *RuntimeContext) MarkStdinConsumed() { ctx.stdinConsumed = true }
 
 // ── Identity ──
 
@@ -1061,9 +1049,8 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 				return ValidationErrorf("--%s does not support stdin (-)", fl.Name).
 					WithParam("--" + fl.Name)
 			}
-			// stdinConsumed also covers out-of-band readers like sheets +table-put
-			// --dataframe (binary, doesn't go through Input). A process has a
-			// single stdin, so we reject a second consumer regardless of source.
+			// A process has a single stdin, so we reject a second Input flag
+			// trying to use `-` after the first one has already consumed it.
 			if rctx.stdinConsumed {
 				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
 					WithParam("--"+fl.Name).

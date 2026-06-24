@@ -526,7 +526,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Typed table payload as JSON (same shape as `+table-put`): a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it from a DataFrame via `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. Mutually exclusive with --values and --dataframe. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
+        "desc": "Typed table payload as JSON (same shape as `+table-put`): a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it from a DataFrame via `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
         "input": [
           "file",
           "stdin"
@@ -542,13 +542,6 @@
           "file",
           "stdin"
         ]
-      },
-      {
-        "name": "dataframe",
-        "kind": "own",
-        "type": "string",
-        "required": "optional",
-        "desc": "Single-sheet typed table from one Arrow IPC file (Feather v2 — what `pandas.DataFrame.to_feather()` writes), mutually exclusive with --values and --sheets. Pass `@<path>` for a file or `-` for binary stdin (same convention as other input flags). Arrow bytes are read raw — no TrimSpace / BOM strip — so the IPC magic survives intact (unlike text input flags). Column types come from the Arrow schema; per-column `number_format` may be set via Arrow field metadata. Creates the workbook and fills its default sheet (`Sheet1` — adopted in place, no empty Sheet1 left behind). For multi-sheet or non-default placement, use `--sheets` instead."
       },
       {
         "name": "dry-run",
@@ -1388,13 +1381,6 @@
         "desc": "Treat the first row as data instead of a header (columns get positional names col1, col2, ...)"
       },
       {
-        "name": "dataframe-out",
-        "kind": "own",
-        "type": "string",
-        "required": "optional",
-        "desc": "Write the typed table as one Arrow IPC file (Feather v2) instead of the default JSON. Pass `@<path>` for a file or `-` for binary stdout (same convention as other binary I/O flags). Mirror of the input-side `--dataframe` on `+table-put` / `+workbook-create` — pandas users round-trip via `df = pd.read_feather(\"x.arrow\")` or `pd.read_feather(io.BytesIO(stdout))`. Single-sheet only: requires `--sheet-id` or `--sheet-name`; whole-workbook reads keep the default JSON path. Column types come from the typed read-back (string/number/date/bool); per-column `number_format` is preserved as Arrow field metadata so the Arrow file can round-trip straight back through `+table-put --dataframe`."
-      },
-      {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
@@ -2076,26 +2062,19 @@
         "name": "sheets",
         "kind": "own",
         "type": "string",
-        "required": "xor",
-        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON, XOR with `--dataframe`: a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it with `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
+        "required": "required",
+        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it with `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
         "input": [
           "file",
           "stdin"
         ]
       },
       {
-        "name": "dataframe",
-        "kind": "own",
-        "type": "string",
-        "required": "xor",
-        "desc": "Single-sheet typed table from one Arrow IPC file (a.k.a. Feather v2 — what `pandas.DataFrame.to_feather()` writes), XOR with `--sheets`. Pass `@<path>` for a file or `-` for binary stdin (same convention as other input flags). Arrow bytes are read raw — no TrimSpace / BOM strip — so the IPC magic survives intact (unlike text input flags). Column types come from the Arrow schema (int*/uint*/float* → number, date32/date64/timestamp → date, utf8/large_utf8 → string, bool → bool); per-column `number_format` may be set via Arrow field metadata (`pa.field(\"price\", pa.float64(), metadata={b\"number_format\": b\"$#,##0.00\"})`). Writes the sheet at default placement: name `Sheet1` (created when absent), overwrite from A1 with header. For a different sheet name, anchor, mode, or to write multiple sheets, use `--sheets` instead."
-      },
-      {
         "name": "styles",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Visual operations applied after the typed write, as JSON: top-level `{styles:[...]}`. Each item corresponds to one written sheet and must include `name`, plus at least one of `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges`. `cell_styles` entries use +cells-set-style fields with a cell range; row/col sizes use dimension ranges plus type/size; merges use cell ranges plus optional merge_type. The styles array length/order/name must match the written sheets: with --sheets, match --sheets.sheets; with --dataframe (single sheet named Sheet1), pass exactly one styles item with name `Sheet1`. Run `+table-put --print-schema --flag-name styles` for the full cell_styles field schema.",
+        "desc": "Visual operations applied after the typed write, as JSON: top-level `{styles:[...]}`. Each item corresponds to one written sheet and must include `name`, plus at least one of `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges`. `cell_styles` entries use +cells-set-style fields with a cell range; row/col sizes use dimension ranges plus type/size; merges use cell ranges plus optional merge_type. The styles array length/order/name must match the written sheets in --sheets.sheets. Run `+table-put --print-schema --flag-name styles` for the full cell_styles field schema.",
         "input": [
           "file",
           "stdin"
