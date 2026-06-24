@@ -21,6 +21,8 @@ type documentRef struct {
 	Token string
 }
 
+const wikiGetNodePath = "/open-apis/wiki/v2/spaces/get_node"
+
 func parseDocumentRef(input string) (documentRef, error) {
 	raw := strings.TrimSpace(input)
 	if raw == "" {
@@ -68,6 +70,51 @@ func extractDocumentToken(raw, marker string) (string, bool) {
 // surfaces for support escalations even when the body omits it.
 func doDocAPI(runtime *common.RuntimeContext, method, apiPath string, body interface{}) (map[string]interface{}, error) {
 	return runtime.CallAPITyped(method, apiPath, nil, body)
+}
+
+func resolveDocumentID(runtime *common.RuntimeContext, ref documentRef) (string, error) {
+	switch ref.Kind {
+	case "docx", "doc":
+		return ref.Token, nil
+	case "wiki":
+		data, err := runtime.CallAPITyped(
+			"GET",
+			wikiGetNodePath,
+			map[string]interface{}{"token": ref.Token},
+			nil,
+		)
+		if err != nil {
+			return "", err
+		}
+
+		node := common.GetMap(data, "node")
+		objType := common.GetString(node, "obj_type")
+		objToken := common.GetString(node, "obj_token")
+		if objType == "" || objToken == "" {
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data (obj_type=%q, obj_token=%q)", objType, objToken)
+		}
+		if objType != "docx" && objType != "doc" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but docs +fetch requires a doc/docx wiki node; use the matching %s shortcut or run drive +inspect to inspect the underlying type", objType, docShortcutHintForWikiType(objType)).WithParam("--doc")
+		}
+		return objToken, nil
+	default:
+		return "", errs.NewInternalError(errs.SubtypeUnknown, "unsupported document ref kind %q", ref.Kind)
+	}
+}
+
+func docShortcutHintForWikiType(objType string) string {
+	switch objType {
+	case "sheet":
+		return "sheets"
+	case "bitable":
+		return "base"
+	case "slides":
+		return "slides"
+	case "mindnote":
+		return "mindnote"
+	default:
+		return "document"
+	}
 }
 
 func docsSceneFromContext(ctx context.Context) string {
