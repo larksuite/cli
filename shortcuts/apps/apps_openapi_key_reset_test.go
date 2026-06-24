@@ -39,6 +39,9 @@ func TestOpenAPIKeyResetExecute_ReturnsNewRaw(t *testing.T) {
 	if !strings.Contains(out, "mdk_live_newsecret9999") {
 		t.Fatalf("reset must surface the new raw secret once: %s", out)
 	}
+	if strings.Count(out, "mdk_live_newsecret9999") != 1 {
+		t.Errorf("raw key must appear exactly once (top-level only, info must be redacted): %s", out)
+	}
 	if !strings.Contains(out, "****9999") {
 		t.Errorf("redacted info must carry key_preview: %s", out)
 	}
