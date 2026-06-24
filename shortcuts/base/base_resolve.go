@@ -19,6 +19,7 @@ const (
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
+	titleResolveQueryMaxLen   = 30
 )
 
 var BaseURLResolve = common.Shortcut{
@@ -82,19 +83,19 @@ var BaseTitleResolve = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "Base title or keyword to search via Drive"},
+		{Name: "query", Desc: "Base title or keyword to search via Drive (max 30 characters)"},
 		{Name: "url", Desc: "Alias for --query; accepted to recover from AI routing mistakes"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +title-resolve --query "Sales pipeline"`,
-		"Use +url-resolve for URLs; this command searches BITABLE resources by title or keyword.",
+		"Use +url-resolve for URLs; this command searches BITABLE resources by title or keyword, with a 30-character query limit from Search v2.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_, err := readResolveInput(runtime, "query")
+		_, err := readTitleResolveQuery(runtime)
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		query, err := readResolveInput(runtime, "query")
+		query, err := readTitleResolveQuery(runtime)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
@@ -121,6 +122,20 @@ func readResolveInput(runtime *common.RuntimeContext, primary string) (string, e
 		return "", baseFlagErrorf("specify --%s", primary)
 	}
 	return value, nil
+}
+
+func readTitleResolveQuery(runtime *common.RuntimeContext) (string, error) {
+	query, err := readResolveInput(runtime, "query")
+	if err != nil {
+		return "", err
+	}
+	if len([]rune(query)) > titleResolveQueryMaxLen {
+		return "", resolveValidationError(
+			fmt.Sprintf("base +title-resolve query must be %d characters or fewer.", titleResolveQueryMaxLen),
+			"Use a shorter Base title keyword, or provide a /base/ URL and use base +url-resolve.",
+		)
+	}
+	return query, nil
 }
 
 func executeBaseURLResolve(runtime *common.RuntimeContext) error {
@@ -293,7 +308,7 @@ func resolveFormShareURL(u *url.URL) map[string]interface{} {
 }
 
 func executeBaseTitleResolve(runtime *common.RuntimeContext) error {
-	query, err := readResolveInput(runtime, "query")
+	query, err := readTitleResolveQuery(runtime)
 	if err != nil {
 		return err
 	}

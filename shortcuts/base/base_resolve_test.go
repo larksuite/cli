@@ -397,6 +397,16 @@ func TestBaseTitleResolve(t *testing.T) {
 			t.Fatalf("err=%v, want no result validation", err)
 		}
 	})
+
+	t.Run("query too long", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
+			"+title-resolve", "--query", "codex record share resolve 20260616152113", "--as", "user",
+		}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "30 characters or fewer") {
+			t.Fatalf("err=%v, want query length validation", err)
+		}
+	})
 }
 
 func titleResolveSearchStub(items []interface{}) *httpmock.Stub {
