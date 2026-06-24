@@ -25,7 +25,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 
 **CRITICAL — 执行对应操作前，MUST 先用 Read 工具读取以下文件，缺一不可：**
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
-2. **读取文档（`docs +fetch --api-version v2`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` / `--doc-format` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
+2. **读取文档（`docs +fetch --api-version v2`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
 3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update.md`](references/lark-doc-update.md) 和 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
 4. **需要使用 callout、grid、table、whiteboard 等富 block 时** → 参考 [`lark-doc-style.md`](references/style/lark-doc-style.md) 的元素能力说明。该文件不是固定模板或强制排版规范；除非用户明确要求美化、重排版或特定风格，不要为了“达标”主动套用固定结构。
 
@@ -67,7 +67,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/lark-doc-create.md) | Create a Lark document (XML / Markdown) |
-| [`+fetch`](references/lark-doc-fetch.md) | Fetch Lark document content (XML / Markdown / text; `im-markdown` only after fetch for `lark-im`) |
+| [`+fetch`](references/lark-doc-fetch.md) | Fetch Lark document content (XML / Markdown / im-markdown; `im-markdown` only after fetch for `lark-im`) |
 | [`+update`](references/lark-doc-update.md) | Update a Lark document (str_replace / block_insert_after / block_replace / ...) |
 | [`+media-insert`](references/lark-doc-media-insert.md) | Insert a local image or file at the end of a Lark document (4-step orchestration + auto-rollback). Prefer `--from-clipboard` when the image is already on the system clipboard (screenshots, copy from Feishu/browser); use `--file` only for on-disk sources. |
 | [`+media-download`](references/lark-doc-media-download.md) | Download document media or whiteboard thumbnail (auto-detects extension) |
