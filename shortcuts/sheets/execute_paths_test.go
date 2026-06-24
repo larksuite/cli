@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 )
 
 // TestExecute_WorkbookInfo_Happy stubs the invoke_read endpoint and
@@ -546,10 +547,14 @@ func TestExecute_WorkbookCreate_EmptyArraysSkipFill(t *testing.T) {
 	}
 }
 
-// TestExecute_WorkbookCreate_FillFailureKeepsToken locks the partial-success
+// TestExecute_WorkbookCreate_FillFailureKeepsToken locks the partial-state
 // contract: when the spreadsheet is created but the follow-up fill can't resolve
-// its first sheet, the error must be structured and retain spreadsheet_token so
-// the caller can recover instead of orphaning the new workbook.
+// its first sheet, the result lands on stdout as an ok:false envelope carrying
+// spreadsheet_token + reason + a structured cause field, and the process exits
+// with the bare partial-failure signal — matching +table-put's tablePutPartial
+// shape so agents see one consistent "side effect landed but follow-up didn't"
+// contract across the sheets domain (instead of the old failed_precondition
+// stderr envelope).
 func TestExecute_WorkbookCreate_FillFailureKeepsToken(t *testing.T) {
 	t.Parallel()
 	create := &httpmock.Stub{
@@ -563,33 +568,41 @@ func TestExecute_WorkbookCreate_FillFailureKeepsToken(t *testing.T) {
 		},
 	}
 	// Structure comes back with no sheets, so lookupFirstSheetID fails AFTER the
-	// spreadsheet already exists — exercising the partial-success path.
+	// spreadsheet already exists — exercising the partial-state path.
 	structure := toolOutputStub("shtNEW", "read", `{"sheets":[]}`)
 	out, err := runShortcutWithStubs(t, WorkbookCreate, []string{"--title", "X", "--values", `[["a"]]`}, create, structure)
 	if err == nil {
-		t.Fatalf("expected a partial-success error; got nil\nout=%s", out)
+		t.Fatalf("expected partial-failure exit signal; got nil. out=%s", out)
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("error type = %T, want typed problem", err)
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError exit signal; got %T %v", err, err)
 	}
-	if p.Subtype != errs.SubtypeFailedPrecondition {
-		t.Errorf("subtype = %q, want failed_precondition (the spreadsheet exists; caller must change state, not retry)", p.Subtype)
+
+	var env map[string]interface{}
+	if jerr := json.Unmarshal([]byte(out), &env); jerr != nil {
+		t.Fatalf("decode envelope: %v\nraw=%s", jerr, out)
 	}
-	if !strings.Contains(p.Message, "shtNEW") {
-		t.Errorf("message = %q, want spreadsheet token for recovery", p.Message)
+	if ok, _ := env["ok"].(bool); ok {
+		t.Errorf("partial-state envelope must be ok:false; got out=%s", out)
 	}
-	if !strings.Contains(p.Hint, "spreadsheet_token") {
-		t.Errorf("hint = %q, want recovery guidance naming spreadsheet_token", p.Hint)
+	data, _ := env["data"].(map[string]interface{})
+	if got := data["spreadsheet_token"]; got != "shtNEW" {
+		t.Errorf("spreadsheet_token = %v, want shtNEW (recovery requires the token to be in the envelope)", got)
 	}
-	// The underlying fill failure is preserved as the cause so its subtype and
-	// log_id stay diagnosable rather than being flattened into the message.
-	inner := errors.Unwrap(err)
-	if inner == nil {
-		t.Fatalf("expected the underlying fill failure preserved as the cause")
+	reason, _ := data["reason"].(string)
+	if !strings.Contains(reason, "shtNEW") {
+		t.Errorf("reason = %q, want the spreadsheet token named for recovery", reason)
 	}
-	if ip, ok := errs.ProblemOf(inner); !ok || ip.Subtype != errs.SubtypeInvalidResponse {
-		t.Errorf("cause = %v, want the underlying invalid_response failure preserved for diagnosis", inner)
+	hint, _ := data["hint"].(string)
+	if !strings.Contains(hint, "spreadsheet_token") {
+		t.Errorf("hint = %q, want recovery guidance naming spreadsheet_token", hint)
+	}
+	// The underlying fill failure's typed shape is flattened into the cause
+	// field so the inner subtype stays diagnosable from the JSON envelope alone.
+	cause, _ := data["cause"].(map[string]interface{})
+	if got := cause["subtype"]; got != string(errs.SubtypeInvalidResponse) {
+		t.Errorf("cause.subtype = %v, want the underlying invalid_response subtype", got)
 	}
 }
 

@@ -680,11 +680,11 @@ var WorkbookCreate = common.Shortcut{
 		if payload != nil {
 			firstSheetID, err := lookupFirstSheetID(ctx, runtime, token)
 			if err != nil {
-				return workbookCreatedButFillFailed(token, "resolving its default sheet for the write failed", err)
+				return workbookCreatedButFillFailed(runtime, token, "resolving its default sheet for the write failed", err)
 			}
 			written, err := writeTypedSheets(ctx, runtime, token, payload, firstSheetID, sheetStyles)
 			if err != nil {
-				return workbookCreatedButFillFailed(token, "initial fill failed", err)
+				return workbookCreatedButFillFailed(runtime, token, "initial fill failed", err)
 			}
 			result["sheets"] = written
 		} else if styles := sheetStyles.styleFor(0); styles != nil {
@@ -696,10 +696,10 @@ var WorkbookCreate = common.Shortcut{
 			// here.
 			firstSheetID, err := lookupFirstSheetID(ctx, runtime, token)
 			if err != nil {
-				return workbookCreatedButFillFailed(token, "resolving its default sheet for the write failed", err)
+				return workbookCreatedButFillFailed(runtime, token, "resolving its default sheet for the write failed", err)
 			}
 			if err := applyWorkbookCreateVisualOps(ctx, runtime, token, firstSheetID, styles); err != nil {
-				return workbookCreatedButFillFailed(token, "applying visual styles failed", err)
+				return workbookCreatedButFillFailed(runtime, token, "applying visual styles failed", err)
 			}
 		}
 		runtime.Out(result, nil)
@@ -711,15 +711,35 @@ var WorkbookCreate = common.Shortcut{
 	},
 }
 
-// workbookCreatedButFillFailed builds a structured partial-success error for the
-// window where the spreadsheet POST succeeded but the follow-up initial fill did
-// not. The new spreadsheet_token is surfaced in the message and the underlying
-// failure is preserved as the cause so callers can retry the fill
-// (+cells-set / +csv-put) or delete the orphan, rather than orphaning the workbook.
-func workbookCreatedButFillFailed(token, reason string, cause error) error {
-	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "spreadsheet %s created but %s", token, reason).
-		WithCause(cause).
-		WithHint("the spreadsheet exists; retry the fill with the returned spreadsheet_token (+cells-set / +csv-put), or delete it")
+// workbookCreatedButFillFailed reports a workbook-create where the spreadsheet
+// POST succeeded but the follow-up initial fill did not. It is the same
+// partial-state shape as +table-put's multi-sheet half-write: stdout carries an
+// ok:false envelope with the new spreadsheet_token (so the caller can retry the
+// fill via +cells-set / +csv-put, or delete the orphan), and the process exits
+// with the partial-failure signal — keeping a single sheets-domain contract for
+// "the side effect landed but the follow-up didn't" instead of two (this used to
+// surface as a typed failed_precondition on stderr, which agents couldn't tell
+// apart from a plain validation refusal). The underlying cause's typed shape is
+// flattened into a structured `cause` field so the inner subtype / category /
+// message stays diagnosable from the JSON envelope alone.
+func workbookCreatedButFillFailed(runtime *common.RuntimeContext, token, reason string, cause error) error {
+	data := map[string]interface{}{
+		"spreadsheet_token": token,
+		"reason":            fmt.Sprintf("spreadsheet %s created but %s", token, reason),
+		"hint":              "the spreadsheet exists; retry the fill with the returned spreadsheet_token (+cells-set / +csv-put), or delete it",
+	}
+	if cause != nil {
+		if p, ok := errs.ProblemOf(cause); ok {
+			data["cause"] = map[string]interface{}{
+				"category": string(p.Category),
+				"subtype":  string(p.Subtype),
+				"message":  p.Message,
+			}
+		} else {
+			data["cause"] = map[string]interface{}{"message": cause.Error()}
+		}
+	}
+	return runtime.OutPartialFailure(data, nil)
 }
 
 // valuesSheetName is the synthesized sheet name for the untyped --values path.
