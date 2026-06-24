@@ -45,7 +45,7 @@ value | 不同控件的类型不同 | 是 | 控件的取值。不同控件 value
 控件 type 为 input，JSON 数据示例：
 
 ```json
-{                                     
+{
     "id": "widget1",
     "type": "input",
     "value": "data" // string 类型
@@ -57,7 +57,7 @@ value | 不同控件的类型不同 | 是 | 控件的取值。不同控件 value
 控件 type 为 textarea，JSON 数据示例：
 
 ```json
-{                                     
+{
     "id": "widget1",
     "type": "textarea",
     "value": "data" // string 类型
@@ -69,7 +69,7 @@ value | 不同控件的类型不同 | 是 | 控件的取值。不同控件 value
 控件 type 为 date，JSON 数据示例：
 
 ```json
-{                                     
+{
     "id": "widget1",
     "type": "date",
     "value": "2019-10-01T08:12:01+08:00" // 需满足 RFC3339 格式的 string 类型
@@ -353,7 +353,7 @@ reason | string | 是 | 换班原因。
 ### 请假控件组
 
 **请假控件组请求示例**
-```
+```json
 {
     "id": "widgetLeaveGroupV2",
     "type": "leaveGroupV2",
@@ -449,7 +449,7 @@ message                                            | 说明                     
 ### 加班控件组
 
 **加班控件组请求示例**
-```
+```json
 {
   "id": "widgetWorkGroup",
   "type": "workGroup",
@@ -536,7 +536,7 @@ message                                                                         
 ### 外出控件组
 
 **外出控件组请求体示例**
-```
+```json
 {
     "id": "widgetOutGroup",
     "type": "outGroup",
