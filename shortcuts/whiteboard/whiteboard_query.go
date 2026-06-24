@@ -22,41 +22,54 @@ import (
 )
 
 const (
+	// WhiteboardQueryAsImage exports a whiteboard preview image.
 	WhiteboardQueryAsImage = "image"
-	WhiteboardQueryAsSvg   = "svg"
-	WhiteboardQueryAsCode  = "code"
-	WhiteboardQueryAsRaw   = "raw"
+	// WhiteboardQueryAsSvg exports a whiteboard as SVG.
+	WhiteboardQueryAsSvg = "svg"
+	// WhiteboardQueryAsCode exports Mermaid or PlantUML source extracted from the whiteboard.
+	WhiteboardQueryAsCode = "code"
+	// WhiteboardQueryAsRaw exports the raw whiteboard node payload.
+	WhiteboardQueryAsRaw = "raw"
 )
 
+// SyntaxType identifies the diagram syntax extracted from whiteboard code blocks.
 type SyntaxType int
 
 const (
+	// SyntaxTypePlantUML marks PlantUML code blocks.
 	SyntaxTypePlantUML SyntaxType = 1
-	SyntaxTypeMermaid  SyntaxType = 2
+	// SyntaxTypeMermaid marks Mermaid code blocks.
+	SyntaxTypeMermaid SyntaxType = 2
 )
 
+// SyntaxTypeNameMap maps whiteboard syntax types to their CLI output names.
 var SyntaxTypeNameMap = map[SyntaxType]string{
 	SyntaxTypePlantUML: "plantuml",
 	SyntaxTypeMermaid:  "mermaid",
 }
 
+// SyntaxTypeExtensionMap maps whiteboard syntax types to their default file extensions.
 var SyntaxTypeExtensionMap = map[SyntaxType]string{
 	SyntaxTypePlantUML: ".puml",
 	SyntaxTypeMermaid:  ".mmd",
 }
 
+// String returns the CLI-facing name for the syntax type.
 func (s SyntaxType) String() string {
 	return SyntaxTypeNameMap[s]
 }
 
+// ExtensionName returns the default file extension for the syntax type.
 func (s SyntaxType) ExtensionName() string {
 	return SyntaxTypeExtensionMap[s]
 }
 
+// IsValid reports whether the syntax type is one of the supported whiteboard code syntaxes.
 func (s SyntaxType) IsValid() bool {
 	return s == SyntaxTypePlantUML || s == SyntaxTypeMermaid
 }
 
+// WhiteboardQuery registers the `whiteboard +query` shortcut.
 var WhiteboardQuery = common.Shortcut{
 	Service:     "whiteboard",
 	Command:     "+query",

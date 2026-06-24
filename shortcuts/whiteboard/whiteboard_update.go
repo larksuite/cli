@@ -17,10 +17,14 @@ import (
 )
 
 const (
-	FormatRaw      = "raw"
+	// FormatRaw sends raw whiteboard node JSON to the create-nodes API.
+	FormatRaw = "raw"
+	// FormatPlantUML sends PlantUML source through the diagram import API.
 	FormatPlantUML = "plantuml"
-	FormatMermaid  = "mermaid"
-	FormatSVG      = "svg"
+	// FormatMermaid sends Mermaid source through the diagram import API.
+	FormatMermaid = "mermaid"
+	// FormatSVG sends SVG source through the diagram import API.
+	FormatSVG = "svg"
 )
 
 var formatCodeMap = map[string]int{
@@ -129,8 +133,10 @@ func wbUpdateExecute(ctx context.Context, runtime *common.RuntimeContext) error 
 	}
 }
 
+// WhiteboardUpdateDescription describes the whiteboard update shortcut.
 const WhiteboardUpdateDescription = "Update an existing whiteboard in lark document with mermaid, plantuml or whiteboard dsl. refer to lark-whiteboard skill for more details."
 
+// WhiteboardUpdate registers the `whiteboard +update` shortcut.
 var WhiteboardUpdate = common.Shortcut{
 	Service:     "whiteboard",
 	Command:     "+update",
