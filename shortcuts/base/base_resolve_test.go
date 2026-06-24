@@ -286,7 +286,6 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 		primaryFlag string
 		primaryDesc string
 		aliasFlag   string
-		aliasDesc   string
 	}{
 		{
 			shortcut:    "+url-resolve",
@@ -294,7 +293,6 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			primaryFlag: "url",
 			primaryDesc: "Base/Wiki/record-share URL to resolve",
 			aliasFlag:   "query",
-			aliasDesc:   "Alias for --url",
 		},
 		{
 			shortcut:    "+title-resolve",
@@ -302,7 +300,6 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			primaryFlag: "query",
 			primaryDesc: "Base title or keyword",
 			aliasFlag:   "url",
-			aliasDesc:   "Alias for --query",
 		},
 	} {
 		t.Run(tc.shortcut, func(t *testing.T) {
@@ -315,15 +312,11 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			if primary != nil {
 				primaryUsage = primary.Usage
 			}
-			aliasUsage := ""
-			if alias != nil {
-				aliasUsage = alias.Usage
-			}
 			if primary == nil || !strings.Contains(primaryUsage, tc.primaryDesc) {
 				t.Fatalf("primary flag %q usage=%q", tc.primaryFlag, primaryUsage)
 			}
-			if alias == nil || !strings.Contains(aliasUsage, tc.aliasDesc) {
-				t.Fatalf("alias flag %q usage=%q", tc.aliasFlag, aliasUsage)
+			if alias == nil || !alias.Hidden {
+				t.Fatalf("alias flag %q should exist and be hidden: %#v", tc.aliasFlag, alias)
 			}
 		})
 	}

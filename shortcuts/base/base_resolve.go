@@ -37,7 +37,7 @@ var BaseURLResolve = common.Shortcut{
 	HasFormat: true,
 	Flags: []common.Flag{
 		{Name: "url", Desc: "Base/Wiki/record-share URL to resolve"},
-		{Name: "query", Desc: "Alias for --url; accepted to recover from AI routing mistakes"},
+		{Name: "query", Hidden: true, Desc: "Alias for --url; accepted to recover from AI routing mistakes"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<table_id>&view=<view_id>"`,
@@ -84,7 +84,7 @@ var BaseTitleResolve = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "query", Desc: "Base title or keyword to search via Drive (max 30 characters)"},
-		{Name: "url", Desc: "Alias for --query; accepted to recover from AI routing mistakes"},
+		{Name: "url", Hidden: true, Desc: "Alias for --query; accepted to recover from AI routing mistakes"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +title-resolve --query "Sales pipeline"`,
