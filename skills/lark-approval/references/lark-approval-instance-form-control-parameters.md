@@ -1,7 +1,7 @@
 # 审批实例表单控件参数
 
 > 说明：本文尽量保留上游参数文档的原始结构与示例，用于回答“控件 `value` 长什么样”。
-> 当前 `lark-cli` 的推荐取值口径以 [`approval-instance-value-sourcing.md`](./approval-instance-value-sourcing.md) 为准；如果两份文档在“值从哪里拿”上存在差异，以后者为准。
+> 当前 `lark-cli` 的推荐取值口径以 [`lark-approval-instance-value-sourcing.md`](./lark-approval-instance-value-sourcing.md) 为准；如果两份文档在“值从哪里拿”上存在差异，以后者为准。
 
 在调用创建审批实例接口时需要使用表单控件参数，你可以通过本文了解审批实例内各表单控件的参数说明。
 
