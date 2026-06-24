@@ -20,6 +20,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -1909,8 +1910,8 @@ func TestBaseFormSubmitShortcut(t *testing.T) {
 		if s.Service != "base" {
 			t.Fatalf("Service=%q want base", s.Service)
 		}
-		if s.Risk != "write" {
-			t.Fatalf("Risk=%q want write", s.Risk)
+		if s.Risk != "high-risk-write" {
+			t.Fatalf("Risk=%q want high-risk-write", s.Risk)
 		}
 		if !s.HasFormat {
 			t.Fatal("HasFormat should be true")
@@ -2194,6 +2195,28 @@ func TestBaseFormDetailShortcut(t *testing.T) {
 // --- executeFormSubmit & uploadAttachmentsParallel 单元测试 ---
 
 func TestExecuteFormSubmit(t *testing.T) {
+	t.Run("requires confirmation before submitting fields", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		args := []string{
+			"+form-submit",
+			"--share-token", "shr_exec_confirm",
+			"--json", `{"fields":{"Name":"Alice"}}`,
+		}
+		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
+		if err == nil {
+			t.Fatal("expected confirmation_required error")
+		}
+		if code := output.ExitCodeOf(err); code != output.ExitConfirmationRequired {
+			t.Fatalf("exit code=%d want %d; err=%v", code, output.ExitConfirmationRequired, err)
+		}
+		if p, ok := errs.ProblemOf(err); !ok || p.Subtype != errs.SubtypeConfirmationRequired {
+			t.Fatalf("problem=%#v ok=%v want subtype=%q", p, ok, errs.SubtypeConfirmationRequired)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout should be empty before confirmation, got: %s", stdout.String())
+		}
+	})
+
 	t.Run("fields only - no attachments", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -2210,6 +2233,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"+form-submit",
 			"--share-token", "shr_exec1",
 			"--json", `{"fields":{"Name":"Alice","Rating":5}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2278,6 +2302,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_exec6",
 			"--base-token", "bas_exec6",
 			"--json", `{"attachments":{"File":["./nonexistent.pdf"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
@@ -2326,6 +2351,7 @@ func TestExecuteFormSubmit(t *testing.T) {
 			"--share-token", "shr_dedup",
 			"--base-token", "bas_dedup",
 			"--json", `{"attachments":{"FieldA":["./shared.pdf"],"FieldB":["./shared.pdf"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2373,6 +2399,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_para1",
 			"--base-token", "bas_para1",
 			"--json", `{"attachments":{"Doc":["./doc.txt"]}}`,
+			"--yes",
 		}
 		if err := runShortcut(t, BaseFormSubmit, args, factory, stdout); err != nil {
 			t.Fatalf("err=%v", err)
@@ -2407,6 +2434,7 @@ func TestUploadAttachmentsParallel(t *testing.T) {
 			"--share-token", "shr_err",
 			"--base-token", "bas_err",
 			"--json", `{"attachments":{"Bad":["./bad.txt"]}}`,
+			"--yes",
 		}
 		err := runShortcut(t, BaseFormSubmit, args, factory, stdout)
 		if err == nil {
