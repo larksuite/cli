@@ -6263,7 +6263,7 @@
       "sheets": {
         "type": "array",
         "minItems": 1,
-        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。整体形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`。一行式用法：`{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`。",
+        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。每个数组项的形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`，并显式带上目标子表名 `name`。pandas 来源直接用 `scripts/sheets_df.py` 的 `df_to_sheet(df, name)` 生成一项，再把 list 包到 `{\"sheets\":[...]}`。",
         "items": {
           "type": "object",
           "required": [
@@ -6632,7 +6632,7 @@
       "sheets": {
         "type": "array",
         "minItems": 1,
-        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。整体形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`。一行式用法：`{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`。",
+        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。每个数组项的形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`，并显式带上目标子表名 `name`。pandas 来源直接用 `scripts/sheets_df.py` 的 `df_to_sheet(df, name)` 生成一项，再把 list 包到 `{\"sheets\":[...]}`。",
         "items": {
           "type": "object",
           "required": [

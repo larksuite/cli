@@ -526,7 +526,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Typed table payload as JSON (same shape as `+table-put`): a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it from a DataFrame via `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
+        "desc": "Typed table payload as JSON (same shape as `+table-put`): top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
         "input": [
           "file",
           "stdin"
@@ -2063,7 +2063,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: a top-level `sheets` array, each item `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}`. Agents typically build it with `{**json.loads(df.to_json(orient=\"split\")), \"dtypes\": df.dtypes.astype(str).to_dict()}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
+        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
         "input": [
           "file",
           "stdin"
