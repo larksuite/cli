@@ -89,8 +89,9 @@ var BatchUpdate = common.Shortcut{
 }
 
 // batchUpdateInput translates the user-supplied CLI-shape operations array
-// into the MCP batch_update payload. Returns FlagErrorf-typed errors on
-// any per-op shape problem (translator validates each entry).
+// into the MCP batch_update payload. Returns ValidationErrorf-typed errors
+// (errs.ValidationError) on any per-op shape problem (translator validates
+// each entry).
 func batchUpdateInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
 	rawOps, err := parseBatchOperationsFlag(runtime)
 	if err != nil {

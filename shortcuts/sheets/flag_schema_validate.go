@@ -104,7 +104,7 @@ func validateValueAgainstSchema(fv flagView, name string, value interface{}) err
 		// suggested command is guaranteed to print it.
 		return sheetsValidationForFlag(name,
 			"--%s: %s; run `lark-cli sheets %s --print-schema --flag-name %s` to see the expected JSON Schema",
-			name, vErr.Error(), command, name)
+			name, vErr.Error(), command, name).WithCause(vErr)
 	}
 	return nil
 }

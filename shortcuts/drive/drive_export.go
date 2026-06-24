@@ -59,7 +59,7 @@ var DriveExport = common.Shortcut{
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing output file"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return ValidateExport(exportParamsFromFlags(runtime))
+		return validateExport(exportParamsFromFlags(runtime))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		return PlanExportDryRun(runtime, exportParamsFromFlags(runtime))
@@ -117,8 +117,11 @@ func exportParamsFromFlags(runtime *common.RuntimeContext) ExportParams {
 	}
 }
 
-// ValidateExport runs the CLI-level export constraint checks.
-func ValidateExport(p ExportParams) error {
+// validateExport runs the CLI-level export constraint checks. Unexported because
+// only drive +export's Validate consumes it directly; sheets +workbook-export
+// reuses RunExport / PlanExportDryRun but inlines its own (sheet-specific)
+// validation, so there is no cross-package call site to keep exported.
+func validateExport(p ExportParams) error {
 	return validateDriveExportSpec(p.spec())
 }
 
