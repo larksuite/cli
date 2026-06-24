@@ -1083,6 +1083,202 @@ func TestNewIMMarkdownContextExtractsBaseURL(t *testing.T) {
 	}
 }
 
+func TestIMMarkdownBaseURLFromInputEdges(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+		ok    bool
+	}{
+		{
+			name:  "empty candidate before marker is skipped",
+			input: "///docx/doc_token",
+		},
+		{
+			name:  "scheme candidate before marker is returned",
+			input: "//https://tenant.example.com/docx/doc_token",
+			want:  "https://tenant.example.com",
+			ok:    true,
+		},
+		{
+			name:  "host without dot before marker is rejected",
+			input: "tenant/docx/doc_token",
+		},
+		{
+			name:  "no document marker is rejected",
+			input: "tenant.example.com/path/doc_token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := imMarkdownBaseURLFromInput(tt.input)
+			if ok != tt.ok {
+				t.Fatalf("ok = %v, want %v", ok, tt.ok)
+			}
+			if got != tt.want {
+				t.Fatalf("baseURL = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIMMarkdownHandlerDirectFallbackBranches(t *testing.T) {
+	t.Parallel()
+
+	ctx := imMarkdownContext{baseURL: "https://tenant.example.com"}
+	cases := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{
+			name: "empty heading",
+			got:  handleIMMarkdownHeading(2)("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "empty paragraph",
+			got:  handleIMMarkdownParagraph("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "list item seq trims trailing dot",
+			got:  handleIMMarkdownListItem("", "first\nsecond", map[string]string{"seq": "7."}, ctx),
+			want: "7. first\n  second\n",
+		},
+		{
+			name: "list item seq auto uses bullet",
+			got:  handleIMMarkdownListItem("", "first", map[string]string{"seq": "auto"}, ctx),
+			want: "- first\n",
+		},
+		{
+			name: "empty list item",
+			got:  handleIMMarkdownListItem("", " ", map[string]string{"seq": "3"}, ctx),
+			want: "",
+		},
+		{
+			name: "empty callout",
+			got:  handleIMMarkdownCallout("", "", nil, ctx),
+			want: "---\n---",
+		},
+		{
+			name: "empty blockquote",
+			got:  handleIMMarkdownBlockquote("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "blockquote preserves blank quote lines",
+			got:  handleIMMarkdownBlockquote("", "first\n\nsecond", nil, ctx),
+			want: "> first\n>\n> second",
+		},
+		{
+			name: "empty latex",
+			got:  handleIMMarkdownLatex("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "image without URL",
+			got:  handleIMMarkdownImage("", "", map[string]string{"alt": "A"}, ctx),
+			want: "",
+		},
+		{
+			name: "empty strong",
+			got:  handleIMMarkdownStrong("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "empty emphasis",
+			got:  handleIMMarkdownEmphasis("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "empty delete",
+			got:  handleIMMarkdownDelete("", " ", nil, ctx),
+			want: "",
+		},
+		{
+			name: "anchor without href",
+			got:  handleIMMarkdownAnchor("", "<b>plain</b>", nil, ctx),
+			want: "**plain**",
+		},
+		{
+			name: "table skips rows without cells",
+			got:  handleIMMarkdownTable("<table><tr></tr></table>", "<tr></tr>", nil, ctx),
+			want: "`<table><tr></tr></table>`",
+		},
+		{
+			name: "empty normalized table cell",
+			got:  normalizeIMMarkdownTableCell("<span> </span>"),
+			want: "",
+		},
+		{
+			name: "plain fenced code uses minimum fence",
+			got:  imMarkdownFencedCode("plain", ""),
+			want: "```\nplain\n```",
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if tt.got != tt.want {
+				t.Fatalf("got %q, want %q", tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIMMarkdownExtractionAndListBreakBranches(t *testing.T) {
+	t.Parallel()
+
+	rowBodies := extractIMMarkdownElementBodies(`</tr><tr/><tr>open`, imMarkdownRowTagRE)
+	if want := []string{""}; !reflect.DeepEqual(rowBodies, want) {
+		t.Fatalf("extractIMMarkdownElementBodies() = %#v, want %#v", rowBodies, want)
+	}
+
+	if _, _, ok := findIMMarkdownElementClosingTag(`<tr><td>open</td>`, len("<tr>"), imMarkdownRowTagRE); ok {
+		t.Fatal("findIMMarkdownElementClosingTag() found closing tag, want false")
+	}
+
+	if got := convertIMMarkdownListItems("", false, imMarkdownContext{}); got != "" {
+		t.Fatalf("empty list conversion = %q, want empty", got)
+	}
+	if got := convertIMMarkdownListItems("<li>open", false, imMarkdownContext{}); got != "" {
+		t.Fatalf("unclosed list conversion = %q, want empty", got)
+	}
+	if _, _, ok := findIMMarkdownListItemClosingTag(`<li>outer<li>inner</li>`, len("<li>")); ok {
+		t.Fatal("findIMMarkdownListItemClosingTag() found closing tag for unbalanced nested item")
+	}
+}
+
+func TestIMMarkdownLinkAndEncodingFallbackBranches(t *testing.T) {
+	t.Parallel()
+
+	text, href, ok := extractIMMarkdownInnerLink(`<a href='https://example.com/ref'></a>`)
+	if !ok {
+		t.Fatal("extractIMMarkdownInnerLink() ok = false, want true")
+	}
+	if text != "https://example.com/ref" || href != "https://example.com/ref" {
+		t.Fatalf("inner link = (%q, %q), want href fallback", text, href)
+	}
+
+	if got := escapeMarkdownLinkDestination("a%zz%"); got != "a%25zz%25" {
+		t.Fatalf("escaped invalid percent = %q, want %q", got, "a%25zz%25")
+	}
+	if got := escapeMarkdownLinkDestination("研发"); got != "%E7%A0%94%E5%8F%91" {
+		t.Fatalf("escaped unicode = %q, want encoded UTF-8 bytes", got)
+	}
+	if got := escapeMarkdownLinkDestination(string([]byte{'a', 0xff, 'b'})); got != "a%FFb" {
+		t.Fatalf("escaped invalid UTF-8 = %q, want %q", got, "a%FFb")
+	}
+}
+
 type imMarkdownCase struct {
 	name  string
 	input string

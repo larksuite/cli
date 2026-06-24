@@ -6,10 +6,12 @@ package doc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -252,9 +254,10 @@ func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		setFlags  map[string]string
-		wantParam string
+		name       string
+		setFlags   map[string]string
+		wantParam  string
+		wantParams []string
 	}{
 		{
 			name: "negative context before",
@@ -288,7 +291,10 @@ func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
 			setFlags: map[string]string{
 				"scope": "range",
 			},
-			wantParam: "--start-block-id",
+			wantParams: []string{
+				"--start-block-id",
+				"--end-block-id",
+			},
 		},
 		{
 			name: "keyword needs keyword",
@@ -326,9 +332,7 @@ func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
 			if err == nil {
 				t.Fatal("validateReadModeFlags() succeeded, want error")
 			}
-			if !strings.Contains(err.Error(), tt.wantParam) {
-				t.Fatalf("error = %v, want param %s", err, tt.wantParam)
-			}
+			assertValidationContract(t, err, errs.SubtypeInvalidArgument, tt.wantParam, tt.wantParams...)
 		})
 	}
 }
@@ -389,23 +393,23 @@ func TestValidateFetchV2RejectsInvalidDocAndScope(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		setFlags map[string]string
-		want     string
+		name      string
+		setFlags  map[string]string
+		wantParam string
 	}{
 		{
 			name: "invalid doc",
 			setFlags: map[string]string{
 				"doc": "https://example.com/sheets/sht_token",
 			},
-			want: "--doc",
+			wantParam: "--doc",
 		},
 		{
 			name: "invalid scope",
 			setFlags: map[string]string{
 				"scope": "bad",
 			},
-			want: "--scope",
+			wantParam: "--scope",
 		},
 	}
 
@@ -418,9 +422,7 @@ func TestValidateFetchV2RejectsInvalidDocAndScope(t *testing.T) {
 			if err == nil {
 				t.Fatal("validateFetchV2() succeeded, want error")
 			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("error = %v, want %s", err, tt.want)
-			}
+			assertValidationContract(t, err, errs.SubtypeInvalidArgument, tt.wantParam)
 		})
 	}
 }
@@ -651,7 +653,7 @@ func TestDocsFetchV2ReturnsAPIError(t *testing.T) {
 		Method: "POST",
 		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchAPIError/fetch",
 		Body: map[string]interface{}{
-			"code": 99991663,
+			"code": 999999,
 			"msg":  "fetch failed",
 		},
 	})
@@ -664,8 +666,28 @@ func TestDocsFetchV2ReturnsAPIError(t *testing.T) {
 	if err == nil {
 		t.Fatal("mountAndRunDocs() succeeded, want API error")
 	}
-	if !strings.Contains(err.Error(), "fetch failed") {
-		t.Fatalf("error = %v, want API message", err)
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error type = %T, want *errs.APIError (%v)", err, err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok = false for %T (%v)", err, err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category = %q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype != errs.SubtypeUnknown {
+		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypeUnknown)
+	}
+	if p.Code != 999999 {
+		t.Errorf("code = %d, want 999999", p.Code)
+	}
+	if p.Message != "fetch failed" {
+		t.Errorf("message = %q, want %q", p.Message, "fetch failed")
+	}
+	if cause := errors.Unwrap(err); cause != nil {
+		t.Fatalf("unexpected wrapped cause for API response error: %T %v", cause, cause)
 	}
 }
 
@@ -754,6 +776,7 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected v2-only validation error")
 			}
+			assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--offset")
 			for _, want := range tt.want {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("error missing %q: %v", want, err)
