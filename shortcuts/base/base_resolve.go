@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	baseURLResolveHintGeneric = "Provide a /base/, /wiki/, or /record/ URL, or use base +title-resolve --query if you only know the Base title."
+	baseURLResolveHintGeneric = "Provide a /base/, /wiki/, or /record/ URL, or use base +title-resolve --title if you only know the Base title."
 	baseTitleResolveHint      = "choose one candidate, then use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepBaseBlockList     = "use +base-block-list to list tables, dashboards, workflows, and other Base blocks"
 	nextStepRecordList        = "use +record-list to list records in the resolved table"
@@ -41,14 +41,14 @@ var BaseURLResolve = common.Shortcut{
 	},
 	Tips: []string{
 		`Example: lark-cli base +url-resolve --url "https://example.larkoffice.com/base/<base_token>?table=<table_id>&view=<view_id>"`,
-		"Only URLs are accepted. For Base titles or keywords, use +title-resolve --query.",
+		"Only URLs are accepted. For Base titles or keywords, use +title-resolve --title.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		_, err := readResolveInput(runtime, "url")
+		_, err := readURLResolveInput(runtime)
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		raw, err := readResolveInput(runtime, "url")
+		raw, err := readURLResolveInput(runtime)
 		if err != nil {
 			return common.NewDryRunAPI().Set("error", err.Error())
 		}
@@ -83,12 +83,13 @@ var BaseTitleResolve = common.Shortcut{
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "Base title or keyword to search via Drive (max 30 characters)"},
-		{Name: "url", Hidden: true, Desc: "Alias for --query; accepted to recover from AI routing mistakes"},
+		{Name: "title", Desc: "Base title keyword to search via Drive (30 characters or fewer)"},
+		{Name: "query", Hidden: true, Desc: "Alias for --title; accepted to recover from AI routing mistakes"},
+		{Name: "url", Hidden: true, Desc: "Alias for --title; accepted to recover from AI routing mistakes"},
 	},
 	Tips: []string{
-		`Example: lark-cli base +title-resolve --query "Sales pipeline"`,
-		"Use +url-resolve for URLs; this command searches BITABLE resources by title or keyword, with a 30-character query limit from Search v2.",
+		`Example: lark-cli base +title-resolve --title "Sales pipeline"`,
+		"Pass a short keyword from the Base title, 30 characters or fewer. Use +url-resolve for URLs.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := readTitleResolveQuery(runtime)
@@ -108,7 +109,7 @@ var BaseTitleResolve = common.Shortcut{
 	},
 }
 
-func readResolveInput(runtime *common.RuntimeContext, primary string) (string, error) {
+func readURLResolveInput(runtime *common.RuntimeContext) (string, error) {
 	urlValue := strings.TrimSpace(runtime.Str("url"))
 	queryValue := strings.TrimSpace(runtime.Str("query"))
 	if urlValue != "" && queryValue != "" {
@@ -119,27 +120,45 @@ func readResolveInput(runtime *common.RuntimeContext, primary string) (string, e
 		value = queryValue
 	}
 	if value == "" {
-		return "", baseFlagErrorf("specify --%s", primary)
+		return "", baseFlagErrorf("specify --url")
 	}
 	return value, nil
 }
 
 func readTitleResolveQuery(runtime *common.RuntimeContext) (string, error) {
-	query, err := readResolveInput(runtime, "query")
-	if err != nil {
-		return "", err
+	values := []struct {
+		name  string
+		value string
+	}{
+		{"title", strings.TrimSpace(runtime.Str("title"))},
+		{"query", strings.TrimSpace(runtime.Str("query"))},
+		{"url", strings.TrimSpace(runtime.Str("url"))},
 	}
-	if len([]rune(query)) > titleResolveQueryMaxLen {
+	var pickedName, pickedValue string
+	for _, v := range values {
+		if v.value == "" {
+			continue
+		}
+		if pickedValue != "" {
+			return "", baseFlagErrorf("--%s and --%s are mutually exclusive", pickedName, v.name)
+		}
+		pickedName = v.name
+		pickedValue = v.value
+	}
+	if pickedValue == "" {
+		return "", baseFlagErrorf("specify --title")
+	}
+	if len([]rune(pickedValue)) > titleResolveQueryMaxLen {
 		return "", resolveValidationError(
-			fmt.Sprintf("base +title-resolve query must be %d characters or fewer.", titleResolveQueryMaxLen),
-			"Use a shorter Base title keyword, or provide a /base/ URL and use base +url-resolve.",
+			fmt.Sprintf("base +title-resolve title keyword must be %d characters or fewer.", titleResolveQueryMaxLen),
+			"Use a shorter keyword from the Base title, or provide a /base/ URL and use base +url-resolve.",
 		)
 	}
-	return query, nil
+	return pickedValue, nil
 }
 
 func executeBaseURLResolve(runtime *common.RuntimeContext) error {
-	raw, err := readResolveInput(runtime, "url")
+	raw, err := readURLResolveInput(runtime)
 	if err != nil {
 		return err
 	}
@@ -199,7 +218,7 @@ func executeBaseURLResolve(runtime *common.RuntimeContext) error {
 func parseResolveURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, resolveValidationError("base +url-resolve only accepts full URLs.", "For a Base title or keyword, use base +title-resolve --query.")
+		return nil, resolveValidationError("base +url-resolve only accepts full URLs.", "For a Base title or keyword, use base +title-resolve --title.")
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, resolveValidationError("base +url-resolve only accepts HTTP or HTTPS URLs.", baseURLResolveHintGeneric)

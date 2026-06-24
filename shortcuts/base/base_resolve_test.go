@@ -271,7 +271,7 @@ func TestBaseResolveInputXOR(t *testing.T) {
 	t.Run("title resolve", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
-			"+title-resolve", "--query", "Pipeline", "--url", "Sales", "--as", "user",
+			"+title-resolve", "--title", "Pipeline", "--query", "Sales", "--as", "user",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
 			t.Fatalf("err=%v, want xor validation", err)
@@ -285,21 +285,21 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 		definition  common.Shortcut
 		primaryFlag string
 		primaryDesc string
-		aliasFlag   string
+		aliasFlags  []string
 	}{
 		{
 			shortcut:    "+url-resolve",
 			definition:  BaseURLResolve,
 			primaryFlag: "url",
 			primaryDesc: "Base/Wiki/record-share URL to resolve",
-			aliasFlag:   "query",
+			aliasFlags:  []string{"query"},
 		},
 		{
 			shortcut:    "+title-resolve",
 			definition:  BaseTitleResolve,
-			primaryFlag: "query",
-			primaryDesc: "Base title or keyword",
-			aliasFlag:   "url",
+			primaryFlag: "title",
+			primaryDesc: "Base title keyword",
+			aliasFlags:  []string{"query", "url"},
 		},
 	} {
 		t.Run(tc.shortcut, func(t *testing.T) {
@@ -307,7 +307,6 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			tc.definition.Mount(parent, &cmdutil.Factory{})
 			cmd := parent.Commands()[0]
 			primary := cmd.Flags().Lookup(tc.primaryFlag)
-			alias := cmd.Flags().Lookup(tc.aliasFlag)
 			primaryUsage := ""
 			if primary != nil {
 				primaryUsage = primary.Usage
@@ -315,8 +314,11 @@ func TestBaseResolveHelpFlags(t *testing.T) {
 			if primary == nil || !strings.Contains(primaryUsage, tc.primaryDesc) {
 				t.Fatalf("primary flag %q usage=%q", tc.primaryFlag, primaryUsage)
 			}
-			if alias == nil || !alias.Hidden {
-				t.Fatalf("alias flag %q should exist and be hidden: %#v", tc.aliasFlag, alias)
+			for _, aliasFlag := range tc.aliasFlags {
+				alias := cmd.Flags().Lookup(aliasFlag)
+				if alias == nil || !alias.Hidden {
+					t.Fatalf("alias flag %q should exist and be hidden: %#v", aliasFlag, alias)
+				}
 			}
 		})
 	}
@@ -339,7 +341,7 @@ func TestBaseTitleResolve(t *testing.T) {
 		}))
 
 		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
-			"+title-resolve", "--query", "Pipeline", "--as", "user",
+			"+title-resolve", "--title", "Pipeline", "--as", "user",
 		}, factory, stdout)
 		if err != nil {
 			t.Fatalf("err=%v", err)
@@ -384,7 +386,7 @@ func TestBaseTitleResolve(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(titleResolveSearchStub(nil))
 		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
-			"+title-resolve", "--query", "missing", "--as", "user",
+			"+title-resolve", "--title", "missing", "--as", "user",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "No Base matched") {
 			t.Fatalf("err=%v, want no result validation", err)
@@ -394,7 +396,7 @@ func TestBaseTitleResolve(t *testing.T) {
 	t.Run("query too long", func(t *testing.T) {
 		factory, stdout, _ := newExecuteFactory(t)
 		err := runShortcutWithAuthTypes(t, BaseTitleResolve, nil, []string{
-			"+title-resolve", "--query", "codex record share resolve 20260616152113", "--as", "user",
+			"+title-resolve", "--title", "codex record share resolve 20260616152113", "--as", "user",
 		}, factory, stdout)
 		if err == nil || !strings.Contains(err.Error(), "30 characters or fewer") {
 			t.Fatalf("err=%v, want query length validation", err)
