@@ -6,6 +6,7 @@ package doc
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -101,6 +102,369 @@ func TestBuildFetchBodyExplicitBlankLangOmitsLang(t *testing.T) {
 	body := buildFetchBody(runtime)
 	if _, ok := body["lang"]; ok {
 		t.Fatalf("did not expect blank explicit lang in fetch body: %#v", body)
+	}
+}
+
+func TestBuildFetchBodyIncludesRevisionAndFullDetail(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "revision-id", "42")
+	mustSetFetchFlag(t, runtime, "detail", "full")
+
+	body := buildFetchBody(runtime)
+	if got := body["revision_id"]; got != 42 {
+		t.Fatalf("revision_id = %#v, want 42", got)
+	}
+	exportOption, _ := body["export_option"].(map[string]interface{})
+	want := map[string]interface{}{
+		"export_block_id":        true,
+		"export_style_attrs":     true,
+		"export_cite_extra_data": true,
+	}
+	if !reflect.DeepEqual(exportOption, want) {
+		t.Fatalf("export_option = %#v, want %#v", exportOption, want)
+	}
+}
+
+func TestBuildFetchBodyIncludesWithIDsDetail(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "detail", "with-ids")
+
+	body := buildFetchBody(runtime)
+	exportOption, _ := body["export_option"].(map[string]interface{})
+	want := map[string]interface{}{
+		"export_block_id": true,
+	}
+	if !reflect.DeepEqual(exportOption, want) {
+		t.Fatalf("export_option = %#v, want %#v", exportOption, want)
+	}
+}
+
+func TestBuildFetchBodyIncludesReadOption(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "scope", "section")
+	mustSetFetchFlag(t, runtime, "start-block-id", "blk_heading")
+
+	body := buildFetchBody(runtime)
+	want := map[string]interface{}{
+		"read_mode":      "section",
+		"start_block_id": "blk_heading",
+	}
+	if got := body["read_option"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("read_option = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildReadOptionModes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		setFlags map[string]string
+		want     map[string]interface{}
+	}{
+		{
+			name: "full omits read option",
+			setFlags: map[string]string{
+				"scope": "full",
+			},
+			want: nil,
+		},
+		{
+			name: "outline with max depth",
+			setFlags: map[string]string{
+				"scope":     "outline",
+				"max-depth": "3",
+			},
+			want: map[string]interface{}{
+				"read_mode": "outline",
+				"max_depth": "3",
+			},
+		},
+		{
+			name: "range with block ids and context",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "blk_start",
+				"end-block-id":   "blk_end",
+				"context-before": "2",
+				"context-after":  "1",
+				"max-depth":      "0",
+			},
+			want: map[string]interface{}{
+				"read_mode":      "range",
+				"start_block_id": "blk_start",
+				"end_block_id":   "blk_end",
+				"context_before": "2",
+				"context_after":  "1",
+				"max_depth":      "0",
+			},
+		},
+		{
+			name: "keyword with query",
+			setFlags: map[string]string{
+				"scope":          "keyword",
+				"keyword":        "foo|bar",
+				"context-before": "1",
+			},
+			want: map[string]interface{}{
+				"read_mode":      "keyword",
+				"keyword":        "foo|bar",
+				"context_before": "1",
+			},
+		},
+		{
+			name: "section keeps unlimited depth omitted",
+			setFlags: map[string]string{
+				"scope":          "section",
+				"start-block-id": "blk_heading",
+				"max-depth":      "-1",
+			},
+			want: map[string]interface{}{
+				"read_mode":      "section",
+				"start_block_id": "blk_heading",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchBodyTestRuntime(context.Background())
+			for name, value := range tt.setFlags {
+				mustSetFetchFlag(t, runtime, name, value)
+			}
+
+			if got := buildReadOption(runtime); !reflect.DeepEqual(got, tt.want) {
+				t.Fatalf("buildReadOption() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		setFlags  map[string]string
+		wantParam string
+	}{
+		{
+			name: "negative context before",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "blk_start",
+				"context-before": "-1",
+			},
+			wantParam: "--context-before",
+		},
+		{
+			name: "negative context after",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "blk_start",
+				"context-after":  "-1",
+			},
+			wantParam: "--context-after",
+		},
+		{
+			name: "max depth below unlimited sentinel",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "blk_start",
+				"max-depth":      "-2",
+			},
+			wantParam: "--max-depth",
+		},
+		{
+			name: "range needs boundary",
+			setFlags: map[string]string{
+				"scope": "range",
+			},
+			wantParam: "--start-block-id",
+		},
+		{
+			name: "keyword needs keyword",
+			setFlags: map[string]string{
+				"scope": "keyword",
+			},
+			wantParam: "--keyword",
+		},
+		{
+			name: "section needs start block",
+			setFlags: map[string]string{
+				"scope": "section",
+			},
+			wantParam: "--start-block-id",
+		},
+		{
+			name: "unknown scope",
+			setFlags: map[string]string{
+				"scope": "bad",
+			},
+			wantParam: "--scope",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchBodyTestRuntime(context.Background())
+			for name, value := range tt.setFlags {
+				mustSetFetchFlag(t, runtime, name, value)
+			}
+
+			err := validateReadModeFlags(runtime)
+			if err == nil {
+				t.Fatal("validateReadModeFlags() succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantParam) {
+				t.Fatalf("error = %v, want param %s", err, tt.wantParam)
+			}
+		})
+	}
+}
+
+func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		setFlags map[string]string
+	}{
+		{
+			name: "outline",
+			setFlags: map[string]string{
+				"scope": "outline",
+			},
+		},
+		{
+			name: "range with end block",
+			setFlags: map[string]string{
+				"scope":        "range",
+				"end-block-id": "blk_end",
+			},
+		},
+		{
+			name: "keyword with keyword",
+			setFlags: map[string]string{
+				"scope":   "keyword",
+				"keyword": "bug|缺陷",
+			},
+		},
+		{
+			name: "section with start block",
+			setFlags: map[string]string{
+				"scope":          "section",
+				"start-block-id": "blk_heading",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchBodyTestRuntime(context.Background())
+			for name, value := range tt.setFlags {
+				mustSetFetchFlag(t, runtime, name, value)
+			}
+
+			if err := validateReadModeFlags(runtime); err != nil {
+				t.Fatalf("validateReadModeFlags() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateFetchV2RejectsInvalidDocAndScope(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		setFlags map[string]string
+		want     string
+	}{
+		{
+			name: "invalid doc",
+			setFlags: map[string]string{
+				"doc": "https://example.com/sheets/sht_token",
+			},
+			want: "--doc",
+		},
+		{
+			name: "invalid scope",
+			setFlags: map[string]string{
+				"scope": "bad",
+			},
+			want: "--scope",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchShortcutTestRuntime(t, "", tt.setFlags)
+			err := validateFetchV2(context.Background(), runtime)
+			if err == nil {
+				t.Fatal("validateFetchV2() succeeded, want error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %s", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestAddFetchDetailDowngradeWarningNoops(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		setFlags map[string]string
+	}{
+		{
+			name: "xml format",
+			setFlags: map[string]string{
+				"doc-format": "xml",
+				"detail":     "full",
+			},
+		},
+		{
+			name: "markdown simple detail",
+			setFlags: map[string]string{
+				"doc-format": "markdown",
+				"detail":     "simple",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runtime := newFetchBodyTestRuntime(context.Background())
+			for name, value := range tt.setFlags {
+				mustSetFetchFlag(t, runtime, name, value)
+			}
+
+			data := map[string]interface{}{}
+			if got := addFetchDetailDowngradeWarning(runtime, data); got != "" {
+				t.Fatalf("warning = %q, want empty", got)
+			}
+			if _, ok := data["warnings"]; ok {
+				t.Fatalf("unexpected warnings: %#v", data["warnings"])
+			}
+		})
 	}
 }
 
@@ -279,6 +643,32 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInPrettyOutput(t *testing.T) {
 	}
 }
 
+func TestDocsFetchV2ReturnsAPIError(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-api-error"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchAPIError/fetch",
+		Body: map[string]interface{}{
+			"code": 99991663,
+			"msg":  "fetch failed",
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "doxcnFetchAPIError",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatal("mountAndRunDocs() succeeded, want API error")
+	}
+	if !strings.Contains(err.Error(), "fetch failed") {
+		t.Fatalf("error = %v, want API message", err)
+	}
+}
+
 func TestDocsFetchIMMarkdownConvertsContentInJSONOutput(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -387,6 +777,14 @@ func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd.Flags().Int("context-after", 0, "")
 	cmd.Flags().Int("max-depth", -1, "")
 	return common.TestNewRuntimeContextWithCtx(ctx, cmd, nil)
+}
+
+func mustSetFetchFlag(t *testing.T, runtime *common.RuntimeContext, name, value string) {
+	t.Helper()
+
+	if err := runtime.Cmd.Flags().Set(name, value); err != nil {
+		t.Fatalf("set %s: %v", name, err)
+	}
 }
 
 func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[string]string) *common.RuntimeContext {

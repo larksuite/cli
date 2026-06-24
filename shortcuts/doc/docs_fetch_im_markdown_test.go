@@ -4,9 +4,71 @@
 package doc
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestApplyFetchIMMarkdown(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		data     map[string]interface{}
+		docInput string
+		want     map[string]interface{}
+	}{
+		{
+			name: "missing document leaves data unchanged",
+			data: map[string]interface{}{
+				"content": `<title>Roadmap</title>`,
+			},
+			docInput: "https://tenant.example.com/docx/doc_token",
+			want: map[string]interface{}{
+				"content": `<title>Roadmap</title>`,
+			},
+		},
+		{
+			name: "non string content leaves data unchanged",
+			data: map[string]interface{}{
+				"document": map[string]interface{}{
+					"content": 123,
+				},
+			},
+			docInput: "https://tenant.example.com/docx/doc_token",
+			want: map[string]interface{}{
+				"document": map[string]interface{}{
+					"content": 123,
+				},
+			},
+		},
+		{
+			name: "converts content with tenant base url",
+			data: map[string]interface{}{
+				"document": map[string]interface{}{
+					"content": `<title>Roadmap</title>` + "\n" + `<sheet token="sht_token" sheet-id="S1"></sheet>`,
+				},
+			},
+			docInput: "https://tenant.example.com/docx/doc_token",
+			want: map[string]interface{}{
+				"document": map[string]interface{}{
+					"content": "# Roadmap\n[sheet S1](https://tenant.example.com/sheets/sht_token)",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			applyFetchIMMarkdown(tt.data, tt.docInput)
+			if !reflect.DeepEqual(tt.data, tt.want) {
+				t.Fatalf("data = %#v, want %#v", tt.data, tt.want)
+			}
+		})
+	}
+}
 
 func TestConvertToIMMarkdownTitle(t *testing.T) {
 	t.Parallel()
@@ -70,6 +132,11 @@ func TestConvertToIMMarkdownCallout(t *testing.T) {
 			want:  "---\n✅\n---",
 		},
 		{
+			name:  "empty callout",
+			input: `<callout></callout>`,
+			want:  "---\n---",
+		},
+		{
 			name:  "nested callout",
 			input: `<callout emoji="✅">Outer <callout emoji="💡">Inner</callout></callout>`,
 			want:  "---\n✅ Outer ---\n💡 Inner\n---\n---",
@@ -117,9 +184,56 @@ func TestConvertToIMMarkdownBlockquote(t *testing.T) {
 			want:  "> outer\n> > inner",
 		},
 		{
+			name:  "blank line keeps quote marker",
+			input: "<blockquote>first\n\nsecond</blockquote>",
+			want:  "> first\n>\n> second",
+		},
+		{
+			name:  "empty blockquote",
+			input: `<blockquote> </blockquote>`,
+			want:  "",
+		},
+		{
 			name:  "plain adjacent paragraphs outside blockquote stay compact",
 			input: `<p>first</p><p>second</p>`,
 			want:  "firstsecond",
+		},
+	})
+}
+
+func TestConvertToIMMarkdownParagraphHeadingAndListItemEdges(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "empty heading",
+			input: `<h2> </h2>`,
+			want:  "",
+		},
+		{
+			name:  "empty paragraph",
+			input: `<p> </p>`,
+			want:  "",
+		},
+		{
+			name:  "top level list item uses seq",
+			input: "<li seq=\"7\">first\nsecond</li>",
+			want:  "7. first\n  second\n",
+		},
+		{
+			name:  "top level empty list item",
+			input: `<li></li>`,
+			want:  "",
+		},
+		{
+			name:  "unordered list skips non item text and empty items",
+			input: `<ul>prefix<li>first</li><li> </li><li>second</li></ul>`,
+			want:  "- first\n- second",
+		},
+		{
+			name:  "unclosed list item stops list scan",
+			input: `<ul><li>first</li><li>second</ul>`,
+			want:  "- first",
 		},
 	})
 }
@@ -231,11 +345,72 @@ func TestConvertToIMMarkdownTable(t *testing.T) {
 			want:  "`<table><tbody></tbody></table>`",
 		},
 		{
+			name:  "table row without cells falls back to inline code",
+			input: `<table><tr></tr></table>`,
+			want:  "`<table><tr></tr></table>`",
+		},
+		{
+			name:  "table self closing row falls back to inline code",
+			input: `<table><tr/></table>`,
+			want:  "`<table><tr/></table>`",
+		},
+		{
+			name:  "table empty cell stays empty",
+			input: `<table><tr><td> </td></tr></table>`,
+			want:  "|  |\n| - |",
+		},
+		{
 			name:  "missing closing table is preserved",
 			input: `before<table><tr><td>A</td></tr>`,
 			want:  `before<table><tr><td>A</td></tr>`,
 		},
 	})
+}
+
+func TestIMMarkdownElementExtractionEdges(t *testing.T) {
+	t.Parallel()
+
+	bodies := extractIMMarkdownElementBodies(`</tr><tr/> <tr><td>x</td></tr><tr>open`, imMarkdownRowTagRE)
+	if want := []string{"", "<td>x</td>"}; !reflect.DeepEqual(bodies, want) {
+		t.Fatalf("extractIMMarkdownElementBodies() = %#v, want %#v", bodies, want)
+	}
+
+	if _, _, ok := findIMMarkdownElementClosingTag(`<tr><td>x`, len("<tr>"), imMarkdownRowTagRE); ok {
+		t.Fatal("findIMMarkdownElementClosingTag() found closing tag, want false")
+	}
+
+	start, end, ok := findIMMarkdownListItemClosingTag(`<li>outer<li/>tail</li>`, len("<li>"))
+	if !ok {
+		t.Fatal("findIMMarkdownListItemClosingTag() did not find closing tag")
+	}
+	if got, want := `<li>outer<li/>tail</li>`[start:end], "</li>"; got != want {
+		t.Fatalf("closing tag = %q, want %q", got, want)
+	}
+
+	if _, _, ok := findIMMarkdownListItemClosingTag(`<li>open`, len("<li>")); ok {
+		t.Fatal("findIMMarkdownListItemClosingTag() found closing tag, want false")
+	}
+
+	start, end, ok = findIMMarkdownListItemClosingTag(`<li>outer<li>inner</li>tail</li>`, len("<li>"))
+	if !ok {
+		t.Fatal("findIMMarkdownListItemClosingTag() did not find nested closing tag")
+	}
+	if got, want := `<li>outer<li>inner</li>tail</li>`[start:end], "</li>"; got != want {
+		t.Fatalf("nested closing tag = %q, want %q", got, want)
+	}
+
+	if got := convertIMMarkdownListItems("plain text", false, imMarkdownContext{}); got != "" {
+		t.Fatalf("convertIMMarkdownListItems() = %q, want empty", got)
+	}
+}
+
+func TestNormalizeIMMarkdownTableCellStripsUnknownTags(t *testing.T) {
+	t.Parallel()
+
+	got := normalizeIMMarkdownTableCell(`<span style="x">red</span>`)
+	if want := "red"; got != want {
+		t.Fatalf("normalizeIMMarkdownTableCell() = %q, want %q", got, want)
+	}
 }
 
 func TestConvertToIMMarkdownDiscardTags(t *testing.T) {
@@ -404,6 +579,16 @@ func TestConvertToIMMarkdownBookmark(t *testing.T) {
 			want:  "[Spec](https://example.com/wiki/A%20B)",
 		},
 		{
+			name:  "href escapes invalid percent and unicode",
+			input: `<bookmark name="Spec" href="https://example.com/wiki/研发%zz?x=1%"></bookmark>`,
+			want:  "[Spec](https://example.com/wiki/%E7%A0%94%E5%8F%91%25zz?x=1%25)",
+		},
+		{
+			name:  "href escapes markdown delimiter bytes",
+			input: "<bookmark name=\"Spec\" href=\"https://example.com/a&lt;b&gt;|c`d\"></bookmark>",
+			want:  "[Spec](https://example.com/a%3Cb%3E%7Cc%60d)",
+		},
+		{
 			name:  "inner registered tag fallback",
 			input: `<bookmark href="https://example.com"><cite type="user" user-id="ou_1" user-name="Alice"></cite></bookmark>`,
 			want:  "[Alice](https://example.com)",
@@ -417,6 +602,58 @@ func TestConvertToIMMarkdownBookmark(t *testing.T) {
 			name:  "self-closing bookmark without href",
 			input: `<bookmark name="Example"/>`,
 			want:  "Example",
+		},
+	})
+}
+
+func TestConvertToIMMarkdownInlineEdges(t *testing.T) {
+	t.Parallel()
+
+	assertIMMarkdownCases(t, []imMarkdownCase{
+		{
+			name:  "empty strong emphasis and delete",
+			input: `<b> </b><em> </em><del> </del>`,
+			want:  "",
+		},
+		{
+			name:  "anchor without href returns text",
+			input: `<a>plain <b>text</b></a>`,
+			want:  "plain **text**",
+		},
+		{
+			name:  "anchor without text falls back to href",
+			input: `<a href="https://example.com/a b"></a>`,
+			want:  "[https://example.com/a b](https://example.com/a%20b)",
+		},
+		{
+			name:  "latex escapes dollars",
+			input: `<latex>price=$5</latex>`,
+			want:  "$price=\\$5$",
+		},
+		{
+			name:  "empty latex",
+			input: `<latex> </latex>`,
+			want:  "",
+		},
+		{
+			name:  "image missing href",
+			input: `<img alt="A"/>`,
+			want:  "",
+		},
+		{
+			name:  "image uses src and title fallback",
+			input: `<img src="https://example.com/i 1.png" title="A [img]"/>`,
+			want:  "![A \\[img\\]](https://example.com/i%201.png)",
+		},
+		{
+			name:  "plain fenced code",
+			input: `<pre><code>plain</code></pre>`,
+			want:  "```\nplain\n```",
+		},
+		{
+			name:  "code inline trims nested markup",
+			input: `<code><b>x</b></code>`,
+			want:  "`x`",
 		},
 	})
 }
@@ -525,11 +762,25 @@ func TestConvertToIMMarkdownCiteCitation(t *testing.T) {
 			want:  "[Ref](https://example.com/ref)",
 		},
 		{
+			name:  "single quoted inner anchor falls back to href text",
+			input: `<cite type="citation"><a href='https://example.com/ref'></a></cite>`,
+			want:  "[https://example.com/ref](https://example.com/ref)",
+		},
+		{
 			name:  "href attr falls back to href label",
 			input: `<cite type="citation" href="https://example.com/ref"></cite>`,
 			want:  "[https://example.com/ref](https://example.com/ref)",
 		},
 	})
+}
+
+func TestEscapeMarkdownLinkDestinationInvalidUTF8(t *testing.T) {
+	t.Parallel()
+
+	got := escapeMarkdownLinkDestination(string([]byte{'a', 0xff, 'b'}))
+	if want := "a%FFb"; got != want {
+		t.Fatalf("escapeMarkdownLinkDestination() = %q, want %q", got, want)
+	}
 }
 
 func TestConvertToIMMarkdownCiteUnknown(t *testing.T) {
@@ -808,6 +1059,16 @@ func TestNewIMMarkdownContextExtractsBaseURL(t *testing.T) {
 			name:  "blank",
 			input: " ",
 			want:  "https://larkoffice.com",
+		},
+		{
+			name:  "empty trimmed prefix falls back",
+			input: "////docx/doc_token",
+			want:  "https://larkoffice.com",
+		},
+		{
+			name:  "scheme candidate inside schemeless URL",
+			input: "//https://bytedance.larkoffice.com/docx/doc_token",
+			want:  "https://bytedance.larkoffice.com",
 		},
 	}
 
