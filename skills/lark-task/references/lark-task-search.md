@@ -36,7 +36,6 @@ lark-cli task +search --query "release" --due "-1d,+7d"
 ## Workflow
 
 1. Build the keyword and filters from the user's request.
-2. **Scope check**: if the user did not explicitly specify a search subject (e.g., did not say "all tasks", "team tasks", or another person's name), default to scoping the search to the current user — add `--assignee <current_user_open_id>` (or `--creator` / `--follower` as appropriate). Only omit people filters when the user explicitly requests a broad/global search.
-3. Execute `lark-cli task +search ...`
-4. Report the matched tasks and include the next `page_token` if more results exist.
+2. Execute `lark-cli task +search ...`
+3. Report the matched tasks and include the next `page_token` if more results exist.
 
