@@ -16,11 +16,12 @@ import (
 //     env-diff/env-migrate/recovery-diff/recovery-apply/quota-get）
 //   - 7 file（list/get/sign/download/upload/delete/quota-get）
 //   - 3 git-credential
-//   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list = 43。
-func TestAppsShortcuts_Returns43(t *testing.T) {
+//   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list
+//   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）= 51。
+func TestAppsShortcuts_Returns51(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 43 {
-		t.Fatalf("Shortcuts() returned %d entries, want 43", len(got))
+	if len(got) != 51 {
+		t.Fatalf("Shortcuts() returned %d entries, want 51", len(got))
 	}
 }
 
