@@ -50,11 +50,11 @@ func TestParseScopeAPI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if info["httpMethod"] != "GET" {
-			t.Errorf("httpMethod = %v, want GET", info["httpMethod"])
+		if info["http_method"] != "GET" {
+			t.Errorf("http_method = %v, want GET", info["http_method"])
 		}
-		if info["httpPath"] != "/openapi/v1/orders" {
-			t.Errorf("httpPath = %v, want /openapi/v1/orders", info["httpPath"])
+		if info["http_path"] != "/openapi/v1/orders" {
+			t.Errorf("http_path = %v, want /openapi/v1/orders", info["http_path"])
 		}
 	})
 	t.Run("lowercase method uppercased", func(t *testing.T) {
@@ -62,8 +62,8 @@ func TestParseScopeAPI(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if info["httpMethod"] != "POST" {
-			t.Errorf("httpMethod = %v, want POST", info["httpMethod"])
+		if info["http_method"] != "POST" {
+			t.Errorf("http_method = %v, want POST", info["http_method"])
 		}
 	})
 	t.Run("too few fields", func(t *testing.T) {
@@ -91,48 +91,48 @@ func TestBuildRequestScope(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 		m := rs.(map[string]interface{})
-		if m["allowAll"] != true {
-			t.Errorf("allowAll = %v, want true", m["allowAll"])
+		if m["allow_all"] != true {
+			t.Errorf("allow_all = %v, want true", m["allow_all"])
 		}
-		if _, ok := m["httpInfos"]; ok {
-			t.Errorf("httpInfos should not appear when no scope-api provided")
+		if _, ok := m["http_infos"]; ok {
+			t.Errorf("http_infos should not appear when no scope-api provided")
 		}
 	})
-	t.Run("scope-api adds httpInfos", func(t *testing.T) {
+	t.Run("scope-api adds http_infos", func(t *testing.T) {
 		rs, err := buildRequestScope(false, []string{"GET /openapi/x"}, "")
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
 		m := rs.(map[string]interface{})
-		if m["allowAll"] != false {
-			t.Errorf("allowAll = %v, want false", m["allowAll"])
+		if m["allow_all"] != false {
+			t.Errorf("allow_all = %v, want false", m["allow_all"])
 		}
-		infos := m["httpInfos"].([]interface{})
+		infos := m["http_infos"].([]interface{})
 		if len(infos) != 1 {
-			t.Fatalf("httpInfos len = %d, want 1", len(infos))
+			t.Fatalf("http_infos len = %d, want 1", len(infos))
 		}
 		info := infos[0].(map[string]interface{})
-		if info["httpMethod"] != "GET" || info["httpPath"] != "/openapi/x" {
+		if info["http_method"] != "GET" || info["http_path"] != "/openapi/x" {
 			t.Errorf("info = %v", info)
 		}
 	})
 	t.Run("raw scope passthrough", func(t *testing.T) {
-		rs, err := buildRequestScope(false, nil, `{"allowAll":true}`)
+		rs, err := buildRequestScope(false, nil, `{"allow_all":true}`)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
 		m := rs.(map[string]interface{})
-		if m["allowAll"] != true {
-			t.Errorf("allowAll = %v, want true", m["allowAll"])
+		if m["allow_all"] != true {
+			t.Errorf("allow_all = %v, want true", m["allow_all"])
 		}
 	})
 	t.Run("raw + scope-all -> error", func(t *testing.T) {
-		if _, err := buildRequestScope(true, nil, `{"allowAll":true}`); err == nil {
+		if _, err := buildRequestScope(true, nil, `{"allow_all":true}`); err == nil {
 			t.Errorf("raw + scope-all must error")
 		}
 	})
 	t.Run("raw + scope-api -> error", func(t *testing.T) {
-		if _, err := buildRequestScope(false, []string{"GET /openapi/x"}, `{"allowAll":true}`); err == nil {
+		if _, err := buildRequestScope(false, []string{"GET /openapi/x"}, `{"allow_all":true}`); err == nil {
 			t.Errorf("raw + scope-api must error")
 		}
 	})
@@ -150,80 +150,80 @@ func TestBuildKeyConfig(t *testing.T) {
 			t.Fatalf("empty -> nil, got cfg=%v err=%v", cfg, err)
 		}
 	})
-	t.Run("scope-all -> camelCase requestScope", func(t *testing.T) {
+	t.Run("scope-all -> snake_case request_scope", func(t *testing.T) {
 		cfg, err := buildKeyConfig(true, nil, "", false, false)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		rs := cfg["requestScope"].(map[string]interface{})
-		if rs["allowAll"] != true {
-			t.Errorf("allowAll = %v, want true", rs["allowAll"])
+		rs := cfg["request_scope"].(map[string]interface{})
+		if rs["allow_all"] != true {
+			t.Errorf("allow_all = %v, want true", rs["allow_all"])
 		}
-		if _, ok := cfg["isAllowAccessPreview"]; ok {
-			t.Errorf("isAllowAccessPreview should not appear")
+		if _, ok := cfg["is_allow_access_preview"]; ok {
+			t.Errorf("is_allow_access_preview should not appear")
 		}
 	})
-	t.Run("scope-api -> camelCase httpInfos", func(t *testing.T) {
+	t.Run("scope-api -> snake_case http_infos", func(t *testing.T) {
 		cfg, err := buildKeyConfig(false, []string{"GET /openapi/x"}, "", false, false)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		rs := cfg["requestScope"].(map[string]interface{})
-		if rs["allowAll"] != false {
-			t.Errorf("allowAll = %v, want false", rs["allowAll"])
+		rs := cfg["request_scope"].(map[string]interface{})
+		if rs["allow_all"] != false {
+			t.Errorf("allow_all = %v, want false", rs["allow_all"])
 		}
-		infos := rs["httpInfos"].([]interface{})
+		infos := rs["http_infos"].([]interface{})
 		if len(infos) != 1 {
-			t.Fatalf("httpInfos len = %d, want 1", len(infos))
+			t.Fatalf("http_infos len = %d, want 1", len(infos))
 		}
 		info := infos[0].(map[string]interface{})
-		if info["httpMethod"] != "GET" || info["httpPath"] != "/openapi/x" {
+		if info["http_method"] != "GET" || info["http_path"] != "/openapi/x" {
 			t.Errorf("info = %v", info)
 		}
 	})
 	t.Run("raw scope passthrough", func(t *testing.T) {
-		cfg, err := buildKeyConfig(false, nil, `{"allowAll":true}`, false, false)
+		cfg, err := buildKeyConfig(false, nil, `{"allow_all":true}`, false, false)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		rs := cfg["requestScope"].(map[string]interface{})
-		if rs["allowAll"] != true {
-			t.Errorf("allowAll = %v", rs["allowAll"])
+		rs := cfg["request_scope"].(map[string]interface{})
+		if rs["allow_all"] != true {
+			t.Errorf("allow_all = %v", rs["allow_all"])
 		}
 	})
-	t.Run("allow-preview only -> isAllowAccessPreview", func(t *testing.T) {
+	t.Run("allow-preview only -> is_allow_access_preview", func(t *testing.T) {
 		cfg, err := buildKeyConfig(false, nil, "", true, true)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		if _, ok := cfg["requestScope"]; ok {
-			t.Errorf("requestScope should not appear when not set")
+		if _, ok := cfg["request_scope"]; ok {
+			t.Errorf("request_scope should not appear when not set")
 		}
-		if cfg["isAllowAccessPreview"] != true {
-			t.Errorf("isAllowAccessPreview = %v, want true", cfg["isAllowAccessPreview"])
+		if cfg["is_allow_access_preview"] != true {
+			t.Errorf("is_allow_access_preview = %v, want true", cfg["is_allow_access_preview"])
 		}
 	})
-	t.Run("scope-all + allow-preview -> both camelCase keys", func(t *testing.T) {
+	t.Run("scope-all + allow-preview -> both snake_case keys", func(t *testing.T) {
 		cfg, err := buildKeyConfig(true, nil, "", true, false)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		if _, ok := cfg["requestScope"]; !ok {
-			t.Errorf("requestScope missing")
+		if _, ok := cfg["request_scope"]; !ok {
+			t.Errorf("request_scope missing")
 		}
-		if cfg["isAllowAccessPreview"] != false {
-			t.Errorf("isAllowAccessPreview = %v, want false", cfg["isAllowAccessPreview"])
+		if cfg["is_allow_access_preview"] != false {
+			t.Errorf("is_allow_access_preview = %v, want false", cfg["is_allow_access_preview"])
 		}
-		// ensure no snake_case keys
-		if _, ok := cfg["request_scope"]; ok {
-			t.Errorf("found snake_case key request_scope — must use camelCase")
+		// ensure no camelCase keys
+		if _, ok := cfg["requestScope"]; ok {
+			t.Errorf("found camelCase key requestScope — must use snake_case")
 		}
-		if _, ok := cfg["is_allow_access_preview"]; ok {
-			t.Errorf("found snake_case key is_allow_access_preview — must use camelCase")
+		if _, ok := cfg["isAllowAccessPreview"]; ok {
+			t.Errorf("found camelCase key isAllowAccessPreview — must use snake_case")
 		}
 	})
 	t.Run("raw + scope-all -> error", func(t *testing.T) {
-		if _, err := buildKeyConfig(true, nil, `{"allowAll":true}`, false, false); err == nil {
+		if _, err := buildKeyConfig(true, nil, `{"allow_all":true}`, false, false); err == nil {
 			t.Errorf("raw + scope-all must error")
 		}
 	})
@@ -232,21 +232,21 @@ func TestBuildKeyConfig(t *testing.T) {
 			t.Errorf("invalid json must error")
 		}
 	})
-	t.Run("no snake_case keys emitted", func(t *testing.T) {
+	t.Run("no camelCase keys emitted", func(t *testing.T) {
 		cfg, err := buildKeyConfig(false, []string{"GET /openapi/x"}, "", true, true)
 		if err != nil {
 			t.Fatalf("err = %v", err)
 		}
-		if _, ok := cfg["request_scope"]; ok {
-			t.Errorf("snake_case request_scope must not appear")
+		if _, ok := cfg["requestScope"]; ok {
+			t.Errorf("camelCase requestScope must not appear")
 		}
-		if _, ok := cfg["is_allow_access_preview"]; ok {
-			t.Errorf("snake_case is_allow_access_preview must not appear")
+		if _, ok := cfg["isAllowAccessPreview"]; ok {
+			t.Errorf("camelCase isAllowAccessPreview must not appear")
 		}
-		rs := cfg["requestScope"].(map[string]interface{})
-		infos := rs["httpInfos"].([]interface{})
+		rs := cfg["request_scope"].(map[string]interface{})
+		infos := rs["http_infos"].([]interface{})
 		info := infos[0].(map[string]interface{})
-		wantInfo := map[string]interface{}{"httpMethod": "GET", "httpPath": "/openapi/x"}
+		wantInfo := map[string]interface{}{"http_method": "GET", "http_path": "/openapi/x"}
 		if !reflect.DeepEqual(info, wantInfo) {
 			t.Errorf("info = %v, want %v", info, wantInfo)
 		}

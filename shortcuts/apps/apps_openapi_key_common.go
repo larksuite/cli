@@ -46,16 +46,16 @@ func redactKeyInfo(info map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// parseScopeAPI parses a "--scope-api" value 'METHOD /openapi/path' into a camelCase httpInfo.
+// parseScopeAPI parses a "--scope-api" value 'METHOD /openapi/path' into a snake_case httpInfo.
 func parseScopeAPI(s string) (map[string]interface{}, error) {
 	fields := strings.Fields(strings.TrimSpace(s))
 	if len(fields) != 2 {
 		return nil, fmt.Errorf("expected 'METHOD /path', got %q", s)
 	}
-	return map[string]interface{}{"httpMethod": strings.ToUpper(fields[0]), "httpPath": fields[1]}, nil
+	return map[string]interface{}{"http_method": strings.ToUpper(fields[0]), "http_path": fields[1]}, nil
 }
 
-// buildRequestScope assembles config.requestScope (camelCase) from the scope flags.
+// buildRequestScope assembles config.request_scope (snake_case) from the scope flags.
 // Returns (nil, nil) when no scope flag is set. Raw --scope is the escape hatch and
 // is mutually exclusive with --scope-all / --scope-api.
 func buildRequestScope(scopeAll bool, scopeAPIs []string, scopeRaw string) (interface{}, error) {
@@ -74,7 +74,7 @@ func buildRequestScope(scopeAll bool, scopeAPIs []string, scopeRaw string) (inte
 	if !hasFriendly {
 		return nil, nil
 	}
-	rs := map[string]interface{}{"allowAll": scopeAll}
+	rs := map[string]interface{}{"allow_all": scopeAll}
 	if len(scopeAPIs) > 0 {
 		infos := make([]interface{}, 0, len(scopeAPIs))
 		for _, a := range scopeAPIs {
@@ -84,12 +84,12 @@ func buildRequestScope(scopeAll bool, scopeAPIs []string, scopeRaw string) (inte
 			}
 			infos = append(infos, info)
 		}
-		rs["httpInfos"] = infos
+		rs["http_infos"] = infos
 	}
 	return rs, nil
 }
 
-// buildKeyConfig assembles the camelCase config object. Returns nil when nothing is set.
+// buildKeyConfig assembles the snake_case config object. Returns nil when nothing is set.
 func buildKeyConfig(scopeAll bool, scopeAPIs []string, scopeRaw string, hasAllowPreview, allowPreview bool) (map[string]interface{}, error) {
 	rs, err := buildRequestScope(scopeAll, scopeAPIs, scopeRaw)
 	if err != nil {
@@ -100,10 +100,10 @@ func buildKeyConfig(scopeAll bool, scopeAPIs []string, scopeRaw string, hasAllow
 	}
 	cfg := map[string]interface{}{}
 	if rs != nil {
-		cfg["requestScope"] = rs
+		cfg["request_scope"] = rs
 	}
 	if hasAllowPreview {
-		cfg["isAllowAccessPreview"] = allowPreview
+		cfg["is_allow_access_preview"] = allowPreview
 	}
 	return cfg, nil
 }
