@@ -11,17 +11,17 @@
 - 必填：`--app-id`，以及 `--sql` / `--file` 二选一（互斥）。
 - `--sql`：内联 SQL 文本；传 `-` 时从 stdin 读。绝对路径文件经 stdin 传入：`--sql - < <absolute-path>`（shell 解析路径，CLI 仅接收内容）。
 - `--file`：`.sql` 文件路径，需为工作目录内的相对路径（如 `--file ./migration.sql`）；绝对路径、或经 `..`/符号链接越出工作目录的路径会被拒绝。文件不在工作目录内时，改用 `--sql - < <文件路径>` 经 stdin 传入。
-- `--env` 枚举：`dev` / `online`，**默认 `dev`**；需要操作线上环境数据库时，显式指定 `--env online`。
+- `--environment` 枚举：`dev` / `online`，**默认 `dev`**；需要操作线上环境数据库时，显式指定 `--environment online`。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。
 - risk 是 `high-risk-write`（SQL 可含 DML/DDL）：任何执行都需 `--yes`，否则返回 `confirmation_required` / exit 10。`--dry-run` 预览不需要 `--yes`。
 - CLI 永远传 `transactional=false`；不默认包事务。
 
 ## 示例
 
 ```bash
-lark-cli apps +db-execute --app-id app_xxx --env dev --sql "select * from orders limit 5" --yes
-lark-cli apps +db-execute --app-id app_xxx --env dev --file ./migration.sql --dry-run
+lark-cli apps +db-execute --app-id app_xxx --environment dev --sql "select * from orders limit 5" --yes
+lark-cli apps +db-execute --app-id app_xxx --environment dev --file ./migration.sql --dry-run
 # 绝对路径文件 / cwd 不固定：经 stdin 传入
-lark-cli apps +db-execute --app-id app_xxx --env dev --sql - --yes < /Users/.../migrations/0001_init.sql
+lark-cli apps +db-execute --app-id app_xxx --environment dev --sql - --yes < /Users/.../migrations/0001_init.sql
 ```
 
 ## 输出契约

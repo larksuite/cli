@@ -40,14 +40,16 @@ var AppsDBDataImport = common.Shortcut{
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "file", Desc: "local data file (.csv/.json), relative to cwd", Required: true},
 		{Name: "table", Desc: "target table (default: file name without extension)"},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("file")) == "" {
@@ -74,7 +76,7 @@ var AppsDBDataImport = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDataImportPath(appID)).
 			Desc("Import data file into Miaoda app table (multipart upload)").
-			Params(map[string]interface{}{"env": rctx.Str("env"), "table": importTableName(rctx)}).
+			Params(map[string]interface{}{"env": dbEnv(rctx), "table": importTableName(rctx)}).
 			Body(map[string]interface{}{"file_name": fileName, "file": "<contents of --file>"})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -101,7 +103,7 @@ var AppsDBDataImport = common.Shortcut{
 		resp, err := rctx.DoAPI(&larkcore.ApiReq{
 			HttpMethod:  http.MethodPost,
 			ApiPath:     appDataImportPath(appID),
-			QueryParams: larkcore.QueryParams{"env": []string{rctx.Str("env")}, "table": []string{table}},
+			QueryParams: larkcore.QueryParams{"env": []string{dbEnv(rctx)}, "table": []string{table}},
 			Body:        fd,
 		}, larkcore.WithFileUpload())
 		if err != nil {

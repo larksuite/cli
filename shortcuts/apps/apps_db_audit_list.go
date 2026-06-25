@@ -33,17 +33,19 @@ var AppsDBAuditList = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Type: "string_slice", Desc: "table(s) to list audit events for (repeatable)", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 		{Name: "since", Desc: "filter: event at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ"},
 		{Name: "until", Desc: "filter: event at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		if len(auditListTables(rctx)) == 0 {
@@ -64,7 +66,7 @@ var AppsDBAuditList = common.Shortcut{
 			return err
 		}
 		requested := auditListTables(rctx)
-		env := rctx.Str("env")
+		env := dbEnv(rctx)
 
 		// 多表查询：CLI 侧先用 schema（表是否存在）+ status（审计是否开启）过滤，
 		// 不存在 / 未开启审计的表不进 audit_list 查询，单独在 skipped 里给出原因。
@@ -207,7 +209,7 @@ func auditListTables(rctx *common.RuntimeContext) []string {
 // buildAuditListParams 组装 audit_list 查询参数：env / tables(逗号拼接) / page_size 及可选 since/until/page_token。
 func buildAuditListParams(rctx *common.RuntimeContext, tables []string) map[string]interface{} {
 	params := map[string]interface{}{
-		"env":       rctx.Str("env"),
+		"env":       dbEnv(rctx),
 		"tables":    strings.Join(tables, ","),
 		"page_size": rctx.Int("page-size"),
 	}

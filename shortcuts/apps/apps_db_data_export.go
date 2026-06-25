@@ -42,15 +42,17 @@ var AppsDBDataExport = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "source table", Required: true},
 		{Name: "output", Desc: "local output path; extension picks format .csv/.json/.sql (default: <table>.csv)"},
 		{Name: "limit", Type: "int", Default: "5000", Desc: "max rows to export (1..5000)"},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "source db environment"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "source db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("table")) == "" {
@@ -71,7 +73,7 @@ var AppsDBDataExport = common.Shortcut{
 			GET(appDataExportPath(appID)).
 			Desc("Export Miaoda app table data (raw bytes)").
 			Params(map[string]interface{}{
-				"env": rctx.Str("env"), "table": strings.TrimSpace(rctx.Str("table")),
+				"env": dbEnv(rctx), "table": strings.TrimSpace(rctx.Str("table")),
 				"format": format, "limit": rctx.Int("limit"),
 			})
 	},
@@ -88,13 +90,13 @@ var AppsDBDataExport = common.Shortcut{
 
 		// 原子编排第 1 步：先查总行数（records 列表的 total），再导出文件。
 		// total 查询失败不阻断导出——回退到按导出文件内容数行。
-		total, totalErr := queryExportTotal(rctx, appID, rctx.Str("env"), table)
+		total, totalErr := queryExportTotal(rctx, appID, dbEnv(rctx), table)
 
 		resp, err := rctx.DoAPI(&larkcore.ApiReq{
 			HttpMethod: http.MethodGet,
 			ApiPath:    appDataExportPath(appID),
 			QueryParams: larkcore.QueryParams{
-				"env":    []string{rctx.Str("env")},
+				"env":    []string{dbEnv(rctx)},
 				"table":  []string{table},
 				"format": []string{format},
 				"limit":  []string{strconv.Itoa(rctx.Int("limit"))},

@@ -94,7 +94,7 @@ func TestAppsDBDataImport_DryRunMultipartShape(t *testing.T) {
 	_ = os.WriteFile("orders.csv", []byte("id\n1\n"), 0o600)
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBDataImport,
-		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--env", "dev", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
+		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--environment", "dev", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
 	var env struct {

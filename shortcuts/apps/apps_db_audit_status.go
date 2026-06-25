@@ -27,14 +27,15 @@ var AppsDBAuditStatus = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 		{Name: "table", Desc: "show status for a single table (default: all configured tables)"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
@@ -74,7 +75,7 @@ var AppsDBAuditStatus = common.Shortcut{
 
 // buildAuditStatusParams 组装 audit_status 查询参数：env 及可选 table（单表查询）。
 func buildAuditStatusParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": rctx.Str("env")}
+	params := map[string]interface{}{"env": dbEnv(rctx)}
 	if t := strings.TrimSpace(rctx.Str("table")); t != "" {
 		params["table"] = t
 	}

@@ -10,25 +10,25 @@
 
 | 命令 | 做什么 | 关键参数 |
 |---|---|---|
-| `+db-table-list` | 列出某环境的数据表 | `--env`、`--page-size`/`--page-token` |
-| `+db-table-get` | 看单张表的结构（字段/索引/约束/DDL） | `--table`、`--env`、`--format` |
-| `+db-env-create` | 把单库应用初始化为 dev/online 多环境（高危） | `--env`、`--sync-data`、`--yes` |
-| `+db-data-export` | 把一张表的数据导出到本地文件 | `--table`、`--output`、`--limit`、`--env` |
-| `+db-data-import` | 把本地 csv/json 文件导进一张表（高危） | `--file`、`--table`、`--env`、`--yes` |
-| `+db-changelog-list` | 查表结构变更（DDL）历史 | `--table`、`--change-id`、`--since`/`--until`、`--env` |
-| `+db-audit-status` | 看哪些表开了行级审计、保留期 | `--table`、`--env` |
-| `+db-audit-enable` | 给某表开启行级变更审计 | `--table`、`--retention`、`--env` |
-| `+db-audit-disable` | 关闭某表的行级审计 | `--table`、`--env` |
-| `+db-audit-list` | 列出表的行级变更事件（增删改追溯） | `--table`（可重复）、`--since`/`--until`、`--env` |
+| `+db-table-list` | 列出某环境的数据表 | `--environment`、`--page-size`/`--page-token` |
+| `+db-table-get` | 看单张表的结构（字段/索引/约束/DDL） | `--table`、`--environment`、`--format` |
+| `+db-env-create` | 把单库应用初始化为 dev/online 多环境（高危） | `--environment`、`--sync-data`、`--yes` |
+| `+db-data-export` | 把一张表的数据导出到本地文件 | `--table`、`--output`、`--limit`、`--environment` |
+| `+db-data-import` | 把本地 csv/json 文件导进一张表（高危） | `--file`、`--table`、`--environment`、`--yes` |
+| `+db-changelog-list` | 查表结构变更（DDL）历史 | `--table`、`--change-id`、`--since`/`--until`、`--environment` |
+| `+db-audit-status` | 看哪些表开了行级审计、保留期 | `--table`、`--environment` |
+| `+db-audit-enable` | 给某表开启行级变更审计 | `--table`、`--retention`、`--environment` |
+| `+db-audit-disable` | 关闭某表的行级审计 | `--table`、`--environment` |
+| `+db-audit-list` | 列出表的行级变更事件（增删改追溯） | `--table`（可重复）、`--since`/`--until`、`--environment` |
 | `+db-env-diff` | 预览开发环境待发布到线上的结构变更 | `--app-id` |
 | `+db-env-migrate` | 把开发环境的结构变更发布到线上（高危） | `--app-id`、`--yes` |
 | `+db-recovery-diff` | 预览把库恢复到某时间点会带来的变更 | `--target` |
 | `+db-recovery-apply` | 把库恢复到某个时间点、覆盖当前数据（高危） | `--target`、`--yes` |
-| `+db-quota-get` | 查数据库存储用量 | `--env` |
+| `+db-quota-get` | 查数据库存储用量 | `--environment` |
 
 ## 约定（先读）
 
-- **环境 `--env dev|online`（默认 online）**：看表、看结构、数据导入导出、变更追溯、审计、配额、初始化都按环境区分，写操作建议先在 `dev` 验。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义、`+db-recovery-*` 作用于当前库，二者**没有** `--env`。
+- **环境 `--environment dev|online`（默认 online；`+db-execute`/`+db-env-create` 默认 dev）**：看表、看结构、数据导入导出、变更追溯、审计、配额、初始化都按环境区分，写操作建议先在 `dev` 验。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义、`+db-recovery-*` 作用于当前库，二者**没有** `--environment`。
 - **本地文件用工作目录内相对路径**：导入 `--file ./orders.csv`、导出 `--output ./out.csv`；路径在别处先 `cd` 过去或改成相对路径。
 - **高危操作必须带 `--yes`**：`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply` 缺省会被确认关卡拦下；动手前先用对应的预览命令或 `--dry-run` 看清影响。
 - **时间参数按口语自然传**（`--since`/`--until`/`--target`），格式见末尾。
@@ -41,23 +41,23 @@
 
 ```bash
 lark-cli apps +db-table-list --app-id app_xxx
-lark-cli apps +db-table-list --app-id app_xxx --env dev --page-size 50
+lark-cli apps +db-table-list --app-id app_xxx --environment dev --page-size 50
 ```
 
 **`+db-table-get`**：看单张表的结构。默认 JSON 给结构化的字段 / 索引 / 约束 / 估算行数 / 大小；`--format pretty` 直接输出建表 DDL 文本（给用户看建表语句或做迁移参照时用）。
 
 ```bash
 lark-cli apps +db-table-get --app-id app_xxx --table orders
-lark-cli apps +db-table-get --app-id app_xxx --table orders --env dev --format pretty
+lark-cli apps +db-table-get --app-id app_xxx --table orders --environment dev --format pretty
 ```
 
 ### 多环境数据库（初始化 + 发布）
 
-**`+db-env-create`（高危）**：把存量单库应用初始化为 dev/online 两套库，不可逆，必须带 `--yes`。`--env` 目前只支持 `dev`（默认 `dev`）；`--sync-data` 把现有 online 数据复制到新环境（不传则不复制）。注意：`+create --app-type full_stack` 新建的应用通常已自带多环境，重复初始化会返回冲突错误（应用已是多环境）——按 `error.hint` 转述状态即可，别重复初始化。
+**`+db-env-create`（高危）**：把存量单库应用初始化为 dev/online 两套库，不可逆，必须带 `--yes`。`--environment` 目前只支持 `dev`（默认 `dev`）；`--sync-data` 把现有 online 数据复制到新环境（不传则不复制）。注意：`+create --app-type full_stack` 新建的应用通常已自带多环境，重复初始化会返回冲突错误（应用已是多环境）——按 `error.hint` 转述状态即可，别重复初始化。
 
 ```bash
-lark-cli apps +db-env-create --app-id app_xxx --env dev --dry-run
-lark-cli apps +db-env-create --app-id app_xxx --env dev --sync-data --yes
+lark-cli apps +db-env-create --app-id app_xxx --environment dev --dry-run
+lark-cli apps +db-env-create --app-id app_xxx --environment dev --sync-data --yes
 ```
 
 **`+db-env-diff`**：预览开发环境里待发布到线上的表结构变更，不落地。发布前先看这个。无待发布变更时明确返回「无变更」。
@@ -82,13 +82,13 @@ lark-cli apps +db-env-migrate --app-id app_xxx --yes
 
 ```bash
 lark-cli apps +db-data-export --app-id app_xxx --table orders --output ./orders.csv
-lark-cli apps +db-data-export --app-id app_xxx --table orders --output ./orders.json --env dev
+lark-cli apps +db-data-export --app-id app_xxx --table orders --output ./orders.json --environment dev
 ```
 
 **`+db-data-import`（高危）**：把本地 csv/json 文件的数据导进表。文件需是 `.csv`/`.json`、≤1 MB，必须带 `--yes`。目标表缺省取文件名去掉**最后一个**扩展名（如 `orders.csv`→`orders`，`orders.2026.csv`→`orders.2026`）；文件名带点号时建议显式传 `--table` 以免落到意外的表名。
 
 ```bash
-lark-cli apps +db-data-import --app-id app_xxx --table orders --file ./orders.csv --env dev --yes
+lark-cli apps +db-data-import --app-id app_xxx --table orders --file ./orders.csv --environment dev --yes
 ```
 
 **导入/导出限额**：体积 ≤ **1 MB**、行数 ≤ **5000**，导入导出都一样，超限会被拒。超限就分批——导入拆成 ≤1 MB / ≤5000 行的多个文件，导出用 `WHERE` / `LIMIT` 缩小范围。
@@ -139,7 +139,7 @@ lark-cli apps +db-recovery-apply --app-id app_xxx --target 2026-04-15T10:00:00Z 
 **`+db-quota-get`**：查数据库存储用量（已用量、表数、视图数；配额接入后还会给总配额与使用率）。
 
 ```bash
-lark-cli apps +db-quota-get --app-id app_xxx --env dev
+lark-cli apps +db-quota-get --app-id app_xxx --environment dev
 ```
 
 ## 时间格式（`--since` / `--until` / `--target`）
@@ -152,9 +152,9 @@ lark-cli apps +db-quota-get --app-id app_xxx --env dev
 
 ## Agent 规则
 
-- 用户说「本地 / 开发库 / 调试库」优先 `--env dev`，线上排查用 `--env online`；数据面写操作（导入 / 审计开关）默认先在 `dev` 验再动 `online`。
+- 用户说「本地 / 开发库 / 调试库」优先 `--environment dev`，线上排查用 `--environment online`；数据面写操作（导入 / 审计开关）默认先在 `dev` 验再动 `online`。
 - 看表用 `+db-table-list`，看结构用 `+db-table-get`（要建表语句加 `--format pretty`）；`+db-env-create` 仅用于存量单库拆多环境，新建的 full_stack 应用一般不需要。
-- 四个高危命令（`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`）动手前先看清影响再带 `--yes`：发布 / 恢复先跑对应预览 `+db-env-diff` / `+db-recovery-diff`，导入无预览命令、可先 `--dry-run` 看请求或先在 `--env dev` 验；不要静默追加 `--yes`，遇 confirmation_required（exit 10）按 lark-shared 协议向用户确认不可逆风险后再补 `--yes` 重试。
+- 四个高危命令（`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply`）动手前先看清影响再带 `--yes`：发布 / 恢复先跑对应预览 `+db-env-diff` / `+db-recovery-diff`，导入无预览命令、可先 `--dry-run` 看请求或先在 `--environment dev` 验；不要静默追加 `--yes`，遇 confirmation_required（exit 10）按 lark-shared 协议向用户确认不可逆风险后再补 `--yes` 重试。
 - 导入 / 导出的本地路径用工作目录内相对路径；超大表导出会被行数 / 体积上限拒，改用 `+db-execute` 分批。
 - `+db-audit-list` 多表查询时，把结果里 `skipped` 的表（不存在 / 未开审计）连同原因一并向用户说明，不要让用户以为这些表「没有变更」。
 - 恢复是覆盖式且不可逆：`+db-recovery-apply` 前必须先 `+db-recovery-diff`，并明确告知用户会覆盖当前数据。

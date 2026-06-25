@@ -22,32 +22,33 @@ var AppsDBQuotaGet = common.Shortcut{
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +db-quota-get --app-id <app_id>",
-		"Example: lark-cli apps +db-quota-get --app-id <app_id> --env dev",
+		"Example: lark-cli apps +db-quota-get --app-id <app_id> --environment dev",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(appDbQuotaPath(appID)).
 			Desc("Get Miaoda app database storage usage").
-			Params(map[string]interface{}{"env": rctx.Str("env")})
+			Params(map[string]interface{}{"env": dbEnv(rctx)})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), map[string]interface{}{"env": rctx.Str("env")}, nil)
+		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), map[string]interface{}{"env": dbEnv(rctx)}, nil)
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}

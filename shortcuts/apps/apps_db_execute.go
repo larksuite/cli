@@ -55,21 +55,23 @@ var AppsDBExecute = common.Shortcut{
 	Risk:        "high-risk-write",
 	Tips: []string{
 		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
-		`Example: lark-cli apps +db-execute --app-id <app_id> --env dev --file ./migration.sql --yes`,
+		`Example: lark-cli apps +db-execute --app-id <app_id> --environment dev --file ./migration.sql --yes`,
 		"Tip: single SELECT returns data as a row array — filter with --jq, e.g. -q '.data[].id'",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "sql", Desc: "SQL text; use - to read stdin. Mutually exclusive with --file",
 			Input: []string{common.Stdin}},
 		{Name: "file", Desc: "path to a .sql file (relative to cwd). Mutually exclusive with --sql"},
-		{Name: "env", Default: "dev", Enum: []string{"dev", "online"}, Desc: "target db environment (default dev; use --env online for the online environment)"},
-	},
+	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use --environment online for the online environment)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		sql := strings.TrimSpace(rctx.Str("sql"))
@@ -108,7 +110,7 @@ var AppsDBExecute = common.Shortcut{
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {
-			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
+			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--environment dev`")
 		}
 
 		// server `result: string` 内嵌结构化数组 —— CLI 解出来后按 SQL 类型归一化成 PRD 形态，
@@ -290,7 +292,7 @@ func parseErrorSentinel(data string) (int, string) {
 // CLI 永远走 DBA 模式，原子性由用户在 SQL 内显式 BEGIN/COMMIT 控制；不暴露 transactional flag 给用户。
 func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
 	return map[string]interface{}{
-		"env":           rctx.Str("env"),
+		"env":           dbEnv(rctx),
 		"transactional": false,
 	}
 }

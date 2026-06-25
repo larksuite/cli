@@ -12,7 +12,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const dbChangelogHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+const dbChangelogHint = "verify --app-id is correct; if targeting --environment dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`"
 
 // AppsDBChangelogList 列出应用数据库的 DDL 变更记录（建表/改表/索引等结构变更追溯）。
 //
@@ -31,18 +31,20 @@ var AppsDBChangelogList = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 		{Name: "table", Desc: "filter by target table"},
 		{Name: "change-id", Desc: "look up a single change by id (returns that one record only)"},
 		{Name: "since", Desc: "filter: changed at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ"},
 		{Name: "until", Desc: "filter: changed at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		return normalizeTimeFlags(rctx, "since", "until")
@@ -76,7 +78,7 @@ var AppsDBChangelogList = common.Shortcut{
 // buildChangelogParams 组装 changelog_list 查询参数：env / page_size 及可选 table/change_id/since/until/page_token。
 func buildChangelogParams(rctx *common.RuntimeContext) map[string]interface{} {
 	params := map[string]interface{}{
-		"env":       rctx.Str("env"),
+		"env":       dbEnv(rctx),
 		"page_size": rctx.Int("page-size"),
 	}
 	addStr := func(flag, key string) {

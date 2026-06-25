@@ -33,7 +33,7 @@ func TestAppsDBChangelogList_RequiresAppID(t *testing.T) {
 func TestAppsDBChangelogList_DryRunFiltersAndTimeNormalize(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBChangelogList,
-		[]string{"+db-changelog-list", "--app-id", "app_x", "--env", "dev", "--table", "orders",
+		[]string{"+db-changelog-list", "--app-id", "app_x", "--environment", "dev", "--table", "orders",
 			"--change-id", "01J", "--since", "2026-01-01", "--page-size", "5", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}

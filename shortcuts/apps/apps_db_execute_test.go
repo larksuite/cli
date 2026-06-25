@@ -161,7 +161,7 @@ func TestAppsDBExecute_MultiStatementJSONShape(t *testing.T) {
 func TestAppsDBExecute_DryRunSendsTransactionalFalse(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBExecute,
-		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--environment", "dev", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -203,6 +203,23 @@ func TestAppsDBExecute_RejectsEmptySQL(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_LegacyEnvFlagRejected 钉死：旧名 --env 已移除，显式传入报 validation 错并指向 --environment。
+func TestAppsDBExecute_LegacyEnvFlagRejected(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--env", "dev", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatalf("--env should be rejected; stdout:\n%s", stdout.String())
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation {
+		t.Fatalf("want a typed validation error, got %T: %v", err, err)
+	}
+	if !strings.Contains(p.Message, "--environment") {
+		t.Errorf("message should point to --environment: %q", p.Message)
+	}
+}
+
 // --sql 与 --file 互斥
 func TestAppsDBExecute_RejectsSQLAndFileTogether(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -233,7 +250,7 @@ func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBExecute,
-		[]string{"+db-execute", "--app-id", "app_x", "--env", "dev", "--file", "m.sql", "--dry-run", "--as", "user"},
+		[]string{"+db-execute", "--app-id", "app_x", "--environment", "dev", "--file", "m.sql", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}

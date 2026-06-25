@@ -31,22 +31,23 @@ var AppsDBAuditEnable = common.Shortcut{
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "table to enable audit for", Required: true},
 		{Name: "retention", Default: "7d", Enum: auditRetentions, Desc: "how long to keep audit logs"},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			POST(appAuditSetPath(appID)).
 			Desc("Enable table audit").
-			Params(map[string]interface{}{"env": rctx.Str("env")}).
+			Params(map[string]interface{}{"env": dbEnv(rctx)}).
 			Body(map[string]interface{}{"table": strings.TrimSpace(rctx.Str("table")), "enabled": true, "retention": rctx.Str("retention")})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -59,7 +60,7 @@ var AppsDBAuditEnable = common.Shortcut{
 		stop := rctx.StartSpinner("Enabling audit logging for " + table)
 		defer stop()
 		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			map[string]interface{}{"env": rctx.Str("env")},
+			map[string]interface{}{"env": dbEnv(rctx)},
 			map[string]interface{}{"table": table, "enabled": true, "retention": retention})
 		stop()
 		if err != nil {
@@ -92,21 +93,22 @@ var AppsDBAuditDisable = common.Shortcut{
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "table to disable audit for", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			POST(appAuditSetPath(appID)).
 			Desc("Disable table audit").
-			Params(map[string]interface{}{"env": rctx.Str("env")}).
+			Params(map[string]interface{}{"env": dbEnv(rctx)}).
 			Body(map[string]interface{}{"table": strings.TrimSpace(rctx.Str("table")), "enabled": false})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -116,7 +118,7 @@ var AppsDBAuditDisable = common.Shortcut{
 		}
 		table := strings.TrimSpace(rctx.Str("table"))
 		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			map[string]interface{}{"env": rctx.Str("env")},
+			map[string]interface{}{"env": dbEnv(rctx)},
 			map[string]interface{}{"table": table, "enabled": false})
 		if err != nil {
 			return withAppsHint(err, dbAuditSetHint)

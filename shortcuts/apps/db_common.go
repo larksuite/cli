@@ -12,7 +12,36 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
+	"github.com/larksuite/cli/shortcuts/common"
 )
+
+// ── db 环境 flag：--environment 是唯一受理名；旧名 --env 已移除 ──
+//
+// 硬改名：标准名 --environment（带默认/枚举）正常注册并受理；旧名 --env 仅注册为隐藏 flag，
+// 目的是「传了能被识别并给出清晰报错」而非继续受理——一旦显式传 --env，在 Validate 阶段直接
+// 返回 validation 错、指向 --environment。所有 DryRun/Execute 经 dbEnv() 只读 --environment。
+
+// dbEnvFlags 返回环境 flag 对，供各 db 命令 append 进自己的 Flags。
+func dbEnvFlags(def string, enum []string, desc string) []common.Flag {
+	return []common.Flag{
+		{Name: "environment", Default: def, Enum: enum, Desc: desc},
+		{Name: "env", Hidden: true, Desc: "removed: use --environment"},
+	}
+}
+
+// dbEnv 取环境值：只认标准 --environment（含其默认值）；旧名 --env 不再受理（见 rejectLegacyEnvFlag）。
+func dbEnv(rctx *common.RuntimeContext) string {
+	return rctx.Str("environment")
+}
+
+// rejectLegacyEnvFlag 在 Validate 阶段拦截已移除的 --env：显式传了就报清晰的 validation 错，指向 --environment。
+func rejectLegacyEnvFlag(rctx *common.RuntimeContext) error {
+	if rctx.Changed("env") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--env is no longer supported; use --environment instead").WithParam("--env")
+	}
+	return nil
+}
 
 // pollUntil 轮询异步任务直到 check 判定终态。async migrate/recovery 用：dataloom 立即返
 // task_id/preview_request_id，CLI 自己 poll（避免单连接长挂被网关/SDK 30s 中断）。
