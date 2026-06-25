@@ -246,8 +246,9 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 			shortcutHelp: "Create a Lark document",
 			visibleFlag:  "--content",
 			skillCommand: "lark-cli skills read lark-doc references/lark-doc-create.md",
-			hiddenFlags:  []string{"title", "markdown", "folder-token", "wiki-node", "wiki-space"},
+			hiddenFlags:  []string{"markdown", "folder-token", "wiki-node", "wiki-space"},
 			contentHelp: []string{
+				"--title",
 				"AI agents MUST read",
 				"lark-cli skills read lark-doc references/lark-doc-xml.md",
 				"before writing any --content payload",
@@ -257,7 +258,7 @@ func TestRegisterShortcutsDocsShortcutHelpIsV2Only(t *testing.T) {
 				"MUST NOT grep/open local SKILL.md files",
 				"use --help for the latest command flags",
 			},
-			unwanted: []string{"--markdown", "--title", "--folder-token", "--wiki-node", "--wiki-space"},
+			unwanted: []string{"--markdown", "--folder-token", "--wiki-node", "--wiki-space"},
 		},
 		{
 			name:         "fetch",
