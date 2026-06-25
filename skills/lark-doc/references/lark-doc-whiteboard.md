@@ -23,7 +23,7 @@
 |-------------------------|-----------------------------------------------------------|
 | 文档中需要思维导图、时序图、类图、饼图、甘特图 | 步骤 2A:使用 mermaid 插入图表                                     |
 | 文档中需要插入其他图表/自定义图形       | 步骤 2B: 使用 SVG 插入图表                                        |
-| 已有画板需要更新内容              | 先 `docs +fetch --api-version v2` 获取 `board_token`，跳至步骤 3B |
+| 已有画板需要更新内容              | 先 `docs +fetch` 获取 `board_token`，跳至步骤 3B |
 | 只查看 / 下载已有画板            | 切换至 `lark-whiteboard`，不走本流程                               |
 
 > [!IMPORTANT]
@@ -46,7 +46,7 @@ SubAgent 插入 SVG。
 
 ### 步骤 2B: SubAgent 使用 SVG 插入图表
 
-主 Agent 启动 SubAgent，让它用 `docs +create --api-version v2` / `docs +update --api-version v2` 插入：
+主 Agent 启动 SubAgent，让它用 `docs +create` / `docs +update` 插入：
 
 ```xml
 

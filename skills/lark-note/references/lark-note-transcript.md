@@ -17,7 +17,7 @@ lark-cli note +transcript --note-id NOTE_ID
 
 | 场景 | 正确路由 |
 |------|---------|
-| 只有纪要文档标题 | 先文档搜索，再 `docs +fetch --api-version v2`；有 `vc-node-id` 才回 Note 域 |
-| 只有 Docx URL / `doc_token` | 先 `docs +fetch --api-version v2`；不要从 `doc_token` 反推 `note_id` |
-| `note_display_type=normal` | `docs +fetch --api-version v2 --doc <verbatim_doc_token>` |
+| 只有纪要文档标题 | 先文档搜索，再 `docs +fetch`；有 `vc-node-id` 才回 Note 域 |
+| 只有 Docx URL / `doc_token` | 先 `docs +fetch`；不要从 `doc_token` 反推 `note_id` |
+| `note_display_type=normal` | `docs +fetch --doc <verbatim_doc_token>` |
 | `note_display_type=unknown` 且 `verbatim_doc_token` 非空 | 先按独立逐字稿文档读取 |

@@ -27,7 +27,7 @@ lark-cli drive file.comments batch_query \
 同时获取文档内容，并要求返回 block id：
 
 ```bash
-lark-cli docs +fetch --api-version v2 --doc '<doc_token_or_url>' --detail with-ids
+lark-cli docs +fetch --doc '<doc_token_or_url>' --detail with-ids
 ```
 
 ## 字段含义
@@ -127,7 +127,7 @@ lark-cli docs +fetch --api-version v2 --doc '<doc_token_or_url>' --detail with-i
 
 1. 确认目标是 `file_type=docx`；只有 docx 文档支持通过 `need_relation` 查询评论位置。
 2. 用 `drive file.comments list` 或 `drive file.comments batch_query` 获取评论，并带 `need_relation=true`。
-3. 用 `docs +fetch --api-version v2 --detail with-ids` 获取文档内容。
+3. 用 `docs +fetch --detail with-ids` 获取文档内容。
 4. 对每条评论先看 `relation`：
    - 如果存在 `relation.relation`，解析这个 JSON 字符串。
    - 从解析结果里取 `positionInfo.blockID`。

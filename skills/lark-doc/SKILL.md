@@ -1,31 +1,29 @@
 ---
 name: lark-doc
 version: 2.0.0
-description: "飞书云文档（Docx / Wiki 文档，v2 API）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
+description: "飞书云文档（Docx / Wiki 文档）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
 metadata:
   requires:
     bins: ["lark-cli"]
-  cliHelp: "lark-cli docs --api-version v2 --help; lark-cli docs +create --api-version v2 --help; lark-cli docs +fetch --api-version v2 --help; lark-cli docs +update --api-version v2 --help; lark-cli docs +resource-download --help; lark-cli docs +resource-update --help; lark-cli docs +resource-delete --help"
+  cliHelp: "lark-cli docs --help; lark-cli docs +create --help; lark-cli docs +fetch --help; lark-cli docs +update --help; lark-cli docs +resource-download --help; lark-cli docs +resource-update --help; lark-cli docs +resource-delete --help"
 ---
 
-# docs (v2)
+# docs
 
 **身份：文档操作默认使用 `--as user`。首次使用前执行 `lark-cli auth login`。**
 
-> **CRITICAL — API 版本：本 skill 使用 v2 API。执行 `docs +create`、`docs +fetch`、`docs +update` 时必须显式传入 `--api-version v2`。**
-
 ```bash
 # 常用示例
-lark-cli docs +fetch  --api-version v2 --doc "文档URL或token"
-lark-cli docs +create --api-version v2 --content '<title>标题</title><p>内容</p>'
-lark-cli docs +update --api-version v2 --doc "文档URL或token" --command append --content '<p>内容</p>'
+lark-cli docs +fetch --doc "文档URL或token"
+lark-cli docs +create --content '<title>标题</title><p>内容</p>'
+lark-cli docs +update --doc "文档URL或token" --command append --content '<p>内容</p>'
 ```
 
 ## 前置条件 — 执行操作前必读
 
 **CRITICAL — 执行对应操作前，MUST 先用 Read 工具读取以下文件，缺一不可：**
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
-2. **读取文档（`docs +fetch --api-version v2`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
+2. **读取文档（`docs +fetch`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
 3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）和 [`lark-doc-style.md`](references/style/lark-doc-style.md)（元素选择、丰富度规则、颜色语义）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update.md`](references/lark-doc-update.md) 和 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
 
 **未读完以上文件就执行相应操作会导致参数选择错误或格式错误。**
@@ -57,7 +55,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 | `<cite type="doc" file-type="sheets" token="..." sheet-id="...">` | 同 `<sheet>` | [`lark-sheets`](../lark-sheets/SKILL.md) |
 | `<cite type="doc" file-type="bitable" token="..." table-id="...">` | 同 `<bitable>` | [`lark-base`](../lark-base/SKILL.md) |
 | `<vc-transcribe-tab vc-node-id="...">` | `vc-node-id` -> note_id | [`lark-note`](../lark-note/SKILL.md)：先 `note +detail --note-id <vc-node-id>` |
-| `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `docs +fetch --api-version v2` 读取 src-token 文档，定位 block |
+| `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `docs +fetch` 读取 src-token 文档，定位 block |
 
 ## Shortcuts（推荐优先使用）
 

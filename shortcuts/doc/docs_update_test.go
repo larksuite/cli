@@ -34,8 +34,8 @@ func TestValidCommandsV2(t *testing.T) {
 	}
 }
 
-func TestDocsUpdateDryRunAcceptsDeprecatedAPIVersionValues(t *testing.T) {
-	for _, apiVersion := range []string{"v1", "v2"} {
+func TestDocsUpdateDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
+	for _, apiVersion := range []string{"v1", "v2", "legacy"} {
 		t.Run(apiVersion, func(t *testing.T) {
 			t.Parallel()
 

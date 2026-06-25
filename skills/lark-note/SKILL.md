@@ -17,18 +17,18 @@ metadata:
 > 2. 了解会议产物（妙记和纪要）之间的关联关系，例如：**妙记和纪要产生条件相互独立**
 > 3. 了解不同会议产物的组成部分，以便根据需求决策使用哪种产物的数据
 
-Note 域只接受显式 `note_id`：用户直接提供，或 `docs +fetch --api-version v2` 返回的 `<vc-transcribe-tab vc-node-id="...">` 中的 `vc-node-id`。不要从 `doc_token`、标题、正文或 backlink 反推 `note_id`。
+Note 域只接受显式 `note_id`：用户直接提供，或 `docs +fetch` 返回的 `<vc-transcribe-tab vc-node-id="...">` 中的 `vc-node-id`。不要从 `doc_token`、标题、正文或 backlink 反推 `note_id`。
 
 ## 命令路由
 
 | 用户表达 / 上下文 | 路由 |
 |---------|------|
 | 已知 `note_id`，查纪要类型 / 文档 token | `note +detail --note-id NOTE_ID` |
-| `docs +fetch --api-version v2` 返回 `<vc-transcribe-tab vc-node-id="...">` | 取 `vc-node-id` 作为 `NOTE_ID`，先 `note +detail --note-id NOTE_ID` |
+| `docs +fetch` 返回 `<vc-transcribe-tab vc-node-id="...">` | 取 `vc-node-id` 作为 `NOTE_ID`，先 `note +detail --note-id NOTE_ID` |
 | 只持有 `meeting_id` | 先 `vc +detail --meeting-ids <id>` 拿 `note_id`，再 `note +detail --note-id NOTE_ID` |
 | 只持有 `minute_token`（妙记 URL） | 先 `minutes +detail --minute-tokens <token>` 顶层取 `note_id`，再 `note +detail --note-id NOTE_ID`（不要把 `minute_token` 当 `note_id`） |
 | 只持有日程 `event_id` | 先 `calendar +meeting --event-ids <id>` 拿 `meeting_id`，再按上一行继续 |
-| 已知 `note_id`，读纪要正文 | `note +detail` → `docs +fetch --api-version v2 --doc <note_doc_token>` |
+| 已知 `note_id`，读纪要正文 | `note +detail` → `docs +fetch --doc <note_doc_token>` |
 | 已知 `note_id`，查 unified 原始记录 / 逐字稿 | `note +transcript --note-id NOTE_ID` |
 | 只有自然语言纪要标题，用户要逐字稿 / 原始记录 / 谁说了什么 | 不进本 skill；先走文档搜索与 `docs +fetch`，拿到 `vc-node-id` 后再回来 |
 
@@ -36,7 +36,7 @@ Note 域只接受显式 `note_id`：用户直接提供，或 `docs +fetch --api-
 
 | `note +detail` 结果 | 用户要逐字稿 / 原始记录时 |
 |------|---------------|
-| `normal` + `verbatim_doc_token` 非空 | `docs +fetch --api-version v2 --doc <verbatim_doc_token>` |
+| `normal` + `verbatim_doc_token` 非空 | `docs +fetch --doc <verbatim_doc_token>` |
 | `unknown` + `verbatim_doc_token` 非空 | 先按独立文档处理；不要猜成 unified |
 | `unknown` + 无逐字稿 token | 停止重试并说明无法确定逐字稿入口 |
 | `unified` | `note +transcript --note-id <note_id>` |
@@ -80,7 +80,7 @@ Note 域只接受显式 `note_id`：用户直接提供，或 `docs +fetch --api-
 
 1. 当用户已有 `note_id`，需要获取对应的 `note_doc_token`、`verbatim_doc_token` 或 `shared_doc_tokens` 时，使用 `note +detail`。
 2. `note_id` 通常来自 `vc +detail` 的返回结果。
-3. 获取到文档 Token 后，可使用 `docs +fetch --api-version v2` 读取文档内容，或使用 `drive metas batch_query` 获取文档元信息。
+3. 获取到文档 Token 后，可使用 `docs +fetch` 读取文档内容，或使用 `drive metas batch_query` 获取文档元信息。
 
 ```bash
 # 1. 从会议获取 note_id
@@ -90,5 +90,5 @@ lark-cli vc +detail --meeting-ids <meeting_id>
 lark-cli note +detail --note-id <note_id>
 
 # 3. 读取纪要文档内容
-lark-cli docs +fetch --api-version v2 --doc <note_doc_token> --doc-format markdown
+lark-cli docs +fetch --doc <note_doc_token> --doc-format markdown
 ```

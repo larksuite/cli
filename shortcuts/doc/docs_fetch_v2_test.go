@@ -507,10 +507,10 @@ func TestDocsFetchDryRunDefaultsToV2Endpoint(t *testing.T) {
 	}
 }
 
-func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
+func TestDocsFetchAPIVersionCompatFlagIsIgnored(t *testing.T) {
 	t.Parallel()
 
-	runtime := newFetchShortcutTestRuntime(t, "v1", nil)
+	runtime := newFetchShortcutTestRuntime(t, "legacy", nil)
 	if err := validateFetchV2(context.Background(), runtime); err != nil {
 		t.Fatalf("validateFetchV2() error = %v", err)
 	}
