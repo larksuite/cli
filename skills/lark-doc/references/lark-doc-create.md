@@ -15,7 +15,7 @@
 ## 命令
 
 ```bash
-# 创建 XML 文档（默认格式，推荐；标题写在 <title> 中）
+# 创建 XML 文档（默认格式，推荐）
 lark-cli docs +create --api-version v2 --content '<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>'
 
 # 仅当用户明确要求导入 Markdown 时才使用；文档标题用 --title，正文标题按内容自然组织

@@ -17,7 +17,7 @@ metadata:
 ```bash
 # 常用示例
 lark-cli docs +fetch  --api-version v2 --doc "文档URL或token"
-lark-cli docs +create --api-version v2 --title "标题" --content '<p>内容</p>'
+lark-cli docs +create --api-version v2 --content '<title>标题</title><p>内容</p>'
 lark-cli docs +update --api-version v2 --doc "文档URL或token" --command append --content '<p>内容</p>'
 ```
 
