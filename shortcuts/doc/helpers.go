@@ -36,6 +36,9 @@ func parseDocumentRef(input string) (documentRef, error) {
 	if token, ok := extractDocumentToken(raw, "/doc/"); ok {
 		return documentRef{Kind: "doc", Token: token}, nil
 	}
+	if _, ok := extractDocumentToken(raw, "/mindnote/"); ok {
+		return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: native Mind Note content reading/editing is not currently supported; do not route native Mind Note URLs to whiteboard, use Drive operations only for metadata, permissions, or file organization", raw).WithParam("--doc")
+	}
 	if strings.Contains(raw, "://") {
 		return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a docx URL/token or a wiki URL that resolves to docx", raw).WithParam("--doc")
 	}

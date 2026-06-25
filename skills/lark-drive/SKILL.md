@@ -1,7 +1,7 @@
 ---
 name: lark-drive
 version: 1.0.0
-description: "飞书云空间（云盘/云存储）：管理 Drive 文件和文件夹，包含上传/下载、创建文件夹、复制/移动/删除、查看元数据、评论/权限/订阅、标题、版本和本地文件导入。用户需要整理云盘目录、处理云空间资源 URL/token，或导入 Word/Markdown/Excel/CSV/PPTX/.base 为 docx/sheet/bitable/slides 时使用；doubao.com 云空间 URL/token 也按资源路径和 token 路由，不回退 WebFetch。不负责：文档内容编辑（走 lark-doc）、表格/Base 表内数据操作（走 lark-sheets/lark-base）、知识空间节点/成员管理（走 lark-wiki）、原生 Markdown 文件读写/patch/diff（走 lark-markdown）。"
+description: "飞书云空间（云盘/云存储）：管理 Drive 文件和文件夹，包含上传/下载、创建文件夹、复制/移动/删除、查看元数据、评论/权限/订阅、标题、版本和本地文件导入。用户需要整理云盘目录、处理云空间资源 URL/token，或导入 Word/Markdown/Excel/CSV/PPTX/.base 为 docx/sheet/bitable/slides 时使用；doubao.com 云空间 URL/token 也按资源路径和 token 路由，不回退 WebFetch。Mind Note 仅支持云空间层面的移动、权限、元数据等操作；不负责 Mind Note 内容读取或节点编辑。不负责：文档内容编辑（走 lark-doc）、表格/Base 表内数据操作（走 lark-sheets/lark-base）、知识空间节点/成员管理（走 lark-wiki）、原生 Markdown 文件读写/patch/diff（走 lark-markdown）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -23,6 +23,7 @@ metadata:
 - 用户要**搜文档 / Wiki / 电子表格 / 多维表格 / 云空间（云盘/云存储）对象**，优先使用 `lark-cli drive +search`。自然语言里"最近我编辑过的"、"我创建的"（→ `--created-by-me`，原始创建者语义）、"我负责/owner 的"（→ `--mine`，owner 语义）、"最近一周我打开过的 xxx"、"某人 owner 的 docx" 等直接映射到扁平 flag，避免手写嵌套 JSON。
 - 用户要**根据文档评论定位正文位置**，例如 根据评论 review 文档、根据评论内容回看文档、区分多处相同引用文本时，对于 docx 类型（`file_type=docx`）的文档支持通过 `need_relation=true` 返回评论位置，其他类型暂不支持，具体用法需要先阅读 [`references/lark-drive-comment-location.md`](references/lark-drive-comment-location.md) 了解。
 - 用户给出 doubao.com 的云空间资源 URL/token，或明确提到豆包里的 file/folder/docx/sheet/bitable/wiki 资源时，仍按资源类型、URL 路径和 token 路由到本 skill；不要因为域名不是飞书而回退到 WebFetch。
+- 用户给出 `/mindnote/` URL 时，本 skill 只处理 Drive 层能力，例如移动、删除、权限、密级、标题、元数据、搜索或整理目录；当前 CLI 不支持 Mind Note 内容读取或节点编辑，不要切到 `lark-doc` 或 `lark-whiteboard` 继续尝试。
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.pptx` 导入成飞书幻灯片，使用 `lark-cli drive +import --type slides`；当前 PPTX 导入上限是 500MB。
@@ -54,6 +55,7 @@ metadata:
 | `/docx/` | `https://example.larksuite.com/docx/doxcnxxxxxxxxx`    | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/doc/` | `https://example.larksuite.com/doc/doccnxxxxxxxxx`     | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/wiki/` | `https://example.larksuite.com/wiki/wikcnxxxxxxxxx`    | `wiki_token` | 不能直接当底层 `file_token`；优先用 `drive +inspect` 解包获取 `obj_token` |
+| `/mindnote/` | `https://example.larksuite.com/mindnote/mindcnxxxxxxxxx` | `file_token` | 仅用于 Drive 层操作；不支持内容读取或节点编辑 |
 | `/sheets/` | `https://example.larksuite.com/sheets/shtcnxxxxxxxxx`  | `file_token` | URL 路径中的 token 直接作为 `file_token` 使用 |
 | `/drive/folder/` | `https://example.larksuite.com/drive/folder/fldcnxxxx` | `folder_token` | URL 路径中的 token 作为文件夹 token 使用 |
 
@@ -113,6 +115,7 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 - Base / 多维表格内部的表、字段、记录、视图、仪表盘等操作：使用 [`lark-base`](../lark-base/SKILL.md)。
 - 知识空间、Wiki 节点层级、空间成员管理：使用 [`lark-wiki`](../lark-wiki/SKILL.md)；上传本地文件到 wiki 节点仍用 `drive +upload --wiki-token`。
 - 原生 Markdown 文件读取、写入、patch、diff：使用 [`lark-markdown`](../lark-markdown/SKILL.md)；把 Markdown 导入成在线 docx 才用 `drive +import --type docx`。
+- 原生 Mind Note 内容读取或节点编辑：当前 CLI 暂不支持；Drive 只覆盖云空间层操作。
 
 ## Shortcuts（推荐优先使用）
 

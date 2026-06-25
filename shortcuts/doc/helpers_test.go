@@ -48,6 +48,11 @@ func TestParseDocumentRef(t *testing.T) {
 			input:   "https://example.com/not-a-doc",
 			wantErr: "unsupported --doc input",
 		},
+		{
+			name:    "native mindnote url",
+			input:   "https://example.larksuite.com/mindnote/xxxxxx",
+			wantErr: "native Mind Note",
+		},
 	}
 
 	for _, tt := range tests {

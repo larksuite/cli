@@ -1,7 +1,7 @@
 ---
 name: lark-doc
 version: 2.0.0
-description: "飞书云文档（Docx / Wiki 文档，v2 API）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责文档评论管理，也不负责表格或 Base 的数据操作。"
+description: "飞书云文档（Docx / Wiki 文档，v2 API）：读取和编辑飞书文档内容。当用户给出文档 URL 或 token，或需要查看、创建、编辑文档、插入或下载文档图片附件时使用。文档中嵌入的电子表格、多维表格、画板，先用本 skill 提取 token 再切到对应 skill。当用户给出 doubao.com 的 /docx/ 或 /wiki/ URL/token 时，也应直接使用本 skill；路由依据是 URL 路径模式和 token，而不是域名。不负责原生 Mind Note 内容读取或节点编辑，不负责文档评论管理，也不负责表格或 Base 的数据操作。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -37,6 +37,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 
 ## 快速决策
 - 先判定任务路径：找文档 / 导入导出走 [`lark-drive`](../lark-drive/SKILL.md)；只读 / 摘要用 `docs +fetch` 默认 `simple`；明确旧文本 → 新文本直接 `str_replace`；只有 block 链接、评论锚点、插入 / 替换 / 删除 / 移动才局部 fetch `with-ids`；保真改写已有内容才读 `full`
+- `/mindnote/` URL 是原生 Mind Note，不是 Docx，也不是画板。当前 CLI 不支持原生 Mind Note 内容读取或节点编辑；只需要移动、权限、元数据等云空间操作时切到 [`lark-drive`](../lark-drive/SKILL.md)
 - block 直达链接格式：`文档基础 URL#block_id`；没有 block_id 时局部 fetch `with-ids`
 - 连续执行多个文档写操作时，必须按 [`lark-doc-update.md`](references/lark-doc-update.md) 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
 - 用户需要在文档内**创建、复制或移动**资源块（画板、电子表格、多维表格等）时，必须先读取 [`lark-doc-xml.md`](references/lark-doc-xml.md) 的「三、资源块」章节
@@ -77,6 +78,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli docs +<verb> [flags]`）�
 
 ## 不在本 Skill 范围
 
+- 原生 Mind Note 内容读取或节点编辑；不要把 `/mindnote/` URL 当成 whiteboard
 - 文档评论管理 → [`lark-drive`](../lark-drive/SKILL.md)
 - 电子表格或 Base 的数据操作 → [`lark-sheets`](../lark-sheets/SKILL.md) / [`lark-base`](../lark-base/SKILL.md)
 - 云空间文件上传、下载、权限管理 → [`lark-drive`](../lark-drive/SKILL.md)
