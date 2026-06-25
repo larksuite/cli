@@ -1,0 +1,186 @@
+skills/lark-minutes/references/lark-minutes-upload.md
+  s_2901d183322a2b::t_534c7d6c90c202 37,39 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3d1b2e76cb2c600607cd2f","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":37},{"Single":39}]}]}
+  s_2901d183322a2b::t_bf01c64dbb94b3 34-35 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3d1d6a76cb2c600607cd4b","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[34,35]}]}]}
+  s_2901d183322a2b::t_54ae65fae3f9f4 50-51 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3d1b3876cb2c600607cd32","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[50,51]}]}]}
+  s_2901d183322a2b::t_689ee677024fa0 84 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3d1d7f76cb2c600607cd4e","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":84}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "fd25912893c97d08d5bf64602939025ddf6a8b72",
+  "prompts": {},
+  "sessions": {
+    "s_2901d183322a2b": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3d1af176cb2c600607cd22",
+        "model": "openrouter-1o__dev"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-minutes/references/lark-minutes-upload.md": [
+      {
+        "hash": "s_2901d183322a2b::t_534c7d6c90c202",
+        "line_ranges": [
+          {
+            "Single": 37
+          },
+          {
+            "Single": 39
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3d1b2e76cb2c600607cd2f",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 37
+              },
+              {
+                "Single": 39
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_2901d183322a2b::t_bf01c64dbb94b3",
+        "line_ranges": [
+          {
+            "Range": [
+              34,
+              35
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3d1d6a76cb2c600607cd4b",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  34,
+                  35
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_2901d183322a2b::t_54ae65fae3f9f4",
+        "line_ranges": [
+          {
+            "Range": [
+              50,
+              51
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3d1b3876cb2c600607cd32",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  50,
+                  51
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_2901d183322a2b::t_689ee677024fa0",
+        "line_ranges": [
+          {
+            "Single": 84
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3d1d7f76cb2c600607cd4e",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 84
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_2901d183322a2b": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_03b76c86f43902": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_33068a9f70cedc": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_534c7d6c90c202": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_54ae65fae3f9f4": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_689ee677024fa0": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_a005ac3ec46f52": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_2901d183322a2b::t_bf01c64dbb94b3": {
+      "tool": "trae",
+      "conversation_id": "6a3d1af176cb2c600607cd22",
+      "session_id": "6a3d1af176cb2c600607cd22",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
