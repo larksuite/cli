@@ -1,0 +1,128 @@
+skills/lark-minutes/references/lark-minutes-search.md
+  s_bfe4368314043d::t_dcffb89d04a815 146,153 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3ccf3bb4b42d289fc79750","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":146},{"Single":153}]}]}
+skills/lark-vc-agent/references/lark-vc-agent-meeting-events.md
+  h_240304df382660 263
+skills/lark-minutes/references/lark-minutes-upload.md
+  h_240304df382660 50-51
+skills/lark-vc/SKILL.md
+  h_240304df382660 52
+skills/lark-vc/references/lark-vc-search.md
+  s_bfe4368314043d::t_3c38b5c0f7f8cb 116,123-124 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3ccf81b4b42d289fc79756","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":116},{"Range":[123,124]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6d7037bcaf2dfa37d203a120dadcc93327e5b13c",
+  "prompts": {},
+  "humans": {
+    "h_240304df382660": {
+      "author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_bfe4368314043d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a39ef1ff43a88dfeff46caf",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-minutes/references/lark-minutes-search.md": [
+      {
+        "hash": "s_bfe4368314043d::t_dcffb89d04a815",
+        "line_ranges": [
+          {
+            "Single": 146
+          },
+          {
+            "Single": 153
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3ccf3bb4b42d289fc79750",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 146
+              },
+              {
+                "Single": 153
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-vc/references/lark-vc-search.md": [
+      {
+        "hash": "s_bfe4368314043d::t_3c38b5c0f7f8cb",
+        "line_ranges": [
+          {
+            "Single": 116
+          },
+          {
+            "Range": [
+              123,
+              124
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3ccf81b4b42d289fc79756",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 116
+              },
+              {
+                "Range": [
+                  123,
+                  124
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_bfe4368314043d": {
+      "tool": "trae",
+      "conversation_id": "6a39ef1ff43a88dfeff46caf",
+      "session_id": "6a39ef1ff43a88dfeff46caf",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_bfe4368314043d::t_3c38b5c0f7f8cb": {
+      "tool": "trae",
+      "conversation_id": "6a39ef1ff43a88dfeff46caf",
+      "session_id": "6a39ef1ff43a88dfeff46caf",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_bfe4368314043d::t_dcffb89d04a815": {
+      "tool": "trae",
+      "conversation_id": "6a39ef1ff43a88dfeff46caf",
+      "session_id": "6a39ef1ff43a88dfeff46caf",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_bfe4368314043d::t_e3cf4a5b88fda7": {
+      "tool": "trae",
+      "conversation_id": "6a39ef1ff43a88dfeff46caf",
+      "session_id": "6a39ef1ff43a88dfeff46caf",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
