@@ -108,6 +108,7 @@
 - `precision` 取值 `0..4`，默认 `2`
 - `percentage` 默认 `false`
 - `thousands_separator` 默认 `false`
+- `percentage=true` 只影响前端展示，`default_value` 和记录 CellValue 仍写底层数字值
 
 ```json
 {
@@ -146,6 +147,7 @@
 - `percentage` 默认 `true`
 - `color` 必填
 - `color` 可用：`Blue`、`Purple`、`DarkGreen`、`Green`、`Cyan`、`Orange`、`Red`、`Gray`、`WhiteToBlueGradient`、`WhiteToPurpleGradient`、`WhiteToOrangeGradient`、`GreenToRedGradient`、`RedToGreenGradient`、`BlueToPinkGradient`、`PinkToBlueGradient`、`SpectralGradient`
+- `percentage=true` 只影响前端展示，`default_value` 和记录 CellValue 仍写底层数字值
 
 ```json
 {
