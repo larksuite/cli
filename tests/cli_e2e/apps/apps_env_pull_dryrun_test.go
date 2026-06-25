@@ -35,6 +35,9 @@ func TestAppsEnvPullDryRun(t *testing.T) {
 
 		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/env_vars", gjson.Get(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "dev", gjson.Get(result.Stdout, "api.0.body.env").String())
+		assert.False(t, gjson.Get(result.Stdout, "api.0.body.include_values").Exists())
+		assert.False(t, gjson.Get(result.Stdout, "api.0.params").Exists())
 		assert.True(t, gjson.Get(result.Stdout, "project_path").Exists())
 		assert.Contains(t, gjson.Get(result.Stdout, "env_file").String(), ".env.local")
 		assert.False(t, gjson.Get(result.Stdout, "env_keys").Exists())

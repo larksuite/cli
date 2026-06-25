@@ -11,17 +11,49 @@ import (
 
 // 钉死域内 shortcut 数量。少一条（漏挂）或多一条（误加）都会被这个测试拦截。
 // 6 基础 + 1 init + 3 publish + 1 env-pull
+//   - 6 observability（log-list/log-get/trace-list/trace-get/metric-query/analytics-query）
+//   - 3 env（list/set/delete）
 //   - 16 db（table-list/table-schema/sql/dev-init/data-import/data-export/changelog-list/
 //     audit-status/audit-enable/audit-disable/audit-list/
 //     env-diff/env-migrate/recovery-diff/recovery-apply/quota-get）
 //   - 7 file（list/get/sign/download/upload/delete/quota-get）
 //   - 3 git-credential
 //   - 5 session（create/list/get/stop/chat）+ 1 session-messages-list
-//   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）= 51。
-func TestAppsShortcuts_Returns51(t *testing.T) {
+//   - 8 openapi-key（list/get/create/update/enable/disable/delete/reset）= 60。
+func TestAppsShortcuts_Returns60(t *testing.T) {
 	got := Shortcuts()
-	if len(got) != 51 {
-		t.Fatalf("Shortcuts() returned %d entries, want 51", len(got))
+	if len(got) != 60 {
+		t.Fatalf("Shortcuts() returned %d entries, want 60", len(got))
+	}
+}
+
+func TestAppsShortcuts_DoesNotIncludeEnvGet(t *testing.T) {
+	for _, sc := range Shortcuts() {
+		switch sc.Command {
+		case "+env-get", "+envvar-get", "+envvar-list", "+envvar-set", "+envvar-delete":
+			t.Fatalf("Shortcuts() must not register %s", sc.Command)
+		}
+	}
+}
+
+func TestAppsShortcuts_EnvCommandsUseCanonicalNames(t *testing.T) {
+	want := map[string]bool{
+		"+env-list":   false,
+		"+env-set":    false,
+		"+env-delete": false,
+	}
+	for _, sc := range Shortcuts() {
+		if _, ok := want[sc.Command]; ok {
+			want[sc.Command] = true
+			if sc.Hidden {
+				t.Errorf("%s must be visible", sc.Command)
+			}
+		}
+	}
+	for cmd, found := range want {
+		if !found {
+			t.Errorf("Shortcuts() missing canonical %s", cmd)
+		}
 	}
 }
 
