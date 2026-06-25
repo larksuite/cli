@@ -30,31 +30,31 @@ CLI 不保存原始密钥。密钥在 `create` / `reset` 时仅随响应返回�
 
 ## scope 结构与 CLI 表达
 
-后端 `config.requestScope` 的真实结构（camelCase）：
+后端 `config.request_scope` 的真实结构（**snake_case**——Lark 开放网关 `/open-apis/` 对外契约约定；`api_key.thrift` 的 camelCase go.tag 是内部表示，OGW 已转成 snake_case）：
 
 ```json
 {
-  "allowAll": true,
-  "httpInfos": [
-    { "httpMethod": "GET", "httpPath": "/openapi/some-path" }
+  "allow_all": true,
+  "http_infos": [
+    { "http_method": "GET", "http_path": "/openapi/some-path" }
   ]
 }
 ```
 
-- `allowAll=true`：放开该应用所有 `/openapi/**` 路由；`httpInfos` 此时忽略。
-- `allowAll=false`：按 `httpInfos` 逐条授权，每条需 `httpMethod`（大写）+ `httpPath`（`/openapi/` 开头）。
+- `allow_all=true`：放开该应用所有 `/openapi/**` 路由；`http_infos` 此时忽略。
+- `allow_all=false`：按 `http_infos` 逐条授权，每条需 `http_method`（大写）+ `http_path`（`/openapi/` 开头）。
 
 CLI 提供三种互斥的 scope 表达方式：
 
 | flag | 用途 | 备注 |
 |---|---|---|
-| `--scope-all` | `allowAll=true`，放开所有路由 | bool flag，显式传 `--scope-all=false` 也算"已设置" |
+| `--scope-all` | `allow_all=true`，放开所有路由 | bool flag，显式传 `--scope-all=false` 也算"已设置" |
 | `--scope-api 'METHOD /openapi/path'` | 逐条授权一个路由，可重复 | 路由从应用 `docs/openapi.json` 取 |
-| `--scope '<raw requestScope JSON>'` | 高级逃生口，直传 requestScope JSON | CLI 只校验合法 JSON；`--scope` 与 `--scope-all`/`--scope-api` 互斥 |
+| `--scope '<raw request_scope JSON>'` | 高级逃生口，直传 request_scope JSON（snake_case） | CLI 只校验合法 JSON；`--scope` 与 `--scope-all`/`--scope-api` 互斥 |
 
 ### scope 值来源
 
-妙搭应用的 `/openapi/**` 路由定义在应用仓库，并同步维护在 `docs/openapi.json`（`paths` 下每个 `"/openapi/..."` 条目 + HTTP 方法）。要授权哪些路由，读目标应用自己的 `docs/openapi.json`，取 `(httpMethod, httpPath)` 对。CLI 本身不提供 API 路由发现功能（P1 规划中）。
+妙搭应用的 `/openapi/**` 路由定义在应用仓库，并同步维护在 `docs/openapi.json`（`paths` 下每个 `"/openapi/..."` 条目 + HTTP 方法）。要授权哪些路由，读目标应用自己的 `docs/openapi.json`，取 `(method, path)` 对。CLI 本身不提供 API 路由发现功能（P1 规划中）。
 
 ## 高风险操作
 
