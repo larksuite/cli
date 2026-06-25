@@ -34,6 +34,7 @@ type driveExportSpec struct {
 	DocType       string
 	FileExtension string
 	SubID         string
+	OnlySchema    bool
 }
 
 // driveExportTaskResultCommand prints the resume command shown when bounded
@@ -150,6 +151,10 @@ func validateDriveExportSpec(spec driveExportSpec) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension base only supports --doc-type bitable")
 	}
 
+	if spec.OnlySchema && (spec.DocType != "bitable" || spec.FileExtension != "base") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--only-schema is only used when exporting bitable as base").WithParam("--only-schema")
+	}
+
 	if spec.FileExtension == "pptx" && spec.DocType != "slides" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-extension pptx only supports --doc-type slides")
 	}
@@ -184,6 +189,9 @@ func createDriveExportTask(runtime *common.RuntimeContext, spec driveExportSpec)
 	}
 	if strings.TrimSpace(spec.SubID) != "" {
 		body["sub_id"] = spec.SubID
+	}
+	if spec.OnlySchema {
+		body["only_schema"] = true
 	}
 
 	data, err := runtime.CallAPITyped("POST", "/open-apis/drive/v1/export_tasks", nil, body)

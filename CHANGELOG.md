@@ -2,6 +2,93 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.57] - 2026-06-23
+
+### Features
+
+- **slides**: Add `+screenshot` to capture slide page images (or render a single `<slide>` XML snippet), returning the local file path instead of Base64 (#1358)
+- **base**: Support record comments (#1043)
+- **search**: Surface search API notices (#1413)
+
+### Bug Fixes
+
+- **mail**: Resolve folder/label filter once per `+triage list` call (#1512)
+- **meta**: Backfill enum value descriptions from options (#1541)
+- **cli**: Add missing CLI headers for git credential helper (#1539)
+
+### Documentation
+
+- **doc**: Refine rich block, path, and block ID guidance (#1508)
+- **mail**: Trim lark-mail skill context (#1527)
+- **drive**: Add permission governance workflow guidance (#1292)
+
+### Build
+
+- **ci**: Bind semantic review to workflow run head (#1551)
+
+## [v1.0.56] - 2026-06-18
+
+### Features
+
+- **apps**: Add `+session-messages-list` for session turn reply messages (#1402)
+
+### Bug Fixes
+
+- **api**: Align API success envelopes (#1489)
+- **base**: Reject out-of-range pagination flags (#1495)
+
+### Refactor
+
+- Retire legacy error envelopes and enforce typed contract (#1449)
+
+### Documentation
+
+- **skills**: Soften lark-doc style guidance (#1463)
+
+### Build
+
+- Add CI quality gate with semantic review
+
+## [v1.0.55] - 2026-06-16
+
+### Features
+
+- **vc**: Support agent meeting event workflows (#1483)
+- **drive**: Support exporting Base structure snapshots (#1481)
+- **doc**: Add docx cover resource commands (#1468)
+- **doc**: Support `lang` for docx fetch v2 (#1459)
+- **event**: Optimize subscription precheck, links, and consumer guard (#1447)
+
+### Bug Fixes
+
+- **drive**: Validate drive import folder target (#1485)
+
+## [v1.0.54] - 2026-06-15
+
+### Features
+
+- **mail**: Auto-attach default signature on send/reply/forward (#1415)
+- **drive**: Support `original_creator_ids` filter in search (#1046)
+- **cli**: Simplify proxy plugin warning and gate it on TTY (#1448)
+
+### Bug Fixes
+
+- **doc**: Fix docs fetch and update ergonomics (#1466)
+- **vfs**: Reject blank local paths (#1460)
+- **vfs**: Reject Windows absolute paths cross-platform (#1401)
+- **event**: Clarify remote bus blocker recovery (#1454)
+
+### Refactor
+
+- Converge command pipelines onto a typed metadata model + catalog (#1191)
+
+### Documentation
+
+- **im**: Document `@mention` format per message type (text/post/card) (#1419)
+- **doc**: Clarify lark-doc create title guidance (#1474)
+- **skills**: Add rename prompt for import without `--name` (#1461)
+- **apps**: Drop Miaoda brand word from apps command help text (#1399)
+
 ## [v1.0.53] - 2026-06-12
 
 ### Features
@@ -1149,6 +1236,10 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
+[v1.0.56]: https://github.com/larksuite/cli/releases/tag/v1.0.56
+[v1.0.55]: https://github.com/larksuite/cli/releases/tag/v1.0.55
+[v1.0.54]: https://github.com/larksuite/cli/releases/tag/v1.0.54
 [v1.0.53]: https://github.com/larksuite/cli/releases/tag/v1.0.53
 [v1.0.52]: https://github.com/larksuite/cli/releases/tag/v1.0.52
 [v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51

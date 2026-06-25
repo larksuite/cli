@@ -123,6 +123,13 @@ func isHTMLBlockBoundary(n *xhtml.Node) bool {
 	}
 }
 
+// PlainTextFromHTML is the exported wrapper over plainTextFromHTML, so the
+// mail package can render an HTML signature as a plain-text fallback when a
+// message body is sent in plain-text mode. The conversion logic is unchanged.
+func PlainTextFromHTML(raw string) string {
+	return plainTextFromHTML(raw)
+}
+
 // bodyLooksLikeHTML reports whether raw appears to contain HTML markup.
 // This is intentionally heuristic: it exists to reject obvious plain-text
 // input when a draft's authored body is text/html.

@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // pruneForStrictMode removes commands incompatible with the active strict mode.
@@ -65,10 +65,10 @@ func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Comma
 	//     pick auth's instead of our denial. A leaf-level no-op makes
 	//     cobra stop here and proceed to the wrapped RunE.
 	//
-	// strict-mode keeps its short Message + independent Hint and
-	// composes the shared detail.* / wrapped-CommandDeniedError shape
-	// by hand; BuildDenialError would override Message with the
-	// CommandDeniedError.Error() long form.
+	// strict-mode keeps its short Message + independent Hint and wraps
+	// the CommandDeniedError as the Cause by hand; BuildDenialError
+	// would override Message with the CommandDeniedError.Error() long
+	// form.
 	stubMessage := fmt.Sprintf(
 		"strict mode is %q, only %s-identity commands are available",
 		mode, mode.ForcedIdentity())
@@ -105,20 +105,9 @@ func strictModeStubFrom(child *cobra.Command, mode core.StrictMode) *cobra.Comma
 		},
 		RunE: func(c *cobra.Command, _ []string) error {
 			cd := cmdpolicy.CommandDeniedFromDenial(cmdpolicy.CanonicalPath(c), denial)
-			// Legacy *output.ExitError producer: this literal predates the
-			// typed error contract introduced by errs/. New denial sites MUST
-			// NOT construct *output.ExitError directly — they should return a
-			// typed *errs.XxxError once the cmdpolicy framework migrates.
-			return &output.ExitError{
-				Code: output.ExitValidation,
-				Detail: &output.ErrDetail{
-					Type:    "command_denied",
-					Message: stubMessage,
-					Hint:    stubHint,
-					Detail:  cmdpolicy.DenialDetailMap(cd),
-				},
-				Err: cd,
-			}
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", stubMessage).
+				WithHint("denied by %s policy (reason_code %s); %s", cd.Layer, cd.ReasonCode, stubHint).
+				WithCause(cd)
 		},
 	}
 }

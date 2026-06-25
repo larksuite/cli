@@ -4,7 +4,7 @@
 >
 > **Heads-up for AI agents**: this key's `.content` is **NOT** the raw OAPI payload shape your training data may suggest. `lark-cli` runs a Process hook (`convertlib`) that flattens the V2 envelope and **pre-renders** `.content` to human-readable text for `text` / `post` / `image` / `file` / `audio` / etc. Only `interactive` (cards) keeps the raw JSON string. Don't blindly `fromjson`.
 
-## Key catalog (11)
+## Key catalog (12)
 
 | EventKey | Purpose |
 |---|---|
@@ -19,8 +19,9 @@
 | `im.chat.member.user.added_v1` | User joined a chat (including topic chats) |
 | `im.chat.member.user.deleted_v1` | User left voluntarily **or** was removed |
 | `im.chat.member.user.withdrawn_v1` | Pending chat invite withdrawn (inviter canceled; user never actually joined) |
+| `card.action.trigger` | Interactive card callback — button click, form submit, dropdown, etc. → see [`lark-im-card-action-reply.md`](../../lark-im/references/lark-im-card-action-reply.md) |
 
-> **Shape**: `im.message.receive_v1` is the only flat key (fields at `.xxx`); the other 10 are V2-enveloped (fields at `.event.xxx`).
+> **Shape**: All 12 events have a V2-enveloped raw payload. `lark-cli` flattens two of them — `im.message.receive_v1` and `card.action.trigger` — so their consumed output is flat (fields at `.xxx`). The other 10 are passed through as-is; use `.event.xxx` to access their fields.
 
 ## Gotchas (`im.message.receive_v1`)
 

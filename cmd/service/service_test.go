@@ -4,10 +4,15 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
+	extcs "github.com/larksuite/cli/extension/contentsafety"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -407,8 +412,19 @@ func TestServiceMethod_BotMode_Success(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "success") {
-		t.Errorf("expected 'success' in output, got:\n%s", stdout.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	if got["ok"] != true || got["identity"] != "bot" {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok || data["result"] != "success" {
+		t.Fatalf("data = %#v, want result=success", got["data"])
 	}
 }
 
@@ -436,8 +452,312 @@ func TestServiceMethod_BotMode_PageAll_JSON(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout.String(), `"id"`) {
-		t.Errorf("expected items in output, got:\n%s", stdout.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if got["ok"] != true || got["identity"] != "bot" || !ok {
+		t.Fatalf("unexpected envelope: %#v", got)
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code: %s", stdout.String())
+	}
+	items, ok := data["items"].([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("data.items = %#v, want one item", data["items"])
+	}
+}
+
+type serviceContentSafetyProvider struct {
+	called bool
+	path   string
+	data   interface{}
+	match  string
+}
+
+func (p *serviceContentSafetyProvider) Name() string { return "service-test" }
+
+func (p *serviceContentSafetyProvider) Scan(_ context.Context, req extcs.ScanRequest) (*extcs.Alert, error) {
+	p.called = true
+	p.path = req.Path
+	p.data = req.Data
+	if p.match != "" {
+		b, _ := json.Marshal(req.Data)
+		if !strings.Contains(string(b), p.match) {
+			return nil, nil
+		}
+	}
+	return &extcs.Alert{Provider: "service-test", MatchedRules: []string{"pagination"}}, nil
+}
+
+func TestServiceMethod_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &serviceContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-safety", AppSecret: "test-secret-service-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan paginated output")
+	}
+	if provider.path != "list" {
+		t.Fatalf("scan path = %q, want list", provider.path)
+	}
+	data, ok := provider.data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("scanned data type = %T, want map", provider.data)
+	}
+	if _, hasCode := data["code"]; hasCode {
+		t.Fatalf("scanned data should be business data only, got %#v", data)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, stdout.String())
+	}
+	alert, ok := got["_content_safety_alert"].(map[string]interface{})
+	if !ok || alert["provider"] != "service-test" {
+		t.Fatalf("missing content safety alert in envelope: %#v", got)
+	}
+}
+
+func TestServiceMethod_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "warn")
+	provider := &serviceContentSafetyProvider{}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, stderr, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-stream-safety", AppSecret: "test-secret-service-stream-safety", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "1"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all", "--format", "ndjson"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !provider.called {
+		t.Fatal("expected content safety provider to scan streamed paginated output")
+	}
+	if provider.path != "list" {
+		t.Fatalf("scan path = %q, want list", provider.path)
+	}
+	items, ok := provider.data.([]interface{})
+	if !ok || len(items) != 1 {
+		t.Fatalf("scanned data = %#v, want one streamed item", provider.data)
+	}
+	if !strings.Contains(stderr.String(), "warning: content safety alert from service-test") {
+		t.Fatalf("expected content safety warning on stderr, got: %s", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"id":"1"`) {
+		t.Fatalf("expected streamed ndjson output, got: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONTENT_SAFETY_MODE", "block")
+	provider := &serviceContentSafetyProvider{match: "blocked"}
+	extcs.Register(provider)
+	t.Cleanup(func() { extcs.Register(nil) })
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-stream-block", AppSecret: "test-secret-service-stream-block", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "blocked-page"}},
+				"has_more": false,
+			},
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	root := &cobra.Command{Use: "lark-cli"}
+	root.AddCommand(NewCmdServiceMethod(f, spec, method, "list", "items", nil))
+	root.SetArgs([]string{"list", "--as", "bot", "--page-all", "--format", "ndjson"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected content safety block error")
+	}
+	var safetyErr *errs.ContentSafetyError
+	if !errors.As(err, &safetyErr) {
+		t.Fatalf("expected ContentSafetyError, got %T: %v", err, err)
+	}
+	if safetyErr.Category != errs.CategoryPolicy || safetyErr.Subtype != errs.SubtypeContentSafety {
+		t.Fatalf("problem = %s/%s, want %s/%s", safetyErr.Category, safetyErr.Subtype, errs.CategoryPolicy, errs.SubtypeContentSafety)
+	}
+	if len(safetyErr.Rules) != 1 || safetyErr.Rules[0] != "pagination" {
+		t.Fatalf("rules = %v, want [pagination]", safetyErr.Rules)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier safe page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "blocked-page") {
+		t.Fatalf("blocked page was written before safety block: %s", out)
+	}
+}
+
+func TestServiceMethod_BusinessErrorReturnsTypedErrorWithoutSuccessEnvelope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-err", AppSecret: "test-secret-service-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected PermissionError, got %T: %v", err, err)
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_DefaultBusinessErrorOutputsRawResponse(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-pageall-err", AppSecret: "test-secret-service-pageall-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	if !strings.Contains(stdout.String(), "230027") || !strings.Contains(stdout.String(), "user not authorized") {
+		t.Fatalf("expected raw error response on stdout, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+}
+
+func TestServiceMethod_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-service-pageall-stream-err", AppSecret: "test-secret-service-pageall-stream-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":      []interface{}{map[string]interface{}{"id": "safe-page"}},
+				"has_more":   true,
+				"page_token": "next",
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027,
+			"msg":  "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--format", "ndjson"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	out := stdout.String()
+	if !strings.Contains(out, "safe-page") {
+		t.Fatalf("expected earlier successful page to remain streamed, got: %s", out)
+	}
+	if strings.Contains(out, "230027") || strings.Contains(out, "user not authorized") {
+		t.Fatalf("streaming stdout should not contain raw error JSON, got: %s", out)
+	}
+	if strings.Contains(out, "\n  \"code\"") {
+		t.Fatalf("streaming stdout should not contain indented JSON error dump, got: %s", out)
 	}
 }
 
@@ -626,6 +946,51 @@ func TestServiceMethod_PageAll_WithJq(t *testing.T) {
 	}
 	if strings.Contains(out, `"code"`) {
 		t.Errorf("expected jq to filter out envelope, got: %s", out)
+	}
+}
+
+func TestServiceMethod_PageAll_WithJqBusinessErrorOutputsRawResponse(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app-spjq-err", AppSecret: "test-secret-spjq-err", Brand: core.BrandFeishu,
+	})
+
+	reg.Register(&httpmock.Stub{
+		URL: "/open-apis/svc/v1/items",
+		Body: map[string]interface{}{
+			"code": 230027, "msg": "user not authorized",
+		},
+	})
+
+	spec := meta.ServiceFromMap(map[string]interface{}{"name": "svc", "servicePath": "/open-apis/svc/v1"})
+	method := meta.FromMap(map[string]interface{}{"path": "items", "httpMethod": "GET", "parameters": map[string]interface{}{}})
+	cmd := NewCmdServiceMethod(f, spec, method, "list", "items", nil)
+	cmd.SetArgs([]string{"--as", "bot", "--page-all", "--jq", ".data.items[].id"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-zero code")
+	}
+	requireProblem(t, err, errs.CategoryAuthorization, errs.SubtypeUserUnauthorized, 230027)
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected PermissionError, got %T: %v", err, err)
+	}
+	if !strings.Contains(stdout.String(), "230027") || !strings.Contains(stdout.String(), "user not authorized") {
+		t.Fatalf("expected raw error response on stdout, got: %s", stdout.String())
+	}
+	if strings.Contains(stdout.String(), `"ok": true`) || strings.Contains(stdout.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", stdout.String())
+	}
+}
+
+func requireProblem(t *testing.T, err error, category errs.Category, subtype errs.Subtype, code int) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if p.Category != category || p.Subtype != subtype || p.Code != code {
+		t.Fatalf("problem = %s/%s/%d, want %s/%s/%d", p.Category, p.Subtype, p.Code, category, subtype, code)
 	}
 }
 

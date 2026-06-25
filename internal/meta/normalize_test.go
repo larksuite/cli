@@ -80,6 +80,39 @@ func TestField_EnumOptions(t *testing.T) {
 	}
 }
 
+func TestField_EnumOptions_BothEnumAndOptions(t *testing.T) {
+	// enum is the value set; descriptions backfilled from options, empty where absent
+	f := Field{Type: "string", Enum: []any{"1", "2", "3", "4", "6"}, Options: []Option{
+		{Value: "1", Description: "from"},
+		{Value: "2", Description: "to"},
+		{Value: "6", Description: "subject"},
+	}}
+	want := []EnumOption{
+		{Value: "1", Description: "from"},
+		{Value: "2", Description: "to"},
+		{Value: "3", Description: ""},
+		{Value: "4", Description: ""},
+		{Value: "6", Description: "subject"},
+	}
+	if got := f.EnumOptions(); !reflect.DeepEqual(got, want) {
+		t.Errorf("EnumOptions(enum+options) = %+v, want %+v", got, want)
+	}
+
+	// enum values stored as strings match option values stored as numbers
+	fi := Field{Type: "integer", Enum: []any{"10", "2", "1"}, Options: []Option{
+		{Value: 1, Description: "one"},
+		{Value: 2, Description: "two"},
+	}}
+	wantI := []EnumOption{
+		{Value: int64(1), Description: "one"},
+		{Value: int64(2), Description: "two"},
+		{Value: int64(10), Description: ""},
+	}
+	if got := fi.EnumOptions(); !reflect.DeepEqual(got, wantI) {
+		t.Errorf("EnumOptions(integer enum+options) = %+v, want %+v", got, wantI)
+	}
+}
+
 func TestField_Enum_NumberAndBoolean(t *testing.T) {
 	// number: string-stored floats coerced to float64 and numerically sorted
 	if got := (Field{Type: "number", Enum: []any{"2.5", "1.5", "10"}}).EnumValues(); !reflect.DeepEqual(got, []any{1.5, 2.5, float64(10)}) {

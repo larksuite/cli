@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/client"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
@@ -32,13 +33,16 @@ func RegisterServiceCommands(parent *cobra.Command, f *cmdutil.Factory) {
 }
 
 func RegisterServiceCommandsWithContext(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory) {
+	RegisterServiceCommandsFromCatalog(ctx, parent, f, registry.RuntimeCatalog())
+}
+
+func RegisterServiceCommandsFromCatalog(ctx context.Context, parent *cobra.Command, f *cmdutil.Factory, catalog apicatalog.Catalog) {
 	// Drive the service list from the same navigation catalog the method walk
-	// uses — RuntimeCatalog().Services() is the deterministic, sorted view of the
-	// merged metadata — so registration is catalog-sourced end to end. Kept as a
-	// per-service loop rather than a flat WalkMethods(nil) drive precisely so a
-	// service with no methods still gets its bare command (WalkMethods yields one
-	// ref per method, so empty services would vanish).
-	for _, svc := range registry.RuntimeCatalog().Services() {
+	// uses, so registration is catalog-sourced end to end. Kept as a per-service
+	// loop rather than a flat WalkMethods(nil) drive precisely so a service with
+	// no methods still gets its bare command (WalkMethods yields one ref per
+	// method, so empty services would vanish).
+	for _, svc := range catalog.Services() {
 		if svc.Name == "" || svc.ServicePath == "" {
 			continue
 		}
@@ -84,10 +88,12 @@ func serviceShort(svc meta.Service) string {
 func ensureChildCommand(parent *cobra.Command, name, short string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
+			cmdmeta.SetSource(c, cmdmeta.SourceService, true)
 			return c
 		}
 	}
 	cmd := &cobra.Command{Use: name, Short: short}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
 	parent.AddCommand(cmd)
 	return cmd
 }
@@ -231,6 +237,7 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 			return serviceMethodRun(opts)
 		},
 	}
+	cmdmeta.SetSource(cmd, cmdmeta.SourceService, true)
 
 	cmd.Flags().StringVar(&opts.Params, "params", "", "Raw URL/query params JSON. Supports - and @file.")
 	if spec.acceptsBody {
@@ -380,7 +387,7 @@ func serviceMethodRun(opts *ServiceMethodOptions) error {
 	checkErr := ac.CheckResponse
 
 	if opts.PageAll {
-		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
+		return servicePaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay}, checkErr)
 	}
 
@@ -620,20 +627,45 @@ func serviceDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *cor
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
+func servicePaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions, checkErr func(interface{}, core.Identity) error) error {
 	if pagOpts.Identity == "" {
 		pagOpts.Identity = request.As
 	}
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
-		return client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, checkErr)
+		result, err := ac.PaginateAll(ctx, request, pagOpts)
+		if err != nil {
+			return err
+		}
+		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
+			return apiErr
+		}
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			JqExpr:      jqExpr,
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)
-		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) {
+		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
+			// Streaming formats intentionally emit each page after that page has
+			// passed safety scanning. A later page may still fail, so callers
+			// must use the exit code to distinguish complete vs partial output.
+			scanResult := output.ScanForSafety(commandPath, items, errOut)
+			if scanResult.Blocked {
+				return scanResult.BlockErr
+			}
+			if scanResult.Alert != nil {
+				output.WriteAlertWarning(errOut, scanResult.Alert)
+			}
 			pf.FormatPage(items)
+			return nil
 		}, pagOpts)
 		if err != nil {
 			return err
@@ -643,7 +675,12 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 		}
 		if !hasItems {
 			fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
-			output.FormatValue(out, result, output.FormatJSON)
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: commandPath,
+				Identity:    string(pagOpts.Identity),
+				Out:         out,
+				ErrOut:      errOut,
+			})
 		}
 		return nil
 	default:
@@ -652,9 +689,14 @@ func servicePaginate(ctx context.Context, ac *client.APIClient, request client.R
 			return err
 		}
 		if apiErr := checkErr(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
 			return apiErr
 		}
-		output.FormatValue(out, result, format)
-		return nil
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 }

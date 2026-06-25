@@ -20,17 +20,19 @@ var BaseDashboardList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		baseTokenFlag(true),
-		{Name: "page-size", Desc: "page size, max 100"},
+		{Name: "page-size", Type: "int", Default: "100", Desc: "page size, range 1-100"},
 		{Name: "page-token", Desc: "pagination token"},
 	},
 	Tips: []string{
 		"Use returned dashboard_id values for +dashboard-get, +dashboard-block-list, and +dashboard-block-create.",
 	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 100)
+		return err
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		params := map[string]interface{}{}
-		if ps := strings.TrimSpace(runtime.Str("page-size")); ps != "" {
-			params["page_size"] = ps
-		}
+		params["page_size"] = runtime.Int("page-size")
 		if pt := strings.TrimSpace(runtime.Str("page-token")); pt != "" {
 			params["page_token"] = pt
 		}

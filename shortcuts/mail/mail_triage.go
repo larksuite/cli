@@ -159,6 +159,7 @@ var MailTriage = common.Shortcut{
 		var messages []map[string]interface{}
 		var hasMore bool
 		var nextPageToken string
+		var notice string
 
 		useSearch, err := resolveTriagePath(parsed, query, filter)
 		if err != nil {
@@ -188,6 +189,9 @@ var MailTriage = common.Shortcut{
 				}, "API call failed")
 				if err != nil {
 					return err
+				}
+				if notice == "" {
+					notice, _ = searchData["notice"].(string)
 				}
 				pageMessages := buildTriageMessagesFromSearchItems(searchData["items"])
 				messages = append(messages, pageMessages...)
@@ -282,8 +286,14 @@ var MailTriage = common.Shortcut{
 				"has_more":   hasMore,
 				"page_token": nextPageToken,
 			}
+			if notice != "" {
+				outData["notice"] = notice
+			}
 			output.PrintJson(runtime.IO().Out, outData)
 		default: // "table"
+			if notice != "" {
+				fmt.Fprintf(runtime.IO().ErrOut, "notice: %s\n", notice)
+			}
 			if len(messages) == 0 {
 				fmt.Fprintln(runtime.IO().ErrOut, "No messages found.")
 				return nil
@@ -760,13 +770,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderIDFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderID(runtime, mailboxID, folderIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderIDFromFilter
 		}
 	} else if folderFromFilter != "" {
 		if dryRun {
@@ -776,13 +780,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["folder_id"] = folderFromFilter
 			}
 		} else {
-			resolved, err := resolveFolderName(runtime, mailboxID, folderFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["folder_id"] = resolved
-			}
+			params["folder_id"] = folderFromFilter
 		}
 	}
 
@@ -801,13 +799,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelIDFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelID(runtime, mailboxID, labelIDFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelIDFromFilter
 		}
 	} else if labelFromFilter != "" {
 		if dryRun {
@@ -817,13 +809,7 @@ func buildListParams(runtime *common.RuntimeContext, mailboxID string, f triageF
 				params["label_id"] = labelFromFilter
 			}
 		} else {
-			resolved, err := resolveLabelName(runtime, mailboxID, labelFromFilter)
-			if err != nil {
-				return nil, err
-			}
-			if resolved != "" {
-				params["label_id"] = resolved
-			}
+			params["label_id"] = labelFromFilter
 		}
 	}
 

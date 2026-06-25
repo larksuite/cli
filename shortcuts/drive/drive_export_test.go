@@ -5,6 +5,7 @@ package drive
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -50,6 +51,15 @@ func TestValidateDriveExportSpec(t *testing.T) {
 		{
 			name: "base bitable ok",
 			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base"},
+		},
+		{
+			name: "base bitable only schema ok",
+			spec: driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "base", OnlySchema: true},
+		},
+		{
+			name:    "only schema non base rejected",
+			spec:    driveExportSpec{Token: "base123", DocType: "bitable", FileExtension: "xlsx", OnlySchema: true},
+			wantErr: "--only-schema is only used",
 		},
 		{
 			name: "slides pptx ok",
@@ -488,6 +498,72 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 }
 
+// TestDriveExportEmptyOutputDirDownloadsToCwd guards the export refactor: an
+// explicit empty --output-dir must still download to the current directory
+// (normalized to "."), not trigger the export-only no-download path that the
+// shared RunExport core uses for sheets +workbook-export.
+func TestDriveExportEmptyOutputDirDownloadsToCwd(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"ticket": "tk_e"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_e",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"result": map[string]interface{}{
+				"job_status": 0, "file_token": "box_e", "file_name": "report",
+				"file_extension": "pdf", "type": "docx", "file_size": 3,
+			},
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_e/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="report.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--output-dir", "",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Empty --output-dir must still write to cwd, not skip the download.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "report.pdf"))
+	if err != nil {
+		t.Fatalf("empty --output-dir should still download to cwd: %v", err)
+	}
+	if string(data) != "pdf" {
+		t.Fatalf("downloaded content = %q", string(data))
+	}
+	if strings.Contains(stdout.String(), `"downloaded": false`) {
+		t.Fatalf("export-only path must not trigger for drive +export: %s", stdout.String())
+	}
+}
+
 func TestDriveExportAsyncUsesProvidedFileName(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 	reg.Register(&httpmock.Stub{
@@ -612,6 +688,7 @@ func TestDriveExportBitableBaseAsyncSuccess(t *testing.T) {
 		"--token", "bitable123",
 		"--doc-type", "bitable",
 		"--file-extension", "base",
+		"--only-schema",
 		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
@@ -627,6 +704,9 @@ func TestDriveExportBitableBaseAsyncSuccess(t *testing.T) {
 	}
 	if createBody["type"] != "bitable" {
 		t.Fatalf("export_tasks body type = %v, want %q", createBody["type"], "bitable")
+	}
+	if createBody["only_schema"] != true {
+		t.Fatalf("export_tasks body only_schema = %v, want true", createBody["only_schema"])
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "crm.base"))
@@ -1019,5 +1099,39 @@ func TestDriveTaskResultExportIncludesReadyFlags(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"job_status_label": "processing"`)) {
 		t.Fatalf("stdout missing job_status_label: %s", stdout.String())
+	}
+}
+
+// TestWrapExportContextErr verifies the export poll loop's typed wrapping for
+// context cancellation / deadline. Previously the poll loop returned ctx.Err()
+// directly so an untyped context.Canceled would escape as a plain string at
+// the command layer, bypassing the typed-error contract.
+func TestWrapExportContextErr(t *testing.T) {
+	if err := wrapExportContextErr(nil); err != nil {
+		t.Errorf("wrapExportContextErr(nil) = %v, want nil", err)
+	}
+
+	cancelled := wrapExportContextErr(context.Canceled)
+	var netErrCancel *errs.NetworkError
+	if !errors.As(cancelled, &netErrCancel) {
+		t.Fatalf("wrapExportContextErr(Canceled) = %T, want *errs.NetworkError", cancelled)
+	}
+	if netErrCancel.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("Canceled subtype = %q, want %q", netErrCancel.Subtype, errs.SubtypeNetworkTransport)
+	}
+	if !errors.Is(cancelled, context.Canceled) {
+		t.Error("wrapExportContextErr should preserve context.Canceled via errors.Is")
+	}
+
+	deadline := wrapExportContextErr(context.DeadlineExceeded)
+	var netErrDeadline *errs.NetworkError
+	if !errors.As(deadline, &netErrDeadline) {
+		t.Fatalf("wrapExportContextErr(DeadlineExceeded) = %T, want *errs.NetworkError", deadline)
+	}
+	if netErrDeadline.Subtype != errs.SubtypeNetworkTimeout {
+		t.Errorf("DeadlineExceeded subtype = %q, want %q", netErrDeadline.Subtype, errs.SubtypeNetworkTimeout)
+	}
+	if !errors.Is(deadline, context.DeadlineExceeded) {
+		t.Error("wrapExportContextErr should preserve context.DeadlineExceeded via errors.Is")
 	}
 }

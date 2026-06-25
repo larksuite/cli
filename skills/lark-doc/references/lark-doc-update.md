@@ -3,10 +3,11 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先用 Read 工具读取以下文件，缺一不可：
 > 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
-> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
-> **未读完以上文件就生成内容会导致格式错误或样式不达标。**
+> **需要富 block 或用户明确要求美化/重排版时，再参考 [`lark-doc-style.md`](style/lark-doc-style.md)。**
+>
+> **未读完以上文件就生成内容会导致格式错误。**
 
 通过八种指令精确更新飞书云文档。支持字符串级别和 block 级别的操作。
 
@@ -42,6 +43,15 @@
 | `overwrite` | ⚠️ 清空文档后全文重写（可能丢失图片、评论） | `--content` |
 | `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after --block-id -1`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `--block-id` | `--content` |
 | `block_move_after` | 移动已有 block 到指定位置 | `--block-id` `--src-block-ids` |
+
+## Block ID 生命周期
+
+写操作后不要默认复用之前 fetch 到的 block ID：
+
+- `overwrite` / `block_replace` / `block_delete`：受影响旧 ID 失效，继续 block 级操作前重新 fetch
+- `block_insert_after` / `append` / `block_copy_insert_after`：锚点 / 源 ID 通常保留，新内容是新 ID；要操作新内容先重新 fetch
+- `block_move_after`：被移动 ID 通常保留，但位置、章节、range 语义变化；后续依赖位置时重新 fetch
+- `str_replace`：简单行内替换通常不改变 ID；跨行 / 大段替换后如继续 block 级操作，先重新 fetch
 
 ## 指令示例
 
@@ -239,7 +249,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
   2. 用 `block_delete` 批量删除旧的 block
   3. 这样可以保留文档中其他不相关的内容（图片、评论等）
-- **视觉丰富度**：插入或替换内容时，同样遵循 [`lark-doc-style.md`](style/lark-doc-style.md) 中的样式指南，主动使用结构化 block
+- **表达形式**：插入或替换内容时，优先沿用用户要求和已有文档风格；需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要为了固定丰富度主动添加组件
 
 ## 参考
 

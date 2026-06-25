@@ -61,7 +61,7 @@ func TestWiki_ShortcutWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		childNodeToken = child.Get("node_token").String()
 		childObjType = child.Get("obj_type").String()
 		require.NotEmpty(t, childNodeToken)

@@ -236,6 +236,9 @@ var VCSearch = common.Shortcut{
 			"has_more":   data["has_more"],
 			"page_token": data["page_token"],
 		}
+		if notice, _ := data["notice"].(string); notice != "" {
+			outData["notice"] = notice
+		}
 		hasMore, _ := data["has_more"].(bool)
 		runtime.OutFormat(outData, &output.Meta{Count: len(items)}, func(w io.Writer) {
 			if len(items) == 0 {

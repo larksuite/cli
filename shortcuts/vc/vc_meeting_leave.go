@@ -20,7 +20,7 @@ var VCMeetingLeave = common.Shortcut{
 	Description: "Leave a meeting by meeting ID",
 	Risk:        "write",
 	Scopes:      []string{"vc:meeting.bot.join:write"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "meeting ID to leave"},

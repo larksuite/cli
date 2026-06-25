@@ -878,7 +878,7 @@ func TestAuthLoginRun_DeviceCodeTokenNilCleansScopeCache(t *testing.T) {
 // contract that when --json is set and pollDeviceToken returns OK=false,
 // stdout carries the structured authorization_failed event and stderr is
 // NOT polluted with a typed envelope. The returned error is a bare
-// ExitError with ExitAuth so the dispatcher only propagates the exit code
+// BareError with ExitAuth so the dispatcher only propagates the exit code
 // without emitting a second envelope on top of the JSON event.
 func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 	keyring.MockInit()
@@ -945,16 +945,13 @@ func TestAuthLoginRun_JSONAbort_StdoutEventOnly_StderrEmpty(t *testing.T) {
 		t.Errorf("stderr should not contain JSON envelope fields, got: %s", stderrStr)
 	}
 
-	// Returned error must be the bare *output.ExitError signal (no envelope).
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	// Returned error must be the bare *output.BareError signal (no envelope).
+	var bareErr *output.BareError
+	if !errors.As(err, &bareErr) {
+		t.Fatalf("expected *output.BareError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAuth {
-		t.Fatalf("ExitError.Code = %d, want %d", exitErr.Code, output.ExitAuth)
-	}
-	if exitErr.Detail != nil {
-		t.Errorf("ExitError.Detail should be nil for bare signal, got: %+v", exitErr.Detail)
+	if bareErr.Code != output.ExitAuth {
+		t.Fatalf("BareError.Code = %d, want %d", bareErr.Code, output.ExitAuth)
 	}
 }
 

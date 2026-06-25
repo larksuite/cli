@@ -10,52 +10,24 @@ import (
 	"strings"
 )
 
-// migratedEnvelopePaths lists the source-tree prefixes that have been migrated
-// to the typed errs.* taxonomy. On these paths, constructing a legacy
-// output.ExitError / output.ErrDetail envelope literal directly is forbidden —
-// call sites must return a typed errs.* error instead. Future domains opt in by
-// appending their path prefix here.
-var migratedEnvelopePaths = []string{
-	"cmd/event/",
-	"events/",
-	"internal/event/consume/",
-	"shortcuts/apps/",
-	"shortcuts/base/",
-	"shortcuts/calendar/",
-	"shortcuts/contact/",
-	"shortcuts/doc/",
-	"shortcuts/drive/",
-	"shortcuts/event/",
-	"shortcuts/im/",
-	"shortcuts/mail/",
-	"shortcuts/markdown/",
-	"shortcuts/minutes/",
-	"shortcuts/note/",
-	"shortcuts/okr/",
-	"shortcuts/sheets/",
-	"shortcuts/slides/",
-	"shortcuts/task/",
-	"shortcuts/vc/",
-	"shortcuts/whiteboard/",
-	"shortcuts/wiki/",
-}
-
 // legacyOutputImportPath is the import path of the package that declares the
 // legacy ExitError / ErrDetail envelope types. The rule resolves whatever local
 // name (default or alias) this path is bound to in each file, so an aliased
 // import cannot bypass the check.
 const legacyOutputImportPath = "github.com/larksuite/cli/internal/output"
 
-// CheckNoLegacyEnvelopeLiteral flags direct construction of legacy
-// output.ExitError / output.ErrDetail composite literals on migrated paths.
-// forbidigo can ban identifiers but not composite literals, so this AST rule
-// covers the gap left after a path is migrated to typed errs.* errors.
+// CheckNoLegacyEnvelopeLiteral is a relapse guard against re-introducing
+// the deleted legacy output.ExitError / output.ErrDetail envelope literals.
+// The whole repo is now typed; constructing one of these composite literals
+// directly is forbidden everywhere — call sites must return a typed errs.*
+// error instead. forbidigo can ban identifiers but not composite literals, so
+// this AST rule covers that gap repo-wide.
 //
-// Path-scoped to migratedEnvelopePaths (mirrors how CheckProblemEmbed restricts
-// by path); skips _test.go fixtures. output.ErrBare(...) is a CallExpr, not a
-// CompositeLit, so the predicate exit-signal helper is naturally not flagged.
+// Applies to every .go path; skips _test.go fixtures. output.ErrBare(...) is a
+// CallExpr, not a CompositeLit, so the predicate exit-signal helper is
+// naturally not flagged.
 func CheckNoLegacyEnvelopeLiteral(path, src string) []Violation {
-	if !isMigratedEnvelopePath(path) || strings.HasSuffix(path, "_test.go") {
+	if strings.HasSuffix(path, "_test.go") {
 		return nil
 	}
 	fset := token.NewFileSet()
@@ -80,7 +52,7 @@ func CheckNoLegacyEnvelopeLiteral(path, src string) []Violation {
 				Action:  ActionReject,
 				File:    path,
 				Line:    fset.Position(lit.Pos()).Line,
-				Message: "direct construction of legacy output." + name + " is forbidden on migrated paths; return a typed errs.* error (output.ErrBare remains allowed for predicate exit signals)",
+				Message: "direct construction of legacy output." + name + " is forbidden; return a typed errs.* error (output.ErrBare remains allowed for predicate exit signals)",
 				Suggestion: "replace the &output." + name + "{...} literal with a typed errs.* constructor " +
 					"(e.g. errs.NewValidationError / errs.NewAPIError / errs.NewNetworkError)",
 			})
@@ -88,18 +60,6 @@ func CheckNoLegacyEnvelopeLiteral(path, src string) []Violation {
 		return true
 	})
 	return out
-}
-
-// isMigratedEnvelopePath reports whether path falls under any migrated path
-// prefix in migratedEnvelopePaths.
-func isMigratedEnvelopePath(path string) bool {
-	p := strings.ReplaceAll(path, "\\", "/")
-	for _, prefix := range migratedEnvelopePaths {
-		if strings.HasPrefix(p, prefix) || strings.Contains(p, "/"+prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // resolveLegacyOutputNames walks the file's import declarations and returns the

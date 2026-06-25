@@ -52,7 +52,7 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String())
 		assert.Equal(t, int64(30), gjson.Get(result.Stdout, "data.task.reminders.0.relative_fire_minute").Int())
@@ -78,7 +78,7 @@ func TestTask_ReminderWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String())
 		assert.False(t, gjson.Get(result.Stdout, "data.task.reminders.0").Exists(), "stdout:\n%s", result.Stdout)

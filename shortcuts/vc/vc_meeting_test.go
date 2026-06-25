@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -15,6 +16,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -586,6 +588,335 @@ func TestMeetingLeave_Execute_APIError(t *testing.T) {
 	}
 	if p.Subtype != errs.SubtypePermissionDenied {
 		t.Errorf("subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
+	}
+}
+
+func TestMeetingListActive_DryRun_UserIdentity(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/vc/v1/bots/user_active_meeting") {
+		t.Errorf("dry-run should include API path, got: %s", out)
+	}
+	if strings.Contains(out, "user_id") {
+		t.Errorf("user identity should not send user_id by default, got: %s", out)
+	}
+}
+
+func TestMeetingListActive_ScopeMatchesEventReadPermission(t *testing.T) {
+	if len(VCMeetingListActive.Scopes) != 1 || VCMeetingListActive.Scopes[0] != "vc:meeting.meetingevent:read" {
+		t.Fatalf("scopes = %#v, want [vc:meeting.meetingevent:read]", VCMeetingListActive.Scopes)
+	}
+}
+
+func TestMeetingListActive_DryRun_UserIdentityIgnoresUserID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--dry-run", "--as", "user", "--user-id", "not-open-id",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(stdout.String(), "user_id") {
+		t.Errorf("user identity should not send user_id, got: %s", stdout.String())
+	}
+}
+
+func TestMeetingListActive_Execute_UserIdentityIgnoresInvalidUserID(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	var gotUserID string
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		OnMatch: func(req *http.Request) {
+			gotUserID = req.URL.Query().Get("user_id")
+		},
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"meetings": []interface{}{}},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--as", "user", "--user-id", "not-open-id", "--format", "json",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotUserID != "" {
+		t.Fatalf("user identity should not send user_id, got %q", gotUserID)
+	}
+}
+
+func TestMeetingListActive_Validate_BotRequiresUserID(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingListActive, []string{"+meeting-list-active", "--as", "bot"}, f, nil)
+	if err == nil {
+		t.Fatal("expected error when --as bot omits --user-id")
+	}
+	assertMeetingListActiveUserIDValidationError(t, err)
+}
+
+func TestMeetingListActive_Validate_UserIDOpenIDFormat(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--as", "bot", "--user-id", "300",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected error for non-open_id user-id")
+	}
+	assertMeetingListActiveUserIDValidationError(t, err)
+}
+
+func TestMeetingListActive_Execute_BotPassesUserID(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	var gotUserID string
+	stub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		OnMatch: func(req *http.Request) {
+			gotUserID = req.URL.Query().Get("user_id")
+		},
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"meetings": []interface{}{
+					map[string]interface{}{
+						"meeting_id":    "9001",
+						"meeting_no":    "123456789",
+						"meeting_title": "Standup",
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--user-id", "ou_300",
+		"--format", "json", "--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotUserID != "ou_300" {
+		t.Fatalf("user_id query = %q, want ou_300", gotUserID)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse stdout: %v", err)
+	}
+	data, _ := resp["data"].(map[string]any)
+	meetings, _ := data["meetings"].([]any)
+	if len(meetings) != 1 {
+		t.Fatalf("meetings = %d, want 1 (envelope: %s)", len(meetings), stdout.String())
+	}
+}
+
+func TestMeetingListActive_DryRun_BotValidationErrorEnvelope(t *testing.T) {
+	cmd := &cobra.Command{Use: "+meeting-list-active"}
+	cmd.Flags().String("user-id", "", "")
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+
+	dry := VCMeetingListActive.DryRun(context.Background(), runtime)
+	if dry == nil {
+		t.Fatal("DryRun returned nil")
+	}
+	raw, err := json.Marshal(dry)
+	if err != nil {
+		t.Fatalf("failed to marshal dry-run output: %v", err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, "--user-id") {
+		t.Fatalf("dry-run error = %q, want user-id validation", got)
+	}
+}
+
+func TestMeetingListActive_DryRun_BotSendsUserID(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--dry-run", "--as", "bot", "--user-id", "ou_300",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "user_id") || !strings.Contains(stdout.String(), "ou_300") {
+		t.Fatalf("dry-run should include user_id=ou_300, got: %s", stdout.String())
+	}
+}
+
+func TestMeetingListActive_Execute_ValidationError(t *testing.T) {
+	cmd := &cobra.Command{Use: "+meeting-list-active"}
+	cmd.Flags().String("user-id", "", "")
+	runtime := common.TestNewRuntimeContextWithIdentity(cmd, defaultConfig(), core.AsBot)
+
+	err := VCMeetingListActive.Execute(context.Background(), runtime)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	assertMeetingListActiveUserIDValidationError(t, err)
+}
+
+func TestMeetingListActive_ExecutePretty_Empty(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--format", "pretty", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), "No active meetings.") {
+		t.Fatalf("pretty output = %q, want empty-state message", stdout.String())
+	}
+}
+
+func TestMeetingListActive_ExecutePretty_SingleMeetingNoSelectionPrompt(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"meetings": []interface{}{
+					map[string]interface{}{
+						"meeting_id":    "9001",
+						"meeting_no":    "123456789",
+						"meeting_title": "Standup",
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--format", "pretty", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{"Standup", "Meeting ID:  9001", "Meeting No:  123456789"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, "Multiple active meetings found") {
+		t.Fatalf("single meeting should not show selection prompt: %s", out)
+	}
+}
+
+func TestMeetingListActive_ExecutePretty_MultipleMeetings(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"meetings": []interface{}{
+					map[string]interface{}{
+						"meeting_id":    "9001",
+						"meeting_no":    "123456789",
+						"meeting_title": "Standup",
+					},
+					"ignored",
+					map[string]interface{}{
+						"meeting_id":    "9002",
+						"meeting_no":    "987654321",
+						"meeting_title": "Planning",
+					},
+					map[string]interface{}{
+						"meeting_id": "9003",
+					},
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--format", "pretty", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"Standup",
+		"Meeting ID:  9001",
+		"Meeting No:  123456789",
+		"Planning",
+		"Meeting ID:  9002",
+		"Meeting No:  987654321",
+		"Untitled meeting",
+		"Meeting ID:  9003",
+		"Multiple active meetings found. Ask the user to choose one meeting_id before calling +meeting-events.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pretty output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestMeetingListActive_Execute_APIError(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/bots/user_active_meeting",
+		Body:   map[string]interface{}{"code": 121005, "msg": "no permission"},
+	})
+
+	err := mountAndRun(t, VCMeetingListActive, []string{
+		"+meeting-list-active", "--format", "json", "--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryAuthorization {
+		t.Fatalf("error problem = (%+v, %t), want authorization problem", p, ok)
+	} else if p.Subtype != errs.SubtypePermissionDenied {
+		t.Fatalf("error subtype = %q, want %q", p.Subtype, errs.SubtypePermissionDenied)
+	} else if p.Code != 121005 {
+		t.Fatalf("error code = %d, want 121005", p.Code)
+	}
+	var pe *errs.PermissionError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+}
+
+func assertMeetingListActiveUserIDValidationError(t *testing.T, err error) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Errorf("Category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Param != "--user-id" {
+		t.Errorf("Param = %q, want %q", ve.Param, "--user-id")
 	}
 }
 

@@ -153,6 +153,7 @@ func TestSearchTask_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearchTask_Execute verifies task search output, enrichment, and notices.
 func TestSearchTask_Execute(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -171,6 +172,7 @@ func TestSearchTask_Execute(t *testing.T) {
 						"code": 0,
 						"msg":  "success",
 						"data": map[string]interface{}{
+							"notice":     "The query is too long and has been truncated to the first 50 characters for search.",
 							"has_more":   false,
 							"page_token": "",
 							"items": []interface{}{
@@ -191,7 +193,7 @@ func TestSearchTask_Execute(t *testing.T) {
 					},
 				})
 			},
-			wantParts: []string{`"guid": "task-123"`, `"summary": "Search Result"`},
+			wantParts: []string{`"guid": "task-123"`, `"summary": "Search Result"`, `"notice": "The query is too long and has been truncated to the first 50 characters for search."`},
 		},
 		{
 			name: "fallback to app link",

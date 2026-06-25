@@ -126,6 +126,7 @@ func TestSearchTasklist_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearchTasklist_Execute verifies tasklist search output, enrichment, and notices.
 func TestSearchTasklist_Execute(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -144,6 +145,7 @@ func TestSearchTasklist_Execute(t *testing.T) {
 						"code": 0,
 						"msg":  "success",
 						"data": map[string]interface{}{
+							"notice":     "The query is too long and has been truncated to the first 50 characters for search.",
 							"has_more":   false,
 							"page_token": "",
 							"items":      []interface{}{map[string]interface{}{"id": "tl-123"}},
@@ -162,7 +164,7 @@ func TestSearchTasklist_Execute(t *testing.T) {
 					},
 				})
 			},
-			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`},
+			wantParts: []string{`"guid": "tl-123"`, `"name": "Q2 Plan"`, `"notice": "The query is too long and has been truncated to the first 50 characters for search."`},
 		},
 		{
 			name: "fallback on detail error",

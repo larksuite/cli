@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
@@ -132,12 +133,14 @@ func updateRun(opts *UpdateOptions) error {
 	// 1. Fetch latest version
 	latest, err := fetchLatest()
 	if err != nil {
-		return reportError(opts, io, output.ExitNetwork, "network", "failed to check latest version: %s", err)
+		return reportError(opts, io, "network",
+			errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to check latest version: %s", err).WithCause(err))
 	}
 
 	// 2. Validate version format
 	if update.ParseVersion(latest) == nil {
-		return reportError(opts, io, output.ExitInternal, "update_error", "invalid version from registry: %s", latest)
+		return reportError(opts, io, "update_error",
+			errs.NewInternalError(errs.SubtypeInvalidResponse, "invalid version from registry: %s", latest))
 	}
 
 	// 3. Compare versions
@@ -166,15 +169,18 @@ func updateRun(opts *UpdateOptions) error {
 
 // --- Output helpers ---
 
-func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, exitCode int, errType, format string, args ...interface{}) error {
-	msg := fmt.Sprintf(format, args...)
+// reportError emits the failure on the requested surface: JSON mode prints the
+// {ok:false, error:{type, message}} envelope to stdout and signals the typed
+// error's exit code bare; human mode returns the typed error for the
+// dispatcher to render.
+func reportError(opts *UpdateOptions, io *cmdutil.IOStreams, errType string, typedErr errs.TypedError) error {
 	if opts.JSON {
 		output.PrintJson(io.Out, map[string]interface{}{
-			"ok": false, "error": map[string]interface{}{"type": errType, "message": msg},
+			"ok": false, "error": map[string]interface{}{"type": errType, "message": typedErr.ProblemDetail().Message},
 		})
-		return output.ErrBare(exitCode)
+		return output.ErrBare(output.ExitCodeOf(typedErr))
 	}
-	return output.Errorf(exitCode, errType, "%s", msg)
+	return typedErr
 }
 
 func reportCheckResult(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, canAutoUpdate bool) error {
@@ -228,7 +234,8 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, updater *selfupdate.Updater) error {
 	restore, err := updater.PrepareSelfReplace()
 	if err != nil {
-		return reportError(opts, io, output.ExitAPI, "update_error", "failed to prepare update: %s", err)
+		return reportError(opts, io, "update_error",
+			errs.NewAPIError(errs.SubtypeUnknown, "failed to prepare update: %s", err).WithCause(err))
 	}
 
 	if !opts.JSON {

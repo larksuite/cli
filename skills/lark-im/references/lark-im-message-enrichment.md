@@ -32,7 +32,7 @@ When enabled:
 - Output paths are confined to `./lark-im-resources/` by the same guards as [`+messages-resources-download`](lark-im-messages-resources-download.md) (abnormal `file_key` with path separators / `..` / absolute paths is rejected).
 - **Scope**: the download uses `GET /open-apis/im/v1/messages/:message_id/resources/:file_key`, which requires `im:message:readonly` — already declared in each listing command's `Scopes`, so `--download-resources` needs **no extra scope** beyond what's required to read the messages (user identity also needs `im:message.group_msg:get_as_user` / `im:message.p2p_msg:get_as_user`; bot identity needs `im:message.group_msg` / `im:message.p2p_msg:readonly`, all already declared). Works under both user and bot identity. If a bot was registered before `im:message:readonly` was granted, a single resource will fail-silently (`error: true` + stderr warning) rather than aborting the pull.
 
-Use `--download-resources` when you want the binaries on disk in one pass; otherwise the message content keeps the inline resource markers (e.g. `[Image: img_xxx]`, `<file .../>`, `<audio key="..." duration="Xs"/>`) and you can fetch individual resources later with [`+messages-resources-download`](lark-im-messages-resources-download.md).
+Use `--download-resources` when you want the binaries on disk in one pass; otherwise the message content keeps the inline resource markers (e.g. `![Image](img_xxx)`, `<file .../>`, `<audio key="..." duration="Xs"/>`) and you can fetch individual resources later with [`+messages-resources-download`](lark-im-messages-resources-download.md).
 
 ## Scope requirement
 

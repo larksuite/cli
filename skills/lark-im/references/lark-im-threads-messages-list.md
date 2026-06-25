@@ -96,7 +96,7 @@ lark-cli im +threads-messages-list --thread omt_xxx --page-token <PAGE_TOKEN>
 
 ## Resource Rendering
 
-Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `[Image: img_xxx]`; by default resource binaries are **not** downloaded.
+Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `![Image](img_xxx)`; by default resource binaries are **not** downloaded.
 
 Pass `--download-resources` to download every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` in one pass and attach a `resources` block to each reply (see [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in)). Otherwise download individual resources manually through `im +messages-resources-download` (see [lark-im-messages-resources-download](lark-im-messages-resources-download.md)).
 

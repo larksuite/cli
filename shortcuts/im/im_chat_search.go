@@ -29,7 +29,7 @@ var ImChatSearch = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword (max 64 chars)"},
+		{Name: "query", Desc: "search keyword (server may return data.notice for overly long input)"},
 		{Name: "search-types", Desc: "chat types, comma-separated (private, external, public_joined, public_not_joined)"},
 		{Name: "chat-modes", Desc: "filter by chat mode, comma-separated (group, topic)"},
 		{Name: "member-ids", Desc: "filter by member open_ids, comma-separated"},
@@ -50,16 +50,13 @@ var ImChatSearch = common.Shortcut{
 			Params(params).
 			Body(body)
 	},
-	// Validate enforces query/member-ids presence, --query rune cap, search-types
+	// Validate enforces query/member-ids presence, search-types
 	// enum, --member-ids count and format, and --page-size bounds.
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		query := runtime.Str("query")
 		memberIDs := runtime.Str("member-ids")
 		if query == "" && memberIDs == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--query and --member-ids cannot both be empty; provide at least one (e.g. --query \"team-name\" or --member-ids \"ou_xxx\")")
-		}
-		if query != "" && len([]rune(query)) > 64 {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--query exceeds the maximum of 64 characters (got %d)", len([]rune(query))).WithParam("--query")
 		}
 		if st := runtime.Str("search-types"); st != "" {
 			allowed := map[string]struct{}{
@@ -150,6 +147,9 @@ var ImChatSearch = common.Shortcut{
 			"total":      int(total),
 			"has_more":   hasMore,
 			"page_token": pageToken,
+		}
+		if notice, _ := resData["notice"].(string); notice != "" {
+			outData["notice"] = notice
 		}
 		if mfOut.Meta.Applied != "" {
 			outData["filter"] = MuteFilterMetaToMap(mfOut.Meta)

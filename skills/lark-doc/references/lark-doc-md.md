@@ -1,6 +1,10 @@
 # Markdown 格式参考
 
-`docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用。
+`docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用；fetch 的 `--doc-format im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用，不作为 create/update 写入格式。
+
+## 创建文档标题
+
+使用 `docs +create --doc-format markdown` 创建文档时，文档标题必须写成内容开头唯一的一级标题：`# 标题`。正文标题从 `##` 开始，不要使用多个一级标题；否则标题可能无法被提取并显示为 `Untitled`。
 
 ## 转义规则
 

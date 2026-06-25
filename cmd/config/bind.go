@@ -212,10 +212,7 @@ func finalizeSource(opts *BindOptions) (string, error) {
 	if opts.IsTUI && !opts.langExplicit {
 		lang, err := promptLangSelection()
 		if err != nil {
-			if err == huh.ErrUserAborted {
-				return "", output.ErrBare(1)
-			}
-			return "", output.Errorf(output.ExitInternal, "internal", "language selection failed: %v", err)
+			return "", langSelectionError(err)
 		}
 		opts.Lang = string(lang)
 		opts.UILang = lang

@@ -51,7 +51,7 @@ var SheetInfo = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindRead, "get_sheet_structure", sheetInfoInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -136,7 +136,7 @@ var DimInsert = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -211,7 +211,7 @@ var DimDelete = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ var DimFreeze = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -395,7 +395,7 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -439,7 +439,7 @@ func newDimGroupShortcut(command, desc, op string) common.Shortcut {
 			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -593,7 +593,7 @@ var DimMove = common.Shortcut{
 			Set("spreadsheet_token", token)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}

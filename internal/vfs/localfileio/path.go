@@ -60,6 +60,10 @@ func safePath(raw, flagName string) (string, error) {
 		return "", err
 	}
 
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("%s must not be empty", flagName)
+	}
+
 	if isAbsolutePath(raw) {
 		return "", fmt.Errorf("%s must be a relative path within the current directory, got %q (hint: cd to the target directory first, or use a relative path like ./filename)", flagName, raw)
 	}

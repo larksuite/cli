@@ -109,6 +109,17 @@ lark-cli sheets +filter-view-create --url "..." --sheet-id "$SID" \
   --properties '{"rules":[{"column_index":"C","conditions":[{"type":"number","compare_type":"greaterThan","values":[100]}]}]}'
 ```
 
+**`conditions[].type` × `compare_type` 取值**（`type` 决定可用的 `compare_type`；两者均必填）：
+
+| `type` | 可用 `compare_type` | `values` |
+|---|---|---|
+| `text` | `contains` / `doesNotContain` / `beginsWith` / `doesNotBeginWith` / `endsWith` / `doesNotEndWith` / `equals` / `notEquals` | 字符串数组 |
+| `number` | `equal` / `notEqual` / `greaterThan` / `greaterThanOrEqual` / `lessThan` / `lessThanOrEqual` / `between` / `notBetween` | 数值（或数值字符串）数组；`between` / `notBetween` 传两个边界 |
+| `multiValue` | `equal` / `notEqual` | 字符串数组（精确匹配其中任一值） |
+| `color` | `backgroundColor` / `foregroundColor` | 不传 `values`（按单元格颜色筛选） |
+
+> ⚠️ `text` 用 `equals` / `notEquals`（**带 s**），`number` / `multiValue` 用 `equal` / `notEqual`（**不带 s**）——别混。完整 schema 跑 `+filter-view-create --print-schema --flag-name properties`。
+
 > `--range` **必须覆盖表头行**（如 `A1:F1000`），不能只包含数据行；`--view-name` 重名时服务端自动改名。
 
 ### `+filter-view-update`

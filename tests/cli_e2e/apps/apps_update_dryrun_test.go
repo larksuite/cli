@@ -76,8 +76,8 @@ func TestAppsUpdateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 1)
-		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "app-id" not set`)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), `required flag(s) "app-id" not set`)
 	})
 
 	t.Run("RejectsNoFields", func(t *testing.T) {

@@ -37,7 +37,7 @@ var ImMessagesSend = common.Shortcut{
 		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
-		{Name: "audio", Desc: "audio file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "audio", Desc: audioMessageInputDesc},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		chatFlag := runtime.Str("chat-id")
@@ -111,6 +111,9 @@ var ImMessagesSend = common.Shortcut{
 			if err := validateMediaFlagPath(fio, mf.flag, mf.val); err != nil {
 				return err
 			}
+		}
+		if err := validateAudioMessageInput("--audio", audioKey); err != nil {
+			return err
 		}
 
 		if err := common.ExactlyOneTyped(runtime, "chat-id", "user-id"); err != nil {

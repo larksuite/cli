@@ -363,7 +363,7 @@ func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"app_id":"whatever"}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"app_id":"app_x"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	f := &fakeCommandRunner{results: map[string]fakeCallResult{"env-pull": envPullOK(filepath.Join(abs, ".env.local"))}}
@@ -391,6 +391,40 @@ func TestAppsInit_AlreadyInitialized_ShortCircuit(t *testing.T) {
 	}
 	if envPullCalls != 1 {
 		t.Errorf("short-circuit must call +env-pull exactly once; got %d (%v)", envPullCalls, f.calls)
+	}
+}
+
+func TestAppsInit_AlreadyInitialized_AppIDMismatch(t *testing.T) {
+	dir := relCloneDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// 目录是 app_other 的工程，却用 --app-id app_x 初始化 → 必须报错且不拉 env。
+	if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(`{"app_id":"app_other"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeCommandRunner{}
+	withFakeRunner(t, f)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatal("mismatched app_id must error")
+	}
+	problem := requireAppsValidationProblem(t, err)
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) || ve.Param != "--dir" {
+		t.Fatalf("expected *errs.ValidationError with Param=--dir, got %T param=%v", err, ve)
+	}
+	if !strings.Contains(problem.Message, "different app") {
+		t.Fatalf("message=%q, want 'different app'", problem.Message)
+	}
+	for _, c := range f.calls {
+		if containsAll(c, "+env-pull") || containsAll(c, "git", "clone") {
+			t.Errorf("mismatch must not run env-pull/clone; got %v", f.calls)
+		}
 	}
 }
 
@@ -1465,6 +1499,125 @@ func TestAppsInit_Description_IsAboutCode(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(AppsInit.Description), "code") {
 		t.Errorf("Description should mention app code: %q", AppsInit.Description)
+	}
+}
+
+func TestReadMetaAppID(t *testing.T) {
+	writeMeta := func(t *testing.T, content string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	// 不存在 meta.json → ("", false, nil)
+	if got, ok, err := readMetaAppID(t.TempDir()); ok || got != "" || err != nil {
+		t.Fatalf("no meta: got (%q,%v,%v), want (\"\",false,nil)", got, ok, err)
+	}
+	// 存在且有 app_id → (app_id, true, nil)
+	if got, ok, err := readMetaAppID(writeMeta(t, `{"app_id":"app_a"}`)); !ok || got != "app_a" || err != nil {
+		t.Fatalf("with app_id: got (%q,%v,%v), want (\"app_a\",true,nil)", got, ok, err)
+	}
+	// 存在但 app_id 空 → ("", true, nil)
+	if got, ok, err := readMetaAppID(writeMeta(t, `{"name":"x"}`)); !ok || got != "" || err != nil {
+		t.Fatalf("empty app_id: got (%q,%v,%v), want (\"\",true,nil)", got, ok, err)
+	}
+	// 存在但坏 JSON → ("", false, err)（无法确认）
+	if got, ok, err := readMetaAppID(writeMeta(t, `{not json`)); ok || got != "" || err == nil {
+		t.Fatalf("bad json: got (%q,%v,err=%v), want (\"\",false,non-nil)", got, ok, err)
+	}
+}
+
+func TestEnsureInitDirMatchesApp(t *testing.T) {
+	writeMeta := func(t *testing.T, content string) string {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, ".spark"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, metaRelPath), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+
+	// 无 meta（非妙搭工程）→ nil（交给 ensureEmptyDir）
+	if _, err := ensureInitDirMatchesApp(t.TempDir(), "app_x"); err != nil {
+		t.Fatalf("no meta should pass: %v", err)
+	}
+	// 同 app_id → (app_id, nil)（走已初始化短路）
+	if existing, err := ensureInitDirMatchesApp(writeMeta(t, `{"app_id":"app_x"}`), "app_x"); err != nil || existing != "app_x" {
+		t.Fatalf("same app should pass: existing=%q err=%v", existing, err)
+	}
+
+	// 不同 app_id → error（换目录），返回 existing=app_other；断言 typed metadata（subtype/param）
+	existing, errMismatch := ensureInitDirMatchesApp(writeMeta(t, `{"app_id":"app_other"}`), "app_x")
+	if errMismatch == nil {
+		t.Fatal("different app should error")
+	}
+	if existing != "app_other" {
+		t.Fatalf("mismatch should return existing app_id, got %q", existing)
+	}
+	problem := requireAppsValidationProblem(t, errMismatch) // 已校验 Category==Validation
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype=%q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(errMismatch, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", errMismatch)
+	}
+	if ve.Param != "--dir" {
+		t.Fatalf("param=%q, want --dir", ve.Param)
+	}
+	if !strings.Contains(problem.Message, "different app") || !strings.Contains(problem.Message, "app_other") {
+		t.Fatalf("message=%q, want 'different app' and 'app_other'", problem.Message)
+	}
+	if !strings.Contains(problem.Hint, "different --dir") {
+		t.Fatalf("hint=%q, want 'different --dir'", problem.Hint)
+	}
+
+	// 空 app_id（缺 app_id 标记的半成品）→ error，独立文案（非 "different app"），返回 existing=""
+	emptyExisting, errEmpty := ensureInitDirMatchesApp(writeMeta(t, `{"name":"x"}`), "app_x")
+	if errEmpty == nil {
+		t.Fatal("empty meta app_id should error (cannot confirm same app)")
+	}
+	if emptyExisting != "" {
+		t.Fatalf("empty app_id should return existing=\"\", got %q", emptyExisting)
+	}
+	pEmpty := requireAppsValidationProblem(t, errEmpty)
+	if pEmpty.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("empty subtype=%q, want %q", pEmpty.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(pEmpty.Message, "without an app_id") {
+		t.Fatalf("empty app_id should have its own message, msg=%q", pEmpty.Message)
+	}
+	if strings.Contains(pEmpty.Message, "different app") {
+		t.Fatalf("empty app_id must not reuse the different-app wording, msg=%q", pEmpty.Message)
+	}
+
+	// meta 损坏/不可读 → error（fail closed），返回 existing=""
+	badExisting, errBad := ensureInitDirMatchesApp(writeMeta(t, `{not json`), "app_x")
+	if errBad == nil {
+		t.Fatal("corrupted meta should fail closed")
+	}
+	if badExisting != "" {
+		t.Fatalf("corrupted should return existing=\"\", got %q", badExisting)
+	}
+	pBad := requireAppsValidationProblem(t, errBad)
+	if pBad.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("corrupted subtype=%q, want %q", pBad.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(pBad.Message, "unreadable or corrupted") {
+		t.Fatalf("corrupted meta msg=%q, want 'unreadable or corrupted'", pBad.Message)
+	}
+	var veBad *errs.ValidationError
+	if !errors.As(errBad, &veBad) || veBad.Param != "--dir" {
+		t.Fatalf("corrupted: expected ValidationError Param=--dir, got %T param=%v", errBad, veBad)
 	}
 }
 

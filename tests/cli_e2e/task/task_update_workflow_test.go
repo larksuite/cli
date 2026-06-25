@@ -75,7 +75,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String(), "stdout:\n%s", result.Stdout)
 		assert.Equal(t, taskSummary, gjson.Get(result.Stdout, "data.task.summary").String(), "stdout:\n%s", result.Stdout)
@@ -112,7 +112,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, updatedTaskSummary, gjson.Get(result.Stdout, "data.task.summary").String(), "stdout:\n%s", result.Stdout)
 		assert.Equal(t, updatedTaskDescription, gjson.Get(result.Stdout, "data.task.description").String(), "stdout:\n%s", result.Stdout)
@@ -135,7 +135,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String(), "stdout:\n%s", result.Stdout)
 	})
 
@@ -149,7 +149,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String(), "stdout:\n%s", result.Stdout)
 		assert.Equal(t, patchedTaskSummary, gjson.Get(result.Stdout, "data.task.summary").String(), "stdout:\n%s", result.Stdout)
@@ -180,7 +180,7 @@ func TestTask_UpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String(), "stdout:\n%s", result.Stdout)
 		assert.Equal(t, patchedTaskSummary, gjson.Get(result.Stdout, "data.task.summary").String(), "stdout:\n%s", result.Stdout)

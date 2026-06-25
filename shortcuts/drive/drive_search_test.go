@@ -14,12 +14,49 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// TestClampOpenedTimeWindow covers the 3-month / 1-year boundary logic that
-// narrows --opened-since / --opened-until and generates the multi-slice notice.
+// TestDriveSearchExecutePassesThroughNotice verifies drive +search preserves notices.
+func TestDriveSearchExecutePassesThroughNotice(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/search/v2/doc_wiki/search",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"notice":     notice,
+				"res_units":  []interface{}{},
+				"total":      0,
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+
+	if err := mountAndRunDrive(t, DriveSearch, []string{"+search", "--query", "incident", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("DriveSearch.Execute() error = %v", err)
+	}
+	reg.Verify(t)
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := env["data"].(map[string]interface{})
+	if got, _ := data["notice"].(string); got != notice {
+		t.Fatalf("data.notice = %q, want %q; data=%#v", got, notice, data)
+	}
+}
+
+// TestClampOpenedTimeWindow covers opened-time clamping and slice notices.
 func TestClampOpenedTimeWindow(t *testing.T) {
 	t.Parallel()
 
@@ -245,9 +282,10 @@ func TestValidateDriveSearchIDs(t *testing.T) {
 	t.Run("all valid", func(t *testing.T) {
 		t.Parallel()
 		spec := driveSearchSpec{
-			CreatorIDs: []string{"ou_aaa"},
-			ChatIDs:    []string{"oc_xxx"},
-			SharerIDs:  []string{"ou_bbb"},
+			CreatorIDs:         []string{"ou_aaa"},
+			OriginalCreatorIDs: []string{"ou_ccc"},
+			ChatIDs:            []string{"oc_xxx"},
+			SharerIDs:          []string{"ou_bbb"},
 		}
 		if err := validateDriveSearchIDs(spec); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -272,6 +310,24 @@ func TestValidateDriveSearchIDs(t *testing.T) {
 		}
 		if got := output.ExitCodeOf(err); got != output.ExitValidation {
 			t.Fatalf("exit code = %d, want ExitValidation (%d)", got, output.ExitValidation)
+		}
+	})
+
+	t.Run("bad original creator id format", func(t *testing.T) {
+		t.Parallel()
+		err := validateDriveSearchIDs(driveSearchSpec{OriginalCreatorIDs: []string{"u_bad"}})
+		if err == nil || !strings.Contains(err.Error(), "--original-creator-ids") {
+			t.Fatalf("expected --original-creator-ids error, got: %v", err)
+		}
+		var vErr *errs.ValidationError
+		if !errors.As(err, &vErr) {
+			t.Fatalf("expected *errs.ValidationError, got %T", err)
+		}
+		if vErr.Subtype != errs.SubtypeInvalidArgument {
+			t.Fatalf("Subtype = %q, want %q", vErr.Subtype, errs.SubtypeInvalidArgument)
+		}
+		if vErr.Param != "--original-creator-ids" {
+			t.Fatalf("Param = %q, want --original-creator-ids", vErr.Param)
 		}
 	})
 
@@ -727,11 +783,46 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("--created-by-me fills original_creator_ids from userOpenID", func(t *testing.T) {
+		t.Parallel()
+		req, _, err := buildDriveSearchRequest(driveSearchSpec{CreatedByMe: true}, userOpenID, now)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		got := req["doc_filter"].(map[string]interface{})["original_creator_ids"].([]string)
+		if len(got) != 1 || got[0] != userOpenID {
+			t.Fatalf("expected [userOpenID], got %v", got)
+		}
+	})
+
+	t.Run("--original-creator-ids fills original_creator_ids", func(t *testing.T) {
+		t.Parallel()
+		spec := driveSearchSpec{OriginalCreatorIDs: []string{"ou_a", "ou_b"}}
+		req, _, err := buildDriveSearchRequest(spec, userOpenID, now)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+		for _, filterKey := range []string{"doc_filter", "wiki_filter"} {
+			got := req[filterKey].(map[string]interface{})["original_creator_ids"].([]string)
+			if !reflect.DeepEqual(got, []string{"ou_a", "ou_b"}) {
+				t.Fatalf("%s: expected explicit original creator ids, got %v", filterKey, got)
+			}
+		}
+	})
+
 	t.Run("--mine without userOpenID errors", func(t *testing.T) {
 		t.Parallel()
 		_, _, err := buildDriveSearchRequest(driveSearchSpec{Mine: true}, "", now)
 		if err == nil || !strings.Contains(err.Error(), "--mine") {
 			t.Fatalf("expected --mine error, got: %v", err)
+		}
+	})
+
+	t.Run("--created-by-me without userOpenID errors", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := buildDriveSearchRequest(driveSearchSpec{CreatedByMe: true}, "", now)
+		if err == nil || !strings.Contains(err.Error(), "--created-by-me") {
+			t.Fatalf("expected --created-by-me error, got: %v", err)
 		}
 	})
 
@@ -753,6 +844,15 @@ func TestBuildDriveSearchRequest(t *testing.T) {
 		}
 		if vErr.Param != "" {
 			t.Fatalf("Param = %q, want empty for mutual-exclusion error", vErr.Param)
+		}
+	})
+
+	t.Run("--created-by-me + --original-creator-ids mutually exclusive", func(t *testing.T) {
+		t.Parallel()
+		spec := driveSearchSpec{CreatedByMe: true, OriginalCreatorIDs: []string{"ou_x"}}
+		_, _, err := buildDriveSearchRequest(spec, userOpenID, now)
+		if err == nil || !strings.Contains(err.Error(), "--created-by-me") {
+			t.Fatalf("expected exclusion error, got: %v", err)
 		}
 	})
 

@@ -45,7 +45,7 @@ var CellsClear = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "clear_cell_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -163,7 +163,7 @@ func newMergeShortcut(command, desc, op string, withMergeType bool) common.Short
 			return invokeToolDryRun(token, ToolKindWrite, "merge_cells", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -239,7 +239,7 @@ var RowsResize = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -279,7 +279,7 @@ var ColsResize = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -451,7 +451,7 @@ var RangeFill = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -490,7 +490,7 @@ var RangeSort = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -540,7 +540,7 @@ func transformDryRunFn(op string, withPasteType, _ bool) func(context.Context, *
 
 func transformExecuteFn(op string, withPasteType, _ bool) func(context.Context, *common.RuntimeContext) error {
 	return func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}

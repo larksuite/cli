@@ -147,6 +147,9 @@ lark-cli im +messages-reply --message-id om_xxx --file ./report.pdf
 # Reply with a local video (--video-cover is required as the video cover)
 lark-cli im +messages-reply --message-id om_xxx --video ./demo.mp4 --video-cover ./cover.png
 
+# Reply with a voice message
+lark-cli im +messages-reply --message-id om_xxx --audio ./voice.opus
+
 # With an idempotency key
 lark-cli im +messages-reply --message-id om_xxx --text "Received" --idempotency-key my-unique-id
 
@@ -159,6 +162,7 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' -
 - Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
 - Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
 - Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+- `--audio` sends a voice message and accepts only Opus audio (`.opus` or Ogg Opus `.ogg`) for local paths and URLs. For `mp3`, `wav`, or other non-Opus audio, convert to `.opus` before using `--audio`, or use `--file` to send the original audio as an attachment.
 
 ## Parameters
 
@@ -173,7 +177,7 @@ lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' -
 | `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`)                                                                                                                                 |
 | `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`); **must be used together with `--video-cover`**                                                                                |
 | `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`)                                                                                                                          |
-| `--audio <path\|url\|key>` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`)                                                                                                                                            |
+| `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `--reply-in-thread` | No | Reply inside the thread. The reply appears in the target message's thread instead of the main chat stream                                                                                     |
 | `--idempotency-key <key>` | No | Idempotency key; the same key sends only one reply within 1 hour                                                                                                                              |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
@@ -222,11 +226,27 @@ lark-cli im +messages-reply --message-id om_xxx --text "Let me take a look at th
 
 The reply appears in the target message's thread and does not show up in the main chat stream.
 
-## @Mention Format (text / post)
+## @Mention Format
 
-- Recommended format: `<at user_id="ou_xxx">name</at>`
+The `<at>` syntax differs by message type. The shortcut only normalizes mentions for `text` and `post`; `interactive` card content is passed through verbatim, so cards must use the card-native syntax below.
+
+### `text`
+
+- `<at user_id="ou_xxx">name</at>` — the inner text is the mentioned user's display name and is optional (`<at user_id="ou_xxx"></at>` also works)
 - @all: `<at user_id="all"></at>`
-- The shortcut normalizes common variants like `<at id=...>` and `<at open_id=...>` into `user_id`, but `user_id` remains the recommended documented form
+
+### `post`
+
+- Inside a `text` or `md` element, the same inline form as `text` works: `<at user_id="ou_xxx">name</at>`
+- Or use a dedicated `at` element node: `{"tag":"at","user_id":"ou_xxx"}` (use `"all"` to mention everyone)
+
+### `interactive` (card)
+
+Card content is **not** normalized — use the card-native `<at>` syntax inside a `lark_md` / `markdown` element:
+
+- single user by open_id: `<at id=ou_xxx></at>`
+- multiple users: `<at ids=ou_xxx1,ou_xxx2></at>`
+- by email: `<at email=user@example.com></at>`
 
 ## Notes
 
