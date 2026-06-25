@@ -29,7 +29,7 @@
 
 4. Spawn Agent 并行撰写各章节。每个 Agent 需收到：
    - 文档 token、负责的章节范围、用户目标、目标读者和已有风格线索
-   - `lark-doc-xml.md` 的完整路径（Agent 须先读取）；仅在需要使用富 block 或用户要求美化时提供 `lark-doc-style.md`
+   - `lark-doc-xml.md` 和 `lark-doc-style.md` 的完整路径（Agent 须先读取）
    - 使用 `block_insert_after --block-id <章节标题 block_id>` 写入对应章节内容
 
 ### 步骤三：整合审查与画板识别（串行）
@@ -50,7 +50,7 @@
 
 ## Agent 子任务要求
 
-内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 路径、用户目标/风格要求、具体的 `docs +update` command 和 `--block-id`。只有在需要使用富 block 或用户要求美化时，才提供 `lark-doc-style.md` 路径。
+内容改写 Agent 必须收到：文档 token、章节范围（标题/block ID）、`lark-doc-xml.md` 和 `lark-doc-style.md` 路径、用户目标/风格要求、具体的 `docs +update` command 和 `--block-id`。
 
 Mermaid 图由主 Agent 直接插入 `<whiteboard type="mermaid">...</whiteboard>`，无需 SubAgent。
 

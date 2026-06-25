@@ -26,8 +26,7 @@ lark-cli docs +update --api-version v2 --doc "文档URL或token" --command appen
 **CRITICAL — 执行对应操作前，MUST 先用 Read 工具读取以下文件，缺一不可：**
 1. [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) — 认证、权限处理、全局参数（所有操作通用）
 2. **读取文档（`docs +fetch --api-version v2`）** → 必读 [`lark-doc-fetch.md`](references/lark-doc-fetch.md)（`--scope` / `--detail` 选择、局部读取策略、`<fragment>` / `<excerpt>` 输出结构）
-3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update.md`](references/lark-doc-update.md) 和 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
-4. **需要使用 callout、grid、table、whiteboard 等富 block 时** → 参考 [`lark-doc-style.md`](references/style/lark-doc-style.md) 的元素能力说明。该文件不是固定模板或强制排版规范；除非用户明确要求美化、重排版或特定风格，不要为了“达标”主动套用固定结构。
+3. **创建或编辑文档内容** → 必读 [`lark-doc-xml.md`](references/lark-doc-xml.md)（XML 语法规则，仅当用户明确要求 Markdown 时改读 [`lark-doc-md.md`](references/lark-doc-md.md)）和 [`lark-doc-style.md`](references/style/lark-doc-style.md)（元素选择、丰富度规则、颜色语义）；从零创建时加读 [`lark-doc-create-workflow.md`](references/style/lark-doc-create-workflow.md)；编辑已有文档时加读 [`lark-doc-update.md`](references/lark-doc-update.md) 和 [`lark-doc-update-workflow.md`](references/style/lark-doc-update-workflow.md)
 
 **未读完以上文件就执行相应操作会导致参数选择错误或格式错误。**
 
