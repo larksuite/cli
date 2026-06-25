@@ -15,17 +15,11 @@
 ## 命令
 
 ```bash
-# 创建 XML 文档（默认格式，推荐）
-lark-cli docs +create --api-version v2 --title "项目计划" --content '<h1>目标</h1><ul><li>目标 1</li><li>目标 2</li></ul>'
+# 创建 XML 文档（默认格式，推荐；标题写在 <title> 中）
+lark-cli docs +create --api-version v2 --content '<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>'
 
-# 创建到指定文件夹（XML）
-lark-cli docs +create --api-version v2 --parent-token fldcnXXXX --title "标题" --content '<p>首段内容</p>'
-
-# 创建到个人知识库（XML）
-lark-cli docs +create --api-version v2 --parent-position my_library --title "标题" --content '<p>内容</p>'
-
-# 仅当用户明确要求时才使用 Markdown；文档标题用 --title，正文标题按内容自然组织
-lark-cli docs +create --api-version v2 --doc-format markdown --title "项目计划" --content $'## 目标\n\n- 目标 1\n- 目标 2'
+# 仅当用户明确要求导入 Markdown 时才使用；文档标题用 --title，正文标题按内容自然组织
+lark-cli docs +create --api-version v2 --doc-format markdown --title "项目计划" --content $'## 目标\n\n- 明确重点\n- 记录待办'
 ```
 
 ## 返回值
@@ -36,9 +30,9 @@ lark-cli docs +create --api-version v2 --doc-format markdown --title "项目计�
   "identity": "user",
   "data": {
     "document": {
-      "document_id": "doxcnXXXXXXXXXXXXXXXXXXX",
+      "document_id": "docx_token",
       "revision_id": 1,
-      "url": "https://xxx.feishu.cn/docx/doxcnXXXXXXXXXXXXXXXXXXX",
+      "url": "https://xxx.feishu.cn/docx/docx_token",
       "new_blocks": [
         { "block_id": "blkcnXXXX", "block_type": "whiteboard", "block_token": "boardXXXX" }
       ]
@@ -61,19 +55,12 @@ lark-cli docs +create --api-version v2 --doc-format markdown --title "项目计�
 >
 > **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
-## 文档标题
-
-- 创建文档时优先用 `--title` 指定文档标题。CLI 会把它补成内容开头的 `<title>...</title>`。
-- XML 内容也可以直接写 `<title>标题</title>`；每篇文档只应有一个文档标题。
-- 如果同时传 `--title` 且 `--content` 中也包含 `<title>`，SDK 会保留第一个标题并过滤后续标题，同时在 `warnings` / `degrade_details` 中提示。
-- Markdown 创建时用 `--title` 指定文档标题，不要求正文开头必须是唯一一级标题；正文 heading 按内容自然组织即可。
-
 ## 参数
 
 | 参数                  | 必填 | 说明                                          |
 | ------------------- | -- |---------------------------------------------|
 | `--api-version`     | 是  | 固定传 `v2`                                    |
-| `--title`           | 否  | 文档标题；传入后 CLI 会在 `--content` 开头补 `<title>...</title>` |
+| `--title`           | 否  | 文档标题，Markdown 导入时使用；XML 创建推荐在 `--content` 开头写 `<title>...</title>`；多个标题仅保留第一个并在 `warnings` / `degrade_details` 提示 |
 | `--content`         | 视情况 | 文档内容（XML 或 Markdown 格式）；不传 `--content` 时必须传 `--title` |
 | `--doc-format`      | 否  | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `--parent-token`    | 否  | 父文件夹或知识库节点 token（与 `--parent-position` 互斥）  |
@@ -81,7 +68,7 @@ lark-cli docs +create --api-version v2 --doc-format markdown --title "项目计�
 
 ## 最佳实践
 
-- **较长文档**：用 `--title` 传文档标题，参考 [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) 先建骨架再分段写入；`--content` 仅传各级 heading + 简短占位摘要，短文档可一次写完整内容。
+- **较长文档**：参考 [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) 先建骨架再分段写入；短文档可一次写完整内容
 - **表达形式**：由用户目标和内容决定。需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要默认套用固定开头、固定富 block 比例或固定图表
 
 ## 参考
