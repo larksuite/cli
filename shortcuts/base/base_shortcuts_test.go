@@ -2209,8 +2209,12 @@ func TestExecuteFormSubmit(t *testing.T) {
 		if code := output.ExitCodeOf(err); code != output.ExitConfirmationRequired {
 			t.Fatalf("exit code=%d want %d; err=%v", code, output.ExitConfirmationRequired, err)
 		}
-		if p, ok := errs.ProblemOf(err); !ok || p.Subtype != errs.SubtypeConfirmationRequired {
-			t.Fatalf("problem=%#v ok=%v want subtype=%q", p, ok, errs.SubtypeConfirmationRequired)
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("expected typed problem, got err=%v", err)
+		}
+		if p.Category != errs.CategoryConfirmation || p.Subtype != errs.SubtypeConfirmationRequired {
+			t.Fatalf("category/subtype=%s/%s want %s/%s", p.Category, p.Subtype, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired)
 		}
 		if stdout.Len() != 0 {
 			t.Fatalf("stdout should be empty before confirmation, got: %s", stdout.String())
