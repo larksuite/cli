@@ -534,6 +534,20 @@ func (ctx *RuntimeContext) IO() *cmdutil.IOStreams {
 	return ctx.Factory.IOStreams
 }
 
+// StartSpinner shows a braille spinner with elapsed time on stderr for a slow
+// operation, until the returned stop() runs. It is a no-op unless stderr is an
+// interactive terminal, so pipes / CI / captured output emit nothing and stdout
+// (JSON/pretty) is never polluted — hence it is shown in JSON mode too. Call
+// stop() before printing the result; stop() is safe to call multiple times
+// (e.g. `defer stop()` plus an explicit call on the success path).
+func (ctx *RuntimeContext) StartSpinner(label string) func() {
+	io := ctx.IO()
+	if io == nil {
+		return func() {}
+	}
+	return output.StartSpinner(io.ErrOut, io.StderrIsTerminal, label)
+}
+
 // FileIO resolves the FileIO using the current execution context.
 // Falls back to the globally registered provider when Factory or its
 // FileIOProvider is nil (e.g. in lightweight test helpers).
