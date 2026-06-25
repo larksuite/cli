@@ -112,14 +112,17 @@ func buildKeyConfig(scopeAll bool, scopeAPIs []string, scopeRaw string, hasAllow
 func oapiKeyValidateScopeFlags(rctx *common.RuntimeContext) error {
 	scopeRaw := strings.TrimSpace(rctx.Str("scope"))
 	if scopeRaw != "" && (rctx.Bool("scope-all") || len(rctx.StrArray("scope-api")) > 0) {
-		return appsValidationParamError("--scope", "--scope cannot be combined with --scope-all / --scope-api")
+		return appsValidationParamError("--scope", "--scope cannot be combined with --scope-all / --scope-api").
+			WithHint("use either --scope (raw JSON) OR --scope-all/--scope-api, not both")
 	}
 	if scopeRaw != "" && !json.Valid([]byte(scopeRaw)) {
-		return appsValidationParamError("--scope", "--scope must be valid JSON")
+		return appsValidationParamError("--scope", "--scope must be valid JSON").
+			WithHint("--scope takes raw JSON for config.request_scope; or use --scope-all / --scope-api 'METHOD /openapi/path'")
 	}
 	for _, a := range rctx.StrArray("scope-api") {
 		if len(strings.Fields(strings.TrimSpace(a))) != 2 {
-			return appsValidationParamError("--scope-api", "--scope-api must be 'METHOD /path', got %q", a)
+			return appsValidationParamError("--scope-api", "--scope-api must be 'METHOD /path', got %q", a).
+				WithHint("format: --scope-api 'METHOD /openapi/path' (routes come from the app's docs/openapi.json), e.g. --scope-api 'GET /openapi/orders'")
 		}
 	}
 	return nil

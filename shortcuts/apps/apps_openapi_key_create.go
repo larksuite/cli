@@ -21,7 +21,8 @@ var AppsOpenAPIKeyCreate = common.Shortcut{
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +openapi-key-create --app-id <app_id> --name partner-test",
-		"Example: --scope-api 'GET /openapi/v1/orders' --scope-api 'POST /openapi/v1/orders'",
+		"Example: lark-cli apps +openapi-key-create --app-id <app_id> --name orders-readonly --scope-api 'GET /openapi/orders'",
+		"Example: lark-cli apps +openapi-key-create --app-id <app_id> --name full-access --scope-all",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
@@ -39,7 +40,8 @@ var AppsOpenAPIKeyCreate = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(rctx.Str("name")) == "" {
-			return appsValidationParamError("--name", "--name is required")
+			return appsValidationParamError("--name", "--name is required").
+				WithHint("provide a human-readable key name, e.g. --name partner-readonly")
 		}
 		return oapiKeyValidateScopeFlags(rctx)
 	},
@@ -55,7 +57,8 @@ var AppsOpenAPIKeyCreate = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		body, err := buildOpenAPIKeyCreateBody(rctx)
 		if err != nil {
-			return appsValidationParamError("--scope", "invalid scope: %v", err)
+			return appsValidationParamError("--scope", "invalid scope: %v", err).
+				WithHint("--scope must be valid JSON for config.request_scope; or use --scope-all / --scope-api")
 		}
 		path := fmt.Sprintf(oapiKeyListPath, validate.EncodePathSegment(appID))
 		data, err := rctx.CallAPITyped("POST", path, nil, body)

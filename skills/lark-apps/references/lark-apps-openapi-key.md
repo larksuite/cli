@@ -4,16 +4,16 @@
 
 ## 命令路由
 
-| 命令 | 用途 | 关键 flag | 原始密钥 |
-|---|---|---|---|
-| `+openapi-key-list` | 列出应用所有 API Key（脱敏） | `--app-id`, `--limit`, `--offset` | 不返回 |
-| `+openapi-key-get` | 查看单个 Key 详情（脱敏） | `--app-id`, `--key-id` | 不返回 |
-| `+openapi-key-create` | 创建新 Key，**原始密钥一次性可见** | `--app-id`, `--name` (必填), `--scope-all`, `--scope-api`, `--scope`, `--allow-preview` | 顶层 `data.api_key` |
-| `+openapi-key-update` | 改名或改 config（不改 status） | `--app-id`, `--key-id`, `--name`/`--scope-all`/`--scope-api`/`--scope`/`--allow-preview` 至少一个 | 不返回 |
-| `+openapi-key-enable` | 启用 Key（status→1） | `--app-id`, `--key-id` | 不返回 |
-| `+openapi-key-disable` | 停用 Key（status→0），**泄露/疑似泄露优先用这个而非 delete** | `--app-id`, `--key-id` | 不返回 |
-| `+openapi-key-delete` | 永久删除 Key（不可逆） | `--app-id`, `--key-id`, `--yes` | — |
-| `+openapi-key-reset` | 轮换密钥（刷新原始 Key），**一次性可见** | `--app-id`, `--key-id`, `--yes` | 顶层 `data.api_key` |
+| 命令 | 用途 |
+|---|---|
+| `+openapi-key-list` | 列出应用所有 API Key（脱敏） |
+| `+openapi-key-get` | 查看单个 Key 详情（脱敏） |
+| `+openapi-key-create` | 创建新 Key，**原始密钥一次性可见** |
+| `+openapi-key-update` | 改名或改 config（不改 status） |
+| `+openapi-key-enable` | 启用 Key（status→1） |
+| `+openapi-key-disable` | 停用 Key（status→0），**泄露/疑似泄露优先用这个而非 delete** |
+| `+openapi-key-delete` | 永久删除 Key（不可逆） |
+| `+openapi-key-reset` | 轮换密钥（刷新原始 Key），**一次性可见** |
 
 ## 脱敏口径（安全关键）
 

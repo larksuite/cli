@@ -40,7 +40,8 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 			len(rctx.StrArray("scope-api")) == 0 &&
 			strings.TrimSpace(rctx.Str("scope")) == "" &&
 			!rctx.Changed("allow-preview") {
-			return appsValidationParamError("--name", "at least one of --name / --scope-all / --scope-api / --scope / --allow-preview is required")
+			return appsValidationParamError("--name", "at least one of --name / --scope-all / --scope-api / --scope / --allow-preview is required").
+				WithHint("pass at least one of --name / --scope-all / --scope-api / --scope / --allow-preview")
 		}
 		return oapiKeyValidateScopeFlags(rctx)
 	},
