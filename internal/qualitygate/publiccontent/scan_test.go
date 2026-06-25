@@ -700,6 +700,8 @@ func TestScanFileAllowsBenignJSONTokenFields(t *testing.T) {
 		`{"drive_route_token":"route-example"}`,
 		`{"token":"<wiki_token>"}`,
 		`{"token":"wiki_token"}`,
+		`{"token":"minute_1"}`,
+		`{"token":"minute_no_meta"}`,
 		`{"token_url":"https://example.com/oauth/token"}`,
 		`{"token_endpoint":"https://example.com/oauth/token"}`,
 		`{"token_format":"Bearer"}`,
@@ -719,6 +721,145 @@ func TestScanFileAllowsBenignJSONTokenFields(t *testing.T) {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("benign JSON token field should not be credential finding: %#v", got)
 		}
+	}
+}
+
+func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
+	got := ScanFile("shortcuts/calendar/calendar_meeting_test.go", []byte(`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("test fixture secret should not be credential finding: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsRegexpTokenValidators(t *testing.T) {
+	got := ScanFile("shortcuts/minutes/minutes_detail.go", []byte("var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("regexp token validator should not be credential finding: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsBenignSourceCodeCredentialExpressions(t *testing.T) {
+	got := ScanFile("cmd/config/binder.go", []byte(strings.Join([]string{
+		"AppSecret: stored,",
+		"AccessToken: result.Token.AccessToken,",
+		`token := runtime.Str("token")`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("source code credential expressions should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsPythonArgumentTokens(t *testing.T) {
+	got := ScanFile("skills/lark-slides/scripts/iconpark_tool.py", []byte(strings.Join([]string{
+		"def normalize_token(value: str) -> str:",
+		"    token = rest[index]",
+		"    next_token = rest[index + 1] if index + 1 < len(rest) else None",
+		"def append_unique(target: list[str], token: str) -> None:",
+		`    fail(f"invalid range token: {trimmed}")`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("python token variables should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsEllipsisCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("skills/lark-doc/references/lark-doc-fetch.md", []byte(strings.Join([]string{
+		`<img token="..." url="https://..." width="..." height="..."/>`,
+		`<sheet token="..." sheet-id="...">`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("ellipsis placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsSchemaDottedIdentifiers(t *testing.T) {
+	got := ScanFile("skills/lark-mail/references/lark-mail-recall.md", []byte("lark-cli schema mail.user_mailbox.sent_messages.get_recall_detail\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_jwt_like_token" {
+			t.Fatalf("schema dotted identifier should not be jwt finding: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsClientTokenIdempotencyExamples(t *testing.T) {
+	got := ScanFile("skills/idempotency.md", []byte(strings.Join([]string{
+		`{"client_token":"1704067200"}`,
+		`{"client_token":"fe599b60-450f-46ff-b2ef-9f6675625b97"}`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("client_token idempotency examples should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsCredentialShapedClientTokenValues(t *testing.T) {
+	stripeLike := "sk_" + "live_1234567890abcdef"
+	got := ScanFile("skills/idempotency.md", []byte(strings.Join([]string{
+		`{"client_token":"` + stripeLike + `"}`,
+		`{"client_token":"real-client-secret-value"}`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("credential-shaped client_token findings = %d, want 2: %#v", count, got)
+	}
+}
+
+func TestScanFileAllowsTokenLikePlaceholderExamples(t *testing.T) {
+	got := ScanFile("skills/placeholders.md", []byte(strings.Join([]string{
+		`{ "block_token": "boardXXXX" }`,
+		`{ "resource_token": "doc_token_or_url" }`,
+		`{ "token": "canonical_token" }`,
+		`{ "target_parent_token": "wikcparent_xxx" }`,
+		`{ "mention_token": "<userId>" }`,
+		`{ "22-doc_token_xxx": { "objType": 22 } }`,
+		`{ "token": "12101..." }`,
+		`{ token: .token }`,
+		`retry_without_token = 0`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("token-like placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsCredentialShapedTokenLikePlaceholderValues(t *testing.T) {
+	stripeLike := "sk_" + "live_1234567890abcdef"
+	got := ScanFile("skills/placeholders.md", []byte(strings.Join([]string{
+		`{ "resource_token": "` + stripeLike + `" }`,
+		`{ "block_token": "real-client-secret-value" }`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("credential-shaped token-like placeholders findings = %d, want 2: %#v", count, got)
+	}
+}
+
+func TestScanFileDetectsNonFixtureMinuteTokenValues(t *testing.T) {
+	got := ScanFile("shortcuts/minutes/minutes_search_test.go", []byte(`{"token":"minute_real_secret"}`+"\n"))
+	if !findingRules(got)["public_content_generic_credential"] {
+		t.Fatalf("non-fixture minute token should be credential finding: %#v", got)
 	}
 }
 

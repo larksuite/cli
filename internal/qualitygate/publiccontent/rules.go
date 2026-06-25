@@ -63,7 +63,7 @@ func isPlaceholderValue(value string) bool {
 
 func namedPlaceholderValue(value string) bool {
 	switch value {
-	case "placeholder", "redacted", "<redacted>", "xxxx":
+	case "...", "placeholder", "redacted", "<redacted>", "xxxx", "test-secret":
 		return true
 	}
 	return strings.Contains(value, "cli_example") || allXPlaceholder(value)
@@ -284,10 +284,14 @@ func anglePlaceholderIdentifier(value string) bool {
 	switch value {
 	case "token",
 		"id",
+		"userid",
+		"openid",
 		"key",
 		"secret",
 		"password",
 		"api-key",
+		"user-id",
+		"open-id",
 		"client-secret",
 		"access-token",
 		"refresh-token",
@@ -353,8 +357,24 @@ func resourceTokenPlaceholderValue(value string) bool {
 		"drive_route_token":
 		return true
 	default:
+		return minuteTokenFixturePlaceholder(normalized)
+	}
+}
+
+func minuteTokenFixturePlaceholder(value string) bool {
+	if value == "minute_no_meta" {
+		return true
+	}
+	suffix, ok := strings.CutPrefix(value, "minute_")
+	if !ok || suffix == "" {
 		return false
 	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func provenanceMarker(line string) bool {
