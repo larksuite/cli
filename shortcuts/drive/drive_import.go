@@ -35,130 +35,162 @@ var DriveImport = common.Shortcut{
 		{Name: "target-token", Desc: "existing token to import data into (only for type=bitable); when set, data is mounted into this bitable instead of creating a new one"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		return validateDriveImportSpec(driveImportSpec{
-			FilePath:    runtime.Str("file"),
-			DocType:     strings.ToLower(runtime.Str("type")),
-			FolderToken: runtime.Str("folder-token"),
-			Name:        runtime.Str("name"),
-			TargetToken: runtime.Str("target-token"),
-		})
+		return ValidateImport(importParamsFromFlags(runtime))
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		spec := driveImportSpec{
-			FilePath:    runtime.Str("file"),
-			DocType:     strings.ToLower(runtime.Str("type")),
-			FolderToken: runtime.Str("folder-token"),
-			Name:        runtime.Str("name"),
-			TargetToken: runtime.Str("target-token"),
-		}
-		fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
-		if err != nil {
-			return common.NewDryRunAPI().Set("error", err.Error())
-		}
-		if valErr := validateDriveImportSpec(spec); valErr != nil {
-			return common.NewDryRunAPI().Set("error", valErr.Error())
-		}
-
-		dry := common.NewDryRunAPI()
-		dry.Desc("Upload file (single-part or multipart) -> create import task -> poll status")
-
-		appendDriveImportFolderTokenWikiCheckDryRun(dry, spec)
-		appendDriveImportUploadDryRun(dry, spec, fileSize)
-
-		dry.POST("/open-apis/drive/v1/import_tasks").
-			Desc("[2] Create import task").
-			Body(spec.CreateTaskBody("<file_token>"))
-
-		dry.GET("/open-apis/drive/v1/import_tasks/:ticket").
-			Desc("[3] Poll import task result").
-			Set("ticket", "<ticket>")
-		if runtime.IsBot() {
-			dry.Desc("After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on it.")
-		}
-
-		return dry
+		return PlanImportDryRun(runtime, importParamsFromFlags(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		spec := driveImportSpec{
-			FilePath:    runtime.Str("file"),
-			DocType:     strings.ToLower(runtime.Str("type")),
-			FolderToken: runtime.Str("folder-token"),
-			Name:        runtime.Str("name"),
-			TargetToken: runtime.Str("target-token"),
-		}
-		if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
-			return err
-		}
-		if err := rejectDriveImportWikiFolderToken(runtime, spec.FolderToken); err != nil {
-			return err
-		}
-
-		// Step 1: Upload file as media
-		fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec.FilePath, spec.SourceFileName(), spec.DocType)
-		if uploadErr != nil {
-			return uploadErr
-		}
-
-		fmt.Fprintf(runtime.IO().ErrOut, "Creating import task for %s as %s...\n", spec.TargetFileName(), spec.DocType)
-
-		// Step 2: Create import task
-		ticket, err := createDriveImportTask(runtime, spec, fileToken)
-		if err != nil {
-			return err
-		}
-
-		// Step 3: Poll task
-		fmt.Fprintf(runtime.IO().ErrOut, "Polling import task %s...\n", ticket)
-
-		status, ready, err := pollDriveImportTask(runtime, ticket)
-		if err != nil {
-			return err
-		}
-
-		// Some intermediate responses omit the final type, so fall back to the
-		// requested type to keep the output shape stable.
-		resultType := status.DocType
-		if resultType == "" {
-			resultType = spec.DocType
-		}
-		out := map[string]interface{}{
-			"ticket":           ticket,
-			"type":             resultType,
-			"ready":            ready,
-			"job_status":       status.JobStatus,
-			"job_status_label": status.StatusLabel(),
-		}
-		if status.Token != "" {
-			out["token"] = status.Token
-		}
-		if statusURL := strings.TrimSpace(status.URL); statusURL != "" {
-			out["url"] = statusURL
-		} else if status.Token != "" {
-			if u := common.BuildResourceURL(runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
-				out["url"] = u
-			}
-		}
-		if status.JobErrorMsg != "" {
-			out["job_error_msg"] = status.JobErrorMsg
-		}
-		if status.Extra != nil {
-			out["extra"] = status.Extra
-		}
-		if !ready {
-			nextCommand := driveImportTaskResultCommand(ticket)
-			fmt.Fprintf(runtime.IO().ErrOut, "Import task is still in progress. Continue with: %s\n", nextCommand)
-			out["timed_out"] = true
-			out["next_command"] = nextCommand
-		}
-		if ready {
-			if grant := common.AutoGrantCurrentUserDrivePermission(runtime, common.GetString(out, "token"), resultType); grant != nil {
-				out["permission_grant"] = grant
-			}
-		}
-
-		runtime.Out(out, nil)
-		return nil
+		return RunImport(ctx, runtime, importParamsFromFlags(runtime))
 	},
+}
+
+// ImportParams holds the user-facing inputs for an import flow, decoupled from
+// cobra flags so other command groups (e.g. sheets +workbook-import) can reuse
+// the drive import implementation without taking a dependency on a --type flag.
+type ImportParams struct {
+	File        string
+	DocType     string
+	FolderToken string
+	Name        string
+	TargetToken string
+}
+
+func (p ImportParams) spec() driveImportSpec {
+	return driveImportSpec{
+		FilePath:    p.File,
+		DocType:     strings.ToLower(p.DocType),
+		FolderToken: p.FolderToken,
+		Name:        p.Name,
+		TargetToken: p.TargetToken,
+	}
+}
+
+// importParamsFromFlags reads the standard drive +import flag set.
+func importParamsFromFlags(runtime *common.RuntimeContext) ImportParams {
+	return ImportParams{
+		File:        runtime.Str("file"),
+		DocType:     runtime.Str("type"),
+		FolderToken: runtime.Str("folder-token"),
+		Name:        runtime.Str("name"),
+		TargetToken: runtime.Str("target-token"),
+	}
+}
+
+// ValidateImport runs the CLI-level compatibility checks for an import.
+func ValidateImport(p ImportParams) error {
+	return validateDriveImportSpec(p.spec())
+}
+
+// PlanImportDryRun builds the dry-run plan (upload -> create task -> poll) for
+// an import without performing any network or file I/O beyond a local stat.
+func PlanImportDryRun(runtime *common.RuntimeContext, p ImportParams) *common.DryRunAPI {
+	spec := p.spec()
+	fileSize, err := preflightDriveImportFile(runtime.FileIO(), &spec)
+	if err != nil {
+		return common.NewDryRunAPI().Set("error", err.Error())
+	}
+	if valErr := validateDriveImportSpec(spec); valErr != nil {
+		return common.NewDryRunAPI().Set("error", valErr.Error())
+	}
+
+	dry := common.NewDryRunAPI()
+	dry.Desc("Upload file (single-part or multipart) -> create import task -> poll status")
+
+	appendDriveImportFolderTokenWikiCheckDryRun(dry, spec)
+	appendDriveImportUploadDryRun(dry, spec, fileSize)
+
+	dry.POST("/open-apis/drive/v1/import_tasks").
+		Desc("[2] Create import task").
+		Body(spec.CreateTaskBody("<file_token>"))
+
+	dry.GET("/open-apis/drive/v1/import_tasks/:ticket").
+		Desc("[3] Poll import task result").
+		Set("ticket", "<ticket>")
+	if runtime.IsBot() {
+		dry.Desc("After the import result returns the final cloud document target in bot mode, the CLI will also try to grant the current CLI user full_access (可管理权限) on it.")
+	}
+
+	return dry
+}
+
+// RunImport executes the full import flow: upload media -> create import task ->
+// bounded poll, then writes the result envelope to the runtime output. It is
+// the shared core behind both drive +import and sheets +workbook-import.
+func RunImport(ctx context.Context, runtime *common.RuntimeContext, p ImportParams) error {
+	spec := p.spec()
+	if _, err := preflightDriveImportFile(runtime.FileIO(), &spec); err != nil {
+		return err
+	}
+	if err := rejectDriveImportWikiFolderToken(runtime, spec.FolderToken); err != nil {
+		return err
+	}
+
+	// Step 1: Upload file as media
+	fileToken, uploadErr := uploadMediaForImport(ctx, runtime, spec.FilePath, spec.SourceFileName(), spec.DocType)
+	if uploadErr != nil {
+		return uploadErr
+	}
+
+	fmt.Fprintf(runtime.IO().ErrOut, "Creating import task for %s as %s...\n", spec.TargetFileName(), spec.DocType)
+
+	// Step 2: Create import task
+	ticket, err := createDriveImportTask(runtime, spec, fileToken)
+	if err != nil {
+		return err
+	}
+
+	// Step 3: Poll task
+	fmt.Fprintf(runtime.IO().ErrOut, "Polling import task %s...\n", ticket)
+
+	status, ready, err := pollDriveImportTask(runtime, ticket)
+	if err != nil {
+		return err
+	}
+
+	// Some intermediate responses omit the final type, so fall back to the
+	// requested type to keep the output shape stable.
+	resultType := status.DocType
+	if resultType == "" {
+		resultType = spec.DocType
+	}
+	out := map[string]interface{}{
+		"ticket":           ticket,
+		"type":             resultType,
+		"ready":            ready,
+		"job_status":       status.JobStatus,
+		"job_status_label": status.StatusLabel(),
+	}
+	if status.Token != "" {
+		out["token"] = status.Token
+	}
+	if statusURL := strings.TrimSpace(status.URL); statusURL != "" {
+		out["url"] = statusURL
+	} else if status.Token != "" {
+		if u := common.BuildResourceURL(runtime.Config.Brand, normalizeDriveImportKindForURL(resultType, spec.DocType), status.Token); u != "" {
+			out["url"] = u
+		}
+	}
+	if status.JobErrorMsg != "" {
+		out["job_error_msg"] = status.JobErrorMsg
+	}
+	if status.Extra != nil {
+		out["extra"] = status.Extra
+	}
+	if !ready {
+		nextCommand := driveImportTaskResultCommand(ticket)
+		fmt.Fprintf(runtime.IO().ErrOut, "Import task is still in progress. Continue with: %s\n", nextCommand)
+		out["timed_out"] = true
+		out["next_command"] = nextCommand
+	}
+	if ready {
+		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, common.GetString(out, "token"), resultType); grant != nil {
+			out["permission_grant"] = grant
+		}
+	}
+
+	runtime.Out(out, nil)
+	return nil
 }
 
 func preflightDriveImportFile(fio fileio.FileIO, spec *driveImportSpec) (int64, error) {

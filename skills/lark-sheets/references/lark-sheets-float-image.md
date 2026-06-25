@@ -1,12 +1,13 @@
 # Lark Sheet Float Image
 
-> **单元格图片 vs 浮动图片**：飞书表格有两种图片类型，请根据需求选择正确的工具：
-> - **单元格图片**：图片嵌入在单元格内部，随单元格移动，属于单元格内容的一部分。→ 使用 `+cells-set`，在 `rich_text` 中设置 `type: "embed-image"`（见 lark-sheets-write-cells）。
-> - **浮动图片**（本 Skill）：图片悬浮在单元格上方，可自由指定位置、大小和层级，不属于任何单元格的内容。→ 使用本 Skill 的 `+float-image-{create|update|delete}`。
+> **选浮动图还是单元格图？只看一条**：这张图是不是**属于某条记录、要随那行一起排序 / 筛选 / 增删**？
+> - **是 → 单元格图片**（不在本 reference）：嵌进单元格、随行走。用 `+cells-set-image`（或 `+cells-set` 的 `rich_text` + `type: "embed-image"`，见 lark-sheets-write-cells）。典型：凭证 / 证件照 / 商品图 / 头像 / 二维码 / 每行配图；话里带「对应 / 每行 / 每条 / 这列」等绑定词即属此类。
+> - **否 → 浮动图片**（本 reference）：自由摆放、不绑数据的装饰 / 标识（logo / 水印 / 封面大图 / banner）。
+> - ⚠️ 别凭"浮动图位置尺寸更好控制 / 更熟"就选它——那是按操作便利选，不是按场景选；用浮动图承载"对应某记录"的图会在增删行 / 排序后错位。
 
 ## 真对象硬约束
 
-当用户要求"插入图片 / 添加 logo / 放一张图"时，**必须**通过 `+float-image-{create|update|delete}`（浮动图片）或 `+cells-set` 的 `embed-image`（单元格图片）创建真实的图片对象。**禁止**只在文本回复中给出图片链接 / 描述图片内容代替插入。判断标准：交付后 `+float-image-list` 或单元格 `rich_text` 必须能读到该图片对象。
+当用户要求"插入图片 / 添加 logo / 放一张图"时，**必须**通过 `+float-image-{create|update|delete}`（浮动图片）或 `+cells-set-image` / `+cells-set` 的 `embed-image`（单元格图片）创建真实的图片对象。**禁止**只在文本回复中给出图片链接 / 描述图片内容代替插入。判断标准：交付后 `+float-image-list` 或单元格 `rich_text` 必须能读到该图片对象。
 
 ## 使用场景
 
@@ -20,7 +21,7 @@
 典型工作流：先读取现有浮动图片了解配置 → 执行创建/更新/删除 → **必须再次读取验证结果**。
 
 **常见配置错误（必须注意）**：
-- **单元格图片 vs 浮动图片选择错误**：如果用户希望图片嵌入单元格内部（随单元格移动），应使用 `+cells-set` 的 `rich_text` + `embed-image`，而非本 Skill
+- **单元格图片 vs 浮动图片选择错误（最易选错）**：图与某条记录一一对应、要随行排序 / 筛选 / 增删时，应走 `+cells-set-image`（见顶部判别），用浮动图会错位。
 - **图片位置参数要精确**：锚点单元格的行列索引和偏移量决定了图片位置，设置不当会导致图片遮挡数据
 - **创建后必须验证**：调用 `+float-image-list` 确认图片位置和大小正确
 
@@ -30,7 +31,7 @@
 - `--image-token`：复用**已存在**的图片 file_token。常见来源：① `+float-image-list` 返回的 `image_token`（适合"换皮不换位置"复用同一张图）；② `+cells-set-image` 成功返回里的 `file_token`（它也是 `sheet_image` 上传句柄）。适合"同一张图复用到多处"，省去重复上传。
 - `--image-uri`：图片 reference_id（image URI），由系统自动转 file_token。
 
-> ⚠️ **`--image` 仅 `+float-image-create` 支持**。`+float-image-update` 换图仍只接受 `--image-token` / `--image-uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `--image-name` / `--position-{row,col}` / `--size-{width,height}` 在 update 时和 create 一样**必填**（`manage_float_image` 工具强制要求这套核心字段，且 `+float-image-list` 不回传 `image_name` 供 CLI 回填）。要在 update 里换一张本地新图，先用 `+cells-set-image` 上传到任意临时单元格、从返回取 `file_token`，再把它传给 update 的 `--image-token`。
+> ⚠️ **`--image` 仅 `+float-image-create` 支持**。`+float-image-update` 换图仍只接受 `--image-token` / `--image-uri`，而且**图片源是 update 唯一可省的部分**——三者全不传则保留原图。但 `--image-name` / `--position-{row,col}` / `--size-{width,height}` 在 update 时和 create 一样**必填**（`+float-image-update` 强制要求这套核心字段，且 `+float-image-list` 不回传 `image_name` 供 CLI 回填）。要在 update 里换一张本地新图，先用 `+cells-set-image` 上传到任意临时单元格、从返回取 `file_token`，再把它传给 update 的 `--image-token`。
 
 ## Shortcuts
 
@@ -129,7 +130,7 @@ lark-cli sheets +float-image-create --url "..." --sheet-id "$SID" \
 
 ### `+float-image-update`
 
-> **update ≈ create，只有图片源可省**：`manage_float_image` 工具的 update 要求和 create 相同的核心字段——`--image-name`、`--position-{row,col}`、`--size-{width,height}` **全部必填**；唯一区别是**图片源（`--image-token` / `--image-uri`）可以全省**，省略即保留原图。这**不是**"只发改动字段"的 patch：缺任一核心字段会被工具拒绝（`+float-image-list` 不回传 `image_name`，CLI 无法替你回填）。
+> **update ≈ create，只有图片源可省**：`+float-image-update` 的 update 要求和 create 相同的核心字段——`--image-name`、`--position-{row,col}`、`--size-{width,height}` **全部必填**；唯一区别是**图片源（`--image-token` / `--image-uri`）可以全省**，省略即保留原图。这**不是**"只发改动字段"的 patch：缺任一核心字段会被拒绝（`+float-image-list` 不回传 `image_name`，CLI 无法替你回填）。
 >
 > 推荐流程：先 `+float-image-list --float-image-id <id>` 回读当前 position / size，再带上 `--image-name` 和完整的 position / size 调一次 `+float-image-update`。
 

@@ -55,7 +55,7 @@ var docCoverAllowedContentTypes = map[string]string{
 
 var DocResourceDownload = common.Shortcut{
 	Service:     "docs",
-	Command:     "resource-download",
+	Command:     "+resource-download",
 	Description: "Download a document resource (type=cover downloads the cover image content)",
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly", "docs:document.media:download"},
@@ -154,7 +154,7 @@ var DocResourceDownload = common.Shortcut{
 
 var DocResourceUpdate = common.Shortcut{
 	Service:     "docs",
-	Command:     "resource-update",
+	Command:     "+resource-update",
 	Description: "Upload and update a document resource (type=cover)",
 	Risk:        "write",
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only", "docs:document.media:upload"},
@@ -256,7 +256,7 @@ var DocResourceUpdate = common.Shortcut{
 
 var DocResourceDelete = common.Shortcut{
 	Service:     "docs",
-	Command:     "resource-delete",
+	Command:     "+resource-delete",
 	Description: "Delete a document resource (type=cover is idempotent when empty)",
 	Risk:        "write",
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only"},

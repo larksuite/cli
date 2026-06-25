@@ -13,7 +13,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const dbTableListHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+const dbTableListHint = "verify --app-id is correct; if targeting --environment dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`"
 
 // AppsDBTableList lists tables in an app's database.
 //
@@ -38,15 +38,16 @@ var AppsDBTableList = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "app id", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	},
+	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
@@ -110,7 +111,7 @@ func projectTableListItems(raw interface{}) []dbTableListItem {
 
 func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} {
 	params := map[string]interface{}{
-		"env":       rctx.Str("env"),
+		"env":       dbEnv(rctx),
 		"page_size": rctx.Int("page-size"),
 	}
 	if token := strings.TrimSpace(rctx.Str("page-token")); token != "" {

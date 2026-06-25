@@ -5,7 +5,7 @@
 > 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
 > 2. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
 >
-> **需要使用 callout、grid、table、whiteboard 等富 block，或用户明确要求美化/重排版时，再参考 [`lark-doc-style.md`](style/lark-doc-style.md)。该文件是表达组件参考，不是固定模板。**
+> **需要富 block 或用户明确要求美化/重排版时，再参考 [`lark-doc-style.md`](style/lark-doc-style.md)。**
 >
 > **未读完以上文件就生成内容会导致格式错误。**
 
@@ -43,6 +43,15 @@
 | `overwrite` | ⚠️ 清空文档后全文重写（可能丢失图片、评论） | `--content` |
 | `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after --block-id -1`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `--block-id` | `--content` |
 | `block_move_after` | 移动已有 block 到指定位置 | `--block-id` `--src-block-ids` |
+
+## Block ID 生命周期
+
+写操作后不要默认复用之前 fetch 到的 block ID：
+
+- `overwrite` / `block_replace` / `block_delete`：受影响旧 ID 失效，继续 block 级操作前重新 fetch
+- `block_insert_after` / `append` / `block_copy_insert_after`：锚点 / 源 ID 通常保留，新内容是新 ID；要操作新内容先重新 fetch
+- `block_move_after`：被移动 ID 通常保留，但位置、章节、range 语义变化；后续依赖位置时重新 fetch
+- `str_replace`：简单行内替换通常不改变 ID；跨行 / 大段替换后如继续 block 级操作，先重新 fetch
 
 ## 指令示例
 
@@ -113,8 +122,6 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace 
   --block-id "目标 block_id" \
   --content '<p>替换后的段落内容</p>'
 ```
-
-> `block_replace` 由服务端执行整块替换，目标 block 的 ID 不保证在替换后继续可用。后续如果还要在替换后的块附近继续 `block_insert_after`、`range` 或其他 block 级操作，先重新 `docs +fetch --detail with-ids` 获取最新 block ID，不要复用旧 ID。
 
 ### block_delete — 删除指定 block
 
@@ -237,7 +244,6 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
 - **保护不可重建的内容**：图片、画板、电子表格等以 token 形式存储，替换时避开这些 block
 - **str_replace 的 replacement 支持富文本**：可以用行内标签 `<b>`、`<a>`、`<cite>`、`<latex>` 等替换普通文本为富文本
 - **同一 block 只能被 replace 一次**：多次修改同一 block 请合并为一次 block_replace
-- **block_replace 后重新获取 ID**：`block_replace` 成功后旧 block ID 不保证继续可用；继续做相邻块操作前，重新 `docs +fetch --detail with-ids`
 - **block_delete 支持批量**：用逗号分隔多个 block_id 一次删除
 - **复杂结构重组**：将多个段落转换为 grid / table 等复杂布局时，分步操作比 overwrite 更安全：
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构

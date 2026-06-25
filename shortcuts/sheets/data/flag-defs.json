@@ -54,7 +54,7 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Insert position; appended to the end when omitted",
+        "desc": "Insert position (0-based); appended to the end when omitted",
         "default": "-1"
       },
       {
@@ -413,6 +413,86 @@
       }
     ]
   },
+  "+sheet-hide-gridline": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+sheet-show-gridline": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet reference_id (XOR with `--sheet-name`)"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Sheet name (XOR with `--sheet-id`)"
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
   "+workbook-create": {
     "risk": "write",
     "flags": [
@@ -431,22 +511,33 @@
         "desc": "Target folder token; placed at the drive root when omitted"
       },
       {
-        "name": "headers",
+        "name": "values",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Header row as a JSON array: `[\"Col A\",\"Col B\"]`",
+        "desc": "Untyped initial data as one 2D JSON array (`[[\"alice\",95]]`); values are written as-is with their type auto-detected, through the same batched set_cell_range path as --sheets — pair with --styles for number formats, colors, merges, and row/col sizes",
         "input": [
           "file",
           "stdin"
         ]
       },
       {
-        "name": "values",
+        "name": "sheets",
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Initial data as a 2D JSON array: `[[\"alice\",95]]`",
+        "desc": "Typed table payload as JSON (same shape as `+table-put`): top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. Mutually exclusive with --values. Creates the workbook, then writes typed type-faithful data (dates land as real dates, numbers keep precision).",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "styles",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Initial visual operations as JSON: top-level `{styles:[...]}`. Each item corresponds to one target sheet and must include `name`, plus at least one of `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges`. `cell_styles` entries use +cells-set-style fields with a cell range; row/col sizes use dimension ranges plus type/size; merges use cell ranges plus optional merge_type. With --sheets, styles array length/order/name must match --sheets.sheets. With --values, pass exactly one styles item for the initial sheet (its name is ignored).",
         "input": [
           "file",
           "stdin"
@@ -502,7 +593,7 @@
         "kind": "own",
         "type": "string",
         "required": "optional",
-        "desc": "Local save path; export is triggered but not downloaded when omitted"
+        "desc": "Local save path. When omitted, **only the export task is triggered + polled, the file is NOT downloaded** (returns file_token / status so a later step can resume the download). Pass a concrete path (e.g. `./out.xlsx`) or a directory (`.` keeps the server-provided filename) to download. Note: the equivalent `lark-cli drive +export --doc-type sheet` uses three separate flags (`--output-dir` / `--file-name` / `--overwrite`) and defaults to downloading into the current directory; this wrapper collapses them into a single `--output-path` for ergonomics but defaults to no-download — fall back to `drive +export` if the split flag set fits better."
       },
       {
         "name": "dry-run",
@@ -510,6 +601,32 @@
         "type": "bool",
         "required": "optional",
         "desc": ""
+      }
+    ]
+  },
+  "+workbook-import": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "file",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Local file path (.xlsx / .xls / .csv)"
+      },
+      {
+        "name": "folder-token",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Target folder token; imported to the cloud drive root when omitted"
+      },
+      {
+        "name": "name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Imported spreadsheet name; defaults to the local file name without its extension"
       }
     ]
   },
@@ -1082,9 +1199,8 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Safety cap; default 200000",
-        "default": "200000",
-        "hidden": true
+        "desc": "Max output chars per call; default 500000 (safety cap). Large reads are usually better redirected to a file; only lower it (e.g. 25000) when you want results inline without triggering file offload, paging via has_more",
+        "default": "500000"
       },
       {
         "name": "skip-hidden",
@@ -1192,9 +1308,8 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Safety cap; default 200000",
-        "default": "200000",
-        "hidden": true
+        "desc": "Max output chars per call; default 500000 (safety cap). Large reads are usually better redirected to a file; only lower it (e.g. 25000) when you want results inline without triggering file offload, paging via has_more",
+        "default": "500000"
       },
       {
         "name": "include-row-prefix",
@@ -1212,19 +1327,65 @@
         "desc": "Skip hidden rows and columns; default `false`"
       },
       {
-        "name": "rows-json",
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": "Print the request path and parameters without executing"
+      }
+    ]
+  },
+  "+table-get": {
+    "risk": "read",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token (XOR with `--url`)"
+      },
+      {
+        "name": "sheet-id",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Read only this sheet (by id); omit to read all sheets"
+      },
+      {
+        "name": "sheet-name",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Read only this sheet (by name); omit to read all sheets"
+      },
+      {
+        "name": "range",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "A1 range to read; omit to read each sheet's full used range (spans internal blank rows/columns, not just the A1 current region)"
+      },
+      {
+        "name": "no-header",
         "kind": "own",
         "type": "bool",
         "required": "optional",
-        "desc": "Return structured rows ({row_number, values:{col→cell}}) instead of CSV text; default false",
-        "default": "false"
+        "desc": "Treat the first row as data instead of a header (columns get positional names col1, col2, ...)"
       },
       {
         "name": "dry-run",
         "kind": "system",
         "type": "bool",
         "required": "optional",
-        "desc": "Print the request path and parameters without executing"
+        "desc": ""
       }
     ]
   },
@@ -1849,7 +2010,7 @@
         "kind": "own",
         "type": "string",
         "required": "required",
-        "desc": "RFC 4180 CSV text; plain values only (no formulas / styles / comments)",
+        "desc": "RFC 4180 CSV text; values or formulas (a leading = is evaluated as a formula); no styles / comments / images (use +cells-set for those).",
         "input": [
           "file",
           "stdin"
@@ -1870,6 +2031,54 @@
         "required": "optional",
         "desc": "alias for --start-cell (parity with +csv-get / +cells-set, which locate with --range); a range like A1:H17 collapses to its top-left cell",
         "hidden": true
+      },
+      {
+        "name": "dry-run",
+        "kind": "system",
+        "type": "bool",
+        "required": "optional",
+        "desc": ""
+      }
+    ]
+  },
+  "+table-put": {
+    "risk": "write",
+    "flags": [
+      {
+        "name": "url",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet URL to write into (XOR with `--spreadsheet-token`)"
+      },
+      {
+        "name": "spreadsheet-token",
+        "kind": "public",
+        "type": "string",
+        "required": "xor",
+        "desc": "Spreadsheet token to write into (XOR with `--url`)"
+      },
+      {
+        "name": "sheets",
+        "kind": "own",
+        "type": "string",
+        "required": "required",
+        "desc": "Typed table payload (pandas-DataFrame-shaped) as JSON: top-level `{\"sheets\":[...]}`, with each array item a sub-sheet `{name, start_cell?, mode?, header?, allow_overwrite?, columns:[\"colA\",\"colB\",...], data:[[...]], dtypes?:{colA:pandasDtype, ...}, formats?:{colA:numberFormat, ...}}` — `name` and the outer `sheets` envelope are both required. Agents typically use `df_to_sheet(df, name)` from `scripts/sheets_df.py` to pack each DataFrame into one item, then wrap the list in `{\"sheets\":[...]}`. `dtypes` values are pandas dtype strings (`int64`, `float64`, `Int64`, `bool`, `boolean`, `datetime64[ns]`, `object`, ...); the writer maps them to internal string/number/date/bool — omit `dtypes` and a column writes as text (good for raw CSV-shaped data). `formats[col]` is an Excel number_format string (e.g. `#,##0.00`, `0.0%`, `yyyy-mm`); when absent, date columns default to `yyyy-mm-dd` and string columns to text format (`@`).",
+        "input": [
+          "file",
+          "stdin"
+        ]
+      },
+      {
+        "name": "styles",
+        "kind": "own",
+        "type": "string",
+        "required": "optional",
+        "desc": "Visual operations applied after the typed write, as JSON: top-level `{styles:[...]}`. Each item corresponds to one written sheet and must include `name`, plus at least one of `cell_styles` / `row_sizes` / `col_sizes` / `cell_merges`. `cell_styles` entries use +cells-set-style fields with a cell range; row/col sizes use dimension ranges plus type/size; merges use cell ranges plus optional merge_type. The styles array length/order/name must match the written sheets in --sheets.sheets. Run `+table-put --print-schema --flag-name styles` for the full cell_styles field schema.",
+        "input": [
+          "file",
+          "stdin"
+        ]
       },
       {
         "name": "dry-run",

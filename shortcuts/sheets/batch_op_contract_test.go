@@ -178,6 +178,18 @@ func TestBatchOp_BodyMatchesStandalone(t *testing.T) {
 			subInput: `{"sheet-id":"sh1","color":"#FF0000"}`,
 		},
 		{
+			shortcut: "+sheet-show-gridline",
+			sc:       SheetShowGridline,
+			args:     []string{"--sheet-id", "sh1"},
+			subInput: `{"sheet-id":"sh1"}`,
+		},
+		{
+			shortcut: "+sheet-hide-gridline",
+			sc:       SheetHideGridline,
+			args:     []string{"--sheet-id", "sh1"},
+			subInput: `{"sheet-id":"sh1"}`,
+		},
+		{
 			shortcut: "+dropdown-set",
 			sc:       DropdownSet,
 			args:     []string{"--sheet-id", "sh1", "--range", "A2:A4", "--options", `["x","y"]`, "--multiple"},
@@ -432,12 +444,7 @@ func TestBatchOp_ErrorEquivalence(t *testing.T) {
 				t, tc.shortcut,
 				append([]string{"--url", testURL, "--dry-run"}, tc.args...),
 			)
-			if standaloneErr == nil {
-				t.Fatalf("standalone Validate accepted bad input — expected error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(standaloneErr.Error(), tc.wantContains) {
-				t.Errorf("standalone error = %q, want substring %q", standaloneErr.Error(), tc.wantContains)
-			}
+			requireValidation(t, standaloneErr, tc.wantContains)
 
 			// Batch path: translate the matching sub-op. The translator wraps
 			// the inner error with "operations[i] (<shortcut>): " — assert the
@@ -451,17 +458,12 @@ func TestBatchOp_ErrorEquivalence(t *testing.T) {
 				"input":    subInput,
 			}
 			_, batchErr := translateBatchOp(rawOp, testToken, 0)
-			if batchErr == nil {
-				t.Fatalf("batch translator accepted bad input — expected error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(batchErr.Error(), tc.wantContains) {
-				t.Errorf("batch error = %q, want substring %q (operations[i] prefix is fine)", batchErr.Error(), tc.wantContains)
-			}
+			batchVE := requireValidation(t, batchErr, tc.wantContains)
 			// And the wrap context must include the sub-op index + shortcut
 			// name so error reports stay actionable in multi-op batches.
 			wrapHint := "operations[0] (" + tc.subShortcut + "):"
-			if !strings.Contains(batchErr.Error(), wrapHint) {
-				t.Errorf("batch error %q missing context prefix %q", batchErr.Error(), wrapHint)
+			if !strings.Contains(batchVE.Message, wrapHint) {
+				t.Errorf("batch error %q missing context prefix %q", batchVE.Message, wrapHint)
 			}
 		})
 	}
@@ -517,12 +519,7 @@ func TestBatchOp_RejectsWrongScalarType(t *testing.T) {
 			}
 			rawOp := map[string]interface{}{"shortcut": tc.subShortcut, "input": subInput}
 			_, err := translateBatchOp(rawOp, testToken, 0)
-			if err == nil {
-				t.Fatalf("translateBatchOp accepted wrong-typed field; want error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(err.Error(), tc.wantContains) {
-				t.Errorf("error = %q, want substring %q", err.Error(), tc.wantContains)
-			}
+			requireValidation(t, err, tc.wantContains)
 		})
 	}
 }
@@ -580,12 +577,7 @@ func TestBatchOp_GuardsBeyondCobra(t *testing.T) {
 			}
 			rawOp := map[string]interface{}{"shortcut": tc.subShortcut, "input": subInput}
 			_, err := translateBatchOp(rawOp, testToken, 0)
-			if err == nil {
-				t.Fatalf("translateBatchOp accepted bad input; want error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(err.Error(), tc.wantContains) {
-				t.Errorf("error = %q, want substring %q", err.Error(), tc.wantContains)
-			}
+			requireValidation(t, err, tc.wantContains)
 		})
 	}
 }
@@ -716,12 +708,7 @@ func TestBatchOp_RejectsBadSubOpInput(t *testing.T) {
 				"input":    subInput,
 			}
 			_, err := translateBatchOp(rawOp, testToken, 0)
-			if err == nil {
-				t.Fatalf("translator accepted bad input — expected error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(err.Error(), tc.wantContains) {
-				t.Errorf("error = %q, want substring %q", err.Error(), tc.wantContains)
-			}
+			requireValidation(t, err, tc.wantContains)
 		})
 	}
 }
@@ -782,12 +769,7 @@ func TestBatchOp_SchemaValidatesSubOps(t *testing.T) {
 				"input":    subInput,
 			}
 			_, err := translateBatchOp(rawOp, testToken, 0)
-			if err == nil {
-				t.Fatalf("translator accepted schema-violating sub-op — expected error containing %q", tc.wantContains)
-			}
-			if !strings.Contains(err.Error(), tc.wantContains) {
-				t.Errorf("error = %q, want substring %q", err.Error(), tc.wantContains)
-			}
+			requireValidation(t, err, tc.wantContains)
 		})
 	}
 }

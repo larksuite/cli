@@ -186,9 +186,7 @@ func TestRunShortcut_JqAndFormatConflict(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for --jq + --format table conflict")
 	}
-	if !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("expected 'mutually exclusive' error, got: %v", err)
-	}
+	requireValidation(t, err, "mutually exclusive")
 }
 
 func TestRunShortcut_JqInvalidExpression(t *testing.T) {
@@ -208,9 +206,7 @@ func TestRunShortcut_JqInvalidExpression(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid jq expression")
 	}
-	if !strings.Contains(err.Error(), "invalid jq expression") {
-		t.Errorf("expected 'invalid jq expression' error, got: %v", err)
-	}
+	requireValidation(t, err, "invalid jq expression")
 }
 
 func TestRunShortcut_JqRuntimeError_PropagatesError(t *testing.T) {

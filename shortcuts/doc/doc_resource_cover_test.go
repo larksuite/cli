@@ -48,7 +48,7 @@ func TestDocResourceDownloadCoverDownloadsImageContent(t *testing.T) {
 	withDocsWorkingDir(t, tmpDir)
 
 	err := mountAndRunDocs(t, DocResourceDownload, []string{
-		"resource-download",
+		"+resource-download",
 		"--doc", documentID,
 		"--type", "cover",
 		"--output", "cover",
@@ -95,7 +95,7 @@ func TestDocResourceDownloadCoverEmptyReturnsErrorWithoutDownload(t *testing.T) 
 	withDocsWorkingDir(t, tmpDir)
 
 	err := mountAndRunDocs(t, DocResourceDownload, []string{
-		"resource-download",
+		"+resource-download",
 		"--doc", documentID,
 		"--type", "cover",
 		"--output", "cover.png",
@@ -116,7 +116,7 @@ func TestDocResourceDeleteCoverEmptyIsIdempotent(t *testing.T) {
 	reg.Register(docCoverMetadataStub(documentID, map[string]interface{}{}))
 
 	err := mountAndRunDocs(t, DocResourceDelete, []string{
-		"resource-delete",
+		"+resource-delete",
 		"--doc", documentID,
 		"--type", "cover",
 		"--as", "bot",
@@ -146,7 +146,7 @@ func TestDocResourceDeleteCoverClearsExistingCover(t *testing.T) {
 	reg.Register(patchStub)
 
 	err := mountAndRunDocs(t, DocResourceDelete, []string{
-		"resource-delete",
+		"+resource-delete",
 		"--doc", documentID,
 		"--type", "cover",
 		"--as", "bot",
@@ -195,7 +195,7 @@ func TestDocResourceUpdateCoverUploadsFileAndReturnsFullTokenOnlyOnStdout(t *tes
 	reg.Register(patchStub)
 
 	err := mountAndRunDocs(t, DocResourceUpdate, []string{
-		"resource-update",
+		"+resource-update",
 		"--doc", documentID,
 		"--type", "cover",
 		"--file", "cover.png",
@@ -241,7 +241,7 @@ func TestDocResourceUpdateCoverRejectsMultipleSources(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-source-validation-app"))
 
 	err := mountAndRunDocs(t, DocResourceUpdate, []string{
-		"resource-update",
+		"+resource-update",
 		"--doc", "doxcnCoverValidate1",
 		"--type", "cover",
 		"--file", "cover.png",
@@ -258,7 +258,7 @@ func TestDocResourceUpdateCoverRejectsMissingSource(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-source-required-app"))
 
 	err := mountAndRunDocs(t, DocResourceUpdate, []string{
-		"resource-update",
+		"+resource-update",
 		"--doc", "doxcnCoverValidateRequired1",
 		"--type", "cover",
 		"--as", "bot",
@@ -273,7 +273,7 @@ func TestDocResourceUpdateCoverRejectsUnsafeURLSource(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-cover-url-validation-app"))
 
 	err := mountAndRunDocs(t, DocResourceUpdate, []string{
-		"resource-update",
+		"+resource-update",
 		"--doc", "doxcnCoverURLValidate1",
 		"--type", "cover",
 		"--url", "https://127.0.0.1/cover.png",
@@ -617,7 +617,7 @@ func TestDocShortcutsIncludeCoverResourceCommands(t *testing.T) {
 	for _, shortcut := range Shortcuts() {
 		got[shortcut.Command] = true
 	}
-	for _, want := range []string{"resource-download", "resource-update", "resource-delete"} {
+	for _, want := range []string{"+resource-download", "+resource-update", "+resource-delete"} {
 		if !got[want] {
 			t.Fatalf("Shortcuts() missing %s", want)
 		}

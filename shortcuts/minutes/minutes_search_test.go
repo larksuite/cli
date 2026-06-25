@@ -609,6 +609,8 @@ func TestMinutesSearchExecuteShowsPaginationHintForTableFormat(t *testing.T) {
 func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	t.Parallel()
 
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -617,6 +619,7 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
+				"notice": notice,
 				"items": []interface{}{
 					nil,
 					map[string]interface{}{
@@ -641,6 +644,9 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	reg.Verify(t)
 
 	var envelope struct {
+		Data struct {
+			Notice string `json:"notice"`
+		} `json:"data"`
 		Meta struct {
 			Count int `json:"count"`
 		} `json:"meta"`
@@ -650,6 +656,9 @@ func TestMinutesSearchExecuteJSONCountUsesRenderedRows(t *testing.T) {
 	}
 	if envelope.Meta.Count != 1 {
 		t.Fatalf("meta.count = %d, want 1", envelope.Meta.Count)
+	}
+	if envelope.Data.Notice != notice {
+		t.Fatalf("data.notice = %q, want %q", envelope.Data.Notice, notice)
 	}
 }
 

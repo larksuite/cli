@@ -14,12 +14,49 @@ import (
 	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/errclass"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
 
-// TestClampOpenedTimeWindow covers the 3-month / 1-year boundary logic that
-// narrows --opened-since / --opened-until and generates the multi-slice notice.
+// TestDriveSearchExecutePassesThroughNotice verifies drive +search preserves notices.
+func TestDriveSearchExecutePassesThroughNotice(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/search/v2/doc_wiki/search",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"notice":     notice,
+				"res_units":  []interface{}{},
+				"total":      0,
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+
+	if err := mountAndRunDrive(t, DriveSearch, []string{"+search", "--query", "incident", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("DriveSearch.Execute() error = %v", err)
+	}
+	reg.Verify(t)
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := env["data"].(map[string]interface{})
+	if got, _ := data["notice"].(string); got != notice {
+		t.Fatalf("data.notice = %q, want %q; data=%#v", got, notice, data)
+	}
+}
+
+// TestClampOpenedTimeWindow covers opened-time clamping and slice notices.
 func TestClampOpenedTimeWindow(t *testing.T) {
 	t.Parallel()
 

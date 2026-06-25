@@ -150,7 +150,7 @@ lark-cli im +messages-send --chat-id oc_xxx --file ./report.pdf
 lark-cli im +messages-send --chat-id oc_xxx --video ./demo.mp4 --video-cover ./cover.png
 lark-cli im +messages-send --chat-id oc_xxx --video ./demo.mp4 --video-cover img_xxx
 
-# Send audio
+# Send a voice message
 lark-cli im +messages-send --chat-id oc_xxx --audio ./voice.opus
 
 # Use an idempotency key (same key sends only once within 1 hour)
@@ -165,6 +165,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - Media flags accept an existing key (`img_xxx` / `file_xxx`), an `http://` or `https://` URL, or a local file path.
 - Local paths must be relative to the current working directory and stay within it after resolving `..` and symlinks.
 - Absolute paths such as `/tmp/photo.png` are rejected. Run the command from the file's directory and pass `./photo.png`, or copy the file into the current directory first.
+- `--audio` sends a voice message and accepts only Opus audio (`.opus` or Ogg Opus `.ogg`) for local paths and URLs. For `mp3`, `wav`, or other non-Opus audio, convert to `.opus` before using `--audio`, or use `--file` to send the original audio as an attachment.
 
 ## Parameters
 
@@ -179,7 +180,7 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 | `--file <path\|url\|key>` | One content option | Cwd-relative local file path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically                                                                                |
 | `--video <path\|url\|key>` | One content option | Cwd-relative local video path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically. **Must be paired with `--video-cover`**                                      |
 | `--video-cover <path\|url\|key>` | **Required with `--video`** | Cwd-relative local cover image path, URL, or `image_key` (`img_xxx`). Local paths and URLs are uploaded automatically                                                                         |
-| `--audio <path\|url\|key>` | One content option | Cwd-relative local audio path, URL, or `file_key` (`file_xxx`). Local paths and URLs are uploaded automatically                                                                                           |
+| `--audio <path\|url\|key>` | One content option | Voice-message audio key, URL, or cwd-relative local path. Local paths and URLs must be Opus (`.opus` or Ogg Opus `.ogg`) |
 | `--msg-type <type>` | No | Message type (default `text`). If you use `--text` / `--markdown` / media flags, the effective type is inferred automatically. Explicitly setting a conflicting `--msg-type` fails validation |
 | `--idempotency-key <key>` | No | Idempotency key; the same key sends only one message within 1 hour                                                                                                                            |
 | `--as <identity>` | No | Identity type: `bot` or `user` (default `bot`)                                                                                                                                                |
@@ -213,6 +214,8 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 | `share_chat` | `{"chat_id":"oc_xxx"}` |
 | `share_user` | `{"user_id":"ou_xxx"}` |
 | `interactive` | Card JSON (see Feishu interactive card documentation) |
+
+`interactive` cards support callback events (`card.action.trigger`) — see [`lark-im-card-action-reply.md`](lark-im-card-action-reply.md).
 
 ## Return Value
 

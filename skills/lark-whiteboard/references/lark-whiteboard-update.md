@@ -2,11 +2,12 @@
 
 > **前置条件：** 先阅读 [`../../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-更新画板内容，支持三种输入格式：
+更新画板内容，支持四种输入格式：
 
 - `raw`：飞书 OpenAPI 原生画板节点格式，不推荐直接编辑。
 - `plantuml`：PlantUML 代码
 - `mermaid`：Mermaid 代码
+- `svg`：SVG 文本
 
 输入内容可以通过管道从 stdin 读取，或通过 `--source` 指定文件。
 
@@ -18,7 +19,7 @@
 | `--idempotent-token` | 否  | 幂等 token，确保更新操作幂等，最小长度 10 个字符              |
 | `--overwrite`        | 否  | 覆盖更新，在更新前删除所有现有内容，默认为 false                |
 | `--source`           | 是  | 输入画板内容，支持使用 `@path` 从文件读取，或 `-` 从 stdin 读取 |
-| `--input_format`     | 否  | 输入格式：`raw`、`plantuml`、`mermaid`，默认为 `raw`  |
+| `--input_format`     | 否  | 输入格式：`raw`、`plantuml`、`mermaid`、`svg`，默认为 `raw`  |
 
 ### 以 raw (OpenAPI 原生画板节点格式) 创作
 
@@ -74,7 +75,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 使用 whiteboard-cli 生成 OpenAPI 格式并通过管道传递
-npx -y @larksuite/whiteboard-cli@^0.2.11 -i <产物文件> --to openapi --format json \
+npx -y @larksuite/whiteboard-cli@^0.2.12 -i <产物文件> --to openapi --format json \
   | lark-cli whiteboard +update \
     --whiteboard-token <画板Token> \
     --source - --input_format raw \
@@ -88,7 +89,7 @@ whiteboard-cli 工具的具体用法请参考 [§ 渲染 & 写入画板](../SKIL
 
 ```bash
 # 生成 OpenAPI 格式到文件
-npx -y @larksuite/whiteboard-cli@^0.2.11 -i <DSL 文件> --to openapi --format json -o ./temp.json
+npx -y @larksuite/whiteboard-cli@^0.2.12 -i <DSL 文件> --to openapi --format json -o ./temp.json
 
 # 从文件读取并更新
 lark-cli whiteboard +update \
@@ -96,5 +97,26 @@ lark-cli whiteboard +update \
   --idempotent-token <10+字符唯一串> \
   --input_format raw \
   --source @./temp.json \
+  --overwrite --as user
+```
+
+### 示例 5：使用 SVG 写入画板（从文件读取）
+
+适用于从零创建（直接写入 SVG）和编辑现有画板（编辑工作流详见 [`../routes/svg-edit.md`](../routes/svg-edit.md)）。
+
+```bash
+# 编写或导出 SVG 文件
+cat > diagram.svg << 'EOF'
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+  <rect x="10" y="10" width="80" height="40" fill="#4A90E2"/>
+  <text x="50" y="35" text-anchor="middle" fill="#fff">Hello</text>
+</svg>
+EOF
+
+# 从文件读取并更新
+lark-cli whiteboard +update \
+  --whiteboard-token <画板Token> \
+  --input_format svg \
+  --source @./diagram.svg \
   --overwrite --as user
 ```

@@ -51,7 +51,6 @@ metadata:
 | [`+get-my-tasks`](references/lark-task-get-my-tasks.md) | List tasks assigned to me |
 | [`+get-related-tasks`](references/lark-task-get-related-tasks.md) | list tasks related to me |
 | [`+search`](references/lark-task-search.md) | search tasks |
-| [`+subscribe-event`](references/lark-task-subscribe-event.md) | subscribe to task events |
 | [`+upload-attachment`](references/lark-task-upload-attachment.md) | upload a local file as an attachment to a task |
 | [`+tasklist-create`](references/lark-task-tasklist-create.md) | create a tasklist and optionally add tasks |
 | [`+tasklist-search`](references/lark-task-tasklist-search.md) | search tasklists |

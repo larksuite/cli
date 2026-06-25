@@ -12,11 +12,11 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const dbEnvCreateHint = "verify --app-id is correct; if the app is already multi-env this is a conflict — inspect current tables with `lark-cli apps +db-table-list --app-id <app_id> --env dev`"
+const dbEnvCreateHint = "verify --app-id is correct; if the app is already multi-env this is a conflict — inspect current tables with `lark-cli apps +db-table-list --app-id <app_id> --environment dev`"
 
 // AppsDBEnvCreate creates a DB environment for an app（拆分单库为 dev/online 多环境）。
 //
-// 调 POST /apps/{app_id}/db_dev_init。--env 指定要创建的环境，由调用方传入，目前只支持 dev。
+// 调 POST /apps/{app_id}/db_dev_init。--environment 指定要创建的环境，由调用方传入，目前只支持 dev。
 // 不可逆：单库一旦拆成 dev/online 双库无法回退。Risk: high-risk-write 触发框架自动注入 --yes 确认关卡。
 var AppsDBEnvCreate = common.Shortcut{
 	Service:     appsService,
@@ -24,19 +24,20 @@ var AppsDBEnvCreate = common.Shortcut{
 	Description: "Create a DB environment (split single-env DB into dev/online, irreversible)",
 	Risk:        "high-risk-write",
 	Tips: []string{
-		"Example: lark-cli apps +db-env-create --env dev --sync-data --app-id <app_id> --yes",
+		"Example: lark-cli apps +db-env-create --environment dev --sync-data --app-id <app_id> --yes",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
+	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "app id", Required: true},
-		{Name: "env", Default: "dev", Enum: []string{"dev"}, Desc: "environment to create (only dev supported for now)"},
 		{Name: "sync-data", Type: "bool", Desc: "copy existing online data into the new environment (default off)"},
-	},
+	}, dbEnvFlags("dev", []string{"dev"}, "environment to create (only dev supported for now)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
@@ -62,7 +63,7 @@ var AppsDBEnvCreate = common.Shortcut{
 }
 
 // buildDBEnvCreateBody 构造 db 环境创建 body：sync_data（bool）。
-// --env 目前只支持 dev、服务端接口本身即创建 dev 环境，故不下发 env 字段（仅做 CLI 入参校验/前向兼容）。
+// --environment 目前只支持 dev、服务端接口本身即创建 dev 环境，故不下发 env 字段（仅做 CLI 入参校验/前向兼容）。
 func buildDBEnvCreateBody(rctx *common.RuntimeContext) map[string]interface{} {
 	return map[string]interface{}{
 		"sync_data": rctx.Bool("sync-data"),

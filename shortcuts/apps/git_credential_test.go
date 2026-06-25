@@ -825,7 +825,7 @@ func TestRunGitCredentialHelperActions(t *testing.T) {
 func TestFactoryIssuerBranches(t *testing.T) {
 	factory, _, reg := newAppsExecuteFactory(t)
 	expiresAt := time.Now().Add(24 * time.Hour).Unix()
-	reg.Register(&httpmock.Stub{
+	issueStub := &httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/spark/v1/apps/app_xxx/git_info",
 		Body: map[string]interface{}{
@@ -836,13 +836,20 @@ func TestFactoryIssuerBranches(t *testing.T) {
 				"StatusCode": 0,
 			},
 		},
-	})
+	}
+	reg.Register(issueStub)
 	issued, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{})
 	if err != nil {
 		t.Fatalf("factory issuer returned error: %v", err)
 	}
 	if issued.PAT != "pat-token" {
 		t.Fatalf("PAT = %q", issued.PAT)
+	}
+	if got := issueStub.CapturedHeaders.Get(cmdutil.HeaderShortcut); got != gitCredentialHelperReportedShortcut {
+		t.Fatalf("%s = %q, want %q", cmdutil.HeaderShortcut, got, gitCredentialHelperReportedShortcut)
+	}
+	if got := issueStub.CapturedHeaders.Get(cmdutil.HeaderExecutionId); got == "" {
+		t.Fatalf("%s header missing", cmdutil.HeaderExecutionId)
 	}
 
 	factory.Config = func() (*core.CliConfig, error) { return nil, errors.New("config failed") }
@@ -877,6 +884,20 @@ func TestFactoryIssuerBranches(t *testing.T) {
 	factory, _, _ = newAppsExecuteFactory(t)
 	if _, err := (factoryIssuer{f: factory}).Issue(context.Background(), "app_xxx", gitcred.ProfileContext{}); err == nil {
 		t.Fatal("factory issuer request error returned nil")
+	}
+}
+
+func TestContextWithGitCredentialHelperShortcutPreservesExistingShortcut(t *testing.T) {
+	ctx := cmdutil.ContextWithShortcut(context.Background(), "apps:+git-credential-init", "exec-existing")
+	got := contextWithGitCredentialHelperShortcut(ctx)
+
+	name, ok := cmdutil.ShortcutNameFromContext(got)
+	if !ok || name != "apps:+git-credential-init" {
+		t.Fatalf("shortcut = %q ok=%v, want existing shortcut", name, ok)
+	}
+	executionID, ok := cmdutil.ExecutionIdFromContext(got)
+	if !ok || executionID != "exec-existing" {
+		t.Fatalf("execution id = %q ok=%v, want existing execution id", executionID, ok)
 	}
 }
 
