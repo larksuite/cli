@@ -4,9 +4,12 @@
 package doc
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestParseDocumentRef(t *testing.T) {
@@ -18,6 +21,7 @@ func TestParseDocumentRef(t *testing.T) {
 		wantKind  string
 		wantToken string
 		wantErr   string
+		wantParam string
 	}{
 		{
 			name:      "docx url",
@@ -49,9 +53,10 @@ func TestParseDocumentRef(t *testing.T) {
 			wantErr: "unsupported --doc input",
 		},
 		{
-			name:    "native mindnote url",
-			input:   "https://example.larksuite.com/mindnote/xxxxxx",
-			wantErr: "native Mind Note",
+			name:      "native mindnote url",
+			input:     "https://example.larksuite.com/mindnote/xxxxxx",
+			wantErr:   "native Mind Note",
+			wantParam: "--doc",
 		},
 	}
 
@@ -66,6 +71,22 @@ func TestParseDocumentRef(t *testing.T) {
 				}
 				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				if tt.wantParam != "" {
+					p, ok := errs.ProblemOf(err)
+					if !ok {
+						t.Fatalf("expected typed problem, got err=%v", err)
+					}
+					if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+						t.Fatalf("category/subtype=%s/%s want %s/%s", p.Category, p.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+					}
+					var ve *errs.ValidationError
+					if !errors.As(err, &ve) {
+						t.Fatalf("expected validation error, got %T: %v", err, err)
+					}
+					if ve.Param != tt.wantParam {
+						t.Fatalf("param=%q want %q", ve.Param, tt.wantParam)
+					}
 				}
 				return
 			}
