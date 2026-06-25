@@ -260,7 +260,7 @@ lark-cli vc +meeting-events \
 | `not a 9-digit meeting number` | 把 9 位会议号误传给 `--meeting-id` | 如果只是查询会中内容，先用 `+meeting-list-active` 按 `meeting_no` 匹配拿长数字 `meeting_id`；只有用户明确要求入会时才用 `+meeting-join --as bot --meeting-number <9位号>` |
 | `10005 bot is not in meeting` | 使用应用身份读取，但应用机器人从未真实入会该会议；或会议已结束但应用机器人从未在会中出现过 | 如果本来是用户身份发现的 `meeting_id`，改回 `--as user`；如果确实要应用身份读取，先 `+meeting-join --as bot --meeting-number <9位号>` 真实入会再查。**如果只是想看参会人快照，改用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants`** |
 | 用户身份不支持 | 当前事件读取接口不支持用用户身份访问 | 不要反复执行 `auth login`。改用应用身份流程：先通过 `+meeting-list-active --as bot --user-id <user_open_id>` 获取应用身份可读的 `meeting_id`，或在用户明确同意后让应用机器人入会，再用 `+meeting-events --as bot` 读取 |
-| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark-cli vc +notes --meeting-ids <meeting.id>` 获取会议产物信息，再根据 `note_display_type` / `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants` |
+| `20001 meeting_status_MEETING_END` | 会议已结束且已超出后端允许的 5 分钟宽限窗口 | 本接口不再适合继续拉取事件。先用 `lark-cli vc +detail --meeting-ids <meeting.id>` 获取会议产物信息，再根据 `note_id` / `minute_token` 和用户意图选择纪要正文、逐字稿或妙记；参会人请用 `lark-cli vc meeting get --params '{"meeting_id":"<meeting.id>"}' --with-participants` |
 | `20002 meeting not exist` | `meeting_id` 错误，或会议实例当前已不可获取（常见于把 9 位会议号当 meeting_id 传） | 确认传入的是长数字 `meeting_id`，不是 9 位会议号 |
 | 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。以 CLI 返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台“权限可访问的数据范围”：选择“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”；仍失败再排查内测 privilege / 灰度 |
 | `HTTP 404` / `HTTP 500` | 服务端当前无法找到或处理该会议实例 | 换一个正在进行且 bot 可见的 meeting_id，或排查后端问题 |
@@ -269,7 +269,7 @@ lark-cli vc +meeting-events \
 
 - 这是**会中事件流**查询，不适合拿来搜历史会议记录；搜历史会议请用 `+search`。
 - 如果会议已经结束，不要卡在 `+meeting-events`：  
-  - 先用 `lark-cli vc +notes --meeting-ids <meeting.id>` 获取会议产物信息。
+  - 先用 `lark-cli vc +detail --meeting-ids <meeting.id>` 获取会议产物信息。
   - 再根据 `note_display_type`、`note_id`、`minute_token` 和用户意图，按 `lark-vc` 的产物决策读取纪要正文、逐字稿或妙记。
 - 事件列表是否完整，取决于应用机器人何时入会、何时离会，以及后端当前可见的会中事件范围。对于已结束会议，通常只在**结束后 5 分钟内**、且应用机器人**曾经在会中**时还能继续拉到事件。
 - 查询"谁参加过某会议"请用 `vc meeting get --params '{"meeting_id":"<id>","with_participants":true}'`——这是参会人**快照** API，不依赖 bot 是否参会，对已结束会议也可查；**不要** 用 `+meeting-events` 做参会人查询。
@@ -281,7 +281,7 @@ lark-cli vc +meeting-events \
 - [lark-vc-agent-meeting-leave](lark-vc-agent-meeting-leave.md) — 用户明确要求时离会
 - [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议（获取 meeting_id）
 - [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 获取会议纪要
+- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
 - [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
 - [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

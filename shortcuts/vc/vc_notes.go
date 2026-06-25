@@ -263,42 +263,35 @@ func asStringSlice(v any) []string {
 }
 
 // fetchMeetingMinuteToken queries the recording API of a meeting and returns
-// the associated minute_token (parsed from the recording URL) and an
-// optional human-friendly error message. On success token is non-empty and
-// errMsg is empty; on failure token is empty and errMsg describes the cause:
-//   - 121004: meeting has no minute file
-//   - 121005: caller has no permission for the meeting recording
-//   - 124002: recording / minute file is still being generated
-//
-// Other failures fall back to the raw API error description so Agents can
-// still parse the underlying cause.
-func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (token, errMsg string) {
-	data, err := runtime.CallAPITyped(http.MethodGet,
+// the associated minute_token (parsed from the recording URL), an optional
+// hint for expected missing states, and an error for unexpected failures.
+func fetchMeetingMinuteToken(runtime *common.RuntimeContext, meetingID string) (token, hint string, err error) {
+	data, apiErr := runtime.CallAPITyped(http.MethodGet,
 		fmt.Sprintf("/open-apis/vc/v1/meetings/%s/recording", validate.EncodePathSegment(meetingID)),
 		nil, nil)
-	if err != nil {
-		if p, ok := errs.ProblemOf(err); ok {
+	if apiErr != nil {
+		if p, ok := errs.ProblemOf(apiErr); ok {
 			switch p.Code {
 			case recordingNotFoundCode:
-				return "", "no minute file for this meeting"
+				return "", "no minute file for this meeting", nil
 			case recordingNoPermissionCode:
-				return "", "no permission to access this meeting's minute; ask the meeting owner to share the minute"
+				return "", "no permission to access this meeting's minute; ask the meeting owner to share the minute", nil
 			case recordingGeneratingCode:
-				return "", "minute file is still being generated; please retry later"
+				return "", "minute file is still being generated; please retry later", nil
 			}
 		}
-		return "", fmt.Sprintf("failed to query recording: %v", err)
+		return "", "", apiErr
 	}
 
 	recording, _ := data["recording"].(map[string]any)
 	if recording == nil {
-		return "", "no recording available for this meeting"
+		return "", "no recording available for this meeting", nil
 	}
 	recordingURL, _ := recording["url"].(string)
 	if t := extractMinuteToken(recordingURL); t != "" {
-		return t, ""
+		return t, "", nil
 	}
-	return "", "no minute_token found in recording URL"
+	return "", "no minute_token found in recording URL", nil
 }
 
 // fetchNoteByMeetingID queries notes via meeting_id and additionally fetches
@@ -321,7 +314,7 @@ func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, m
 	// Always attempt to query the meeting's minute_token via the recording API,
 	// regardless of whether the meeting has a note_id, so callers always see
 	// minute state for follow-up calls (e.g. `vc +notes --minute-tokens=...`).
-	minuteToken, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
+	minuteToken, minuteHint, minuteErr := fetchMeetingMinuteToken(runtime, meetingID)
 
 	var result map[string]any
 	var noteErr string
@@ -340,7 +333,13 @@ func fetchNoteByMeetingID(ctx context.Context, runtime *common.RuntimeContext, m
 	if minuteToken != "" {
 		result["minute_token"] = minuteToken
 	}
-	if combined := joinErrors(noteErr, minuteErr); combined != "" {
+	var minuteErrMsg string
+	if minuteHint != "" {
+		minuteErrMsg = minuteHint
+	} else if minuteErr != nil {
+		minuteErrMsg = minuteErr.Error()
+	}
+	if combined := joinErrors(noteErr, minuteErrMsg); combined != "" {
 		result["error"] = combined
 	}
 	return result
@@ -538,6 +537,7 @@ var VCNotes = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{"vc:note:read"}, // minimum scope; additional per-flag scopes checked in Validate
 	AuthTypes:   []string{"user"},
+	Hidden:      true, // hidden from --help; prefer vc +detail, minutes +detail, or note +detail
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-ids", Desc: "meeting IDs, comma-separated for batch"},

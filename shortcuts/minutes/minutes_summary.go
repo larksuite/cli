@@ -31,7 +31,7 @@ var MinutesSummary = common.Shortcut{
 	},
 	Tips: []string{
 		minutesSummaryMarkdownTip,
-		"Use `lark-cli vc +notes --minute-tokens <token>` to read the current summary before replacing it.",
+		"Use `lark-cli minutes +detail --minute-tokens <token> --summary` to read the current summary before replacing it.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		minuteToken := runtime.Str("minute-token")

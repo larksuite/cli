@@ -94,7 +94,7 @@ lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add -
 
 ### 1. 先读后写，待办 id 如何获取
 
-更新 / 删除前先用 `lark-cli vc +notes --minute-tokens <token>` 读取当前待办。返回的每条待办带 `todo_id` 字段。
+更新 / 删除前先用 `lark-cli minutes +detail --minute-tokens <token> --todo` 读取当前待办。返回的每条待办带 `todo_id` 字段。
 
 > 待办 id 仅用于程序内部定位，不必展示给用户。
 
@@ -134,5 +134,5 @@ lark-cli minutes +todo --minute-token obcnxxxxxxxxxxxxxxxxxxxx --operation add -
 
 - [lark-minutes](../SKILL.md)
 - [minutes +summary](lark-minutes-summary.md)
-- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md)
+- [minutes +detail](lark-minutes-detail.md)
 - [lark-shared](../../lark-shared/SKILL.md)

@@ -526,7 +526,7 @@ func TestMinutesSearchExecuteRendersRowsAndMoreHint(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123", "https://p3-lark-file.byteimg.com/img/xxxx.jpg", "next_token", "more available"} {
+	for _, want := range []string{"minute_1", "周会摘要", "周会纪要", "https://meetings.feishu.cn/minutes/obcn123", "next_token", "more available"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("output missing %q, got: %s", want, out)
 		}
@@ -672,7 +672,6 @@ func TestMinuteSearchFieldExtractors(t *testing.T) {
 		"meta_data": map[string]interface{}{
 			"description": "周会纪要",
 			"app_link":    "https://meetings.feishu.cn/minutes/obcn123",
-			"avatar":      "https://p3-lark-file.byteimg.com/img/xxxx.jpg",
 		},
 	}
 
@@ -688,9 +687,6 @@ func TestMinuteSearchFieldExtractors(t *testing.T) {
 	if got := minuteSearchAppLink(item); got != "https://meetings.feishu.cn/minutes/obcn123" {
 		t.Fatalf("minuteSearchAppLink() = %q", got)
 	}
-	if got := minuteSearchAvatar(item); got != "https://p3-lark-file.byteimg.com/img/xxxx.jpg" {
-		t.Fatalf("minuteSearchAvatar() = %q", got)
-	}
 }
 
 // TestMinuteSearchFieldExtractorsFallbacks verifies extractors keep working for alternate sample data.
@@ -703,7 +699,6 @@ func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 		"meta_data": map[string]interface{}{
 			"description": "回退纪要",
 			"app_link":    "https://meetings.feishu.cn/minutes/fallback",
-			"avatar":      "https://p3-lark-file.byteimg.com/img/fallback.jpg",
 		},
 	}
 
@@ -715,9 +710,6 @@ func TestMinuteSearchFieldExtractorsFallbacks(t *testing.T) {
 	}
 	if got := minuteSearchAppLink(item); got != "https://meetings.feishu.cn/minutes/fallback" {
 		t.Fatalf("minuteSearchAppLink() = %q", got)
-	}
-	if got := minuteSearchAvatar(item); got != "https://p3-lark-file.byteimg.com/img/fallback.jpg" {
-		t.Fatalf("minuteSearchAvatar() = %q", got)
 	}
 }
 
@@ -739,7 +731,32 @@ func TestMinuteSearchFieldExtractorsMissingMetaData(t *testing.T) {
 	if got := minuteSearchAppLink(item); got != "" {
 		t.Fatalf("minuteSearchAppLink() = %q, want empty", got)
 	}
-	if got := minuteSearchAvatar(item); got != "" {
-		t.Fatalf("minuteSearchAvatar() = %q, want empty", got)
+}
+
+// TestStripAvatarFromItems verifies the avatar field is removed from items in place.
+func TestStripAvatarFromItems(t *testing.T) {
+	t.Parallel()
+
+	items := []interface{}{
+		map[string]interface{}{
+			"token": "minute_1",
+			"meta_data": map[string]interface{}{
+				"description": "周会纪要",
+				"avatar":      "https://p3-lark-file.byteimg.com/img/xxxx.jpg",
+			},
+		},
+		nil,
+		map[string]interface{}{"token": "minute_no_meta"},
+	}
+
+	stripAvatarFromItems(items)
+
+	first, _ := items[0].(map[string]interface{})
+	meta, _ := first["meta_data"].(map[string]interface{})
+	if _, ok := meta["avatar"]; ok {
+		t.Fatalf("avatar should be stripped, got meta = %v", meta)
+	}
+	if meta["description"] != "周会纪要" {
+		t.Fatalf("description should be preserved, got %v", meta["description"])
 	}
 }

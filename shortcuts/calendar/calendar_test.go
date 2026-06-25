@@ -2234,10 +2234,10 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns7(t *testing.T) {
+func TestShortcuts_Returns9(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 7 {
-		t.Fatalf("expected 7 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 9 {
+		t.Fatalf("expected 9 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}

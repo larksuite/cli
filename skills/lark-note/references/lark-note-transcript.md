@@ -1,6 +1,6 @@
 # note +transcript
 
-只在 `note +detail` 或 `vc +notes` 已确认 `note_display_type=unified` 时使用。普通纪要逐字稿是独立 Docx 文档，应回到 [lark-doc](../../lark-doc/SKILL.md) 读取 `verbatim_doc_token`。
+只在 `note +detail` 已确认 `note_display_type=unified` 时使用。普通纪要逐字稿是独立 Docx 文档，应回到 [lark-doc](../../lark-doc/SKILL.md) 读取 `verbatim_doc_token`。
 
 ```bash
 lark-cli note +transcript --note-id NOTE_ID

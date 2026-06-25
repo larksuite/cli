@@ -838,7 +838,7 @@ func TestVCShortcuts_RegistersMeetingAgentCommands(t *testing.T) {
 	for _, shortcut := range got {
 		commands = append(commands, shortcut.Command)
 	}
-	want := []string{"+search", "+notes", "+recording", "+meeting-join", "+meeting-leave", "+meeting-list-active", "+meeting-events"}
+	want := []string{"+search", "+notes", "+recording", "+detail", "+meeting-join", "+meeting-leave", "+meeting-list-active", "+meeting-events"}
 	if !reflect.DeepEqual(commands, want) {
 		t.Fatalf("shortcut commands = %#v, want %#v", commands, want)
 	}
