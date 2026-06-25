@@ -1,14 +1,11 @@
 # calendar +suggestion
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
 
 根据非明确时间或一段时间范围，推荐多个可用时间块方案。帮助用户解决协调时间的难题。
 
 **调用时机 (Agent Guidance):**
 - ✅ **当用户需求涉及寻找时间块，且时间未完全确定**（如`今天`、`近三天`、`本周`、`下午`, `无时间描述`）时，调用此工具来获取推荐时间块给用户选择（包括但不限于预约日程）。
 - ❌ **当用户已经明确了具体的时间点**（如`今天下午3点`），则**不需要**调用此工具
-
-需要的scopes: ["calendar:calendar.free_busy:read"]
 
 ## 命令
 
@@ -121,5 +118,4 @@ lark-cli calendar +suggestion \
 ## 参考
 
 - [lark-calendar-create](lark-calendar-create.md) — 创建日程
-- [lark-calendar-freebusy](lark-calendar-freebusy.md) — 查询忙闲时段和rsvp状态
-- [lark-calendar](../SKILL.md) — 日历完整 API
+- [lark-calendar](../SKILL.md) — skill 入口与路由

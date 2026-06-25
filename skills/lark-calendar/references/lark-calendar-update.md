@@ -1,12 +1,9 @@
 # calendar +update
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 更新既有日程字段，或独立增量添加/移除参会人和会议室。
 
 `+update` 支持三类互相独立的动作：更新日程字段、添加参会人/会议室、移除参会人/会议室。它们可以单独执行，也可以在同一次命令中组合执行。
-
-需要的 scopes: ["calendar:calendar.event:update"]
 
 ## 推荐命令
 
@@ -66,8 +63,8 @@ lark-cli calendar +update \
 - 如需替换某个参与人、群组或会议室，使用 `--remove-attendee-ids <旧ID>` + `--add-attendee-ids <新ID>`。
 - 会议室是 resource attendee，必须使用 `omm_` ID 添加到参会人列表，不能脱离日程单独预定。
 - 更新重复性日程时，必须先确定操作范围（仅此次/全部/此次及后续），然后按 [重复性日程操作规范](lark-calendar-recurring.md) 执行。
-- 如果需要验证更新结果，等待至少 2 秒后再查询，避免同步延迟导致读到旧数据。
 - 当同一次命令组合多个动作时，执行顺序为“日程字段 -> 移除参会人 -> 添加参会人”。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。
+**⚠️ 高风险操作**: 修改时间时必须先读取原日程时长并计算新 end。如果 end 计算错误，会导致日程时长变化，用户会直接感知，禁止擅自改变原日程的时长。
 
 ## 高级用法（完整 API 命令）
 
@@ -98,8 +95,6 @@ lark-cli calendar +update \
 
 ## 参考
 
-- [lark-calendar](../SKILL.md) -- 日历全部命令
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数
+- [lark-calendar](../SKILL.md) -- skill 入口与路由
 - [lark-calendar-schedule-meeting](lark-calendar-schedule-meeting.md) -- 预约/改约会议与会议室工作流
 - [lark-calendar-room-find](lark-calendar-room-find.md) -- 查找可用会议室
-- [lark-calendar-freebusy](lark-calendar-freebusy.md) -- 查询忙闲
