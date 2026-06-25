@@ -26,10 +26,10 @@ var AppsOpenAPIKeyUpdate = common.Shortcut{
 		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "key-id", Desc: "API key ID", Required: true},
 		{Name: "name", Desc: "new name"},
-		{Name: "scope-all", Type: "bool", Desc: "grant access to all /openapi/** routes (requestScope.allowAll)"},
+		{Name: "scope-all", Type: "bool", Desc: "grant access to all /openapi/** routes (request_scope.allow_all)"},
 		{Name: "scope-api", Type: "string_array", Desc: "grant one route, repeatable: 'METHOD /openapi/path' (from the app's docs/openapi.json)"},
-		{Name: "scope", Desc: "advanced: raw JSON for config.requestScope (mutually exclusive with --scope-all/--scope-api)"},
-		{Name: "allow-preview", Type: "bool", Desc: "allow preview-env access (config.isAllowAccessPreview)"},
+		{Name: "scope", Desc: "advanced: raw JSON for config.request_scope (mutually exclusive with --scope-all/--scope-api)"},
+		{Name: "allow-preview", Type: "bool", Desc: "allow preview-env access (config.is_allow_access_preview)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if err := oapiKeyValidateKeyID(rctx); err != nil {
