@@ -469,6 +469,29 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSend audio rejects non-opus local file", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+			"audio":   "./voice.mp3",
+		}, nil)
+		err := ImMessagesSend.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
+			t.Fatalf("ImMessagesSend.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesSend audio accepts opus and ogg local files", func(t *testing.T) {
+		for _, audio := range []string{"./voice.opus", "./voice.ogg"} {
+			runtime := newTestRuntimeContext(t, map[string]string{
+				"chat-id": "oc_123",
+				"audio":   audio,
+			}, nil)
+			if err := ImMessagesSend.Validate(context.Background(), runtime); err != nil {
+				t.Fatalf("ImMessagesSend.Validate(%q) unexpected error = %v", audio, err)
+			}
+		}
+	})
+
 	t.Run("ImMessagesSend conflicting explicit msg-type", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"chat-id":  "oc_123",
@@ -488,6 +511,17 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}, nil)
 		err := ImMessagesReply.Validate(context.Background(), runtime)
 		if err == nil || !strings.Contains(err.Error(), "must start with om_") {
+			t.Fatalf("ImMessagesReply.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesReply audio rejects non-opus local file", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id": "om_123",
+			"audio":      "./voice.mp3",
+		}, nil)
+		err := ImMessagesReply.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
 			t.Fatalf("ImMessagesReply.Validate() error = %v", err)
 		}
 	})

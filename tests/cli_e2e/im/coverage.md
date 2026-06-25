@@ -12,6 +12,7 @@
 - TestIM_ChatMessageWorkflowAsUser: proves the user chat message flow through `create chat as user`, `send message as user`, and `list chat messages as user` with the created message ID and content asserted from read-after-write output.
 - TestIM_MessageGetWorkflowAsUser: proves user message readback through `batch get message as user` after creating a fresh chat and sending a unique message.
 - TestIM_MessageReplyWorkflowAsBot: proves threaded reply flow through `reply to message in thread as bot` and `list thread replies as bot`, reading back the reply from `im +threads-messages-list`.
+- TestIM_MessagesSendAudioDryRunRejectsNonOpus: proves the `im +messages-send --audio` dry-run validation rejects non-Opus local audio before upload, with typed validation metadata and recovery guidance.
 - TestIM_MessageForwardWorkflowAsUser: proves UAT-backed API forwarding through `im messages forward` and `im threads forward` using a fresh message/thread fixture; skips the forward assertions when the current test app/UAT lacks IM forward permission.
 - Blocked area: `im +chat-search` did not reliably return freshly created private chats in UAT, and `im +messages-search` did not reliably index freshly sent messages in time for a deterministic read-after-write assertion, so both remain uncovered.
 
@@ -27,7 +28,7 @@
 | ✓ | im +messages-reply | shortcut | im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/reply to message in thread as bot | `--message-id`; `--text`; `--reply-in-thread` | reply is read back via thread list |
 | ✕ | im +messages-resources-download | shortcut |  | none | needs a stable image/file message fixture plus file_key proof; left uncovered |
 | ✕ | im +messages-search | shortcut |  | none | freshly sent messages were not indexed deterministically in UAT time for a stable read-after-write proof |
-| ✓ | im +messages-send | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/send message as user; im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot | `--chat-id`; `--text` | covered where returned message IDs feed follow-up reads |
+| ✓ | im +messages-send | shortcut | im/chat_message_workflow_test.go::TestIM_ChatMessageWorkflowAsUser/send message as user; im/message_get_workflow_test.go::TestIM_MessageGetWorkflowAsUser; im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot; im/message_audio_dryrun_test.go::TestIM_MessagesSendAudioDryRunRejectsNonOpus | `--chat-id`; `--text`; `--audio ./voice.mp3 --dry-run` | live text sends feed follow-up reads; dry-run pins non-Opus audio validation before upload |
 | ✓ | im +threads-messages-list | shortcut | im/message_reply_workflow_test.go::TestIM_MessageReplyWorkflowAsBot/list thread replies as bot | `--thread` | proves threaded reply is persisted |
 | ✕ | im chat.members create | api |  | none | no member mutation workflow yet |
 | ✕ | im chat.members get | api |  | none | no member get workflow yet |

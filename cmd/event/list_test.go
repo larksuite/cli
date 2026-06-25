@@ -26,6 +26,7 @@ func TestRunList_TextOutput(t *testing.T) {
 		"KEY", "AUTH", "PARAMS", "DESCRIPTION",
 		"im.message.receive_v1",
 		"im.message.message_read_v1",
+		"task.task.update_user_access_v2",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list output missing %q; full output:\n%s", want, out)
@@ -54,5 +55,18 @@ func TestRunList_JSONOutput(t *testing.T) {
 				t.Errorf("row missing %q: %+v", field, row)
 			}
 		}
+	}
+
+	var foundTask bool
+	for _, row := range rows {
+		if row["key"] == "task.task.update_user_access_v2" {
+			foundTask = true
+			if row["single_consumer"] != true {
+				t.Errorf("task row single_consumer = %v, want true", row["single_consumer"])
+			}
+		}
+	}
+	if !foundTask {
+		t.Fatal("event list JSON missing task.task.update_user_access_v2")
 	}
 }

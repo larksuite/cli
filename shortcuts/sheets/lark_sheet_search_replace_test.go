@@ -89,14 +89,17 @@ func TestSearchReplaceShortcuts_DryRun(t *testing.T) {
 
 func TestCellsReplace_RequireFlag(t *testing.T) {
 	t.Parallel()
-	// --replace not passed at all (vs empty string) should error.
+	// --replace not passed at all (vs empty string) should error. This trips
+	// cobra's required-flag gate before our Validate hook runs, so the error
+	// is cobra's plain `required flag(s) "replacement" not set` rather than a
+	// typed *errs.ValidationError — keep this assertion as a substring check.
 	stdout, stderr, err := runShortcutCapturingErr(t, CellsReplace, []string{
 		"--url", testURL, "--sheet-id", testSheetID, "--find", "foo", "--dry-run",
 	})
 	if err == nil {
-		t.Fatalf("expected error when --replace omitted; stdout=%s stderr=%s", stdout, stderr)
+		t.Fatalf("expected error when --replacement omitted; stdout=%s stderr=%s", stdout, stderr)
 	}
-	if !strings.Contains(stdout+stderr+err.Error(), "replace") {
-		t.Errorf("expected message about --replace; got=%s|%s|%v", stdout, stderr, err)
+	if !strings.Contains(err.Error(), "replacement") {
+		t.Errorf("expected message about --replacement; got=%s|%s|%v", stdout, stderr, err)
 	}
 }

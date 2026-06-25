@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.57] - 2026-06-23
+
+### Features
+
+- **slides**: Add `+screenshot` to capture slide page images (or render a single `<slide>` XML snippet), returning the local file path instead of Base64 (#1358)
+- **base**: Support record comments (#1043)
+- **search**: Surface search API notices (#1413)
+
+### Bug Fixes
+
+- **mail**: Resolve folder/label filter once per `+triage list` call (#1512)
+- **meta**: Backfill enum value descriptions from options (#1541)
+- **cli**: Add missing CLI headers for git credential helper (#1539)
+
+### Documentation
+
+- **doc**: Refine rich block, path, and block ID guidance (#1508)
+- **mail**: Trim lark-mail skill context (#1527)
+- **drive**: Add permission governance workflow guidance (#1292)
+
+### Build
+
+- **ci**: Bind semantic review to workflow run head (#1551)
+
 ## [v1.0.56] - 2026-06-18
 
 ### Features
@@ -1212,6 +1236,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
 [v1.0.56]: https://github.com/larksuite/cli/releases/tag/v1.0.56
 [v1.0.55]: https://github.com/larksuite/cli/releases/tag/v1.0.55
 [v1.0.54]: https://github.com/larksuite/cli/releases/tag/v1.0.54

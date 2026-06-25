@@ -32,4 +32,6 @@ var commandsWithSchema = map[string]struct{}{
 	"+range-sort":            {},
 	"+sparkline-create":      {},
 	"+sparkline-update":      {},
+	"+table-put":             {},
+	"+workbook-create":       {},
 }
