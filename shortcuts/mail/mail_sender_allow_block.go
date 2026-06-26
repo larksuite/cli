@@ -171,7 +171,7 @@ var MailSenderDelete = common.Shortcut{
 	Service:     "mail",
 	Command:     "+sender-delete",
 	Description: "Delete sender addresses from the user-level allow or block list.",
-	Risk:        "write",
+	Risk:        "delete",
 	Scopes:      []string{"mail:user_mailbox"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
