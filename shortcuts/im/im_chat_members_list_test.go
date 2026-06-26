@@ -212,6 +212,59 @@ func TestMembersList_Execute_FilterBotsOnly(t *testing.T) {
 	}
 }
 
+func TestMembersList_Execute_PageAllAccumulates(t *testing.T) {
+	page := 0
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		page++
+		if page == 1 {
+			return shortcutRawResponse(200, []byte(`{"code":0,"data":{"users":[{"member_id":"ou_u1"}],"bots":[],"user_total":2,"bot_total":1,"has_more":true,"page_token":"t2"}}`), nil), nil
+		}
+		return shortcutRawResponse(200, []byte(`{"code":0,"data":{"users":[{"member_id":"ou_u2"}],"bots":[{"member_id":"ou_b1"}],"user_total":2,"bot_total":1,"has_more":false,"page_token":""}}`), nil), nil
+	}))
+	attachMembersListCmd(t, rt, nil, map[string]bool{"page-all": true})
+	if err := ImChatMembersList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() err = %v", err)
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
+	for _, want := range []string{"ou_u1", "ou_u2", "ou_b1", `"has_more": false`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("page-all output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestMembersList_Execute_PageAllHitsLimit(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return shortcutRawResponse(200, []byte(`{"code":0,"data":{"users":[{"member_id":"ou_u1"}],"bots":[],"user_total":9,"bot_total":0,"has_more":true,"page_token":"tNEXT"}}`), nil), nil
+	}))
+	attachMembersListCmd(t, rt, map[string]string{"page-limit": "1"}, map[string]bool{"page-all": true})
+	if err := ImChatMembersList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() err = %v", err)
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
+	if !strings.Contains(out, `"has_more": true`) || !strings.Contains(out, "tNEXT") {
+		t.Fatalf("page-limit stop should preserve has_more/token:\n%s", out)
+	}
+}
+
+func TestMembersList_Execute_Truncations(t *testing.T) {
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return shortcutRawResponse(200, []byte(`{"code":0,"data":{"users":[{"member_id":"ou_u1"}],"bots":[],"user_total":-1,"bot_total":0,"has_more":false,"truncations":[{"member_type":"user","limit":100}]}}`), nil), nil
+	}))
+	attachMembersListCmd(t, rt, nil, nil)
+	if err := ImChatMembersList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() err = %v", err)
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
+	if !strings.Contains(out, `"truncations"`) || !strings.Contains(out, `"limit": 100`) {
+		t.Fatalf("truncations not preserved in output:\n%s", out)
+	}
+	errOut := rt.Factory.IOStreams.ErrOut.(*bytes.Buffer).String()
+	if !strings.Contains(errOut, "truncated by server") {
+		t.Fatalf("stderr missing truncation warning:\n%s", errOut)
+	}
+}
+
 // compile-time guard that the shortcut is wired with expected metadata.
 func TestMembersList_Metadata(t *testing.T) {
 	if ImChatMembersList.Command != "+chat-members-list" {

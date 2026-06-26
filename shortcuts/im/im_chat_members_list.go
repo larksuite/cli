@@ -116,8 +116,11 @@ func executeMembersList(ctx context.Context, runtime *common.RuntimeContext) err
 
 	var data map[string]interface{}
 	var err error
-	// page-all handled in Task 3
-	data, err = runtime.CallAPITyped("GET", path, params, nil)
+	if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+		data, err = fetchAllMemberPages(ctx, runtime, path, params, runtime.Int("page-limit"))
+	} else {
+		data, err = runtime.CallAPITyped("GET", path, params, nil)
+	}
 	if err != nil {
 		return err
 	}
@@ -213,6 +216,62 @@ func renderMembersPretty(w io.Writer, outData map[string]interface{}) {
 		fmt.Fprint(w, ")")
 	}
 	fmt.Fprintln(w)
+}
+
+// fetchAllMemberPages loops up to pageLimit pages, accumulating users[]/bots[]
+// from each page. user_total/bot_total/truncations come from the last page
+// (group-level totals are page-invariant). has_more/page_token reflect the last
+// page fetched — when the loop stops at pageLimit with has_more=true the token
+// is preserved so the caller can continue. Stops early if page_token does not
+// advance (guard against an infinite loop).
+func fetchAllMemberPages(ctx context.Context, runtime *common.RuntimeContext, path string, baseParams map[string]interface{}, pageLimit int) (map[string]interface{}, error) {
+	if pageLimit < 1 {
+		pageLimit = 1
+	}
+	allUsers := []interface{}{}
+	allBots := []interface{}{}
+	var last map[string]interface{}
+	token := ""
+	for i := 0; i < pageLimit; i++ {
+		params := make(map[string]interface{}, len(baseParams)+1)
+		for k, v := range baseParams {
+			params[k] = v
+		}
+		if token != "" {
+			params["page_token"] = token
+		} else {
+			delete(params, "page_token")
+		}
+		data, err := runtime.CallAPITyped("GET", path, params, nil)
+		if err != nil {
+			return nil, err
+		}
+		last = data
+		if u, ok := data["users"].([]interface{}); ok {
+			allUsers = append(allUsers, u...)
+		}
+		if b, ok := data["bots"].([]interface{}); ok {
+			allBots = append(allBots, b...)
+		}
+		hasMore, nextToken := common.PaginationMeta(data)
+		if !hasMore || nextToken == "" {
+			break
+		}
+		if nextToken == token {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: page_token did not change, stopping pagination to avoid infinite loop\n")
+			break
+		}
+		token = nextToken
+	}
+	// Rebuild a synthetic "last page" data carrying accumulated buckets but the
+	// last page's totals / has_more / page_token / truncations.
+	merged := map[string]interface{}{}
+	for k, v := range last {
+		merged[k] = v
+	}
+	merged["users"] = allUsers
+	merged["bots"] = allBots
+	return merged, nil
 }
 
 // totalString renders user_total, mapping the API's -1 "hidden" sentinel to a
