@@ -13,6 +13,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -117,9 +118,7 @@ func TestRuleReorderRejectsDuplicateInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected duplicate validation error, got nil")
 	}
-	if !strings.Contains(err.Error(), "duplicate rule ID") {
-		t.Fatalf("error = %v, want duplicate rule ID", err)
-	}
+	assertRuleReorderValidationError(t, err, errs.SubtypeInvalidArgument, "--rule-id/--rule-ids")
 }
 
 func TestRuleReorderRejectsMissingRuleID(t *testing.T) {
@@ -136,9 +135,7 @@ func TestRuleReorderRejectsMissingRuleID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing rule validation error, got nil")
 	}
-	if !strings.Contains(err.Error(), "not found") || !strings.Contains(err.Error(), "user_mailbox.rules list") {
-		t.Fatalf("error = %v, want not found hint", err)
-	}
+	assertRuleReorderValidationError(t, err, errs.SubtypeInvalidArgument, "")
 }
 
 func TestRuleReorderRejectsEmptyRuleList(t *testing.T) {
@@ -155,9 +152,7 @@ func TestRuleReorderRejectsEmptyRuleList(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected empty rules validation error, got nil")
 	}
-	if !strings.Contains(err.Error(), "no mail rules found") {
-		t.Fatalf("error = %v, want no mail rules found", err)
-	}
+	assertRuleReorderValidationError(t, err, errs.SubtypeInvalidArgument, "")
 }
 
 func TestParseRuleIDsFlagSupportsJSONAndCSV(t *testing.T) {
@@ -216,6 +211,35 @@ func ruleListResponse(ids ...string) map[string]interface{} {
 			"items": items,
 		},
 	}
+}
+
+func assertRuleReorderValidationError(t *testing.T, err error, wantSubtype errs.Subtype, wantParam string) {
+	t.Helper()
+
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error = %T %v, want typed problem", err, err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("problem category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != wantSubtype {
+		t.Fatalf("problem subtype = %q, want %q", problem.Subtype, wantSubtype)
+	}
+	if wantParam == "" {
+		return
+	}
+
+	validationErr, ok := err.(*errs.ValidationError)
+	if !ok {
+		t.Fatalf("error = %T, want *errs.ValidationError", err)
+	}
+	for _, param := range validationErr.Params {
+		if param.Name == wantParam {
+			return
+		}
+	}
+	t.Fatalf("validation params = %#v, want param %q", validationErr.Params, wantParam)
 }
 
 func requestRuleIDsEqual(want []string) func([]byte) bool {
