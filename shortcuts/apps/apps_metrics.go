@@ -18,30 +18,27 @@ import (
 const (
 	defaultAppsMetricEnv          = "online"
 	defaultAppsMetricDownSample   = "1m"
-	defaultAppsAnalyticsEnv       = "online"
-	defaultAppsAnalyticsGranular  = "day"
-	metricQueryEndpoint           = "query_metrics_data"
-	analyticsQueryEndpoint        = "query_analytics_data"
+	metricListEndpoint            = "query_metrics_data"
 	defaultObservabilityRangeDays = 30
 )
 
-// AppsMetricQuery queries online app observability metrics.
-var AppsMetricQuery = common.Shortcut{
+// AppsMetricList lists online app observability metrics.
+var AppsMetricList = common.Shortcut{
 	Service:     appsService,
-	Command:     "+metric-query",
-	Description: "Query online app request, latency, CPU, and memory metrics",
+	Command:     "+metric-list",
+	Description: "List online app request, latency, CPU, and memory metrics",
 	Risk:        "read",
 	Tips: []string{
-		"Example: lark-cli apps +metric-query --app-id <app_id> --metric requests --series total --since 1d",
-		"Tip: metric timestamps use seconds; use +analytics-query for PV/UV-style analytics.",
+		"Example: lark-cli apps +metric-list --app-id <app_id> --metric requests --series total --since 1d",
+		"Tip: metric timestamps use seconds; use +analytics-list for PV/UV-style analytics.",
 	},
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "app ID whose online metrics should be queried", Required: true},
+		{Name: "app-id", Desc: "app ID whose online metrics should be listed", Required: true},
 		{Name: appsEnvironmentFlag, Default: defaultAppsMetricEnv, Desc: "observability environment; only online is supported"},
-		{Name: "metric", Desc: "metric family to query", Required: true, Enum: []string{"requests", "latency", "cpu", "memory"}},
+		{Name: "metric", Desc: "metric family to list", Required: true, Enum: []string{"requests", "latency", "cpu", "memory"}},
 		{Name: "series", Desc: "metric series within the family, such as total/error or p50/p99"},
 		{Name: "since", Desc: "start time, relative duration (30s, 5m, 0.5h, 2h, 3d, 1w), local date/time, or RFC3339; defaults to 30 days before --until"},
 		{Name: "until", Desc: "end time, relative duration (30s, 5m, 0.5h, 2h, 3d, 1w), local date/time, or RFC3339; defaults to now"},
@@ -53,23 +50,23 @@ var AppsMetricQuery = common.Shortcut{
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
-		_, _, _, _, err := buildMetricQueryBody(rctx)
+		_, _, _, _, err := buildMetricListBody(rctx)
 		return err
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		body, _, _, _, _ := buildMetricQueryBody(rctx)
+		body, _, _, _, _ := buildMetricListBody(rctx)
 		return common.NewDryRunAPI().
-			POST(metricQueryPath(rctx.Str("app-id"))).
-			Desc("Query online app metrics").
+			POST(metricListPath(rctx.Str("app-id"))).
+			Desc("List online app metrics").
 			Body(body)
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, _ := requireAppID(rctx.Str("app-id"))
-		body, names, labels, fillZero, err := buildMetricQueryBody(rctx)
+		body, names, labels, fillZero, err := buildMetricListBody(rctx)
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("POST", metricQueryPath(appID), nil, body)
+		data, err := rctx.CallAPITyped("POST", metricListPath(appID), nil, body)
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}
@@ -87,82 +84,16 @@ var AppsMetricQuery = common.Shortcut{
 	},
 }
 
-// AppsAnalyticsQuery queries online app product analytics.
-var AppsAnalyticsQuery = common.Shortcut{
-	Service:     appsService,
-	Command:     "+analytics-query",
-	Description: "Query online app user and page-view analytics",
-	Risk:        "read",
-	Tips: []string{
-		"Example: lark-cli apps +analytics-query --app-id <app_id> --analytics users --granularity week",
-		"Tip: analytics timestamps use nanoseconds; use +metric-query for request/runtime metrics.",
-	},
-	Scopes:    []string{"spark:app:read"},
-	AuthTypes: []string{"user"},
-	HasFormat: true,
-	Flags: []common.Flag{
-		{Name: "app-id", Desc: "app ID whose online analytics should be queried", Required: true},
-		{Name: appsEnvironmentFlag, Default: defaultAppsAnalyticsEnv, Desc: "observability environment; only online is supported"},
-		{Name: "analytics", Desc: "analytics family to query", Required: true, Enum: []string{"users", "page-view"}},
-		{Name: "series", Desc: "analytics series within the family, such as active-users or desktop-view"},
-		{Name: "since", Desc: "start time, relative duration (30s, 5m, 0.5h, 2h, 3d, 1w), local date/time, or RFC3339; defaults to 30 days before --until"},
-		{Name: "until", Desc: "end time, relative duration (30s, 5m, 0.5h, 2h, 3d, 1w), local date/time, or RFC3339; defaults to now"},
-		{Name: "page", Desc: "frontend page or route filter"},
-		{Name: "device-type", Desc: "device type filter", Enum: []string{"desktop", "mobile"}},
-		{Name: "granularity", Default: defaultAppsAnalyticsGranular, Desc: "analytics aggregation granularity", Enum: []string{"day", "week", "month"}},
-	},
-	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
-			return err
-		}
-		_, _, _, err := buildAnalyticsQueryBody(rctx)
-		return err
-	},
-	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		body, _, _, _ := buildAnalyticsQueryBody(rctx)
-		return common.NewDryRunAPI().
-			POST(analyticsQueryPath(rctx.Str("app-id"))).
-			Desc("Query online app analytics").
-			Body(body)
-	},
-	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		appID, _ := requireAppID(rctx.Str("app-id"))
-		body, types, labels, err := buildAnalyticsQueryBody(rctx)
-		if err != nil {
-			return err
-		}
-		data, err := rctx.CallAPITyped("POST", analyticsQueryPath(appID), nil, body)
-		if err != nil {
-			return withAppsHint(err, appIDListHint)
-		}
-		out := observabilitySeriesOutput{
-			Items:   normalizeAnalyticsSeries(data, types, labels),
-			HasMore: false,
-		}
-		rctx.OutFormat(out, nil, func(w io.Writer) {
-			rows := observabilitySeriesRows(out.Items)
-			sortObservabilityRowsDesc(rows, "timestamp_ns")
-			rows = filterObservabilityRowsWithTime(rows, "timestamp_ns")
-			appsPrintSchemaTable(w, rows, analyticsSeriesSchema(labels))
-		})
-		return nil
-	},
-}
-
 type observabilitySeriesOutput struct {
 	Items   []map[string]interface{} `json:"items"`
 	HasMore bool                     `json:"has_more"`
 }
 
-func metricQueryPath(appID string) string {
-	return appScopedPath(appID, metricQueryEndpoint)
+func metricListPath(appID string) string {
+	return appScopedPath(appID, metricListEndpoint)
 }
 
-func analyticsQueryPath(appID string) string {
-	return appScopedPath(appID, analyticsQueryEndpoint)
-}
-
-func buildMetricQueryBody(rctx *common.RuntimeContext) (map[string]interface{}, []string, []string, bool, error) {
+func buildMetricListBody(rctx *common.RuntimeContext) (map[string]interface{}, []string, []string, bool, error) {
 	env := strings.TrimSpace(rctx.Str(appsEnvironmentFlag))
 	if env == "" {
 		env = defaultAppsMetricEnv
@@ -191,7 +122,7 @@ func buildMetricQueryBody(rctx *common.RuntimeContext) (map[string]interface{}, 
 		"down_sample":          downSample,
 		"need_pack_lack_point": false,
 	}
-	if filter := buildMetricQueryFilter(rctx); len(filter) > 0 {
+	if filter := buildMetricListFilter(rctx); len(filter) > 0 {
 		body["filter"] = filter
 	}
 	return body, names, labels, strings.TrimSpace(strings.ToLower(rctx.Str("metric"))) == "requests", nil
@@ -209,7 +140,7 @@ func appsMetricDownSampleForRange(since, until time.Time) string {
 	}
 }
 
-func buildMetricQueryFilter(rctx *common.RuntimeContext) map[string]interface{} {
+func buildMetricListFilter(rctx *common.RuntimeContext) map[string]interface{} {
 	filter := make(map[string]interface{})
 	if pages := cleanRepeatedStrings(rctx.StrArray("page")); len(pages) > 0 {
 		filter["pages"] = pages
@@ -218,42 +149,6 @@ func buildMetricQueryFilter(rctx *common.RuntimeContext) map[string]interface{} 
 		filter["apis"] = apis
 	}
 	return filter
-}
-
-func buildAnalyticsQueryBody(rctx *common.RuntimeContext) (map[string]interface{}, []string, []string, error) {
-	env := strings.TrimSpace(rctx.Str(appsEnvironmentFlag))
-	if env == "" {
-		env = defaultAppsAnalyticsEnv
-	}
-	if err := validateObservabilityEnv(env); err != nil {
-		return nil, nil, nil, err
-	}
-	types, labels, filter, err := analyticsTypesForCLI(rctx.Str("analytics"), rctx.Str("series"), rctx.Str("device-type"))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	since, until, err := defaultedObservabilityTimeRange(rctx.Str("since"), rctx.Str("until"))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	aggregation, err := analyticsGranularityForCLI(rctx.Str("granularity"))
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	if page := strings.TrimSpace(rctx.Str("page")); page != "" {
-		filter["page"] = page
-	}
-	body := map[string]interface{}{
-		"metric_types":          types,
-		"start_timestamp_ns":    nsNumber(since),
-		"end_timestamp_ns":      nsNumber(until),
-		"time_aggregation_unit": aggregation,
-		"need_pack_lack_point":  false,
-	}
-	if len(filter) > 0 {
-		body["filter"] = filter
-	}
-	return body, types, labels, nil
 }
 
 func defaultedObservabilityTimeRange(sinceRaw, untilRaw string) (time.Time, time.Time, error) {
@@ -314,85 +209,8 @@ func metricNamesForCLI(metric, series string) ([]string, []string, error) {
 	}
 }
 
-func analyticsTypesForCLI(name, series, deviceType string) ([]string, []string, map[string]interface{}, error) {
-	name = strings.TrimSpace(strings.ToLower(name))
-	series = strings.TrimSpace(strings.ToLower(series))
-	deviceType = strings.TrimSpace(strings.ToLower(deviceType))
-	filter := make(map[string]interface{})
-	if deviceType != "" {
-		switch deviceType {
-		case "desktop", "mobile":
-			filter["device_types"] = []string{deviceType}
-		default:
-			return nil, nil, nil, appsValidationParamError("--device-type", "--device-type must be desktop or mobile")
-		}
-	}
-
-	switch name {
-	case "users":
-		switch series {
-		case "":
-			return []string{"ACTIVE_USER", "NEW_USER", "TOTAL_USER"}, []string{"active-users", "new-users", "total-users"}, filter, nil
-		case "active", "active-users":
-			return []string{"ACTIVE_USER"}, []string{"active-users"}, filter, nil
-		case "new", "new-users":
-			return []string{"NEW_USER"}, []string{"new-users"}, filter, nil
-		case "total", "total-users":
-			return []string{"TOTAL_USER"}, []string{"total-users"}, filter, nil
-		default:
-			return nil, nil, nil, appsValidationParamError("--series", "--series for --analytics users must be active, new, or total")
-		}
-	case "page-view":
-		switch series {
-		case "", "all":
-			return []string{"PAGE_VIEW"}, []string{"all"}, filter, nil
-		case "desktop", "desktop-view":
-			if err := mergeAnalyticsDeviceFilter(filter, "desktop"); err != nil {
-				return nil, nil, nil, err
-			}
-			return []string{"PAGE_VIEW"}, []string{"desktop"}, filter, nil
-		case "mobile", "mobile-view":
-			if err := mergeAnalyticsDeviceFilter(filter, "mobile"); err != nil {
-				return nil, nil, nil, err
-			}
-			return []string{"PAGE_VIEW"}, []string{"mobile"}, filter, nil
-		default:
-			return nil, nil, nil, appsValidationParamError("--series", "--series for --analytics page-view must be all, desktop, or mobile")
-		}
-	default:
-		return nil, nil, nil, appsValidationParamError("--analytics", "--analytics must be users or page-view")
-	}
-}
-
-func mergeAnalyticsDeviceFilter(filter map[string]interface{}, deviceType string) error {
-	if existing, ok := filter["device_types"].([]string); ok && len(existing) > 0 && existing[0] != deviceType {
-		return appsValidationParamError("--device-type", "--device-type conflicts with --series")
-	}
-	filter["device_types"] = []string{deviceType}
-	return nil
-}
-
-func analyticsGranularityForCLI(granularity string) (string, error) {
-	switch strings.TrimSpace(strings.ToLower(granularity)) {
-	case "", "day":
-		return "DAY", nil
-	case "week":
-		return "WEEK", nil
-	case "month":
-		return "MONTH", nil
-	default:
-		return "", appsValidationParamError("--granularity", "--granularity must be day, week, or month")
-	}
-}
-
 func normalizeMetricSeries(data map[string]interface{}, names, labels []string, fillZero bool) []map[string]interface{} {
 	return normalizeObservabilitySeries(data, labels, observabilityNameLabels(names, labels), fillZero, "timestamp")
-}
-
-func normalizeAnalyticsSeries(data map[string]interface{}, names, labels []string) []map[string]interface{} {
-	items := normalizeObservabilitySeries(data, labels, observabilityNameLabels(names, labels), false, "timestamp_ns")
-	fillObservabilityZeroesWhenPartiallyPresent(items, labels)
-	return items
 }
 
 func normalizeObservabilitySeries(data map[string]interface{}, labels []string, nameLabels map[string]string, fillZero bool, timeField string) []map[string]interface{} {
@@ -743,16 +561,6 @@ func metricSeriesSchema(labels []string, durationValues bool) appsOutputSchema {
 			col.Format = appsFormatDurationMS
 		}
 		columns = append(columns, col)
-	}
-	return appsOutputSchema{Columns: columns, Strict: true}
-}
-
-func analyticsSeriesSchema(labels []string) appsOutputSchema {
-	columns := []appsOutputColumn{
-		{Key: "timestamp_ns", Label: "time", Format: appsFormatNS("2006-01-02 15:04:05")},
-	}
-	for _, label := range labels {
-		columns = append(columns, appsOutputColumn{Key: label})
 	}
 	return appsOutputSchema{Columns: columns, Strict: true}
 }

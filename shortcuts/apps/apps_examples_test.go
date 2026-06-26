@@ -72,8 +72,8 @@ func TestAppsObservabilityTipsMentionOnlineOnly(t *testing.T) {
 		"+log-get",
 		"+trace-list",
 		"+trace-get",
-		"+metric-query",
-		"+analytics-query",
+		"+metric-list",
+		"+analytics-list",
 	} {
 		shortcut := requireShortcutForExamples(t, cmd)
 		if !tipsContainAll(shortcut.Tips, "online-only", "--environment online") {

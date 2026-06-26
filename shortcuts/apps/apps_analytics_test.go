@@ -12,295 +12,10 @@ import (
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
-func TestMetricNamesMapping(t *testing.T) {
-	got, labels, err := metricNamesForCLI("requests", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Join(got, ",") != "client_api_request_count,client_api_request_error_count" {
-		t.Fatalf("names = %#v", got)
-	}
-	if strings.Join(labels, ",") != "total,error" {
-		t.Fatalf("labels = %#v", labels)
-	}
-	if _, _, err := metricNamesForCLI("cpu", "p99"); err == nil {
-		t.Fatalf("cpu with p99 should fail")
-	}
-}
-
-func TestAppsMetricQuery_DryRunUsesSeconds(t *testing.T) {
+func TestAppsAnalyticsList_DryRunUsesNanoseconds(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "requests",
-		"--series", "total", "--since", "2026-06-23T10:00:00Z",
-		"--until", "2026-06-23T10:01:00Z", "--down-sample", "1m",
-		"--dry-run", "--as", "user",
-	}, factory, stdout)
-	if err != nil {
-		t.Fatalf("dry-run err=%v", err)
-	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
-	}
-	if env.API[0].Method != "POST" || env.API[0].URL != "/open-apis/spark/v1/apps/app_x/query_metrics_data" {
-		t.Fatalf("method/url = %s %s", env.API[0].Method, env.API[0].URL)
-	}
-	body := env.API[0].Body
-	if _, ok := body["start_timestamp"]; !ok {
-		t.Fatalf("metric dry-run missing start_timestamp: %#v", body)
-	}
-	if _, ok := body["start_timestamp_ns"]; ok {
-		t.Fatalf("metric should not use start_timestamp_ns: %#v", body)
-	}
-	if _, ok := body["app_env"]; ok {
-		t.Fatalf("metric OpenAPI body should not include app_env: %#v", body)
-	}
-	if body["start_timestamp"] != "1782208800" || body["end_timestamp"] != "1782208860" {
-		t.Fatalf("metric timestamps = %v %v", body["start_timestamp"], body["end_timestamp"])
-	}
-	if body["down_sample"] != "1m" {
-		t.Fatalf("down_sample = %v", body["down_sample"])
-	}
-}
-
-func TestAppsMetricQuery_AutoDownSampleByRange(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		since string
-		until string
-		want  string
-	}{
-		{name: "short", since: "2026-06-23T10:00:00Z", until: "2026-06-23T12:00:00Z", want: "1m"},
-		{name: "medium", since: "2026-06-21T10:00:00Z", until: "2026-06-23T10:00:00Z", want: "1h"},
-		{name: "long", since: "2026-06-01T10:00:00Z", until: "2026-06-23T10:00:00Z", want: "1d"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			factory, stdout, _ := newAppsExecuteFactory(t)
-			err := runAppsShortcut(t, AppsMetricQuery, []string{
-				"+metric-query", "--app-id", "app_x", "--metric", "requests",
-				"--since", tc.since, "--until", tc.until, "--dry-run", "--as", "user",
-			}, factory, stdout)
-			if err != nil {
-				t.Fatalf("dry-run err=%v", err)
-			}
-			var env struct {
-				API []struct {
-					Body map[string]interface{} `json:"body"`
-				} `json:"api"`
-			}
-			if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-				t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
-			}
-			if got := env.API[0].Body["down_sample"]; got != tc.want {
-				t.Fatalf("down_sample = %#v, want %q; stdout:\n%s", got, tc.want, stdout.String())
-			}
-		})
-	}
-}
-
-func TestAppsMetricQuery_RejectsDevEnv(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "requests", "--environment", "dev", "--as", "user",
-	}, factory, stdout)
-	requireAppsValidationParam(t, err, "--environment")
-}
-
-func TestAppsMetricQuery_FillsMissingRequestValuesWithZero(t *testing.T) {
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/spark/v1/apps/app_x/query_metrics_data",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"points": []interface{}{
-					map[string]interface{}{
-						"timestamp":  float64(1782208800),
-						"dimensions": map[string]interface{}{"page": "/home"},
-						"values": []interface{}{
-							map[string]interface{}{"metric_name": "client_api_request_count", "value": float64(12)},
-						},
-					},
-					map[string]interface{}{
-						"timestamp":  float64(1782208860),
-						"dimensions": map[string]interface{}{"page": "/settings"},
-						"values": []interface{}{
-							map[string]interface{}{"metric_name": "client_api_request_count", "value": float64(8)},
-							map[string]interface{}{"metric_name": "client_api_request_error_count", "value": nil},
-						},
-					},
-				},
-			},
-		},
-	})
-
-	if err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "requests", "--as", "user",
-	}, factory, stdout); err != nil {
-		t.Fatalf("execute err=%v", err)
-	}
-
-	var env struct {
-		Data struct {
-			Items []struct {
-				Values map[string]interface{} `json:"values"`
-			} `json:"items"`
-			HasMore bool `json:"has_more"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("decode output: %v\n%s", err, stdout.String())
-	}
-	if env.Data.HasMore {
-		t.Fatalf("has_more = true, want false")
-	}
-	if len(env.Data.Items) != 2 {
-		t.Fatalf("items len = %d", len(env.Data.Items))
-	}
-	for i, item := range env.Data.Items {
-		if item.Values["error"] != float64(0) {
-			t.Fatalf("item %d error = %#v, want 0; values=%#v", i, item.Values["error"], item.Values)
-		}
-	}
-}
-
-func TestAppsMetricQuery_PrettyFormatsTimeFirst(t *testing.T) {
-	const rawSec = int64(1782208800)
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/spark/v1/apps/app_x/query_metrics_data",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"points": []interface{}{
-					map[string]interface{}{
-						"timestamp": float64(rawSec),
-						"values": []interface{}{
-							map[string]interface{}{"metric_name": "client_api_request_count", "value": float64(12)},
-							map[string]interface{}{"metric_name": "client_api_request_error_count", "value": float64(1)},
-						},
-					},
-				},
-			},
-		},
-	})
-
-	if err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "requests", "--format", "pretty", "--as", "user",
-	}, factory, stdout); err != nil {
-		t.Fatalf("execute err=%v", err)
-	}
-	got := stdout.String()
-	wantTime := time.Unix(rawSec, 0).Local().Format("2006-01-02 15:04:05")
-	if !strings.HasPrefix(got, "time") {
-		t.Fatalf("pretty output should start with time column, got:\n%s", got)
-	}
-	if !strings.Contains(got, wantTime) {
-		t.Fatalf("pretty output missing formatted time %q:\n%s", wantTime, got)
-	}
-	if strings.Contains(got, "timestamp") || strings.Contains(got, "1782208800") {
-		t.Fatalf("pretty output should hide raw timestamp, got:\n%s", got)
-	}
-}
-
-func TestAppsMetricQuery_NamedSeriesDoesNotDependOnBackendOrder(t *testing.T) {
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/spark/v1/apps/app_x/query_metrics_data",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"series": []interface{}{
-					map[string]interface{}{
-						"name": "client_api_request_error_count",
-						"points": []interface{}{
-							map[string]interface{}{"timestamp": float64(1782208800), "value": float64(2)},
-						},
-					},
-					map[string]interface{}{
-						"name": "client_api_request_count",
-						"points": []interface{}{
-							map[string]interface{}{"timestamp": float64(1782208800), "value": float64(10)},
-						},
-					},
-				},
-			},
-		},
-	})
-
-	if err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "requests", "--as", "user",
-	}, factory, stdout); err != nil {
-		t.Fatalf("execute err=%v", err)
-	}
-
-	var env struct {
-		Data struct {
-			Items []struct {
-				Values map[string]interface{} `json:"values"`
-			} `json:"items"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("decode output: %v\n%s", err, stdout.String())
-	}
-	if len(env.Data.Items) != 1 {
-		t.Fatalf("items len = %d", len(env.Data.Items))
-	}
-	values := env.Data.Items[0].Values
-	if values["total"] != float64(10) || values["error"] != float64(2) {
-		t.Fatalf("values = %#v, want total=10 error=2", values)
-	}
-}
-
-func TestAppsMetricQuery_EmptyResponseOutputsEmptyItemsArray(t *testing.T) {
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/spark/v1/apps/app_x/query_metrics_data",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{},
-		},
-	})
-
-	if err := runAppsShortcut(t, AppsMetricQuery, []string{
-		"+metric-query", "--app-id", "app_x", "--metric", "latency", "--as", "user",
-	}, factory, stdout); err != nil {
-		t.Fatalf("execute err=%v", err)
-	}
-
-	var env struct {
-		Data struct {
-			Items   []map[string]interface{} `json:"items"`
-			HasMore bool                     `json:"has_more"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("decode output: %v\n%s", err, stdout.String())
-	}
-	if env.Data.Items == nil {
-		t.Fatalf("items decoded as nil; stdout=%s", stdout.String())
-	}
-	if len(env.Data.Items) != 0 || env.Data.HasMore {
-		t.Fatalf("empty output = items %#v has_more %v", env.Data.Items, env.Data.HasMore)
-	}
-}
-
-func TestAppsAnalyticsQuery_DryRunUsesNanoseconds(t *testing.T) {
-	factory, stdout, _ := newAppsExecuteFactory(t)
-	err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users",
+	err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users",
 		"--since", "2026-06-23T10:00:00Z", "--until", "2026-06-23T10:01:00Z",
 		"--granularity", "week", "--dry-run", "--as", "user",
 	}, factory, stdout)
@@ -351,7 +66,7 @@ func TestAppsAnalyticsQuery_DryRunUsesNanoseconds(t *testing.T) {
 	}
 }
 
-func TestAppsAnalyticsQuery_PageViewDesktopSeriesSetsDeviceFilter(t *testing.T) {
+func TestAppsAnalyticsList_PageViewDesktopSeriesSetsDeviceFilter(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -359,21 +74,21 @@ func TestAppsAnalyticsQuery_PageViewDesktopSeriesSetsDeviceFilter(t *testing.T) 
 		{
 			name: "series",
 			args: []string{
-				"+analytics-query", "--app-id", "app_x", "--analytics", "page-view",
+				"+analytics-list", "--app-id", "app_x", "--analytics", "page-view",
 				"--series", "desktop", "--page", "/home", "--dry-run", "--as", "user",
 			},
 		},
 		{
 			name: "device-type",
 			args: []string{
-				"+analytics-query", "--app-id", "app_x", "--analytics", "page-view",
+				"+analytics-list", "--app-id", "app_x", "--analytics", "page-view",
 				"--device-type", "desktop", "--dry-run", "--as", "user",
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			factory, stdout, _ := newAppsExecuteFactory(t)
-			if err := runAppsShortcut(t, AppsAnalyticsQuery, tc.args, factory, stdout); err != nil {
+			if err := runAppsShortcut(t, AppsAnalyticsList, tc.args, factory, stdout); err != nil {
 				t.Fatalf("dry-run err=%v", err)
 			}
 			var env struct {
@@ -396,7 +111,7 @@ func TestAppsAnalyticsQuery_PageViewDesktopSeriesSetsDeviceFilter(t *testing.T) 
 	}
 }
 
-func TestAppsAnalyticsQuery_DesktopSeriesUsesDesktopValueLabel(t *testing.T) {
+func TestAppsAnalyticsList_DesktopSeriesUsesDesktopValueLabel(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -419,8 +134,8 @@ func TestAppsAnalyticsQuery_DesktopSeriesUsesDesktopValueLabel(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "page-view",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "page-view",
 		"--series", "desktop", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
@@ -447,7 +162,7 @@ func TestAppsAnalyticsQuery_DesktopSeriesUsesDesktopValueLabel(t *testing.T) {
 	}
 }
 
-func TestAppsAnalyticsQuery_PrettyFormatsTimeFirst(t *testing.T) {
+func TestAppsAnalyticsList_PrettyFormatsTimeFirst(t *testing.T) {
 	const rawNS = int64(1782208800000000000)
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -468,8 +183,8 @@ func TestAppsAnalyticsQuery_PrettyFormatsTimeFirst(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users", "--series", "active", "--format", "pretty", "--as", "user",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--series", "active", "--format", "pretty", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -486,7 +201,7 @@ func TestAppsAnalyticsQuery_PrettyFormatsTimeFirst(t *testing.T) {
 	}
 }
 
-func TestAppsAnalyticsQuery_PrettySkipsRowsWithoutTime(t *testing.T) {
+func TestAppsAnalyticsList_PrettySkipsRowsWithoutTime(t *testing.T) {
 	const rawNS = int64(1782208800000000000)
 	rows := []map[string]interface{}{
 		{"timestamp_ns": rawNS, "active-users": float64(7)},
@@ -502,7 +217,7 @@ func TestAppsAnalyticsQuery_PrettySkipsRowsWithoutTime(t *testing.T) {
 	}
 }
 
-func TestAppsAnalyticsQuery_NamedSeriesDoesNotDependOnBackendOrder(t *testing.T) {
+func TestAppsAnalyticsList_NamedSeriesDoesNotDependOnBackendOrder(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -534,8 +249,8 @@ func TestAppsAnalyticsQuery_NamedSeriesDoesNotDependOnBackendOrder(t *testing.T)
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users", "--as", "user",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -559,7 +274,7 @@ func TestAppsAnalyticsQuery_NamedSeriesDoesNotDependOnBackendOrder(t *testing.T)
 	}
 }
 
-func TestAppsAnalyticsQuery_FillsMissingAndNullValuesWhenAnyValuePresent(t *testing.T) {
+func TestAppsAnalyticsList_FillsMissingAndNullValuesWhenAnyValuePresent(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -580,8 +295,8 @@ func TestAppsAnalyticsQuery_FillsMissingAndNullValuesWhenAnyValuePresent(t *test
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users", "--as", "user",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -602,7 +317,7 @@ func TestAppsAnalyticsQuery_FillsMissingAndNullValuesWhenAnyValuePresent(t *test
 	}
 }
 
-func TestAppsAnalyticsQuery_DoesNotFillAllNullValues(t *testing.T) {
+func TestAppsAnalyticsList_DoesNotFillAllNullValues(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -623,8 +338,8 @@ func TestAppsAnalyticsQuery_DoesNotFillAllNullValues(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users", "--as", "user",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -648,7 +363,7 @@ func TestAppsAnalyticsQuery_DoesNotFillAllNullValues(t *testing.T) {
 	}
 }
 
-func TestAppsAnalyticsQuery_EmptyResponseOutputsEmptyItemsArray(t *testing.T) {
+func TestAppsAnalyticsList_EmptyResponseOutputsEmptyItemsArray(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -659,8 +374,8 @@ func TestAppsAnalyticsQuery_EmptyResponseOutputsEmptyItemsArray(t *testing.T) {
 		},
 	})
 
-	if err := runAppsShortcut(t, AppsAnalyticsQuery, []string{
-		"+analytics-query", "--app-id", "app_x", "--analytics", "users", "--as", "user",
+	if err := runAppsShortcut(t, AppsAnalyticsList, []string{
+		"+analytics-list", "--app-id", "app_x", "--analytics", "users", "--as", "user",
 	}, factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
