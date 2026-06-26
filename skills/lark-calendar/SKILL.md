@@ -33,7 +33,7 @@ lark-cli calendar +agenda --as user
 | [`+agenda`](references/lark-calendar-agenda.md) | 查看日程安排（默认今天） |
 | [`+search-event`](references/lark-calendar-search-event.md) | 按关键词、时间范围和参会人搜索日程, 仅返回 日程ID/主题/时间等信息，详情需走 `events get` |
 | [`+meeting`](references/lark-calendar-meeting.md) | 通过日程事件 ID 获取关联的视频会议信息（meeting_id、meeting_note），日程开过视频会议才会有meeting_id |
-| [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间） |
+| [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间；`--all-day` 使用日期） |
 | [`+update`](references/lark-calendar-update.md) | 更新既有日程字段，或独立增量添加/移除参会人和会议室 |
 | [`+freebusy`](references/lark-calendar-freebusy.md) | 查询用户主日历的忙闲信息和 RSVP 状态 |
 | [`+room-find`](references/lark-calendar-room-find.md) | 针对一个或多个**明确的**时间块查找可用会议室（无明确时间时禁止直接调用，需先走 +suggestion） |

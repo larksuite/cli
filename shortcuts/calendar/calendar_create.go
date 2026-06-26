@@ -36,6 +36,72 @@ func buildEventData(runtime *common.RuntimeContext, startTs, endTs string) map[s
 	return eventData
 }
 
+func buildAllDayEventData(runtime *common.RuntimeContext, startDate, endDate string) map[string]interface{} {
+	eventData := map[string]interface{}{
+		"summary":          runtime.Str("summary"),
+		"description":      runtime.Str("description"),
+		"start_time":       map[string]string{"date": startDate},
+		"end_time":         map[string]string{"date": endDate},
+		"attendee_ability": "can_modify_event",
+		"free_busy_status": "free",
+		"vchat":            map[string]string{"vc_type": "no_meeting"},
+		"reminders": []map[string]int{
+			{"minutes": 5},
+		},
+	}
+	if rrule := runtime.Str("rrule"); rrule != "" {
+		eventData["recurrence"] = rrule
+	}
+	return eventData
+}
+
+func parseCalendarDateFlag(value, param string) (time.Time, string, error) {
+	date := strings.TrimSpace(value)
+	parsed, err := time.Parse("2006-01-02", date)
+	if err != nil || parsed.Format("2006-01-02") != date {
+		return time.Time{}, "", errs.NewValidationError(errs.SubtypeInvalidArgument, "%s must be a date in YYYY-MM-DD format when --all-day is set", param).WithParam(param)
+	}
+	return parsed, date, nil
+}
+
+func buildCalendarCreateEventData(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	if runtime.Bool("all-day") {
+		startDate, start, err := parseCalendarDateFlag(runtime.Str("start"), "--start")
+		if err != nil {
+			return nil, err
+		}
+		endDate, end, err := parseCalendarDateFlag(runtime.Str("end"), "--end")
+		if err != nil {
+			return nil, err
+		}
+		if endDate.Before(startDate) {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "end date must be on or after start date for all-day events").WithParam("--end")
+		}
+		return buildAllDayEventData(runtime, start, end), nil
+	}
+
+	startTs, err := common.ParseTime(runtime.Str("start"))
+	if err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
+	}
+	endTs, err := common.ParseTime(runtime.Str("end"), "end")
+	if err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
+	}
+	s, err := strconv.ParseInt(startTs, 10, 64)
+	if err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
+	}
+	e, err := strconv.ParseInt(endTs, 10, 64)
+	if err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
+	}
+	if e <= s {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "end time must be after start time")
+	}
+	return buildEventData(runtime, startTs, endTs), nil
+}
+
 func parseAttendees(attendeesStr string, currentUserId string) ([]map[string]string, error) {
 	if attendeesStr == "" && currentUserId == "" {
 		return nil, nil
@@ -83,6 +149,7 @@ var CalendarCreate = common.Shortcut{
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},
 		{Name: "rrule", Desc: "recurrence rule (rfc5545)"},
+		{Name: "all-day", Type: "bool", Desc: "create all-day event using YYYY-MM-DD dates"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := rejectCalendarAutoBotFallback(runtime); err != nil {
@@ -114,26 +181,8 @@ var CalendarCreate = common.Shortcut{
 		if runtime.Str("end") == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --end (e.g. '2026-03-12T15:00+08:00')").WithParam("--end")
 		}
-		startTs, err := common.ParseTime(runtime.Str("start"))
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
-		}
-		endTs, err := common.ParseTime(runtime.Str("end"), "end")
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
-		}
-		s, err := strconv.ParseInt(startTs, 10, 64)
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid start time: %v", err).WithParam("--start")
-		}
-		e, err := strconv.ParseInt(endTs, 10, 64)
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid end time: %v", err).WithParam("--end")
-		}
-		if e <= s {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "end time must be after start time")
-		}
-		return nil
+		_, err := buildCalendarCreateEventData(runtime)
+		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		calendarId := runtime.Str("calendar-id")
@@ -145,15 +194,10 @@ var CalendarCreate = common.Shortcut{
 		case "primary":
 			calendarId = "<primary>"
 		}
-		startTs, err := common.ParseTime(runtime.Str("start"))
+		eventData, err := buildCalendarCreateEventData(runtime)
 		if err != nil {
-			return common.NewDryRunAPI().Set("error", fmt.Sprintf("--start: %v", err))
+			return common.NewDryRunAPI().Set("error", err.Error())
 		}
-		endTs, err := common.ParseTime(runtime.Str("end"), "end")
-		if err != nil {
-			return common.NewDryRunAPI().Set("error", fmt.Sprintf("--end: %v", err))
-		}
-		eventData := buildEventData(runtime, startTs, endTs)
 		attendeesStr := runtime.Str("attendee-ids")
 		if attendeesStr != "" {
 			// Note: dry-run doesn't network resolve the current user's open_id.
@@ -182,16 +226,10 @@ var CalendarCreate = common.Shortcut{
 			calendarId = PrimaryCalendarIDStr
 		}
 
-		startTs, err := common.ParseTime(runtime.Str("start"))
+		eventData, err := buildCalendarCreateEventData(runtime)
 		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start: %v", err).WithParam("--start")
+			return err
 		}
-		endTs, err := common.ParseTime(runtime.Str("end"), "end")
-		if err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end: %v", err).WithParam("--end")
-		}
-
-		eventData := buildEventData(runtime, startTs, endTs)
 
 		// Create event
 		data, err := runtime.CallAPITyped("POST",

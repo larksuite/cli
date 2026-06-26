@@ -205,6 +205,126 @@ func TestBuildEventData_DefaultVChat(t *testing.T) {
 	}
 }
 
+func TestCreate_AllDayRequestUsesDateFieldsAndDefaults(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id": "evt_all_day",
+					"summary":  "Conference",
+					"start_time": map[string]interface{}{
+						"date": "2026-05-18",
+					},
+					"end_time": map[string]interface{}{
+						"date": "2026-05-21",
+					},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Conference",
+		"--start", "2026-05-18",
+		"--end", "2026-05-21",
+		"--all-day",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := decodeCalendarCapturedBody(t, stub)
+	startTime, _ := body["start_time"].(map[string]interface{})
+	endTime, _ := body["end_time"].(map[string]interface{})
+	if got := startTime["date"]; got != "2026-05-18" {
+		t.Fatalf("start_time.date = %#v, want %q; body=%#v", got, "2026-05-18", body)
+	}
+	if _, ok := startTime["timestamp"]; ok {
+		t.Fatalf("start_time.timestamp should be omitted for all-day events; body=%#v", body)
+	}
+	if got := endTime["date"]; got != "2026-05-21" {
+		t.Fatalf("end_time.date = %#v, want %q; body=%#v", got, "2026-05-21", body)
+	}
+	if _, ok := endTime["timestamp"]; ok {
+		t.Fatalf("end_time.timestamp should be omitted for all-day events; body=%#v", body)
+	}
+	if got := body["free_busy_status"]; got != "free" {
+		t.Fatalf("free_busy_status = %#v, want %q; body=%#v", got, "free", body)
+	}
+	vchat, _ := body["vchat"].(map[string]interface{})
+	if got := vchat["vc_type"]; got != "no_meeting" {
+		t.Fatalf("vchat.vc_type = %#v, want %q; body=%#v", got, "no_meeting", body)
+	}
+}
+
+func TestCreate_AllDayValidationTypedErrors(t *testing.T) {
+	cases := []struct {
+		name      string
+		args      []string
+		wantParam string
+	}{
+		{
+			name: "start must be date only",
+			args: []string{
+				"+create",
+				"--summary", "Conference",
+				"--start", "2026-05-18T09:00:00+08:00",
+				"--end", "2026-05-21",
+				"--all-day",
+				"--as", "bot",
+			},
+			wantParam: "--start",
+		},
+		{
+			name: "end before start",
+			args: []string{
+				"+create",
+				"--summary", "Conference",
+				"--start", "2026-05-21",
+				"--end", "2026-05-18",
+				"--all-day",
+				"--as", "bot",
+			},
+			wantParam: "--end",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+			err := mountAndRun(t, CalendarCreate, tc.args, f, nil)
+			if err == nil {
+				t.Fatal("expected validation error, got nil")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("expected typed problem, got %T: %v", err, err)
+			}
+			if p.Category != errs.CategoryValidation {
+				t.Fatalf("category = %q, want %q", p.Category, errs.CategoryValidation)
+			}
+			if p.Subtype != errs.SubtypeInvalidArgument {
+				t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+			}
+			var validationErr *errs.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("expected validation error, got %T: %v", err, err)
+			}
+			if validationErr.Param != tc.wantParam {
+				t.Fatalf("param = %q, want %q", validationErr.Param, tc.wantParam)
+			}
+		})
+	}
+}
+
 func TestCreate_WithAttendees_Success(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
 
