@@ -86,6 +86,7 @@ type Builder struct {
 	inReplyTo                 string // raw value, without angle brackets
 	references                string // space-separated list of message IDs, with angle brackets
 	lmsReplyToMessageID       string // Lark internal message_id of the original message
+	lmsReplyType              string // REPLY or FORWARD, written as X-LMS-Reply-Type header
 	textBody                  []byte
 	htmlBody                  []byte
 	calendarBody              []byte
@@ -388,6 +389,26 @@ func (b Builder) LMSReplyToMessageID(id string) Builder {
 		return b
 	}
 	b.lmsReplyToMessageID = id
+	return b
+}
+
+// LMSReplyType sets the reply type so the backend can label the original message
+// as replied ("REPLY") or forwarded ("FORWARD"). Written as the X-LMS-Reply-Type
+// header. Only "REPLY" and "FORWARD" are accepted; any other value is a no-op
+// (no header emitted) to avoid leaking unexpected values.
+// Returns an error builder if the value contains CR or LF.
+func (b Builder) LMSReplyType(t string) Builder {
+	if b.err != nil {
+		return b
+	}
+	if t != "REPLY" && t != "FORWARD" {
+		return b
+	}
+	if err := validateHeaderValue(t); err != nil {
+		b.err = err
+		return b
+	}
+	b.lmsReplyType = t
 	return b
 }
 
@@ -720,6 +741,9 @@ func (b Builder) Build() ([]byte, error) {
 		writeHeader(&buf, "In-Reply-To", "<"+b.inReplyTo+">")
 		if b.lmsReplyToMessageID != "" {
 			writeHeader(&buf, "X-LMS-Reply-To-Message-Id", b.lmsReplyToMessageID)
+		}
+		if b.lmsReplyType != "" {
+			writeHeader(&buf, "X-LMS-Reply-Type", b.lmsReplyType)
 		}
 	}
 	if b.references != "" {
