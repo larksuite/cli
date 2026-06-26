@@ -68,7 +68,6 @@ The output is split into two buckets regardless of which types are present. Empt
   "data": {
     "users": [
       {
-        "member_id_type": "open_id",
         "member_id": "ou_xxx",
         "name": "Alice",
         "tenant_key": "736588c9xxx"
@@ -76,7 +75,6 @@ The output is split into two buckets regardless of which types are present. Empt
     ],
     "bots": [
       {
-        "member_id_type": "open_id",
         "member_id": "ou_yyy",
         "name": "MyBot",
         "app_id": "cli_zzz",
