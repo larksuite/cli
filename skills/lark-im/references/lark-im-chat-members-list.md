@@ -122,13 +122,13 @@ lark-cli im +chat-members-list --chat-id oc_xxx --page-all --format json | \
 
 ## Notes
 
-- **Format and bucket completeness**: Only `--format json` and `--format pretty` render both `users[]` and `bots[]` buckets in full. `--format csv`, `--format table`, and `--format ndjson` use the generic flatten path which only renders the `users[]` bucket — `bots[]` will be silently dropped. Use `--format json` or `--format pretty` (the default) whenever bot member data is needed.
+- **Format**: Only `--format json` and `--format pretty` are supported. `--format csv`, `--format table`, and `--format ndjson` are rejected at validation time with a validation error because the generic flatten path would silently drop the `bots[]` bucket. Use `--format json` or `--format pretty` (the default).
 
 - **`member_id_type=user_id` and cross-tenant members**: When `--member-id-type user_id` is used and the chat contains cross-tenant members (external members from another tenant), their `member_id` field may be omitted in the response. Use `open_id` (default) or `union_id` if you need a stable identifier for all members including external ones.
 
 - **`truncations` non-empty = server-side truncation**: If the response `truncations` array is non-empty, the server truncated that member type's bucket and not all members are returned. A warning is emitted to stderr for each truncated type. Use `--page-all` to accumulate across pages, or reduce `--page-size` if individual pages are hitting the truncation limit.
 
-- **Bot bucket is always complete**: The bots in a group chat are typically few in number and the server always returns the full bot list without truncation. Bot bucket truncation warnings are rare and indicate an unusually large number of bots.
+- **Bot bucket is typically complete**: The bots in a group chat are typically few in number and the server is expected to return the full bot list without truncation. Bot bucket truncation warnings are rare and indicate an unusually large number of bots.
 
 - **Caller must be in the chat**: Both user and bot identity require the caller to be a member of the target chat. If the caller is not a member, the API returns a permission error.
 

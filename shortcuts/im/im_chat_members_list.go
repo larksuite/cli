@@ -43,6 +43,15 @@ var ImChatMembersList = common.Shortcut{
 		if _, err := common.ValidateChatIDTyped("--chat-id", runtime.Str("chat-id")); err != nil {
 			return err
 		}
+		switch runtime.Str("format") {
+		case "table", "csv", "ndjson":
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--format %s is not supported for +chat-members-list because it would drop the bots bucket; use --format json or pretty", runtime.Str("format")).WithParam("--format")
+		}
+		if runtime.Bool("page-all") && runtime.Cmd != nil && runtime.Cmd.Flags().Changed("page-token") {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--page-all cannot be combined with --page-token").WithParam("--page-token")
+		}
 		if n := runtime.Int("page-size"); n < 1 || n > 100 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
 		}
@@ -122,7 +131,7 @@ func executeMembersList(ctx context.Context, runtime *common.RuntimeContext) err
 
 	var data map[string]interface{}
 	var err error
-	if runtime.Bool("page-all") && !runtime.Cmd.Flags().Changed("page-token") {
+	if runtime.Bool("page-all") {
 		data, err = fetchAllMemberPages(ctx, runtime, path, params, runtime.Int("page-limit"))
 	} else {
 		data, err = runtime.CallAPITyped("GET", path, params, nil)

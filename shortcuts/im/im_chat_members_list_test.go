@@ -6,10 +6,12 @@ package im
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
 )
@@ -51,6 +53,23 @@ func TestNormalizeMemberTypes(t *testing.T) {
 			if c.wantErr {
 				if err == nil {
 					t.Fatalf("want error, got nil (got=%v)", got)
+				}
+				p, ok := errs.ProblemOf(err)
+				if !ok {
+					t.Fatalf("ProblemOf: expected typed Problem, got: %v", err)
+				}
+				if p.Category != errs.CategoryValidation {
+					t.Errorf("Category = %v, want %v", p.Category, errs.CategoryValidation)
+				}
+				if p.Subtype != errs.SubtypeInvalidArgument {
+					t.Errorf("Subtype = %v, want %v", p.Subtype, errs.SubtypeInvalidArgument)
+				}
+				var ve *errs.ValidationError
+				if !errors.As(err, &ve) {
+					t.Fatalf("errors.As(*ValidationError) = false")
+				}
+				if ve.Param != "--member-types" {
+					t.Errorf("Param = %q, want %q", ve.Param, "--member-types")
 				}
 				return
 			}
@@ -108,13 +127,22 @@ func TestMembersList_Validate(t *testing.T) {
 		stringFlags map[string]string
 		boolFlags   map[string]bool
 		wantErr     bool
+		wantParam   string
 	}{
-		{"ok", map[string]string{"page-size": "20"}, nil, false},
-		{"page-size-low", map[string]string{"page-size": "0"}, nil, true},
-		{"page-size-high", map[string]string{"page-size": "101"}, nil, true},
-		{"bad-member-type", map[string]string{"member-types": "group"}, nil, true},
-		{"page-limit-bad", map[string]string{"page-limit": "0"}, map[string]bool{"page-all": true}, true},
-		{"bad-chat-id", map[string]string{"chat-id": "bad"}, nil, true},
+		{"ok", map[string]string{"page-size": "20"}, nil, false, ""},
+		{"page-size-low", map[string]string{"page-size": "0"}, nil, true, "--page-size"},
+		{"page-size-high", map[string]string{"page-size": "101"}, nil, true, "--page-size"},
+		{"bad-member-type", map[string]string{"member-types": "group"}, nil, true, "--member-types"},
+		{"page-limit-bad", map[string]string{"page-limit": "0"}, map[string]bool{"page-all": true}, true, "--page-limit"},
+		{"bad-chat-id", map[string]string{"chat-id": "bad"}, nil, true, "--chat-id"},
+		// Fix #2: --page-all and --page-token are mutually exclusive
+		{"page-all+page-token", map[string]string{"page-token": "tok_x"}, map[string]bool{"page-all": true}, true, "--page-token"},
+		// Fix #4: unsupported output formats
+		{"format-csv", map[string]string{"format": "csv"}, nil, true, "--format"},
+		{"format-table", map[string]string{"format": "table"}, nil, true, "--format"},
+		{"format-ndjson", map[string]string{"format": "ndjson"}, nil, true, "--format"},
+		{"format-json", map[string]string{"format": "json"}, nil, false, ""},
+		{"format-pretty", map[string]string{"format": "pretty"}, nil, false, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -129,6 +157,27 @@ func TestMembersList_Validate(t *testing.T) {
 			}
 			if !c.wantErr && err != nil {
 				t.Fatalf("unexpected err: %v", err)
+			}
+			if c.wantErr {
+				p, ok := errs.ProblemOf(err)
+				if !ok {
+					t.Fatalf("ProblemOf: expected typed Problem, got: %v", err)
+				}
+				if p.Category != errs.CategoryValidation {
+					t.Errorf("Category = %v, want %v", p.Category, errs.CategoryValidation)
+				}
+				if p.Subtype != errs.SubtypeInvalidArgument {
+					t.Errorf("Subtype = %v, want %v", p.Subtype, errs.SubtypeInvalidArgument)
+				}
+				if c.wantParam != "" {
+					var ve *errs.ValidationError
+					if !errors.As(err, &ve) {
+						t.Fatalf("errors.As(*ValidationError) = false")
+					}
+					if ve.Param != c.wantParam {
+						t.Errorf("Param = %q, want %q", ve.Param, c.wantParam)
+					}
+				}
 			}
 		})
 	}
