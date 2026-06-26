@@ -1,10 +1,6 @@
 # Markdown 格式参考
 
-`docs +fetch --api-version v2` / `docs +create --api-version v2` / `docs +update --api-version v2` 使用 `--doc-format markdown` 时适用。
-
-## 创建文档标题
-
-使用 `docs +create --doc-format markdown` 创建文档时，文档标题必须写成内容开头唯一的一级标题：`# 标题`。正文标题从 `##` 开始，不要使用多个一级标题；否则标题可能无法被提取并显示为 `Untitled`。
+`docs +fetch` / `docs +create` / `docs +update` 使用 `--doc-format markdown` 时适用；fetch 的 `--doc-format im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用，不作为 create/update 写入格式。
 
 ## 转义规则
 
@@ -38,14 +34,14 @@
 - `$...$` 数学公式内部，符号为 LaTeX 语法，不受 Markdown 转义影响
 
 **导出已转义，不要反转义：**
-`docs +fetch --api-version v2 --doc-format markdown` 导出的内容中，特殊字符**已经被转义过了**（例如 `\[`、`\|`、`\\` 等）。这些 `\` 是有意义的——去掉会导致后续写入时字符被 Markdown 语法吞掉。**不要反转义或去掉 `\`。**
+`docs +fetch --doc-format markdown` 导出的内容中，特殊字符**已经被转义过了**（例如 `\[`、`\|`、`\\` 等）。这些 `\` 是有意义的——去掉会导致后续写入时字符被 Markdown 语法吞掉。**不要反转义或去掉 `\`。**
 
 **写入时必须转义：**
 使用 `docs +create` 或 `docs +update` 的 `--doc-format markdown` 写入内容时，字面文本中的特殊字符同样必须转义。`--pattern` 参数中也必须使用转义形式才能正确匹配。
 
 **导出 → 更新 工作流示例：**
 
-1. `docs +fetch --api-version v2` 导出得到 `C:\\Users\\test\[1\]`
+1. `docs +fetch` 导出得到 `C:\\Users\\test\[1\]`
 2. 用 `str_replace --pattern 'C:\\Users\\test\[1\]'` 匹配（直接使用导出的转义形式）
 3. `--content` 中的替换内容也要保持转义：`C:\\Users\\prod\[2\]`
 

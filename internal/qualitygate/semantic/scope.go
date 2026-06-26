@@ -82,6 +82,15 @@ func factScope(f facts.Facts, kind string, idx int) (FactScope, bool) {
 			Source:      item.Source,
 			CommandPath: item.Command,
 		}, true
+	case "public_content":
+		item := f.PublicContent[idx]
+		return FactScope{
+			FactKind:   "public_content",
+			Changed:    true,
+			Source:     item.Source,
+			SourceFile: item.File,
+			Line:       item.Line,
+		}, true
 	default:
 		return FactScope{}, false
 	}
@@ -195,7 +204,7 @@ func containsString(values []string, want string) bool {
 
 func allowedFactKind(kind string) bool {
 	switch kind {
-	case "skill", "command", "error", "output":
+	case "skill", "command", "error", "output", "public_content":
 		return true
 	default:
 		return false

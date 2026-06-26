@@ -230,9 +230,16 @@ var VCSearch = common.Shortcut{
 			data = map[string]interface{}{}
 		}
 		items := common.GetSlice(data, "items")
+		// Strip avatar from meta_data — not useful for AI agents.
+		for _, raw := range items {
+			if m, ok := raw.(map[string]interface{}); ok {
+				if meta, ok := m["meta_data"].(map[string]interface{}); ok {
+					delete(meta, "avatar")
+				}
+			}
+		}
 		outData := map[string]interface{}{
 			"items":      items,
-			"total":      data["total"],
 			"has_more":   data["has_more"],
 			"page_token": data["page_token"],
 		}

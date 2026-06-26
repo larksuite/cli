@@ -71,7 +71,7 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 
 | 操作 | 需要的 Token | 说明 |
 |------|-------------|------|
-| 读取文档内容 | `file_token` / 通过 `docs +fetch --api-version v2` 自动处理 | `docs +fetch --api-version v2` 支持直接传入 URL |
+| 读取文档内容 | `file_token` / 通过 `docs +fetch` 自动处理 | `docs +fetch` 支持直接传入 URL |
 | 添加局部评论（划词评论） | `file_token` | 传 `--block-id` 时，`drive +add-comment` 会创建局部评论；`docx` 支持文本定位或 block_id，`sheet` 使用 `<sheetId>!<cell>`，`slides` 使用 `<slide-block-type>!<xml-id>`；Base 只有记录局部评论，定位为 file_token(base_token) + `--block-id <table-id>!<record-id>!<view-id>` |
 | 添加全文评论 | `file_token` | 不传 `--block-id` 时，`drive +add-comment` 默认创建全文评论；支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终解析为 `doc`/`docx`/`file` 的 wiki URL |
 | 下载文件 | `file_token` | 从文件 URL 中直接提取 |
@@ -147,6 +147,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli drive +<verb> [flags]`）
 | [`+task_result`](references/lark-drive-task-result.md) | 查询 import/export/move/delete 等异步任务结果。 |
 | [`+inspect`](references/lark-drive-inspect.md) | 检视 URL 的类型、标题和 canonical token；wiki URL 会自动解包到底层文档。 |
 | [`+apply-permission`](references/lark-drive-apply-permission.md) | 以 user 身份向文档 owner 申请访问权限。 |
+| [`+member-add`](references/lark-drive-member-add.md) | 添加一个或最多 10 个 Drive 文档、文件、文件夹或 wiki 节点协作者/授权成员；封装 Drive permission member create/batch_create，真实写入需要 `--yes`。 |
 | [`+secure-label-list`](references/lark-drive-secure-label.md) | 列出当前用户可用的密级标签。 |
 | [`+secure-label-update`](references/lark-drive-secure-label.md) | 更新 Drive 文件或文档的密级标签。 |
 

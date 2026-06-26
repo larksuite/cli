@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/qualitygate/facts"
@@ -211,7 +212,19 @@ func TestRunWritesSkippedDecisionForUnavailableReviewer(t *testing.T) {
 	  "allowed_base_urls": ["https://ark.ap-southeast.bytepluses.com/api/v3"]
 	}`, "")
 	factsPath := filepath.Join(t.TempDir(), "facts.json")
-	if err := (facts.Facts{SchemaVersion: 1}).WriteFile(factsPath); err != nil {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		Skills: []facts.SkillFact{{
+			SourceFile:               "skills/lark-wiki/SKILL.md",
+			Line:                     30,
+			Changed:                  true,
+			ReferencesInvalidCommand: true,
+		}},
+	}
+	if !semantic.BuildInputView(f).HasReviewableFacts() {
+		t.Fatal("test setup must contain reviewable facts")
+	}
+	if err := f.WriteFile(factsPath); err != nil {
 		t.Fatalf("write facts: %v", err)
 	}
 	decisionPath := filepath.Join(t.TempDir(), "decision.json")
@@ -225,6 +238,71 @@ func TestRunWritesSkippedDecisionForUnavailableReviewer(t *testing.T) {
 	}
 	if len(decision.SystemWarnings) != 1 || len(decision.Warnings) != 0 || len(decision.Blockers) != 0 {
 		t.Fatalf("skipped decision should only carry system warnings: %#v", decision)
+	}
+}
+
+func TestRunShortCircuitsEmptySemanticInputWithoutReviewer(t *testing.T) {
+	t.Setenv("ARK_API_KEY", "")
+	t.Setenv("ARK_BASE_URL", "")
+	t.Setenv("ARK_MODEL", "")
+
+	repo := t.TempDir()
+	writeSemanticConfig(t, repo, `{
+	  "schema_version": 1,
+	  "default_enforcement": "observe",
+	  "block_categories": ["skill_quality"]
+	}`, `{
+	  "allowed": ["semantic-review-v1"],
+	  "allowed_base_urls": ["https://ark.ap-southeast.bytepluses.com/api/v3"]
+	}`, "")
+	factsPath := filepath.Join(t.TempDir(), "facts.json")
+	f := facts.Facts{
+		SchemaVersion: 1,
+		Commands: []facts.CommandFact{{
+			Path:    "service command 1",
+			Domain:  "service",
+			Changed: true,
+			Source:  "service",
+		}},
+		Outputs: []facts.OutputFact{{
+			Command:          "service command 1",
+			Domain:           "service",
+			Changed:          true,
+			Source:           "service",
+			IsList:           true,
+			HasDefaultLimit:  true,
+			HasDecisionField: true,
+		}},
+	}
+	if semantic.BuildInputView(f).HasReviewableFacts() {
+		t.Fatal("test setup must not contain reviewable facts")
+	}
+	if err := f.WriteFile(factsPath); err != nil {
+		t.Fatalf("write facts: %v", err)
+	}
+	decisionPath := filepath.Join(t.TempDir(), "decision.json")
+	markdownPath := filepath.Join(t.TempDir(), "semantic.md")
+	code := run([]string{"--repo", repo, "--facts", factsPath, "--decision-out", decisionPath, "--markdown-out", markdownPath, "--block"})
+	if code != 0 {
+		t.Fatalf("run() = %d, want clean pass", code)
+	}
+	decision := readDecision(t, decisionPath)
+	if decision.Skipped || decision.Degraded || decision.InfrastructureFailure || !decision.BlockMode {
+		t.Fatalf("expected non-degraded pass decision: %#v", decision)
+	}
+	if len(decision.SystemWarnings) != 0 || len(decision.Warnings) != 0 || len(decision.Blockers) != 0 {
+		t.Fatalf("empty semantic view should not produce findings: %#v", decision)
+	}
+	data, err := os.ReadFile(markdownPath)
+	if err != nil {
+		t.Fatalf("read markdown: %v", err)
+	}
+	markdown := string(data)
+	if !strings.Contains(markdown, "No semantic blockers.") {
+		t.Fatalf("markdown missing pass summary: %s", markdown)
+	}
+	if strings.Contains(strings.ToLower(markdown), "skipped") || strings.Contains(strings.ToLower(markdown), "degraded") {
+		t.Fatalf("markdown should not report semantic review as skipped/degraded: %s", markdown)
 	}
 }
 
@@ -243,7 +321,19 @@ func TestRunWritesInfrastructureFailureDecisionForInvalidReviewerConfig(t *testi
 	  "allowed_base_urls": ["https://ark.ap-southeast.bytepluses.com/api/v3"]
 	}`, "")
 	factsPath := filepath.Join(t.TempDir(), "facts.json")
-	if err := (facts.Facts{SchemaVersion: 1}).WriteFile(factsPath); err != nil {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		Skills: []facts.SkillFact{{
+			SourceFile:               "skills/lark-wiki/SKILL.md",
+			Line:                     30,
+			Changed:                  true,
+			ReferencesInvalidCommand: true,
+		}},
+	}
+	if !semantic.BuildInputView(f).HasReviewableFacts() {
+		t.Fatal("test setup must contain reviewable facts")
+	}
+	if err := f.WriteFile(factsPath); err != nil {
 		t.Fatalf("write facts: %v", err)
 	}
 	decisionPath := filepath.Join(t.TempDir(), "decision.json")

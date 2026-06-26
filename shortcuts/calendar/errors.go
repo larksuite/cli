@@ -42,3 +42,30 @@ func withParam(err error, flag string) error {
 	}
 	return err
 }
+
+// unwrapCalendarAPIError returns a user-facing message extracted from a
+// calendar business-domain *errs.APIError, or "" when the error is not an
+// APIError or its Code is not specialized here. Callers should fall back to
+// err.Error() on "".
+//
+// Today it handles:
+//   - 190014 (invalid_parameters): returns Problem.Hint, which carries the
+//     server-supplied field-level detail (e.g. "end_time should be later
+//     than start_time") lifted by errclass.BuildAPIError.
+//
+// Add additional 19xxxx codes here as they become worth surfacing — keep this
+// the single switch site so call sites stay readable.
+func unwrapCalendarAPIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	var ae *errs.APIError
+	if !errors.As(err, &ae) {
+		return ""
+	}
+	switch ae.Code {
+	case 190014:
+		return ae.Hint
+	}
+	return ""
+}

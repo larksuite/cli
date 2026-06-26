@@ -4,12 +4,10 @@
 package sheets
 
 import (
-	"errors"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	_ "github.com/larksuite/cli/internal/vfs/localfileio"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -37,18 +35,9 @@ func TestGuardCSVValueIsNotFilePath(t *testing.T) {
 
 	// Bare value naming an existing file → guarded with a fix-it hint.
 	err := guardCSVValueIsNotFilePath(newCSVGuardRuntime("data.csv"))
-	if err == nil {
-		t.Fatal("expected guard error when --csv names an existing file")
-	}
-	if !strings.Contains(err.Error(), "existing file") || !strings.Contains(err.Error(), "@data.csv") {
-		t.Errorf("error should flag the file and suggest @data.csv, got: %v", err)
-	}
-	if p, ok := errs.ProblemOf(err); !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
-		t.Errorf("problem = %+v, want validation/invalid_argument", p)
-	}
-	var ve *errs.ValidationError
-	if !errors.As(err, &ve) {
-		t.Fatalf("guard error = %T, want *errs.ValidationError", err)
+	ve := requireValidation(t, err, "existing file")
+	if !strings.Contains(ve.Message, "@data.csv") {
+		t.Errorf("message should suggest @data.csv, got: %q", ve.Message)
 	}
 	if ve.Param != "--csv" {
 		t.Errorf("param = %q, want --csv", ve.Param)

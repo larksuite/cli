@@ -4,6 +4,8 @@
 package calendar
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -80,5 +82,62 @@ func TestCollectRoomFindResults_LimitsConcurrency(t *testing.T) {
 	out := <-done
 	if len(out.TimeSlots) != len(slots) {
 		t.Fatalf("expected %d time slots, got %d", len(slots), len(out.TimeSlots))
+	}
+}
+
+func TestCollectRoomFindResults_EmptySlotEmitsHintAndArray(t *testing.T) {
+	slots := []roomFindSlot{
+		{Start: "2026-03-27T14:00:00+08:00", End: "2026-03-27T15:00:00+08:00"},
+		{Start: "2026-03-27T15:00:00+08:00", End: "2026-03-27T16:00:00+08:00"},
+	}
+
+	out, err := collectRoomFindResults(slots, 2, func(slot roomFindSlot) ([]*roomFindSuggestion, error) {
+		if strings.HasPrefix(slot.Start, "2026-03-27T14") {
+			return []*roomFindSuggestion{{RoomID: "rm_1", RoomName: "Room A"}}, nil
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("collectRoomFindResults returned error: %v", err)
+	}
+	if len(out.TimeSlots) != 2 {
+		t.Fatalf("expected 2 time slots, got %d", len(out.TimeSlots))
+	}
+
+	for _, ts := range out.TimeSlots {
+		if ts.MeetingRooms == nil {
+			t.Fatalf("meeting_rooms should be non-nil for slot %s", ts.Start)
+		}
+		switch {
+		case strings.HasPrefix(ts.Start, "2026-03-27T14"):
+			if len(ts.MeetingRooms) != 1 {
+				t.Fatalf("expected 1 room for first slot, got %d", len(ts.MeetingRooms))
+			}
+			if ts.Hint != "" {
+				t.Fatalf("non-empty slot should not carry hint, got %q", ts.Hint)
+			}
+		case strings.HasPrefix(ts.Start, "2026-03-27T15"):
+			if len(ts.MeetingRooms) != 0 {
+				t.Fatalf("expected 0 rooms for empty slot, got %d", len(ts.MeetingRooms))
+			}
+			if ts.Hint == "" {
+				t.Fatal("empty slot should carry a hint explaining the filters")
+			}
+		}
+	}
+
+	emptySlot := out.TimeSlots[0]
+	if !strings.HasPrefix(emptySlot.Start, "2026-03-27T15") {
+		emptySlot = out.TimeSlots[1]
+	}
+	raw, err := json.Marshal(emptySlot)
+	if err != nil {
+		t.Fatalf("marshal empty slot: %v", err)
+	}
+	if !strings.Contains(string(raw), `"meeting_rooms":[]`) {
+		t.Fatalf("expected meeting_rooms:[] in JSON, got %s", raw)
+	}
+	if !strings.Contains(string(raw), `"hint"`) {
+		t.Fatalf("expected hint field in JSON, got %s", raw)
 	}
 }

@@ -15,5 +15,7 @@ func Shortcuts() []common.Shortcut {
 		CalendarRoomFind,
 		CalendarRsvp,
 		CalendarSuggestion,
+		CalendarMeeting,
+		CalendarSearchEvent,
 	}
 }

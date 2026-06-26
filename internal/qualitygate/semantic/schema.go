@@ -78,11 +78,11 @@ func DefaultPolicy() Policy {
 	return Policy{
 		SchemaVersion:      1,
 		DefaultEnforcement: "observe",
-		BlockCategories:    []string{"error_hint", "default_output", "naming", "skill_quality"},
+		BlockCategories:    []string{"error_hint", "default_output", "naming", "skill_quality", "public_content_leakage"},
 		RolloutGroups: []RolloutGroup{{
 			ID:          "all",
 			Enforcement: "blocking",
-			Categories:  []string{"error_hint", "default_output", "naming", "skill_quality"},
+			Categories:  []string{"error_hint", "default_output", "naming", "skill_quality", "public_content_leakage"},
 			Owner:       "test",
 			Reason:      "default in-memory policy",
 		}},

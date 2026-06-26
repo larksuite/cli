@@ -84,12 +84,12 @@ func TestPrintFlagSchema_NamedFlagReturnsSchemaSubtree(t *testing.T) {
 func TestPrintFlagSchema_UnknownFlagListsAvailable(t *testing.T) {
 	t.Parallel()
 	_, err := printFlagSchemaFor("+chart-create")("does-not-exist")
-	if err == nil {
-		t.Fatal("expected error for unknown flag, got nil")
+	ve := requireValidation(t, err, "+chart-create")
+	if !strings.Contains(ve.Message, "properties") {
+		t.Errorf("message should list available flags; got %q", ve.Message)
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "+chart-create") || !strings.Contains(msg, "properties") {
-		t.Errorf("error should mention shortcut + available flags; got %q", msg)
+	if ve.Param != "--flag-name" {
+		t.Errorf("param = %q, want --flag-name", ve.Param)
 	}
 }
 

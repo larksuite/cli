@@ -792,12 +792,15 @@ func TestFetchMeetingMinuteToken_Success(t *testing.T) {
 	reg.Register(recordingOKStub("m_ok", "https://meetings.feishu.cn/minutes/obctoken_ok"))
 
 	if err := botExec(t, "fmmt-ok", f, func(_ context.Context, rctx *common.RuntimeContext) error {
-		token, msg := fetchMeetingMinuteToken(rctx, "m_ok")
+		token, hint, err := fetchMeetingMinuteToken(rctx, "m_ok")
 		if token != "obctoken_ok" {
 			t.Errorf("token = %q, want obctoken_ok", token)
 		}
-		if msg != "" {
-			t.Errorf("errMsg = %q, want empty", msg)
+		if hint != "" {
+			t.Errorf("hint = %q, want empty", hint)
+		}
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
 		}
 		return nil
 	}); err != nil {
@@ -823,12 +826,15 @@ func TestFetchMeetingMinuteToken_KnownErrorCodes(t *testing.T) {
 			reg.Register(recordingErrStub(tt.meetingID, tt.code, "err"))
 
 			if err := botExec(t, "fmmt-"+tt.meetingID, f, func(_ context.Context, rctx *common.RuntimeContext) error {
-				token, msg := fetchMeetingMinuteToken(rctx, tt.meetingID)
+				token, hint, err := fetchMeetingMinuteToken(rctx, tt.meetingID)
 				if token != "" {
 					t.Errorf("token = %q, want empty on error", token)
 				}
-				if !strings.Contains(msg, tt.wantMsg) {
-					t.Errorf("errMsg = %q, want contains %q", msg, tt.wantMsg)
+				if !strings.Contains(hint, tt.wantMsg) {
+					t.Errorf("hint = %q, want contains %q", hint, tt.wantMsg)
+				}
+				if err != nil {
+					t.Errorf("err = %v, want nil", err)
 				}
 				return nil
 			}); err != nil {
@@ -844,12 +850,15 @@ func TestFetchMeetingMinuteToken_GenericAPIError(t *testing.T) {
 	reg.Register(recordingErrStub("m_other", 99999, "weird"))
 
 	if err := botExec(t, "fmmt-generic", f, func(_ context.Context, rctx *common.RuntimeContext) error {
-		token, msg := fetchMeetingMinuteToken(rctx, "m_other")
+		token, hint, err := fetchMeetingMinuteToken(rctx, "m_other")
 		if token != "" {
 			t.Errorf("token = %q, want empty", token)
 		}
-		if !strings.Contains(msg, "failed to query recording") {
-			t.Errorf("errMsg = %q, want contains 'failed to query recording'", msg)
+		if hint != "" {
+			t.Errorf("hint = %q, want empty", hint)
+		}
+		if err == nil || !strings.Contains(err.Error(), "weird") {
+			t.Errorf("err = %v, want contains 'weird'", err)
 		}
 		return nil
 	}); err != nil {
@@ -866,12 +875,15 @@ func TestFetchMeetingMinuteToken_NoRecording(t *testing.T) {
 	}))
 
 	if err := botExec(t, "fmmt-norec", f, func(_ context.Context, rctx *common.RuntimeContext) error {
-		token, msg := fetchMeetingMinuteToken(rctx, "m_norec")
+		token, hint, err := fetchMeetingMinuteToken(rctx, "m_norec")
 		if token != "" {
 			t.Errorf("token = %q, want empty", token)
 		}
-		if !strings.Contains(msg, "no recording available") {
-			t.Errorf("errMsg = %q, want contains 'no recording available'", msg)
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		if !strings.Contains(hint, "no recording available") {
+			t.Errorf("hint = %q, want contains 'no recording available'", hint)
 		}
 		return nil
 	}); err != nil {
@@ -885,12 +897,15 @@ func TestFetchMeetingMinuteToken_URLWithoutToken(t *testing.T) {
 	reg.Register(recordingOKStub("m_notok", "https://example.com/no/minute/path"))
 
 	if err := botExec(t, "fmmt-notok", f, func(_ context.Context, rctx *common.RuntimeContext) error {
-		token, msg := fetchMeetingMinuteToken(rctx, "m_notok")
+		token, hint, err := fetchMeetingMinuteToken(rctx, "m_notok")
 		if token != "" {
 			t.Errorf("token = %q, want empty", token)
 		}
-		if !strings.Contains(msg, "no minute_token found") {
-			t.Errorf("errMsg = %q, want contains 'no minute_token found'", msg)
+		if err != nil {
+			t.Errorf("err = %v, want nil", err)
+		}
+		if !strings.Contains(hint, "no minute_token found") {
+			t.Errorf("hint = %q, want contains 'no minute_token found'", hint)
 		}
 		return nil
 	}); err != nil {
@@ -983,7 +998,7 @@ func TestNotes_MeetingPath_OnlyMinuteFails_PartialSuccess(t *testing.T) {
 		t.Errorf("note_doc_token = %v, want doc_main", got)
 	}
 	assertNoteFieldAbsent(t, note, "minute_token")
-	assertNoteError(t, note, "no permission to access this meeting's minute")
+	assertNoteError(t, note, "no permission to access this meeting's minute; ask the meeting owner to share the minute")
 }
 
 func TestNotes_MeetingPath_NoNote_ButMinuteOK(t *testing.T) {
@@ -1068,6 +1083,7 @@ func TestNotes_MeetingPath_NoteNoPermission_FriendlyHint(t *testing.T) {
 	assertNoteError(t, note,
 		"[121005]",
 		"no read permission for this meeting note",
+		"no permission to access this meeting's minute",
 		"; ", // note + minute causes joined with semicolon
 	)
 }

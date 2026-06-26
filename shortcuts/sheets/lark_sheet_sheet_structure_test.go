@@ -198,13 +198,8 @@ func TestDimRange_Validation(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, DimHide, tt.args)
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), tt.want) {
-				t.Errorf("expected %q substring; got=%s|%s|%v", tt.want, stdout, stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, DimHide, tt.args)
+			requireValidation(t, err, tt.want)
 		})
 	}
 }
@@ -269,16 +264,11 @@ func TestDimMove_Column(t *testing.T) {
 // column (or vice versa) is rejected at Validate.
 func TestDimMove_MismatchedDimension(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, DimMove, []string{
+	_, _, err := runShortcutCapturingErr(t, DimMove, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--source-range", "1:3", "--target", "H", "--dry-run",
 	})
-	if err == nil {
-		t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-	}
-	if !strings.Contains(stdout+stderr+err.Error(), "must match --source-range") {
-		t.Errorf("expected dimension-mismatch guard; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, "must match --source-range")
 }
 
 // TestParseA1Range covers parser edge cases directly.

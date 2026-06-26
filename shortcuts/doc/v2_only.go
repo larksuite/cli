@@ -17,15 +17,14 @@ type docsLegacyFlag struct {
 
 func docsAPIVersionCompatFlag() common.Flag {
 	return common.Flag{
-		Name:    "api-version",
-		Desc:    "deprecated compatibility flag; docs shortcuts always use v2, and both v1/v2 are accepted for rollback-safe skill examples",
-		Default: "v2",
+		Name:   "api-version",
+		Desc:   "deprecated compatibility flag; ignored by docs shortcuts",
+		Hidden: true,
 	}
 }
 
 func docsCreateLegacyFlags() []docsLegacyFlag {
 	return []docsLegacyFlag{
-		{Name: "title", Replacement: "put the title in --content, for example <title>Title</title>"},
 		{Name: "markdown", Replacement: "use --content with --doc-format markdown"},
 		{Name: "folder-token", Replacement: "use --parent-token"},
 		{Name: "wiki-node", Replacement: "use --parent-token"},
@@ -55,7 +54,7 @@ func docsLegacyFlagDefinitions(flags []docsLegacyFlag) []common.Flag {
 	for _, flag := range flags {
 		out = append(out, common.Flag{
 			Name:   flag.Name,
-			Desc:   "deprecated v1 compatibility flag; run `lark-cli skills read lark-doc` for the v2 CLI skill",
+			Desc:   "deprecated compatibility flag; run `lark-cli skills read lark-doc` for the current CLI skill",
 			Hidden: true,
 		})
 	}
@@ -63,12 +62,6 @@ func docsLegacyFlagDefinitions(flags []docsLegacyFlag) []common.Flag {
 }
 
 func validateDocsV2Only(runtime *common.RuntimeContext, shortcut string, legacyFlags []docsLegacyFlag) error {
-	switch apiVersion := strings.TrimSpace(runtime.Str("api-version")); apiVersion {
-	case "", "v1", "v2":
-	default:
-		return docsV2OnlyError(shortcut, "--api-version is deprecated and only accepts v1 or v2; both values execute the v2 API", "--api-version")
-	}
-
 	var used []string
 	var replacements []string
 	for _, flag := range legacyFlags {

@@ -67,7 +67,43 @@ describe("verifyZipEntries", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "semantic-review-zip-"));
     const zipPath = path.join(dir, "facts.zip");
     const outPath = path.join(dir, "facts.json");
-    const facts = Buffer.from('{"schema_version":1}\n');
+    const restrictedScope = "pri" + "vate";
+    const facts = Buffer.from(JSON.stringify({
+      schema_version: 1,
+      public_content: [
+        {
+          rule: "public_content_semantic_candidate",
+          action: "WARNING",
+          file: "pull_request_metadata",
+          line: 1,
+          source: "metadata",
+          excerpt: "public release notes mention an internal rollout plan",
+          message: "public contribution may contain sensitive implementation detail",
+          suggestion: "move internal detail to " + restrictedScope + " discussion",
+        },
+        {
+          rule: "public_content_change_id_trailer",
+          action: "REJECT",
+          file: "commit:1234abc",
+          line: 3,
+          source: "commit",
+        },
+        {
+          rule: "public_content_automation_branch",
+          action: "WARNING",
+          file: "branch",
+          line: 1,
+          source: "branch",
+        },
+        {
+          rule: "public_content_" + "pri" + "vate_ipv4",
+          action: "WARNING",
+          file: "docs/public-network.md",
+          line: 7,
+          source: "file",
+        },
+      ],
+    }) + "\n");
     const zip = makeZip([{ fileName: "facts.json", data: facts, mode: 0o100644 }]);
     fs.writeFileSync(zipPath, zip);
 
@@ -103,6 +139,19 @@ describe("verifyZipEntries", () => {
       ["bad-error-path", Buffer.from('{"schema_version":1,"errors":[{"file":"../x.go","line":1,"boundary":true,"uses_structured_error":false,"has_hint":false,"hint_action_count":0,"required_hint":true,"retryable":false}]}'), /errors\[0\]\.file/],
       ["bad-example-dry-run", Buffer.from('{"schema_version":1,"examples":[{"raw":"lark-cli docs +fetch","source_file":"skills/lark-doc/SKILL.md","line":3,"executable":true,"dry_run":{"method":"GET","url":"/open-apis/docx","query":{"page_size":["20",1]}}}]}'), /examples\[0\]\.dry_run\.query\.page_size\[1\]/],
       ["bad-output-field", Buffer.from(JSON.stringify({ schema_version: 1, outputs: [{ command: "drive files list", fields: ["ok", "x".repeat(9000)] }] })), /outputs\[0\]\.fields\[1\]/],
+      ["non-array-public-content", Buffer.from('{"schema_version":1,"public_content":{}}'), /public_content must be an array/],
+      ["bad-public-content-item", Buffer.from('{"schema_version":1,"public_content":["not-object"]}'), /public_content\[0\]/],
+      ["bad-public-content-action", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"BLOCK","file":"pull_request_metadata","line":1}]}'), /public_content\[0\]\.action/],
+      ["bad-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"../x","line":1}]}'), /public_content\[0\]\.file/],
+      ["dot-slash-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"./foo","line":1}]}'), /public_content\[0\]\.file/],
+      ["empty-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"","line":1}]}'), /public_content\[0\]\.file/],
+      ["dot-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":".","line":1}]}'), /public_content\[0\]\.file/],
+      ["url-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"https://example.invalid/x","line":1}]}'), /public_content\[0\]\.file/],
+      ["dotgit-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":".git/config","line":1}]}'), /public_content\[0\]\.file/],
+      ["windows-public-content-path", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"C:\\\\tmp\\\\x","line":1}]}'), /public_content\[0\]\.file/],
+      ["bad-public-content-commit-ref", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_change_id_trailer","action":"REJECT","file":"commit:notasha","line":1}]}'), /public_content\[0\]\.file/],
+      ["bad-public-content-line", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"pull_request_metadata","line":"1"}]}'), /public_content\[0\]\.line/],
+      ["zero-public-content-line", Buffer.from('{"schema_version":1,"public_content":[{"rule":"public_content_semantic_candidate","action":"WARNING","file":"pull_request_metadata","line":0}]}'), /public_content\[0\]\.line/],
       ["bad-diagnostic-action", Buffer.from('{"schema_version":1,"diagnostics":[{"rule":"r","action":"BLOCK","file":"x.go","line":1,"message":"m"}]}'), /diagnostics.*action/],
       ["long-message", Buffer.from(JSON.stringify({ schema_version: 1, diagnostics: [{ rule: "r", action: "REJECT", file: "x.go", line: 1, message: "x".repeat(9000) }] })), /too long/],
     ]) {

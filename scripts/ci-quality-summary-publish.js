@@ -45,6 +45,10 @@ async function publishTargetStillCurrent(github, context, core, target, phase = 
     repo: context.repo.repo,
     pull_number: target.pr,
   });
+  if (pr.state !== "open") {
+    core.notice(`PR quality summary skipped: PR is no longer open before ${phase}`);
+    return false;
+  }
   if (pr.head.sha !== target.headSha) {
     core.notice(`PR quality summary skipped: PR head changed before ${phase}`);
     return false;

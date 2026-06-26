@@ -66,7 +66,8 @@ type roomFindSlot struct {
 type roomFindTimeSlot struct {
 	Start        string                `json:"start,omitempty"`
 	End          string                `json:"end,omitempty"`
-	MeetingRooms []*roomFindSuggestion `json:"meeting_rooms,omitempty"`
+	MeetingRooms []*roomFindSuggestion `json:"meeting_rooms"`
+	Hint         string                `json:"hint,omitempty"`
 }
 
 type roomFindOutput struct {
@@ -103,11 +104,18 @@ func collectRoomFindResults(slots []roomFindSlot, limit int, fetch func(roomFind
 				}
 				return
 			}
-			out.TimeSlots = append(out.TimeSlots, &roomFindTimeSlot{
+			if suggestions == nil {
+				suggestions = []*roomFindSuggestion{}
+			}
+			ts := &roomFindTimeSlot{
 				Start:        slot.Start,
 				End:          slot.End,
 				MeetingRooms: suggestions,
-			})
+			}
+			if len(suggestions) == 0 {
+				ts.Hint = "no meeting room matches the current filters for this slot"
+			}
+			out.TimeSlots = append(out.TimeSlots, ts)
 		}(slot)
 	}
 	wg.Wait()
@@ -374,6 +382,10 @@ var CalendarRoomFind = common.Shortcut{
 			}
 			for _, slot := range out.TimeSlots {
 				fmt.Fprintf(w, "%s - %s\n", slot.Start, slot.End)
+				if len(slot.MeetingRooms) == 0 {
+					fmt.Fprintf(w, "0 meeting room(s) found: %s\n", slot.Hint)
+					continue
+				}
 				var rows []map[string]interface{}
 				for _, room := range slot.MeetingRooms {
 					rows = append(rows, map[string]interface{}{
@@ -384,6 +396,7 @@ var CalendarRoomFind = common.Shortcut{
 					})
 				}
 				output.PrintTable(w, rows)
+				fmt.Fprintf(w, "%d meeting room(s) found\n", len(slot.MeetingRooms))
 				fmt.Fprintln(w)
 			}
 		})

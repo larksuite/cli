@@ -10,10 +10,6 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 | `<title>` | 文档标题（每篇唯一）| `align` |
 | `<checkbox>` | 待办项| `done="true"\|"false"` |
 
-## 创建文档标题
-
-使用 `docs +create` 创建 XML 文档时，文档标题必须写成 `<title>标题</title>`，且每篇文档只写一个 `<title>`。
-
 ## 容器标签
 |标签|说明|关键属性|
 |-|-|-|

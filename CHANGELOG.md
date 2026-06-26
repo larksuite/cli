@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.58] - 2026-06-25
+
+### Features
+
+- **sheets**: Typed table I/O and error contract, workbook import/export, and skill refresh (#1355)
+- **base**: Add Base URL and title resolve shortcuts (#1338)
+- **drive**: Add `+member-add` shortcut with wiki space member collection collaborator support (#1204)
+- **doc**: Support `create` title option (#1536)
+- **doc**: Add `im-markdown` output format for doc fetch (#1550)
+- **whiteboard**: Export whiteboard as SVG and update whiteboard via SVG (#1559)
+- **card**: Support `card.action.trigger` event with auto-fetched card content (#1528)
+- **task**: Add task event consumer (#1510)
+
+### Bug Fixes
+
+- **doc**: Prefix docs resource shortcuts (#1564)
+- **binding**: Skip unix mode audit on Windows (#1525)
+
+### Documentation
+
+- **approval**: Sync approval skill for meta API commands (#1499)
+- **doc**: Restore lark-doc style requirements (#1579)
+- **im**: Document `chat.nickname` get/update/delete (#1378)
+- **im**: Clarify audio message opus requirement (#1271)
+
+### Build
+
+- **ci**: Add public content safeguards and reduce false positives
+
 ## [v1.0.57] - 2026-06-23
 
 ### Features
@@ -1236,6 +1265,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.58]: https://github.com/larksuite/cli/releases/tag/v1.0.58
 [v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
 [v1.0.56]: https://github.com/larksuite/cli/releases/tag/v1.0.56
 [v1.0.55]: https://github.com/larksuite/cli/releases/tag/v1.0.55

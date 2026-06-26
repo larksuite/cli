@@ -49,6 +49,7 @@ type RuntimeContext struct {
 	apiClientFunc func() (*client.APIClient, error) // sync.OnceValues; initialized in newRuntimeContext
 	botInfoFunc   func() (*BotInfo, error)          // sync.OnceValues; lazy bot identity from /bot/v3/info
 	larkSDK       *lark.Client                      // eagerly initialized in mountDeclarative
+	stdinConsumed bool                              // set when an Input flag has consumed stdin (`-`); guards against a second flag also using `-` within the same call
 }
 
 // ── Identity ──
@@ -1029,7 +1030,6 @@ func stripUTF8BOM(s string) string {
 // resolveInputFlags resolves @file and - (stdin) for flags with Input sources.
 // Must be called before Validate/DryRun/Execute so that runtime.Str() returns resolved content.
 func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
-	stdinUsed := false
 	for _, fl := range flags {
 		if len(fl.Input) == 0 {
 			continue
@@ -1049,11 +1049,14 @@ func resolveInputFlags(rctx *RuntimeContext, flags []Flag) error {
 				return ValidationErrorf("--%s does not support stdin (-)", fl.Name).
 					WithParam("--" + fl.Name)
 			}
-			if stdinUsed {
+			// A process has a single stdin, so we reject a second Input flag
+			// trying to use `-` after the first one has already consumed it.
+			if rctx.stdinConsumed {
 				return ValidationErrorf("--%s: stdin (-) can only be used by one flag", fl.Name).
-					WithParam("--" + fl.Name)
+					WithParam("--"+fl.Name).
+					WithHint("a process has a single stdin, so only one flag per call may use '-'; pass the others as @file (e.g. --%s @/path/to/file)", fl.Name)
 			}
-			stdinUsed = true
+			rctx.stdinConsumed = true
 			data, err := io.ReadAll(rctx.IO().In)
 			if err != nil {
 				return ValidationErrorf("--%s: failed to read from stdin: %v", fl.Name, err).
@@ -1166,7 +1169,13 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 				hints = append(hints, "@file")
 			}
 			if slices.Contains(fl.Input, Stdin) {
-				hints = append(hints, "- for stdin")
+				// "- reads stdin" intentionally avoids implying each flag has
+				// its own stdin: a process has a single stdin, so at most one
+				// flag per call may use "-" (the rest must use @file). The old
+				// per-flag "- for stdin" wording led AI agents to write
+				// `--a - <x --b - <y`, where the second `<` silently clobbers
+				// the first and `--a` reads the wrong payload.
+				hints = append(hints, "- reads stdin (one flag per call; use @file for others)")
 			}
 			desc += " (supports " + strings.Join(hints, ", ") + ")"
 		}

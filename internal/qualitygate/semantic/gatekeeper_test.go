@@ -242,6 +242,7 @@ func TestGatekeeperBlockerMatrix(t *testing.T) {
 		Outputs:       []facts.OutputFact{{Command: "im messages list", IsList: true, HasDefaultLimit: false, HasDecisionField: false}},
 		Commands:      []facts.CommandFact{{Path: "docs fetch", NameConflictsExisting: true}},
 		Skills:        []facts.SkillFact{{SourceFile: "skills/lark-doc/SKILL.md", Line: 3, ReferencesInvalidCommand: true}},
+		PublicContent: []facts.PublicContentFact{{Rule: "public_content_generic_credential", Action: "REJECT", File: "docs/public.md", Line: 4, Source: "metadata"}},
 	}
 	for _, tc := range []struct {
 		category string
@@ -251,6 +252,7 @@ func TestGatekeeperBlockerMatrix(t *testing.T) {
 		{"default_output", "facts.outputs[0]"},
 		{"naming", "facts.commands[0]"},
 		{"skill_quality", "facts.skills[0]"},
+		{"public_content_leakage", "facts.public_content[0]"},
 	} {
 		t.Run(tc.category, func(t *testing.T) {
 			r := Review{Findings: []Finding{{
@@ -265,6 +267,59 @@ func TestGatekeeperBlockerMatrix(t *testing.T) {
 				t.Fatalf("expected blocker for %s, got %#v", tc.category, d)
 			}
 		})
+	}
+}
+
+func TestGatekeeperDoesNotPromotePublicContentWarningsToBlockers(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:   "public_content_" + "pri" + "vate_ipv4",
+			Action: "WARNING",
+			File:   "docs/network.md",
+			Line:   1,
+			Source: "file",
+		}},
+	}
+	review := Review{Findings: []Finding{{
+		Category:        "public_content_leakage",
+		Severity:        "minor",
+		Evidence:        []string{"facts.public_content[0]"},
+		Message:         "pri" + "vate network address appears in public docs",
+		SuggestedAction: "confirm the public docs do not expose pri" + "vate deployment details",
+	}}}
+
+	got := Decide(f, review, DefaultPolicy())
+	if len(got.Blockers) != 0 || len(got.Warnings) != 1 {
+		t.Fatalf("public content warning should not become a blocker: %#v", got)
+	}
+	if got.Warnings[0].ReviewAction != ReviewActionObserve {
+		t.Fatalf("review action = %q, want %q", got.Warnings[0].ReviewAction, ReviewActionObserve)
+	}
+}
+
+func TestGatekeeperAllowsPublicContentSemanticCandidatesAsBlockers(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:   "public_content_semantic_candidate",
+			Action: "WARNING",
+			File:   "docs/public.md",
+			Line:   1,
+			Source: "file",
+		}},
+	}
+	review := Review{Findings: []Finding{{
+		Category:        "public_content_leakage",
+		Severity:        "major",
+		Evidence:        []string{"facts.public_content[0]"},
+		Message:         "semantic review found pri" + "vate rollout detail",
+		SuggestedAction: "remove pri" + "vate rollout detail from public docs",
+	}}}
+
+	got := Decide(f, review, DefaultPolicy())
+	if len(got.Blockers) != 1 {
+		t.Fatalf("semantic candidate should remain blockable, got %#v", got)
 	}
 }
 

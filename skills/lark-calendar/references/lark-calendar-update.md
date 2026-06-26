@@ -65,7 +65,7 @@ lark-cli calendar +update \
 - 只想修改标题、描述、时间或重复规则时，不需要同时传 `--add-attendee-ids` 或 `--remove-attendee-ids`。
 - 如需替换某个参与人、群组或会议室，使用 `--remove-attendee-ids <旧ID>` + `--add-attendee-ids <新ID>`。
 - 会议室是 resource attendee，必须使用 `omm_` ID 添加到参会人列表，不能脱离日程单独预定。
-- 更新重复性日程的某一次实例时，必须先通过 `+agenda`、`events search_event` 或实例视图定位该实例的 `event_id`。
+- 更新重复性日程的某一次实例时，必须先通过 `+agenda`、`+search-event` 或实例视图定位该实例的 `event_id`。
 - 如果需要验证更新结果，等待至少 2 秒后再查询，避免同步延迟导致读到旧数据。
 - 当同一次命令组合多个动作时，执行顺序为“日程字段 -> 移除参会人 -> 添加参会人”。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。
 

@@ -189,6 +189,99 @@ description: Manage Drive comments with service command references.
 	}
 }
 
+func TestRunCollectsPublicContentFindingsIntoDiagnosticsAndFacts(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "test@example.com")
+	runGit(t, repo, "config", "user.name", "Test User")
+	if err := vfs.WriteFile(filepath.Join(repo, "README.md"), []byte("# test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "base")
+
+	if err := vfs.MkdirAll(filepath.Join(repo, "docs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	publicDoc := "api_" + "key = \"example-public-key\"\n" +
+		"Public docs describe a pri" + "vate request header and trust classification detail.\n"
+	if err := vfs.WriteFile(filepath.Join(repo, "docs", "public.md"), []byte(publicDoc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repo, "add", "docs/public.md")
+	runGit(t, repo, "commit", "-m", "add public doc")
+
+	metadataPath := filepath.Join(repo, "pr-metadata.json")
+	if err := vfs.WriteFile(metadataPath, []byte(`{"title":"public docs","body":"Change`+`-Id: I0123456789abcdef0123456789abcdef01234567"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manifestPath := filepath.Join(repo, "command-manifest.json")
+	indexPath := filepath.Join(repo, "command-index.json")
+	m := manifest.Manifest{SchemaVersion: 1, Commands: []manifest.Command{{
+		Path:          "docs +fetch",
+		CanonicalPath: "docs +fetch",
+		Domain:        "docs",
+		Source:        manifest.SourceShortcut,
+	}}}
+	if err := manifest.WriteFile(manifestPath, manifest.KindCommandManifest, m); err != nil {
+		t.Fatal(err)
+	}
+	idx := manifest.Manifest{SchemaVersion: 1, Commands: append([]manifest.Command{}, m.Commands...)}
+	idx.Commands = append(idx.Commands, manifest.Command{
+		Path:          "drive files get",
+		CanonicalPath: "drive files get",
+		Domain:        "drive",
+		Source:        manifest.SourceService,
+		Generated:     true,
+		Runnable:      true,
+	})
+	if err := manifest.WriteFile(indexPath, manifest.KindCommandIndex, idx); err != nil {
+		t.Fatal(err)
+	}
+
+	diags, gotFacts, err := Run(context.Background(), Options{
+		Repo:                      repo,
+		CLIBin:                    "./lark-cli",
+		ChangedFrom:               "HEAD~1",
+		ManifestPath:              manifestPath,
+		CommandIndexPath:          indexPath,
+		PublicContentMetadataPath: metadataPath,
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	actions := map[string]report.Action{}
+	for _, diag := range diags {
+		actions[diag.Rule] = diag.Action
+	}
+	if actions["public_content_generic_credential"] != report.ActionReject {
+		t.Fatalf("generic credential diagnostic action = %q, diagnostics=%#v", actions["public_content_generic_credential"], diags)
+	}
+	if actions["public_content_change_id_trailer"] != report.ActionReject {
+		t.Fatalf("change-id diagnostic action = %q, diagnostics=%#v", actions["public_content_change_id_trailer"], diags)
+	}
+	if actions["public_content_semantic_candidate"] != "" {
+		t.Fatalf("semantic candidates should not become deterministic diagnostics: %#v", diags)
+	}
+	factRules := map[string]bool{}
+	for _, item := range gotFacts.PublicContent {
+		factRules[item.Rule] = true
+	}
+	for _, want := range []string{
+		"public_content_generic_credential",
+		"public_content_change_id_trailer",
+		"public_content_semantic_candidate",
+	} {
+		if !factRules[want] {
+			t.Fatalf("missing public content fact %s: %#v", want, gotFacts.PublicContent)
+		}
+	}
+	if len(gotFacts.PublicContent) < 3 {
+		t.Fatalf("public content facts = %#v", gotFacts.PublicContent)
+	}
+}
+
 func TestLoadBaseReferenceManifestReadsCommandGolden(t *testing.T) {
 	repo := t.TempDir()
 	runGit(t, repo, "init")
@@ -506,7 +599,7 @@ func TestNormalizeDiagnosticFileHandlesAbsoluteRepo(t *testing.T) {
 
 func runGit(t *testing.T, repo string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+	cmd := exec.Command("git", append([]string{"-c", "core.hooksPath=/dev/null", "-C", repo}, args...)...)
 	cmd.Env = append(os.Environ(), "GIT_AUTHOR_DATE=2026-06-17T00:00:00Z", "GIT_COMMITTER_DATE=2026-06-17T00:00:00Z")
 	out, err := cmd.CombinedOutput()
 	if err != nil {

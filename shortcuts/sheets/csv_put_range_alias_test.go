@@ -4,7 +4,6 @@
 package sheets
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -44,12 +43,7 @@ func TestCsvPutInput_RejectsStartCellAndRangeTogether(t *testing.T) {
 		"range":      "A1:H17",
 	})
 	_, err := csvPutInput(fv, "tok", "sid", "")
-	if err == nil {
-		t.Fatal("csvPutInput accepted both start-cell and range; want mutual-exclusion error")
-	}
-	if !strings.Contains(err.Error(), "--start-cell and --range are mutually exclusive") {
-		t.Errorf("error = %q, want it to mention start-cell/range mutual exclusion", err.Error())
-	}
+	requireValidation(t, err, "--start-cell and --range are mutually exclusive")
 }
 
 // With neither --start-cell nor --range explicitly set, csvPutInput rejects the
@@ -61,12 +55,7 @@ func TestCsvPutInput_RejectsStartCellAndRangeTogether(t *testing.T) {
 func TestCsvPutInput_RequiresStartCellOrRange(t *testing.T) {
 	fv := newMapFlagViewForCommand("+csv-put", map[string]interface{}{"csv": "a,b"})
 	_, err := csvPutInput(fv, "tok", "sid", "")
-	if err == nil {
-		t.Fatal("csvPutInput accepted missing start-cell/range; want a required-flag error")
-	}
-	if !strings.Contains(err.Error(), "--start-cell or --range is required") {
-		t.Errorf("error = %q, want it to mention '--start-cell or --range is required'", err.Error())
-	}
+	requireValidation(t, err, "--start-cell or --range is required")
 }
 
 // csvPutWriteRangeFromInput surfaces the real paste footprint so agents can see

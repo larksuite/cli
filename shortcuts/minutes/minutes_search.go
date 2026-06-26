@@ -184,12 +184,6 @@ func minuteSearchAppLink(item map[string]interface{}) string {
 	return common.GetString(meta, "app_link")
 }
 
-// minuteSearchAvatar extracts the avatar URL from a search result item.
-func minuteSearchAvatar(item map[string]interface{}) string {
-	meta := common.GetMap(item, "meta_data")
-	return common.GetString(meta, "avatar")
-}
-
 // buildMinuteSearchRows converts API items into pretty output rows.
 func buildMinuteSearchRows(items []interface{}) []map[string]interface{} {
 	rows := make([]map[string]interface{}, 0, len(items))
@@ -203,10 +197,25 @@ func buildMinuteSearchRows(items []interface{}) []map[string]interface{} {
 			"display_info": common.TruncateStr(minuteSearchDisplayInfo(item), 40),
 			"description":  common.TruncateStr(minuteSearchDescription(item), 40),
 			"app_link":     common.TruncateStr(minuteSearchAppLink(item), 80),
-			"avatar":       common.TruncateStr(minuteSearchAvatar(item), 80),
 		})
 	}
 	return rows
+}
+
+// stripAvatarFromItems removes meta_data.avatar from each search item in place
+// so the structured output does not surface avatars to AI agents.
+func stripAvatarFromItems(items []interface{}) {
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		meta, _ := item["meta_data"].(map[string]interface{})
+		if meta == nil {
+			continue
+		}
+		delete(meta, "avatar")
+	}
 }
 
 // MinutesSearch searches minutes by keyword, owners, participants, and time range.
@@ -298,13 +307,13 @@ var MinutesSearch = common.Shortcut{
 		}
 
 		items := minuteSearchItems(data)
+		stripAvatarFromItems(items)
 		hasMore, _ := data["has_more"].(bool)
 		pageToken, _ := data["page_token"].(string)
 		rows := buildMinuteSearchRows(items)
 
 		outData := map[string]interface{}{
 			"items":      items,
-			"total":      data["total"],
 			"has_more":   data["has_more"],
 			"page_token": data["page_token"],
 		}
