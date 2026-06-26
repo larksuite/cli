@@ -136,7 +136,9 @@ var MailSenderSet = common.Shortcut{
 		{Name: "type", Desc: "Sender list type: allow or block", Enum: []string{senderListAllow, senderListBlock}},
 		{Name: "address", Type: "string_slice", Desc: "Sender email address(es). Repeat flag or use comma-separated values; maximum 100."},
 	},
-	Validate: validateSenderWrite,
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateSenderWrite(runtime, true)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		addresses, _ := parseSenderAddressList(runtime.StrSlice("address"), true)
 		body := map[string]interface{}{"items": senderAddressItems(addresses)}
@@ -180,7 +182,9 @@ var MailSenderDelete = common.Shortcut{
 		{Name: "type", Desc: "Sender list type: allow or block", Enum: []string{senderListAllow, senderListBlock}},
 		{Name: "address", Type: "string_slice", Desc: "Sender email address(es). Repeat flag or use comma-separated values; maximum 100."},
 	},
-	Validate: validateSenderWrite,
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		return validateSenderWrite(runtime, false)
+	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		addresses, _ := parseSenderAddressList(runtime.StrSlice("address"), false)
 		return common.NewDryRunAPI().
@@ -224,14 +228,14 @@ func validateSenderRead(ctx context.Context, runtime *common.RuntimeContext) err
 	return nil
 }
 
-func validateSenderWrite(ctx context.Context, runtime *common.RuntimeContext) error {
+func validateSenderWrite(runtime *common.RuntimeContext, normalizeLower bool) error {
 	if err := validateBotMailboxNotMe(runtime); err != nil {
 		return err
 	}
 	if err := validateSenderListType(runtime.Str("type"), false); err != nil {
 		return err
 	}
-	_, err := parseSenderAddressList(runtime.StrSlice("address"), runtime.Command() == "+sender-set")
+	_, err := parseSenderAddressList(runtime.StrSlice("address"), normalizeLower)
 	return err
 }
 
@@ -252,6 +256,17 @@ func validateSenderListType(listType string, allowAll bool) error {
 		}
 		return mailValidationParamError("--type", "--type must be one of: allow, block")
 	}
+}
+
+func validateBotMailboxNotMe(runtime *common.RuntimeContext) error {
+	if runtime.IsBot() && strings.EqualFold(strings.TrimSpace(runtime.Str("mailbox")), "me") {
+		return output.ErrValidation("bot identity does not support --mailbox me; pass an explicit mailbox email address")
+	}
+	return nil
+}
+
+func mailValidationParamError(flag, format string, args ...interface{}) error {
+	return output.ErrValidation("%s: %s", flag, fmt.Sprintf(format, args...))
 }
 
 func parseSenderAddressList(values []string, normalizeLower bool) ([]string, error) {
@@ -421,9 +436,12 @@ func normalizeSenderFailedItems(raw interface{}) []map[string]interface{} {
 func decorateSenderAPIError(err error, action string) error {
 	var exitErr *output.ExitError
 	if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code == 456 {
-		return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, "search cache warming; retry later")
+		withHint := output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, "search cache warming; retry later")
+		withHint.Detail.Code = exitErr.Detail.Code
+		withHint.Detail.Detail = exitErr.Detail.Detail
+		return withHint
 	}
-	return mailDecorateProblemMessage(err, "%s failed", action)
+	return output.Errorf(output.ExitAPI, "api_error", "%s failed: %v", action, err)
 }
 
 func outputSenderList(runtime *common.RuntimeContext, out senderListOutput) {

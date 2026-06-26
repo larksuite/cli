@@ -13,6 +13,23 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+func assertValidationError(t *testing.T, err error, wantSubstr string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected output.ExitError, got %T: %v", err, err)
+	}
+	if exitErr.Code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want ExitValidation", exitErr.Code)
+	}
+	if wantSubstr != "" && !strings.Contains(exitErr.Error(), wantSubstr) {
+		t.Fatalf("error = %q, want substring %q", exitErr.Error(), wantSubstr)
+	}
+}
+
 func TestParseSenderAddressList(t *testing.T) {
 	got, err := parseSenderAddressList([]string{" Alice@Example.COM, bob@example.com ", "alice@example.com"}, true)
 	if err != nil {
