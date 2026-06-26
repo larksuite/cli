@@ -4,6 +4,7 @@
 package im
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"strings"
@@ -138,6 +139,76 @@ func TestMembersList_DryRun(t *testing.T) {
 	s := mustMarshalDryRun(t, dr)
 	if !strings.Contains(s, "/open-apis/im/v1/chats/oc_test/members/list") {
 		t.Fatalf("dry-run missing path: %s", s)
+	}
+}
+
+// attachMembersListCmd registers the +chat-members-list flag surface onto a
+// network-backed runtime so Execute can read flags. Mirrors attachChatListCmd.
+func attachMembersListCmd(t *testing.T, runtime *common.RuntimeContext, stringFlags map[string]string, boolFlags map[string]bool) {
+	t.Helper()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 20, "")
+	cmd.Flags().Int("page-limit", 20, "")
+	cmd.Flags().StringSlice("member-types", nil, "")
+	cmd.Flags().String("chat-id", "oc_test", "")
+	cmd.Flags().String("member-id-type", "open_id", "")
+	cmd.Flags().String("page-token", "", "")
+	cmd.Flags().Bool("page-all", false, "")
+	_ = cmd.ParseFlags(nil)
+	for name, val := range stringFlags {
+		if err := cmd.Flags().Set(name, val); err != nil {
+			t.Fatalf("set %q: %v", name, err)
+		}
+	}
+	for name, val := range boolFlags {
+		if val {
+			if err := cmd.Flags().Set(name, "true"); err != nil {
+				t.Fatalf("set %q: %v", name, err)
+			}
+		}
+	}
+	setRuntimeField(t, runtime, "Cmd", cmd)
+}
+
+func TestMembersList_Execute_BothBuckets(t *testing.T) {
+	var capturedURL string
+	body := `{"code":0,"msg":"ok","data":{
+		"users":[{"member_id":"ou_u1","name":"张三","tenant_key":"tk"}],
+		"bots":[{"member_id":"ou_b1","app_id":"cli_x","name":"值班机器人","tenant_key":"tk"}],
+		"user_total":1,"bot_total":1,"has_more":false,"page_token":"","truncations":[]}}`
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		capturedURL = req.URL.String()
+		return shortcutRawResponse(200, []byte(body), nil), nil
+	}))
+	attachMembersListCmd(t, rt, map[string]string{"chat-id": "oc_test"}, nil)
+
+	if err := ImChatMembersList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() err = %v", err)
+	}
+	if !strings.Contains(capturedURL, "/open-apis/im/v1/chats/oc_test/members/list") {
+		t.Fatalf("url = %s", capturedURL)
+	}
+	out := rt.Factory.IOStreams.Out.(*bytes.Buffer).String()
+	for _, want := range []string{`"users"`, `"bots"`, `ou_u1`, `cli_x`, `"user_total"`, `"bot_total"`} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestMembersList_Execute_FilterBotsOnly(t *testing.T) {
+	var capturedURL string
+	body := `{"code":0,"data":{"users":[],"bots":[{"member_id":"ou_b1","app_id":"cli_x","name":"B"}],"user_total":0,"bot_total":1,"has_more":false}}`
+	rt := newUserShortcutRuntime(t, shortcutRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		capturedURL = req.URL.String()
+		return shortcutRawResponse(200, []byte(body), nil), nil
+	}))
+	attachMembersListCmd(t, rt, map[string]string{"member-types": "bot"}, nil)
+	if err := ImChatMembersList.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute() err = %v", err)
+	}
+	if !strings.Contains(capturedURL, "member_types=bot") {
+		t.Fatalf("url missing member_types=bot: %s", capturedURL)
 	}
 }
 

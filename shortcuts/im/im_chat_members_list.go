@@ -108,9 +108,128 @@ func buildMembersListParams(runtime *common.RuntimeContext, effectiveTypes strin
 	return params
 }
 
-// placeholder for Task 2 — keep file compiling if Task 2 not yet written.
+// executeMembersList runs the single-page or --page-all fetch and renders output.
 func executeMembersList(ctx context.Context, runtime *common.RuntimeContext) error {
-	_ = output.PrintTable
-	_ = io.Discard
+	effective, _ := normalizeMemberTypes(runtime.StrSlice("member-types")) // Validate guarantees err == nil
+	params := buildMembersListParams(runtime, strings.Join(effective, ","))
+	path := fmt.Sprintf(imChatMembersListPath, runtime.Str("chat-id"))
+
+	var data map[string]interface{}
+	var err error
+	// page-all handled in Task 3
+	data, err = runtime.CallAPITyped("GET", path, params, nil)
+	if err != nil {
+		return err
+	}
+
+	outData := assembleMembersOutput(data)
+	if truncs, ok := outData["truncations"].([]interface{}); ok && len(truncs) > 0 {
+		writeMembersTruncationWarning(runtime.IO().ErrOut, truncs)
+	}
+
+	runtime.OutFormat(outData, nil, func(w io.Writer) { renderMembersPretty(w, outData) })
 	return nil
+}
+
+// assembleMembersOutput extracts the two buckets and pagination metadata from a
+// single API data object into the shortcut's output shape. Empty buckets are
+// rendered as [] (never omitted) for stable downstream parsing.
+func assembleMembersOutput(data map[string]interface{}) map[string]interface{} {
+	users, _ := data["users"].([]interface{})
+	if users == nil {
+		users = []interface{}{}
+	}
+	bots, _ := data["bots"].([]interface{})
+	if bots == nil {
+		bots = []interface{}{}
+	}
+	hasMore, pageToken := common.PaginationMeta(data)
+	truncs, _ := data["truncations"].([]interface{})
+	if truncs == nil {
+		truncs = []interface{}{}
+	}
+	out := map[string]interface{}{
+		"users":       users,
+		"bots":        bots,
+		"has_more":    hasMore,
+		"page_token":  pageToken,
+		"truncations": truncs,
+	}
+	if v, ok := data["user_total"]; ok {
+		out["user_total"] = v
+	}
+	if v, ok := data["bot_total"]; ok {
+		out["bot_total"] = v
+	}
+	return out
+}
+
+// writeMembersTruncationWarning emits one stderr warning per truncated type.
+func writeMembersTruncationWarning(errOut io.Writer, truncs []interface{}) {
+	for _, raw := range truncs {
+		m, _ := raw.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		fmt.Fprintf(errOut, "warning: member list truncated by server (member_type=%v, limit=%v); not all members returned\n", m["member_type"], m["limit"])
+	}
+}
+
+// renderMembersPretty renders the non-JSON table view.
+func renderMembersPretty(w io.Writer, outData map[string]interface{}) {
+	users, _ := outData["users"].([]interface{})
+	bots, _ := outData["bots"].([]interface{})
+	if len(users) == 0 && len(bots) == 0 {
+		fmt.Fprintln(w, "No members found.")
+		return
+	}
+	rows := make([]map[string]interface{}, 0, len(users)+len(bots))
+	for _, raw := range users {
+		m, _ := raw.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		rows = append(rows, map[string]interface{}{
+			"type": "user", "member_id": m["member_id"], "name": m["name"], "tenant_key": m["tenant_key"],
+		})
+	}
+	for _, raw := range bots {
+		m, _ := raw.(map[string]interface{})
+		if m == nil {
+			continue
+		}
+		rows = append(rows, map[string]interface{}{
+			"type": "bot", "member_id": m["member_id"], "name": m["name"], "app_id": m["app_id"], "tenant_key": m["tenant_key"],
+		})
+	}
+	output.PrintTable(w, rows)
+	ut := totalString(outData["user_total"])
+	fmt.Fprintf(w, "\n%s user(s), %v bot(s)", ut, outData["bot_total"])
+	if hm, _ := outData["has_more"].(bool); hm {
+		fmt.Fprintf(w, " (more available, use --page-token to fetch next page")
+		if pt, _ := outData["page_token"].(string); pt != "" {
+			fmt.Fprintf(w, ", page_token: %s", pt)
+		}
+		fmt.Fprint(w, ")")
+	}
+	fmt.Fprintln(w)
+}
+
+// totalString renders user_total, mapping the API's -1 "hidden" sentinel to a
+// human label. JSON numbers decode as float64.
+func totalString(v interface{}) string {
+	switch n := v.(type) {
+	case float64:
+		if n == -1 {
+			return "hidden count of"
+		}
+		return fmt.Sprintf("%d", int(n))
+	case int:
+		if n == -1 {
+			return "hidden count of"
+		}
+		return fmt.Sprintf("%d", n)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
