@@ -114,6 +114,7 @@ func TestMembersList_Validate(t *testing.T) {
 		{"page-size-high", map[string]string{"page-size": "101"}, nil, true},
 		{"bad-member-type", map[string]string{"member-types": "group"}, nil, true},
 		{"page-limit-bad", map[string]string{"page-limit": "0"}, map[string]bool{"page-all": true}, true},
+		{"bad-chat-id", map[string]string{"chat-id": "bad"}, nil, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -139,6 +140,18 @@ func TestMembersList_DryRun(t *testing.T) {
 	s := mustMarshalDryRun(t, dr)
 	if !strings.Contains(s, "/open-apis/im/v1/chats/oc_test/members/list") {
 		t.Fatalf("dry-run missing path: %s", s)
+	}
+}
+
+func TestMembersList_DryRun_EscapesChatID(t *testing.T) {
+	rt := newMembersListTestRT(t, map[string]string{"chat-id": "oc_a/b"}, nil)
+	dr := ImChatMembersList.DryRun(context.Background(), rt)
+	s := mustMarshalDryRun(t, dr)
+	if strings.Contains(s, "oc_a/b") {
+		t.Fatalf("dry-run contains unescaped chat-id: %s", s)
+	}
+	if !strings.Contains(s, "oc_a%2Fb") {
+		t.Fatalf("dry-run missing percent-encoded chat-id (oc_a%%2Fb): %s", s)
 	}
 }
 

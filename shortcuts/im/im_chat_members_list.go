@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -39,6 +40,9 @@ var ImChatMembersList = common.Shortcut{
 		{Name: "page-limit", Type: "int", Default: "20", Desc: "max pages when --page-all is enabled (default 20, max 1000)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		if _, err := common.ValidateChatIDTyped("--chat-id", runtime.Str("chat-id")); err != nil {
+			return err
+		}
 		if n := runtime.Int("page-size"); n < 1 || n > 100 {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be an integer between 1 and 100").WithParam("--page-size")
 		}
@@ -54,7 +58,8 @@ var ImChatMembersList = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		effective, _ := normalizeMemberTypes(runtime.StrSlice("member-types")) // Validate guarantees err == nil
-		path := fmt.Sprintf(imChatMembersListPath, runtime.Str("chat-id"))
+		chatID, _ := common.ValidateChatIDTyped("--chat-id", runtime.Str("chat-id"))
+		path := fmt.Sprintf(imChatMembersListPath, validate.EncodePathSegment(chatID))
 		return common.NewDryRunAPI().
 			GET(path).
 			Params(buildMembersListParams(runtime, strings.Join(effective, ",")))
@@ -112,7 +117,8 @@ func buildMembersListParams(runtime *common.RuntimeContext, effectiveTypes strin
 func executeMembersList(ctx context.Context, runtime *common.RuntimeContext) error {
 	effective, _ := normalizeMemberTypes(runtime.StrSlice("member-types")) // Validate guarantees err == nil
 	params := buildMembersListParams(runtime, strings.Join(effective, ","))
-	path := fmt.Sprintf(imChatMembersListPath, runtime.Str("chat-id"))
+	chatID, _ := common.ValidateChatIDTyped("--chat-id", runtime.Str("chat-id")) // Validate guarantees err == nil
+	path := fmt.Sprintf(imChatMembersListPath, validate.EncodePathSegment(chatID))
 
 	var data map[string]interface{}
 	var err error
