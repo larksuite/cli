@@ -143,8 +143,8 @@ var CalendarCreate = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "summary", Desc: "event title"},
-		{Name: "start", Desc: "start time (ISO 8601)", Required: true},
-		{Name: "end", Desc: "end time (ISO 8601)", Required: true},
+		{Name: "start", Desc: "start time (ISO 8601; YYYY-MM-DD when --all-day)", Required: true},
+		{Name: "end", Desc: "end time (ISO 8601; YYYY-MM-DD when --all-day)", Required: true},
 		{Name: "description", Desc: "event description"},
 		{Name: "attendee-ids", Desc: "attendee IDs, comma-separated (supports user ou_, chat oc_, room omm_)"},
 		{Name: "calendar-id", Desc: "calendar ID (default: primary)"},

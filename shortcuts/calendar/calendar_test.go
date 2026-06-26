@@ -266,6 +266,50 @@ func TestCreate_AllDayRequestUsesDateFieldsAndDefaults(t *testing.T) {
 	}
 }
 
+func TestCreate_AllDaySingleDayAllowsSameStartAndEnd(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_all_day_single",
+					"summary":    "Birthday",
+					"start_time": map[string]interface{}{"date": "2026-05-18"},
+					"end_time":   map[string]interface{}{"date": "2026-05-18"},
+				},
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Birthday",
+		"--start", "2026-05-18",
+		"--end", "2026-05-18",
+		"--all-day",
+		"--calendar-id", "cal_test123",
+		"--as", "bot",
+	}, f, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := decodeCalendarCapturedBody(t, stub)
+	startTime, _ := body["start_time"].(map[string]interface{})
+	endTime, _ := body["end_time"].(map[string]interface{})
+	if got := startTime["date"]; got != "2026-05-18" {
+		t.Fatalf("start_time.date = %#v, want %q; body=%#v", got, "2026-05-18", body)
+	}
+	if got := endTime["date"]; got != "2026-05-18" {
+		t.Fatalf("end_time.date = %#v, want %q; body=%#v", got, "2026-05-18", body)
+	}
+}
+
 func TestCreate_AllDayValidationTypedErrors(t *testing.T) {
 	cases := []struct {
 		name      string
