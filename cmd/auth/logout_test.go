@@ -114,6 +114,9 @@ func TestAuthLogoutRun_JSONMode_Success_WritesStdoutOnly(t *testing.T) {
 	if payload["loggedOut"] != true {
 		t.Errorf("stdout.loggedOut = %v, want true", payload["loggedOut"])
 	}
+	if _, hasMessage := payload["message"]; hasMessage {
+		t.Errorf("stdout.message must be absent on success, got %v", payload["message"])
+	}
 	if _, hasReason := payload["reason"]; hasReason {
 		t.Errorf("stdout.reason must be absent on success, got %v", payload["reason"])
 	}
