@@ -71,8 +71,9 @@ metadata:
 2. 如果用户给的是妙记 URL，应先从 URL 末尾提取 `minute_token`，再调用 `minutes minutes get`。
 3. 如果是会议 / 日程上下文中的妙记基础信息，先通过 VC 链路拿到 `minute_token`，再调用 `minutes minutes get`。
 4. 用户意图不明确时，默认先给基础元信息，帮助确认是否命中目标妙记。
+5. 当用户问“这个妙记讲了什么 / 主题 / 话题 / 关键词 / 标签”时，先用 `minutes minutes get` 看返回的 `keywords`（推荐关键词），它由服务端基于妙记内容生成；若 `keywords` 为空再走 `vc +notes --minute-tokens` 拉取总结 / 章节。
 
-> 使用 `lark-cli schema minutes.minutes.get` 可查看完整返回值结构。核心字段包含：`title`（标题）、`cover`（封面 URL）、`duration`（时长，毫秒）、`owner_id`（所有者 ID）、`url`（妙记链接）。
+> 使用 `lark-cli schema minutes.minutes.get` 可查看完整返回值结构。核心字段包含：`title`（标题）、`cover`（封面 URL）、`duration`（时长，毫秒）、`owner_id`（所有者 ID）、`url`（妙记链接）、`note_id`（关联纪要 ID）、`keywords`（推荐关键词，弱依赖，可能为空；服务端失败时不会让主响应失败）。
 
 ### 3. 下载妙记音视频文件
 
@@ -155,8 +156,9 @@ lark-cli minutes +todo --minute-token <token> --as user --todos '[
 
 ```text
 Minutes (妙记) ← minute_token 标识
-├── Metadata (标题、封面、时长、owner、url) → minutes minutes get
-└── MediaFile (音频/视频文件) → minutes +download
+├── Metadata (标题、封面、时长、owner、url、note_id) → minutes minutes get
+├── Keywords  (推荐关键词，弱依赖)                    → minutes minutes get （顶层 keywords 字段）
+└── MediaFile (音频/视频文件)                         → minutes +download
 ```
 
 > **能力边界**：`minutes` 负责 **搜索妙记、查看基础元信息、下载/上传音视频、编辑妙记 AI 待办与 AI 总结、重命名、逐字稿说话人/关键词替换**。
@@ -171,6 +173,7 @@ Minutes (妙记) ← minute_token 标识
 > - 结果有多页时，使用 `page_token` 持续翻页，直到确认没有更多结果
 > - `minutes +search` 单次最多返回 `200` 条；结果总数没有固定上限
 > - 用户说"这个妙记的标题 / 时长 / 封面 / 链接" → `minutes minutes get`
+> - 用户说"这个妙记的主题 / 关键词 / 标签 / 讲了什么" → 先 `minutes minutes get` 取 `keywords`，为空再走 [vc +notes --minute-tokens](../lark-vc/references/lark-vc-notes.md)
 > - 用户说"下载这个妙记的视频 / 音频 / 媒体文件" → `minutes +download`
 > - 用户要**读取**"这个妙记的逐字稿 / 文字稿 / 撰写文字 / 总结 / 待办 / 章节" → [vc +notes --minute-tokens](../lark-vc/references/lark-vc-notes.md)
 > - 用户要在**妙记内新建 / 修改 / 删除 AI 待办**（含「妙记里加待办」「任务1 已完成」等）→ [`minutes +todo`](references/lark-minutes-todo.md)，**禁止**走 lark-task
