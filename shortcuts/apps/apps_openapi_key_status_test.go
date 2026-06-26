@@ -21,7 +21,7 @@ func TestOpenAPIKeyEnableExecute_StatusOne(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0, "msg": "",
 			"data": map[string]interface{}{
-				"info": map[string]interface{}{"api_key_id": "1", "name": "k", "api_key": "xxxxxxxxxxxx", "status": float64(1)},
+				"info": map[string]interface{}{"api_key_id": "k1", "name": "k", "api_key": "xxxxxxxxxxxx", "status": float64(1)},
 			},
 		},
 	})

@@ -33,9 +33,9 @@ func TestOpenAPIKeyCreateExecute_ReturnsRawOnce(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0, "msg": "",
 			"data": map[string]interface{}{
-				"api_key_id": "1",
+				"api_key_id": "k1",
 				"info": map[string]interface{}{
-					"api_key_id": "1", "name": "partner-test",
+					"api_key_id": "k1", "name": "partner-test",
 					"api_key": "xxxxxxxxxxxx", "status": float64(1),
 				},
 			},

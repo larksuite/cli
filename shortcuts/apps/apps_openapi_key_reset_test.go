@@ -28,7 +28,7 @@ func TestOpenAPIKeyResetExecute_ReturnsNewRaw(t *testing.T) {
 			"code": 0, "msg": "",
 			"data": map[string]interface{}{
 				"api_key": "xxxxxxxxxxxx",
-				"info":    map[string]interface{}{"api_key_id": "1", "name": "k", "api_key": "xxxxxxxxxxxx", "status": float64(1)},
+				"info":    map[string]interface{}{"api_key_id": "k1", "name": "k", "api_key": "xxxxxxxxxxxx", "status": float64(1)},
 			},
 		},
 	})

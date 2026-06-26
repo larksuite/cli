@@ -22,7 +22,7 @@ func TestOpenAPIKeyGetExecute_Redacts(t *testing.T) {
 			"code": 0, "msg": "",
 			"data": map[string]interface{}{
 				"info": map[string]interface{}{
-					"api_key_id": "1", "name": "partner-test",
+					"api_key_id": "k1", "name": "partner-test",
 					"api_key": "xxxxxxxxxxxx", "status": float64(1),
 				},
 			},
@@ -32,7 +32,7 @@ func TestOpenAPIKeyGetExecute_Redacts(t *testing.T) {
 		t.Fatalf("Execute() = %v", err)
 	}
 	if strings.Contains(stdoutBuf.String(), "xxxxxxxxxxxx") {
-		t.Fatalf("get output leaked raw api_key: %s", stdoutBuf.String())
+		t.Fatalf("get output leaked raw api key: %s", stdoutBuf.String())
 	}
 	if !strings.Contains(stdoutBuf.String(), "****xxxx") {
 		t.Errorf("expected key_preview: %s", stdoutBuf.String())

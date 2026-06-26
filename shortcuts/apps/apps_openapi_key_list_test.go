@@ -70,7 +70,7 @@ func TestOpenAPIKeyListExecute_Redacts(t *testing.T) {
 			"data": map[string]interface{}{
 				"infos": []interface{}{
 					map[string]interface{}{
-						"api_key_id": "1", "name": "partner-test",
+						"api_key_id": "k1", "name": "partner-test",
 						"api_key": "xxxxxxxxxxxx", "status": float64(1),
 					},
 				},
@@ -82,7 +82,7 @@ func TestOpenAPIKeyListExecute_Redacts(t *testing.T) {
 	}
 	out := stdoutBuf.String()
 	if strings.Contains(out, "xxxxxxxxxxxx") {
-		t.Fatalf("list output leaked raw api_key: %s", out)
+		t.Fatalf("list output leaked raw api key: %s", out)
 	}
 	if !strings.Contains(out, "****xxxx") {
 		t.Errorf("expected masked key_preview in output: %s", out)
