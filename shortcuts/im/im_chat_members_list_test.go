@@ -265,6 +265,19 @@ func TestMembersList_Execute_Truncations(t *testing.T) {
 	}
 }
 
+func TestMembersList_Registered(t *testing.T) {
+	found := false
+	for _, s := range Shortcuts() {
+		if s.Command == "+chat-members-list" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("+chat-members-list not registered in Shortcuts()")
+	}
+}
+
 // compile-time guard that the shortcut is wired with expected metadata.
 func TestMembersList_Metadata(t *testing.T) {
 	if ImChatMembersList.Command != "+chat-members-list" {
