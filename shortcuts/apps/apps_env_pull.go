@@ -83,7 +83,7 @@ var AppsEnvPull = common.Shortcut{
 
 		data, err := rctx.CallAPITyped("POST", envPullVarsPath(appID), nil, envPullVarsBody())
 		if err != nil {
-			return withAppsHint(err, "verify --app-id is correct and you have access to the app; list your apps with `lark-cli apps +list`")
+			return withAppsHint(err, envPullAPIErrorHint(err, appID))
 		}
 
 		envVars, databaseInfo, skippedKeys, err := extractEnvPullVars(data)
@@ -124,6 +124,27 @@ func envPullVarsBody() map[string]interface{} {
 	return map[string]interface{}{
 		"env": "dev",
 	}
+}
+
+func envPullAPIErrorHint(err error, appID string) string {
+	if isEnvPullDevDBNotInitializedError(err) {
+		appID = strings.TrimSpace(appID)
+		if appID == "" {
+			appID = "<app_id>"
+		}
+		return fmt.Sprintf("dev database is not initialized; preview creation with `lark-cli apps +db-env-create --app-id %s --environment dev --dry-run`, then run `lark-cli apps +db-env-create --app-id %s --environment dev --sync-data --yes` after confirming the irreversible split", appID, appID)
+	}
+	return appIDListHint
+}
+
+func isEnvPullDevDBNotInitializedError(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return false
+	}
+	message := strings.ToLower(p.Message)
+	return strings.Contains(message, "multi-environment database is not initialized") ||
+		(strings.Contains(message, "invalid db branch") && strings.Contains(message, "dev"))
 }
 
 func resolveEnvPullTarget(projectPath string) (string, string, error) {

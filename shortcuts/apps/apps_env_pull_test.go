@@ -592,6 +592,38 @@ func TestAppsEnvPull_NonObjectJSONDoesNotCarryAppIDHint(t *testing.T) {
 	}
 }
 
+func TestAppsEnvPull_DevDBNotInitializedHintPointsToDBEnvCreate(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": -1,
+			"msg":  "Multi-environment database is not initialized for this app. Invalid DB Branch：dev",
+		},
+		OnMatch: func(req *http.Request) {
+			assertEnvPullBody(t, req)
+		},
+	})
+
+	err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", t.TempDir(), "--as", "user"},
+		factory, stdout,
+	)
+	p := requireAppsAPIProblem(t, err)
+	if p.Code != -1 {
+		t.Fatalf("code = %d, want -1", p.Code)
+	}
+	for _, want := range []string{"+db-env-create", "--app-id app_x", "--environment dev", "--dry-run", "--yes"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, p.Hint)
+		}
+	}
+	if strings.Contains(p.Hint, "apps +list") {
+		t.Fatalf("hint should not point to app-id/list recovery for missing dev database: %q", p.Hint)
+	}
+}
+
 func TestAppsEnvPull_ExecuteUsesArrayEnvVars(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	projectDir := t.TempDir()
