@@ -153,7 +153,7 @@ Recommended sequence:
 5. Preserve the original `message_id`, card identity, chat, topic, and thread context. Only change small completion affordances such as status text, header subtitle, footer timestamp, or a "completed" hint.
 6. Avoid noisy loops. A completion re-notification should be at most one extra same-card update for a given task completion.
 
-If the update token is expired, exhausted, missing, or the card can no longer be updated, do not fall back to a new chat message. Return or log that the same-card refresh could not be sent, so the caller can decide whether a separate notification is acceptable for that product flow.
+Treat delayed-update failures as terminal when the token is expired, exhausted, missing, or invalid; the original `message_id` / card is not found or has been recalled/deleted; the bot no longer has permission to update it; or the API reports the card is no longer updatable. In those cases, stop retrying the completion refresh and do not fall back to a new chat message. Return or log that the same-card refresh could not be sent, so the caller can decide whether a separate notification is acceptable for that product flow.
 
 When implementing from a `card.action.trigger` event, use the delayed-update token and the API above. The API requires the complete new card JSON, so start from `card_content`, keep the answer content stable, and change only the completion affordance fields. For Card 1.0, include `card.open_ids` as described above.
 
