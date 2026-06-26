@@ -30,7 +30,7 @@ metadata:
 | [`+download`](references/lark-minutes-download.md) | 下载妙记音视频媒体文件 |
 | [`+upload`](references/lark-minutes-upload.md) | 上传 file_token 生成妙记 |
 | [`+update`](references/lark-minutes-update.md) | 更新妙记标题 |
-| [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | 替换妙记逐字稿中的说话人（仅支持用户 ID，不支持姓名） |
+| [`+speaker-replace`](references/lark-minutes-speaker-replace.md) | 替换妙记逐字稿中的说话人（须先 `lark-cli api GET .../speakerlist` 取 `speaker_id`） |
 
 - 使用任何 Shortcut 前，必须先读其对应 reference 文档。
 
@@ -43,7 +43,7 @@ metadata:
 | "下载妙记的视频/音频" | 本 skill（`+download`） |
 | "把音视频转妙记/上传文件生成妙记" | 本 skill（`+upload`） |
 | "重命名妙记/改妙记标题" | 本 skill（`+update`） |
-| "替换说话人/把 A 的发言改成 B" | 本 skill（`+speaker-replace`） |
+| "替换说话人/把 A 的发言改成 B/把外部说话人改成飞书用户" | 本 skill（先 `lark-cli api GET .../speakerlist`，再 `+speaker-replace`） |
 | "这个妙记的逐字稿/总结/待办/章节" | [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
 | "xx 纪要的逐字稿/原始记录/谁说了什么" 且没有 `minute_token` / 妙记 URL / 本地音视频文件 | 不走本 skill；路由到 [lark-drive](../lark-drive/SKILL.md) / [lark-doc](../lark-doc/SKILL.md)，必要时再到 [lark-note](../lark-note/SKILL.md) |
 | "把音视频文件转成纪要/逐字稿/文字稿" | 先本 skill（`+upload`），再 [lark-vc](../lark-vc/SKILL.md)（`vc +notes --minute-tokens`） |
@@ -151,6 +151,20 @@ lark-cli minutes +todo --minute-token <token> --as user --todos '[
 
 > 使用 `+todo` 前必须阅读 [references/lark-minutes-todo.md](references/lark-minutes-todo.md)；使用 `+summary` 前必须阅读 [references/lark-minutes-summary.md](references/lark-minutes-summary.md)。
 
+### 7. 替换妙记逐字稿说话人
+
+当用户要把妙记里某说话人的发言改绑到另一位飞书用户时使用。
+
+**触发信号**：「替换说话人」「把 A 的发言改成 B」「说话人识别错了」「把外部说话人改成飞书用户」等。
+
+**Agent 必读流程**（详见 [minutes +speaker-replace](references/lark-minutes-speaker-replace.md)）：
+
+1. 确认 `minute_token`。
+2. **先**用 `lark-cli api GET "/open-apis/minutes/v1/minutes/<token>/transcript/speakerlist"` 查说话人列表（内部 HTTP，无 shortcut、无公开 OpenAPI 文档页）。
+3. 根据用户描述的原说话人展示名，在返回的 `data.speakers[]` 中匹配 `name` → 得到 `speaker_id`；同名多人时结合 `vc +notes` 逐字稿请用户确认，**不要擅自挑选**。
+4. 新说话人姓名用 [lark-contact](../lark-contact/SKILL.md) 解析为 `ou_` open_id。
+5. 调用 `minutes +speaker-replace`，**`--from-speaker-id` 只传步骤 3 的 `speaker_id`，禁止传展示名**。
+
 ## 资源关系
 
 ```text
@@ -178,7 +192,7 @@ Minutes (妙记) ← minute_token 标识
 > - 用户说"通过文件生成妙记 / 把音视频转妙记" → 先上传获取 `file_token`，然后使用 `minutes +upload`
 > - 用户说"把音视频文件转成纪要 / 逐字稿 / 文字稿 / 撰写文字 / 总结 / 待办 / 章节" → 先上传获取 `file_token`，调用 `minutes +upload` 生成 `minute_url`，再提取 `minute_token` 走 `vc +notes --minute-tokens`
 > - 用户说"重命名妙记 / 改妙记标题 / 修改妙记名字" → `minutes +update`
-> - 用户说"替换说话人 / 把 A 的发言改成 B / 重新归属发言人" → `minutes +speaker-replace`
+> - 用户说"替换说话人 / 把 A 的发言改成 B / 重新归属发言人 / 把外部（非飞书）说话人改成飞书用户" → 先 `lark-cli api GET .../transcript/speakerlist` 取 `speaker_id`，再 [`minutes +speaker-replace`](references/lark-minutes-speaker-replace.md)；`--from-speaker-id` 只传 id，不传展示名
 > - 用户说"批量替换逐字稿关键词" → `minutes +word-replace`
 >
 > **Note 域边界（禁止规则）**：`minute_token` 是妙记文件标识，**不是** `note_id`。

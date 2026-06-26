@@ -5,6 +5,7 @@ package sheets
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -93,19 +94,28 @@ func TestSheets_WorkbookCreateTypedWorkflow(t *testing.T) {
 	t.Cleanup(cancel)
 
 	suffix := clie2e.GenerateSuffix()
-	folderToken := drive.CreateDriveFolder(t, parentT, ctx, "lark-cli-e2e-wb-create-typed-"+suffix+"-folder", "bot", "")
+	title := "lark-cli-e2e-wb-create-typed-" + suffix
 
 	// One-shot: create workbook + write typed payload (date + int + string).
+	// --folder-token is optional; omit it so the test does not depend on drive:drive
+	// (CreateDriveFolder) when validating the typed --sheets path.
 	createRes, err := clie2e.RunCmd(ctx, clie2e.Request{
 		Args: []string{
 			"sheets", "+workbook-create",
-			"--title", "lark-cli-e2e-wb-create-typed-" + suffix,
-			"--folder-token", folderToken,
+			"--title", title,
 			"--sheets", `{"sheets":[{"name":"销售","columns":["日期","金额","渠道"],"dtypes":{"日期":"datetime64[ns]","金额":"float64","渠道":"object"},"formats":{"金额":"$#,##0.00","日期":"yyyy-mm-dd"},"data":[["2024-01-15",1500.5,"门店"],["2024-02-02",2300.75,"线上"]]}]}`,
 		},
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
+	if createRes.ExitCode != 0 {
+		combined := strings.ToLower(createRes.Stdout + "\n" + createRes.Stderr)
+		if strings.Contains(combined, "app_scope_not_applied") ||
+			strings.Contains(combined, "missing_scopes") ||
+			strings.Contains(combined, "99991672") {
+			t.Skipf("skip workbook-create typed workflow due to missing bot scope: %s", strings.TrimSpace(createRes.Stdout+"\n"+createRes.Stderr))
+		}
+	}
 	createRes.AssertExitCode(t, 0)
 	createRes.AssertStdoutStatus(t, true)
 
