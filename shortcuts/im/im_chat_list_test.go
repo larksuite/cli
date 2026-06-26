@@ -34,7 +34,7 @@ func newChatListTestRuntimeContextWithIdentity(t *testing.T, stringFlags map[str
 		if name == "page-size" {
 			continue
 		}
-		if name == "types" {
+		if name == "types" || name == "member-types" {
 			cmd.Flags().StringSlice(name, nil, "")
 		} else {
 			cmd.Flags().String(name, "", "")
