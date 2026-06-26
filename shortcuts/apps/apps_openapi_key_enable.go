@@ -11,8 +11,8 @@ import (
 
 // app_open_api_key_status enum: 0=DISABLE, 1=ENABLE.
 const (
-	oapiKeyStatusDisable = 0
-	oapiKeyStatusEnable  = 1
+	keyStatusDisable = 0
+	keyStatusEnable  = 1
 )
 
 // AppsOpenAPIKeyEnable enables (status=1) an open API key.
@@ -31,10 +31,10 @@ var AppsOpenAPIKeyEnable = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error { return oapiKeyValidateKeyID(rctx) },
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().PATCH(oapiKeyItemURL(rctx)).Desc("Enable open API key").Body(openAPIKeyStatusBody(oapiKeyStatusEnable))
+		return common.NewDryRunAPI().PATCH(oapiKeyItemURL(rctx)).Desc("Enable open API key").Body(openAPIKeyStatusBody(keyStatusEnable))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		return execOpenAPIKeyStatus(rctx, oapiKeyStatusEnable)
+		return execOpenAPIKeyStatus(rctx, keyStatusEnable)
 	},
 }
 

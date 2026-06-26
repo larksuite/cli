@@ -25,9 +25,9 @@ var AppsOpenAPIKeyDisable = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error { return oapiKeyValidateKeyID(rctx) },
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
-		return common.NewDryRunAPI().PATCH(oapiKeyItemURL(rctx)).Desc("Disable open API key").Body(openAPIKeyStatusBody(oapiKeyStatusDisable))
+		return common.NewDryRunAPI().PATCH(oapiKeyItemURL(rctx)).Desc("Disable open API key").Body(openAPIKeyStatusBody(keyStatusDisable))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		return execOpenAPIKeyStatus(rctx, oapiKeyStatusDisable)
+		return execOpenAPIKeyStatus(rctx, keyStatusDisable)
 	},
 }
