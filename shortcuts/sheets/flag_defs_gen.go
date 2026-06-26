@@ -138,7 +138,7 @@ var flagDefs = map[string]commandDef{
 			{Name: "range", Kind: "own", Type: "string", Required: "required", Desc: "Write range (A1 notation)"},
 			{Name: "cells", Kind: "own", Type: "string", Required: "required", Desc: "JSON 2D array `[[{cell},...],...]`, dimensions must match `--range`; each cell may carry `value` / `formula` / `cell_styles` / `note` / `rich_text` (incl. `type=\"embed-image\"` in-cell image); run `--print-schema` for full fields", Input: []string{"file", "stdin"}},
 			{Name: "allow-overwrite", Kind: "own", Type: "bool", Required: "optional", Desc: "Allow overwriting non-empty cells (default true); set false to error if any target cell is non-empty", Default: "true"},
-			{Name: "max-cells", Kind: "own", Type: "int", Required: "optional", Desc: "Safety cap; default 50000", Default: "50000", Hidden: true},
+			{Name: "max-cells", Kind: "own", Type: "int", Required: "optional", Desc: "Safety cap; default 200000", Default: "200000", Hidden: true},
 			{Name: "copy-to-range", Kind: "own", Type: "string", Required: "optional", Desc: "Copy-to range (A1 notation): replicate what --cells wrote into --range (values/formulas/styles, per the fields actually passed) to this range; formula refs auto-shift (C2=B2 -> C3=B3). Write a one-row/one-block template then fill a whole column/area. Supports full rows '3:6', full columns 'C:E', to-col-end 'D3:D', to-row-end 'D3:3', and comma-separated multiple targets like 'C1:D2,E5:F6'."},
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
 		},

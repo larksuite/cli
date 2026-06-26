@@ -703,8 +703,8 @@ func letterToColumnIndex(letters string) int {
 // cells matrix, so the CLI must expand a range like "A1:Z100000" into rows×cols
 // maps before sending it — an unbounded blow-up (2.6M cells ≈ 900MB heap, then
 // doubled again by json.Marshal) that OOMs the process before the request even
-// leaves. 50000 matches the documented --max-cells safety cap.
-const maxStampMatrixCells = 50000
+// leaves. 200000 matches the documented --max-cells safety cap.
+const maxStampMatrixCells = 200000
 
 // checkStampMatrixBudget rejects a range whose materialized cell count would
 // exceed maxStampMatrixCells, before fillCellsMatrix allocates it. rows*cols is

@@ -74,6 +74,68 @@ func TestFanoutMatrixPeakMemory(t *testing.T) {
 	}
 }
 
+// --- +table-put / +workbook-create matrix materialization (sibling #1 path) ---
+//
+// buildSheetMatrix turns the caller's --sheets/--values into a rows×cols matrix
+// of per-cell maps, the same unbounded blow-up as fillCellsMatrix but on the
+// table-put ingress (tablePutMaxCellsPerWrite only slices the *write*, not this
+// in-memory build). checkCellBudget rejects oversized payloads before this runs.
+
+func makeTypelessSpec(rows, cols int) *tableSheetSpec {
+	c := make([]tableColumnSpec, cols)
+	r := make([][]interface{}, rows)
+	for i := range r {
+		row := make([]interface{}, cols)
+		for j := range row {
+			row[j] = "x"
+		}
+		r[i] = row
+	}
+	return &tableSheetSpec{Columns: c, Rows: r}
+}
+
+func benchBuildSheetMatrix(b *testing.B, rows, cols int) {
+	spec := makeTypelessSpec(rows, cols)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		m, err := buildSheetMatrix(spec, true)
+		if err != nil || len(m) != rows+1 {
+			b.Fatalf("bad matrix")
+		}
+	}
+}
+
+func BenchmarkBuildSheetMatrix_100K(b *testing.B)  { benchBuildSheetMatrix(b, 10000, 10) }  // 100K cells
+func BenchmarkBuildSheetMatrix_2600K(b *testing.B) { benchBuildSheetMatrix(b, 100000, 26) } // 2.6M cells
+
+// TestTablePutMatrixPeakMemory reports the resident-heap delta of materializing
+// a large table-put matrix (the cost checkCellBudget now prevents), so the
+// review doc can quote real MB. Not an assertion — prints under -v -run PeakMemory.
+func TestTablePutMatrixPeakMemory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping memory probe in -short")
+	}
+	for _, c := range []struct {
+		name       string
+		rows, cols int
+	}{
+		{"100000×26 (2.6M cells)", 100000, 26},
+	} {
+		spec := makeTypelessSpec(c.rows, c.cols)
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		m, _ := buildSheetMatrix(spec, true)
+		runtime.ReadMemStats(&after)
+		runtime.KeepAlive(m)
+		t.Logf("%-24s buildSheetMatrix heap +%6.1f MB  (%d total allocs)",
+			c.name,
+			float64(after.HeapAlloc-before.HeapAlloc)/(1024*1024),
+			after.Mallocs-before.Mallocs)
+	}
+}
+
 // --- export-download reader copy ---
 
 func benchDownloadReader(b *testing.B, size int, useStringCopy bool) {
@@ -99,17 +161,17 @@ func benchDownloadReader(b *testing.B, size int, useStringCopy bool) {
 // --- fan-out cell-budget cap (fix for the unbounded matrix blow-up) ---
 
 func TestStampMatrixBudgetCap(t *testing.T) {
-	// 49998 cells (1923×26) sits just under the 50000 cap → allowed.
-	if err := checkStampMatrixBudget("range", "A1:Z1923", 1923, 26); err != nil {
-		t.Fatalf("49998 cells should pass, got: %v", err)
+	// 199992 cells (7692×26) sits just under the 200000 cap → allowed.
+	if err := checkStampMatrixBudget("range", "A1:Z7692", 7692, 26); err != nil {
+		t.Fatalf("199992 cells should pass, got: %v", err)
 	}
 	// Exactly at the cap → allowed.
-	if err := checkStampMatrixBudget("range", "A1:A50000", 50000, 1); err != nil {
-		t.Fatalf("50000 cells (== cap) should pass, got: %v", err)
+	if err := checkStampMatrixBudget("range", "A1:A200000", 200000, 1); err != nil {
+		t.Fatalf("200000 cells (== cap) should pass, got: %v", err)
 	}
 	// Just over the cap → rejected.
-	if err := checkStampMatrixBudget("range", "A1:A50001", 50001, 1); err == nil {
-		t.Fatal("50001 cells should be rejected")
+	if err := checkStampMatrixBudget("range", "A1:A200001", 200001, 1); err == nil {
+		t.Fatal("200001 cells should be rejected")
 	}
 	// The pathological case from the review (2.6M cells) → rejected.
 	if err := checkStampMatrixBudget("ranges", "Sheet1!A1:Z100000", 100000, 26); err == nil {
