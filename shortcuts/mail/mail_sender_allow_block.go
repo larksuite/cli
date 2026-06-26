@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	netmail "net/mail"
 	"sort"
 	"strings"
@@ -151,7 +150,7 @@ var MailSenderSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := runtime.DoAPIJSONTyped(http.MethodPost,
+		data, err := runtime.DoAPIJSONTyped("POST",
 			senderAllowBlockPath(resolveMailboxID(runtime), runtime.Str("type"), "batch_create"),
 			nil,
 			map[string]interface{}{"items": senderAddressItems(addresses)})
@@ -194,7 +193,7 @@ var MailSenderDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := runtime.DoAPIJSONTyped(http.MethodPost,
+		data, err := runtime.DoAPIJSONTyped("POST",
 			senderAllowBlockPath(resolveMailboxID(runtime), runtime.Str("type"), "batch_remove"),
 			nil,
 			map[string]interface{}{"senders": addresses})
@@ -305,7 +304,7 @@ func executeSenderRead(runtime *common.RuntimeContext, keyword string) (senderLi
 		NextPageTokens: map[string]string{},
 	}
 	for _, currentType := range senderReadTypes(listType) {
-		data, err := runtime.DoAPIJSONTyped(http.MethodGet,
+		data, err := runtime.DoAPIJSONTyped("GET",
 			senderAllowBlockPath(resolveMailboxID(runtime), currentType, ""),
 			senderReadQuery(runtime, keyword),
 			nil)
