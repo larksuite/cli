@@ -49,7 +49,7 @@ func TestOpenAPIKeyUpdateExecute_Redacts(t *testing.T) {
 			"data": map[string]interface{}{
 				"info": map[string]interface{}{
 					"api_key_id": "1", "name": "partner-prod",
-					"api_key": "mdk_live_9f3a2b8c5f4a", "status": float64(1),
+					"api_key": "xxxxxxxxxxxx", "status": float64(1),
 				},
 			},
 		},
@@ -57,7 +57,7 @@ func TestOpenAPIKeyUpdateExecute_Redacts(t *testing.T) {
 	if err := AppsOpenAPIKeyUpdate.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
-	if strings.Contains(stdoutBuf.String(), "mdk_live_9f3a2b8c5f4a") {
+	if strings.Contains(stdoutBuf.String(), "xxxxxxxxxxxx") {
 		t.Fatalf("update leaked raw api_key: %s", stdoutBuf.String())
 	}
 }

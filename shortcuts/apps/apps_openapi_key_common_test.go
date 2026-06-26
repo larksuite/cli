@@ -12,7 +12,7 @@ func TestMaskAPIKey(t *testing.T) {
 	cases := map[string]string{
 		"":                      "****",
 		"abcd":                  "****",
-		"mdk_live_9f3a2b8c5f4a": "****5f4a",
+		"xxxxxxxxxxxx": "****xxxx",
 	}
 	for in, want := range cases {
 		if got := maskAPIKey(in); got != want {
@@ -24,7 +24,7 @@ func TestMaskAPIKey(t *testing.T) {
 func TestRedactKeyInfo_StripsRawKey(t *testing.T) {
 	in := map[string]interface{}{
 		"api_key_id": "1",
-		"api_key":    "mdk_live_9f3a2b8c5f4a",
+		"api_key":    "xxxxxxxxxxxx",
 		"name":       "partner-test",
 		"status":     float64(1),
 	}
@@ -32,8 +32,8 @@ func TestRedactKeyInfo_StripsRawKey(t *testing.T) {
 	if _, ok := out["api_key"]; ok {
 		t.Fatalf("redactKeyInfo must strip api_key, got %v", out)
 	}
-	if out["key_preview"] != "****5f4a" {
-		t.Errorf("key_preview = %v, want ****5f4a", out["key_preview"])
+	if out["key_preview"] != "****xxxx" {
+		t.Errorf("key_preview = %v, want ****xxxx", out["key_preview"])
 	}
 	if out["name"] != "partner-test" || out["api_key_id"] != "1" {
 		t.Errorf("non-secret fields must be preserved, got %v", out)

@@ -36,7 +36,7 @@ func TestOpenAPIKeyCreateExecute_ReturnsRawOnce(t *testing.T) {
 				"api_key_id": "1",
 				"info": map[string]interface{}{
 					"api_key_id": "1", "name": "partner-test",
-					"api_key": "mdk_live_9f3a2b8c5f4a", "status": float64(1),
+					"api_key": "xxxxxxxxxxxx", "status": float64(1),
 				},
 			},
 		},
@@ -46,14 +46,14 @@ func TestOpenAPIKeyCreateExecute_ReturnsRawOnce(t *testing.T) {
 	}
 	out := stdoutBuf.String()
 	// create surfaces the raw secret ONCE at top-level api_key
-	if !strings.Contains(out, "mdk_live_9f3a2b8c5f4a") {
+	if !strings.Contains(out, "xxxxxxxxxxxx") {
 		t.Fatalf("create must surface raw api_key once: %s", out)
 	}
 	// nested info must be redacted — raw key appears exactly once (top-level only)
-	if strings.Count(out, "mdk_live_9f3a2b8c5f4a") != 1 {
+	if strings.Count(out, "xxxxxxxxxxxx") != 1 {
 		t.Errorf("raw key must appear exactly once (top-level only): %s", out)
 	}
-	if !strings.Contains(out, "****5f4a") {
+	if !strings.Contains(out, "****xxxx") {
 		t.Errorf("redacted info must carry key_preview: %s", out)
 	}
 }

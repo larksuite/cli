@@ -21,14 +21,14 @@ func TestOpenAPIKeyEnableExecute_StatusOne(t *testing.T) {
 		Body: map[string]interface{}{
 			"code": 0, "msg": "",
 			"data": map[string]interface{}{
-				"info": map[string]interface{}{"api_key_id": "1", "name": "k", "api_key": "mdk_xxxx5f4a", "status": float64(1)},
+				"info": map[string]interface{}{"api_key_id": "1", "name": "k", "api_key": "xxxxxxxxxxxx", "status": float64(1)},
 			},
 		},
 	})
 	if err := AppsOpenAPIKeyEnable.Execute(context.Background(), rctx); err != nil {
 		t.Fatalf("Execute() = %v", err)
 	}
-	if strings.Contains(stdoutBuf.String(), "mdk_xxxx5f4a") {
+	if strings.Contains(stdoutBuf.String(), "xxxxxxxxxxxx") {
 		t.Fatalf("enable leaked raw api_key")
 	}
 }
