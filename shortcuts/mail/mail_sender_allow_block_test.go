@@ -4,11 +4,10 @@
 package mail
 
 import (
-	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -275,16 +274,15 @@ func TestMailSenderAPI456AddsRetryHint(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected API error")
 	}
-	p, ok := errs.ProblemOf(err)
-	if !ok {
-		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	var exitErr *output.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected output.ExitError, got %T: %v", err, err)
 	}
-	if p.Code != 456 || !strings.Contains(p.Hint, "retry later") {
-		b, _ := json.Marshal(p)
-		t.Fatalf("problem = %s", b)
+	if exitErr.Detail == nil || exitErr.Detail.Code != 456 || !strings.Contains(exitErr.Detail.Hint, "retry later") {
+		t.Fatalf("problem = %#v", exitErr.Detail)
 	}
-	if output.ExitCodeOf(err) != output.ExitAPI {
-		t.Fatalf("exit code = %d, want ExitAPI", output.ExitCodeOf(err))
+	if exitErr.Code != output.ExitAPI {
+		t.Fatalf("exit code = %d, want ExitAPI", exitErr.Code)
 	}
 }
 

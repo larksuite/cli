@@ -5,13 +5,13 @@ package mail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	netmail "net/mail"
 	"sort"
 	"strings"
 
-	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
@@ -150,7 +150,7 @@ var MailSenderSet = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := runtime.DoAPIJSONTyped("POST",
+		data, err := runtime.DoAPIJSON("POST",
 			senderAllowBlockPath(resolveMailboxID(runtime), runtime.Str("type"), "batch_create"),
 			nil,
 			map[string]interface{}{"items": senderAddressItems(addresses)})
@@ -193,7 +193,7 @@ var MailSenderDelete = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		data, err := runtime.DoAPIJSONTyped("POST",
+		data, err := runtime.DoAPIJSON("POST",
 			senderAllowBlockPath(resolveMailboxID(runtime), runtime.Str("type"), "batch_remove"),
 			nil,
 			map[string]interface{}{"senders": addresses})
@@ -304,7 +304,7 @@ func executeSenderRead(runtime *common.RuntimeContext, keyword string) (senderLi
 		NextPageTokens: map[string]string{},
 	}
 	for _, currentType := range senderReadTypes(listType) {
-		data, err := runtime.DoAPIJSONTyped("GET",
+		data, err := runtime.DoAPIJSON("GET",
 			senderAllowBlockPath(resolveMailboxID(runtime), currentType, ""),
 			senderReadQuery(runtime, keyword),
 			nil)
@@ -419,8 +419,9 @@ func normalizeSenderFailedItems(raw interface{}) []map[string]interface{} {
 }
 
 func decorateSenderAPIError(err error, action string) error {
-	if p, ok := errs.ProblemOf(err); ok && p.Code == 456 {
-		return mailAppendProblemHint(err, "search cache warming; retry later")
+	var exitErr *output.ExitError
+	if errors.As(err, &exitErr) && exitErr.Detail != nil && exitErr.Detail.Code == 456 {
+		return output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, "search cache warming; retry later")
 	}
 	return mailDecorateProblemMessage(err, "%s failed", action)
 }
