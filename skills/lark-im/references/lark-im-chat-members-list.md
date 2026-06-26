@@ -43,6 +43,23 @@ lark-cli im +chat-members-list --chat-id oc_xxx --dry-run
 lark-cli im +chat-members-list --chat-id oc_xxx --as bot
 ```
 
+## When to use (recipes)
+
+You only have a group **name**, not a `chat_id`? Resolve it first, then list members:
+
+```bash
+# Step 1: name -> chat_id (one identity is enough; don't re-search with the other)
+lark-cli im +chat-search --query "<group name>" --format json   # read chat_id from results
+# Step 2: list members
+lark-cli im +chat-members-list --chat-id <chat_id>
+```
+
+- **"List all members, including bots"** → call `+chat-members-list` with **no** `--member-types`. One call returns both `users[]` and `bots[]`. Do not also call `--member-types user` or `--member-types bot` separately, and do not re-run with a different `--member-id-type` to "fill in" extra IDs.
+- **"Which bots are in the group?"** → add `--member-types bot`. **"Which users?"** → `--member-types user`. Filtering is what isolates one type; don't post-filter a full result by hand. **Answer from the filtered result.** Once `--member-types bot` returns (`users[]` will be empty, only `bots[]` is populated), that *is* the answer — do **not** follow it with an unfiltered `+chat-members-list` call "to be complete". A second, unfiltered query defeats the filter and over-exposes the very members the user did not ask about.
+- **This shortcut replaces the `im chat.members get` / `im chat.members bots` Meta APIs.** It already returns both buckets in one call — do **not** fall back to those raw Meta APIs, and do not cross-check this shortcut's output against them.
+
+> **CAUTION — don't over-fetch.** Once a single `+chat-members-list` call returns, you have the complete answer for that page set. Resist re-querying with `--member-id-type user_id` "just in case": `user_id` requires the extra `contact:user.employee_id:readonly` scope and will error if it is not granted. For plain member listing, the default `open_id` is sufficient — only use `user_id` when the user explicitly needs employee IDs.
+
 ## Parameters
 
 | Parameter | Required | Limits | Description |
