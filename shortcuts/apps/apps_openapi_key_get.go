@@ -65,7 +65,7 @@ func outputRedactedInfo(rctx *common.RuntimeContext, data map[string]interface{}
 	red := redactKeyInfo(info)
 	out := map[string]interface{}{"info": red}
 	rctx.OutFormat(out, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "api_key_id: %v\nname: %v\nstatus: %v\nkey_preview: %v\n",
+		fmt.Fprintf(w, "API key ID: %v\nname: %v\nstatus: %v\nkey_preview: %v\n",
 			red["api_key_id"], red["name"], red["status"], red["key_preview"])
 	})
 	return nil

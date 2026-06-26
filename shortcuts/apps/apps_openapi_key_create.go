@@ -97,7 +97,7 @@ func outputIssuedKey(rctx *common.RuntimeContext, data map[string]interface{}) e
 	}
 	fmt.Fprintln(rctx.IO().ErrOut, "warning: this api_key is shown only once and is NOT stored by lark-cli — copy it now and store it in your own secret manager.")
 	rctx.OutFormat(out, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "api_key_id: %v\napi_key: %v  (shown once)\n", out["api_key_id"], raw)
+		fmt.Fprintf(w, "API key ID: %v\nAPI key: %v  (shown once)\n", out["api_key_id"], raw)
 	})
 	return nil
 }
