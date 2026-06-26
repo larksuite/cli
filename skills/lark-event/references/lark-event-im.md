@@ -23,6 +23,8 @@
 
 > **Shape**: All 12 events have a V2-enveloped raw payload. `lark-cli` flattens two of them — `im.message.receive_v1` and `card.action.trigger` — so their consumed output is flat (fields at `.xxx`). The other 10 are passed through as-is; use `.event.xxx` to access their fields.
 
+For long-running CardKit agent replies, do completion re-notification as a same-card update, not as a new message. The detailed constraints are in [`lark-im-card-action-reply.md#same-card-completion-re-notification`](../../lark-im/references/lark-im-card-action-reply.md#same-card-completion-re-notification).
+
 ## Gotchas (`im.message.receive_v1`)
 
 **sender_id is open_id only**: the event payload carries no display name. Call the contact API separately if you need the sender's name.

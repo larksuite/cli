@@ -138,6 +138,25 @@ lark-cli api POST /open-apis/interactive/v1/card/update --as bot \
 | `card` | Yes | Complete new card JSON — construct based on `card_content` from the event, modified to reflect the new state |
 | `card.open_ids` | No | **Card 1.0 only.** Array of `open_id`s defining which users see the updated card. Must contain at least one open_id (e.g. the operator's); passing `[]` or omitting the key both cause "openid empty" (code 300090). |
 
+## Same-card completion re-notification
+
+Use this pattern for long-running agent replies rendered as streaming CardKit cards when the card already reached a final `Completed` / `已完成` state, but the user may have switched away before noticing it.
+
+The invariant is: **one chat message, one card identity**. Re-notification is a deliberate refresh of the existing CardKit card/message. Do not send a follow-up text message, do not call `im +messages-send` / `im +messages-reply` for completion, and do not duplicate the answer content.
+
+Recommended sequence:
+
+1. Send or reply with one `interactive` CardKit card for the agent response.
+2. Stream progress by updating that same card.
+3. Complete the card by updating its status/header/footer/body to the final completed state.
+4. If completion visibility matters, wait briefly and update the same card once more with a complete card JSON that still represents the completed state.
+5. Preserve the original `message_id`, card identity, chat, topic, and thread context. Only change small completion affordances such as status text, header subtitle, footer timestamp, or a "completed" hint.
+6. Avoid noisy loops. A completion re-notification should be at most one extra same-card update for a given task completion.
+
+If the update token is expired, exhausted, missing, or the card can no longer be updated, do not fall back to a new chat message. Return or log that the same-card refresh could not be sent, so the caller can decide whether a separate notification is acceptable for that product flow.
+
+When implementing from a `card.action.trigger` event, use the delayed-update token and the API above. The API requires the complete new card JSON, so start from `card_content`, keep the answer content stable, and change only the completion affordance fields. For Card 1.0, include `card.open_ids` as described above.
+
 ## Examples
 
 ```bash

@@ -63,6 +63,8 @@ Card messages (`interactive` type) are not yet supported for compact conversion 
 
 `interactive` cards support callback events (`card.action.trigger`) — see [`references/lark-im-card-action-reply.md`](references/lark-im-card-action-reply.md).
 
+For long-running CardKit agent replies, completion re-notification should update the same card/message instead of sending a new message. Preserve the original message/thread context, do not duplicate the answer content, and follow the same-card pattern in [`references/lark-im-card-action-reply.md#same-card-completion-re-notification`](references/lark-im-card-action-reply.md#same-card-completion-re-notification).
+
 ### Audio Messages
 
 `--audio` sends a voice message and supports only Opus audio files, for example `.opus` files or Ogg Opus (`.ogg`) files. For `mp3`, `wav`, or other non-Opus audio, either convert to `.opus` first and keep using `--audio`, or send the original file as an attachment with `--file`.
