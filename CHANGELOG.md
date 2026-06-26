@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.59] - 2026-06-26
+
+### Features
+
+- **slides**: Add `+replace-pages` and `xml get` shortcuts, and expose the presentation URL (#1585)
+- **minutes**: Support speaker list and no-Lark speaker replace (#1594)
+- **calendar/vc/minutes**: Optimize and extend calendar, vc, minutes, and note shortcuts and skills (#1571)
+
+### Bug Fixes
+
+- **docs**: Hide docs `api-version` compat flag (#1580)
+
 ## [v1.0.58] - 2026-06-25
 
 ### Features
@@ -1265,6 +1277,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.59]: https://github.com/larksuite/cli/releases/tag/v1.0.59
 [v1.0.58]: https://github.com/larksuite/cli/releases/tag/v1.0.58
 [v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
 [v1.0.56]: https://github.com/larksuite/cli/releases/tag/v1.0.56
