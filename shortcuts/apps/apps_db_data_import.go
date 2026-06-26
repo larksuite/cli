@@ -44,7 +44,7 @@ var AppsDBDataImport = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "file", Desc: "local data file (.csv/.json), relative to cwd", Required: true},
 		{Name: "table", Desc: "target table (default: file name without extension)"},
-	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
+	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err

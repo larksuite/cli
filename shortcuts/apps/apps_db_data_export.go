@@ -47,7 +47,7 @@ var AppsDBDataExport = common.Shortcut{
 		{Name: "table", Desc: "source table", Required: true},
 		{Name: "output", Desc: "local output path; extension picks format .csv/.json/.sql (default: <table>.csv)"},
 		{Name: "limit", Type: "int", Default: "5000", Desc: "max rows to export (1..5000)"},
-	}, dbEnvFlags("online", []string{"dev", "online"}, "source db environment")...),
+	}, dbEnvFlags("dev", []string{"dev", "online"}, "source db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err

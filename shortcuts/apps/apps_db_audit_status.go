@@ -30,7 +30,7 @@ var AppsDBAuditStatus = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "show status for a single table (default: all configured tables)"},
-	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
+	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err

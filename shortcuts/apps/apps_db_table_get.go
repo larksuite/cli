@@ -37,7 +37,7 @@ var AppsDBTableGet = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "table", Desc: "table name", Required: true},
-	}, dbEnvFlags("online", []string{"dev", "online"}, "target db environment")...),
+	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
