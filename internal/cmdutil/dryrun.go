@@ -4,6 +4,7 @@
 package cmdutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -126,7 +127,17 @@ func (d *DryRunAPI) MarshalJSON() ([]byte, error) {
 	for k, v := range d.extra {
 		m[k] = v
 	}
-	return json.Marshal(m)
+	return marshalJSONNoHTMLEscape(m)
+}
+
+func marshalJSONNoHTMLEscape(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // Format renders the dry-run output as plain text for AI/human consumption.
@@ -255,7 +266,7 @@ func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core
 	if format == "pretty" {
 		fmt.Fprint(w, dr.Format())
 	} else {
-		output.PrintJson(w, dr)
+		output.PrintJsonNoHTMLEscape(w, dr)
 	}
 	return nil
 }
@@ -291,7 +302,7 @@ func PrintDryRun(w io.Writer, request client.RawApiRequest, config *core.CliConf
 	if format == "pretty" {
 		fmt.Fprint(w, dr.Format())
 	} else {
-		output.PrintJson(w, dr)
+		output.PrintJsonNoHTMLEscape(w, dr)
 	}
 	return nil
 }

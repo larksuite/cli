@@ -4,6 +4,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,22 @@ func PrintJson(w io.Writer, data interface{}) {
 		return
 	}
 	fmt.Fprintln(w, string(b))
+}
+
+// PrintJsonNoHTMLEscape prints formatted JSON without escaping HTML-sensitive
+// characters such as < and >. Use it for outputs that intentionally carry XML,
+// HTML, or human-readable placeholders.
+func PrintJsonNoHTMLEscape(w io.Writer, data interface{}) {
+	injectNotice(data)
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(data); err != nil {
+		fmt.Fprintf(os.Stderr, "json marshal error: %v\n", err)
+		return
+	}
+	fmt.Fprint(w, buf.String())
 }
 
 // injectNotice adds a "_notice" field into CLI envelope maps.

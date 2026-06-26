@@ -92,6 +92,31 @@ func TestDryRunAPI_MarshalJSON(t *testing.T) {
 	}
 }
 
+func TestPrintDryRunJSONDoesNotHTMLEscape(t *testing.T) {
+	var buf bytes.Buffer
+	err := PrintDryRun(&buf, client.RawApiRequest{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/<obj_token from step 1>/fetch",
+		Data:   map[string]interface{}{"content": "<docx>hello</docx>"},
+		As:     "bot",
+	}, &core.CliConfig{AppID: "app123"}, "json")
+	if err != nil {
+		t.Fatalf("PrintDryRun failed: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`/open-apis/docs_ai/v1/documents/<obj_token from step 1>/fetch`,
+		`"<docx>hello</docx>"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("JSON output missing unescaped %q: %s", want, out)
+		}
+	}
+	if strings.Contains(out, `\u003c`) || strings.Contains(out, `\u003e`) {
+		t.Fatalf("JSON output HTML-escaped angle brackets: %s", out)
+	}
+}
+
 func TestDryRunAPI_MultipleCalls(t *testing.T) {
 	dr := NewDryRunAPI().
 		GET("/open-apis/first").Desc("step 1").

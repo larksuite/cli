@@ -174,8 +174,6 @@ func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 }
 
 func TestDocsFetchWikiUsesResolvedDocumentToken(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-wiki"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
@@ -222,9 +220,54 @@ func TestDocsFetchWikiUsesResolvedDocumentToken(t *testing.T) {
 	}
 }
 
-func TestDocsFetchWikiRejectsNonDocumentNode(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+func TestDocsFetchWikiEncodesResolvedDocumentTokenInPath(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-wiki-encoded"))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/wiki/v2/spaces/get_node",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"node": map[string]interface{}{
+					"obj_type":  "docx",
+					"obj_token": "doxcnREAL/with?meta",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnREAL%2Fwith%3Fmeta/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{
+					"document_id": "doxcnREAL/with?meta",
+					"content":     "<docx>encoded</docx>",
+				},
+			},
+		},
+	})
 
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "https://tenant.feishu.cn/wiki/wikcnABC",
+		"--format", "pretty",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	if got := stdout.String(); got != "<docx>encoded</docx>\n" {
+		t.Fatalf("stdout = %q, want encoded document content", got)
+	}
+}
+
+func TestDocsFetchWikiRejectsNonDocumentNode(t *testing.T) {
 	f, _, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-wiki-sheet"))
 	reg.Register(&httpmock.Stub{
 		Method: "GET",

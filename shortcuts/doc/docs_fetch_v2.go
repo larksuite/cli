@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -77,7 +78,7 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 
-	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", documentID)
+	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s/fetch", validate.EncodePathSegment(documentID))
 	body := buildFetchBody(runtime)
 
 	data, err := doDocAPI(runtime, "POST", apiPath, body)

@@ -1132,7 +1132,7 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 	if rctx.Format == "pretty" {
 		fmt.Fprint(f.IOStreams.Out, dryResult.Format())
 	} else {
-		output.PrintJson(f.IOStreams.Out, dryResult)
+		output.PrintJsonNoHTMLEscape(f.IOStreams.Out, dryResult)
 	}
 	return nil
 }
