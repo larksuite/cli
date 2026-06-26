@@ -34,13 +34,13 @@ var AppsOpenAPIKeyDelete = common.Shortcut{
 		return common.NewDryRunAPI().DELETE(oapiKeyItemURL(rctx)).Desc("Delete open API key")
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		keyID := strings.TrimSpace(rctx.Str("key-id"))
+		id := strings.TrimSpace(rctx.Str("key-id"))
 		if _, err := rctx.CallAPITyped("DELETE", oapiKeyItemURL(rctx), nil, nil); err != nil {
 			return withAppsHint(err, oapiKeyNotFoundHint(rctx))
 		}
-		out := map[string]interface{}{"api_key_id": keyID, "deleted": true}
+		out := map[string]interface{}{"api_key_id": id, "deleted": true}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "deleted api_key_id: %s\n", keyID)
+			fmt.Fprintf(w, "deleted API key ID: %s\n", id)
 		})
 		return nil
 	},
