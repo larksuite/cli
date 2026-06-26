@@ -29,7 +29,7 @@ const messages = {
     step2Skip:      "已安装，跳过",
     step2Spinner:   "正在安装 Skills...",
     step2Done:      "Skills 已安装",
-    step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g",
+    step2Fail:      "Skills 安装失败。运行以下命令重试: npx skills add %s -y -g --copy",
     step3:          "正在配置应用...",
     step3NotFound:  "未找到 lark-cli，终止",
     step3Found:     "发现已配置应用 (App ID: %s)，继续使用？",
@@ -58,7 +58,7 @@ const messages = {
     step2Skip:      "Already installed. Skipped",
     step2Spinner:   "Installing skills...",
     step2Done:      "Skills installed",
-    step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g",
+    step2Fail:      "Failed to install skills. Run manually: npx skills add %s -y -g --copy",
     step3:          "Configuring app...",
     step3NotFound:  "lark-cli not found. Aborting",
     step3Found:     "Found existing app (App ID: %s). Use this app?",
@@ -275,11 +275,11 @@ async function stepInstallSkills(msg) {
       return;
     }
     try {
-      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-y", "-g"], {
+      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO, "-y", "-g", "--copy"], {
         timeout: 120000,
       });
     } catch (_) {
-      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-y", "-g"], {
+      await runSilentAsync("npx", ["-y", "skills", "add", SKILLS_REPO_FALLBACK, "-y", "-g", "--copy"], {
         timeout: 120000,
       });
     }

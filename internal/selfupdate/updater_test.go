@@ -206,7 +206,14 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 			run: func(u *Updater) *NpmResult {
 				return u.runSkillsInstall("https://open.feishu.cn", []string{"lark-mail"})
 			},
-			want: "-y skills add https://open.feishu.cn -s lark-mail -g -y",
+			want: "-y skills add https://open.feishu.cn -s lark-mail -g -y --copy",
+		},
+		{
+			name: "install all primary",
+			run: func(u *Updater) *NpmResult {
+				return u.runSkillsAdd("https://open.feishu.cn")
+			},
+			want: "-y skills add https://open.feishu.cn -g -y --copy",
 		},
 	}
 

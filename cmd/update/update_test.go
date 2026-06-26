@@ -600,7 +600,7 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if !strings.Contains(out, "skills will not be synced") {
 		t.Errorf("expected skills-not-synced warning in rollback hint, got: %s", out)
 	}
-	if !strings.Contains(out, "npx skills add larksuite/cli -y -g") {
+	if !strings.Contains(out, "npx skills add larksuite/cli -y -g --copy") {
 		t.Errorf("expected npx skills add hint for skills sync, got: %s", out)
 	}
 }
