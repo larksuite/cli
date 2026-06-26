@@ -6,6 +6,7 @@ package mail
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -230,8 +231,8 @@ func assertRuleReorderValidationError(t *testing.T, err error, wantSubtype errs.
 		return
 	}
 
-	validationErr, ok := err.(*errs.ValidationError)
-	if !ok {
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %T, want *errs.ValidationError", err)
 	}
 	for _, param := range validationErr.Params {
