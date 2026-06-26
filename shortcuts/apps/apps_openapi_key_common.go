@@ -5,9 +5,9 @@ package apps
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -50,7 +50,7 @@ func redactKeyInfo(info map[string]interface{}) map[string]interface{} {
 func parseScopeAPI(s string) (map[string]interface{}, error) {
 	fields := strings.Fields(strings.TrimSpace(s))
 	if len(fields) != 2 {
-		return nil, fmt.Errorf("expected 'METHOD /path', got %q", s)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "expected 'METHOD /path', got %q", s)
 	}
 	return map[string]interface{}{"http_method": strings.ToUpper(fields[0]), "http_path": fields[1]}, nil
 }
@@ -63,7 +63,7 @@ func buildRequestScope(scopeAll bool, scopeAPIs []string, scopeRaw string) (inte
 	hasFriendly := scopeAll || len(scopeAPIs) > 0
 	if scopeRaw != "" {
 		if hasFriendly {
-			return nil, fmt.Errorf("--scope cannot be combined with --scope-all / --scope-api")
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope cannot be combined with --scope-all / --scope-api").WithParam("--scope")
 		}
 		var rs interface{}
 		if err := json.Unmarshal([]byte(scopeRaw), &rs); err != nil {
