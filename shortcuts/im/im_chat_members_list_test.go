@@ -278,6 +278,71 @@ func TestMembersList_Execute_Truncations(t *testing.T) {
 	}
 }
 
+func TestMembersList_Pretty_ColumnOrder(t *testing.T) {
+	outData := map[string]interface{}{
+		"users": []interface{}{
+			map[string]interface{}{"member_id": "ou_user1", "name": "Alice", "tenant_key": "tk1"},
+		},
+		"bots": []interface{}{
+			map[string]interface{}{"member_id": "ou_bot1", "name": "MyBot", "app_id": "cli_abc", "tenant_key": "tk1"},
+		},
+		"has_more":   false,
+		"user_total": float64(1),
+		"bot_total":  float64(1),
+	}
+	var buf bytes.Buffer
+	renderMembersPretty(&buf, outData)
+	out := buf.String()
+
+	// Find the header line
+	headerLine := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "type") && strings.Contains(line, "member_id") {
+			headerLine = line
+			break
+		}
+	}
+	if headerLine == "" {
+		t.Fatalf("no header line found:\n%s", out)
+	}
+	idxType := strings.Index(headerLine, "type")
+	idxMemberID := strings.Index(headerLine, "member_id")
+	idxAppID := strings.Index(headerLine, "app_id")
+	idxTenantKey := strings.Index(headerLine, "tenant_key")
+
+	if idxType != 0 {
+		t.Errorf("type should be first column (got index %d): %q", idxType, headerLine)
+	}
+	if idxType >= idxMemberID {
+		t.Errorf("type should come before member_id in header: %q", headerLine)
+	}
+	if idxAppID >= idxTenantKey {
+		t.Errorf("app_id should come before tenant_key in header: %q", headerLine)
+	}
+}
+
+func TestMembersList_Pretty_HiddenUserTotal(t *testing.T) {
+	outData := map[string]interface{}{
+		"users": []interface{}{
+			map[string]interface{}{"member_id": "ou_user1", "name": "Alice", "tenant_key": "tk1"},
+		},
+		"bots":       []interface{}{},
+		"has_more":   false,
+		"user_total": float64(-1),
+		"bot_total":  float64(0),
+	}
+	var buf bytes.Buffer
+	renderMembersPretty(&buf, outData)
+	out := buf.String()
+
+	if !strings.Contains(out, "users hidden") {
+		t.Errorf("expected 'users hidden' in output:\n%s", out)
+	}
+	if strings.Contains(out, "hidden count of") {
+		t.Errorf("unexpected 'hidden count of' in output:\n%s", out)
+	}
+}
+
 func TestMembersList_Registered(t *testing.T) {
 	found := false
 	for _, s := range Shortcuts() {

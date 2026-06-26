@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -184,7 +184,17 @@ func writeMembersTruncationWarning(errOut io.Writer, truncs []interface{}) {
 	}
 }
 
-// renderMembersPretty renders the non-JSON table view.
+// fmtVal formats a value for table display, rendering nil as an empty string.
+func fmtVal(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+// renderMembersPretty renders the non-JSON table view with fixed column order:
+// type, member_id, name, app_id, tenant_key. Users are listed before bots;
+// the app_id column is empty for user rows.
 func renderMembersPretty(w io.Writer, outData map[string]interface{}) {
 	users, _ := outData["users"].([]interface{})
 	bots, _ := outData["bots"].([]interface{})
@@ -192,28 +202,39 @@ func renderMembersPretty(w io.Writer, outData map[string]interface{}) {
 		fmt.Fprintln(w, "No members found.")
 		return
 	}
-	rows := make([]map[string]interface{}, 0, len(users)+len(bots))
+	tw := tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
+	fmt.Fprintln(tw, "type\tmember_id\tname\tapp_id\ttenant_key")
 	for _, raw := range users {
 		m, _ := raw.(map[string]interface{})
 		if m == nil {
 			continue
 		}
-		rows = append(rows, map[string]interface{}{
-			"type": "user", "member_id": m["member_id"], "name": m["name"], "tenant_key": m["tenant_key"],
-		})
+		fmt.Fprintf(tw, "user\t%s\t%s\t\t%s\n",
+			fmtVal(m["member_id"]),
+			fmtVal(m["name"]),
+			fmtVal(m["tenant_key"]),
+		)
 	}
 	for _, raw := range bots {
 		m, _ := raw.(map[string]interface{})
 		if m == nil {
 			continue
 		}
-		rows = append(rows, map[string]interface{}{
-			"type": "bot", "member_id": m["member_id"], "name": m["name"], "app_id": m["app_id"], "tenant_key": m["tenant_key"],
-		})
+		fmt.Fprintf(tw, "bot\t%s\t%s\t%s\t%s\n",
+			fmtVal(m["member_id"]),
+			fmtVal(m["name"]),
+			fmtVal(m["app_id"]),
+			fmtVal(m["tenant_key"]),
+		)
 	}
-	output.PrintTable(w, rows)
-	ut := totalString(outData["user_total"])
-	fmt.Fprintf(w, "\n%s user(s), %v bot(s)", ut, outData["bot_total"])
+	tw.Flush()
+	var userSummary string
+	if isNegOneTotal(outData["user_total"]) {
+		userSummary = "users hidden"
+	} else {
+		userSummary = fmt.Sprintf("%v user(s)", outData["user_total"])
+	}
+	fmt.Fprintf(w, "\n%s, %v bot(s)", userSummary, outData["bot_total"])
 	if hm, _ := outData["has_more"].(bool); hm {
 		fmt.Fprintf(w, " (more available, use --page-token to fetch next page")
 		if pt, _ := outData["page_token"].(string); pt != "" {
@@ -222,6 +243,18 @@ func renderMembersPretty(w io.Writer, outData map[string]interface{}) {
 		fmt.Fprint(w, ")")
 	}
 	fmt.Fprintln(w)
+}
+
+// isNegOneTotal reports whether v represents the API's -1 "hidden" sentinel
+// (JSON numbers decode as float64; direct int is also handled).
+func isNegOneTotal(v interface{}) bool {
+	switch n := v.(type) {
+	case float64:
+		return n == -1
+	case int:
+		return n == -1
+	}
+	return false
 }
 
 // fetchAllMemberPages loops up to pageLimit pages, accumulating users[]/bots[]
@@ -280,21 +313,3 @@ func fetchAllMemberPages(ctx context.Context, runtime *common.RuntimeContext, pa
 	return merged, nil
 }
 
-// totalString renders user_total, mapping the API's -1 "hidden" sentinel to a
-// human label. JSON numbers decode as float64.
-func totalString(v interface{}) string {
-	switch n := v.(type) {
-	case float64:
-		if n == -1 {
-			return "hidden count of"
-		}
-		return fmt.Sprintf("%d", int(n))
-	case int:
-		if n == -1 {
-			return "hidden count of"
-		}
-		return fmt.Sprintf("%d", n)
-	default:
-		return fmt.Sprintf("%v", v)
-	}
-}
