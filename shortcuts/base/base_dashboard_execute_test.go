@@ -244,6 +244,32 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 		}
 	})
 
+	t.Run("text block json readback diagnostics", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_text",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_text",
+					"name":     "文本",
+					"type":     "text",
+					"data_config": map[string]interface{}{
+						"text": "\"图表说明\"",
+					},
+				},
+			},
+		})
+		if err := runShortcut(t, BaseDashboardBlockGet, []string{"+dashboard-block-get", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_text"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"dashboard_text_json_readback"`) || !strings.Contains(got, `"text_plain": "图表说明"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
 	t.Run("with user-id-type", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -270,35 +296,70 @@ func TestBaseDashboardBlockExecuteGet(t *testing.T) {
 
 // TestBaseDashboardBlockExecuteGetData tests the +dashboard-block-get-data command.
 func TestBaseDashboardBlockExecuteGetData(t *testing.T) {
-	factory, stdout, reg := newExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/base/v3/bases/app_x/dashboards/blocks/blk_chart/data",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"dimensions": []interface{}{
-					map[string]interface{}{"field_name": "文本", "alias": "dim_text"},
-				},
-				"measures": []interface{}{
-					map[string]interface{}{"field_name": "Bitable_Dashboard_Count", "aggregation": "count_all", "alias": "me_count"},
-				},
-				"main_data": []interface{}{
-					map[string]interface{}{
-						"dim_text": map[string]interface{}{"value": "A"},
-						"me_count": map[string]interface{}{"value": 3},
+	t.Run("with measure values", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/blocks/blk_chart/data",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"dimensions": []interface{}{
+						map[string]interface{}{"field_name": "文本", "alias": "dim_text"},
+					},
+					"measures": []interface{}{
+						map[string]interface{}{"field_name": "Bitable_Dashboard_Count", "aggregation": "count_all", "alias": "me_count"},
+					},
+					"main_data": []interface{}{
+						map[string]interface{}{
+							"dim_text": map[string]interface{}{"value": "A"},
+							"me_count": map[string]interface{}{"value": 3},
+						},
 					},
 				},
 			},
-		},
+		})
+		if err := runShortcut(t, BaseDashboardBlockGetData, []string{"+dashboard-block-get-data", "--base-token", "app_x", "--block-id", "blk_chart"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"dimensions"`) || !strings.Contains(got, `"main_data"`) || !strings.Contains(got, `"dim_text"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+		if strings.Contains(got, `"_diagnostics"`) {
+			t.Fatalf("unexpected diagnostics in stdout=%s", got)
+		}
 	})
-	if err := runShortcut(t, BaseDashboardBlockGetData, []string{"+dashboard-block-get-data", "--base-token", "app_x", "--block-id", "blk_chart"}, factory, stdout); err != nil {
-		t.Fatalf("err=%v", err)
-	}
-	got := stdout.String()
-	if !strings.Contains(got, `"dimensions"`) || !strings.Contains(got, `"main_data"`) || !strings.Contains(got, `"dim_text"`) {
-		t.Fatalf("stdout=%s", got)
-	}
+
+	t.Run("diagnoses rows without measure values", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/blocks/blk_empty_measure/data",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"dimensions": []interface{}{
+						map[string]interface{}{"field_name": "任务名称", "alias": "dim_task"},
+					},
+					"measures": []interface{}{
+						map[string]interface{}{"field_name": "处理时长", "aggregation": "sum", "alias": "me_duration"},
+					},
+					"main_data": []interface{}{
+						map[string]interface{}{"dim_task": map[string]interface{}{"value": "A"}},
+						map[string]interface{}{"dim_task": map[string]interface{}{"value": "B"}},
+					},
+				},
+			},
+		})
+		if err := runShortcut(t, BaseDashboardBlockGetData, []string{"+dashboard-block-get-data", "--base-token", "app_x", "--block-id", "blk_empty_measure"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"_diagnostics"`) || !strings.Contains(got, `"empty_measure_values"`) || !strings.Contains(got, `"me_duration"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
 }
 
 // TestBaseDashboardBlockExecuteCreate tests the +dashboard-block-create command.
@@ -754,6 +815,38 @@ func TestBaseDashboardBlockExecuteUpdate_TextType(t *testing.T) {
 		}
 		got := stdout.String()
 		if !strings.Contains(got, `"updated": true`) || !strings.Contains(got, "新内容") {
+			t.Fatalf("stdout=%s", got)
+		}
+		if strings.Contains(got, `"dashboard_text_json_readback"`) {
+			t.Fatalf("unexpected text diagnostics in stdout=%s", got)
+		}
+	})
+
+	t.Run("diagnoses json encoded text readback", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "PATCH",
+			URL:    "/open-apis/base/v3/bases/app_x/dashboards/dsh_001/blocks/blk_text",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"block_id": "blk_text",
+					"name":     "文本",
+					"type":     "text",
+					"data_config": map[string]interface{}{
+						"text": "\"# 新内容\"",
+					},
+				},
+			},
+		})
+		args := []string{"+dashboard-block-update", "--base-token", "app_x", "--dashboard-id", "dsh_001", "--block-id", "blk_text",
+			"--data-config", `{"text":"# 新内容"}`,
+		}
+		if err := runShortcut(t, BaseDashboardBlockUpdate, args, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		got := stdout.String()
+		if !strings.Contains(got, `"dashboard_text_json_readback"`) || !strings.Contains(got, `"text_plain": "# 新内容"`) {
 			t.Fatalf("stdout=%s", got)
 		}
 	})

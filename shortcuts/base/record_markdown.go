@@ -16,12 +16,30 @@ import (
 const maxRecordMarkdownIgnoredFields = 20
 
 func validateRecordReadFormat(runtime *common.RuntimeContext) error {
+	if recordReadJSONOutputAlias(runtime) {
+		if runtime.Changed("format") && runtime.Str("format") != "json" {
+			return baseValidationErrorf("--json and --format %s are mutually exclusive; use --format json", runtime.Str("format"))
+		}
+		return nil
+	}
 	switch runtime.Str("format") {
 	case "", "json", "markdown":
 		return nil
 	default:
 		return baseValidationErrorf("--format must be json or markdown")
 	}
+}
+
+func recordReadOutputFormat(runtime *common.RuntimeContext) string {
+	if recordReadJSONOutputAlias(runtime) {
+		return "json"
+	}
+	return runtime.Str("format")
+}
+
+func recordReadJSONOutputAlias(runtime *common.RuntimeContext) bool {
+	flag := runtime.Cmd.Flags().Lookup("json")
+	return flag != nil && flag.Value.Type() == "bool" && flag.Changed && runtime.Bool("json")
 }
 
 func outputRecordMarkdown(runtime *common.RuntimeContext, data map[string]interface{}) error {

@@ -403,7 +403,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	if runtime.Str("format") == "markdown" {
+	if recordReadOutputFormat(runtime) == "markdown" {
 		return outputRecordMarkdown(runtime, data)
 	}
 	runtime.Out(data, nil)
