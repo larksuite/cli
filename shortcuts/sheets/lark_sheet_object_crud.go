@@ -861,10 +861,10 @@ func newFloatImageWriteShortcut(command, description, op string, withIDFlag, isH
 				manageBody, _ := buildToolBody("manage_float_image_object", input)
 				return common.NewDryRunAPI().
 					POST("/open-apis/drive/v1/medias/upload_all").
-					Desc("upload local image to drive (parent_type=sheet_image)").
+					Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
 					Body(map[string]interface{}{
 						"file_name":   floatImageName(runtime),
-						"parent_type": "sheet_image",
+						"parent_type": sheetMediaParentType(token),
 						"parent_node": token,
 						"size":        "<file_size>",
 						"file":        "@" + img,
@@ -918,13 +918,7 @@ func uploadFloatImageIfLocal(runtime *common.RuntimeContext, spreadsheetToken st
 	if err != nil {
 		return "", sheetsInputStatError("image", err)
 	}
-	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
-		FilePath:   img,
-		FileName:   floatImageName(runtime),
-		FileSize:   info.Size(),
-		ParentType: "sheet_image",
-		ParentNode: &spreadsheetToken,
-	})
+	return uploadSheetImage(runtime, spreadsheetToken, img, floatImageName(runtime), info.Size())
 }
 
 func floatImageWriteInput(runtime flagView, token, sheetID, sheetName, op string, withIDFlag bool, uploadedImageToken string) (map[string]interface{}, error) {

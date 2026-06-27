@@ -50,6 +50,42 @@ func sheetsInputStatError(flag string, err error) error {
 	return wrapped
 }
 
+// Drive media parent_type values for uploading an image into a spreadsheet.
+// Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
+// synthetic token prefixed with "fake_office_" and the backend requires
+// "office_sheet_file" instead.
+const (
+	sheetImageParentType      = "sheet_image"
+	officeSheetFileParentType = "office_sheet_file"
+	fakeOfficeTokenPrefix     = "fake_office_"
+)
+
+// sheetMediaParentType returns the drive media parent_type to use when
+// uploading an image whose parent_node is spreadsheetToken. It is the single
+// place that maps a spreadsheet token to its parent_type so every image-upload
+// entry point (and its dry-run preview) stays consistent.
+func sheetMediaParentType(spreadsheetToken string) string {
+	if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {
+		return officeSheetFileParentType
+	}
+	return sheetImageParentType
+}
+
+// uploadSheetImage uploads a local image file as a spreadsheet media asset and
+// returns its file_token. It funnels every sheets image upload through one
+// place so the parent_type selection (see sheetMediaParentType) is never
+// duplicated or forgotten at a call site. Callers are expected to have already
+// resolved spreadsheetToken (the upload's parent_node) and stat'd the file.
+func uploadSheetImage(runtime *common.RuntimeContext, spreadsheetToken, filePath, fileName string, fileSize int64) (string, error) {
+	return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
+		FilePath:   filePath,
+		FileName:   fileName,
+		FileSize:   fileSize,
+		ParentType: sheetMediaParentType(spreadsheetToken),
+		ParentNode: &spreadsheetToken,
+	})
+}
+
 // spreadsheetRef classification: a --url / --spreadsheet-token input names a
 // spreadsheet either directly (a /sheets/ URL or raw token) or indirectly via a
 // wiki node that must be resolved to its backing spreadsheet at Execute time.
