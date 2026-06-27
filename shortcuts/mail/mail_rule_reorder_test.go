@@ -36,6 +36,43 @@ func TestParseRuleIDsInputRejectsDuplicate(t *testing.T) {
 	}
 }
 
+func TestParseRuleReorderInputMoveBefore(t *testing.T) {
+	runtime := runtimeForMailRuleReorderDryRun(t, map[string]string{
+		"mailbox": "me",
+		"move":    "4",
+		"before":  "2",
+	})
+	input, err := parseRuleReorderInput(runtime)
+	if err != nil {
+		t.Fatalf("parseRuleReorderInput returned error: %v", err)
+	}
+	if input.MoveRuleID != "4" || input.BeforeRuleID != "2" || input.AfterRuleID != "" || input.ToTop {
+		t.Fatalf("unexpected input: %#v", input)
+	}
+}
+
+func TestParseRuleReorderInputRejectsMixedModes(t *testing.T) {
+	runtime := runtimeForMailRuleReorderDryRun(t, map[string]string{
+		"rule-ids": "1,2",
+		"move":     "3",
+		"before":   "2",
+	})
+	_, err := parseRuleReorderInput(runtime)
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("expected mutually exclusive validation error, got %v", err)
+	}
+}
+
+func TestParseRuleReorderInputRejectsMissingPlacement(t *testing.T) {
+	runtime := runtimeForMailRuleReorderDryRun(t, map[string]string{
+		"move": "3",
+	})
+	_, err := parseRuleReorderInput(runtime)
+	if err == nil || !strings.Contains(err.Error(), "exactly one of --before, --after, or --to-top") {
+		t.Fatalf("expected placement validation error, got %v", err)
+	}
+}
+
 func TestBuildCompletedRuleOrder(t *testing.T) {
 	current := []mailboxRule{
 		{ID: "1", Name: "first"},
@@ -55,6 +92,80 @@ func TestBuildCompletedRuleOrder(t *testing.T) {
 	}
 }
 
+func TestBuildMoveRuleOrderBefore(t *testing.T) {
+	current := []mailboxRule{
+		{ID: "1", Name: "first"},
+		{ID: "2", Name: "second"},
+		{ID: "3", Name: "third"},
+		{ID: "4", Name: "fourth"},
+	}
+	ids, reordered, err := buildMoveRuleOrder(ruleReorderInput{
+		MoveRuleID:   "4",
+		BeforeRuleID: "2",
+	}, current)
+	if err != nil {
+		t.Fatalf("buildMoveRuleOrder returned error: %v", err)
+	}
+	if got, want := strings.Join(ids, ","), "1,4,2,3"; got != want {
+		t.Fatalf("completed ids = %s, want %s", got, want)
+	}
+	if got, want := reordered[0].ID+","+reordered[1].ID+","+reordered[2].ID+","+reordered[3].ID, "1,4,2,3"; got != want {
+		t.Fatalf("reordered ids = %s, want %s", got, want)
+	}
+}
+
+func TestBuildMoveRuleOrderAfter(t *testing.T) {
+	current := []mailboxRule{
+		{ID: "1", Name: "first"},
+		{ID: "2", Name: "second"},
+		{ID: "3", Name: "third"},
+		{ID: "4", Name: "fourth"},
+	}
+	ids, _, err := buildMoveRuleOrder(ruleReorderInput{
+		MoveRuleID:  "1",
+		AfterRuleID: "3",
+	}, current)
+	if err != nil {
+		t.Fatalf("buildMoveRuleOrder returned error: %v", err)
+	}
+	if got, want := strings.Join(ids, ","), "2,3,1,4"; got != want {
+		t.Fatalf("completed ids = %s, want %s", got, want)
+	}
+}
+
+func TestBuildMoveRuleOrderToTop(t *testing.T) {
+	current := []mailboxRule{
+		{ID: "1", Name: "first"},
+		{ID: "2", Name: "second"},
+		{ID: "3", Name: "third"},
+		{ID: "4", Name: "fourth"},
+	}
+	ids, _, err := buildMoveRuleOrder(ruleReorderInput{
+		MoveRuleID: "3",
+		ToTop:      true,
+	}, current)
+	if err != nil {
+		t.Fatalf("buildMoveRuleOrder returned error: %v", err)
+	}
+	if got, want := strings.Join(ids, ","), "3,1,2,4"; got != want {
+		t.Fatalf("completed ids = %s, want %s", got, want)
+	}
+}
+
+func TestBuildMoveRuleOrderRejectsUnknownAnchor(t *testing.T) {
+	current := []mailboxRule{
+		{ID: "1", Name: "first"},
+		{ID: "2", Name: "second"},
+	}
+	_, _, err := buildMoveRuleOrder(ruleReorderInput{
+		MoveRuleID:   "1",
+		BeforeRuleID: "7",
+	}, current)
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected not-found validation error, got %v", err)
+	}
+}
+
 func TestMailRuleReorderDryRunListsAndReorders(t *testing.T) {
 	runtime := runtimeForMailRuleReorderDryRun(t, map[string]string{
 		"mailbox":  "me",
@@ -69,6 +180,18 @@ func TestMailRuleReorderDryRunListsAndReorders(t *testing.T) {
 	}
 	if apis[1].Method != "POST" || apis[1].URL != mailboxPath("me", "rules", "reorder") {
 		t.Fatalf("second dry-run API = %+v, want POST %s", apis[1], mailboxPath("me", "rules", "reorder"))
+	}
+}
+
+func TestMailRuleReorderDryRunMoveBeforeIncludesFlags(t *testing.T) {
+	runtime := runtimeForMailRuleReorderDryRun(t, map[string]string{
+		"mailbox": "me",
+		"move":    "4",
+		"before":  "2",
+	})
+	apis := dryRunAPIsForMailRuleReorderTest(t, MailRuleReorder.DryRun(context.Background(), runtime))
+	if len(apis) != 2 {
+		t.Fatalf("expected 2 API calls in dry-run, got %d", len(apis))
 	}
 }
 
@@ -118,6 +241,69 @@ func TestMailRuleReorderExecuteRejectsUnknownRule(t *testing.T) {
 	err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--rule-ids", "7,1"}, f, stdout)
 	if err == nil || !strings.Contains(err.Error(), "not found") {
 		t.Fatalf("expected not-found validation error, got %v", err)
+	}
+}
+
+func TestMailRuleReorderExecuteMoveBefore(t *testing.T) {
+	f, stdout, _, reg := mailRuleReorderTestFactory(t)
+	registerMailboxRulesListStub(reg, "me", []map[string]interface{}{
+		{"id": float64(1), "name": "rule-1", "is_enable": true},
+		{"id": float64(2), "name": "rule-2", "is_enable": true},
+		{"id": float64(3), "name": "rule-3", "is_enable": false},
+		{"id": float64(4), "name": "rule-4", "is_enable": true},
+	})
+	reorderStub := registerMailboxRulesReorderStub(reg, "me")
+
+	if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move", "4", "--before", "2"}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut returned error: %v", err)
+	}
+
+	var body struct {
+		RuleIDs []string `json:"rule_ids"`
+	}
+	if err := json.Unmarshal(reorderStub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal reorder body: %v", err)
+	}
+	if got, want := strings.Join(body.RuleIDs, ","), "1,4,2,3"; got != want {
+		t.Fatalf("reorder body rule_ids = %s, want %s", got, want)
+	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if got, want := data["move"], "4"; got != want {
+		t.Fatalf("move = %v, want %v", got, want)
+	}
+	if got, want := data["before_rule_id"], "2"; got != want {
+		t.Fatalf("before_rule_id = %v, want %v", got, want)
+	}
+}
+
+func TestMailRuleReorderExecuteMoveToTop(t *testing.T) {
+	f, stdout, _, reg := mailRuleReorderTestFactory(t)
+	registerMailboxRulesListStub(reg, "me", []map[string]interface{}{
+		{"id": float64(1), "name": "rule-1", "is_enable": true},
+		{"id": float64(2), "name": "rule-2", "is_enable": true},
+		{"id": float64(3), "name": "rule-3", "is_enable": false},
+		{"id": float64(4), "name": "rule-4", "is_enable": true},
+	})
+	reorderStub := registerMailboxRulesReorderStub(reg, "me")
+
+	if err := runMountedMailShortcut(t, MailRuleReorder, []string{"+rule-reorder", "--move", "3", "--to-top"}, f, stdout); err != nil {
+		t.Fatalf("runMountedMailShortcut returned error: %v", err)
+	}
+
+	var body struct {
+		RuleIDs []string `json:"rule_ids"`
+	}
+	if err := json.Unmarshal(reorderStub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal reorder body: %v", err)
+	}
+	if got, want := strings.Join(body.RuleIDs, ","), "3,1,2,4"; got != want {
+		t.Fatalf("reorder body rule_ids = %s, want %s", got, want)
+	}
+
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if got, want := data["to_top"], true; got != want {
+		t.Fatalf("to_top = %v, want %v", got, want)
 	}
 }
 
