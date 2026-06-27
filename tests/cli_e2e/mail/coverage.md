@@ -65,7 +65,7 @@
 | ✕ | mail user_mailbox.rules create | api |  | none | rule lifecycle left for a dedicated workflow |
 | ✕ | mail user_mailbox.rules delete | api |  | none | rule lifecycle left for a dedicated workflow |
 | ✕ | mail user_mailbox.rules list | api |  | none | rule lifecycle left for a dedicated workflow |
-| ✕ | mail user_mailbox.rules reorder | api |  | none | rule lifecycle left for a dedicated workflow |
+| ✓ | mail +rule-reorder | shortcut | mail_rule_reorder_test.go::TestMailRuleReorderExecuteCompletesMissingIDs | partial `--rule-ids` input | shortcut auto-completes omitted rule IDs before calling reorder |
 | ✕ | mail user_mailbox.rules update | api |  | none | rule lifecycle left for a dedicated workflow |
 | ✕ | mail user_mailbox.sent_messages get_recall_detail | api |  | none | requires a recallable sent message |
 | ✕ | mail user_mailbox.sent_messages recall | api |  | none | requires a delivered sent message within recall window |

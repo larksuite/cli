@@ -119,7 +119,7 @@ metadata:
 - 查看发送邮件后的投递状态：发送成功后查看邮件投递状态；也覆盖发送拦截。ref: [lark-mail-send-status](references/lark-mail-send-status.md)
 - 使用邮件模板：区分个人模板和静态 HTML 模板，发信类 shortcut 用 `--template-id` 套用模板。ref: [lark-mail-template](references/lark-mail-template.md)
 - 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
-- 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 收信规则：创建、验证、删除自动处理收到邮件的规则。部分 `rule_ids` 的重排序优先使用 `+rule-reorder`。ref: [lark-mail-rules](references/lark-mail-rules.md)、[lark-mail-rule-reorder](references/lark-mail-rule-reorder.md)
 - 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
 - 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
 - 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
@@ -269,6 +269,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 |----------|------|
 | [`+message`](references/lark-mail-message.md) | Use only when reading full content for one email by one message ID. For multiple message IDs, use `mail +messages`; do not loop `mail +message`. |
 | [`+messages`](references/lark-mail-messages.md) | Use when reading full content for multiple emails by message ID. Accepts comma-separated message IDs; CLI handles more than 20 IDs in batches and merges output. |
+| [`+rule-reorder`](references/lark-mail-rule-reorder.md) | Reorder inbox rules from a partial rule ID list. Fetches current rules first, auto-completes omitted IDs, then calls reorder with the full ordered list. |
 | [`+thread`](references/lark-mail-thread.md) | Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images. |
 | [`+triage`](references/lark-mail-triage.md) | List mail summaries (date/from/subject/message_id). Use --query for full-text search, --filter for exact-match conditions. |
 | [`+watch`](references/lark-mail-watch.md) | Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output. |
