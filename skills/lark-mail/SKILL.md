@@ -114,6 +114,21 @@ metadata:
 - 若用户需要，再继续帮他修改草稿或执行发送
 - 若本次产出了草稿且不是直接发信，则优先展示草稿打开链接；若当前输出没有链接，则静默处理
 
+### 常用场景索引
+
+- 收件人地址搜索：搜索用户邮箱地址、群邮箱地址、邮件组地址，提供给用户确认。ref: [lark-mail-recipient-search](references/lark-mail-recipient-search.md)
+- 使用公共邮箱发信、使用邮箱别名发信：通过 `--mailbox` 指定邮箱归属，通过 `--from` 指定发件人地址。ref: [lark-mail-send-as](references/lark-mail-send-as.md)
+- 查看发送邮件后的投递状态：发送成功后查看邮件投递状态；也覆盖发送拦截。ref: [lark-mail-send-status](references/lark-mail-send-status.md)
+- 使用邮件模板：区分个人模板和静态 HTML 模板，发信类 shortcut 用 `--template-id` 套用模板。ref: [lark-mail-template](references/lark-mail-template.md)
+- 撤回已发送邮件：撤回邮件并查询异步撤回状态。ref: [lark-mail-recall](references/lark-mail-recall.md)
+- 收信规则：创建、验证、删除自动处理收到邮件的规则。ref: [lark-mail-rules](references/lark-mail-rules.md)
+- 用户发件人黑白名单：查询、加白/加黑、删除发件人地址或域名。ref: [list](references/lark-mail-allow-block-list.md)、[set](references/lark-mail-allow-block-set.md)、[delete](references/lark-mail-allow-block-delete.md)
+- 分享邮件到 IM：分享邮件或会话到群聊、个人会话。ref: [lark-mail-share-to-chat](references/lark-mail-share-to-chat.md)
+- 发送日程邀请邮件：在邮件中嵌入 `text/calendar` 日程邀请。ref: [lark-mail-calendar-invite](references/lark-mail-calendar-invite.md)
+- 编写复杂 HTML 正文：复杂 HTML、本地图片、安全不确定时读取规范或运行 `+lint-html`；普通正文无需预读。ref: [lark-mail-html](references/lark-mail-html.md)
+- 读取邮件：按场景选择 triage、单封、批量或会话读取。ref: [`+triage`](references/lark-mail-triage.md)、[`+message`](references/lark-mail-message.md)、[`+messages`](references/lark-mail-messages.md)、[`+thread`](references/lark-mail-thread.md)
+- 写信、草稿、回复、转发：先判断新邮件、回复或转发，再决定创建草稿、直接发送或定时发送。命令选择见下方；公共邮箱/别名、发送状态等见相关 ref。
+
 ### CRITICAL — 首次使用任何命令前先查 `-h`
 
 无论是 Shortcut（`+triage`、`+send` 等）还是原生 API，**首次调用前必须先运行 `-h` 查看可用参数**，不要猜测参数名称：
@@ -480,6 +495,9 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+send-receipt`](references/lark-mail-send-receipt.md) | Send a read-receipt reply for an incoming message that requested one (i.e. carries the READ_RECEIPT_REQUEST label). Body is auto-generated (subject / recipient / send time / read time) to match the Lark client's receipt format — callers cannot customize it, matching the industry norm that read-receipt bodies are system-generated templates, not free-form replies. Intended for agent use after the user confirms. |
 | [`+decline-receipt`](references/lark-mail-decline-receipt.md) | Dismiss the read-receipt request banner on an incoming mail by clearing its READ_RECEIPT_REQUEST label, without sending a receipt. Use when the user wants to silence the prompt but refuse to confirm they have read it. Idempotent — safe to re-run. |
 | [`+signature`](references/lark-mail-signature.md) | List or view email signatures with default usage info. |
+| [`+allow-block-list`](references/lark-mail-allow-block-list.md) | List or search the current user's personal sender allow/block lists. |
+| [`+allow-block-set`](references/lark-mail-allow-block-set.md) | Add sender addresses or domains to the current user's personal allow or block list. |
+| [`+allow-block-delete`](references/lark-mail-allow-block-delete.md) | Remove sender addresses or domains from the current user's personal allow or block list. |
 | [`+share-to-chat`](references/lark-mail-share-to-chat.md) | Share an email or thread as a card to a Lark IM chat. |
 | [`+template-create`](references/lark-mail-template-create.md) | Create a personal mail template. Scans HTML <img src> local paths (reusing draft inline-image detection), uploads inline images and non-inline attachments to Drive, rewrites HTML to cid: references, and POSTs a Template payload to mail.user_mailbox.templates.create. |
 | [`+template-update`](references/lark-mail-template-update.md) | Update an existing mail template. Supports --inspect (read-only projection), --print-patch-template (prints a JSON skeleton for --patch-file), and flat flags (--set-subject / --set-name / etc). Internally it GETs the template, applies the patch, rewrites <img> local paths to cid: refs, and PUTs a full-replace update (no optimistic locking: last-write-wins). |
@@ -657,4 +675,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
