@@ -242,7 +242,7 @@ func TestMailAllowBlockSet_MapsBatchCreateAndWarnsFailedItems(t *testing.T) {
 }
 
 func TestMailAllowBlockDelete_MapsBatchRemove(t *testing.T) {
-	f, stdout, _, reg := mailShortcutTestFactory(t)
+	f, stdout, stderr, reg := mailShortcutTestFactory(t)
 	stub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/user_mailboxes/alice@example.com/allow_senders/batch_remove",
@@ -256,7 +256,12 @@ func TestMailAllowBlockDelete_MapsBatchRemove(t *testing.T) {
 		},
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"deleted_count": 2},
+			"data": map[string]interface{}{
+				"deleted_count": 1,
+				"failed_items": []map[string]interface{}{
+					{"sender": "example.org", "reason": "not_found"},
+				},
+			},
 		},
 	}
 	reg.Register(stub)
@@ -272,9 +277,41 @@ func TestMailAllowBlockDelete_MapsBatchRemove(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	reg.Verify(t)
+	if !strings.Contains(stderr.String(), "warning: 1 allow/block item") {
+		t.Fatalf("stderr missing failed_items warning: %s", stderr.String())
+	}
 	data := decodeShortcutEnvelopeData(t, stdout)
-	if data["success_count"].(float64) != 2 {
-		t.Fatalf("success_count = %v, want 2", data["success_count"])
+	if data["success_count"].(float64) != 1 {
+		t.Fatalf("success_count = %v, want 1", data["success_count"])
+	}
+	if len(data["failed_items"].([]interface{})) != 1 {
+		t.Fatalf("failed_items = %#v, want one item", data["failed_items"])
+	}
+}
+
+func TestMailAllowBlockDelete_ExplicitZeroDeletedCount(t *testing.T) {
+	f, stdout, _, reg := mailShortcutTestFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/user_mailboxes/me/blocked_senders/batch_remove",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"deleted_count": 0},
+		},
+	})
+
+	err := runMountedMailShortcut(t, MailAllowBlockDelete, []string{
+		"+allow-block-delete",
+		"--type", "block",
+		"--address", "missing@example.com",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+	data := decodeShortcutEnvelopeData(t, stdout)
+	if data["success_count"].(float64) != 0 {
+		t.Fatalf("success_count = %v, want explicit zero", data["success_count"])
 	}
 }
 
@@ -331,24 +368,32 @@ func TestMailAllowBlockValidation(t *testing.T) {
 
 func TestMailAllowBlockAPIHints(t *testing.T) {
 	tests := []struct {
-		name string
-		body map[string]interface{}
-		want string
+		name         string
+		body         map[string]interface{}
+		want         string
+		wantCategory errs.Category
+		wantSubtype  errs.Subtype
 	}{
 		{
-			name: "self address",
-			body: map[string]interface{}{"code": 400, "msg": "cannot add self address"},
-			want: "do not add your own email address",
+			name:         "self address",
+			body:         map[string]interface{}{"code": 400, "msg": "cannot add self address"},
+			want:         "do not add your own email address",
+			wantCategory: errs.CategoryAPI,
+			wantSubtype:  errs.SubtypeUnknown,
 		},
 		{
-			name: "cache not ready",
-			body: map[string]interface{}{"code": 456, "msg": "search cache is building, retry later"},
-			want: "search cache may still be building",
+			name:         "cache not ready",
+			body:         map[string]interface{}{"code": 456, "msg": "search cache is building, retry later"},
+			want:         "search cache may still be building",
+			wantCategory: errs.CategoryAPI,
+			wantSubtype:  errs.SubtypeUnknown,
 		},
 		{
-			name: "scope denied",
-			body: map[string]interface{}{"code": 99991679, "msg": "scope denied"},
-			want: "scope",
+			name:         "scope denied",
+			body:         map[string]interface{}{"code": 99991679, "msg": "scope denied"},
+			want:         "scope",
+			wantCategory: errs.CategoryAuthorization,
+			wantSubtype:  errs.SubtypeMissingScope,
 		},
 	}
 	for _, tt := range tests {
@@ -369,6 +414,9 @@ func TestMailAllowBlockAPIHints(t *testing.T) {
 			p, ok := errs.ProblemOf(err)
 			if !ok {
 				t.Fatalf("expected typed error, got %T: %v", err, err)
+			}
+			if p.Category != tt.wantCategory || p.Subtype != tt.wantSubtype {
+				t.Fatalf("typed error contract = %s/%s, want %s/%s", p.Category, p.Subtype, tt.wantCategory, tt.wantSubtype)
 			}
 			combined := p.Message + " " + p.Hint
 			if !strings.Contains(strings.ToLower(combined), strings.ToLower(tt.want)) {

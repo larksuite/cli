@@ -297,6 +297,7 @@ func executeAllowBlockDelete(ctx context.Context, runtime *common.RuntimeContext
 		return decorateAllowBlockAPIError(err)
 	}
 	out := buildAllowBlockBatchOutput(mailboxID, typ, len(addresses), data)
+	emitAllowBlockFailedItemsWarning(runtime, out.FailedItems)
 	runtime.OutFormat(out, &output.Meta{Count: out.SuccessCount}, nil)
 	return nil
 }
@@ -388,14 +389,14 @@ func extractAllowBlockItems(typ string, data map[string]interface{}) []allowBloc
 
 func buildAllowBlockBatchOutput(mailboxID, typ string, requested int, data map[string]interface{}) allowBlockBatchOutput {
 	failedItems := extractAllowBlockFailedItems(data)
-	successCount := intVal(data["success_count"])
-	if successCount == 0 {
-		successCount = intVal(data["added_count"])
+	successCount, ok := intValIfPresent(data, "success_count")
+	if !ok {
+		successCount, ok = intValIfPresent(data, "added_count")
 	}
-	if successCount == 0 {
-		successCount = intVal(data["deleted_count"])
+	if !ok {
+		successCount, ok = intValIfPresent(data, "deleted_count")
 	}
-	if successCount == 0 && len(failedItems) == 0 {
+	if !ok && len(failedItems) == 0 {
 		successCount = requested
 	}
 	return allowBlockBatchOutput{
@@ -406,6 +407,14 @@ func buildAllowBlockBatchOutput(mailboxID, typ string, requested int, data map[s
 		FailedItems:  failedItems,
 		Response:     data,
 	}
+}
+
+func intValIfPresent(data map[string]interface{}, key string) (int, bool) {
+	v, ok := data[key]
+	if !ok {
+		return 0, false
+	}
+	return intVal(v), true
 }
 
 func extractAllowBlockFailedItems(data map[string]interface{}) []map[string]interface{} {
