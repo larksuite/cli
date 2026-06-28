@@ -2,14 +2,19 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 
-## Key catalog (2)
+## Key catalog
 
 | EventKey | Purpose |
 |---|---|
 | `vc.meeting.participant_meeting_ended_v1` | A meeting the current user participates in has ended |
 | `vc.note.generated_v1` | A note has been generated (meeting, recording, upload, etc.) |
+| `vc.bot.meeting_invited_v1` | The bot is invited to a meeting |
+| `vc.bot.meeting_event_v1` | The bot observes meeting activity |
+| `vc.bot.meeting_ended_v1` | A meeting observed by the bot has ended |
 
-Both keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. Both require `--as user`.
+The user VC keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. They require `--as user`.
+
+The `vc.bot.*` keys are bot-observed events. They require `--as bot`, keep the original payload in `raw_event`, and do not call the user-side VC meeting subscription / unsubscription APIs.
 
 ## Scopes & auth
 
@@ -17,6 +22,9 @@ Both keys use a **Custom schema** (flat output) and carry a **PreConsume hook** 
 |---|---|---|
 | `vc.meeting.participant_meeting_ended_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.note.generated_v1` | `vc:note:read` | user |
+| `vc.bot.meeting_invited_v1` | App event subscription in the Developer Console | bot |
+| `vc.bot.meeting_event_v1` | App event subscription in the Developer Console | bot |
+| `vc.bot.meeting_ended_v1` | App event subscription in the Developer Console | bot |
 
 ---
 
@@ -92,3 +100,60 @@ lark-cli event consume vc.note.generated_v1 --as user \
 lark-cli event consume vc.note.generated_v1 --as user \
   --jq 'select(.note_source.source_type == "meeting") | {note_id, meeting_id: .note_source.source_entity_id}'
 ```
+
+---
+
+## Bot-observed VC events
+
+Use bot identity for all `vc.bot.*` keys:
+
+```bash
+lark-cli event consume vc.bot.meeting_invited_v1 --as bot
+lark-cli event consume vc.bot.meeting_event_v1 --as bot
+lark-cli event consume vc.bot.meeting_ended_v1 --as bot
+```
+
+These keys model what the bot observes. Do not treat them as aliases for:
+
+| Bot event | Not the same as |
+|---|---|
+| `vc.bot.meeting_invited_v1` | Meeting start events, participant join events, or IM meeting cards |
+| `vc.bot.meeting_event_v1` | User-side `vc +meeting-events` open meeting activity queries |
+| `vc.bot.meeting_ended_v1` | `vc.meeting.participant_meeting_ended_v1` or open meeting resource ended events |
+
+### Output fields
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | string | Event type; one of the supported `vc.bot.*` keys |
+| `event_id` | string | Globally unique event ID; safe for deduplication |
+| `timestamp` | string (timestamp_ms) | Event delivery time from `header.create_time` when present |
+| `call_id` | string | Invitation call ID; pass through to VC agent join when present |
+| `meeting_no` | string | Meeting number when present in the payload |
+| `activity_event_type` | string | Meeting activity subtype when present |
+| `chat_emoji_types` | string[] | Feishu post emotion `emoji_type` values extracted from `vc.bot.meeting_event_v1` payloads |
+| `raw_event` | object | Original bot event payload; authoritative for fields not normalized by `lark-cli` |
+
+Malformed or evolving payloads are not over-normalized. If a payload cannot be parsed, `event consume` passes the raw payload through; if a field is not recognized, read `raw_event`.
+
+### Post emotion forwarding
+
+`lark-cli event consume` does not send IM messages automatically. When `vc.bot.meeting_event_v1` exposes `chat_emoji_types`, an agent can explicitly forward the emotion by sending a Feishu `post` message whose content uses `tag: "emotion"` and `emoji_type` from `chat_emoji_types`.
+
+```bash
+lark-cli im +messages-send \
+  --chat-id <chat_id> \
+  --msg-type post \
+  --content '{
+    "zh_cn": {
+      "title": "Meeting reaction",
+      "content": [[
+        {"tag": "text", "text": "Reaction: "},
+        {"tag": "emotion", "emoji_type": "JIAYI"}
+      ]]
+    }
+  }' \
+  --as bot
+```
+
+Use the exact key from `.chat_emoji_types[]` as `emoji_type`; do not convert it to a system emoji or synthesize another value.

@@ -16,6 +16,9 @@ const (
 	eventTypeRecordingStarted             = "vc.recording.recording_started_v1"
 	eventTypeRecordingTranscriptGenerated = "vc.recording.recording_transcript_generated_v1"
 	eventTypeRecordingEnded               = "vc.recording.recording_ended_v1"
+	eventTypeBotMeetingInvited            = "vc.bot.meeting_invited_v1"
+	eventTypeBotMeetingEvent              = "vc.bot.meeting_event_v1"
+	eventTypeBotMeetingEnded              = "vc.bot.meeting_ended_v1"
 
 	pathMeetingSubscribe     = "/open-apis/vc/v1/meetings/subscription"
 	pathMeetingUnsubscribe   = "/open-apis/vc/v1/meetings/unsubscription"
@@ -109,6 +112,42 @@ func Keys() []event.KeyDefinition {
 				"user",
 			},
 			RequiredConsoleEvents: []string{eventTypeRecordingEnded},
+		},
+		{
+			Key:         eventTypeBotMeetingInvited,
+			DisplayName: "Bot meeting invited",
+			Description: "Triggered when the bot is invited to a meeting; bot-observed event that does not create a user-side VC subscription",
+			EventType:   eventTypeBotMeetingInvited,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCBotEventOutput{})},
+			},
+			Process:               processVCBotMeetingInvited,
+			AuthTypes:             []string{"bot"},
+			RequiredConsoleEvents: []string{eventTypeBotMeetingInvited},
+		},
+		{
+			Key:         eventTypeBotMeetingEvent,
+			DisplayName: "Bot meeting event",
+			Description: "Triggered when the bot observes activity in a meeting; keeps the raw bot payload and extracts stable activity fields",
+			EventType:   eventTypeBotMeetingEvent,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCBotEventOutput{})},
+			},
+			Process:               processVCBotMeetingEvent,
+			AuthTypes:             []string{"bot"},
+			RequiredConsoleEvents: []string{eventTypeBotMeetingEvent},
+		},
+		{
+			Key:         eventTypeBotMeetingEnded,
+			DisplayName: "Bot meeting ended",
+			Description: "Triggered when a meeting observed by the bot has ended; distinct from user participant or open meeting resource events",
+			EventType:   eventTypeBotMeetingEnded,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCBotEventOutput{})},
+			},
+			Process:               processVCBotMeetingEnded,
+			AuthTypes:             []string{"bot"},
+			RequiredConsoleEvents: []string{eventTypeBotMeetingEnded},
 		},
 	}
 }
