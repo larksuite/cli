@@ -1647,8 +1647,8 @@
         "kind": "own",
         "type": "int",
         "required": "optional",
-        "desc": "Safety cap; default 200000",
-        "default": "200000",
+        "desc": "Safety cap; default 50000",
+        "default": "50000",
         "hidden": true
       },
       {
