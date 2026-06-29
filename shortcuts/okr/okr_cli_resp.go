@@ -29,15 +29,10 @@ type RespCategory struct {
 
 // RespCycle 周期
 type RespCycle struct {
-	ID            string    `json:"id"`
-	CreateTime    string    `json:"create_time"`
-	UpdateTime    string    `json:"update_time"`
-	TenantCycleID string    `json:"tenant_cycle_id"`
-	Owner         RespOwner `json:"owner"`
-	StartTime     string    `json:"start_time"`
-	EndTime       string    `json:"end_time"`
-	CycleStatus   *string   `json:"cycle_status,omitempty"`
-	Score         *float64  `json:"score,omitempty"`
+	ID          string  `json:"id"`
+	StartTime   string  `json:"start_time"`
+	EndTime     string  `json:"end_time"`
+	CycleStatus *string `json:"cycle_status,omitempty"`
 }
 
 // RespIndicator 指标
@@ -151,4 +146,146 @@ type RespProgress struct {
 	CreateTime   *string           `json:"create_time,omitempty"`
 	Content      *string           `json:"content,omitempty"`
 	ProgressRate *RespProgressRate `json:"progress_rate,omitempty"`
+}
+
+// ========== Simple-style response types (semi-plain text format) ==========
+
+// RespKeyResultSimple is KeyResult response with SemiPlainContent instead of ContentBlock JSON string.
+type RespKeyResultSimple struct {
+	ID          string            `json:"id"`
+	CreateTime  string            `json:"create_time"`
+	UpdateTime  string            `json:"update_time"`
+	Owner       RespOwner         `json:"owner"`
+	ObjectiveID string            `json:"objective_id"`
+	Position    *int32            `json:"position,omitempty"`
+	Content     *SemiPlainContent `json:"content,omitempty"`
+	Score       *float64          `json:"score,omitempty"`
+	Weight      *float64          `json:"weight,omitempty"`
+	Deadline    *string           `json:"deadline,omitempty"`
+}
+
+// RespObjectiveSimple is Objective response with SemiPlainContent instead of ContentBlock JSON string.
+type RespObjectiveSimple struct {
+	ID         string                `json:"id"`
+	CreateTime string                `json:"create_time"`
+	UpdateTime string                `json:"update_time"`
+	Owner      RespOwner             `json:"owner"`
+	CycleID    string                `json:"cycle_id"`
+	Position   *int32                `json:"position,omitempty"`
+	Content    *SemiPlainContent     `json:"content,omitempty"`
+	Score      *float64              `json:"score,omitempty"`
+	Notes      *SemiPlainContent     `json:"notes,omitempty"`
+	Weight     *float64              `json:"weight,omitempty"`
+	Deadline   *string               `json:"deadline,omitempty"`
+	CategoryID *string               `json:"category_id,omitempty"`
+	KeyResults []RespKeyResultSimple `json:"key_results,omitempty"`
+}
+
+// RespProgressSimple is Progress response with SemiPlainContent instead of ContentBlock JSON string.
+type RespProgressSimple struct {
+	ID           string            `json:"progress_id"`
+	ModifyTime   string            `json:"modify_time"`
+	CreateTime   *string           `json:"create_time,omitempty"`
+	Content      *SemiPlainContent `json:"content,omitempty"`
+	ProgressRate *RespProgressRate `json:"progress_rate,omitempty"`
+}
+
+// ToSimple converts KeyResult to RespKeyResultSimple.
+func (k *KeyResult) ToSimple() *RespKeyResultSimple {
+	if k == nil {
+		return nil
+	}
+	result := &RespKeyResultSimple{
+		ID:          k.ID,
+		CreateTime:  formatTimestamp(k.CreateTime),
+		UpdateTime:  formatTimestamp(k.UpdateTime),
+		Owner:       *k.Owner.ToResp(),
+		ObjectiveID: k.ObjectiveID,
+		Position:    k.Position,
+		Score:       k.Score,
+		Weight:      k.Weight,
+	}
+	if k.Deadline != nil {
+		d := formatTimestamp(*k.Deadline)
+		result.Deadline = &d
+	}
+	result.Content = k.Content.ToSemiPlain()
+	return result
+}
+
+// ToSimple converts Objective to RespObjectiveSimple.
+func (o *Objective) ToSimple() *RespObjectiveSimple {
+	if o == nil {
+		return nil
+	}
+	result := &RespObjectiveSimple{
+		ID:         o.ID,
+		CreateTime: formatTimestamp(o.CreateTime),
+		UpdateTime: formatTimestamp(o.UpdateTime),
+		Owner:      *o.Owner.ToResp(),
+		CycleID:    o.CycleID,
+		Position:   o.Position,
+		Score:      o.Score,
+		Weight:     o.Weight,
+		CategoryID: o.CategoryID,
+	}
+	if o.Deadline != nil {
+		d := formatTimestamp(*o.Deadline)
+		result.Deadline = &d
+	}
+	result.Content = o.Content.ToSemiPlain()
+	result.Notes = o.Notes.ToSemiPlain()
+	return result
+}
+
+// ToSimple converts ProgressV1 to RespProgressSimple.
+func (p *ProgressV1) ToSimple() *RespProgressSimple {
+	if p == nil {
+		return nil
+	}
+	resp := &RespProgressSimple{
+		ID:         p.ID,
+		ModifyTime: formatTimestamp(p.ModifyTime),
+	}
+	if p.ProgressRate != nil {
+		resp.ProgressRate = &RespProgressRate{
+			Percent: p.ProgressRate.Percent,
+		}
+		if p.ProgressRate.Status != nil {
+			s := ProgressStatus(*p.ProgressRate.Status).String()
+			if s != "" {
+				resp.ProgressRate.Status = &s
+			}
+		}
+	}
+	if p.Content != nil {
+		resp.Content = p.Content.ToV2().ToSemiPlain()
+	}
+	return resp
+}
+
+// ToSimple converts Progress to RespProgressSimple.
+func (p *Progress) ToSimple() *RespProgressSimple {
+	if p == nil {
+		return nil
+	}
+	createTime := formatTimestamp(p.CreateTime)
+	resp := &RespProgressSimple{
+		ID:         p.ID,
+		ModifyTime: formatTimestamp(p.UpdateTime),
+		CreateTime: &createTime,
+	}
+	if p.ProgressRate != nil {
+		resp.ProgressRate = &RespProgressRate{
+			Percent: p.ProgressRate.ProgressPercent,
+		}
+		if p.ProgressRate.ProgressStatus != nil {
+			s := ProgressStatus(*p.ProgressRate.ProgressStatus).String()
+			if s != "" {
+				resp.ProgressRate.Status = &s
+			}
+		}
+	}
+	resp.Content = p.Content.ToSemiPlain()
+	return resp
 }

@@ -58,45 +58,9 @@ func parseBatchCreateInput(input string) ([]batchCreateObjective, error) {
 	return objectives, nil
 }
 
-// buildContentBlock converts text and mentions to a ContentBlock.
-func buildContentBlock(text string, mentions []string) *ContentBlock {
-	elements := make([]ContentParagraphElement, 0, len(mentions)+1)
-
-	// Add text element
-	textElem := ContentParagraphElement{
-		ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
-		TextRun: &ContentTextRun{
-			Text: &text,
-		},
-	}
-	elements = append(elements, textElem)
-
-	// Add mention elements
-	for _, mention := range mentions {
-		mentionElem := ContentParagraphElement{
-			ParagraphElementType: ParagraphElementTypeMention.Ptr(),
-			Mention: &ContentMention{
-				UserID: &mention,
-			},
-		}
-		elements = append(elements, mentionElem)
-	}
-
-	return &ContentBlock{
-		Blocks: []ContentBlockElement{
-			{
-				BlockElementType: BlockElementTypeParagraph.Ptr(),
-				Paragraph: &ContentParagraph{
-					Elements: elements,
-				},
-			},
-		},
-	}
-}
-
 // createObjective calls the API to create an objective.
 func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleID, userIDType string, obj batchCreateObjective) (string, error) {
-	content := buildContentBlock(obj.Text, obj.Mention)
+	content := BuildContentBlock(obj.Text, obj.Mention)
 	body := map[string]interface{}{
 		"content": content,
 	}
@@ -120,7 +84,7 @@ func createObjective(ctx context.Context, runtime *common.RuntimeContext, cycleI
 
 // createKR calls the API to create a key result.
 func createKR(ctx context.Context, runtime *common.RuntimeContext, objectiveID, userIDType string, kr batchCreateKR) (string, error) {
-	content := buildContentBlock(kr.Text, kr.Mention)
+	content := BuildContentBlock(kr.Text, kr.Mention)
 	body := map[string]interface{}{
 		"content": content,
 	}
@@ -224,7 +188,7 @@ var OKRBatchCreate = common.Shortcut{
 
 		for i, obj := range objectives {
 			// Objective creation
-			objContent := buildContentBlock(obj.Text, obj.Mention)
+			objContent := BuildContentBlock(obj.Text, obj.Mention)
 			objBody := map[string]interface{}{
 				"content": objContent,
 			}
@@ -241,7 +205,7 @@ var OKRBatchCreate = common.Shortcut{
 
 			// KR creations
 			for j, kr := range obj.KRs {
-				krContent := buildContentBlock(kr.Text, kr.Mention)
+				krContent := BuildContentBlock(kr.Text, kr.Mention)
 				krBody := map[string]interface{}{
 					"content": krContent,
 				}

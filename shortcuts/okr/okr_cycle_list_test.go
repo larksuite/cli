@@ -5,8 +5,10 @@ package okr
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -260,11 +262,156 @@ func TestCycleListExecute_NoCycles(t *testing.T) {
 	if len(cycles) != 0 {
 		t.Fatalf("cycles = %v, want empty", cycles)
 	}
+	// Assert current_active_cycles field exists and is a slice
+	rawCurrentActive, ok := data["current_active_cycles"]
+	if !ok {
+		t.Fatal("current_active_cycles field is missing from response")
+	}
+	currentActive, ok := rawCurrentActive.([]interface{})
+	if !ok {
+		t.Fatalf("current_active_cycles is not a slice, got %T", rawCurrentActive)
+	}
+	if len(currentActive) != 0 {
+		t.Fatalf("current_active_cycles = %v, want empty", currentActive)
+	}
+}
+
+// --- isCurrentActiveCycle unit tests ---
+
+func TestIsCurrentActiveCycle(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 6, 29, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name     string
+		cycle    *Cycle
+		expected bool
+	}{
+		{
+			name: "active cycle with normal status",
+			cycle: &Cycle{
+				ID:          "c1",
+				StartTime:   "1767225600000", // 2026-01-01
+				EndTime:     "1798761599999", // 2026-12-31 23:59:59
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: true,
+		},
+		{
+			name: "active cycle with default status",
+			cycle: &Cycle{
+				ID:          "c2",
+				StartTime:   "1767225600000", // 2026-01-01
+				EndTime:     "1798761599999", // 2026-12-31
+				CycleStatus: CycleStatusDefault.Ptr(),
+			},
+			expected: true,
+		},
+		{
+			name: "cycle with invalid status",
+			cycle: &Cycle{
+				ID:          "c3",
+				StartTime:   "1767225600000", // 2026-01-01
+				EndTime:     "1798761599999", // 2026-12-31
+				CycleStatus: CycleStatusInvalid.Ptr(),
+			},
+			expected: false,
+		},
+		{
+			name: "cycle with hidden status",
+			cycle: &Cycle{
+				ID:          "c4",
+				StartTime:   "1767225600000", // 2026-01-01
+				EndTime:     "1798761599999", // 2026-12-31
+				CycleStatus: CycleStatusHidden.Ptr(),
+			},
+			expected: false,
+		},
+		{
+			name: "past cycle",
+			cycle: &Cycle{
+				ID:          "c5",
+				StartTime:   "1704067200000", // 2024-01-01
+				EndTime:     "1719791999999", // 2024-06-30
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: false,
+		},
+		{
+			name: "future cycle",
+			cycle: &Cycle{
+				ID:          "c6",
+				StartTime:   "1830297600000", // 2028-01-01
+				EndTime:     "1861833599999", // 2028-12-31
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: false,
+		},
+		{
+			name: "nil cycle status",
+			cycle: &Cycle{
+				ID:          "c7",
+				StartTime:   "1767225600000", // 2026-01-01
+				EndTime:     "1798761599999", // 2026-12-31
+				CycleStatus: nil,
+			},
+			expected: false,
+		},
+		{
+			name: "invalid start time",
+			cycle: &Cycle{
+				ID:          "c8",
+				StartTime:   "invalid",
+				EndTime:     "1798761599999", // 2026-12-31
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: false,
+		},
+		{
+			name: "exact start time boundary",
+			cycle: &Cycle{
+				ID:          "c9",
+				StartTime:   "1782734400000", // 2026-06-29 12:00:00 UTC
+				EndTime:     "1798761599000", // 2026-12-31 23:59:59 UTC
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: true,
+		},
+		{
+			name: "exact end time boundary",
+			cycle: &Cycle{
+				ID:          "c10",
+				StartTime:   "1767225600000", // 2026-01-01 00:00:00 UTC
+				EndTime:     "1782734400000", // 2026-06-29 12:00:00 UTC
+				CycleStatus: CycleStatusNormal.Ptr(),
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isCurrentActiveCycle(tt.cycle, now)
+			if result != tt.expected {
+				t.Fatalf("isCurrentActiveCycle() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
 }
 
 func TestCycleListExecute_WithCycles(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, reg := cmdutil.TestFactory(t, cycleListTestConfig(t))
+
+	// Calculate timestamps relative to now to avoid test expiration
+	now := time.Now().UTC()
+	// Active cycle: 6 months before to 6 months after now
+	activeStartMs := now.AddDate(0, -6, 0).UnixMilli()
+	activeEndMs := now.AddDate(0, 6, 0).UnixMilli()
+	// Past cycle: 2 years before to 1.5 years before now
+	pastStartMs := now.AddDate(-2, 0, 0).UnixMilli()
+	pastEndMs := now.AddDate(-1, -6, 0).UnixMilli()
+
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
 		URL:    "/open-apis/okr/v2/cycles",
@@ -274,19 +421,19 @@ func TestCycleListExecute_WithCycles(t *testing.T) {
 			"data": map[string]interface{}{
 				"items": []interface{}{
 					map[string]interface{}{
-						"id":              "cycle-1",
-						"start_time":      "1735689600000",
-						"end_time":        "1751318400000",
-						"cycle_status":    1,
+						"id":              "cycle-active",
+						"start_time":      strconv.FormatInt(activeStartMs, 10),
+						"end_time":        strconv.FormatInt(activeEndMs, 10),
+						"cycle_status":    1, // normal
 						"owner":           map[string]interface{}{"owner_type": "user", "user_id": "ou-1"},
 						"tenant_cycle_id": "tc-1",
 						"score":           0.75,
 					},
 					map[string]interface{}{
-						"id":              "cycle-2",
-						"start_time":      "1704067200000",
-						"end_time":        "1719792000000",
-						"cycle_status":    2,
+						"id":              "cycle-past",
+						"start_time":      strconv.FormatInt(pastStartMs, 10),
+						"end_time":        strconv.FormatInt(pastEndMs, 10),
+						"cycle_status":    2, // invalid
 						"owner":           map[string]interface{}{"owner_type": "user", "user_id": "ou-1"},
 						"tenant_cycle_id": "tc-2",
 						"score":           0.5,
@@ -310,6 +457,46 @@ func TestCycleListExecute_WithCycles(t *testing.T) {
 	total, _ := data["total"].(float64)
 	if int(total) != 2 {
 		t.Fatalf("total = %v, want 2", total)
+	}
+
+	// Check current_active_cycles - should only contain cycle-active
+	rawCurrentActive, ok := data["current_active_cycles"]
+	if !ok {
+		t.Fatal("current_active_cycles field is missing from response")
+	}
+	currentActive, ok := rawCurrentActive.([]interface{})
+	if !ok {
+		t.Fatalf("current_active_cycles is not a slice, got %T", rawCurrentActive)
+	}
+	if len(currentActive) != 1 {
+		t.Fatalf("current_active_cycles count = %d, want 1", len(currentActive))
+	}
+	activeCycle, ok := currentActive[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("current_active_cycles[0] is not a map, got %T", currentActive[0])
+	}
+	if activeCycle["id"] != "cycle-active" {
+		t.Fatalf("current_active_cycles[0].id = %v, want cycle-active", activeCycle["id"])
+	}
+
+	// Verify removed fields are not present in the response
+	for _, c := range cycles {
+		cycleMap, _ := c.(map[string]interface{})
+		if _, ok := cycleMap["create_time"]; ok {
+			t.Fatal("create_time should not be present in response")
+		}
+		if _, ok := cycleMap["update_time"]; ok {
+			t.Fatal("update_time should not be present in response")
+		}
+		if _, ok := cycleMap["tenant_cycle_id"]; ok {
+			t.Fatal("tenant_cycle_id should not be present in response")
+		}
+		if _, ok := cycleMap["owner"]; ok {
+			t.Fatal("owner should not be present in response")
+		}
+		if _, ok := cycleMap["score"]; ok {
+			t.Fatal("score should not be present in response")
+		}
 	}
 }
 
