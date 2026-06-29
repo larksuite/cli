@@ -1,0 +1,190 @@
+skills/lark-calendar/references/lark-calendar-schedule-fuzzy-time.md
+  s_47c693de4b6661::t_471b9dd13cf726 45 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3e44496ce8ff6048488259","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":45}]}]}
+  s_47c693de4b6661::t_aee46fba541225 1-44,46-88
+skills/lark-calendar/SKILL.md
+  s_47c693de4b6661::t_c89a27590c5258 47-49
+  s_47c693de4b6661::t_9763fe6e4583c4 95
+  s_47c693de4b6661::t_4883c564b4573d 77-78
+  h_28e3eba6e3c972 15
+skills/lark-calendar/references/lark-calendar-schedule-clear-time.md
+  s_47c693de4b6661::t_4ee7e3a8e617a4 1-32,34-61
+  s_47c693de4b6661::t_343913d46840f5 33 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3e443f6ce8ff6048488256","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":33}]}]}
+skills/lark-calendar/references/lark-calendar-schedule-room-rules.md
+  s_47c693de4b6661::t_7f478990d730db 38-58 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3e441c6ce8ff604848824d","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[38,58]}]}]}
+  s_47c693de4b6661::t_b0cd6253b3189c 1-37
+skills/lark-calendar/references/lark-calendar-schedule-meeting.md
+  s_47c693de4b6661::t_004e2ae5264090 3,5-12,16-20,24-29,33-35,41-42,44-46,48,51-53,55,57-62,64,66-69,71,73,76-78,80,82-85,88,91-92,108-112,116-118,123-124
+  s_47c693de4b6661::t_09b8c9b93efe07 86 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a3e44326ce8ff6048488253","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Single":86}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "ce5fd65066a193461bfd5639ec1d1d0ad56c27f5",
+  "prompts": {},
+  "humans": {
+    "h_28e3eba6e3c972": {
+      "author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_47c693de4b6661": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3e2e7f6ce8ff6048488060",
+        "model": "openrouter-1o__dev"
+      },
+      "human_author": null
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-calendar/references/lark-calendar-schedule-clear-time.md": [
+      {
+        "hash": "s_47c693de4b6661::t_343913d46840f5",
+        "line_ranges": [
+          {
+            "Single": 33
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3e443f6ce8ff6048488256",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 33
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-calendar/references/lark-calendar-schedule-fuzzy-time.md": [
+      {
+        "hash": "s_47c693de4b6661::t_471b9dd13cf726",
+        "line_ranges": [
+          {
+            "Single": 45
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3e44496ce8ff6048488259",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 45
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-calendar/references/lark-calendar-schedule-meeting.md": [
+      {
+        "hash": "s_47c693de4b6661::t_09b8c9b93efe07",
+        "line_ranges": [
+          {
+            "Single": 86
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3e44326ce8ff6048488253",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Single": 86
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-calendar/references/lark-calendar-schedule-room-rules.md": [
+      {
+        "hash": "s_47c693de4b6661::t_7f478990d730db",
+        "line_ranges": [
+          {
+            "Range": [
+              38,
+              58
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a3e441c6ce8ff604848824d",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  38,
+                  58
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_47c693de4b6661": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_09b8c9b93efe07": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_1319e0364dd14c": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_343913d46840f5": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_471b9dd13cf726": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_7f478990d730db": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_47c693de4b6661::t_fc829c84cc4ca7": {
+      "tool": "trae",
+      "conversation_id": "6a3e2e7f6ce8ff6048488060",
+      "session_id": "6a3e2e7f6ce8ff6048488060",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
