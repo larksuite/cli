@@ -66,7 +66,9 @@ func namedPlaceholderValue(value string) bool {
 	case "...", "placeholder", "redacted", "<redacted>", "xxxx", "test-secret":
 		return true
 	}
-	return strings.Contains(value, "cli_example") || allXPlaceholder(value)
+	return strings.Contains(value, "cli_example") ||
+		allXPlaceholder(value) ||
+		conventionalNamedPlaceholderValue(value)
 }
 
 func allXPlaceholder(value string) bool {
@@ -79,6 +81,41 @@ func allXPlaceholder(value string) bool {
 		}
 	}
 	return true
+}
+
+func conventionalNamedPlaceholderValue(value string) bool {
+	if !delimitedPlaceholderIdentifier(value) {
+		return false
+	}
+	normalized := strings.ReplaceAll(value, "-", "_")
+	if rest, ok := strings.CutPrefix(normalized, "your_"); ok {
+		return conventionalCredentialPlaceholderName(rest)
+	}
+	if rest, ok := strings.CutSuffix(normalized, "_here"); ok {
+		return conventionalCredentialPlaceholderName(rest)
+	}
+	return false
+}
+
+func conventionalCredentialPlaceholderName(value string) bool {
+	switch value {
+	case "api_key",
+		"access_key",
+		"private_key",
+		"secret",
+		"password",
+		"passwd",
+		"token",
+		"webhook",
+		"access_token",
+		"refresh_token",
+		"bearer_token",
+		"session_token",
+		"client_secret":
+		return true
+	default:
+		return false
+	}
 }
 
 func urlWithAnglePlaceholder(value string) bool {

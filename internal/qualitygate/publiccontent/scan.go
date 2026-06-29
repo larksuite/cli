@@ -4,6 +4,8 @@
 package publiccontent
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -63,12 +65,15 @@ func scanText(file, source, text string, detectorFile bool) []Finding {
 			out = append(out, newFinding("public_content_generic_credential", file, lineNo, source, redactAssignment(match[0])))
 		}
 		for _, match := range jwtLikeRE.FindAllString(line, -1) {
-			if isSchemaDottedIdentifier(line, match) {
+			if !isJWTToken(match) {
 				continue
 			}
 			out = append(out, newFinding("public_content_jwt_like_token", file, lineNo, source, redactToken(match)))
 		}
-		for range bearerHeaderRE.FindAllString(line, -1) {
+		for _, match := range bearerHeaderRE.FindAllString(line, -1) {
+			if isPlaceholderBearerHeader(match) {
+				continue
+			}
 			out = append(out, newFinding("public_content_bearer_header", file, lineNo, source, "Authorization: Bearer <redacted>"))
 		}
 		for _, match := range credentialURLRE.FindAllString(line, -1) {
@@ -391,10 +396,6 @@ func credentialNameFragment(value string) bool {
 	return false
 }
 
-func isSchemaDottedIdentifier(line, match string) bool {
-	return strings.Contains(line, "schema ") && strings.Contains(match, "_")
-}
-
 func isNonSecretLiteralValue(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(strings.Trim(value, `"'`))) {
 	case "true", "false", "null", "nil", "{", "[":
@@ -402,6 +403,40 @@ func isNonSecretLiteralValue(value string) bool {
 	default:
 		return false
 	}
+}
+
+func isJWTToken(value string) bool {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	header, err := decodeBase64URLSegment(parts[0])
+	if err != nil || !json.Valid(header) {
+		return false
+	}
+	var fields map[string]interface{}
+	if err := json.Unmarshal(header, &fields); err != nil {
+		return false
+	}
+	alg, ok := fields["alg"].(string)
+	return ok && alg != ""
+}
+
+func decodeBase64URLSegment(value string) ([]byte, error) {
+	if decoded, err := base64.RawURLEncoding.DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	return base64.URLEncoding.DecodeString(value)
+}
+
+func isPlaceholderBearerHeader(match string) bool {
+	normalized := strings.ToLower(match)
+	idx := strings.LastIndex(normalized, "bearer ")
+	if idx < 0 {
+		return false
+	}
+	value := strings.TrimSpace(match[idx+len("bearer "):])
+	return isPlaceholderValue(value)
 }
 
 func isWebhookCredentialKey(key string) bool {
@@ -741,7 +776,12 @@ func sanitizeSemanticExcerpt(text string) string {
 	text = strings.ReplaceAll(text, `<redacted>"`, `<redacted>`)
 	text = strings.ReplaceAll(text, `<redacted>'`, `<redacted>`)
 	text = semanticBearerHeaderRE.ReplaceAllString(text, "Authorization: Bearer <redacted>")
-	text = jwtLikeRE.ReplaceAllString(text, "<jwt-like-token>")
+	text = jwtLikeRE.ReplaceAllStringFunc(text, func(match string) string {
+		if isJWTToken(match) {
+			return "<jwt-like-token>"
+		}
+		return match
+	})
 	text = credentialURLRE.ReplaceAllStringFunc(text, sanitizeCredentialURL)
 	return strings.Join(strings.Fields(text), " ")
 }
