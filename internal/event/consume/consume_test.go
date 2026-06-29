@@ -9,8 +9,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/larksuite/cli/internal/event"
@@ -76,6 +78,62 @@ func TestValidateParamsRejectsUnknownPublicParam(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `unknown param "internal"`) {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunRejectsInvalidEnumParamBeforePreConsume(t *testing.T) {
+	const key = "test.evt_invalid_enum"
+	var preConsumed atomic.Bool
+	event.RegisterKey(event.KeyDefinition{
+		Key:       key,
+		EventType: key,
+		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		Params: []event.ParamDef{{
+			Name:    "msg_format",
+			Type:    event.ParamEnum,
+			Default: "metadata",
+			Values: []event.ParamValue{
+				{Value: "metadata", Desc: "Metadata only"},
+				{Value: "minimal", Desc: "Minimal metadata"},
+				{Value: "plain_text_full", Desc: "Plain text body"},
+				{Value: "full", Desc: "Full payload"},
+				{Value: "event", Desc: "Raw event"},
+			},
+		}},
+		PreConsume: func(_ context.Context, _ event.APIClient, _ map[string]string) (func() error, error) {
+			preConsumed.Store(true)
+			return nil, nil
+		},
+	})
+	defer event.UnregisterKeyForTest(key)
+
+	params := map[string]string{"msg_format": "中文格式"}
+	err := Run(context.Background(), transport.New(), "app", "", "", Options{
+		EventKey: key,
+		Params:   params,
+		Runtime:  &fakeRT{},
+		Out:      io.Discard,
+		ErrOut:   io.Discard,
+		Quiet:    true,
+	})
+	if err == nil {
+		t.Fatal("expected invalid enum value error")
+	}
+	if preConsumed.Load() {
+		t.Fatal("PreConsume should not run after invalid enum value")
+	}
+	for _, want := range []string{
+		`param "msg_format"`,
+		`中文格式`,
+		"metadata, minimal, plain_text_full, full, event",
+		"Run 'lark-cli event schema " + key + "'",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected %q in error, got: %v", want, err)
+		}
+	}
+	if params["msg_format"] != "中文格式" {
+		t.Fatalf("invalid value should not fall back to default, got %q", params["msg_format"])
 	}
 }
 

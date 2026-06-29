@@ -223,7 +223,38 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 		return fmt.Errorf("unknown param %q for EventKey %s. valid params: %s. Run 'lark-cli event schema %s' for details",
 			k, def.Key, strings.Join(validNames, ", "), def.Key)
 	}
+	for _, p := range def.Params {
+		if p.Type != event.ParamEnum {
+			continue
+		}
+		got, ok := params[p.Name]
+		if !ok {
+			continue
+		}
+		validValues := allowedParamValues(p)
+		if validValues[got] {
+			continue
+		}
+		return fmt.Errorf("invalid value %q for param %q on EventKey %s. valid values: %s. Run 'lark-cli event schema %s' for details",
+			got, p.Name, def.Key, strings.Join(paramValueNames(p), ", "), def.Key)
+	}
 	return nil
+}
+
+func allowedParamValues(p event.ParamDef) map[string]bool {
+	values := make(map[string]bool, len(p.Values))
+	for _, v := range p.Values {
+		values[v.Value] = true
+	}
+	return values
+}
+
+func paramValueNames(p event.ParamDef) []string {
+	names := make([]string, 0, len(p.Values))
+	for _, v := range p.Values {
+		names = append(names, v.Value)
+	}
+	return names
 }
 
 func checkMaxEvents(opts Options, emitted *atomic.Int64) bool {
