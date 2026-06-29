@@ -2,7 +2,7 @@
 
 管理自动处理收到邮件的规则。规则写操作需使用真实 `rule_id`，不要猜测 ID。规则写操作执行前需按 SKILL.md 的写操作确认规则获得用户确认。
 
-> 如果用户要"信任/白名单/允许"或"屏蔽/拉黑/黑名单"某个发件人，请使用 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders` 的 `batch_create`、`batch_remove`、`list`。不要用 `user_mailbox.rules create` 模拟发件人黑白名单。
+> 如果用户要"信任/白名单/允许"或"屏蔽/拉黑/黑名单"某个发件人，请使用 `user_mailbox.allow_sender` / `user_mailbox.blocked_sender` 的 `batch_create`、`batch_remove`、`list`。不要用 `user_mailbox.rules create` 模拟发件人黑白名单。
 
 ## 主题包含文本 → 标记为已读
 

@@ -6,7 +6,7 @@
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
-- **信任/屏蔽发件人列表（Trusted / Blocked Senders）**：管理用户邮箱的发件人白名单/黑名单。加入白名单使用 `user_mailbox.allow_senders batch_create`；加入黑名单、屏蔽发件人、拉黑发件人使用 `user_mailbox.blocked_senders batch_create`。这不是收信规则，不要用 `user_mailbox.rules create` 代替。
+- **信任/屏蔽发件人列表（Trusted / Blocked Senders）**：管理用户邮箱的发件人白名单/黑名单。加入白名单使用 `user_mailbox.allow_sender batch_create`；加入黑名单、屏蔽发件人、拉黑发件人使用 `user_mailbox.blocked_sender batch_create`。这不是收信规则，不要用 `user_mailbox.rules create` 代替。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -51,7 +51,7 @@
 | 不可逆删除 | `*.delete`、`drafts.delete` | ✅ 必须 |
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
-| 修改信任/屏蔽发件人列表 | `allow_senders.batch_create` / `blocked_senders.batch_create` / `batch_remove` | ✅ 必须 |
+| 修改信任/屏蔽发件人列表 | `allow_sender.batch_create` / `blocked_sender.batch_create` / `batch_remove` | ✅ 必须 |
 | 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
@@ -101,21 +101,21 @@
 
 ### 发件人黑白名单：优先使用专用原子能力
 
-当用户要把某个地址或域名加入/移出自己的邮箱白名单或黑名单时，优先使用 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders`，不要用 `user_mailbox.rules create` 创建收信规则来模拟。
+当用户要把某个地址或域名加入/移出自己的邮箱白名单或黑名单时，优先使用 `user_mailbox.allow_sender` / `user_mailbox.blocked_sender`，不要用 `user_mailbox.rules create` 创建收信规则来模拟。
 
 | 用户意图 | 使用命令 |
 |---|---|
-| "信任/加入白名单/允许 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_create --as user` |
-| "屏蔽/拉黑/加入黑名单 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_create --as user` |
-| "移出白名单/取消信任 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_remove --as user` |
-| "移出黑名单/取消屏蔽 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_remove --as user` |
-| "查看是否信任或屏蔽 `<sender>`" | 分别用 `allow_senders list` 和 `blocked_senders list`，在 `--params` 里传 `keyword` 搜索 |
+| "信任/加入白名单/允许 `<sender>`" | `mail.user_mailbox.allow_sender.batch_create` |
+| "屏蔽/拉黑/加入黑名单 `<sender>`" | `mail.user_mailbox.blocked_sender.batch_create` |
+| "移出白名单/取消信任 `<sender>`" | `mail.user_mailbox.allow_sender.batch_remove` |
+| "移出黑名单/取消屏蔽 `<sender>`" | `mail.user_mailbox.blocked_sender.batch_remove` |
+| "查看是否信任或屏蔽 `<sender>`" | 分别用 `allow_sender list` 和 `blocked_sender list`，在 `--params` 里传 `keyword` 搜索 |
 | 只说"加到我的名单里"但没说白名单或黑名单 | 先澄清要信任还是屏蔽，不要猜测，也不要写入 |
 
-加入 `cli-ai-block@example.test` 到自己的黑名单时，应先说明将使用：
+加入 `cli-ai-block@example.test` 到自己的黑名单时，应先确认 schema 中存在 `mail.user_mailbox.blocked_sender.batch_create`，再按该方法构造调用：
 
 ```bash
-lark-cli mail user_mailbox.blocked_senders batch_create --as user \
+lark-cli mail <resource> <method> --as user \
   --params '{"user_mailbox_id":"me"}' \
   --data '{"items":[{"sender":"cli-ai-block@example.test","sender_type":1}]}'
 ```

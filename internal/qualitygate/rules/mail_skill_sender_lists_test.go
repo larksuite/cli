@@ -18,7 +18,7 @@ func TestMailSkillRoutesBlockedSenderPromptToAtomicCommand(t *testing.T) {
 	body := string(data)
 
 	required := []string{
-		"lark-cli mail user_mailbox.blocked_senders batch_create --as user",
+		"mail.user_mailbox.blocked_sender.batch_create",
 		"cli-ai-block@example.test",
 		"不要用 `user_mailbox.rules create`",
 		"只说\"加到我的名单里\"但没说白名单或黑名单",
@@ -39,8 +39,8 @@ func TestMailSkillTemplateKeepsSenderListRoutingSource(t *testing.T) {
 	body := string(data)
 
 	required := []string{
-		"lark-cli mail user_mailbox.allow_senders batch_create --as user",
-		"lark-cli mail user_mailbox.blocked_senders batch_create --as user",
+		"mail.user_mailbox.allow_sender.batch_create",
+		"mail.user_mailbox.blocked_sender.batch_create",
 		"`user_mailbox.rules` 仅用于",
 	}
 	for _, want := range required {

@@ -20,7 +20,7 @@ metadata:
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
-- **信任/屏蔽发件人列表（Trusted / Blocked Senders）**：管理用户邮箱的发件人白名单/黑名单。加入白名单使用 `user_mailbox.allow_senders batch_create`；加入黑名单、屏蔽发件人、拉黑发件人使用 `user_mailbox.blocked_senders batch_create`。这不是收信规则，不要用 `user_mailbox.rules create` 代替。
+- **信任/屏蔽发件人列表（Trusted / Blocked Senders）**：管理用户邮箱的发件人白名单/黑名单。加入白名单使用 `user_mailbox.allow_sender batch_create`；加入黑名单、屏蔽发件人、拉黑发件人使用 `user_mailbox.blocked_sender batch_create`。这不是收信规则，不要用 `user_mailbox.rules create` 代替。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -65,7 +65,7 @@ metadata:
 | 不可逆删除 | `*.delete`、`drafts.delete` | ✅ 必须 |
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
-| 修改信任/屏蔽发件人列表 | `allow_senders.batch_create` / `blocked_senders.batch_create` / `batch_remove` | ✅ 必须 |
+| 修改信任/屏蔽发件人列表 | `allow_sender.batch_create` / `blocked_sender.batch_create` / `batch_remove` | ✅ 必须 |
 | 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
@@ -115,21 +115,21 @@ metadata:
 
 ### 发件人黑白名单：优先使用专用原子能力
 
-当用户要把某个地址或域名加入/移出自己的邮箱白名单或黑名单时，优先使用 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders`，不要用 `user_mailbox.rules create` 创建收信规则来模拟。
+当用户要把某个地址或域名加入/移出自己的邮箱白名单或黑名单时，优先使用 `user_mailbox.allow_sender` / `user_mailbox.blocked_sender`，不要用 `user_mailbox.rules create` 创建收信规则来模拟。
 
 | 用户意图 | 使用命令 |
 |---|---|
-| "信任/加入白名单/允许 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_create --as user` |
-| "屏蔽/拉黑/加入黑名单 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_create --as user` |
-| "移出白名单/取消信任 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_remove --as user` |
-| "移出黑名单/取消屏蔽 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_remove --as user` |
-| "查看是否信任或屏蔽 `<sender>`" | 分别用 `allow_senders list` 和 `blocked_senders list`，在 `--params` 里传 `keyword` 搜索 |
+| "信任/加入白名单/允许 `<sender>`" | `mail.user_mailbox.allow_sender.batch_create` |
+| "屏蔽/拉黑/加入黑名单 `<sender>`" | `mail.user_mailbox.blocked_sender.batch_create` |
+| "移出白名单/取消信任 `<sender>`" | `mail.user_mailbox.allow_sender.batch_remove` |
+| "移出黑名单/取消屏蔽 `<sender>`" | `mail.user_mailbox.blocked_sender.batch_remove` |
+| "查看是否信任或屏蔽 `<sender>`" | 分别用 `allow_sender list` 和 `blocked_sender list`，在 `--params` 里传 `keyword` 搜索 |
 | 只说"加到我的名单里"但没说白名单或黑名单 | 先澄清要信任还是屏蔽，不要猜测，也不要写入 |
 
-加入 `cli-ai-block@example.test` 到自己的黑名单时，应先说明将使用：
+加入 `cli-ai-block@example.test` 到自己的黑名单时，应先确认 schema 中存在 `mail.user_mailbox.blocked_sender.batch_create`，再按该方法构造调用：
 
 ```bash
-lark-cli mail user_mailbox.blocked_senders batch_create --as user \
+lark-cli mail <resource> <method> --as user \
   --params '{"user_mailbox_id":"me"}' \
   --data '{"items":[{"sender":"cli-ai-block@example.test","sender_type":1}]}'
 ```
@@ -570,13 +570,13 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `profile` — 用于在用户身份下获取自己的邮箱主地址。当用户没有邮箱时，返回的 primary_email_address 为空。
   - `search` — 搜索邮件
 
-### user_mailbox.allow_senders
+### user_mailbox.allow_sender
 
   - `batch_create` — 批量将发件人加入指定用户邮箱的「信任发件人」白名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与黑名单互斥（添加白名单会从黑名单删除对侧记录）。
   - `batch_remove` — 批量从指定用户邮箱的「信任发件人」白名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。
   - `list` — 列表/搜索指定用户邮箱的「信任发件人」白名单。支持按发件人地址或域名前缀搜索 (keyword)。返回列表按创建时间倒序，使用 page_token + page_size 进行分页。
 
-### user_mailbox.blocked_senders
+### user_mailbox.blocked_sender
 
   - `batch_create` — 批量将发件人加入指定用户邮箱的「屏蔽发件人」黑名单。支持按邮箱地址 (sender_type=1) 或域名 (sender_type=2) 添加。单次最多 100 项，单用户黑白名单合计最多 2000 项；与白名单互斥（添加黑名单会从白名单删除对侧记录）。
   - `batch_remove` — 批量从指定用户邮箱的「屏蔽发件人」黑名单中删除发件人。senders 中每项可以是邮箱地址或域名（与添加时一致）。批量删除按字面值哈希匹配，可兼容历史大写数据。单次最多 100 项。
@@ -682,12 +682,12 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailboxes.accessible_mailboxes` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.profile` | `mail:user_mailbox:readonly` |
 | `user_mailboxes.search` | `mail:user_mailbox.message:readonly` |
-| `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
-| `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_sender.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_sender.batch_remove` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_sender.list` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_sender.batch_create` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_sender.batch_remove` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_sender.list` | `mail:user_mailbox.message:readonly`, `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.cancel_scheduled_send` | `mail:user_mailbox.message:send` |
 | `user_mailbox.drafts.create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.drafts.delete` | `mail:user_mailbox.message:modify` |
