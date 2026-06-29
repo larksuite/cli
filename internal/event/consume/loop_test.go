@@ -89,7 +89,7 @@ func TestConsumeLoop_DeliversEventsAndExitsOnMaxEvents(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted)
+	err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted)
 	if err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestConsumeLoop_SeqGapEmitsWarning(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted); err != nil {
+	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted); err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
 	if got := emitted.Load(); got != 2 {
@@ -169,7 +169,7 @@ func TestConsumeLoop_JQFilterAppliedPerEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted); err != nil {
+	if err := consumeLoop(ctx, client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted); err != nil {
 		t.Fatalf("consumeLoop: %v", err)
 	}
 	if got := emitted.Load(); got != 1 {
@@ -196,9 +196,93 @@ func TestConsumeLoop_CompileJQFailsEarly(t *testing.T) {
 
 	var lastForKey bool
 	var emitted atomic.Int64
-	err := consumeLoop(context.Background(), client, bufio.NewReader(client), echoKeyDef("test.key"), opts, &lastForKey, &emitted)
+	err := consumeLoop(context.Background(), client, bufio.NewReader(client), echoKeyDef("test.key"), opts, "", &lastForKey, &emitted)
 	if err == nil {
 		t.Fatal("consumeLoop should fail immediately on bad jq expression")
+	}
+}
+
+// captureSink is a minimal Sink for unit-testing processAndOutput directly.
+type captureSink struct {
+	written []json.RawMessage
+}
+
+func (s *captureSink) Write(data json.RawMessage) error {
+	s.written = append(s.written, data)
+	return nil
+}
+
+func TestProcessAndOutput_Match_DropsEvent(t *testing.T) {
+	calledProcess := false
+	keyDef := &event.KeyDefinition{
+		Key: "test.evt",
+		Match: func(raw *event.RawEvent, params map[string]string) bool {
+			return false
+		},
+		Process: func(ctx context.Context, rt event.APIClient, raw *event.RawEvent, params map[string]string) (json.RawMessage, error) {
+			calledProcess = true
+			return json.RawMessage(`{}`), nil
+		},
+	}
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{"x":1}`)},
+		Options{}, sink, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrote {
+		t.Error("Match returned false but event was written")
+	}
+	if calledProcess {
+		t.Error("Process was called even though Match returned false")
+	}
+	if len(sink.written) != 0 {
+		t.Errorf("sink received %d events, want 0", len(sink.written))
+	}
+}
+
+func TestProcessAndOutput_Match_NilAcceptsAll(t *testing.T) {
+	keyDef := &event.KeyDefinition{Key: "test.evt"} // no Match, no Process
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{"x":1}`)},
+		Options{}, sink, nil)
+	if err != nil || !wrote {
+		t.Errorf("expected wrote=true err=nil; got wrote=%v err=%v", wrote, err)
+	}
+	if len(sink.written) != 1 {
+		t.Errorf("sink received %d events, want 1", len(sink.written))
+	}
+}
+
+func TestProcessAndOutput_Match_RunsBeforeProcess(t *testing.T) {
+	// Record the actual call sequence — a bare call-count check would still
+	// pass if Process ran before Match.
+	var order []string
+	keyDef := &event.KeyDefinition{
+		Key: "test.evt",
+		Match: func(raw *event.RawEvent, params map[string]string) bool {
+			order = append(order, "match")
+			return true
+		},
+		Process: func(ctx context.Context, rt event.APIClient, raw *event.RawEvent, params map[string]string) (json.RawMessage, error) {
+			order = append(order, "process")
+			return raw.Payload, nil
+		},
+	}
+	sink := &captureSink{}
+	wrote, err := processAndOutput(context.Background(), keyDef,
+		&protocol.Event{Type: protocol.MsgTypeEvent, EventType: "test.evt", Payload: json.RawMessage(`{}`)},
+		Options{}, sink, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wrote {
+		t.Error("expected wrote=true")
+	}
+	if len(order) != 2 || order[0] != "match" || order[1] != "process" {
+		t.Errorf("call order = %v, want [match process]", order)
 	}
 }
 

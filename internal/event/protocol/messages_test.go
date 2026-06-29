@@ -17,7 +17,7 @@ import (
 
 // Every NewXxx helper must set the Type discriminator (Decode rejects messages without it).
 func TestConstructors_PinTypeField(t *testing.T) {
-	if got := NewHello(1, "k", []string{"t"}, "v1"); got.Type != MsgTypeHello {
+	if got := NewHello(1, "k", []string{"t"}, "v1", ""); got.Type != MsgTypeHello {
 		t.Errorf("NewHello.Type = %q, want %q", got.Type, MsgTypeHello)
 	}
 	if got := NewHelloAck("v1", true); got.Type != MsgTypeHelloAck || !got.FirstForKey {
@@ -26,7 +26,7 @@ func TestConstructors_PinTypeField(t *testing.T) {
 	if got := NewEvent("im.msg", "e1", "", 7, json.RawMessage(`{}`)); got.Type != MsgTypeEvent || got.Seq != 7 {
 		t.Errorf("NewEvent mismatch: %+v", got)
 	}
-	if got := NewPreShutdownCheck("k"); got.Type != MsgTypePreShutdownCheck || got.EventKey != "k" {
+	if got := NewPreShutdownCheck("k", ""); got.Type != MsgTypePreShutdownCheck || got.EventKey != "k" {
 		t.Errorf("NewPreShutdownCheck mismatch: %+v", got)
 	}
 	if got := NewPreShutdownAck(true); got.Type != MsgTypePreShutdownAck || !got.LastForKey {
@@ -63,7 +63,7 @@ func TestEncode_DecodeRoundtripAllTypes(t *testing.T) {
 		}
 	}
 	roundtrip(t, NewHelloAck("v1", true), &HelloAck{})
-	roundtrip(t, NewPreShutdownCheck("im.msg"), &PreShutdownCheck{})
+	roundtrip(t, NewPreShutdownCheck("im.msg", ""), &PreShutdownCheck{})
 	roundtrip(t, NewPreShutdownAck(false), &PreShutdownAck{})
 	roundtrip(t, NewStatusQuery(), &StatusQuery{})
 	roundtrip(t, NewStatusResponse(7, 120, 1, []ConsumerInfo{{PID: 99, EventKey: "k"}}), &StatusResponse{})

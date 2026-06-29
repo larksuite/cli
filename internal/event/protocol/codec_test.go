@@ -77,3 +77,88 @@ func TestDecodeUnknownType(t *testing.T) {
 		t.Error("expected error for unknown type")
 	}
 }
+
+func TestEncodeDecodeHello_WithSubscriptionID(t *testing.T) {
+	msg := &Hello{
+		Type:           MsgTypeHello,
+		PID:            12345,
+		EventKey:       "mail.user_mailbox.event.message_received_v1",
+		EventTypes:     []string{"mail.user_mailbox.event.message_received_v1"},
+		Version:        "v1",
+		SubscriptionID: "mail.user_mailbox.event.message_received_v1:a7Bx9Kp2Lm3Qv4Rs",
+	}
+	buf := &bytes.Buffer{}
+	if err := Encode(buf, msg); err != nil {
+		t.Fatal(err)
+	}
+	line := buf.Bytes()
+	if !bytes.Contains(line, []byte(`"subscription_id":"mail.user_mailbox.event.message_received_v1:a7Bx9Kp2Lm3Qv4Rs"`)) {
+		t.Errorf("subscription_id not serialized: %s", string(line))
+	}
+	decoded, err := Decode(bytes.TrimRight(line, "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hello, ok := decoded.(*Hello)
+	if !ok {
+		t.Fatalf("expected *Hello, got %T", decoded)
+	}
+	if hello.SubscriptionID != msg.SubscriptionID {
+		t.Errorf("roundtrip subscription_id: got %q want %q", hello.SubscriptionID, msg.SubscriptionID)
+	}
+}
+
+func TestEncodeDecodeHello_EmptySubscriptionIDOmitted(t *testing.T) {
+	msg := &Hello{
+		Type:       MsgTypeHello,
+		PID:        1,
+		EventKey:   "k",
+		EventTypes: []string{"k"},
+		Version:    "v1",
+	}
+	buf := &bytes.Buffer{}
+	if err := Encode(buf, msg); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(buf.Bytes(), []byte("subscription_id")) {
+		t.Errorf("empty subscription_id should be omitted: %s", buf.String())
+	}
+	decoded, _ := Decode(bytes.TrimRight(buf.Bytes(), "\n"))
+	hello := decoded.(*Hello)
+	if hello.SubscriptionID != "" {
+		t.Errorf("got %q, want empty", hello.SubscriptionID)
+	}
+}
+
+func TestEncodeDecodePreShutdownCheck_WithSubscriptionID(t *testing.T) {
+	msg := &PreShutdownCheck{
+		Type:           MsgTypePreShutdownCheck,
+		EventKey:       "mail.x",
+		SubscriptionID: "mail.x:abc",
+	}
+	buf := &bytes.Buffer{}
+	if err := Encode(buf, msg); err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(bytes.TrimRight(buf.Bytes(), "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := decoded.(*PreShutdownCheck)
+	if got.SubscriptionID != msg.SubscriptionID {
+		t.Errorf("roundtrip: got %q want %q", got.SubscriptionID, msg.SubscriptionID)
+	}
+}
+
+func TestStatusResponse_ConsumerInfo_SubscriptionID(t *testing.T) {
+	msg := NewStatusResponse(7, 120, 1, []ConsumerInfo{
+		{PID: 99, EventKey: "mail.x", SubscriptionID: "mail.x:abc", Received: 5, Dropped: 0},
+	})
+	buf := &bytes.Buffer{}
+	if err := Encode(buf, msg); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(buf.Bytes(), []byte(`"subscription_id":"mail.x:abc"`)) {
+		t.Errorf("ConsumerInfo.SubscriptionID missing from JSON: %s", buf.String())
+	}
+}

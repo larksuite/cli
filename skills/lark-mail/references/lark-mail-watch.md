@@ -1,5 +1,5 @@
 
-# mail +watch
+# Mail receive event watch
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
@@ -10,10 +10,15 @@
 ## 命令
 
 ```bash
-# 默认：表格输出 message 元数据
+# 推荐：通过统一事件消费框架监听，输出 bare NDJSON
+lark-cli event consume mail.user_mailbox.event.message_received_v1 \
+  -p mailbox=me \
+  -p msg_format=metadata
+
+# 兼容入口：内部映射到同一个 EventKey
 lark-cli mail +watch
 
-# 仅输出 message 数据（jq 友好）
+# 兼容入口输出 message 数据（jq 友好）
 lark-cli mail +watch --msg-format metadata --format data
 
 # 输出精简元数据（message_id / thread_id / folder_id / label_ids / internal_date / message_state）
@@ -47,20 +52,20 @@ lark-cli mail +watch --print-output-schema
 |------|------|------|
 | `--mailbox <id>` | `me` | 订阅目标邮箱 |
 | `--msg-format <mode>` | `metadata` | 输出模式：`metadata` / `minimal` / `plain_text_full` / `full` / `event` |
-| `--format <mode>` | `table` | 输出样式：`table` / `json` / `data` |
+| `--format <mode>` | `data` | 输出样式：`data` 输出 EventKey 数据；`json` 输出兼容 envelope：`{"ok":true,"identity":"user","data":...}` |
 | `--folder-ids <json-array>` | — | 文件夹 ID 过滤，如 `["INBOX","SENT"]` |
 | `--folders <json-array>` | — | 文件夹名称过滤（与 `--folder-ids` 取并集） |
 | `--label-ids <json-array>` | — | 标签 ID 过滤，如 `["FLAGGED","IMPORTANT"]` |
 | `--labels <json-array>` | — | 标签名称过滤（与 `--label-ids` 取并集） |
-
-> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
 | `--output-dir <dir>` | — | 每条事件写入单独 JSON 文件 |
 | `--print-output-schema` | — | 打印各 `--msg-format` 的输出字段说明（解析输出前先运行此命令） |
 | `--dry-run` | — | 仅预览订阅请求，不实际连接 |
 
+> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
+
 ## --msg-format 输出结构（--format json）
 
-每条事件输出为一行 NDJSON。
+每条事件输出为一行 NDJSON。`event consume` 和 `mail +watch --format data` 输出下方 `data` 内的对象；`mail +watch --format json` 会包一层兼容 envelope。
 
 **`metadata`**（默认，适合分拣/通知）
 ```json

@@ -8,10 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"os/signal"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,8 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
 	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/event/consume"
-	"github.com/larksuite/cli/internal/event/transport"
+	"github.com/larksuite/cli/internal/event/consumecli"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -76,136 +72,15 @@ Use 'event schema <EventKey>' for parameter details.`,
 }
 
 func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consumeCmdOpts) error {
-	// Pipe-close (e.g. `... | head -n 1`) must reach the EPIPE error path in the loop, not SIGPIPE-kill.
-	ignoreBrokenPipe()
-
-	cfg, err := f.Config()
-	if err != nil {
-		return err
-	}
-
-	paramMap, err := parseParams(o.params)
-	if err != nil {
-		return err
-	}
-
-	keyDef, ok := eventlib.Lookup(eventKey)
-	if !ok {
-		return unknownEventKeyErr(eventKey)
-	}
-
-	identity, err := resolveIdentity(cmd, f, keyDef)
-	if err != nil {
-		return err
-	}
-
-	if o.jqExpr != "" {
-		if err := output.ValidateJqExpression(o.jqExpr); err != nil {
-			return output.ErrWithHint(
-				output.ExitValidation, "validation",
-				err.Error(),
-				fmt.Sprintf("see `lark-cli event consume --help` EXAMPLES for common patterns, or `lark-cli event schema %s` for valid field paths", eventKey),
-			)
-		}
-	}
-
-	outputDir := o.outputDir
-	if outputDir != "" {
-		safePath, err := sanitizeOutputDir(outputDir)
-		if err != nil {
-			return err
-		}
-		outputDir = safePath
-	}
-
-	domain := core.ResolveEndpoints(cfg.Brand).Open
-
-	// Surface auth errors before forking the bus daemon.
-	if _, err := resolveTenantToken(cmd.Context(), f, cfg.AppID); err != nil {
-		return err
-	}
-
-	apiClient, err := f.NewAPIClient()
-	if err != nil {
-		return err
-	}
-	runtime := &consumeRuntime{client: apiClient, accessIdentity: identity}
-	// botRuntime pins AsBot: /app_versions rejects UAT (99991668) and /connection is app-level.
-	botRuntime := &consumeRuntime{client: apiClient, accessIdentity: core.AsBot}
-
-	// Weak-dependency fetch: failures leave appVer==nil and downgrade preflight to a no-op.
-	preflightErrOut := f.IOStreams.ErrOut
-	if o.quiet {
-		preflightErrOut = io.Discard
-	}
-	appVer, appVerErr := appmeta.FetchCurrentPublished(cmd.Context(), botRuntime, cfg.AppID)
-	switch {
-	case appVerErr != nil:
-		fmt.Fprintf(preflightErrOut, "[event] skipped console precheck: %s\n", describeAppMetaErr(appVerErr))
-	case appVer == nil:
-		fmt.Fprintln(preflightErrOut, "[event] skipped console precheck: app has no published version")
-	}
-
-	pf := &preflightCtx{
-		factory:  f,
-		appID:    cfg.AppID,
-		brand:    cfg.Brand,
-		eventKey: eventKey,
-		identity: identity,
-		keyDef:   keyDef,
-		appVer:   appVer,
-	}
-	if err := preflightEventTypes(pf); err != nil {
-		return err
-	}
-	if err := preflightScopes(cmd.Context(), pf); err != nil {
-		return err
-	}
-
-	ctx, cancel := context.WithCancel(cmd.Context())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-	go func() {
-		select {
-		case <-sigCh:
-			if !o.quiet && f.IOStreams.IsTerminal {
-				fmt.Fprintln(f.IOStreams.ErrOut, "\nShutting down...")
-			}
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-
-	errOut := f.IOStreams.ErrOut
-	if o.quiet {
-		errOut = io.Discard
-	}
-
-	// Non-TTY only: stdin EOF is shutdown for subprocess callers; in TTY Ctrl-D must not exit.
-	if !f.IOStreams.IsTerminal {
-		watchStdinEOF(os.Stdin, cancel, errOut)
-	}
-
-	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
-		EventKey:        eventKey,
-		Params:          paramMap,
-		JQExpr:          o.jqExpr,
-		Quiet:           o.quiet,
-		OutputDir:       outputDir,
-		Runtime:         runtime,
-		Out:             f.IOStreams.Out,
-		ErrOut:          errOut,
-		RemoteAPIClient: botRuntime,
-		MaxEvents:       o.maxEvents,
-		Timeout:         o.timeout,
-		IsTTY:           f.IOStreams.IsTerminal,
-	}); err != nil {
-		return err
-	}
-	return nil
+	return consumecli.Run(cmd, f, eventKey, consumecli.Options{
+		Params:        o.params,
+		JQExpr:        o.jqExpr,
+		Quiet:         o.quiet,
+		OutputDir:     o.outputDir,
+		MaxEvents:     o.maxEvents,
+		Timeout:       o.timeout,
+		WatchStdinEOF: true,
+	})
 }
 
 // resolveIdentity resolves the session identity and enforces keyDef.AuthTypes as a whitelist.

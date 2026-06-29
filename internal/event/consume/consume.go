@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/transport"
 )
@@ -32,6 +33,14 @@ type Options struct {
 	MaxEvents int           // 0 = unlimited
 	Timeout   time.Duration // 0 = no timeout
 	IsTTY     bool
+
+	Envelope *OutputEnvelope
+}
+
+// OutputEnvelope wraps each emitted event for compatibility callers that
+// historically returned the shared CLI JSON envelope instead of bare event data.
+type OutputEnvelope struct {
+	Identity string
 }
 
 // Run ensures bus is up, performs hello handshake, runs PreConsume for first subscriber,
@@ -58,6 +67,22 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		}
 	}
 
+	// Normalize params (resolve aliases like "me" -> real email) before fingerprint
+	// compute, PreConsume, Match, Process. Must happen BEFORE doHello so the
+	// SubscriptionID we send to bus reflects canonical values.
+	if keyDef.NormalizeParams != nil {
+		if err := keyDef.NormalizeParams(ctx, opts.Runtime, opts.Params); err != nil {
+			if _, ok := errs.ProblemOf(err); ok {
+				return err
+			}
+			return errs.NewInternalError(errs.SubtypeUnknown,
+				"normalize params for %s: %s", opts.EventKey, err).WithCause(err)
+		}
+	}
+
+	// Compute subscription identity from normalized params + SubscriptionKey flags.
+	subscriptionID := ComputeSubscriptionID(keyDef, opts.Params)
+
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -78,12 +103,12 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	}
 	defer conn.Close()
 
-	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType})
+	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType}, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
 
-	var cleanup func()
+	var cleanup func() error
 	if ack.FirstForKey && keyDef.PreConsume != nil {
 		if !opts.Quiet {
 			fmt.Fprintf(errOut, "[event] running pre-consume setup...\n")
@@ -105,14 +130,22 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 		if cleanup != nil {
 			switch {
 			case r != nil:
-				fmt.Fprintf(errOut, "WARN: panic recovered; running cleanup unconditionally (may affect other consumers of %s)\n", opts.EventKey)
-				cleanup()
+				fmt.Fprintf(errOut,
+					"WARN: panic recovered; running cleanup unconditionally (may affect other consumers of %s)\n",
+					opts.EventKey)
+				if cleanupErr := cleanup(); cleanupErr != nil {
+					fmt.Fprintf(errOut,
+						"WARN: cleanup also failed during panic recovery: %v\n", cleanupErr)
+				}
 			case lastForKey:
 				if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] running cleanup...\n")
 				}
-				cleanup()
-				if !opts.Quiet {
+				if cleanupErr := cleanup(); cleanupErr != nil {
+					fmt.Fprintf(errOut,
+						"WARN: cleanup failed: %v (server-side subscribe is idempotent — residual record will be overwritten on next subscribe)\n",
+						cleanupErr)
+				} else if !opts.Quiet {
 					fmt.Fprintf(errOut, "[event] cleanup done.\n")
 				}
 			}
@@ -136,7 +169,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	writeReadyMarker(errOut, opts)
 
-	return consumeLoop(ctx, conn, br, keyDef, opts, &lastForKey, &emitted)
+	return consumeLoop(ctx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
 }
 
 func truncateDuration(d time.Duration) time.Duration {

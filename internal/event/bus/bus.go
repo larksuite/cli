@@ -262,19 +262,23 @@ func (b *Bus) handleConn(conn net.Conn) {
 
 // handleHello registers a consume connection with the hub; reader carries bytes already pulled off conn.
 func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.Hello) {
-	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID)
+	subID := hello.SubscriptionID
+	if subID == "" {
+		subID = hello.EventKey
+	}
+	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID, subID)
 	bc.SetLogger(b.logger)
 
 	// Register + isFirst under one lock; blocks on any in-progress cleanup lock for the same EventKey.
 	firstForKey := b.hub.RegisterAndIsFirst(bc)
 
-	bc.SetCheckLastForKey(func(eventKey string) bool {
-		return b.hub.AcquireCleanupLock(eventKey)
+	bc.SetCheckLastForKey(func(scope string) bool {
+		return b.hub.AcquireCleanupLock(scope)
 	})
 	bc.SetOnClose(func(c *Conn) {
 		b.hub.UnregisterAndIsLast(c)
 		// Release is idempotent and must fire on every disconnect path so waiters don't block forever.
-		b.hub.ReleaseCleanupLock(c.EventKey())
+		b.hub.ReleaseCleanupLock(c.SubscriptionID())
 		b.mu.Lock()
 		delete(b.conns, c)
 		remaining := len(b.conns)

@@ -4,22 +4,19 @@
 package mail
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
-	"os"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/event/consumecli"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -290,6 +287,126 @@ func TestMailWatchOutputDirMkdirFailureTyped(t *testing.T) {
 	}
 }
 
+func TestMailWatchExecuteMapsFlagsToConsumeRunner(t *testing.T) {
+	cmd := mailWatchCommandForTest(t, map[string]string{
+		"format":     "json",
+		"mailbox":    "alice@example.com",
+		"msg-format": "minimal",
+		"label-ids":  `["FLAGGED"]`,
+		"labels":     `["team"]`,
+		"folder-ids": `["INBOX"]`,
+		"folders":    `["news"]`,
+	})
+	f := &cmdutil.Factory{IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), io.Discard, io.Discard)}
+	rt := &common.RuntimeContext{
+		Cmd:     cmd,
+		Config:  &core.CliConfig{AppID: "cli_test_app"},
+		Factory: f,
+	}
+
+	var gotKey string
+	var gotOpts consumecli.Options
+	oldRun := runMailWatchConsume
+	runMailWatchConsume = func(_ *cobra.Command, _ *cmdutil.Factory, eventKey string, opts consumecli.Options) error {
+		gotKey = eventKey
+		gotOpts = opts
+		return nil
+	}
+	t.Cleanup(func() { runMailWatchConsume = oldRun })
+
+	if err := MailWatch.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if gotKey != mailEventType {
+		t.Fatalf("event key = %q, want %q", gotKey, mailEventType)
+	}
+	wantParams := map[string]string{
+		"mailbox":    "alice@example.com",
+		"msg_format": "minimal",
+		"label_ids":  `["FLAGGED"]`,
+		"labels":     `["team"]`,
+		"folder_ids": `["INBOX"]`,
+		"folders":    `["news"]`,
+	}
+	for k, want := range wantParams {
+		if gotOpts.ParamMap[k] != want {
+			t.Fatalf("ParamMap[%s] = %q, want %q", k, gotOpts.ParamMap[k], want)
+		}
+	}
+	if gotOpts.IdentityOverride != core.AsUser {
+		t.Fatalf("IdentityOverride = %q, want user", gotOpts.IdentityOverride)
+	}
+	if gotOpts.Envelope == nil || gotOpts.Envelope.Identity != "user" {
+		t.Fatalf("Envelope = %#v, want identity=user", gotOpts.Envelope)
+	}
+	if gotOpts.ParamMap["watch_output_dir_full"] != "" {
+		t.Fatalf("watch_output_dir_full = %q, want empty without output-dir", gotOpts.ParamMap["watch_output_dir_full"])
+	}
+	if !gotOpts.WatchStdinEOF {
+		t.Fatalf("WatchStdinEOF = false, want true")
+	}
+}
+
+func TestMailWatchExecuteDataFormatUsesBareOutput(t *testing.T) {
+	cmd := mailWatchCommandForTest(t, map[string]string{"format": "data"})
+	f := &cmdutil.Factory{IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), io.Discard, io.Discard)}
+	rt := &common.RuntimeContext{
+		Cmd:     cmd,
+		Config:  &core.CliConfig{AppID: "cli_test_app"},
+		Factory: f,
+	}
+
+	var gotOpts consumecli.Options
+	oldRun := runMailWatchConsume
+	runMailWatchConsume = func(_ *cobra.Command, _ *cmdutil.Factory, _ string, opts consumecli.Options) error {
+		gotOpts = opts
+		return nil
+	}
+	t.Cleanup(func() { runMailWatchConsume = oldRun })
+
+	if err := MailWatch.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if gotOpts.Envelope != nil {
+		t.Fatalf("Envelope = %#v, want nil for data output", gotOpts.Envelope)
+	}
+}
+
+func TestMailWatchExecuteOutputDirUsesBareFullPayload(t *testing.T) {
+	chdirTemp(t)
+	cmd := mailWatchCommandForTest(t, map[string]string{
+		"format":     "json",
+		"output-dir": "watch-output",
+	})
+	f := &cmdutil.Factory{IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), io.Discard, io.Discard)}
+	rt := &common.RuntimeContext{
+		Cmd:     cmd,
+		Config:  &core.CliConfig{AppID: "cli_test_app"},
+		Factory: f,
+	}
+
+	var gotOpts consumecli.Options
+	oldRun := runMailWatchConsume
+	runMailWatchConsume = func(_ *cobra.Command, _ *cmdutil.Factory, _ string, opts consumecli.Options) error {
+		gotOpts = opts
+		return nil
+	}
+	t.Cleanup(func() { runMailWatchConsume = oldRun })
+
+	if err := MailWatch.Execute(context.Background(), rt); err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if gotOpts.OutputDir != "watch-output" {
+		t.Fatalf("OutputDir = %q, want original relative path", gotOpts.OutputDir)
+	}
+	if gotOpts.Envelope != nil {
+		t.Fatalf("Envelope = %#v, want nil for output-dir file sink", gotOpts.Envelope)
+	}
+	if gotOpts.ParamMap["watch_output_dir_full"] != "true" {
+		t.Fatalf("watch_output_dir_full = %q, want true", gotOpts.ParamMap["watch_output_dir_full"])
+	}
+}
+
 func TestWatchFetchFailureValue(t *testing.T) {
 	value := watchFetchFailureValue("msg_123", "metadata", assertErr("boom"), map[string]interface{}{
 		"mail_address": "alice@example.com",
@@ -314,27 +431,6 @@ func TestWatchFetchFailureValue(t *testing.T) {
 	eventObj, ok := value["event"].(map[string]interface{})
 	if !ok || eventObj["message_id"] != "msg_123" {
 		t.Fatalf("unexpected event payload: %#v", value["event"])
-	}
-}
-
-func TestMailWatchLoggerWritesInfoToWriter(t *testing.T) {
-	var buf bytes.Buffer
-	logger := &mailWatchLogger{w: &buf}
-	logger.Info(context.Background(), "connected to wss://example.com")
-	if !strings.Contains(buf.String(), "connected to wss://example.com") {
-		t.Fatalf("expected info message in output, got: %q", buf.String())
-	}
-	if !strings.Contains(buf.String(), "[SDK Info]") {
-		t.Fatalf("expected [SDK Info] prefix, got: %q", buf.String())
-	}
-}
-
-func TestMailWatchLoggerSuppressesDebugAlways(t *testing.T) {
-	var buf bytes.Buffer
-	logger := &mailWatchLogger{w: &buf}
-	logger.Debug(context.Background(), "debug message")
-	if got := buf.String(); got != "" {
-		t.Fatalf("expected debug suppressed, got: %q", got)
 	}
 }
 
@@ -722,101 +818,6 @@ func TestSetKeysSorted(t *testing.T) {
 	}
 }
 
-// --- handleMailWatchSignal ---
-
-// TestHandleMailWatchSignalUnsubscribesAndCancels verifies that all callbacks are invoked and the shutdown message is printed.
-func TestHandleMailWatchSignalUnsubscribesAndCancels(t *testing.T) {
-	var buf bytes.Buffer
-	unsubscribed := false
-	stopped := false
-	canceled := false
-
-	handleMailWatchSignal(&buf, os.Interrupt, 3, func() {
-		unsubscribed = true
-	}, func() {
-		stopped = true
-	}, func() {
-		canceled = true
-	})
-
-	if !unsubscribed {
-		t.Fatal("expected unsubscribeWithLog to be called")
-	}
-	if !stopped {
-		t.Fatal("expected signal stop to be called")
-	}
-	if !canceled {
-		t.Fatal("expected cancel to be called")
-	}
-	out := buf.String()
-	if !strings.Contains(out, "Shutting down (signal: interrupt)... (received 3 events)") {
-		t.Fatalf("missing shutdown message, got: %q", out)
-	}
-}
-
-// TestHandleMailWatchSignalReportsUnsubscribeFailure verifies that unsubscribe errors are written to errOut.
-func TestHandleMailWatchSignalReportsUnsubscribeFailure(t *testing.T) {
-	var buf bytes.Buffer
-
-	handleMailWatchSignal(&buf, os.Interrupt, 1, func() {
-		fmt.Fprintln(&buf, "Warning: unsubscribe failed: boom")
-	}, func() {}, func() {})
-
-	if got := buf.String(); !strings.Contains(got, "Warning: unsubscribe failed: boom") {
-		t.Fatalf("expected unsubscribe warning, got: %q", got)
-	}
-}
-
-// TestHandleMailWatchSignalPanicUnblocksShutdown verifies that a panic in unsubscribeWithLog still triggers shutdown.
-func TestHandleMailWatchSignalPanicUnblocksShutdown(t *testing.T) {
-	shutdownBySignal := make(chan struct{})
-	var shutdownOnce sync.Once
-	_, cancelWatch := context.WithCancel(context.Background())
-	triggerShutdown := func() {
-		shutdownOnce.Do(func() { close(shutdownBySignal) })
-		cancelWatch()
-	}
-
-	sigCh := make(chan os.Signal, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				triggerShutdown()
-			}
-		}()
-		<-sigCh
-		// Simulate panic inside handleMailWatchSignal (e.g. unsubscribeWithLog panics)
-		panic("unsubscribe exploded")
-	}()
-
-	sigCh <- os.Interrupt
-
-	select {
-	case <-shutdownBySignal:
-		// Success: shutdown channel was closed despite the panic
-	case <-time.After(2 * time.Second):
-		t.Fatal("shutdownBySignal was not closed after panic — process would hang")
-	}
-}
-
-// TestHandleMailWatchSignalCallOrder verifies callbacks execute in order: stop signals → unsubscribe → cancel.
-func TestHandleMailWatchSignalCallOrder(t *testing.T) {
-	var order []string
-
-	handleMailWatchSignal(io.Discard, os.Interrupt, 0, func() {
-		order = append(order, "unsub")
-	}, func() {
-		order = append(order, "stop")
-	}, func() {
-		order = append(order, "cancel")
-	})
-
-	// Expected: stop → unsub → cancel
-	if len(order) != 3 || order[0] != "stop" || order[1] != "unsub" || order[2] != "cancel" {
-		t.Fatalf("unexpected call order: %v, want [stop unsub cancel]", order)
-	}
-}
-
 func assertErr(msg string) error {
 	return &testErr{msg: msg}
 }
@@ -844,6 +845,15 @@ type watchDryRunPayload struct {
 
 func runtimeForMailWatchTest(t *testing.T, values map[string]string) *common.RuntimeContext {
 	t.Helper()
+	cmd := mailWatchCommandForTest(t, values)
+	return &common.RuntimeContext{
+		Cmd:    cmd,
+		Config: &core.CliConfig{AppID: "cli_test_app"},
+	}
+}
+
+func mailWatchCommandForTest(t *testing.T, values map[string]string) *cobra.Command {
+	t.Helper()
 	cmd := &cobra.Command{Use: "test"}
 	for _, fl := range MailWatch.Flags {
 		switch fl.Type {
@@ -863,10 +873,7 @@ func runtimeForMailWatchTest(t *testing.T, values map[string]string) *common.Run
 			t.Fatalf("set flag --%s failed: %v", k, err)
 		}
 	}
-	return &common.RuntimeContext{
-		Cmd:    cmd,
-		Config: &core.CliConfig{AppID: "cli_test_app"},
-	}
+	return cmd
 }
 
 func dryRunAPIsForMailWatchTest(t *testing.T, dry *common.DryRunAPI) []struct {

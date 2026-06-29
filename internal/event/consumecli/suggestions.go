@@ -1,0 +1,66 @@
+// Copyright (c) 2026 Lark Technologies Pte. Ltd.
+// SPDX-License-Identifier: MIT
+
+package consumecli
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/larksuite/cli/errs"
+	eventlib "github.com/larksuite/cli/internal/event"
+	"github.com/larksuite/cli/internal/suggest"
+)
+
+const maxSuggestions = 3
+
+func suggestEventKeys(input string) []string {
+	type match struct {
+		key  string
+		dist int
+	}
+	var hits []match
+	threshold := max(2, len(input)/5)
+
+	for _, def := range eventlib.ListAll() {
+		if strings.Contains(def.Key, input) {
+			hits = append(hits, match{def.Key, 0})
+			continue
+		}
+		if d := suggest.Levenshtein(input, def.Key); d <= threshold {
+			hits = append(hits, match{def.Key, d})
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool { return hits[i].dist < hits[j].dist })
+
+	n := min(maxSuggestions, len(hits))
+	out := make([]string, n)
+	for i := range out {
+		out[i] = hits[i].key
+	}
+	return out
+}
+
+func formatSuggestions(keys []string) string {
+	if len(keys) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(keys))
+	for i, k := range keys {
+		quoted[i] = fmt.Sprintf("%q", k)
+	}
+	if len(quoted) == 1 {
+		return quoted[0]
+	}
+	return "one of: " + strings.Join(quoted, ", ")
+}
+
+func UnknownEventKeyErr(key string) error {
+	msg := fmt.Sprintf("unknown EventKey: %s", key)
+	if guesses := suggestEventKeys(key); len(guesses) > 0 {
+		msg += " - did you mean " + formatSuggestions(guesses) + "?"
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).
+		WithHint("Run 'lark-cli event list' to see available keys.")
+}

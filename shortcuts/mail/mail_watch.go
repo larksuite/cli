@@ -4,67 +4,31 @@
 package mail
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
-	"sync/atomic"
-	"syscall"
 
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/event/consume"
+	"github.com/larksuite/cli/internal/event/consumecli"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
-
-	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
-	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
-	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
 
-type mailWatchLogger struct {
-	w io.Writer
-}
-
-func (l *mailWatchLogger) Debug(_ context.Context, _ ...interface{}) {}
-func (l *mailWatchLogger) Info(_ context.Context, args ...interface{}) {
-	fmt.Fprintln(l.w, append([]interface{}{"[SDK Info]"}, args...)...)
-}
-func (l *mailWatchLogger) Warn(_ context.Context, args ...interface{}) {
-	fmt.Fprintln(l.w, append([]interface{}{"[SDK Warn]"}, args...)...)
-}
-func (l *mailWatchLogger) Error(_ context.Context, args ...interface{}) {
-	fmt.Fprintln(l.w, append([]interface{}{"[SDK Error]"}, args...)...)
-}
-
-var _ larkcore.Logger = (*mailWatchLogger)(nil)
-
-// handleMailWatchSignal processes a shutdown signal: logs status, unsubscribes
-// mailbox events, restores default signal behavior for forced termination, and
-// cancels the watch context.
-func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int64, unsubscribeWithLog func(), stopSignals func(), cancel context.CancelFunc) {
-	fmt.Fprintf(errOut, "\nShutting down (signal: %v)... (received %d events)\n", sig, eventCount)
-	// Restore default signal behavior so a second Ctrl+C can force terminate.
-	stopSignals()
-	signal.Reset(os.Interrupt, syscall.SIGTERM)
-	unsubscribeWithLog()
-	cancel()
-}
-
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
+
+var runMailWatchConsume = consumecli.Run
 
 // promptInjectionPatterns lists known prompt injection trigger phrases.
 var promptInjectionPatterns = []string{
@@ -206,8 +170,7 @@ var MailWatch = common.Shortcut{
 			if err != nil {
 				return mailValidationParamError("--output-dir", "invalid --output-dir %q: %v", outputDir, err).WithCause(err)
 			}
-			outputDir = safePath
-			if err := vfs.MkdirAll(outputDir, 0700); err != nil {
+			if err := vfs.MkdirAll(safePath, 0700); err != nil {
 				return mailFileIOError("cannot create output directory %q: %v", err, outputDir, err)
 			}
 		}
@@ -216,280 +179,29 @@ var MailWatch = common.Shortcut{
 		labelsInput := runtime.Str("labels")
 		foldersInput := runtime.Str("folders")
 
-		errOut := runtime.IO().ErrOut
-		out := runtime.IO().Out
-
-		info := func(msg string) {
-			fmt.Fprintln(errOut, msg)
+		envelope := (*consume.OutputEnvelope)(nil)
+		if outputDir == "" && (outFormat == "json" || outFormat == "") {
+			envelope = &consume.OutputEnvelope{Identity: string(runtime.As())}
 		}
-
-		// Resolve --labels / --folders strictly as names, and --label-ids / --folder-ids strictly as IDs.
-		resolvedLabelIDs, err := resolveWatchFilterIDs(runtime, mailbox, labelIDsInput, labelsInput, resolveLabelID, resolveLabelNames, resolveLabelSystemID, "label-ids", "labels", "label")
-		if err != nil {
-			return err
+		outputDirEnabled := ""
+		if outputDir != "" {
+			outputDirEnabled = "true"
 		}
-		resolvedFolderIDs, err := resolveWatchFilterIDs(runtime, mailbox, folderIDsInput, foldersInput, resolveFolderID, resolveFolderNames, resolveFolderSystemAliasOrID, "folder-ids", "folders", "folder")
-		if err != nil {
-			return err
-		}
-		labelIDSet := make(map[string]bool, len(resolvedLabelIDs))
-		for _, id := range resolvedLabelIDs {
-			if id != "" {
-				labelIDSet[id] = true
-			}
-		}
-		folderIDSet := make(map[string]bool, len(resolvedFolderIDs))
-		for _, id := range resolvedFolderIDs {
-			if id != "" {
-				folderIDSet[id] = true
-			}
-		}
-
-		// Step 1: subscribe mailbox events (required before WebSocket pushes mail events)
-		info(fmt.Sprintf("Subscribing mailbox events for: %s", mailbox))
-		_, err = runtime.CallAPITyped("POST", mailboxPath(mailbox, "event", "subscribe"), nil, map[string]interface{}{"event_type": 1})
-		if err != nil {
-			return wrapWatchSubscribeError(err)
-		}
-		info("Mailbox subscribed.")
-
-		var unsubOnce sync.Once
-		var unsubErr error
-		unsubscribe := func() error {
-			unsubOnce.Do(func() {
-				_, unsubErr = runtime.CallAPITyped("POST", mailboxPath(mailbox, "event", "unsubscribe"), nil, map[string]interface{}{"event_type": 1})
-			})
-			return unsubErr
-		}
-		var unsubLogOnce sync.Once
-		unsubscribeWithLog := func() {
-			unsubLogOnce.Do(func() {
-				info("Unsubscribing mailbox events...")
-				if err := unsubscribe(); err != nil {
-					fmt.Fprintf(errOut, "Warning: unsubscribe failed: %v\n", err)
-				} else {
-					info("Mailbox unsubscribed.")
-				}
-			})
-		}
-		defer unsubscribeWithLog()
-
-		// Resolve "me" to the actual email address so we can filter events.
-		mailboxFilter := mailbox
-		if mailbox == "me" {
-			resolved, profileErr := fetchMailboxPrimaryEmail(runtime, "me")
-			if profileErr != nil {
-				return enhanceProfileError(profileErr)
-			}
-			mailboxFilter = resolved
-		}
-
-		var eventCount atomic.Int64
-
-		handleEvent := func(data map[string]interface{}) {
-			// Extract event body
-			eventBody := extractMailEventBody(data)
-
-			// Filter by --mailbox
-			if mailboxFilter != "" {
-				mailAddr, _ := eventBody["mail_address"].(string)
-				if !strings.EqualFold(mailAddr, mailboxFilter) {
-					return
-				}
-			}
-
-			messageID, _ := eventBody["message_id"].(string)
-			if messageID == "" {
-				return
-			}
-
-			// Use event's mail_address as the fetch mailbox when available,
-			// because "me" only resolves to the current user's mailbox but
-			// WebSocket events may arrive for other mailboxes the app can access.
-			fetchMailbox := mailbox
-			if eventAddr, _ := eventBody["mail_address"].(string); eventAddr != "" {
-				fetchMailbox = eventAddr
-			}
-
-			// Fetch message payload when needed:
-			// 1) msg-format != event (output message/meta)
-			// 2) label/folder filtering is enabled
-			// 3) output-dir is set (always fetch full for file writing)
-			needMessage := msgFormat != "event" || len(labelIDSet) > 0 || len(folderIDSet) > 0 || outputDir != ""
-			var message map[string]interface{}
-			if needMessage {
-				var err error
-				fetchFormat := watchFetchFormat(msgFormat, len(labelIDSet) > 0 || len(folderIDSet) > 0)
-				if outputDir != "" {
-					fetchFormat = "full"
-				}
-				message, err = fetchMessageForWatch(runtime, fetchMailbox, messageID, fetchFormat)
-				if err != nil {
-					output.PrintError(errOut, fmt.Sprintf("fetch message %s failed: %v", fetchFormat, err))
-					failureData := watchFetchFailureValue(messageID, fetchFormat, err, eventBody)
-					if outputDir != "" {
-						if _, writeErr := writeMailEventFile(outputDir, failureData, data); writeErr != nil {
-							output.PrintError(errOut, fmt.Sprintf("failed to write event file: %v", writeErr))
-						}
-					}
-					output.PrintJson(out, failureData)
-					return
-				}
-			}
-
-			// Filter by --labels/--folders + --label-ids/--folder-ids resolved ID sets (based on message metadata)
-			if len(folderIDSet) > 0 {
-				folderID, _ := message["folder_id"].(string)
-				if !folderIDSet[folderID] {
-					return
-				}
-			}
-			if len(labelIDSet) > 0 {
-				if !messageHasLabel(message, labelIDSet) {
-					return
-				}
-			}
-
-			eventCount.Add(1)
-
-			// Prompt injection detection: warn when email body contains known injection patterns.
-			// Body fields may be base64url-encoded; decode before scanning.
-			if message != nil {
-				for _, field := range []string{"body_plain_text", "body_preview", "body_plain"} {
-					if body, ok := message[field].(string); ok && body != "" {
-						decoded := decodeBase64URL(body)
-						if detectPromptInjection(decoded) {
-							from, _ := message["from"].(string)
-							fmt.Fprintf(errOut, "[SECURITY WARNING] Possible prompt injection detected in message from %s\n", sanitizeForTerminal(from))
-						}
-						break
-					}
-				}
-			}
-
-			// Save full message for file writing before any stdout trimming.
-			fullMessage := message
-
-			var outputData interface{} = data
-			if msgFormat != "event" && message != nil {
-				if msgFormat == "minimal" {
-					message = minimalWatchMessage(message)
-				}
-				outputData = map[string]interface{}{"message": message}
-			}
-
-			if outputDir != "" {
-				_, err := writeMailEventFile(outputDir, decodeBodyFieldsForFile(fullMessage), data)
-				if err != nil {
-					output.PrintError(errOut, fmt.Sprintf("failed to write event file: %v", err))
-				}
-			}
-
-			switch outFormat {
-			case "json", "":
-				output.PrintNdjson(out, output.Envelope{OK: true, Identity: string(runtime.As()), Data: outputData})
-			case "data":
-				output.PrintNdjson(out, outputData)
-			}
-		}
-
-		rawHandler := func(ctx context.Context, event *larkevent.EventReq) error {
-			var eventData map[string]interface{}
-			if event.Body != nil {
-				dec := json.NewDecoder(bytes.NewReader(event.Body))
-				dec.UseNumber()
-				if err := dec.Decode(&eventData); err != nil {
-					fmt.Fprintf(errOut, "warning: failed to decode event body: %v\n", err)
-				}
-			}
-			if eventData == nil {
-				eventData = make(map[string]interface{})
-			}
-			handleEvent(eventData)
-			return nil
-		}
-
-		sdkLogger := &mailWatchLogger{w: errOut}
-
-		eventDispatcher := dispatcher.NewEventDispatcher("", "")
-		eventDispatcher.InitConfig(larkevent.WithLogger(sdkLogger))
-		eventDispatcher.OnCustomizedEvent(mailEventType, rawHandler)
-
-		endpoints := core.ResolveEndpoints(runtime.Config.Brand)
-		domain := endpoints.Open
-
-		info("Connecting to Feishu event WebSocket...")
-		info(fmt.Sprintf("Listening for: %s", mailEventType))
-		info(fmt.Sprintf("Output mode: %s", msgFormat))
-		if mailboxFilter != "" {
-			info(fmt.Sprintf("Filter: mailbox=%s", mailboxFilter))
-		}
-		if len(folderIDSet) > 0 {
-			info(fmt.Sprintf("Filter: folder-ids=%s", strings.Join(setKeys(folderIDSet), ",")))
-		}
-		if len(labelIDSet) > 0 {
-			info(fmt.Sprintf("Filter: label-ids=%s", strings.Join(setKeys(labelIDSet), ",")))
-		}
-
-		cli := larkws.NewClient(runtime.Config.AppID, runtime.Config.AppSecret,
-			larkws.WithEventHandler(eventDispatcher),
-			larkws.WithDomain(domain),
-			larkws.WithLogger(sdkLogger),
-		)
-
-		watchCtx, cancelWatch := context.WithCancel(ctx)
-		defer cancelWatch()
-
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-		stopSignals := func() { signal.Stop(sigCh) }
-		defer stopSignals()
-
-		shutdownBySignal := make(chan struct{})
-		var shutdownOnce sync.Once
-		triggerShutdown := func() {
-			shutdownOnce.Do(func() { close(shutdownBySignal) })
-			cancelWatch()
-		}
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Fprintf(errOut, "panic in signal handler: %v\n", r)
-					triggerShutdown()
-				}
-			}()
-			select {
-			case sig := <-sigCh:
-				handleMailWatchSignal(errOut, sig, eventCount.Load(), unsubscribeWithLog, stopSignals, cancelWatch)
-				triggerShutdown()
-			case <-watchCtx.Done():
-				return
-			}
-		}()
-
-		startErrCh := make(chan error, 1)
-		go func() {
-			startErrCh <- cli.Start(watchCtx)
-		}()
-
-		info("Connected. Waiting for mail events... (Ctrl+C to stop)")
-		select {
-		case <-shutdownBySignal:
-			return nil
-		case err := <-startErrCh:
-			if err != nil {
-				select {
-				case <-shutdownBySignal:
-					return nil
-				default:
-				}
-				if watchCtx.Err() != nil {
-					return nil
-				}
-				return errs.NewNetworkError(errs.SubtypeNetworkTransport, "WebSocket connection failed: %v", err).WithCause(err)
-			}
-			return nil
-		}
+		return runMailWatchConsume(runtime.Cmd, runtime.Factory, mailEventType, consumecli.Options{
+			ParamMap: map[string]string{
+				"mailbox":               mailbox,
+				"msg_format":            msgFormat,
+				"label_ids":             labelIDsInput,
+				"labels":                labelsInput,
+				"folder_ids":            folderIDsInput,
+				"folders":               foldersInput,
+				"watch_output_dir_full": outputDirEnabled,
+			},
+			OutputDir:        outputDir,
+			IdentityOverride: core.AsUser,
+			Envelope:         envelope,
+			WatchStdinEOF:    true,
+		})
 	},
 }
 

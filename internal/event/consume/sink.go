@@ -21,18 +21,46 @@ type Sink interface {
 }
 
 func newSink(opts Options) (Sink, error) {
+	wrap := func(s Sink) Sink {
+		if opts.Envelope == nil {
+			return s
+		}
+		return &EnvelopeSink{Sink: s, Identity: opts.Envelope.Identity}
+	}
 	if opts.OutputDir != "" {
 		if err := vfs.MkdirAll(opts.OutputDir, 0755); err != nil {
 			return nil, fmt.Errorf("create output dir: %w", err)
 		}
 		// PID disambiguates filenames across processes sharing a Dir.
-		return &DirSink{Dir: opts.OutputDir, pid: os.Getpid()}, nil
+		return wrap(&DirSink{Dir: opts.OutputDir, pid: os.Getpid()}), nil
 	}
 	out := opts.Out
 	if out == nil {
 		out = os.Stdout //nolint:forbidigo // library-caller fallback; cmd path always sets Options.Out
 	}
-	return &WriterSink{W: out, ErrOut: opts.ErrOut}, nil
+	return wrap(&WriterSink{W: out, ErrOut: opts.ErrOut}), nil
+}
+
+// EnvelopeSink wraps emitted JSON in the legacy CLI envelope shape.
+type EnvelopeSink struct {
+	Sink
+	Identity string
+}
+
+func (s *EnvelopeSink) Write(data json.RawMessage) error {
+	wrapped, err := json.Marshal(struct {
+		OK       bool            `json:"ok"`
+		Identity string          `json:"identity,omitempty"`
+		Data     json.RawMessage `json:"data"`
+	}{
+		OK:       true,
+		Identity: s.Identity,
+		Data:     data,
+	})
+	if err != nil {
+		return err
+	}
+	return s.Sink.Write(wrapped)
 }
 
 // WriterSink writes one JSON event per line; mu serialises concurrent worker writes.

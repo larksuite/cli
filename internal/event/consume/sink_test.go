@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,6 +50,35 @@ func TestWriterSink_PrettyHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "\n  \"k\"") {
 		t.Errorf("expected indented output, got: %q", out.String())
+	}
+}
+
+func TestNewSinkEnvelopeWrapsWriterOutput(t *testing.T) {
+	var out bytes.Buffer
+	sink, err := newSink(Options{
+		Out:      &out,
+		ErrOut:   io.Discard,
+		Envelope: &OutputEnvelope{Identity: "user"},
+	})
+	if err != nil {
+		t.Fatalf("newSink: %v", err)
+	}
+	if err := sink.Write(json.RawMessage(`{"message_id":"msg_1"}`)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	var got struct {
+		OK       bool            `json:"ok"`
+		Identity string          `json:"identity"`
+		Data     json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &got); err != nil {
+		t.Fatalf("unmarshal output: %v\n%s", err, out.String())
+	}
+	if !got.OK || got.Identity != "user" {
+		t.Fatalf("unexpected envelope: %+v", got)
+	}
+	if string(got.Data) != `{"message_id":"msg_1"}` {
+		t.Fatalf("data = %s", got.Data)
 	}
 }
 

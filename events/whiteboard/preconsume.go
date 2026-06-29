@@ -21,8 +21,8 @@ const cleanupTimeout = 5 * time.Second
 //
 // board.whiteboard.updated_v1 is subscribed per-whiteboard (by whiteboard_id),
 // so the path contains a :whiteboard_id placeholder that must be supplied via params.
-func whiteboardSubscriptionPreConsume(eventType string) func(context.Context, event.APIClient, map[string]string) (func(), error) {
-	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func(), error) {
+func whiteboardSubscriptionPreConsume(eventType string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
+	return func(ctx context.Context, rt event.APIClient, params map[string]string) (func() error, error) {
 		if rt == nil {
 			return nil, fmt.Errorf("runtime API client is required for pre-consume subscription")
 		}
@@ -39,10 +39,13 @@ func whiteboardSubscriptionPreConsume(eventType string) func(context.Context, ev
 			return nil, err
 		}
 
-		return func() {
+		return func() error {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
-			_, _ = rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body)
+			if _, err := rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body); err != nil {
+				return err
+			}
+			return nil
 		}, nil
 	}
 }
