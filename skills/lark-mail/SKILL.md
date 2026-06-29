@@ -98,9 +98,9 @@ metadata:
 1. **确认身份** — 首次操作邮箱前先调用 `lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'` 获取当前用户的真实邮箱地址（`primary_email_address`），不要通过系统用户名猜测。后续判断"发件人是否为用户本人"时以此地址为准。
 2. **浏览** — `+triage` 查看收件箱摘要，获取 `message_id` / `thread_id`
 3. **阅读** — `+message` 读单封邮件，`+thread` 读整个会话
-4. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
-5. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
-6. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
+4. **回复** — `+reply` / `+reply-all`（默认存草稿；用户确认收件人和内容后，才可加 `--confirm-send` 立即发送）
+5. **转发** — `+forward`（默认存草稿；用户确认收件人和内容后，才可加 `--confirm-send` 立即发送）
+6. **新邮件** — `+send` 存草稿（默认）；用户确认收件人和内容后，才可加 `--confirm-send` 发送
 7. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
 8. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
 9. **已读回执** —
