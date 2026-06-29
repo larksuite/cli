@@ -34,11 +34,12 @@ import (
 )
 
 type Options struct {
-	Params    []string
-	ParamMap  map[string]string
-	JQExpr    string
-	Quiet     bool
-	OutputDir string
+	Params         []string
+	ParamMap       map[string]string
+	InternalParams map[string]string
+	JQExpr         string
+	Quiet          bool
+	OutputDir      string
 
 	MaxEvents int
 	Timeout   time.Duration
@@ -162,6 +163,7 @@ func Run(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o Options) err
 	return consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
 		EventKey:        eventKey,
 		Params:          paramMap,
+		InternalParams:  o.InternalParams,
 		JQExpr:          o.JQExpr,
 		Quiet:           o.Quiet,
 		OutputDir:       outputDir,

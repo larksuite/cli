@@ -27,6 +27,7 @@ import (
 )
 
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
+const watchOutputDirFullParam = "watch_output_dir_full"
 
 var runMailWatchConsume = consumecli.Run
 
@@ -185,20 +186,20 @@ var MailWatch = common.Shortcut{
 		if outputDir == "" && (outFormat == "json" || outFormat == "") {
 			envelope = &consume.OutputEnvelope{Identity: string(runtime.As())}
 		}
-		outputDirEnabled := ""
+		internalParams := map[string]string(nil)
 		if outputDir != "" {
-			outputDirEnabled = "true"
+			internalParams = map[string]string{watchOutputDirFullParam: "true"}
 		}
 		return runMailWatchConsume(runtime.Cmd, runtime.Factory, mailEventType, consumecli.Options{
 			ParamMap: map[string]string{
-				"mailbox":               mailbox,
-				"msg_format":            msgFormat,
-				"label_ids":             labelIDsInput,
-				"labels":                labelsInput,
-				"folder_ids":            folderIDsInput,
-				"folders":               foldersInput,
-				"watch_output_dir_full": outputDirEnabled,
+				"mailbox":    mailbox,
+				"msg_format": msgFormat,
+				"label_ids":  labelIDsInput,
+				"labels":     labelsInput,
+				"folder_ids": folderIDsInput,
+				"folders":    foldersInput,
 			},
+			InternalParams:   internalParams,
 			OutputDir:        outputDir,
 			MaxEvents:        runtime.Int("max-events"),
 			Timeout:          runtime.Duration("timeout"),

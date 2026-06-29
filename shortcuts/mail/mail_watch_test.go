@@ -342,8 +342,11 @@ func TestMailWatchExecuteMapsFlagsToConsumeRunner(t *testing.T) {
 	if gotOpts.Envelope == nil || gotOpts.Envelope.Identity != "user" {
 		t.Fatalf("Envelope = %#v, want identity=user", gotOpts.Envelope)
 	}
-	if gotOpts.ParamMap["watch_output_dir_full"] != "" {
-		t.Fatalf("watch_output_dir_full = %q, want empty without output-dir", gotOpts.ParamMap["watch_output_dir_full"])
+	if _, ok := gotOpts.ParamMap[watchOutputDirFullParam]; ok {
+		t.Fatalf("%s leaked into public ParamMap: %#v", watchOutputDirFullParam, gotOpts.ParamMap)
+	}
+	if gotOpts.InternalParams != nil {
+		t.Fatalf("InternalParams = %#v, want nil without output-dir", gotOpts.InternalParams)
 	}
 	if gotOpts.MaxEvents != 1 {
 		t.Fatalf("MaxEvents = %d, want 1", gotOpts.MaxEvents)
@@ -386,6 +389,9 @@ func TestMailWatchMountedShortcutAcceptsExitControlFlags(t *testing.T) {
 	}
 	if gotOpts.Envelope != nil {
 		t.Fatalf("Envelope = %#v, want nil for data output", gotOpts.Envelope)
+	}
+	if _, ok := gotOpts.ParamMap[watchOutputDirFullParam]; ok {
+		t.Fatalf("%s leaked into public ParamMap: %#v", watchOutputDirFullParam, gotOpts.ParamMap)
 	}
 }
 
@@ -444,8 +450,11 @@ func TestMailWatchExecuteOutputDirUsesBareFullPayload(t *testing.T) {
 	if gotOpts.Envelope != nil {
 		t.Fatalf("Envelope = %#v, want nil for output-dir file sink", gotOpts.Envelope)
 	}
-	if gotOpts.ParamMap["watch_output_dir_full"] != "true" {
-		t.Fatalf("watch_output_dir_full = %q, want true", gotOpts.ParamMap["watch_output_dir_full"])
+	if _, ok := gotOpts.ParamMap[watchOutputDirFullParam]; ok {
+		t.Fatalf("%s leaked into public ParamMap: %#v", watchOutputDirFullParam, gotOpts.ParamMap)
+	}
+	if gotOpts.InternalParams[watchOutputDirFullParam] != "true" {
+		t.Fatalf("InternalParams[%s] = %q, want true", watchOutputDirFullParam, gotOpts.InternalParams[watchOutputDirFullParam])
 	}
 }
 

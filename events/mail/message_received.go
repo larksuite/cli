@@ -17,6 +17,7 @@ import (
 )
 
 const cleanupTimeout = 5 * time.Second
+const watchOutputDirFullParam = "watch_output_dir_full"
 
 type MessageReceivedOutput struct {
 	Message map[string]interface{} `json:"message,omitempty" desc:"Fetched message payload. Present for metadata, minimal, plain_text_full, and full formats."`
@@ -100,7 +101,7 @@ func processMessageReceived(ctx context.Context, rt event.APIClient, raw *event.
 
 	labelIDSet := idSetFromParam(params["label_ids"])
 	folderIDSet := idSetFromParam(params["folder_ids"])
-	forceFull := params["watch_output_dir_full"] == "true"
+	forceFull := params[watchOutputDirFullParam] == "true"
 	needMessage := forceFull || msgFormat != "event" || len(labelIDSet) > 0 || len(folderIDSet) > 0
 	if !needMessage {
 		return raw.Payload, nil

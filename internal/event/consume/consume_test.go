@@ -58,6 +58,27 @@ func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
 	}
 }
 
+func TestValidateParamsRejectsUnknownPublicParam(t *testing.T) {
+	const key = "test.evt_public_params"
+	def := &event.KeyDefinition{
+		Key: key,
+		Params: []event.ParamDef{
+			{Name: "mailbox"},
+			{Name: "msg_format"},
+		},
+	}
+	err := validateParams(def, map[string]string{
+		"mailbox":  "me",
+		"internal": "true",
+	})
+	if err == nil {
+		t.Fatal("expected unknown param error")
+	}
+	if !strings.Contains(err.Error(), `unknown param "internal"`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDoHello_PassesSubscriptionIDToWire(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close()

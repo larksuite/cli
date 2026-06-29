@@ -130,7 +130,7 @@ func TestProcessOutputDirForcesFullFetchEvenForEventFormat(t *testing.T) {
 	got, err := processMessageReceived(context.Background(), rt, raw, map[string]string{
 		"mailbox":               "alice@example.com",
 		"msg_format":            "minimal",
-		"watch_output_dir_full": "true",
+		watchOutputDirFullParam: "true",
 	})
 	if err != nil {
 		t.Fatalf("process failed: %v", err)

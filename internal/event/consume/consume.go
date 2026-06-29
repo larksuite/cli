@@ -22,6 +22,7 @@ import (
 type Options struct {
 	EventKey        string
 	Params          map[string]string
+	InternalParams  map[string]string
 	JQExpr          string
 	Quiet           bool
 	OutputDir       string
@@ -118,6 +119,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 			return fmt.Errorf("pre-consume failed: %w", err)
 		}
 	}
+	opts.Params = mergeInternalParams(opts.Params, opts.InternalParams)
 
 	lastForKey := false
 	var emitted atomic.Int64
@@ -170,6 +172,19 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 	writeReadyMarker(errOut, opts)
 
 	return consumeLoop(ctx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
+}
+
+func mergeInternalParams(params, internal map[string]string) map[string]string {
+	if len(internal) == 0 {
+		return params
+	}
+	if params == nil {
+		params = make(map[string]string, len(internal))
+	}
+	for k, v := range internal {
+		params[k] = v
+	}
+	return params
 }
 
 func truncateDuration(d time.Duration) time.Duration {
