@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.60] - 2026-06-29
+
+### Features
+
+- **affordance**: Per-command usage guidance system with markdown source (#1565)
+- **event**: Support VC meeting lifecycle events (#1632)
+- **sheets**: Use `office_sheet_file` parent_type for imported office spreadsheets (#1606)
+- **authorization**: Expand lark-shared auth guidance and assert clean logout JSON (#1598)
+- **transport**: Add `LARK_CLI_NO_PROXY_WARN` to silence proxy warning (#1647)
+
+### Bug Fixes
+
+- **install**: Load `@clack/prompts` via dynamic import to avoid `ERR_REQUIRE_ESM` (#1652)
+
+### Tests
+
+- **doc**: Derive fetch test flag defaults from `v2FetchFlags` (#1428)
+
+### Build
+
+- **ci**: Reduce public content false positives
+
 ## [v1.0.59] - 2026-06-26
 
 ### Features
@@ -1277,6 +1299,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.60]: https://github.com/larksuite/cli/releases/tag/v1.0.60
 [v1.0.59]: https://github.com/larksuite/cli/releases/tag/v1.0.59
 [v1.0.58]: https://github.com/larksuite/cli/releases/tag/v1.0.58
 [v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
