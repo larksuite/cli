@@ -619,9 +619,9 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"New workflows are created disabled",
 				"+table-list and +field-list",
 				"Step ids must be unique",
-				"lark-base-workflow-guide.md as the entry guide",
-				"lark-base-workflow-schema.md as the steps JSON SSOT",
-				"do not invent steps[].type/data/next/children from natural language",
+				"lark-base-workflow-quick.md first",
+				"only for needed step details",
+				"Do not invent steps[].type/data/next/children from natural language",
 			},
 		},
 		{
@@ -634,7 +634,8 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"keep title/status/steps fields",
 				"workflow-id must start with wkf",
 				"Updating does not enable or disable",
-				"do not invent steps[].type/data/next/children from natural language",
+				"lark-base-workflow-quick.md first",
+				"Do not invent steps[].type/data/next/children from natural language",
 			},
 		},
 		{
