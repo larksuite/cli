@@ -49,7 +49,7 @@ func warmTokenCache(t *testing.T) {
 			Command:   "+warm",
 			AuthTypes: []string{"bot"},
 			Execute: func(_ context.Context, rctx *common.RuntimeContext) error {
-				_, err := rctx.CallAPI("GET", "/open-apis/test/v1/warm", nil, nil)
+				_, err := rctx.CallAPITyped("GET", "/open-apis/test/v1/warm", nil, nil)
 				return err
 			},
 		}

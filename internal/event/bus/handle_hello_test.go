@@ -5,12 +5,15 @@ package bus
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"log"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
@@ -192,5 +195,62 @@ func TestHandleHello_ModernClient_UsesSubscriptionID(t *testing.T) {
 
 	if ackLine == "" {
 		t.Fatal("HelloAck was empty")
+	}
+}
+
+// TestHandleHello_SingleConsumerRejectsSecond: a SingleConsumer EventKey accepts
+// the first consumer and rejects the second for the same SubscriptionID.
+func TestHandleHello_SingleConsumerRejectsSecond(t *testing.T) {
+	const key = "test.handlehello.exclusive"
+	event.RegisterKey(event.KeyDefinition{
+		Key:            key,
+		EventType:      key,
+		SingleConsumer: true,
+		Schema:         event.SchemaDef{Native: &event.SchemaSpec{Raw: []byte(`{"type":"object"}`)}},
+	})
+	defer event.UnregisterKeyForTest(key)
+
+	logger := log.New(io.Discard, "", 0)
+	hub := NewHub()
+	b := &Bus{
+		hub:        hub,
+		logger:     logger,
+		conns:      make(map[*Conn]struct{}),
+		idleTimer:  time.NewTimer(30 * time.Second),
+		shutdownCh: make(chan struct{}, 1),
+	}
+
+	readAck := func(t *testing.T, pid int) *protocol.HelloAck {
+		t.Helper()
+		server, client := net.Pipe()
+		t.Cleanup(func() { server.Close(); client.Close() })
+		hello := &protocol.Hello{PID: pid, EventKey: key, EventTypes: []string{key}}
+		go b.handleHello(server, bufio.NewReader(server), hello)
+		line, err := protocol.ReadFrame(bufio.NewReader(client))
+		if err != nil {
+			t.Fatalf("read ack (pid %d): %v", pid, err)
+		}
+		msg, err := protocol.Decode(bytes.TrimRight(line, "\n"))
+		if err != nil {
+			t.Fatalf("decode ack (pid %d): %v", pid, err)
+		}
+		ack, ok := msg.(*protocol.HelloAck)
+		if !ok {
+			t.Fatalf("got %T, want *HelloAck", msg)
+		}
+		return ack
+	}
+
+	ack1 := readAck(t, 100)
+	if ack1.Rejected {
+		t.Fatalf("first consumer should be accepted, got rejected: %q", ack1.RejectReason)
+	}
+
+	ack2 := readAck(t, 200)
+	if !ack2.Rejected {
+		t.Fatal("second consumer should be rejected")
+	}
+	if !strings.Contains(ack2.RejectReason, "already running") {
+		t.Errorf("reject reason = %q, want mention of 'already running'", ack2.RejectReason)
 	}
 }

@@ -458,19 +458,19 @@ func defaultUsername(username string) string {
 
 func validateIssuedCredential(appID, normalizedURL string, issued *IssuedCredential, now int64) error {
 	if issued == nil {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: empty credential")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: empty credential")
 	}
 	if issued.AppID != "" && issued.AppID != appID {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response app_id %q does not match requested app_id %q", issued.AppID, appID)
 	}
 	if normalizedURL == "" {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response missing gitURL")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response missing gitURL")
 	}
 	if strings.TrimSpace(issued.PAT) == "" {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response missing token")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response missing token")
 	}
 	if issued.ExpiresAt <= now {
-		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue Miaoda Git credential: response expiredTime must be in the future")
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "Issue app Git credential: response expiredTime must be in the future")
 	}
 	return nil
 }

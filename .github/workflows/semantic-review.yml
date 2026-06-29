@@ -1,0 +1,611 @@
+name: Semantic Review
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  pr-quality-summary:
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Verify workflow run and pull request for summary
+        id: pr
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            if (run.name !== "CI") throw new Error(`unexpected workflow name: ${run.name}`);
+            let workflowPath = run.path || "";
+            if (!workflowPath) {
+              const workflowId = Number(run.workflow_id || 0);
+              if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
+              const { data: workflow } = await github.rest.actions.getWorkflow({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowId,
+              });
+              workflowPath = workflow.path || "";
+            }
+            if (workflowPath !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflowPath}`);
+            if (run.event !== "pull_request") throw new Error(`unexpected event: ${run.event}`);
+            if (run.repository.id !== context.payload.repository.id) throw new Error("repository id mismatch");
+            if (run.repository.full_name !== context.payload.repository.full_name) throw new Error("repository name mismatch");
+            if (typeof run.head_sha !== "string" || run.head_sha.length !== 40) throw new Error("invalid head sha");
+            const runPRs = Array.isArray(run.pull_requests) ? run.pull_requests : [];
+            if (runPRs.length > 1) {
+              throw new Error(`ambiguous workflow_run pull request bindings: ${runPRs.length}`);
+            }
+            let prNumber = Number(runPRs[0]?.number || 0);
+            const eventBaseSha = runPRs[0]?.base?.sha || "";
+            const eventHeadSha = runPRs[0]?.head?.sha || "";
+            const targetHeadSha = run.head_sha;
+            if (!/^[a-f0-9]{40}$/i.test(targetHeadSha)) throw new Error("invalid PR head sha");
+            if (eventHeadSha && eventHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+              core.notice("PR quality summary using workflow_run head_sha because workflow_run pull request head differs from the CI run head");
+            }
+
+            const factsArtifactPattern = /^quality-gate-facts-([a-f0-9]{40})-([a-f0-9]{40})$/i;
+            const { data: artifactData } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const factsArtifacts = artifactData.artifacts.filter((artifact) => factsArtifactPattern.test(artifact.name));
+            let factsArtifactName = "";
+            let artifactBaseSha = "";
+            let artifactError = "";
+            if (factsArtifacts.length !== 1) {
+              artifactError = `expected exactly one base-bound quality gate facts artifact, got ${factsArtifacts.length}`;
+            } else {
+              factsArtifactName = factsArtifacts[0].name;
+              const [, parsedBaseSha, artifactHeadSha] = factsArtifactName.match(factsArtifactPattern);
+              if (artifactHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+                artifactError = "facts artifact head sha does not match verified PR head sha";
+                factsArtifactName = "";
+              } else {
+                artifactBaseSha = parsedBaseSha;
+                if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
+                  core.notice("PR quality summary using facts artifact base because workflow_run pull request base differs from the CI facts artifact base");
+                }
+              }
+            }
+            if (!prNumber) {
+              const { data: associatedPRs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: targetHeadSha,
+              });
+              const candidatePRs = associatedPRs.filter((candidate) =>
+                candidate.base?.repo?.id === context.payload.repository.id &&
+                candidate.head?.sha === targetHeadSha
+              );
+              const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
+              if (openCandidatePRs.length > 1) {
+                throw new Error(`ambiguous open PRs for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
+              }
+              if (openCandidatePRs.length === 1) {
+                prNumber = openCandidatePRs[0].number;
+              } else if (candidatePRs.length > 0) {
+                core.notice("PR quality summary skipped: workflow_run target PR is no longer open");
+                core.setOutput("stale", "true");
+                return;
+              }
+            }
+            if (!prNumber) {
+              const candidatePRs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "all",
+                per_page: 100,
+              }).then((prs) => prs.filter((candidate) =>
+                candidate.base?.repo?.id === context.payload.repository.id &&
+                candidate.head?.sha === targetHeadSha
+              ));
+              const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
+              if (openCandidatePRs.length > 1) {
+                throw new Error(`ambiguous open PRs from pull list fallback for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
+              }
+              if (openCandidatePRs.length === 1) {
+                prNumber = openCandidatePRs[0].number;
+              } else if (candidatePRs.length > 0) {
+                core.notice("PR quality summary skipped: workflow_run target PR is no longer open");
+                core.setOutput("stale", "true");
+                return;
+              } else {
+                throw new Error(`expected one open PR from pull list fallback for workflow_run head ${targetHeadSha}, got ${candidatePRs.length}`);
+              }
+            }
+            if (!Number.isInteger(prNumber) || prNumber <= 0) throw new Error("missing pull request binding");
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            if (pr.base.repo.id !== context.payload.repository.id) throw new Error("PR base repo mismatch");
+            if (pr.state !== "open") {
+              core.notice("PR quality summary skipped: workflow_run target PR is no longer open");
+              core.setOutput("stale", "true");
+              return;
+            }
+            if (pr.head.sha !== targetHeadSha) {
+              core.notice("PR quality summary skipped: workflow_run is stale for this PR head");
+              core.setOutput("stale", "true");
+              return;
+            }
+            const baseSha = artifactBaseSha || eventBaseSha || pr.base.sha;
+            if (!/^[a-f0-9]{40}$/i.test(baseSha)) throw new Error("invalid PR base sha");
+            if ((eventBaseSha || artifactBaseSha) && pr.base.sha !== baseSha) {
+              core.notice("PR quality summary skipped: workflow_run is stale for this PR base");
+              core.setOutput("stale", "true");
+              return;
+            }
+            if (artifactError) {
+              core.warning(`quality gate facts artifact binding is unavailable: ${artifactError}`);
+            }
+            core.setOutput("pr_number", String(prNumber));
+            core.setOutput("head_sha", targetHeadSha);
+            core.setOutput("base_sha", baseSha);
+            core.setOutput("run_id", String(run.id));
+            core.setOutput("facts_artifact_name", factsArtifactName);
+            core.setOutput("artifact_error", artifactError);
+            core.setOutput("stale", "false");
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        id: checkout
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        with:
+          ref: ${{ steps.pr.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Verify summary facts artifact metadata
+        id: artifact
+        if: ${{ steps.pr.outputs.stale != 'true' && steps.pr.outputs.facts_artifact_name != '' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const factsArtifactName = "${{ steps.pr.outputs.facts_artifact_name }}";
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const artifacts = data.artifacts.filter(a => a.name === factsArtifactName);
+            if (artifacts.length !== 1) throw new Error(`expected exactly one quality-gate-facts artifact, got ${artifacts.length}`);
+            const artifact = artifacts[0];
+            if (artifact.expired) throw new Error("quality-gate-facts artifact expired");
+            if (artifact.size_in_bytes <= 0 || artifact.size_in_bytes > 5 * 1024 * 1024) {
+              throw new Error(`invalid artifact size: ${artifact.size_in_bytes}`);
+            }
+            if (!artifact.digest) throw new Error("facts artifact digest is missing from GitHub API response");
+            core.setOutput("artifact_id", String(artifact.id));
+            core.setOutput("artifact_digest", artifact.digest);
+
+      - name: Download facts artifact zip
+        if: ${{ steps.pr.outputs.stale != 'true' && steps.artifact.outputs.artifact_id != '' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        id: download
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+            const artifactId = Number("${{ steps.artifact.outputs.artifact_id }}");
+            if (!Number.isInteger(artifactId) || artifactId <= 0) throw new Error("invalid artifact id");
+            const { data } = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifactId,
+              archive_format: "zip",
+            });
+            const zipPath = path.join(process.env.RUNNER_TEMP, "quality-gate-facts.zip");
+            fs.writeFileSync(zipPath, Buffer.from(data));
+            core.setOutput("zip_path", zipPath);
+
+      - name: Verify and extract summary facts artifact
+        if: ${{ steps.pr.outputs.stale != 'true' && steps.download.outputs.zip_path != '' }}
+        env:
+          SEMANTIC_REVIEW_BLOCK: ${{ vars.SEMANTIC_REVIEW_BLOCK }}
+          SEMANTIC_REVIEW_DECISION_OUT: decision.json
+          SEMANTIC_REVIEW_MARKDOWN_OUT: semantic-review.md
+        run: node scripts/semantic-review-verify-artifact.js '${{ steps.download.outputs.zip_path }}' facts.json '${{ steps.artifact.outputs.artifact_digest }}'
+
+      - name: Publish PR quality summary
+        if: ${{ always() && steps.pr.outputs.stale != 'true' && steps.checkout.outcome == 'success' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          CI_QUALITY_SUMMARY_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          CI_QUALITY_SUMMARY_BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          CI_QUALITY_SUMMARY_PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          CI_QUALITY_SUMMARY_RUN_ID: ${{ steps.pr.outputs.run_id }}
+          CI_QUALITY_SUMMARY_ARTIFACT_ERROR: ${{ steps.pr.outputs.artifact_error }}
+        with:
+          script: |
+            const { publish } = require("./scripts/ci-quality-summary-publish.js");
+            await publish({ github, context, core });
+
+  semantic-review:
+    needs: pr-quality-summary
+    if: always() && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Verify workflow run and pull request
+        id: pr
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            if (run.name !== "CI") throw new Error(`unexpected workflow name: ${run.name}`);
+            let workflowPath = run.path || "";
+            if (!workflowPath) {
+              const workflowId = Number(run.workflow_id || 0);
+              if (!Number.isInteger(workflowId) || workflowId <= 0) throw new Error("missing workflow id");
+              const { data: workflow } = await github.rest.actions.getWorkflow({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowId,
+              });
+              workflowPath = workflow.path || "";
+            }
+            if (workflowPath !== ".github/workflows/ci.yml") throw new Error(`unexpected workflow path: ${workflowPath}`);
+            if (run.event !== "pull_request") throw new Error(`unexpected event: ${run.event}`);
+            if (run.conclusion !== "success") throw new Error(`unexpected conclusion: ${run.conclusion}`);
+            if (run.repository.id !== context.payload.repository.id) throw new Error("repository id mismatch");
+            if (run.repository.full_name !== context.payload.repository.full_name) throw new Error("repository name mismatch");
+            if (typeof run.head_sha !== "string" || run.head_sha.length !== 40) throw new Error("invalid head sha");
+            const runPRs = Array.isArray(run.pull_requests) ? run.pull_requests : [];
+            if (runPRs.length > 1) {
+              throw new Error(`ambiguous workflow_run pull request bindings: ${runPRs.length}`);
+            }
+            let prNumber = Number(runPRs[0]?.number || 0);
+            const eventBaseSha = runPRs[0]?.base?.sha || "";
+            const eventHeadSha = runPRs[0]?.head?.sha || "";
+            const targetHeadSha = run.head_sha;
+            if (!/^[a-f0-9]{40}$/i.test(targetHeadSha)) throw new Error("invalid PR head sha");
+            if (eventHeadSha && eventHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+              core.notice("semantic review using workflow_run head_sha because workflow_run pull request head differs from the CI run head");
+            }
+
+            const factsArtifactPattern = /^quality-gate-facts-([a-f0-9]{40})-([a-f0-9]{40})$/i;
+            const { data: artifactData } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const factsArtifacts = artifactData.artifacts.filter((artifact) => factsArtifactPattern.test(artifact.name));
+            let factsArtifactName = "";
+            let artifactBaseSha = "";
+            let artifactError = "";
+            if (factsArtifacts.length !== 1) {
+              artifactError = `expected exactly one base-bound quality gate facts artifact, got ${factsArtifacts.length}`;
+            } else {
+              factsArtifactName = factsArtifacts[0].name;
+              const [, parsedBaseSha, artifactHeadSha] = factsArtifactName.match(factsArtifactPattern);
+              if (artifactHeadSha.toLowerCase() !== targetHeadSha.toLowerCase()) {
+                artifactError = "facts artifact head sha does not match verified PR head sha";
+                factsArtifactName = "";
+              } else {
+                artifactBaseSha = parsedBaseSha;
+                if (eventBaseSha && parsedBaseSha.toLowerCase() !== eventBaseSha.toLowerCase()) {
+                  core.notice("semantic review using facts artifact base because workflow_run pull request base differs from the CI facts artifact base");
+                }
+              }
+            }
+            if (!prNumber) {
+              const { data: associatedPRs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: targetHeadSha,
+              });
+              const candidatePRs = associatedPRs.filter((candidate) =>
+                candidate.base?.repo?.id === context.payload.repository.id &&
+                candidate.head?.sha === targetHeadSha
+              );
+              const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
+              if (openCandidatePRs.length > 1) {
+                throw new Error(`ambiguous open PRs for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
+              }
+              if (openCandidatePRs.length === 1) {
+                prNumber = openCandidatePRs[0].number;
+              } else if (candidatePRs.length > 0) {
+                core.notice("semantic review skipped: workflow_run target PR is no longer open");
+                core.setOutput("stale", "true");
+                return;
+              }
+            }
+            if (!prNumber) {
+              const candidatePRs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "all",
+                per_page: 100,
+              }).then((prs) => prs.filter((candidate) =>
+                candidate.base?.repo?.id === context.payload.repository.id &&
+                candidate.head?.sha === targetHeadSha
+              ));
+              const openCandidatePRs = candidatePRs.filter((candidate) => candidate.state === "open");
+              if (openCandidatePRs.length > 1) {
+                throw new Error(`ambiguous open PRs from pull list fallback for workflow_run head ${targetHeadSha}: ${openCandidatePRs.length}`);
+              }
+              if (openCandidatePRs.length === 1) {
+                prNumber = openCandidatePRs[0].number;
+              } else if (candidatePRs.length > 0) {
+                core.notice("semantic review skipped: workflow_run target PR is no longer open");
+                core.setOutput("stale", "true");
+                return;
+              } else {
+                throw new Error(`expected one open PR from pull list fallback for workflow_run head ${targetHeadSha}, got ${candidatePRs.length}`);
+              }
+            }
+            if (!Number.isInteger(prNumber) || prNumber <= 0) throw new Error("missing pull request binding");
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            if (pr.base.repo.id !== context.payload.repository.id) throw new Error("PR base repo mismatch");
+            if (pr.state !== "open") {
+              core.notice("semantic review skipped: workflow_run target PR is no longer open");
+              core.setOutput("stale", "true");
+              return;
+            }
+            if (!pr.head.repo) {
+              core.notice("semantic review skipped: workflow_run target PR head repository is unavailable");
+              core.setOutput("stale", "true");
+              return;
+            }
+            if (pr.head.sha !== targetHeadSha) {
+              core.notice("semantic review skipped: workflow_run is stale for this PR head");
+              core.setOutput("stale", "true");
+              return;
+            }
+            const baseSha = artifactBaseSha || eventBaseSha || pr.base.sha;
+            if (!/^[a-f0-9]{40}$/i.test(baseSha)) throw new Error("invalid PR base sha");
+            if ((eventBaseSha || artifactBaseSha) && pr.base.sha !== baseSha) {
+              core.notice("semantic review skipped: workflow_run is stale for this PR base");
+              core.setOutput("stale", "true");
+              return;
+            }
+            if (artifactError) {
+              core.warning(`semantic review facts artifact binding is unavailable: ${artifactError}`);
+            }
+            core.setOutput("pr_number", String(prNumber));
+            core.setOutput("head_sha", targetHeadSha);
+            core.setOutput("base_sha", baseSha);
+            core.setOutput("head_owner", pr.head.repo.owner.login);
+            core.setOutput("head_repo", pr.head.repo.name);
+            core.setOutput("head_repo_id", String(pr.head.repo.id));
+            core.setOutput("head_is_base_repo", pr.head.repo.id === context.payload.repository.id ? "true" : "false");
+            core.setOutput("run_id", String(run.id));
+            core.setOutput("facts_artifact_name", factsArtifactName);
+            core.setOutput("artifact_error", artifactError);
+            core.setOutput("stale", "false");
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        id: checkout
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        with:
+          ref: ${{ steps.pr.outputs.base_sha }}
+          persist-credentials: false
+
+      - name: Publish pre-checkout semantic review failure
+        if: ${{ failure() && steps.pr.outputs.stale != 'true' && steps.checkout.outcome != 'success' && steps.pr.outputs.head_sha != '' && steps.pr.outputs.pr_number != '' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          SEMANTIC_REVIEW_BLOCK: ${{ vars.SEMANTIC_REVIEW_BLOCK }}
+          SEMANTIC_REVIEW_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          SEMANTIC_REVIEW_BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          SEMANTIC_REVIEW_PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          SEMANTIC_REVIEW_RUN_ID: ${{ steps.pr.outputs.run_id }}
+        with:
+          script: |
+            const runtimeBlockMode = process.env.SEMANTIC_REVIEW_BLOCK === "true";
+            const pr = Number(process.env.SEMANTIC_REVIEW_PR_NUMBER || 0);
+            const headSha = process.env.SEMANTIC_REVIEW_HEAD_SHA || "";
+            const baseSha = process.env.SEMANTIC_REVIEW_BASE_SHA || "";
+            if (!Number.isInteger(pr) || pr <= 0 || !/^[a-f0-9]{40}$/i.test(headSha) || !/^[a-f0-9]{40}$/i.test(baseSha)) {
+              throw new Error("missing verified semantic review target");
+            }
+            const { data: pull } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr,
+            });
+            if (pull.state !== "open") {
+              core.notice("semantic review skipped infrastructure failure check: PR is no longer open");
+              return;
+            }
+            if (pull.head.sha !== headSha) {
+              core.notice("semantic review skipped infrastructure failure check: PR head changed");
+              return;
+            }
+            if (pull.base.sha !== baseSha) {
+              core.notice("semantic review skipped infrastructure failure check: PR base changed");
+              return;
+            }
+            if (pull.base.repo.id !== context.payload.repository.id) {
+              throw new Error("PR base repo mismatch before infrastructure failure check");
+            }
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: runtimeBlockMode ? "semantic-review/result" : "semantic-review/observe",
+              head_sha: headSha,
+              status: "completed",
+              conclusion: runtimeBlockMode ? "failure" : "neutral",
+              output: {
+                title: "Semantic review infrastructure failure",
+                summary: "Semantic review could not checkout the verified base commit. Inspect the workflow logs before relying on semantic review output.",
+              },
+            });
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        with:
+          go-version-file: go.mod
+
+      - name: Verify semantic facts artifact metadata
+        id: artifact
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const factsArtifactName = "${{ steps.pr.outputs.facts_artifact_name }}";
+            if (!/^quality-gate-facts-[a-f0-9]{40}-[a-f0-9]{40}$/i.test(factsArtifactName)) {
+              throw new Error("missing verified facts artifact binding");
+            }
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+              per_page: 100,
+            });
+            const artifacts = data.artifacts.filter(a => a.name === factsArtifactName);
+            if (artifacts.length !== 1) throw new Error(`expected exactly one quality-gate-facts artifact, got ${artifacts.length}`);
+            const artifact = artifacts[0];
+            if (artifact.expired) throw new Error("quality-gate-facts artifact expired");
+            if (artifact.size_in_bytes <= 0 || artifact.size_in_bytes > 5 * 1024 * 1024) {
+              throw new Error(`invalid artifact size: ${artifact.size_in_bytes}`);
+            }
+            if (!artifact.digest) throw new Error("facts artifact digest is missing from GitHub API response");
+            core.setOutput("artifact_id", String(artifact.id));
+            core.setOutput("artifact_digest", artifact.digest);
+
+      - name: Download facts artifact zip
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        id: download
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+            const artifactId = Number("${{ steps.artifact.outputs.artifact_id }}");
+            if (!Number.isInteger(artifactId) || artifactId <= 0) throw new Error("invalid artifact id");
+            const { data } = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifactId,
+              archive_format: "zip",
+            });
+            const zipPath = path.join(process.env.RUNNER_TEMP, "quality-gate-facts.zip");
+            fs.writeFileSync(zipPath, Buffer.from(data));
+            core.setOutput("zip_path", zipPath);
+
+      - name: Verify and extract semantic facts artifact
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        env:
+          SEMANTIC_REVIEW_BLOCK: ${{ vars.SEMANTIC_REVIEW_BLOCK }}
+          SEMANTIC_REVIEW_DECISION_OUT: decision.json
+          SEMANTIC_REVIEW_MARKDOWN_OUT: semantic-review.md
+        run: node scripts/semantic-review-verify-artifact.js '${{ steps.download.outputs.zip_path }}' facts.json '${{ steps.artifact.outputs.artifact_digest }}'
+
+      - name: Download PR semantic waiver config
+        id: waiver_config
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          SEMANTIC_REVIEW_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          SEMANTIC_REVIEW_HEAD_OWNER: ${{ steps.pr.outputs.head_owner }}
+          SEMANTIC_REVIEW_HEAD_REPO: ${{ steps.pr.outputs.head_repo }}
+          SEMANTIC_REVIEW_HEAD_IS_BASE_REPO: ${{ steps.pr.outputs.head_is_base_repo }}
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+            const headSha = process.env.SEMANTIC_REVIEW_HEAD_SHA || "";
+            if (!/^[a-f0-9]{40}$/i.test(headSha)) {
+              throw new Error("missing verified semantic review target");
+            }
+            const headOwner = process.env.SEMANTIC_REVIEW_HEAD_OWNER || "";
+            const headRepo = process.env.SEMANTIC_REVIEW_HEAD_REPO || "";
+            if (!headOwner || !headRepo) {
+              throw new Error("missing verified semantic review head repository");
+            }
+            const waiverPath = "internal/qualitygate/config/semantic/waivers.txt";
+            const outPath = path.join(process.env.RUNNER_TEMP, "semantic-review-waivers.txt");
+            const headIsBaseRepo = process.env.SEMANTIC_REVIEW_HEAD_IS_BASE_REPO === "true";
+            if (!headIsBaseRepo) {
+              core.notice("fork PR semantic waiver config is ignored");
+              core.setOutput("path", "");
+              return;
+            }
+            let content = "";
+            try {
+              const { data } = await github.rest.repos.getContent({
+                owner: headOwner,
+                repo: headRepo,
+                path: waiverPath,
+                ref: headSha,
+              });
+              if (Array.isArray(data) || data.type !== "file" || data.encoding !== "base64") {
+                throw new Error(`${waiverPath} is not a base64 file at PR head`);
+              }
+              if (data.size > 256 * 1024) {
+                throw new Error(`${waiverPath} is too large: ${data.size} bytes`);
+              }
+              content = Buffer.from(data.content, "base64").toString("utf8");
+            } catch (err) {
+              if (err.status !== 404) {
+                throw err;
+              }
+            }
+            fs.writeFileSync(outPath, content);
+            core.setOutput("path", outPath);
+
+      - name: Run semantic review
+        id: semantic
+        if: ${{ steps.pr.outputs.stale != 'true' }}
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ARK_BASE_URL: ${{ vars.ARK_BASE_URL }}
+          ARK_MODEL: ${{ vars.ARK_MODEL }}
+          ARK_TIMEOUT_SECONDS: ${{ vars.ARK_TIMEOUT_SECONDS }}
+          SEMANTIC_REVIEW_BLOCK: ${{ vars.SEMANTIC_REVIEW_BLOCK }}
+        run: |
+          args=(
+            --repo .
+            --facts facts.json
+            --decision-out decision.json
+            --markdown-out semantic-review.md
+          )
+          if [ -n "${{ steps.waiver_config.outputs.path }}" ]; then
+            args+=(--waivers-file '${{ steps.waiver_config.outputs.path }}')
+          fi
+          if [ "$SEMANTIC_REVIEW_BLOCK" = "true" ]; then
+            args+=(--block)
+          fi
+          go run ./internal/qualitygate/cmd/semantic-review "${args[@]}"
+
+      - name: Publish semantic review
+        if: ${{ always() && steps.pr.outputs.stale != 'true' && steps.checkout.outcome == 'success' }}
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          SEMANTIC_REVIEW_BLOCK: ${{ vars.SEMANTIC_REVIEW_BLOCK }}
+          SEMANTIC_REVIEW_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          SEMANTIC_REVIEW_BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          SEMANTIC_REVIEW_PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          SEMANTIC_REVIEW_RUN_ID: ${{ steps.pr.outputs.run_id }}
+        with:
+          script: |
+            const { publish } = require("./scripts/semantic-review-publish.js");
+            await publish({ github, context, core });

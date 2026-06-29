@@ -6,6 +6,7 @@ package whiteboard
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// TestWhiteboardUpdate_Validate verifies update flag validation for supported input formats.
 func TestWhiteboardUpdate_Validate(t *testing.T) {
 	ctx := context.Background()
 
@@ -50,6 +52,15 @@ func TestWhiteboardUpdate_Validate(t *testing.T) {
 				"whiteboard-token": "test-token-123",
 				"input_format":     "mermaid",
 				"source":           "test content",
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid: svg format",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"input_format":     "svg",
+				"source":           "<svg/>",
 			},
 			wantErr: false,
 		},
@@ -117,25 +128,26 @@ func TestWhiteboardUpdate_Validate_TypedErrors(t *testing.T) {
 			"idempotent-token": "short",
 			"source":           "{}",
 		}, nil)
-		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--idempotent-token")
+		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--idempotent-token", false)
 	})
 
 	t.Run("bad input_format", func(t *testing.T) {
 		rt := newTestRuntime(map[string]string{
 			"whiteboard-token": "t",
-			"input_format":     "svg",
+			"input_format":     "png",
 			"source":           "{}",
 		}, nil)
-		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--input_format")
+		assertValidationParam(t, wbUpdateValidate(ctx, rt), "--input_format", false)
 	})
 
 	t.Run("malformed source json", func(t *testing.T) {
 		_, err, _ := parseWBcliNodes([]byte("not-json"))
-		assertValidationParam(t, err, "--source")
+		assertValidationParam(t, err, "--source", true)
 	})
 }
 
-func assertValidationParam(t *testing.T, err error, wantParam string) {
+// assertValidationParam verifies a validation error carries the expected flag param.
+func assertValidationParam(t *testing.T, err error, wantParam string, wantJSONCause bool) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("expected error, got nil")
@@ -150,8 +162,25 @@ func assertValidationParam(t *testing.T, err error, wantParam string) {
 	if ve.Param != wantParam {
 		t.Errorf("Param = %q, want %q", ve.Param, wantParam)
 	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("errs.ProblemOf returned false")
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Errorf("Category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Problem subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if wantJSONCause {
+		var syntaxErr *json.SyntaxError
+		if !errors.As(err, &syntaxErr) {
+			t.Fatalf("expected json syntax cause to be preserved, err=%v", err)
+		}
+	}
 }
 
+// TestGetFormat verifies input format defaults and explicit format selection.
 func TestGetFormat(t *testing.T) {
 	t.Parallel()
 
@@ -180,6 +209,11 @@ func TestGetFormat(t *testing.T) {
 			flagVal:  FormatMermaid,
 			expected: FormatMermaid,
 		},
+		{
+			name:     "svg returns svg",
+			flagVal:  FormatSVG,
+			expected: FormatSVG,
+		},
 	}
 
 	for _, tt := range tests {
@@ -193,6 +227,7 @@ func TestGetFormat(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdate_ShortcutRegistration verifies the shortcut metadata for update commands.
 func TestWhiteboardUpdate_ShortcutRegistration(t *testing.T) {
 	t.Parallel()
 
@@ -213,6 +248,7 @@ func TestWhiteboardUpdate_ShortcutRegistration(t *testing.T) {
 	}
 }
 
+// TestShortcutsIncludesExpectedCommands verifies the whiteboard shortcut registry includes query and update.
 func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	t.Parallel()
 
@@ -237,6 +273,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 	}
 }
 
+// TestParseWBcliNodes verifies whiteboard CLI output parsing for raw and wrapped node payloads.
 func TestParseWBcliNodes(t *testing.T) {
 	t.Parallel()
 
@@ -285,6 +322,7 @@ func TestParseWBcliNodes(t *testing.T) {
 	}
 }
 
+// TestWBUpdateDryRun verifies dry-run requests for the supported whiteboard update formats.
 func TestWBUpdateDryRun(t *testing.T) {
 	ctx := context.Background()
 
@@ -315,6 +353,14 @@ func TestWBUpdateDryRun(t *testing.T) {
 				"whiteboard-token": "test-token-123",
 				"input_format":     "mermaid",
 				"source":           "graph TD\nA-->B",
+			},
+		},
+		{
+			name: "dry run svg format",
+			flags: map[string]string{
+				"whiteboard-token": "test-token-123",
+				"input_format":     "svg",
+				"source":           "<svg/>",
 			},
 		},
 	}
@@ -362,6 +408,7 @@ func runUpdateShortcut(t *testing.T, shortcut common.Shortcut, args []string, fa
 	return err
 }
 
+// TestWhiteboardUpdateExecute_RawFormat verifies raw node updates call the raw nodes endpoint.
 func TestWhiteboardUpdateExecute_RawFormat(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -385,6 +432,7 @@ func TestWhiteboardUpdateExecute_RawFormat(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdateExecute_PlantUMLFormat verifies PlantUML updates use the diagram import endpoint.
 func TestWhiteboardUpdateExecute_PlantUMLFormat(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -410,6 +458,7 @@ Bob -> Alice : hello
 	}
 }
 
+// TestWhiteboardUpdateExecute_PlantUMLInvalidResponse verifies missing node IDs are treated as invalid responses.
 func TestWhiteboardUpdateExecute_PlantUMLInvalidResponse(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -431,6 +480,7 @@ Bob -> Alice : hello
 	assertInvalidResponse(t, err)
 }
 
+// TestWhiteboardUpdateExecute_MermaidFormat verifies Mermaid updates use the diagram import endpoint.
 func TestWhiteboardUpdateExecute_MermaidFormat(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -455,6 +505,44 @@ A-->B`
 	}
 }
 
+// TestWhiteboardUpdateExecute_SVGFormat verifies svg update requests use syntax_type=3 and send the source payload.
+func TestWhiteboardUpdateExecute_SVGFormat(t *testing.T) {
+	factory, stdout, reg := newUpdateExecuteFactory(t)
+
+	// SVG shares the /nodes/plantuml endpoint with plantuml/mermaid via syntax_type=3.
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/board/v1/whiteboards/test-token-svg/nodes/plantuml",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "success",
+			"data": map[string]interface{}{
+				"node_id": "node1",
+			},
+		},
+	}
+	reg.Register(stub)
+
+	source := `<svg xmlns="http://www.w3.org/2000/svg"/>`
+	args := []string{"+update", "--whiteboard-token", "test-token-svg", "--input_format", "svg", "--source", source}
+	if err := runUpdateShortcut(t, WhiteboardUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	var body map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &body); err != nil {
+		t.Fatalf("unmarshal captured body: %v\nraw=%s", err, string(stub.CapturedBody))
+	}
+
+	if got := body["syntax_type"]; got != float64(3) {
+		t.Fatalf("syntax_type = %#v, want 3; body=%s", got, string(stub.CapturedBody))
+	}
+	if got := body["plant_uml_code"]; got != source {
+		t.Fatalf("plant_uml_code = %#v, want %q; body=%s", got, source, string(stub.CapturedBody))
+	}
+}
+
+// TestWhiteboardUpdateExecute_RawInvalidResponse verifies malformed raw update responses are rejected.
 func TestWhiteboardUpdateExecute_RawInvalidResponse(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -494,6 +582,7 @@ func TestWhiteboardUpdateExecute_RawInvalidResponse(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdateExecute_RawWithIdempotent verifies raw updates pass through the idempotency token.
 func TestWhiteboardUpdateExecute_RawWithIdempotent(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -518,6 +607,7 @@ func TestWhiteboardUpdateExecute_RawWithIdempotent(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdateExecute_RawFormatWithRawNodes verifies raw-node payloads are forwarded without DSL wrapping.
 func TestWhiteboardUpdateExecute_RawFormatWithRawNodes(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -541,6 +631,7 @@ func TestWhiteboardUpdateExecute_RawFormatWithRawNodes(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdateExecute_RawAPIError verifies raw update API failures preserve typed error metadata and hints.
 func TestWhiteboardUpdateExecute_RawAPIError(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -577,6 +668,7 @@ func TestWhiteboardUpdateExecute_RawAPIError(t *testing.T) {
 	}
 }
 
+// TestWhiteboardUpdateExecute_PlantUMLAPIError verifies diagram update API failures preserve typed error metadata.
 func TestWhiteboardUpdateExecute_PlantUMLAPIError(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -607,6 +699,7 @@ invalid
 	}
 }
 
+// TestWhiteboardUpdateExecute_WithOverwrite verifies diagram updates send overwrite=true when requested.
 func TestWhiteboardUpdateExecute_WithOverwrite(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 
@@ -631,6 +724,7 @@ A-->B`
 	}
 }
 
+// TestWhiteboardUpdateExecute_RawWithOverwrite verifies raw updates send overwrite=true when requested.
 func TestWhiteboardUpdateExecute_RawWithOverwrite(t *testing.T) {
 	factory, stdout, reg := newUpdateExecuteFactory(t)
 

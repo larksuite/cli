@@ -61,7 +61,7 @@ func TestIM_ChatUpdateWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, updatedName, gjson.Get(result.Stdout, "data.name").String())
 		assert.Equal(t, updatedDescription, gjson.Get(result.Stdout, "data.description").String())
@@ -88,7 +88,7 @@ func TestIM_ChatsGetWorkflow(t *testing.T) {
 		require.NoError(t, err)
 		t.Logf("chats get result: %s", result.Stdout)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		dataExists := gjson.Get(result.Stdout, "data").Exists()
 		require.True(t, dataExists, "data object should exist")
@@ -120,7 +120,7 @@ func TestIM_ChatsLinkWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		shareLink := gjson.Get(result.Stdout, "data.share_link").String()
 		require.NotEmpty(t, shareLink, "share_link should not be empty")

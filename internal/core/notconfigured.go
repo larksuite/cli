@@ -5,9 +5,19 @@ package core
 
 import (
 	"errors"
-	"fmt"
 	"os"
+
+	"github.com/larksuite/cli/errs"
 )
+
+// isMalformedConfigError reports whether a config load failure indicates a
+// malformed file (unparseable / structurally empty) rather than an absent or
+// inaccessible one. Malformed files map to the invalid_config subtype so the
+// user is told to fix the file instead of re-running init. Detection is by
+// ErrMalformedConfig sentinel, not message text.
+func isMalformedConfigError(err error) bool {
+	return errors.Is(err, ErrMalformedConfig)
+}
 
 // LoadOrNotConfigured wraps LoadMultiAppConfig with the standard "not yet
 // configured vs. couldn't read" disambiguation that every config-required
@@ -27,14 +37,15 @@ func LoadOrNotConfigured() (*MultiAppConfig, error) {
 			return nil, NotConfiguredError()
 		}
 		// Surface the real cause (parse error, permission denied, etc.)
-		// so the user can fix the broken file. Wrapping as ConfigError
-		// keeps it on the standard structured-envelope path at the root
-		// command's error sink.
-		return nil, &ConfigError{
-			Code:    3,
-			Type:    "config",
-			Message: fmt.Sprintf("failed to load config: %v", err),
+		// so the user can fix the broken file. A malformed file is
+		// invalid_config; anything else (permission denied, etc.) is
+		// not_configured. Both stay on the typed structured-envelope path
+		// at the root command's error sink.
+		subtype := errs.SubtypeNotConfigured
+		if isMalformedConfigError(err) {
+			subtype = errs.SubtypeInvalidConfig
 		}
+		return nil, errs.NewConfigError(subtype, "failed to load config: %v", err).WithCause(err)
 	}
 	if multi == nil || len(multi.Apps) == 0 {
 		return nil, NotConfiguredError()
@@ -70,19 +81,14 @@ const (
 func NotConfiguredError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return &ConfigError{
-			Code:    3,
-			Type:    "config",
-			Message: "not configured",
-			Hint:    localInitHint,
-		}
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "not configured").
+			WithHint("%s", localInitHint)
 	}
-	return &ConfigError{
-		Code:    3,
-		Type:    ws.Display(),
-		Message: fmt.Sprintf("%s context detected but lark-cli is not bound to it", ws.Display()),
-		Hint:    agentBindHint,
-	}
+	// Agent workspace: the workspace name appears only in the message, never
+	// in the wire subtype, which stays not_configured.
+	return errs.NewConfigError(errs.SubtypeNotConfigured,
+		"%s context detected but lark-cli is not bound to it", ws.Display()).
+		WithHint("%s", agentBindHint)
 }
 
 // reconfigureHint returns the workspace-aware "fix it from scratch" hint
@@ -104,17 +110,10 @@ func reconfigureHint() string {
 func NoActiveProfileError() error {
 	ws := CurrentWorkspace()
 	if ws.IsLocal() {
-		return &ConfigError{
-			Code:    3,
-			Type:    "config",
-			Message: "no active profile",
-			Hint:    localInitHint,
-		}
+		return errs.NewConfigError(errs.SubtypeNotConfigured, "no active profile").
+			WithHint("%s", localInitHint)
 	}
-	return &ConfigError{
-		Code:    3,
-		Type:    ws.Display(),
-		Message: fmt.Sprintf("no active profile in %s workspace", ws.Display()),
-		Hint:    agentBindHint,
-	}
+	return errs.NewConfigError(errs.SubtypeNotConfigured,
+		"no active profile in %s workspace", ws.Display()).
+		WithHint("%s", agentBindHint)
 }

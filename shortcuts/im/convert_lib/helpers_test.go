@@ -122,7 +122,7 @@ func TestExtractPostBlocksText(t *testing.T) {
 	}
 
 	got := extractPostBlocksText(blocks)
-	want := "hello @Alice [docs](https://example.com)\n[Image: img_123]"
+	want := "hello @Alice [docs](https://example.com)\n![Image](img_123)"
 	if got != want {
 		t.Fatalf("extractPostBlocksText() = %q, want %q", got, want)
 	}

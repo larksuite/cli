@@ -6,6 +6,7 @@ package bus
 import (
 	"encoding/json"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -353,5 +354,71 @@ func TestHub_Consumers_PopulatesSubscriptionID(t *testing.T) {
 	}
 	if consumers[0].SubscriptionID != "mail.x:alice" {
 		t.Errorf("Consumers()[0].SubscriptionID = %q, want %q", consumers[0].SubscriptionID, "mail.x:alice")
+	}
+}
+
+func TestHub_TryRegisterExclusive(t *testing.T) {
+	h := NewHub()
+	first := newTestConn("k.exclusive", []string{"k.exclusive"})
+	first.pid = 100
+	ok, _ := h.TryRegisterExclusive(first)
+	if !ok {
+		t.Fatal("first exclusive register should succeed")
+	}
+
+	second := newTestConn("k.exclusive", []string{"k.exclusive"})
+	second.pid = 200
+	ok, reason := h.TryRegisterExclusive(second)
+	if ok {
+		t.Error("second exclusive register should be rejected")
+	}
+	if !strings.Contains(reason, "pid 100") {
+		t.Errorf("reject reason = %q, want it to name existing pid 100", reason)
+	}
+	if got := h.SubCount("k.exclusive"); got != 1 {
+		t.Errorf("SubCount = %d, want 1 (second not registered)", got)
+	}
+}
+
+func TestHub_TryRegisterExclusive_CleanupWaitTimeout(t *testing.T) {
+	// A cleanup lock that never releases must not wedge a new exclusive consumer
+	// forever — TryRegisterExclusive bounds the wait and rejects with a timeout reason.
+	saved := exclusiveCleanupWaitTimeout
+	exclusiveCleanupWaitTimeout = 20 * time.Millisecond
+	defer func() { exclusiveCleanupWaitTimeout = saved }()
+
+	h := NewHub()
+	first := newTestConn("k.timeout", []string{"k.timeout"})
+	if ok, _ := h.TryRegisterExclusive(first); !ok {
+		t.Fatal("first exclusive register should succeed")
+	}
+	// Hold the cleanup lock and never release it.
+	if !h.AcquireCleanupLock("k.timeout") {
+		t.Fatal("AcquireCleanupLock should succeed for the sole subscriber")
+	}
+
+	start := time.Now()
+	second := newTestConn("k.timeout", []string{"k.timeout"})
+	ok, reason := h.TryRegisterExclusive(second)
+	if ok {
+		t.Error("second exclusive register should be rejected on cleanup-wait timeout")
+	}
+	if !strings.Contains(reason, "timed out") {
+		t.Errorf("reject reason = %q, want a timeout reason", reason)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("wait took %v, want bounded by the ~20ms timeout (no deadlock)", elapsed)
+	}
+}
+
+func TestHub_TryRegisterExclusive_DistinctSubscriptions(t *testing.T) {
+	h := NewHub()
+	a := newTestConn("k.a", []string{"k.a"})
+	b := newTestConn("k.b", []string{"k.b"})
+	if ok, _ := h.TryRegisterExclusive(a); !ok {
+		t.Fatal("register a failed")
+	}
+	if ok, _ := h.TryRegisterExclusive(b); !ok {
+		t.Error("distinct subscription b should register")
 	}
 }

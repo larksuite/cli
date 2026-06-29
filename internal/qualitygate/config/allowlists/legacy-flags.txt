@@ -1,0 +1,5 @@
+# command	flag	owner	reason	added_at
+docs +whiteboard-update	input_format	cli-owner	legacy public flag kept for compatibility	2026-06-05
+task +get-my-tasks	created_at	cli-owner	legacy public flag kept for compatibility	2026-06-05
+whiteboard +query	output_as	cli-owner	legacy public flag kept for compatibility	2026-06-05
+whiteboard +update	input_format	cli-owner	legacy public flag kept for compatibility	2026-06-05

@@ -12,13 +12,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const createHint = "verify --app-type is html or full_stack and --name is non-empty; if this is a permission error, confirm your account can create Miaoda apps"
+const createHint = "verify --app-type is html or full_stack and --name is non-empty; if this is a permission error, confirm your account can create apps"
 
-// AppsCreate creates a new Miaoda app.
+// AppsCreate creates a new app.
 var AppsCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+create",
-	Description: "Create a new Miaoda app",
+	Description: "Create a new app",
 	Risk:        "write",
 	Tips: []string{
 		`Example: lark-cli apps +create --name "审批系统" --app-type full_stack`,
@@ -42,7 +42,7 @@ var AppsCreate = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		return common.NewDryRunAPI().
 			POST(apiBasePath + "/apps").
-			Desc("Create a Miaoda app").
+			Desc("Create an app").
 			Body(buildAppsCreateBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

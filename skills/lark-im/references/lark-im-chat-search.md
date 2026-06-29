@@ -50,7 +50,7 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--member-ids <ids>` | No (at least one of `--query` / `--member-ids` required) | Up to 50, format `ou_xxx` | Filter by member open_ids; can be used alone or combined with `--query` |
 | `--is-manager` | No | - | Only show chats you created or manage |
 | `--disable-search-by-user` | No | - | Disable member-name-based matching and search by group name only |
-| `--sort-by <field>` | No | `create_time_desc`, `update_time_desc`, `member_count_desc` | Sort field in descending order |
+| `--sort <field>` | No | `create_time`, `update_time`, `member_count` | Sort field (always descending) |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive (mute is a per-user setting); see "Filtering muted chats" below |
@@ -58,6 +58,8 @@ lark-cli im +chat-search --query "project" --dry-run
 | `--dry-run` | No | - | Preview the request without executing it |
 
 > **Note:** Supports both `--as user` (default) and `--as bot`. When using bot identity, the app must have bot capability enabled.
+
+> **CAUTION:** `--sort` is **always descending** — the search API only ranks the chosen field high-to-low (e.g. `member_count` = most members first). There is no ascending option. If the user asks for "fewest first / ascending / 从少到多", tell them the search API does not support ascending order; any low-to-high view requires re-sorting the fetched page client-side and is not an upstream sort. Do **not** invent values like `member_count_asc` or pass `asc` (they are rejected).
 
 ## Output Fields
 

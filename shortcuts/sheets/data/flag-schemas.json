@@ -1,5 +1,5 @@
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "flags": {
     "+batch-update": {
       "operations": {
@@ -44,6 +44,8 @@
                 "+sheet-hide",
                 "+sheet-unhide",
                 "+sheet-set-tab-color",
+                "+sheet-show-gridline",
+                "+sheet-hide-gridline",
                 "+chart-create",
                 "+chart-update",
                 "+chart-delete",
@@ -454,7 +456,7 @@
                       "type": "object"
                     },
                     "link": {
-                      "description": "超链接地址（仅 type='link' 时必填）",
+                      "description": "超链接地址（type='link' 时必填）；@文档 mention（mention_type 非 0）时也必填，传文档 URL（如搜索结果里的文档链接），否则卡片不可点。@人（mention_type=0）不需要传",
                       "type": "string"
                     },
                     "mention_token": {
@@ -462,8 +464,21 @@
                       "type": "string"
                     },
                     "mention_type": {
-                      "description": "@提及类型编号（仅 type='mention' 时可选）",
-                      "type": "number"
+                      "description": "@提及类型编号（仅 type='mention' 时可选）。0 或不填=@用户；@文件时按类型取：1=文档 3=电子表格 8=多维表格 11=思维笔记 12=文件 15=旧版幻灯片 16=知识库 22=新版文档 30=幻灯片 38=画板",
+                      "type": "number",
+                      "enum": [
+                        0,
+                        1,
+                        3,
+                        8,
+                        11,
+                        12,
+                        15,
+                        16,
+                        22,
+                        30,
+                        38
+                      ]
                     },
                     "notify": {
                       "description": "是否发送通知（仅 type='mention' 时可选，默认 true）",
@@ -1730,11 +1745,12 @@
                             },
                             "aggregateType": {
                               "type": "string",
-                              "description": "汇总方式，默认为'sum'，仅在 aggregate 为 true 时生效",
+                              "description": "汇总方式，默认为'sum'，仅在 aggregate 为 true 时生效。count 只统计数值单元格；counta 统计所有非空单元格（含文本），按文本/分类列统计出现次数（如各类别的数量、频次分布）时用 counta。",
                               "enum": [
                                 "sum",
                                 "average",
                                 "count",
+                                "counta",
                                 "min",
                                 "max",
                                 "median"
@@ -1787,11 +1803,7 @@
               "data"
             ]
           }
-        },
-        "required": [
-          "position",
-          "size"
-        ]
+        }
       }
     },
     "+chart-update": {
@@ -2769,11 +2781,12 @@
                             },
                             "aggregateType": {
                               "type": "string",
-                              "description": "汇总方式，默认为'sum'，仅在 aggregate 为 true 时生效",
+                              "description": "汇总方式，默认为'sum'，仅在 aggregate 为 true 时生效。count 只统计数值单元格；counta 统计所有非空单元格（含文本），按文本/分类列统计出现次数（如各类别的数量、频次分布）时用 counta。",
                               "enum": [
                                 "sum",
                                 "average",
                                 "count",
+                                "counta",
                                 "min",
                                 "max",
                                 "median"
@@ -2826,11 +2839,7 @@
               "data"
             ]
           }
-        },
-        "required": [
-          "position",
-          "size"
-        ]
+        }
       }
     },
     "+cond-format-create": {
@@ -6248,6 +6257,744 @@
             }
           }
         }
+      }
+    },
+    "+table-put": {
+      "sheets": {
+        "type": "array",
+        "minItems": 1,
+        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。每个数组项的形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`，并显式带上目标子表名 `name`。pandas 来源直接用 `scripts/sheets_df.py` 的 `df_to_sheet(df, name)` 生成一项，再把 list 包到 `{\"sheets\":[...]}`。",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "columns",
+            "data"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "目标子表名。按名匹配已有子表；不存在则新建该子表。同一次调用内子表名不可重复。"
+            },
+            "start_cell": {
+              "type": "string",
+              "default": "A1",
+              "description": "写入起点单元格（A1 记法，如 \"B2\"），默认 \"A1\"。mode=append 时忽略其行号、仅沿用其列。"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "overwrite",
+                "append"
+              ],
+              "default": "overwrite",
+              "description": "overwrite（默认）：从 start_cell 起写「表头 + 数据」块；append：把数据追加到子表已有数据下方（默认不重复表头）。"
+            },
+            "header": {
+              "type": "boolean",
+              "description": "是否写一行列名表头。省略时按 mode 取默认:overwrite→true、append→false（避免在已有表头下重复）；显式给值可覆盖。"
+            },
+            "allow_overwrite": {
+              "type": "boolean",
+              "default": true,
+              "description": "为 false 时，若写入会落在非空单元格则拒写以保护原数据（返回 partial_success）。默认 true。"
+            },
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "description": "列名字符串数组，顺序与 `data` 中每行取值一一对应。同一子表内列名不可重复。",
+              "items": {
+                "type": "string"
+              }
+            },
+            "data": {
+              "type": "array",
+              "description": "数据行；每行是一个数组，长度必须等于 `columns` 数。元素按 `dtypes` 推得的列类型取值（date 列写 ISO yyyy-mm-dd 字符串、number 列写数值、bool 列写布尔、其余写文本），null 表示空单元格。",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "单元格值：date→ISO yyyy-mm-dd 字符串；number→数值（json.Number 精度保留）；bool→布尔；string→文本；null→空单元格。"
+                }
+              }
+            },
+            "dtypes": {
+              "type": "object",
+              "description": "可选。列名 → pandas dtype 字符串的映射；缺失项默认按 object（string + 文本格式 `@`）处理，所以省略整段时整张表按文本写入（导入 CSV-shaped 数据的最简形态）。dtype 解析规则：`int*` / `uint*` / `Int*` / `UInt*` / `float*` / `Float*` / `complex*` → number（精度保留），`bool` / `boolean` → bool，`datetime64[ns]` / 含时区的 `datetime64[ns, UTC]` 等 → date（默认 `yyyy-mm-dd` 格式），`object` / `string` / `category` / 未识别 → string + 文本格式 `@`（数字样字符串如「00123」不会塌缩成数字）。",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "formats": {
+              "type": "object",
+              "description": "可选。列名 → Excel number_format 字符串的映射，覆盖 dtype 自带的默认格式（金额 `#,##0.00`、百分比 `0.0%`、自定义日期 `yyyy-mm` 等）。percent 列的数值尺度由调用方负责（0.0469 配 `0.00%` 显示 4.69%）。",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "styles": {
+        "items": {
+          "properties": {
+            "cell_merges": {
+              "description": "单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all。",
+              "items": {
+                "properties": {
+                  "merge_type": {
+                    "enum": [
+                      "all",
+                      "rows",
+                      "columns"
+                    ],
+                    "type": "string"
+                  },
+                  "range": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "cell_styles": {
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "items": {
+                "properties": {
+                  "background_color": {
+                    "type": "string"
+                  },
+                  "border_styles": {
+                    "type": "object",
+                    "description": "边框配置，结构同 +cells-set-style --border-styles。",
+                    "properties": {
+                      "bottom": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "left": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "right": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "top": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "font_color": {
+                    "type": "string"
+                  },
+                  "font_line": {
+                    "enum": [
+                      "none",
+                      "underline",
+                      "line-through"
+                    ],
+                    "type": "string"
+                  },
+                  "font_size": {
+                    "type": "number"
+                  },
+                  "font_style": {
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ],
+                    "type": "string"
+                  },
+                  "font_weight": {
+                    "enum": [
+                      "normal",
+                      "bold"
+                    ],
+                    "type": "string"
+                  },
+                  "horizontal_alignment": {
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ],
+                    "type": "string"
+                  },
+                  "number_format": {
+                    "type": "string"
+                  },
+                  "range": {
+                    "description": "A1 单元格范围，必须落在该子表本次写入区域内；例如 A1:B1、B2。",
+                    "type": "string"
+                  },
+                  "vertical_alignment": {
+                    "enum": [
+                      "top",
+                      "middle",
+                      "bottom"
+                    ],
+                    "type": "string"
+                  },
+                  "word_wrap": {
+                    "enum": [
+                      "overflow",
+                      "auto-wrap",
+                      "word-clip"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "col_sizes": {
+              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "子表名。--sheets 模式下必须与同位置 --sheets.sheets[].name 一致；--values 模式下建议写 Sheet1（其 name 会被忽略）。",
+              "type": "string"
+            },
+            "row_sizes": {
+              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard",
+                      "auto"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "+workbook-create": {
+      "sheets": {
+        "type": "array",
+        "minItems": 1,
+        "description": "一个或多个子表的 typed 数据，每个数组元素写入一张子表；支持多 DataFrame → 多子表一次写入。每个数组项的形状对齐 pandas `df.to_json(orient=\"split\")`：列名走 `columns`、二维取值走 `data`、每列的 pandas dtype 走 `dtypes`、可选的展示格式走 `formats`，并显式带上目标子表名 `name`。pandas 来源直接用 `scripts/sheets_df.py` 的 `df_to_sheet(df, name)` 生成一项，再把 list 包到 `{\"sheets\":[...]}`。",
+        "items": {
+          "type": "object",
+          "required": [
+            "name",
+            "columns",
+            "data"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "目标子表名。按名匹配已有子表；不存在则新建该子表。同一次调用内子表名不可重复。"
+            },
+            "start_cell": {
+              "type": "string",
+              "default": "A1",
+              "description": "写入起点单元格（A1 记法，如 \"B2\"），默认 \"A1\"。mode=append 时忽略其行号、仅沿用其列。"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "overwrite",
+                "append"
+              ],
+              "default": "overwrite",
+              "description": "overwrite（默认）：从 start_cell 起写「表头 + 数据」块；append：把数据追加到子表已有数据下方（默认不重复表头）。"
+            },
+            "header": {
+              "type": "boolean",
+              "description": "是否写一行列名表头。省略时按 mode 取默认:overwrite→true、append→false（避免在已有表头下重复）；显式给值可覆盖。"
+            },
+            "allow_overwrite": {
+              "type": "boolean",
+              "default": true,
+              "description": "为 false 时，若写入会落在非空单元格则拒写以保护原数据（返回 partial_success）。默认 true。"
+            },
+            "columns": {
+              "type": "array",
+              "minItems": 1,
+              "description": "列名字符串数组，顺序与 `data` 中每行取值一一对应。同一子表内列名不可重复。",
+              "items": {
+                "type": "string"
+              }
+            },
+            "data": {
+              "type": "array",
+              "description": "数据行；每行是一个数组，长度必须等于 `columns` 数。元素按 `dtypes` 推得的列类型取值（date 列写 ISO yyyy-mm-dd 字符串、number 列写数值、bool 列写布尔、其余写文本），null 表示空单元格。",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "单元格值：date→ISO yyyy-mm-dd 字符串；number→数值（json.Number 精度保留）；bool→布尔；string→文本；null→空单元格。"
+                }
+              }
+            },
+            "dtypes": {
+              "type": "object",
+              "description": "可选。列名 → pandas dtype 字符串的映射；缺失项默认按 object（string + 文本格式 `@`）处理，所以省略整段时整张表按文本写入（导入 CSV-shaped 数据的最简形态）。dtype 解析规则：`int*` / `uint*` / `Int*` / `UInt*` / `float*` / `Float*` / `complex*` → number（精度保留），`bool` / `boolean` → bool，`datetime64[ns]` / 含时区的 `datetime64[ns, UTC]` 等 → date（默认 `yyyy-mm-dd` 格式），`object` / `string` / `category` / 未识别 → string + 文本格式 `@`（数字样字符串如「00123」不会塌缩成数字）。",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "formats": {
+              "type": "object",
+              "description": "可选。列名 → Excel number_format 字符串的映射，覆盖 dtype 自带的默认格式（金额 `#,##0.00`、百分比 `0.0%`、自定义日期 `yyyy-mm` 等）。percent 列的数值尺度由调用方负责（0.0469 配 `0.00%` 显示 4.69%）。",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "styles": {
+        "items": {
+          "properties": {
+            "cell_merges": {
+              "description": "单元格合并操作数组；range 使用 A1 单元格范围，merge_type 默认 all。",
+              "items": {
+                "properties": {
+                  "merge_type": {
+                    "enum": [
+                      "all",
+                      "rows",
+                      "columns"
+                    ],
+                    "type": "string"
+                  },
+                  "range": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "cell_styles": {
+              "description": "单元格样式操作数组；每项用 A1 单元格 range 指定范围，字段名与 +cells-set-style 对齐。",
+              "items": {
+                "properties": {
+                  "background_color": {
+                    "type": "string"
+                  },
+                  "border_styles": {
+                    "type": "object",
+                    "description": "边框配置，结构同 +cells-set-style --border-styles。",
+                    "properties": {
+                      "bottom": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "left": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "right": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "top": {
+                        "properties": {
+                          "color": {
+                            "description": "边框颜色（十六进制，例如 \"#000000\"）",
+                            "type": "string"
+                          },
+                          "style": {
+                            "description": "边框线型；传 \"none\" 表示清除该方向边框（无边框线）",
+                            "enum": [
+                              "solid",
+                              "dashed",
+                              "dotted",
+                              "double",
+                              "none"
+                            ],
+                            "type": "string"
+                          },
+                          "weight": {
+                            "description": "边框粗细/线宽",
+                            "enum": [
+                              "thin",
+                              "medium",
+                              "thick"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      }
+                    }
+                  },
+                  "font_color": {
+                    "type": "string"
+                  },
+                  "font_line": {
+                    "enum": [
+                      "none",
+                      "underline",
+                      "line-through"
+                    ],
+                    "type": "string"
+                  },
+                  "font_size": {
+                    "type": "number"
+                  },
+                  "font_style": {
+                    "enum": [
+                      "normal",
+                      "italic"
+                    ],
+                    "type": "string"
+                  },
+                  "font_weight": {
+                    "enum": [
+                      "normal",
+                      "bold"
+                    ],
+                    "type": "string"
+                  },
+                  "horizontal_alignment": {
+                    "enum": [
+                      "left",
+                      "center",
+                      "right"
+                    ],
+                    "type": "string"
+                  },
+                  "number_format": {
+                    "type": "string"
+                  },
+                  "range": {
+                    "description": "A1 单元格范围，必须落在该子表本次写入区域内；例如 A1:B1、B2。",
+                    "type": "string"
+                  },
+                  "vertical_alignment": {
+                    "enum": [
+                      "top",
+                      "middle",
+                      "bottom"
+                    ],
+                    "type": "string"
+                  },
+                  "word_wrap": {
+                    "enum": [
+                      "overflow",
+                      "auto-wrap",
+                      "word-clip"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "col_sizes": {
+              "description": "列宽操作数组；range 使用列范围如 A:C，type 为 pixel/standard，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "子表名。--sheets 模式下必须与同位置 --sheets.sheets[].name 一致；--values 模式下建议写 Sheet1（其 name 会被忽略）。",
+              "type": "string"
+            },
+            "row_sizes": {
+              "description": "行高操作数组；range 使用行范围如 1:3，type 为 pixel/standard/auto，pixel 需要 size。",
+              "items": {
+                "properties": {
+                  "range": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "number"
+                  },
+                  "type": {
+                    "enum": [
+                      "pixel",
+                      "standard",
+                      "auto"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "range",
+                  "type"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       }
     }
   }

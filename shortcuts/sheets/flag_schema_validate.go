@@ -63,6 +63,7 @@ func validateParsedJSONFlag(fv flagView, name string, value interface{}) error {
 var parseJSONFlagSkip = map[string]struct{}{
 	"properties": {},
 	"operations": {},
+	"styles":     {},
 }
 
 // validateValueAgainstSchema is the (command, flag) → schema → check
@@ -93,7 +94,17 @@ func validateValueAgainstSchema(fv flagView, name string, value interface{}) err
 	var schema schemaProperty
 	json.Unmarshal(raw, &schema)
 	if vErr := validateAgainstSchema(value, &schema, ""); vErr != nil {
-		return sheetsValidationForFlag(name, "--%s: %s", name, vErr.Error())
+		// Composite-JSON shape errors (e.g. +cells-set --cells, chart
+		// --properties) are the highest-frequency usage-layer failure for
+		// sheets, and agents often burn several retries guessing the shape.
+		// Point them straight at --print-schema, which dumps the exact JSON
+		// Schema for this (command, flag) pair. The hint is always actionable:
+		// reaching this branch means entry[name] resolved a schema from the
+		// embedded index, and --print-schema reads that same index, so the
+		// suggested command is guaranteed to print it.
+		return sheetsValidationForFlag(name,
+			"--%s: %s; run `lark-cli sheets %s --print-schema --flag-name %s` to see the expected JSON Schema",
+			name, vErr.Error(), command, name).WithCause(vErr)
 	}
 	return nil
 }

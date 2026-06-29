@@ -24,7 +24,7 @@ var allowedAccessTargetTypes = map[string]bool{
 var AppsAccessScopeSet = common.Shortcut{
 	Service:     appsService,
 	Command:     "+access-scope-set",
-	Description: "Set Miaoda app access scope (specific / public / tenant)",
+	Description: "Set app access scope (specific / public / tenant)",
 	Risk:        "write",
 	Tips: []string{
 		`Example: lark-cli apps +access-scope-set --app-id <app_id> --scope tenant`,
@@ -52,7 +52,7 @@ var AppsAccessScopeSet = common.Shortcut{
 		appID := strings.TrimSpace(rctx.Str("app-id"))
 		dry := common.NewDryRunAPI().
 			PUT(fmt.Sprintf("%s/apps/%s/access-scope", apiBasePath, validate.EncodePathSegment(appID))).
-			Desc("Set Miaoda app access scope")
+			Desc("Set app access scope")
 		body, bodyErr := buildAccessScopeBody(rctx)
 		if bodyErr != nil {
 			dry.Set("body_error", bodyErr.Error())

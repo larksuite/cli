@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/internal/apicatalog"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/registry"
 )
 
@@ -33,58 +35,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
-}
-
-func TestKeyOrderIndex_ImReactionsList(t *testing.T) {
-	// We only assert key-set membership, not absolute order — the upstream
-	// meta_data API does not guarantee a stable JSON key sequence across
-	// fetches, so hard-coding the order makes CI flaky. Order preservation
-	// from input to output is tested separately in TestBuildInputSchema_*.
-	order := lookupKeyOrder("im", []string{"reactions"}, "list")
-	if order == nil {
-		t.Fatal("expected key order for im.reactions.list, got nil")
-	}
-	wantParams := map[string]bool{
-		"message_id": true, "reaction_type": true, "page_token": true,
-		"page_size": true, "user_id_type": true,
-	}
-	if got, want := len(order.Parameters), len(wantParams); got != want {
-		t.Errorf("parameters count = %d, want %d (got %v)", got, want, order.Parameters)
-	}
-	for _, k := range order.Parameters {
-		if !wantParams[k] {
-			t.Errorf("unexpected parameter key %q", k)
-		}
-	}
-	// im.reactions.list 是 GET，没有 requestBody
-	if len(order.RequestBody) != 0 {
-		t.Errorf("expected empty RequestBody, got %v", order.RequestBody)
-	}
-}
-
-func TestKeyOrderIndex_ImImagesCreate(t *testing.T) {
-	// Membership-only assertion; see comment on TestKeyOrderIndex_ImReactionsList.
-	order := lookupKeyOrder("im", []string{"images"}, "create")
-	if order == nil {
-		t.Fatal("expected key order for im.images.create, got nil")
-	}
-	wantBody := map[string]bool{"image_type": true, "image": true}
-	if got, want := len(order.RequestBody), len(wantBody); got != want {
-		t.Errorf("requestBody count = %d, want %d (got %v)", got, want, order.RequestBody)
-	}
-	for _, k := range order.RequestBody {
-		if !wantBody[k] {
-			t.Errorf("unexpected requestBody key %q", k)
-		}
-	}
-}
-
-func TestKeyOrderIndex_UnknownPath(t *testing.T) {
-	// 远端缓存的命令（不在 embedded 内）查不到 key order，返回 nil 走字母序兜底
-	order := lookupKeyOrder("nonexistent_service", []string{"foo"}, "bar")
-	if order != nil {
-		t.Errorf("expected nil for unknown path, got %+v", order)
-	}
 }
 
 func TestConvertProperty_BasicTypes(t *testing.T) {
@@ -288,9 +238,6 @@ func TestConvertProperty_DescriptionDefaultExample(t *testing.T) {
 
 func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 
@@ -313,16 +260,13 @@ func TestBuildInputSchema_ReactionsList(t *testing.T) {
 	if !reflect.DeepEqual(params.Required, []string{"message_id"}) {
 		t.Errorf("params.Required = %v, want [message_id]", params.Required)
 	}
-	if !reflect.DeepEqual(params.Properties.Order, mko.Parameters) {
-		t.Errorf("params.properties order = %v, want (from key index) %v",
-			params.Properties.Order, mko.Parameters)
+	if want := []string{"message_id", "page_size", "page_token", "reaction_type", "user_id_type"}; !reflect.DeepEqual(params.Properties.Order, want) {
+		t.Errorf("params.properties order = %v, want %v (alphabetical)", params.Properties.Order, want)
 	}
 }
 
 func TestBuildInputSchema_ImagesCreate_FileAndBody(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"images"}, "create")
-	currentMethodOrder = lookupKeyOrder("im", []string{"images"}, "create")
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 
@@ -382,10 +326,8 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 			},
 		},
 	}
-	currentMethodOrder = nil
-	defer func() { currentMethodOrder = nil }()
 
-	is := buildInputSchema(method)
+	is := buildInputSchema(meta.FromMap(method))
 
 	// yes lives at inputSchema.properties.yes (sibling of params/data)
 	yes, ok := is.Properties.Map["yes"]
@@ -413,9 +355,6 @@ func TestBuildInputSchema_HighRiskWriteInjectsYes(t *testing.T) {
 
 func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	is := buildInputSchema(method)
 	if _, ok := is.Properties.Map["yes"]; ok {
@@ -425,9 +364,6 @@ func TestBuildInputSchema_NoYesForReadRisk(t *testing.T) {
 
 func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	mko := lookupKeyOrder("im", []string{"reactions"}, "list")
-	currentMethodOrder = mko
-	defer func() { currentMethodOrder = nil }()
 
 	os := buildOutputSchema(method)
 
@@ -450,31 +386,6 @@ func TestBuildOutputSchema_ReactionsList(t *testing.T) {
 	}
 }
 
-func TestConvertAccessTokens(t *testing.T) {
-	tests := []struct {
-		name  string
-		input []interface{}
-		want  []string
-	}{
-		{"tenant only", []interface{}{"tenant"}, []string{"bot"}},
-		{"user only", []interface{}{"user"}, []string{"user"}},
-		{"tenant then user", []interface{}{"tenant", "user"}, []string{"bot", "user"}},
-		{"user then tenant", []interface{}{"user", "tenant"}, []string{"bot", "user"}},
-		{"deduped", []interface{}{"tenant", "tenant", "user"}, []string{"bot", "user"}},
-		{"empty", []interface{}{}, []string{}},
-		{"nil", nil, []string{}},
-		{"unknown skipped", []interface{}{"user", "admin"}, []string{"user"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := convertAccessTokens(tt.input)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("got %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func TestBuildMeta_FullFields(t *testing.T) {
 	// Synthesized method to avoid runtime variance from remote-cache overlay
 	// (which strips `risk` from merged services). All other field semantics
@@ -489,7 +400,7 @@ func TestBuildMeta_FullFields(t *testing.T) {
 		"accessTokens": []interface{}{"tenant"},
 		"docUrl":       "https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/image/create",
 	}
-	m := buildMeta(method)
+	m := buildMeta(meta.FromMap(method))
 
 	if m.EnvelopeVersion != "1.0" {
 		t.Errorf("EnvelopeVersion = %q", m.EnvelopeVersion)
@@ -526,7 +437,7 @@ func TestBuildMeta_MissingRiskDefaultsToRead(t *testing.T) {
 		"accessTokens": []interface{}{"user"},
 		// no risk field
 	}
-	m := buildMeta(method)
+	m := buildMeta(meta.FromMap(method))
 	if m.Risk != "read" {
 		t.Errorf("Risk = %q, want \"read\" (default for missing risk)", m.Risk)
 	}
@@ -540,58 +451,38 @@ func TestBuildMeta_RequiredScopesPresent(t *testing.T) {
 	}
 }
 
-func TestParseAffordance_NilOrEmpty(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  interface{}
-	}{
-		{"nil", nil},
-		{"empty object", map[string]interface{}{}},
-		{"all-five-empty-arrays", map[string]interface{}{
-			"use_when":        []interface{}{},
-			"do_not_use_when": []interface{}{},
-			"prerequisites":   []interface{}{},
-			"examples":        []interface{}{},
-			"related":         []interface{}{},
-		}},
-		{"malformed (string)", "not an object"},
-		{"malformed (number)", 42},
-		{"malformed (nested type mismatch)", map[string]interface{}{
-			"examples": "should be a list, not a string",
-		}},
+func TestConvert_EnumDescriptions(t *testing.T) {
+	// options carrying descriptions -> enum + parallel enumDescriptions
+	withDesc := Convert(meta.Field{Type: "string", Options: []meta.Option{
+		{Value: "open_id", Description: "A"},
+		{Value: "user_id", Description: "B"},
+	}})
+	if !reflect.DeepEqual(withDesc.Enum, []interface{}{"open_id", "user_id"}) {
+		t.Errorf("Enum = %v", withDesc.Enum)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := parseAffordance(c.raw); got != nil {
-				t.Errorf("parseAffordance(%v) = %+v, want nil", c.raw, got)
-			}
-		})
+	if !reflect.DeepEqual(withDesc.EnumDescriptions, []string{"A", "B"}) {
+		t.Errorf("EnumDescriptions = %v, want [A B] aligned with enum", withDesc.EnumDescriptions)
 	}
-}
 
-func TestParseAffordance_FullPopulated(t *testing.T) {
-	raw := map[string]interface{}{
-		"use_when":        []interface{}{"需要拿到当前用户的主日历 ID"},
-		"do_not_use_when": []interface{}{"已知具体某一个非主日历的 calendar_id"},
-		"prerequisites":   []interface{}{"user 身份登录"},
-		"examples": []interface{}{
-			map[string]interface{}{"description": "获取主日历", "command": "lark-cli calendar calendars primary"},
-		},
-		"related": []interface{}{"calendars.list"},
+	// bare enum form (no descriptions) -> enumDescriptions omitted (nil)
+	bare := Convert(meta.Field{Type: "string", Enum: []any{"x", "y"}})
+	if !reflect.DeepEqual(bare.Enum, []interface{}{"x", "y"}) {
+		t.Errorf("bare Enum = %v", bare.Enum)
 	}
-	a := parseAffordance(raw)
-	if a == nil {
-		t.Fatal("parseAffordance returned nil, want populated")
+	if bare.EnumDescriptions != nil {
+		t.Errorf("bare enum must have nil EnumDescriptions, got %v", bare.EnumDescriptions)
 	}
-	if len(a.UseWhen) != 1 || a.UseWhen[0] != "需要拿到当前用户的主日历 ID" {
-		t.Errorf("UseWhen = %v", a.UseWhen)
+
+	// enum + options both present -> enumDescriptions backfilled, aligned, "" where absent
+	both := Convert(meta.Field{Type: "string", Enum: []any{"1", "2", "3"}, Options: []meta.Option{
+		{Value: "1", Description: "from"},
+		{Value: "2", Description: "to"},
+	}})
+	if !reflect.DeepEqual(both.Enum, []interface{}{"1", "2", "3"}) {
+		t.Errorf("both Enum = %v", both.Enum)
 	}
-	if len(a.Examples) != 1 || a.Examples[0].Description != "获取主日历" ||
-		a.Examples[0].Command != "lark-cli calendar calendars primary" {
-		t.Errorf("Examples = %+v", a.Examples)
-	}
-	if len(a.Related) != 1 || a.Related[0] != "calendars.list" {
-		t.Errorf("Related = %v", a.Related)
+	if !reflect.DeepEqual(both.EnumDescriptions, []string{"from", "to", ""}) {
+		t.Errorf("both EnumDescriptions = %v, want [from to \"\"] aligned with enum", both.EnumDescriptions)
 	}
 }
 
@@ -604,7 +495,7 @@ func TestBuildMeta_AffordanceFromMethod(t *testing.T) {
 			"use_when": []interface{}{"trigger"},
 		},
 	}
-	m := buildMeta(method)
+	m := buildMeta(meta.FromMap(method))
 	if m.Affordance == nil {
 		t.Fatal("Affordance should be populated from method[\"affordance\"]")
 	}
@@ -620,7 +511,7 @@ func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 		"risk":         "read",
 		// no docUrl
 	}
-	m := buildMeta(method)
+	m := buildMeta(meta.FromMap(method))
 	if m.DocURL != "" {
 		t.Errorf("DocURL = %q, want empty (will be omitempty)", m.DocURL)
 	}
@@ -634,8 +525,7 @@ func TestBuildMeta_MissingDocURLOmitted(t *testing.T) {
 func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 	// 装配器对空 responseBody 应生成 properties = {} （不 nil）
 	method := map[string]interface{}{}
-	currentMethodOrder = nil
-	os := buildOutputSchema(method)
+	os := buildOutputSchema(meta.FromMap(method))
 	if os.Type != "object" {
 		t.Errorf("Type = %q, want \"object\"", os.Type)
 	}
@@ -647,9 +537,16 @@ func TestBuildOutputSchema_EmptyResponseBody(t *testing.T) {
 	}
 }
 
+// synthEnvelope renders an envelope for a synthetic (service, resourcePath, method)
+// via the public ref entry, so these unit tests build the same MethodRef the
+// command layer feeds Envelope.
+func synthEnvelope(serviceName string, resourcePath []string, m meta.Method) Envelope {
+	return EnvelopeOf(apicatalog.MethodRef{Service: meta.Service{Name: serviceName}, ResourcePath: resourcePath, Method: m})
+}
+
 func TestAssembleEnvelope_ReactionsList_FullStructure(t *testing.T) {
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	env := AssembleEnvelope("im", []string{"reactions"}, "list", method)
+	env := synthEnvelope("im", []string{"reactions"}, method)
 
 	if env.Name != "im reactions list" {
 		t.Errorf("Name = %q, want \"im reactions list\"", env.Name)
@@ -671,7 +568,7 @@ func TestAssembleEnvelope_NestedResource_NameJoinedWithSpaces(t *testing.T) {
 	// overlay strips `bots` from the loaded method map on this environment;
 	// the assertion is about name joining, not method specifics.
 	method := loadMethodFromRegistry(t, "im", []string{"chat.members"}, "create")
-	env := AssembleEnvelope("im", []string{"chat.members"}, "create", method)
+	env := synthEnvelope("im", []string{"chat.members"}, method)
 	// chat.members resourcePath stays as one element in the slice with a dot;
 	// name should split it to "im chat.members create" — we keep the dot as-is
 	// inside the resource segment to round-trip with completion logic.
@@ -683,8 +580,8 @@ func TestAssembleEnvelope_NestedResource_NameJoinedWithSpaces(t *testing.T) {
 func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 	// Assemble twice; JSON output must be byte-identical (determinism).
 	method := loadMethodFromRegistry(t, "im", []string{"reactions"}, "list")
-	a := AssembleEnvelope("im", []string{"reactions"}, "list", method)
-	b := AssembleEnvelope("im", []string{"reactions"}, "list", method)
+	a := synthEnvelope("im", []string{"reactions"}, method)
+	b := synthEnvelope("im", []string{"reactions"}, method)
 	ja, _ := json.MarshalIndent(a, "", "  ")
 	jb, _ := json.MarshalIndent(b, "", "  ")
 	if string(ja) != string(jb) {
@@ -693,8 +590,8 @@ func TestAssembleEnvelope_JSONIsStable(t *testing.T) {
 }
 
 func TestAssembleService_Im(t *testing.T) {
-	spec := registry.LoadFromMeta("im")
-	envs := AssembleService("im", spec, nil)
+	svc, _ := registry.ServiceTyped("im")
+	envs := Envelopes(apicatalog.ServiceMethods(svc, nil))
 	if len(envs) == 0 {
 		t.Fatal("expected non-empty envelopes for service im")
 	}
@@ -713,17 +610,16 @@ func TestAssembleService_Im(t *testing.T) {
 }
 
 func TestAssembleService_FilterByAccessToken(t *testing.T) {
-	spec := registry.LoadFromMeta("im")
+	svc, _ := registry.ServiceTyped("im")
 	// Filter to bot-only (--as bot, which corresponds to "tenant")
-	envs := AssembleService("im", spec, func(method map[string]interface{}) bool {
-		tokens, _ := method["accessTokens"].([]interface{})
-		for _, t := range tokens {
-			if s, _ := t.(string); s == "tenant" {
+	envs := Envelopes(apicatalog.ServiceMethods(svc, func(m meta.Method) bool {
+		for _, t := range m.AccessTokens {
+			if t == "tenant" {
 				return true
 			}
 		}
 		return false
-	})
+	}))
 	// Every envelope's _meta.access_tokens must contain "bot"
 	for _, e := range envs {
 		found := false
@@ -740,11 +636,11 @@ func TestAssembleService_FilterByAccessToken(t *testing.T) {
 }
 
 func TestAssembleAll_AtLeast193(t *testing.T) {
-	envs := AssembleAll(nil)
-	// Envelope assembly is overlay-independent (Task 17b): AssembleAll walks the
-	// embedded meta_data.json directly, so the count is stable across machines.
+	envs := Envelopes(registry.EmbeddedCatalog().WalkMethods(nil))
+	// Envelope assembly is overlay-independent: it walks the embedded
+	// meta_data.json directly, so the count is stable across machines.
 	if len(envs) < 193 {
-		t.Errorf("AssembleAll returned %d envelopes, expected >= 193", len(envs))
+		t.Errorf("envelope count = %d, expected >= 193", len(envs))
 	}
 	// Spot check: im reactions list should be present
 	found := false
@@ -759,24 +655,32 @@ func TestAssembleAll_AtLeast193(t *testing.T) {
 	}
 }
 
-// loadMethodFromRegistry is a test helper that pulls one method's spec from the
-// real embedded meta_data.json via the registry package.
-func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) map[string]interface{} {
+// loadMethodFromRegistry is a test helper that pulls one method from the real
+// embedded meta_data.json via the registry's typed accessor, with Name set.
+func loadMethodFromRegistry(t *testing.T, service string, resourcePath []string, methodName string) meta.Method {
 	t.Helper()
-	spec := registry.LoadFromMeta(service)
-	if spec == nil {
+	svc, ok := registry.ServiceTyped(service)
+	if !ok {
 		t.Fatalf("service %q not found in registry", service)
 	}
-	resources, _ := spec["resources"].(map[string]interface{})
 	resKey := strings.Join(resourcePath, ".")
-	res, ok := resources[resKey].(map[string]interface{})
+	res, ok := svc.Resources[resKey]
 	if !ok {
 		t.Fatalf("resource %q.%s not found", service, resKey)
 	}
-	methods, _ := res["methods"].(map[string]interface{})
-	m, ok := methods[methodName].(map[string]interface{})
+	m, ok := res.Methods[methodName]
 	if !ok {
 		t.Fatalf("method %q.%s.%s not found", service, resKey, methodName)
 	}
+	m.Name = methodName
 	return m
+}
+
+// convertProperty is a test helper: it decodes a single field-spec map into a
+// meta.Field and renders its Property (the conversion the assembler does).
+func convertProperty(fieldMap map[string]interface{}, _ string) Property {
+	b, _ := json.Marshal(fieldMap)
+	var f meta.Field
+	_ = json.Unmarshal(b, &f)
+	return Convert(f)
 }

@@ -143,7 +143,7 @@ func resolveSheetMediaUploadParent(runtime *common.RuntimeContext) (string, erro
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		pn := parentNode
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
@@ -151,7 +151,7 @@ func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName str
 			ParentNode: &pn,
 		})
 	}
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,

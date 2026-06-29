@@ -1048,6 +1048,42 @@ func detectIMFileType(filePath string) string {
 	}
 }
 
+const (
+	audioMessageInputDesc = "audio file key (file_xxx), URL, or cwd-relative local path for a voice message (absolute paths and .. are rejected); local paths and URLs must be Opus (.opus or Ogg Opus .ogg). For mp3/wav, convert to .opus first, or use --file to send as an attachment"
+	audioMessageHint      = "Convert non-Opus audio to .opus and use --audio for a voice message, for example: ffmpeg -i input.mp3 -acodec libopus -ac 1 -ar 16000 output.opus. To send the original mp3/wav as an attachment, use --file instead."
+)
+
+func validateAudioMessageInput(flagName, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || isMediaKey(value) {
+		return nil
+	}
+
+	ext := audioInputExt(value)
+	if ext == "" {
+		return nil
+	}
+	if ext == ".opus" || ext == ".ogg" {
+		return nil
+	}
+	return errs.NewValidationError(
+		errs.SubtypeInvalidArgument,
+		"%s supports only Opus audio files for audio messages, such as .opus files or Ogg Opus (.ogg) files",
+		flagName,
+	).WithParam(flagName).WithHint("%s", audioMessageHint)
+}
+
+func audioInputExt(value string) string {
+	if isURL(value) {
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return ""
+		}
+		return strings.ToLower(path.Ext(parsed.Path))
+	}
+	return strings.ToLower(filepath.Ext(value))
+}
+
 const maxImageUploadSize = 5 * 1024 * 1024  // 5MB — Lark API limit for images
 const maxFileUploadSize = 100 * 1024 * 1024 // 100MB — Lark API limit for files
 

@@ -1,0 +1,354 @@
+#!/usr/bin/env bash
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
+
+set -euo pipefail
+
+workflow=".github/workflows/ci.yml"
+job_section() {
+  local job="$1"
+  awk -v job="$job" '
+    $0 == "  " job ":" { in_job = 1; print; next }
+    in_job && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+  ' "$workflow"
+}
+workflow_permissions="$(awk '
+  /^permissions:/ { in_permissions = 1; print; next }
+  in_permissions && /^[^[:space:]]/ { exit }
+  in_permissions { print }
+' "$workflow")"
+fast_gate_section="$(job_section fast-gate)"
+unit_test_section="$(job_section unit-test)"
+lint_section="$(awk '
+  /^  lint:/ { in_job = 1 }
+  in_job { print }
+  /^  script-test:/ { exit }
+' "$workflow")"
+script_test_section="$(job_section script-test)"
+deterministic_section="$(awk '
+  /^  deterministic-gate:/ { in_job = 1 }
+  in_job { print }
+  /^  coverage:/ { exit }
+' "$workflow")"
+coverage_job_section="$(job_section coverage)"
+deadcode_section="$(job_section deadcode)"
+dry_run_section="$(job_section e2e-dry-run)"
+section="$(awk '
+  /^  e2e-live:/ { in_job = 1 }
+  in_job { print }
+  /^  security:/ { exit }
+' "$workflow")"
+security_section="$(job_section security)"
+license_header_section="$(job_section license-header)"
+results_section="$(awk '
+  /^  results:/ { in_job = 1 }
+  in_job { print }
+' "$workflow")"
+fork_safe_guard="github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork"
+
+for denied_permission in "checks: write" "pull-requests: write" "issues: write"; do
+  if grep -Eq "^[[:space:]]*${denied_permission}$" <<<"$workflow_permissions"; then
+    echo "CI workflow must not grant ${denied_permission} at the workflow level" >&2
+    exit 1
+  fi
+done
+
+if ! grep -Fq "contents: read" <<<"$workflow_permissions" || ! grep -Fq "actions: read" <<<"$workflow_permissions"; then
+  echo "CI workflow should keep only read permissions at the workflow level"
+  exit 1
+fi
+
+if ! grep -Fq "deterministic-gate:" <<<"$deterministic_section"; then
+  echo "CI should expose deterministic-gate as a standalone job"
+  exit 1
+fi
+
+if grep -Fq "make quality-gate" <<<"$lint_section"; then
+  echo "lint job should not run deterministic quality gate"
+  exit 1
+fi
+
+if ! grep -Fq "needs: fast-gate" <<<"$deterministic_section"; then
+  echo "deterministic-gate should depend on fast-gate"
+  exit 1
+fi
+
+if ! grep -Fq "permissions:" <<<"$deterministic_section"; then
+  echo "deterministic-gate should define job-level permissions"
+  exit 1
+fi
+
+if ! grep -Fq "contents: read" <<<"$deterministic_section"; then
+  echo "deterministic-gate should only need read access to repository contents"
+  exit 1
+fi
+
+if ! grep -Fq "actions: read" <<<"$deterministic_section"; then
+  echo "deterministic-gate should keep actions access read-only"
+  exit 1
+fi
+
+if grep -Fq "checks: write" <<<"$deterministic_section"; then
+  echo "deterministic-gate should not inherit check write permission"
+  exit 1
+fi
+
+if grep -Fq "pull-requests: write" <<<"$deterministic_section"; then
+  echo "deterministic-gate should not inherit pull request write permission"
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$deterministic_section"; then
+  echo "deterministic-gate must not reference secrets"
+  exit 1
+fi
+
+if ! grep -Fq "Run CLI deterministic gate" <<<"$deterministic_section"; then
+  echo "deterministic-gate should run the CLI deterministic gate step"
+  exit 1
+fi
+
+if ! grep -Fq "make quality-gate" <<<"$deterministic_section"; then
+  echo "deterministic-gate should invoke make quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "Write public content metadata" <<<"$deterministic_section"; then
+  echo "deterministic-gate should write PR title/body metadata before quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "types: [opened, synchronize, reopened, edited]" "$workflow"; then
+  echo "CI pull_request trigger should include edited so PR title/body changes are rescanned"
+  exit 1
+fi
+
+if ! grep -Fq "script-test:" <<<"$script_test_section"; then
+  echo "CI should run make script-test so workflow and publisher contract tests are not local-only"
+  exit 1
+fi
+
+if ! grep -Fq "make script-test" <<<"$script_test_section"; then
+  echo "script-test job should invoke make script-test"
+  exit 1
+fi
+
+if ! grep -Fq "actions/setup-node" <<<"$script_test_section"; then
+  echo "script-test job should install Node for JavaScript workflow tests"
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
+  echo "script-test must not reference secrets"
+  exit 1
+fi
+
+if grep -Fq "metadata-gate:" "$workflow"; then
+  echo "metadata-gate should not run alongside deterministic-gate because both would upload the same facts artifact"
+  exit 1
+fi
+
+if grep -Fq "github.event.action != 'edited'" <<<"$fast_gate_section"; then
+  echo "fast-gate must run on pull_request edited events so title/body edits cannot replace failed CI with a light success"
+  exit 1
+fi
+
+for full_job in \
+  "$unit_test_section" \
+  "$lint_section" \
+  "$script_test_section" \
+  "$deterministic_section" \
+  "$coverage_job_section" \
+  "$dry_run_section" \
+  "$security_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$full_job"; then
+    echo "full CI jobs must run on pull_request edited events; do not skip title/body-only edits"
+    exit 1
+  fi
+done
+
+for pull_request_job in "$deadcode_section" "$license_header_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$pull_request_job"; then
+    echo "pull_request-only CI jobs must run on edited events"
+    exit 1
+  fi
+done
+
+if grep -Fq '${{ secrets.' <<<"$deterministic_section"; then
+  echo "deterministic-gate must not reference secrets"
+  exit 1
+fi
+
+if ! grep -Fq "PUBLIC_CONTENT_METADATA=" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass public content metadata into make quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "PR_BRANCH:" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass the pull request branch into public content metadata"
+  exit 1
+fi
+
+if ! grep -Fq "name: quality-gate-facts-\${{ github.event.pull_request.base.sha }}-\${{ github.event.pull_request.head.sha }}" <<<"$deterministic_section"; then
+  echo "deterministic-gate should upload base/head-bound quality-gate-facts for semantic review"
+  exit 1
+fi
+
+if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate]" "$workflow"; then
+  echo "E2E jobs should wait for script-test and deterministic-gate"
+  exit 1
+fi
+
+if ! grep -Fq "script-test" <<<"$results_section"; then
+  echo "results job should include script-test"
+  exit 1
+fi
+
+if ! grep -Fq "deterministic-gate" <<<"$results_section"; then
+  echo "results job should include deterministic-gate"
+  exit 1
+fi
+
+if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
+  echo "e2e-live should run on push and same-repository pull_request, but skip fork pull_request"
+  exit 1
+fi
+
+if ! grep -Fq "permissions:" <<<"$section" ||
+   ! grep -Fq "contents: read" <<<"$section" ||
+   ! grep -Fq "checks: write" <<<"$section"; then
+  echo "e2e-live should grant only the job-level permissions needed to publish test reports"
+  exit 1
+fi
+
+if grep -Fq "pull-requests: write" <<<"$section" || grep -Fq "issues: write" <<<"$section"; then
+  echo "e2e-live should not grant pull request or issue write permission"
+  exit 1
+fi
+
+if grep -Fq "live_e2e_credentials" <<<"$section" || grep -Fq "configured=false" <<<"$section"; then
+  echo "e2e-live should fail, not silently skip, when required credentials are unavailable on eligible runs"
+  exit 1
+fi
+
+if ! grep -Fq "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET" <<<"$section"; then
+  echo "e2e-live should make missing bot credentials a visible configuration failure on eligible runs"
+  exit 1
+fi
+
+if grep -Fq "steps.live_e2e_credentials.outputs.configured" <<<"$section"; then
+  echo "e2e-live build, configure, test, and report steps should not be gated by a skip-state output"
+  exit 1
+fi
+
+if ! grep -Fq "if: \${{ !cancelled() }}" <<<"$section"; then
+  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled"
+  exit 1
+fi
+
+if grep -Fq "continue-on-error: true" <<<"$section"; then
+  echo "e2e-live report publishing should use explicit checks write permission instead of hiding publish failures"
+  exit 1
+fi
+
+coverage_step="$(awk '
+  /^      - name: Upload coverage to Codecov/ { in_step = 1 }
+  in_step { print }
+  in_step && /^      - name: Check coverage threshold/ { exit }
+' "$workflow")"
+
+if grep -Fq '${{ secrets.CODECOV_TOKEN }}' <<<"$coverage_step" &&
+   ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$coverage_step"; then
+  echo "Codecov token should be available on push and same-repository pull_request, but not fork pull_request" >&2
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$section" &&
+   ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
+  echo "live E2E secrets should be available on push and same-repository pull_request, but not fork pull_request" >&2
+  exit 1
+fi
+
+if ! awk -v guard="$fork_safe_guard" '
+  /^  [A-Za-z0-9_-]+:/ {
+    job_if = "";
+    step_if = "";
+  }
+  /^    if:/ {
+    job_if = $0;
+  }
+  /^      - (name|uses):/ {
+    step_if = "";
+  }
+  /^        if:/ {
+    step_if = $0;
+  }
+  /\$\{\{ secrets\./ {
+    if (index(job_if, guard) || index(step_if, guard)) {
+      next;
+    }
+    printf("secret reference at %s:%d must be guarded away from pull_request runs\n", FILENAME, FNR) > "/dev/stderr";
+    bad = 1;
+  }
+  END { exit bad ? 1 : 0 }
+' "$workflow"; then
+  exit 1
+fi
+
+make_output="$(QUALITY_GATE_CHANGED_FROM= make -n quality-gate)"
+if grep -Fq -- "--changed-from  \\" <<<"$make_output"; then
+  echo "quality-gate should resolve an empty QUALITY_GATE_CHANGED_FROM before passing --changed-from"
+  exit 1
+fi
+
+if ! grep -Fq "go run ./internal/qualitygate/cmd/manifest-export" <<<"$make_output"; then
+  echo "quality-gate should generate command manifests through manifest-export"
+  exit 1
+fi
+
+if ! grep -Fq -- "--public-content-metadata .tmp/quality-gate/public-content-metadata.json" <<<"$make_output"; then
+  echo "quality-gate check should consume public content metadata"
+  exit 1
+fi
+
+if ! grep -Fq -- "--manifest .tmp/quality-gate/command-manifest.json" <<<"$make_output" ||
+   ! grep -Fq -- "--command-index .tmp/quality-gate/command-index.json" <<<"$make_output"; then
+  echo "quality-gate check should consume both exported command snapshots"
+  exit 1
+fi
+
+if ! awk '
+  function finish_upload() {
+    if (!in_upload) {
+      return;
+    }
+    uploads++;
+    if (path != ".tmp/quality-gate/facts.json") {
+      printf("deterministic-gate upload-artifact path must be .tmp/quality-gate/facts.json, got %s\n", path) > "/dev/stderr";
+      bad = 1;
+    }
+    in_upload = 0;
+    path = "";
+  }
+  /^      - (name|uses):/ {
+    finish_upload();
+  }
+  /uses: actions\/upload-artifact@/ {
+    in_upload = 1;
+  }
+  in_upload && /^[[:space:]]*path:/ {
+    path = $0;
+    sub(/^[[:space:]]*path:[[:space:]]*/, "", path);
+  }
+  END {
+    finish_upload();
+    if (uploads == 0) {
+      print "deterministic-gate should upload quality gate facts" > "/dev/stderr";
+      bad = 1;
+    }
+    exit bad ? 1 : 0;
+  }
+' <<<"$deterministic_section"; then
+  exit 1
+fi

@@ -75,10 +75,11 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>测试</p>' --dry-run
 | `--to <emails>` | 否 | 额外收件人，多个用逗号分隔（追加到原发件人） |
 | `--cc <emails>` | 否 | 抄送邮箱，多个用逗号分隔 |
 | `--bcc <emails>` | 否 | 密送邮箱，多个用逗号分隔。与 `--event-*` 不兼容（见 `+send` 日程邀请约束） |
-| `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用 |
+| `--plain-text` | 否 | 强制纯文本模式，忽略所有 HTML 自动检测。不可与 `--inline` 同时使用。纯文本模式下也会自动追加纯文本签名（HTML 签名经 `PlainTextFromHTML` 转换，内联图片丢弃） |
 | `--attach <paths>` | 否 | 附件文件路径，多个用逗号分隔。相对路径。当附件导致 EML 总大小超过 25 MB 时，超出部分自动上传为超大附件（HTML 邮件插入下载卡片，纯文本邮件追加下载链接），单个文件上限 3 GB |
 | `--inline <json>` | 否 | 高级用法：手动指定内嵌图片 CID 映射。推荐直接在 `--body` 中使用 `<img src="./path" />`（自动解析）。仅在需要精确控制 CID 命名时使用此参数。格式：`'[{"cid":"mycid","file_path":"./logo.png"}]'`，在 body 中用 `<img src="cid:mycid">` 引用。不可与 `--plain-text` 同时使用 |
-| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。不可与 `--plain-text` 同时使用 |
+| `--signature-id <id>` | 否 | 签名 ID。附加邮箱签名到回复正文与引用块之间。运行 `mail +signature` 查看可用签名。与 `--no-signature` 互斥 |
+| `--no-signature` | 否 | 跳过默认签名自动追加。与 `--signature-id` 互斥，同时使用时返回参数校验错误（退出码 2） |
 | `--priority <level>` | 否 | 邮件优先级：`high`、`normal`、`low`。省略或 `normal` 时不设置优先级 |
 | `--event-summary <text>` | 否 | 日程标题。设置此参数即在邮件中嵌入日程邀请。需同时设置 `--event-start` 和 `--event-end` |
 | `--event-start <time>` | 条件必填 | 日程开始时间（ISO 8601） |
@@ -117,10 +118,12 @@ lark-cli mail +reply --message-id <邮件ID> --body '<p>测试</p>' --dry-run
 
 - `automation_send_disable_reason`：发送被邮箱自动化设置拦截时返回的原因
 - `automation_send_disable_reference`：发送被拦截时的草稿打开链接
+- `recall_available` / `recall_tip`：发送成功后若返回可撤回提示，按需参考 [lark-mail-recall](lark-mail-recall.md)
 
 字段语义：
 
 - 若返回中包含 `automation_send_disable_reason` / `automation_send_disable_reference`，说明回复未真正发出，而是被邮箱设置拦截。此时应直接向用户展示原因和草稿打开链接，不要继续假设已经发送成功
+- 若返回中包含 `recall_available: true`，说明该邮件支持撤回；仅当用户明确要求撤回时，读取 [lark-mail-recall](lark-mail-recall.md) 并执行撤回流程
 
 ## 典型场景
 
@@ -188,6 +191,7 @@ References:  <原邮件references + smtp_message_id>
 回复发送后，分两种情况处理：
 
 - 若返回中有 `automation_send_disable_reason` / `automation_send_disable_reference`：说明发送被邮箱设置拦截，应直接告诉用户原因并提供草稿打开链接，**不要**调用 `send_status`
+- 若用户基于发送结果要求撤回，先读取 [lark-mail-recall](lark-mail-recall.md)，再执行撤回流程
 
 **1. 确认投递状态**（仅立即发送且返回非空 `message_id` 时必须）
 
@@ -214,7 +218,7 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 **2. 标记已读**（可选）— 询问用户是否需要将原邮件标记为已读。如果用户同意：
 
 ```bash
-lark-cli mail user_mailbox.messages batch_modify_message --params '{"user_mailbox_id":"me"}' --data '{"message_ids":["<原邮件ID>"],"remove_label_ids":["UNREAD"]}'
+lark-cli mail user_mailbox.messages batch_modify --params '{"user_mailbox_id":"me"}' --data '{"message_ids":["<原邮件ID>"],"remove_label_ids":["UNREAD"]}'
 ```
 
 ## 编辑回复草稿

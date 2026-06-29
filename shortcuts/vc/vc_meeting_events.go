@@ -48,7 +48,7 @@ var VCMeetingEvents = common.Shortcut{
 	Description: "List bot meeting events by meeting ID",
 	Risk:        "read",
 	Scopes:      []string{"vc:meeting.meetingevent:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "meeting-id", Required: true, Desc: "meeting ID to query"},
@@ -155,6 +155,9 @@ func validateMeetingEventsMeetingID(meetingID string) error {
 	meetingID = strings.TrimSpace(meetingID)
 	if meetingID == "" {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-id is required").WithParam("--meeting-id")
+	}
+	if validMeetingNumber(meetingID) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--meeting-id must be a long meeting_id, not a 9-digit meeting number; use +meeting-join or +meeting-list-active to get meeting_id").WithParam("--meeting-id")
 	}
 	value, err := strconv.ParseInt(meetingID, 10, 64)
 	if err != nil || value <= 0 {

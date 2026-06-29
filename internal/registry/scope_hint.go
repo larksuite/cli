@@ -44,22 +44,12 @@ func ExtractRequiredScopes(detail interface{}) []string {
 	return scopes
 }
 
-// SelectRecommendedScopeFromStrings is a string-typed convenience wrapper
-// around SelectRecommendedScope. When no scope is recognized by the priority
-// table, it falls back to the first input scope so callers always have
-// something to surface to users.
-func SelectRecommendedScopeFromStrings(scopes []string, identity string) string {
-	if len(scopes) == 0 {
-		return ""
-	}
-	ifaces := make([]interface{}, len(scopes))
-	for i, s := range scopes {
-		ifaces[i] = s
-	}
-	if recommended := SelectRecommendedScope(ifaces, identity); recommended != "" {
-		return recommended
-	}
-	return scopes[0]
+// SelectRecommendedScopeFromStrings returns the highest-priority (least-privilege)
+// scope to surface to users, or "" for no scopes. Unknown scopes score
+// DefaultScopeScore, so an all-unknown list yields the first entry. Priority is
+// identity-independent; the parameter is kept for call-site clarity.
+func SelectRecommendedScopeFromStrings(scopes []string, _ string) string {
+	return bestScope(scopes, LoadScopePriorities())
 }
 
 // BuildConsoleScopeURL returns the developer-console "apply scope" URL for the

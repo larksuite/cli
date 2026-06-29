@@ -54,7 +54,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		createdNodeToken = node.Get("node_token").String()
 		createdObjToken = node.Get("obj_token").String()
@@ -118,7 +118,7 @@ func TestWiki_NodeWorkflow(t *testing.T) {
 		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		copiedNodeToken = gjson.Get(result.Stdout, "data.node.node_token").String()
 		copiedSpaceID = gjson.Get(result.Stdout, "data.node.space_id").String()

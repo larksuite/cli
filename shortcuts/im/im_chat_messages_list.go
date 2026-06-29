@@ -32,7 +32,8 @@ var ImChatMessageList = common.Shortcut{
 		{Name: "user-id", Desc: "(required, mutually exclusive with --chat-id; user identity only) user open_id (ou_xxx)"},
 		{Name: "start", Desc: "start time (ISO 8601)"},
 		{Name: "end", Desc: "end time (ISO 8601)"},
-		{Name: "sort", Default: "desc", Desc: "sort order", Enum: []string{"asc", "desc"}},
+		{Name: "order", Default: "desc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
+		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Default: "50", Desc: "page size (1-50)"},
 		{Name: "page-token", Desc: "pagination token for next page"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
@@ -209,7 +210,11 @@ func buildChatMessageListParams(sortFlag, pageSizeStr, chatId string) larkcore.Q
 }
 
 func buildChatMessageListRequest(runtime *common.RuntimeContext, chatId string) (larkcore.QueryParams, error) {
-	params := buildChatMessageListParams(runtime.Str("sort"), runtime.Str("page-size"), chatId)
+	dir := runtime.Str("order")
+	if old, ok := aliasFlagValue(runtime, "sort", "order"); ok {
+		dir = old // old value is asc/desc -> must go through the same map, never pass through
+	}
+	params := buildChatMessageListParams(dir, runtime.Str("page-size"), chatId)
 
 	if startFlag := runtime.Str("start"); startFlag != "" {
 		startTime, err := common.ParseTime(startFlag)

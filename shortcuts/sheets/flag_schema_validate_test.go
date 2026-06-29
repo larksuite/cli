@@ -478,11 +478,9 @@ func TestValidateInputAgainstSchema_RealSchema(t *testing.T) {
 		},
 	}
 	err := validateInputAgainstSchema(fv, bad)
-	if err == nil {
-		t.Fatal("expected enum violation, got nil")
-	}
-	if !strings.Contains(err.Error(), "summarize_by") || !strings.Contains(err.Error(), "not in enum") {
-		t.Errorf("error = %q, want summarize_by + enum hint", err.Error())
+	ve := requireValidation(t, err, "summarize_by")
+	if !strings.Contains(ve.Message, "not in enum") {
+		t.Errorf("error = %q, want enum hint", ve.Message)
 	}
 }
 
@@ -499,11 +497,9 @@ func TestValidateInputAgainstSchema_RealMinItems(t *testing.T) {
 		},
 	}
 	err := validateInputAgainstSchema(fv, bad)
-	if err == nil {
-		t.Fatal("expected minItems violation for empty values, got nil")
-	}
-	if !strings.Contains(err.Error(), "values") || !strings.Contains(err.Error(), "minimum is 1") {
-		t.Errorf("error = %q, want values + minimum-is-1 hint", err.Error())
+	ve := requireValidation(t, err, "values")
+	if !strings.Contains(ve.Message, "minimum is 1") {
+		t.Errorf("error = %q, want minimum-is-1 hint", ve.Message)
 	}
 }
 
@@ -520,11 +516,9 @@ func TestValidateInputAgainstSchema_RealMinimum(t *testing.T) {
 		},
 	}
 	err := validateInputAgainstSchema(fv, bad)
-	if err == nil {
-		t.Fatal("expected minimum violation for row:-1, got nil")
-	}
-	if !strings.Contains(err.Error(), "row") || !strings.Contains(err.Error(), "below minimum") {
-		t.Errorf("error = %q, want row + below-minimum hint", err.Error())
+	ve := requireValidation(t, err, "row")
+	if !strings.Contains(ve.Message, "below minimum") {
+		t.Errorf("error = %q, want below-minimum hint", ve.Message)
 	}
 }
 
@@ -554,11 +548,9 @@ func TestValidateInputAgainstSchema_RealAdditionalProperties(t *testing.T) {
 		},
 	}
 	err := validateInputAgainstSchema(fv, bad)
-	if err == nil {
-		t.Fatal("expected additionalProperties violation, got nil")
-	}
-	if !strings.Contains(err.Error(), "collapse") || !strings.Contains(err.Error(), `expected type "string"`) {
-		t.Errorf("error = %q, want collapse + string-type hint", err.Error())
+	ve := requireValidation(t, err, "collapse")
+	if !strings.Contains(ve.Message, `expected type "string"`) {
+		t.Errorf("error = %q, want string-type hint", ve.Message)
 	}
 }
 
@@ -585,5 +577,26 @@ func TestValidateInputAgainstSchema_SkipOperations(t *testing.T) {
 	}
 	if err := validateInputAgainstSchema(fv, input); err != nil {
 		t.Errorf("operations should be skipped; got %v", err)
+	}
+}
+
+// TestValidateValueAgainstSchema_PrintSchemaHint pins the highest-value
+// recovery affordance for composite-JSON flags: when the shape is wrong, the
+// error must point the agent straight at --print-schema (with the right
+// command + flag) instead of leaving it to guess across retries. +cells-set
+// --cells expects a 2-D array; a bare string trips the top-level type check.
+func TestValidateValueAgainstSchema_PrintSchemaHint(t *testing.T) {
+	t.Parallel()
+	fv := mapFlagView{command: "+cells-set"}
+	err := validateValueAgainstSchema(fv, "cells", "not-an-array")
+	// Underlying shape error is preserved (substring callers still match).
+	ve := requireValidation(t, err, `expected type "array"`)
+	// And the actionable --print-schema hint is appended with the exact
+	// command + flag, so a copy-paste fetches the schema for this pair.
+	if !strings.Contains(ve.Message, "lark-cli sheets +cells-set --print-schema --flag-name cells") {
+		t.Errorf("want --print-schema hint with command+flag; got %q", ve.Message)
+	}
+	if ve.Param != "--cells" {
+		t.Errorf("param = %q, want --cells", ve.Param)
 	}
 }

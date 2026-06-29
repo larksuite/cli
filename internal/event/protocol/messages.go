@@ -43,9 +43,11 @@ type Hello struct {
 }
 
 type HelloAck struct {
-	Type        string `json:"type"`
-	BusVersion  string `json:"bus_version"`
-	FirstForKey bool   `json:"first_for_key"`
+	Type         string `json:"type"`
+	BusVersion   string `json:"bus_version"`
+	FirstForKey  bool   `json:"first_for_key"`
+	Rejected     bool   `json:"rejected,omitempty"`
+	RejectReason string `json:"reject_reason,omitempty"`
 }
 
 // Event: Seq is per-conn monotonic; gaps signal bus drop-oldest backpressure loss.
@@ -114,6 +116,17 @@ func NewHelloAck(busVersion string, firstForKey bool) *HelloAck {
 		Type:        MsgTypeHelloAck,
 		BusVersion:  busVersion,
 		FirstForKey: firstForKey,
+	}
+}
+
+// NewHelloAckRejected builds a hello_ack that tells the consumer the bus refused
+// registration (e.g. a SingleConsumer EventKey already has a running consumer).
+func NewHelloAckRejected(busVersion, reason string) *HelloAck {
+	return &HelloAck{
+		Type:         MsgTypeHelloAck,
+		BusVersion:   busVersion,
+		Rejected:     true,
+		RejectReason: reason,
 	}
 }
 

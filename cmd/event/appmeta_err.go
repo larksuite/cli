@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-// authURLPattern matches the grant-scope URL embedded in 99991672 errors; widen when adding brands in consoleScopeGrantURL.
+// authURLPattern matches the grant-scope URL embedded in 99991672 errors; widen the host alternation when adding brands.
 var authURLPattern = regexp.MustCompile(`https?://open\.(?:feishu\.cn|larksuite\.com)/app/[^/\s"']+/auth\?q=[^\s"'<>]+`)
 
 // describeAppMetaErr reduces a FetchCurrentPublished error to a one-line stderr summary.

@@ -44,7 +44,7 @@ func (s *stubRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 func TestFetchTAT_Success(t *testing.T) {
 	rt := &stubRoundTripper{
 		respCode: 200,
-		respBody: `{"code":0,"tenant_access_token":"t-abc","msg":"ok"}`,
+		respBody: `{"code":0,"access_token":"t-abc","token_type":"Bearer","expires_in":7200}`,
 	}
 	hc := &http.Client{Transport: rt}
 
@@ -55,24 +55,33 @@ func TestFetchTAT_Success(t *testing.T) {
 	if token != "t-abc" {
 		t.Errorf("token = %q, want t-abc", token)
 	}
-	if rt.gotReq.URL.String() != "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal" {
+	if rt.gotReq.URL.String() != "https://accounts.feishu.cn/oauth/v3/token" {
 		t.Errorf("url = %s", rt.gotReq.URL.String())
 	}
-	if !strings.Contains(rt.gotBody, `"app_id":"cli_app"`) || !strings.Contains(rt.gotBody, `"app_secret":"secret_x"`) {
-		t.Errorf("request body missing credentials: %s", rt.gotBody)
+	if ct := rt.gotReq.Header.Get("Content-Type"); ct != "application/x-www-form-urlencoded" {
+		t.Errorf("Content-Type = %q, want application/x-www-form-urlencoded", ct)
+	}
+	// client_secret_post: grant_type + client_id + client_secret in the form body.
+	for _, want := range []string{"grant_type=client_credentials", "client_id=cli_app", "client_secret=secret_x"} {
+		if !strings.Contains(rt.gotBody, want) {
+			t.Errorf("request body missing %q: %s", want, rt.gotBody)
+		}
 	}
 }
 
-// 10003 (bad / non-existent app_id, "invalid param") is classified locally by
+// invalid_client (wrong app_id/app_secret on the client_credentials grant) is a
+// deterministic client-side rejection that FetchTAT routes to
 // classifyTATResponseCode as CategoryConfig / SubtypeInvalidClient — the same
 // typed error doResolveTAT (and thus every token-resolving command) returns.
-func TestFetchTAT_Code10003_ConfigInvalidClient(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"code":10003,"msg":"invalid param"}`}
+// The v3 endpoint reports it as HTTP 400 with the OAuth2 error body (wrong
+// secret → code 20002, unknown app → code 20048).
+func TestFetchTAT_InvalidClient_ConfigInvalidClient(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_client","error_description":"The client secret is invalid.","code":20002}`}
 	hc := &http.Client{Transport: rt}
 
 	token, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
 	if err == nil {
-		t.Fatal("expected error for code 10003")
+		t.Fatal("expected error for invalid_client")
 	}
 	if token != "" {
 		t.Errorf("token = %q, want empty", token)
@@ -87,52 +96,115 @@ func TestFetchTAT_Code10003_ConfigInvalidClient(t *testing.T) {
 	if cfgErr.Subtype != errs.SubtypeInvalidClient {
 		t.Errorf("Subtype = %q, want %q", cfgErr.Subtype, errs.SubtypeInvalidClient)
 	}
-	if cfgErr.Code != 10003 {
-		t.Errorf("Code = %d, want 10003", cfgErr.Code)
-	}
 }
 
-// 10014 ("app secret invalid") — the most common real-world rejection (real
-// app_id + wrong secret) — is globally mapped in codemeta to
-// CategoryConfig / SubtypeInvalidClient via BuildAPIError.
-func TestFetchTAT_Code10014_ConfigInvalidClient(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"code":10014,"msg":"app secret invalid"}`}
-	hc := &http.Client{Transport: rt}
-
-	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
-	var cfgErr *errs.ConfigError
-	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error not *errs.ConfigError: %T %v", err, err)
-	}
-	if cfgErr.Subtype != errs.SubtypeInvalidClient || cfgErr.Code != 10014 {
-		t.Errorf("got Subtype=%q Code=%d, want invalid_client/10014", cfgErr.Subtype, cfgErr.Code)
-	}
-}
-
-// Any non-zero body code is a deterministic server-side rejection, so it
-// always yields a typed error (errs.IsTyped). An unrecognized code falls back
-// to CategoryAPI / SubtypeUnknown via BuildAPIError — still typed, so a probe
-// caller still surfaces it rather than silently swallowing.
-func TestFetchTAT_UnknownBodyCode_Typed(t *testing.T) {
-	rt := &stubRoundTripper{respCode: 200, respBody: `{"code":99999,"msg":"future-unknown"}`}
+// Any other deterministic client-side OAuth error (e.g. invalid_scope) still
+// yields a typed error (errs.IsTyped) via BuildAPIError — so a probe caller
+// surfaces it rather than silently swallowing it — but is NOT classified as a
+// credential (invalid_client) problem.
+func TestFetchTAT_OtherClientError_Typed(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":20068,"error":"invalid_scope","error_description":"unauthorized scope"}`}
 	hc := &http.Client{Transport: rt}
 
 	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
 	if err == nil {
-		t.Fatal("expected error for code 99999")
+		t.Fatal("expected error for invalid_scope")
 	}
 	if !errs.IsTyped(err) {
 		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
 	}
-	var apiErr *errs.APIError
-	if !errors.As(err, &apiErr) {
-		t.Errorf("unknown code should fall back to *errs.APIError, got %T", err)
+	var cfgErr *errs.ConfigError
+	if errors.As(err, &cfgErr) {
+		t.Errorf("invalid_scope must not be classified as ConfigError/InvalidClient, got %T", err)
 	}
 }
 
-// Non-2xx HTTP is ambiguous (not a payload-level credential rejection) — it
-// must stay UNTYPED so a probe caller treats it as upstream noise and stays
-// silent.
+// A deterministic OAuth error that arrives WITHOUT a numeric code (code defaults to
+// 0) must still surface as a non-nil typed error — never the ("", nil) success pair.
+// Guards the code-0 backstop in classifyTATResponseCode: BuildAPIError returns nil
+// for code 0, which would otherwise swallow this rejection into an empty-token success.
+func TestFetchTAT_OtherClientError_CodeZero_Typed(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"error":"invalid_scope","error_description":"the requested scope is not granted"}`}
+	hc := &http.Client{Transport: rt}
+
+	tok, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected non-nil error for code-0 invalid_scope (must not return empty token + nil error)")
+	}
+	if tok != "" {
+		t.Errorf("token = %q, want empty", tok)
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+}
+
+// A gateway-style {code, msg} error (no OAuth error / error_description fields)
+// must still surface its msg on the typed error, not degrade to a generic
+// "API error: [code]". Guards the legacy-msg fallback in FetchTAT.
+func TestFetchTAT_LarkStyleMsg_FallsBackOnTypedError(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 400, respBody: `{"code":99999,"msg":"app ticket invalid"}`}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected error for {code, msg} response")
+	}
+	if !errs.IsTyped(err) {
+		t.Fatalf("expected a typed errs.* error, got %T %v", err, err)
+	}
+	if !strings.Contains(err.Error(), "app ticket invalid") {
+		t.Errorf("typed error must carry the Lark msg, got: %v", err)
+	}
+}
+
+// Transient server-side failures (5xx / server_error) are NOT deterministic
+// credential rejections — they must stay UNTYPED so a probe caller treats them
+// as upstream noise and stays silent (and retryers can back off).
+func TestFetchTAT_ServerError_Untyped(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 500, respBody: `{"code":20050,"error":"server_error","error_description":"please retry"}`}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+	if err == nil {
+		t.Fatal("expected error for server_error")
+	}
+	if errs.IsTyped(err) {
+		t.Errorf("server_error must be UNTYPED (transient), got typed %T %v", err, err)
+	}
+}
+
+// Rate-limiting is transient, not a deterministic credential rejection — an HTTP
+// 429 (even with a parseable OAuth body) and the OAuth slow_down error must both
+// stay UNTYPED so a rate-limited probe stays silent and retryers can back off.
+func TestFetchTAT_RateLimit_Untyped(t *testing.T) {
+	cases := []struct {
+		name string
+		code int
+		body string
+	}{
+		{"http 429", 429, `{"code":99991400,"error":"too_many_requests","error_description":"rate limit exceeded"}`},
+		{"oauth slow_down", 200, `{"error":"slow_down","error_description":"polling too fast"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rt := &stubRoundTripper{respCode: tc.code, respBody: tc.body}
+			hc := &http.Client{Transport: rt}
+
+			_, err := FetchTAT(context.Background(), hc, core.BrandFeishu, "cli_app", "secret_x")
+			if err == nil {
+				t.Fatal("expected error for rate-limit")
+			}
+			if errs.IsTyped(err) {
+				t.Errorf("rate-limit must be UNTYPED (transient), got typed %T %v", err, err)
+			}
+		})
+	}
+}
+
+// Non-2xx HTTP with a non-JSON body is ambiguous (not a structured OAuth
+// rejection) — it must stay UNTYPED so a probe caller treats it as upstream
+// noise and stays silent.
 func TestFetchTAT_HTTPNon200_Untyped(t *testing.T) {
 	for _, code := range []int{401, 403, 500, 503} {
 		rt := &stubRoundTripper{respCode: code, respBody: `whatever`}
@@ -182,12 +254,12 @@ func TestFetchTAT_BrandRouting(t *testing.T) {
 		brand   core.LarkBrand
 		wantURL string
 	}{
-		{core.BrandFeishu, "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"},
-		{core.BrandLark, "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"},
+		{core.BrandFeishu, "https://accounts.feishu.cn/oauth/v3/token"},
+		{core.BrandLark, "https://accounts.larksuite.com/oauth/v3/token"},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.brand), func(t *testing.T) {
-			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"tenant_access_token":"t"}`}
+			rt := &stubRoundTripper{respCode: 200, respBody: `{"code":0,"access_token":"t","token_type":"Bearer"}`}
 			hc := &http.Client{Transport: rt}
 			if _, err := FetchTAT(context.Background(), hc, tc.brand, "a", "b"); err != nil {
 				t.Fatal(err)

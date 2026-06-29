@@ -74,8 +74,11 @@ lark-cli vc +notes --meeting-ids "id1,id2,...,idN"
 - 根据上一步搜集到的 `meeting-id` 查询会议纪要。
 - 单次最多查询 50 个纪要信息，超过 50 个需分批调用。
 - 部分会议返回 `no notes available`，在最终输出中标注"无纪要"
-- 记录每个会议的 `note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）
+- 记录每个会议的 `note_id`（纪要 ID）、`note_display_type`（展示类型：`unknown` / `normal` / `unified`）、`note_doc_token`（纪要文档 Token）和 `verbatim_doc_token`（逐字稿文档 Token）
 
+> **逐字稿路由按 `note_display_type` 决定**（详见 [vc-domain-boundaries.md](../lark-vc/references/vc-domain-boundaries.md) 的 Note 域）：
+> - `normal`：逐字稿是独立文档，链接/正文走 `verbatim_doc_token`。
+> - `unified`：逐字稿**不是独立文档**，没有可分享的逐字稿文档链接；需要逐字稿内容时用 `note +transcript --note-id <note_id>`（[lark-note](../lark-note/SKILL.md)）拉取到本地，报告中标注"unified 纪要"即可。
 
 2. 获取纪要文档和逐字稿文档链接
 ```bash
@@ -83,6 +86,7 @@ lark-cli vc +notes --meeting-ids "id1,id2,...,idN"
 lark-cli schema drive.metas.batch_query
 
 # 批量获取纪要文档与逐字稿链接: 一次最多查询 10 个文档
+# 仅对 note_doc_token 与 normal 纪要的 verbatim_doc_token 查询链接
 lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", "doc_token": "<doc_token>"}], "with_url": true}'
 ```
 
@@ -90,7 +94,7 @@ lark-cli drive metas batch_query --data '{"request_docs": [{"doc_type": "docx", 
 
 根据时间跨度选择输出格式：
 
-- **单日汇总**（"今天"/"昨天"）：用"今日会议概览"标题，逐会议列出会议时间、主题、纪要链接、逐字稿链接。
+- **单日汇总**（"今天"/"昨天"）：用"今日会议概览"标题，逐会议列出会议时间、主题、纪要链接、逐字稿链接（`unified` 纪要无逐字稿链接，标注"unified 纪要，逐字稿需 `note +transcript` 拉取"）。
 - **多日/周报**（"这周"/"过去 7 天"等）：用"会议纪要周报"标题，含概览统计、逐会议详情。
 
 ### Step 5: 生成文档（可选，用户要求时）
@@ -107,4 +111,5 @@ lark-cli docs +update --api-version v2 --doc "<url_or_token>" --command append -
 
 - [lark-shared](../lark-shared/SKILL.md) — 认证、权限（必读）
 - [lark-vc](../lark-vc/SKILL.md) — `+search`、`+notes` 详细用法
+- [lark-note](../lark-note/SKILL.md) — `note +detail`、`note +transcript`（unified 纪要逐字稿）
 - [lark-doc](../lark-doc/SKILL.md) — `+fetch`、`+create`、`+update` 详细用法

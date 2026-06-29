@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	_ "github.com/larksuite/cli/extension/credential/env"
 	"github.com/larksuite/cli/extension/fileio"
 	"github.com/larksuite/cli/internal/core"
@@ -107,9 +108,9 @@ func TestNewDefault_InvocationProfileMissingSticksAcrossEarlyStrictMode(t *testi
 	if err == nil {
 		t.Fatal("Config() error = nil, want non-nil")
 	}
-	var cfgErr *core.ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("Config() error type = %T, want *core.ConfigError", err)
+		t.Fatalf("Config() error type = %T, want *errs.ConfigError", err)
 	}
 	if cfgErr.Message != `profile "missing" not found` {
 		t.Fatalf("Config() error message = %q, want %q", cfgErr.Message, `profile "missing" not found`)

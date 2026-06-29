@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -123,7 +124,13 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 
 	// stdin conflict: --params and --data cannot both read from stdin, regardless of --file.
 	if opts.Params == "-" && opts.Data == "-" {
-		return client.RawApiRequest{}, nil, output.ErrValidation("--params and --data cannot both read from stdin (-)")
+		return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--params and --data cannot both read from stdin (-)").
+			WithHint("pass at most one flag as '-'; give the other inline JSON or @file").
+			WithParams(
+				errs.InvalidParam{Name: "--params", Reason: "reads from stdin (-)"},
+				errs.InvalidParam{Name: "--data", Reason: "reads from stdin (-)"},
+			)
 	}
 
 	params, err := cmdutil.ParseJSONMap(opts.Params, "--params", stdin, fileIO)
@@ -153,7 +160,10 @@ func buildAPIRequest(opts *APIOptions) (client.RawApiRequest, *cmdutil.FileUploa
 				return client.RawApiRequest{}, nil, err
 			}
 			if _, ok := dataFields.(map[string]any); !ok {
-				return client.RawApiRequest{}, nil, output.ErrValidation("--data must be a JSON object when used with --file")
+				return client.RawApiRequest{}, nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"--data must be a JSON object when used with --file").
+					WithHint(`with --file, --data carries multipart form fields, e.g. --data '{"image_type":"message"}'`).
+					WithParam("--data")
 			}
 		}
 
@@ -196,7 +206,13 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.PageAll && opts.Output != "" {
-		return output.ErrValidation("--output and --page-all are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--output and --page-all are mutually exclusive").
+			WithHint("drop --page-all to save a binary response, or drop --output to paginate JSON").
+			WithParams(
+				errs.InvalidParam{Name: "--output", Reason: "conflicts with --page-all"},
+				errs.InvalidParam{Name: "--page-all", Reason: "conflicts with --output"},
+			)
 	}
 	if err := output.ValidateJqFlags(opts.JqExpr, opts.Output, opts.Format); err != nil {
 		return err
@@ -233,7 +249,7 @@ func apiRun(opts *APIOptions) error {
 	}
 
 	if opts.PageAll {
-		return apiPaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut,
+		return apiPaginate(opts.Ctx, ac, request, format, opts.JqExpr, out, f.IOStreams.ErrOut, opts.Cmd.CommandPath(),
 			client.PaginationOptions{PageLimit: opts.PageLimit, PageDelay: opts.PageDelay})
 	}
 
@@ -243,7 +259,7 @@ func apiRun(opts *APIOptions) error {
 		// pass on *output.ExitError values. Typed *errs.* errors that flow
 		// through here keep their canonical message / hint from BuildAPIError;
 		// MarkRaw is a no-op on those (it only flips a flag on *ExitError).
-		return output.MarkRaw(err)
+		return errs.MarkRaw(err)
 	}
 	err = client.HandleResponse(resp, client.ResponseOptions{
 		OutputPath:  opts.Output,
@@ -263,7 +279,7 @@ func apiRun(opts *APIOptions) error {
 	// MarkRaw: see comment above on the DoAPI path. Skips legacy
 	// *ExitError enrichment; typed errors flow through unchanged.
 	if err != nil {
-		return output.MarkRaw(err)
+		return errs.MarkRaw(err)
 	}
 	return nil
 }
@@ -272,46 +288,76 @@ func apiDryRun(f *cmdutil.Factory, request client.RawApiRequest, config *core.Cl
 	return cmdutil.PrintDryRun(f.IOStreams.Out, request, config, format)
 }
 
-func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, pagOpts client.PaginationOptions) error {
+func apiPaginate(ctx context.Context, ac *client.APIClient, request client.RawApiRequest, format output.Format, jqExpr string, out, errOut io.Writer, commandPath string, pagOpts client.PaginationOptions) error {
 	if pagOpts.Identity == "" {
 		pagOpts.Identity = request.As
 	}
 	// When jq is set, always aggregate all pages then filter.
 	if jqExpr != "" {
-		if err := client.PaginateWithJq(ctx, ac, request, jqExpr, out, pagOpts, ac.CheckResponse); err != nil {
-			return output.MarkRaw(err)
+		result, err := ac.PaginateAll(ctx, request, pagOpts)
+		if err != nil {
+			return errs.MarkRaw(err)
 		}
-		return nil
+		if apiErr := ac.CheckResponse(result, pagOpts.Identity); apiErr != nil {
+			output.FormatValue(out, result, output.FormatJSON)
+			return errs.MarkRaw(apiErr)
+		}
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			JqExpr:      jqExpr,
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 
 	switch format {
 	case output.FormatNDJSON, output.FormatTable, output.FormatCSV:
 		pf := output.NewPaginatedFormatter(out, format)
-		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) {
+		result, hasItems, err := ac.StreamPages(ctx, request, func(items []interface{}) error {
+			// Streaming formats intentionally emit each page after that page has
+			// passed safety scanning. A later page may still fail, so callers
+			// must use the exit code to distinguish complete vs partial output.
+			scanResult := output.ScanForSafety(commandPath, items, errOut)
+			if scanResult.Blocked {
+				return scanResult.BlockErr
+			}
+			if scanResult.Alert != nil {
+				output.WriteAlertWarning(errOut, scanResult.Alert)
+			}
 			pf.FormatPage(items)
+			return nil
 		}, pagOpts)
 		if err != nil {
-			return output.MarkRaw(err)
+			return errs.MarkRaw(err)
 		}
 		if apiErr := ac.CheckResponse(result, pagOpts.Identity); apiErr != nil {
-			output.FormatValue(out, result, output.FormatJSON)
-			return output.MarkRaw(apiErr)
+			return errs.MarkRaw(apiErr)
 		}
 		if !hasItems {
 			fmt.Fprintf(errOut, "warning: this API does not return a list, format %q is not supported, falling back to json\n", format)
-			output.FormatValue(out, result, output.FormatJSON)
+			return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+				CommandPath: commandPath,
+				Identity:    string(pagOpts.Identity),
+				Out:         out,
+				ErrOut:      errOut,
+			})
 		}
 		return nil
 	default:
 		result, err := ac.PaginateAll(ctx, request, pagOpts)
 		if err != nil {
-			return output.MarkRaw(err)
+			return errs.MarkRaw(err)
 		}
 		if apiErr := ac.CheckResponse(result, pagOpts.Identity); apiErr != nil {
 			output.FormatValue(out, result, output.FormatJSON)
-			return output.MarkRaw(apiErr)
+			return errs.MarkRaw(apiErr)
 		}
-		output.FormatValue(out, result, format)
-		return nil
+		return output.WriteSuccessEnvelope(output.SuccessEnvelopeData(result), output.SuccessEnvelopeOptions{
+			CommandPath: commandPath,
+			Identity:    string(pagOpts.Identity),
+			Out:         out,
+			ErrOut:      errOut,
+		})
 	}
 }

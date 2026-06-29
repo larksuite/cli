@@ -90,7 +90,7 @@ lark-cli im +messages-mget --message-ids "om_aaa,om_bbb"
 
 1. **Use JSON for full content:** table output truncates content. Use `--format json` when the full body matters.
 2. **Sender names are already enriched:** the command resolves sender names automatically, so no extra lookup is required.
-3. **Images are rendered as placeholders:** image messages appear as placeholders such as `[Image: img_xxx]`. Use `+messages-resources-download` when you need the binary resource.
+3. **Images are rendered as placeholders:** image messages appear as placeholders such as `![Image](img_xxx)`. Use `+messages-resources-download` when you need the binary resource.
 4. **Batching is more efficient:** fetching multiple IDs in one request is better than calling the API repeatedly.
 
 ## References

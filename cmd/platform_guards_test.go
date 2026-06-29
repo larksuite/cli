@@ -6,12 +6,14 @@ package cmd
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/hook"
 	"github.com/larksuite/cli/internal/output"
@@ -32,7 +34,7 @@ func (failClosedAbortingPlugin) Install(platform.Registrar) error {
 }
 
 // When a FailClosed plugin fails to install, buildInternal must
-// install a PersistentPreRunE that returns a structured *output.ExitError.
+// install a PersistentPreRunE that returns a typed *errs.ValidationError.
 // The user must NEVER see a silent partial-install state.
 //
 // This pins the build.go fix for codex's NEW ISSUE about
@@ -93,26 +95,31 @@ func TestBuildInternal_failClosedAbortsCLI(t *testing.T) {
 	checkGuardError(t, leaf.RunE(leaf, nil))
 }
 
-// checkGuardError asserts that err is the structured plugin_install
-// ExitError the guard produces.
+// checkGuardError asserts that err is the typed validation error the
+// install guard produces: a failed_precondition *errs.ValidationError
+// (exit 2) whose message + hint preserve the plugin name and the
+// install_failed reason code (the recovery info that lived in the legacy
+// detail map).
 func checkGuardError(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("PersistentPreRunE must surface the install error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError, got %T %+v", err, err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %+v", err, err)
 	}
-	if exitErr.Detail.Type != "plugin_install" {
-		t.Errorf("envelope type = %q, want plugin_install", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	detail := exitErr.Detail.Detail.(map[string]any)
-	if detail["plugin"] != "policy" {
-		t.Errorf("detail.plugin = %v, want policy", detail["plugin"])
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	if detail["reason_code"] != internalplatform.ReasonInstallFailed {
-		t.Errorf("detail.reason_code = %v, want install_failed", detail["reason_code"])
+	if !strings.Contains(verr.Hint, "policy") {
+		t.Errorf("hint should name the failing plugin %q, got %q", "policy", verr.Hint)
+	}
+	if !strings.Contains(verr.Hint, internalplatform.ReasonInstallFailed) {
+		t.Errorf("hint should surface reason_code %q, got %q", internalplatform.ReasonInstallFailed, verr.Hint)
 	}
 }
 

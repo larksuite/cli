@@ -6,12 +6,33 @@ package bus
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
+
+// exclusiveCleanupWaitTimeout bounds how long TryRegisterExclusive waits for an
+// in-progress cleanup of the same subscription before rejecting, so a stuck
+// cleanup can never wedge new consumers forever. Kept below the consumer's
+// hello_ack deadline (consume.helloAckTimeout = 5s) so the reject still reaches
+// the consumer as a clean failed_precondition instead of a handshake timeout.
+// Override with LARKSUITE_CLI_EVENT_EXCLUSIVE_WAIT_TIMEOUT (a Go duration such as
+// "2s"); values at or above the 5s handshake deadline are not recommended.
+var exclusiveCleanupWaitTimeout = resolveExclusiveCleanupWaitTimeout()
+
+func resolveExclusiveCleanupWaitTimeout() time.Duration {
+	const def = 3 * time.Second
+	if v := os.Getenv("LARKSUITE_CLI_EVENT_EXCLUSIVE_WAIT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return def
+}
 
 // Subscriber is the interface a connection must satisfy for Hub registration.
 type Subscriber interface {
@@ -122,6 +143,63 @@ func (h *Hub) RegisterAndIsFirst(s Subscriber) bool {
 		h.mu.Unlock()
 		return isFirst
 	}
+}
+
+// TryRegisterExclusive registers s only when no subscriber holds s.SubscriptionID()
+// and any in-progress cleanup for that subscription finishes within
+// exclusiveCleanupWaitTimeout. On failure it returns (false, reason): either a
+// duplicate consumer already holds the subscription, or the cleanup did not
+// finish in time — the timeout guarantees a stuck cleanup can never wedge new
+// consumers forever. reason is "" on success. Mirrors RegisterAndIsFirst's wait
+// on in-progress cleanup, but bounded.
+func (h *Hub) TryRegisterExclusive(s Subscriber) (bool, string) {
+	sid := s.SubscriptionID()
+	deadline := time.Now().Add(exclusiveCleanupWaitTimeout)
+	for {
+		h.mu.Lock()
+		ch, locked := h.cleanupInProgress[sid]
+		if locked {
+			h.mu.Unlock()
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return false, "timed out waiting for the previous consumer's cleanup to finish; retry shortly"
+			}
+			timer := time.NewTimer(remaining)
+			select {
+			case <-ch:
+				// Stop+drain so a timer that fired concurrently with Stop isn't left on .C.
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				continue
+			case <-timer.C:
+				return false, "timed out waiting for the previous consumer's cleanup to finish; retry shortly"
+			}
+		}
+		if h.subCounts[sid] != 0 {
+			pid := h.existingPIDForSubscriptionLocked(sid)
+			h.mu.Unlock()
+			return false, fmt.Sprintf("another consumer (pid %d) is already running for this subscription", pid)
+		}
+		h.subscribers[s] = struct{}{}
+		h.subCounts[sid]++
+		h.mu.Unlock()
+		return true, ""
+	}
+}
+
+// existingPIDForSubscriptionLocked returns the PID of one subscriber for sid.
+// Caller must hold h.mu.
+func (h *Hub) existingPIDForSubscriptionLocked(sid string) int {
+	for sub := range h.subscribers {
+		if sub.SubscriptionID() == sid {
+			return sub.PID()
+		}
+	}
+	return 0
 }
 
 // Publish fans out a RawEvent to all matching subscribers (non-blocking).

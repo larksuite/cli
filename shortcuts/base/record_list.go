@@ -26,6 +26,7 @@ var BaseRecordList = common.Shortcut{
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "100", Desc: "pagination size, range 1-200"},
+		pageSizeLimitAliasFlag(),
 		recordReadFormatFlag(),
 	},
 	Tips: []string{
@@ -44,6 +45,17 @@ var BaseRecordList = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if err := validateRecordReadFormat(runtime); err != nil {
 			return err
+		}
+		if err := validateLimitPageSizeAlias(runtime); err != nil {
+			return err
+		}
+		if _, err := common.ValidatePageSizeTyped(runtime, "limit", 100, 1, 200); err != nil {
+			return err
+		}
+		if runtime.Changed("page-size") {
+			if _, err := common.ValidatePageSizeTyped(runtime, "page-size", 100, 1, 200); err != nil {
+				return err
+			}
 		}
 		return validateRecordQueryOptions(runtime)
 	},

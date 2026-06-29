@@ -83,7 +83,7 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, eventSummary, gjson.Get(result.Stdout, "data.event.summary").String())
 		assert.Equal(t, eventDescription, gjson.Get(result.Stdout, "data.event.description").String())
 		assert.Equal(t, unixSecondsRFC3339(startAt), gjson.Get(result.Stdout, "data.event.start_time.timestamp").String())
@@ -102,7 +102,7 @@ func TestCalendar_CreateEvent(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		deletedEvent = true
 	})
 }

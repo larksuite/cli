@@ -26,7 +26,7 @@ var AppsReleaseGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -57,6 +57,9 @@ var AppsReleaseGet = common.Shortcut{
 		out := data
 		if release, ok := data["release"].(map[string]interface{}); ok {
 			out = release
+			if el, ok := data["error_logs"]; ok {
+				out["error_logs"] = el
+			}
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",

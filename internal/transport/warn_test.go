@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/larksuite/cli/internal/envvars"
 )
 
 // TestDetectProxyEnv verifies proxy environment detection priority and empty-state behavior.
@@ -120,9 +118,9 @@ func TestWarnIfProxied_OnlyOnce(t *testing.T) {
 }
 
 // TestWarnIfProxied_ProxyPluginEnabled verifies that when proxy plugin mode is
-// enabled, the warning describes the plugin proxy and the correct disable method
-// (LARKSUITE_CLI_PROXY_ENABLE=false) instead of the misleading LARK_CLI_NO_PROXY
-// instruction — even when env proxy and LARK_CLI_NO_PROXY are also set.
+// enabled, the warning is a single concise line that does not leak the proxy
+// address or give the misleading LARK_CLI_NO_PROXY disable instruction — even
+// when env proxy and LARK_CLI_NO_PROXY are also set.
 func TestWarnIfProxied_ProxyPluginEnabled(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
@@ -140,51 +138,24 @@ func TestWarnIfProxied_ProxyPluginEnabled(t *testing.T) {
 	WarnIfProxied(&buf)
 	out := buf.String()
 
-	if !strings.Contains(out, "127.0.0.1:3128") {
-		t.Errorf("warning should mention the plugin proxy address, got: %s", out)
+	if !strings.Contains(out, "proxy plugin enabled") {
+		t.Errorf("warning should announce proxy plugin enabled, got: %s", out)
 	}
-	if !strings.Contains(out, envvars.CliProxyEnable) {
-		t.Errorf("warning should mention %s as the disable method, got: %s", envvars.CliProxyEnable, out)
+	// Single line only — no address, CA, or disable hints.
+	if strings.Count(out, "\n") != 1 {
+		t.Errorf("warning must be a single line, got: %s", out)
+	}
+	if strings.Contains(out, "127.0.0.1:3128") || strings.Contains(out, "corp-proxy") {
+		t.Errorf("warning must not leak the proxy address, got: %s", out)
 	}
 	if strings.Contains(out, "Set "+EnvNoProxy+"=1") {
 		t.Errorf("warning must NOT give the misleading %s disable instruction when plugin is enabled, got: %s", EnvNoProxy, out)
 	}
-	// No custom CA configured -> no interception warning.
-	if strings.Contains(out, "custom CA") {
-		t.Errorf("warning should not mention a custom CA when none is configured, got: %s", out)
-	}
-}
-
-// TestWarnIfProxied_ProxyPluginCustomCAWarns verifies that when a custom CA is
-// trusted, the warning surfaces the TLS-interception capability.
-func TestWarnIfProxied_ProxyPluginCustomCAWarns(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	unsetProxyPluginEnv(t)
-	proxyWarningOnce = sync.Once{}
-
-	old := proxyPluginStatus
-	proxyPluginStatus = func() (string, string, bool) {
-		return "http://127.0.0.1:3128", "/etc/lark/extra_ca.pem", true
-	}
-	t.Cleanup(func() { proxyPluginStatus = old })
-
-	var buf bytes.Buffer
-	WarnIfProxied(&buf)
-	out := buf.String()
-
-	if !strings.Contains(out, "custom CA") {
-		t.Errorf("warning should mention the custom CA, got: %s", out)
-	}
-	if !strings.Contains(out, "/etc/lark/extra_ca.pem") {
-		t.Errorf("warning should include the CA path, got: %s", out)
-	}
-	if !strings.Contains(out, "intercept") {
-		t.Errorf("warning should mention TLS interception, got: %s", out)
-	}
 }
 
 // TestWarnIfProxied_ProxyPluginEnabledRedactsCredentials verifies the plugin
-// warning never leaks credentials embedded in the configured proxy address.
+// warning never leaks credentials embedded in the configured proxy address —
+// the simplified message omits the address entirely.
 func TestWarnIfProxied_ProxyPluginEnabledRedactsCredentials(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	unsetProxyPluginEnv(t)
@@ -203,9 +174,6 @@ func TestWarnIfProxied_ProxyPluginEnabledRedactsCredentials(t *testing.T) {
 	}
 	if strings.Contains(out, "user:") {
 		t.Errorf("plugin warning leaked username, got: %s", out)
-	}
-	if !strings.Contains(out, "***@127.0.0.1:3128") {
-		t.Errorf("plugin warning should contain redacted proxy URL, got: %s", out)
 	}
 }
 

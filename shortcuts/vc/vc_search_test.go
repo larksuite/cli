@@ -5,6 +5,7 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -253,6 +255,7 @@ func TestSearch_Validation_InvalidPageSize(t *testing.T) {
 	}
 }
 
+// TestSearch_DryRun verifies meeting search dry-run includes the API path.
 func TestSearch_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCSearch, []string{"+search", "--query", "test", "--dry-run", "--as", "user"}, f, stdout)
@@ -264,6 +267,43 @@ func TestSearch_DryRun(t *testing.T) {
 	}
 }
 
+// TestSearch_ExecutePassesThroughNotice verifies meeting search notice output.
+func TestSearch_ExecutePassesThroughNotice(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/vc/v1/meetings/search",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"notice":     notice,
+				"items":      []interface{}{},
+				"total":      0,
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+
+	if err := mountAndRun(t, VCSearch, []string{"+search", "--query", "incident", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("VCSearch.Execute() error = %v", err)
+	}
+	reg.Verify(t)
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := env["data"].(map[string]interface{})
+	if got, _ := data["notice"].(string); got != notice {
+		t.Fatalf("data.notice = %q, want %q; data=%#v", got, notice, data)
+	}
+}
+
+// TestSearch_InvalidTimeRange verifies invalid meeting search time input fails.
 func TestSearch_InvalidTimeRange(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCSearch, []string{"+search", "--start", "bad-time", "--as", "user"}, f, nil)

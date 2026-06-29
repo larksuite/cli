@@ -7,10 +7,10 @@
 
 核心特性：
 
-- 把常用过滤条件全部**扁平化为独立 flag**（`--edited-since`、`--mine`、`--doc-types`、`--folder-tokens` 等），不再要求用户或 AI 手写嵌套 `--filter` JSON
+- 把常用过滤条件全部**扁平化为独立 flag**（`--edited-since`、`--created-by-me`、`--mine`、`--doc-types`、`--folder-tokens` 等），不再要求用户或 AI 手写嵌套 `--filter` JSON
 - 额外暴露了 4 个"我"维度：`my_edit_time`（我编辑过）、`my_comment_time`（我评论过）、`open_time`（我打开过）、`create_time`（文档创建时间）——直接对应用户自然语言里的"最近我编辑过的"、"我评论过的"等表达
 - 自动处理 `my_edit_time` / `my_comment_time` 的小时级聚合（服务端存储粒度）：亚小时输入会向整点 snap，并在 stderr 打出提示
-- `--mine` 一键从当前登录用户的 open_id 填 `creator_ids`，不必再先去查 contact（注意 `creator_ids` 服务端按 **owner / 文档归属人** 语义匹配，不是“最初创建人”，详见下文「身份维度」）
+- `--created-by-me` 一键从当前登录用户的 open_id 填 `original_creator_ids`，匹配“我最初创建的”；`--mine` 仍填 `creator_ids`，匹配 owner / 文档归属人
 
 > **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间（云盘/云存储）对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
 
@@ -21,18 +21,19 @@
 > 错误：`lark-cli drive +search 方案`
 > `+search` 不接受位置参数；空 `--query` 或省略 `--query` 表示纯靠 filter 浏览（合法）。
 >
-> **列表型请求不要硬塞关键词**：如果用户只是要求"我这月创建的所有文档"、"最近半年我编辑过的文档"、"按类型分类统计"这类范围浏览 / 汇总请求，且没有给出标题片段或业务关键词，应使用 `--query ""` 搭配 `--mine`、`--created-*`、`--edited-*`、`--doc-types` 等过滤条件。不要把"查找"、"所有文档"、"最近更新过"、"按类型分类统计"这类动作词或统计意图放进 `--query`，否则会把本来应靠 filter 命中的结果过度收窄。
+> **列表型请求不要硬塞关键词**：如果用户只是要求"我这月创建的所有文档"、"最近半年我编辑过的文档"、"按类型分类统计"这类范围浏览 / 汇总请求，且没有给出标题片段或业务关键词，应使用 `--query ""` 搭配 `--created-by-me`、`--mine`、`--created-*`、`--edited-*`、`--doc-types` 等过滤条件。不要把"查找"、"所有文档"、"最近更新过"、"按类型分类统计"这类动作词或统计意图放进 `--query`，否则会把本来应靠 filter 命中的结果过度收窄。
 
 ### 自然语言 → 命令映射速查
 
 | 用户说 | 命令 |
 |---|---|
-| 我这月创建的所有文档，按类型分类统计 | `lark-cli drive +search --query "" --mine --created-since "<YYYY-MM-DD>" --created-until "<YYYY-MM-DD>"` |
+| 我这月创建的所有文档，按类型分类统计 | `lark-cli drive +search --query "" --created-by-me --created-since "<YYYY-MM-DD>" --created-until "<YYYY-MM-DD>"` |
 | 最近半年我编辑过的文档，看看哪些最近更新过 | `lark-cli drive +search --query "" --edited-since 6m --sort edit_time` |
 | 最近一个月我编辑过的文档 | `lark-cli drive +search --query "" --edited-since 1m` |
 | 最近一个月我编辑过 且 我评论过的 | `lark-cli drive +search --query "" --edited-since 1m --commented-since 1m` |
 | 最近一周我打开过的表格 | `lark-cli drive +search --query "" --opened-since 7d --doc-types sheet` |
 | 我 owner 的所有文档（owner 语义，非"我最初创建"） | `lark-cli drive +search --query "" --mine` |
+| 我最初创建、后来转给王五 owner 的文档 | `lark-cli drive +search --query "" --created-by-me --creator-ids ou_wangwu` |
 | 我 owner、30-60 天前创建的文档（粗略"上个月"，按 30 天滑窗算；`--mine` 是 owner，`--created-*` 才是文档创建时间） | `lark-cli drive +search --query "" --mine --created-since 2m --created-until 1m` |
 | 我 owner、2026 年 3 月创建的文档（精确日历月；同上，owner + 创建时间窗两个维度） | `lark-cli drive +search --query "" --mine --created-since 2026-03-01 --created-until 2026-04-01` |
 | 关键词"预算"，最近一周我打开过，按编辑时间降序 | `lark-cli drive +search --query 预算 --opened-since 7d --sort edit_time` |
@@ -77,7 +78,7 @@ lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 
 对"所有文档"、"按类型分类统计"、"最近更新过"这类请求，不要只跑一次搜索后直接回答。标准流程：
 
-1. 先把自然语言拆成过滤条件：所有权（`--mine` / `--creator-ids`）、时间维度（`--created-*` / `--edited-*` / `--opened-*` / `--commented-*`）、类型（`--doc-types`）、空间或文件夹范围。
+1. 先把自然语言拆成过滤条件：原始创建者（`--created-by-me` / `--original-creator-ids`）、所有权（`--mine` / `--creator-ids`）、时间维度（`--created-*` / `--edited-*` / `--opened-*` / `--commented-*`）、类型（`--doc-types`）、空间或文件夹范围。
 2. 没有真实业务关键词时保持 `--query ""`；不要把"所有文档"、"统计"、"最近更新"放进 query。
 3. 检查返回结果的 `doc_type` / `result_meta.doc_types`、创建/编辑时间和 URL/token 是否与过滤目标一致；明显不符合的结果不要计入答案。
 4. 用户要求"所有 / 全量 / 统计"时按 `has_more` 翻页并累积去重；不要只用第一页推断总量。返回体里的 `total` 不可靠，统计要以实际去重后的结果为准。
@@ -103,14 +104,16 @@ lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 | `--page-token <token>` | 否 | 上一次响应里的 `page_token`，用于翻页 |
 | `--format` | 否 | `json`（默认）/ `pretty` |
 
-### 身份（owner 维度，API 字段名 `creator_ids`）
+### 身份维度
 
-> **语义说明（重要）**：`creator_ids`（含 `--mine` / `--creator-ids`）虽然 OpenAPI 字段名是 “creator”，但服务端实际按 **owner（文档归属人 / 负责人）** 语义匹配，**不是“最初创建人”**：我创建后转交他人的文档不会命中，他人创建后转给我（我成为 owner）的会命中。用户说“我的 / 我创建的 / 我负责的”文档都路由到 `--mine`，但要清楚它返回的是“我 owner 的”。
+> **语义说明（重要）**：`creator_ids`（含 `--mine` / `--creator-ids`）虽然字段名是 “creator”，但服务端实际按 **owner（文档归属人 / 负责人）** 语义匹配，**不是“最初创建人”**。真正的原始创建者使用 `original_creator_ids`（CLI 为 `--created-by-me` / `--original-creator-ids`）。
 
 | 参数 | 映射 | 说明 |
 |---|---|---|
 | `--mine` | `creator_ids = [当前用户 open_id]` | bool。一键“我 owner 的”（**不是**“我最初创建的”）；从当前登录用户身份（`runtime.UserOpenId()`）解析 open_id，取不到直接报错（提示运行 `lark-cli auth login`） |
 | `--creator-ids ou_x,ou_y` | `creator_ids = [...]` | 显式 open_id 列表，逗号分隔，按 **owner** 匹配；**与 `--mine` 互斥** |
+| `--created-by-me` | `original_creator_ids = [当前用户 open_id]` | bool。一键“我最初创建的”；从当前登录用户身份解析 open_id，取不到直接报错 |
+| `--original-creator-ids ou_x,ou_y` | `original_creator_ids = [...]` | 显式 open_id 列表，逗号分隔，按**原始创建者**匹配；**与 `--created-by-me` 互斥** |
 
 ### 时间维度（每个维度一对 since/until）
 
@@ -187,7 +190,7 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 ## 决策规则
 
-- **身份快捷方式**：用户说“我的 / 我创建的 / 我负责的”文档，直接 `--mine` 即可，不需要先查 contact 拿 open_id。注意 `--mine` 是 **owner** 语义（我归属/负责的），不是“我最初创建的”——转交出去的不算、转交给我的算。
+- **身份快捷方式**：用户说“我创建的 / 我新建的 / 我最初创建的”文档，用 `--created-by-me`；用户说“我的 / 我负责的 / 我 owner 的”文档，用 `--mine`。`--mine` 是 owner 语义：转交出去的不算、转交给我的算。
 - **时间维度选择**：
   - "我编辑的"、"我修改的" → `--edited-since` / `--edited-until`
   - "我评论的"、"我回复过的" → `--commented-since` / `--commented-until`
@@ -197,10 +200,10 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
   - "某个文件夹下" → `--folder-tokens`（doc-only）
   - "某个 wiki 空间下" → `--space-ids`（wiki-only）
   - 两者不能同时使用，混用会报错
-- **身份 flag 互斥**：`--mine` 和 `--creator-ids` 不要同时传，会直接报错。“我和张三的”（owner）用 `--creator-ids ou_me,ou_zhangsan`（需要先拿到自己 open_id，但这种场景少见）。
+- **身份 flag 互斥**：`--mine` 和 `--creator-ids` 不要同时传；`--created-by-me` 和 `--original-creator-ids` 不要同时传。owner 维度与原始创建者维度可以组合，例如“我创建后转给王五 owner”用 `--created-by-me --creator-ids ou_wangwu`。
 - **实体补全**：
   - 用户说"某个群里"，先用 `lark-im` 查 `chat_id`
-  - 用户说“某人的 / 某人分享的”（非自己；`--creator-ids` 按 owner 匹配），先用 `lark-contact` 查 open_id，再填 `--creator-ids` / `--sharer-ids`
+  - 用户说“某人负责/owner 的 / 某人创建的 / 某人分享的”（非自己），先用 `lark-contact` 查 open_id，再按语义填 `--creator-ids` / `--original-creator-ids` / `--sharer-ids`
 - **查询语义下推**：`--query` 支持的服务端高级语法（`intitle:`、`""`、`OR`、`-`）优先使用，不要先模糊搜再在客户端二次过滤。
 - **query 填写边界**：只有标题片段、业务名词、项目名、会议名、文件内容关键词才应进入 `--query`。仅描述动作、时间范围、所有权、统计方式的词不算关键词，保持 `--query ""` 并依赖 filters。
 - **证据核验**：列表/统计类答案必须来自搜索结果中的实际 URL/token 和类型/时间字段；内容问答必须能指出使用了哪些非污染候选。没有可验证候选时先扩大 query 或翻页，不要直接编总结。
@@ -222,7 +225,7 @@ stdout 的 JSON 输出不受影响。`open_time` / `create_time` 不做 snap。
 
 | code | 含义 | 处理 |
 |---|---|---|
-| `99992351` | `--creator-ids` / `--sharer-ids` 里有 open_id 超出**应用的通讯录可见范围**，服务端拒绝识别 | 让管理员在开发者后台把这些用户加进应用的"通讯录可见性"授权里；或把超出范围的 open_id 从参数里去掉。这和 `search:docs:read` scope 不是一回事 —— 是"应用能看见哪些人"而不是"应用能调用哪个接口" |
+| `99992351` | `--creator-ids` / `--original-creator-ids` / `--sharer-ids` 里有 open_id 超出**应用的通讯录可见范围**，服务端拒绝识别 | 让管理员在开发者后台把这些用户加进应用的"通讯录可见性"授权里；或把超出范围的 open_id 从参数里去掉。这和 `search:docs:read` scope 不是一回事 —— 是"应用能看见哪些人"而不是"应用能调用哪个接口" |
 
 ## 时间范围自动裁剪（`--opened-*` 专有）
 

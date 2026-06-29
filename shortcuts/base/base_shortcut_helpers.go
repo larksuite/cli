@@ -27,6 +27,25 @@ func baseTableID(runtime *common.RuntimeContext) string {
 	return strings.TrimSpace(runtime.Str("table-id"))
 }
 
+func pageSizeLimitAliasFlag() common.Flag {
+	return common.Flag{Name: "page-size", Type: "int", Default: "0", Desc: "hidden alias for --limit", Hidden: true}
+}
+
+func getPaginationLimit(runtime *common.RuntimeContext) int {
+	if !runtime.Changed("limit") && runtime.Changed("page-size") {
+		return runtime.Int("page-size")
+	}
+	return runtime.Int("limit")
+}
+
+func validateLimitPageSizeAlias(runtime *common.RuntimeContext) error {
+	if runtime.Changed("limit") && runtime.Changed("page-size") {
+		return common.ValidationErrorf("--limit and --page-size are mutually exclusive; use --limit").
+			WithParam("--page-size")
+	}
+	return nil
+}
+
 func loadJSONInput(pc *parseCtx, raw string, flagName string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

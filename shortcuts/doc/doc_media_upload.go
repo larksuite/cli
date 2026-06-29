@@ -153,7 +153,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 	// Doc media uploads share the generic Drive media transport. The doc-specific
 	// routing only shows up in parent_type/parent_node and optional route extra.
 	if cfg.FileSize <= common.MaxDriveMediaUploadSinglePartSize {
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   cfg.FilePath,
 			Reader:     cfg.Reader,
 			FileName:   cfg.FileName,
@@ -163,7 +163,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 			Extra:      extra,
 		})
 	}
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   cfg.FilePath,
 		Reader:     cfg.Reader,
 		FileName:   cfg.FileName,

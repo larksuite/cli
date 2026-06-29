@@ -53,7 +53,7 @@ func (api appsHTMLPublishAPI) HTMLPublish(ctx context.Context, appID string, tar
 	return &htmlPublishResponse{URL: url}, nil
 }
 
-// OAPI business error codes returned by the Miaoda
+// OAPI business error codes returned by the
 // /apps/{id}/upload_and_release_html_code endpoint. Owned by the backend
 // service; update when new codes are documented in the OAPI spec.
 const (
@@ -66,7 +66,7 @@ func buildHTMLPublishFailureHint(code int) string {
 	case errCodeBuildFailed:
 		return "server-side build failed: run `lark-cli apps +html-publish --app-id <your-app-id> --path <path> --dry-run` to inspect the packaged file list"
 	case errCodeAppNotFound:
-		return "the app does not exist or the caller has no access; ask the user to confirm the app_id (extract it from the Miaoda app URL https://miaoda.feishu.cn/app/app_xxx after /app/, or take the app_xxx string directly)"
+		return "the app does not exist or the caller has no access; ask the user to confirm the app_id (extract it from the app URL https://miaoda.feishu.cn/app/app_xxx after /app/, or take the app_xxx string directly)"
 	default:
 		return ""
 	}

@@ -14,7 +14,7 @@ import (
 
 const dbEnvCreateHint = "verify --app-id is correct; if the app is already multi-env this is a conflict — inspect current tables with `lark-cli apps +db-table-list --app-id <app_id> --env dev`"
 
-// AppsDBEnvCreate creates a DB environment for a Miaoda app（拆分单库为 dev/online 多环境）。
+// AppsDBEnvCreate creates a DB environment for an app（拆分单库为 dev/online 多环境）。
 //
 // 调 POST /apps/{app_id}/db_dev_init。--env 指定要创建的环境，由调用方传入，目前只支持 dev。
 // 不可逆：单库一旦拆成 dev/online 双库无法回退。Risk: high-risk-write 触发框架自动注入 --yes 确认关卡。
@@ -30,7 +30,7 @@ var AppsDBEnvCreate = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app id", Required: true},
+		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "env", Default: "dev", Enum: []string{"dev"}, Desc: "environment to create (only dev supported for now)"},
 		{Name: "sync-data", Type: "bool", Desc: "copy existing online data into the new environment (default off)"},
 	},
@@ -42,7 +42,7 @@ var AppsDBEnvCreate = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			POST(appDbEnvCreatePath(appID)).
-			Desc("Create Miaoda app DB environment").
+			Desc("Create app DB environment").
 			Body(buildDBEnvCreateBody(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {

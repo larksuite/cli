@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/larksuite/cli/internal/meta"
 )
 
 // Envelope is the MCP Tool spec contract for a single API method command.
@@ -45,42 +47,32 @@ type Property struct {
 	Type        string        `json:"type,omitempty"`
 	Description string        `json:"description,omitempty"`
 	Enum        []interface{} `json:"enum,omitempty"`
-	Default     interface{}   `json:"default,omitempty"`
-	Example     interface{}   `json:"example,omitempty"`
-	Minimum     *float64      `json:"minimum,omitempty"`
-	Maximum     *float64      `json:"maximum,omitempty"`
-	Format      string        `json:"format,omitempty"`
-	Required    []string      `json:"required,omitempty"`
-	Properties  *OrderedProps `json:"properties,omitempty"`
-	Items       *Property     `json:"items,omitempty"`
+	// EnumDescriptions, when present, is parallel to Enum: the human meaning of
+	// each allowed value, in the same order. Omitted when no value carries a
+	// description. This is the widely-recognized JSON-Schema extension (VS Code,
+	// OpenAPI tooling) that lets an AI consumer learn what each enum value means
+	// without a second lookup.
+	EnumDescriptions []string      `json:"enumDescriptions,omitempty"`
+	Default          interface{}   `json:"default,omitempty"`
+	Example          interface{}   `json:"example,omitempty"`
+	Minimum          *float64      `json:"minimum,omitempty"`
+	Maximum          *float64      `json:"maximum,omitempty"`
+	Format           string        `json:"format,omitempty"`
+	Required         []string      `json:"required,omitempty"`
+	Properties       *OrderedProps `json:"properties,omitempty"`
+	Items            *Property     `json:"items,omitempty"`
 }
 
 // Meta is the Lark-specific extension namespace.
 type Meta struct {
-	EnvelopeVersion string      `json:"envelope_version"`
-	Scopes          []string    `json:"scopes"`
-	RequiredScopes  []string    `json:"required_scopes"`
-	AccessTokens    []string    `json:"access_tokens"`
-	Danger          bool        `json:"danger"`
-	Risk            string      `json:"risk"`
-	DocURL          string      `json:"doc_url,omitempty"`
-	Affordance      *Affordance `json:"affordance,omitempty"`
-}
-
-// Affordance is the hand-written overlay (PR-1 only defines the type, no YAML loaded).
-type Affordance struct {
-	UseWhen       []string         `json:"use_when,omitempty"`
-	DoNotUseWhen  []string         `json:"do_not_use_when,omitempty"`
-	Prerequisites []string         `json:"prerequisites,omitempty"`
-	Examples      []AffordanceCase `json:"examples,omitempty"`
-	Related       []string         `json:"related,omitempty"`
-}
-
-// AffordanceCase is one example entry: a one-line description plus a
-// ready-to-run lark-cli command string.
-type AffordanceCase struct {
-	Description string `json:"description"`
-	Command     string `json:"command"`
+	EnvelopeVersion string           `json:"envelope_version"`
+	Scopes          []string         `json:"scopes"`
+	RequiredScopes  []string         `json:"required_scopes"`
+	AccessTokens    []string         `json:"access_tokens"`
+	Danger          bool             `json:"danger"`
+	Risk            string           `json:"risk"`
+	DocURL          string           `json:"doc_url,omitempty"`
+	Affordance      *meta.Affordance `json:"affordance,omitempty"`
 }
 
 // OrderedProps is map[string]Property with preserved key order on MarshalJSON.
@@ -89,6 +81,20 @@ type AffordanceCase struct {
 type OrderedProps struct {
 	Order []string
 	Map   map[string]Property
+}
+
+// Set adds or replaces a property, recording first-seen keys in Order so JSON
+// output preserves insertion order. Re-setting an existing key updates its
+// value without reordering. Centralizing mutation here keeps Order and Map from
+// drifting out of sync.
+func (o *OrderedProps) Set(key string, p Property) {
+	if o.Map == nil {
+		o.Map = make(map[string]Property)
+	}
+	if _, exists := o.Map[key]; !exists {
+		o.Order = append(o.Order, key)
+	}
+	o.Map[key] = p
 }
 
 // MarshalJSON emits keys in Order, not alphabetical. If Order is empty but

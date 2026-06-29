@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // Install wraps every runnable command's RunE so the hook chain fires
@@ -31,8 +31,9 @@ import (
 //     call), but Wrap is physically out of the path.
 //
 //   - **After observers always fire**, even when RunE returned an
-//     error. Wrap short-circuits via AbortError get converted to
-//     *output.ExitError so cmd/root.go emits the right envelope.
+//     error. Wrap short-circuits via AbortError get converted to a
+//     typed *errs.ValidationError so cmd/root.go emits the right
+//     envelope.
 //
 //   - **Denial layer / source are populated from cobra annotations
 //     before any hook fires.** populateInvocationDenial reads the
@@ -83,8 +84,8 @@ func wrapRunE(cmd *cobra.Command, reg *Registry, snapshot CommandViewSource) {
 		inv := newInvocation(view, args)
 
 		// Detect denial: a denied command's original RunE was already
-		// replaced by cmdpolicy.Apply with a denyStub that returns
-		// *output.ExitError wrapping *platform.CommandDeniedError. We
+		// replaced by cmdpolicy.Apply with a denyStub that returns a
+		// typed error wrapping *platform.CommandDeniedError. We
 		// invoke originalRunE once with a probe-only context (no args
 		// matter because DisableFlagParsing is set on denied commands)
 		// to extract its CommandDeniedError, but for V1 we use a
@@ -135,8 +136,8 @@ func wrapRunE(cmd *cobra.Command, reg *Registry, snapshot CommandViewSource) {
 			err = finalHandler(ctx, inv)
 		}
 
-		// Convert AbortError -> *output.ExitError so the envelope writer
-		// renders the structured "hook" type.
+		// Convert AbortError -> typed *errs.ValidationError so the
+		// envelope writer renders the structured envelope.
 		err = wrapAbortError(err)
 
 		inv.setErr(err)
@@ -195,17 +196,13 @@ func runObserverSafe(ctx context.Context, obs ObserverEntry, inv platform.Invoca
 	obs.Fn(ctx, inv)
 }
 
-// wrapAbortError converts *platform.AbortError into the equivalent
-// *output.ExitError so cmd/root.go's envelope writer emits the right
-// JSON structure (type="hook"). Non-AbortError values pass through
-// unchanged.
+// wrapAbortError converts *platform.AbortError into a typed
+// *errs.ValidationError (failed_precondition) so cmd/root.go's typed
+// envelope writer emits the structured JSON envelope. Non-AbortError
+// values pass through unchanged.
 //
-// Deprecated: wrapAbortError converts to a legacy *output.ExitError that
-// predates the typed error contract introduced by errs/. New code MUST NOT
-// add producers of this shape — hook abort signals should move to a typed
-// *errs.XxxError (typed hook error is tracked for the hook framework
-// migration PR). This helper is retained only while existing call sites are
-// migrated; it will be removed once they have moved to the typed surface.
+// The AbortError is preserved as the Cause so errors.As consumers can
+// still extract HookName / Reason / Detail in process.
 func wrapAbortError(err error) error {
 	if err == nil {
 		return nil
@@ -214,27 +211,16 @@ func wrapAbortError(err error) error {
 	if !errors.As(err, &ab) {
 		return err
 	}
-	return &output.ExitError{
-		Code: output.ExitValidation,
-		Detail: &output.ErrDetail{
-			Type:    "hook",
-			Message: ab.Error(),
-			Detail: map[string]any{
-				"hook_name":   ab.HookName,
-				"reason":      ab.Reason,
-				"reason_code": "aborted",
-				"detail":      ab.Detail,
-			},
-		},
-		Err: ab,
-	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", ab.Error()).
+		WithHint("plugin hook %q aborted this command; adjust the request to satisfy the hook's policy, or remove the plugin", ab.HookName).
+		WithCause(ab)
 }
 
 // recoverWrap wraps a Wrapper so any panic anywhere in the plugin's
 // implementation -- including the wrapper FACTORY call (the
 // `func(next Handler) Handler` step) and the inner Handler call -- is
-// recovered and surfaced as a structured *output.ExitError with
-// type="hook" and reason_code="panic". Without this guard, a panicking
+// recovered and surfaced as a typed *errs.ValidationError
+// (failed_precondition). Without this guard, a panicking
 // plugin would crash the entire CLI process and break the structured-
 // error contract (downstream automation cannot parse a stack trace).
 //
@@ -269,19 +255,17 @@ func recoverWrap(fullName string, w platform.Wrapper) platform.Wrapper {
 		return func(ctx context.Context, inv platform.Invocation) (returned error) {
 			defer func() {
 				if r := recover(); r != nil {
-					returned = &output.ExitError{
-						Code: output.ExitValidation,
-						Detail: &output.ErrDetail{
-							Type:    "hook",
-							Message: fmt.Sprintf("hook %q panicked: %v", fullName, r),
-							Detail: map[string]any{
-								"hook_name":   fullName,
-								"reason_code": "panic",
-								"reason":      fmt.Sprintf("%v", r),
-							},
-						},
-						Err: fmt.Errorf("hook %q panic: %v", fullName, r),
+					// Preserve the panic value's error identity in the cause
+					// chain when it is an error, so errors.Is/As can still reach
+					// it; fall back to %v formatting for non-error panics.
+					cause := fmt.Errorf("hook %q panic: %v", fullName, r)
+					if e, ok := r.(error); ok {
+						cause = fmt.Errorf("hook %q panic: %w", fullName, e)
 					}
+					returned = errs.NewValidationError(errs.SubtypeFailedPrecondition,
+						"hook %q panicked: %v", fullName, r).
+						WithHint("plugin hook %q crashed while handling this command; report the panic to the plugin author or remove the plugin", fullName).
+						WithCause(cause)
 				}
 			}()
 			// Construct AFTER the recover is armed so a panicking

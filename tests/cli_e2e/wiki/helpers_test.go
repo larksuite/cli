@@ -98,7 +98,7 @@ func createWikiRootHost(t *testing.T, ctx context.Context) gjson.Result {
 	}, clie2e.RetryOptions{})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	host := gjson.Get(result.Stdout, "data.node")
 	require.True(t, host.Exists(), "stdout:\n%s", result.Stdout)
@@ -130,7 +130,7 @@ func listWikiRootHosts(t *testing.T, ctx context.Context) []gjson.Result {
 		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		listResult.AssertExitCode(t, 0)
-		listResult.AssertStdoutStatus(t, 0)
+		listResult.AssertStdoutStatus(t, true)
 
 		parsed := gjson.Parse(listResult.Stdout)
 		hosts = append(hosts, parsed.Get("data.items").Array()...)
@@ -161,7 +161,7 @@ func getWikiNode(t *testing.T, ctx context.Context, nodeToken string) gjson.Resu
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	node := gjson.Get(result.Stdout, "data.node")
 	require.True(t, node.Exists(), "stdout:\n%s", result.Stdout)
@@ -177,7 +177,7 @@ func getWikiSpace(t *testing.T, ctx context.Context, spaceID string) gjson.Resul
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	space := gjson.Get(result.Stdout, "data.space")
 	require.True(t, space.Exists(), "stdout:\n%s", result.Stdout)
@@ -194,7 +194,7 @@ func listWikiSpaces(t *testing.T, ctx context.Context, pageSize int) gjson.Resul
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 	return gjson.Parse(result.Stdout)
 }
 
@@ -430,7 +430,7 @@ func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, node
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		lastStdout = result.Stdout
 		parsed := gjson.Parse(result.Stdout)

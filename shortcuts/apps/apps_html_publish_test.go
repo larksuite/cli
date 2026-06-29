@@ -503,3 +503,82 @@ func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
 		t.Fatalf("client must not be called when raw cap hit")
 	}
 }
+
+func TestOversizeHTMLFiles(t *testing.T) {
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	cands := []htmlPublishCandidate{
+		{RelPath: "index.html", Size: 50},
+		{RelPath: "big.html", Size: 4096},
+		{RelPath: "BIG.HTML", Size: 4096}, // 大小写不敏感
+		{RelPath: "huge.png", Size: 9000}, // 非 .html，忽略
+	}
+	hits := oversizeHTMLFiles(cands)
+	if len(hits) != 2 {
+		t.Fatalf("hits=%v, want [big.html BIG.HTML]", hits)
+	}
+	for _, h := range hits {
+		if h == "huge.png" || h == "index.html" {
+			t.Fatalf("unexpected hit %q", h)
+		}
+	}
+}
+
+func TestMaxHTMLPublishSingleHTMLFileBytes_Default(t *testing.T) {
+	if maxHTMLPublishSingleHTMLFileBytes != 10*1024*1024 {
+		t.Fatalf("default=%d, want %d (10MiB)", maxHTMLPublishSingleHTMLFileBytes, 10*1024*1024)
+	}
+}
+
+func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "big.html"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	if err == nil {
+		t.Fatalf("expected per-file oversize error")
+	}
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "big.html") || !strings.Contains(problem.Message, "10MB") {
+		t.Fatalf("message=%q, want contains 'big.html' and '10MB'", problem.Message)
+	}
+	if problem.Hint == "" {
+		t.Fatalf("expected non-empty hint")
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client must not be called when an HTML file is oversize")
+	}
+}
+
+func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
+	// 单 .html 上限调小，但超限文件是 .png → 不被本护栏拦截，正常发布。
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "big.png"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
+	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+		t.Fatalf("non-html oversize must not be blocked by the .html cap: %v", err)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("client should be called; calls=%v", fake.calls)
+	}
+}

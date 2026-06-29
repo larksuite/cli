@@ -7,7 +7,7 @@
 | 中间格式 | JSON（WBDocument） | Mermaid 文本（.mmd 文件） |
 | 布局控制 | 精确控制（x/y 坐标、Flex） | 由 parser-kit 自动布局 |
 | 视觉定制 | 完全可控（颜色、字号、圆角等） | 有限（Mermaid 语法） |
-| 参考模块 | references/ + 对应 scene | 仅本文件 |
+| 参考模块 | elements/ + 对应 scene | 仅本文件 |
 
 ## 适用条件
 

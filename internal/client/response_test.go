@@ -5,6 +5,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/vfs/localfileio"
 )
@@ -207,15 +209,54 @@ func TestHandleResponse_JSON(t *testing.T) {
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	err := HandleResponse(resp, ResponseOptions{
-		Out:    &out,
-		ErrOut: &errOut,
-		FileIO: &localfileio.LocalFileIO{},
+		Identity: core.AsBot,
+		Out:      &out,
+		ErrOut:   &errOut,
+		FileIO:   &localfileio.LocalFileIO{},
 	})
 	if err != nil {
 		t.Fatalf("HandleResponse failed: %v", err)
 	}
-	if !bytes.Contains(out.Bytes(), []byte(`"code"`)) {
-		t.Errorf("expected JSON output, got: %s", out.String())
+	var got map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\n%s", err, out.String())
+	}
+	if got["ok"] != true {
+		t.Fatalf("ok = %v, want true; output: %s", got["ok"], out.String())
+	}
+	if got["identity"] != "bot" {
+		t.Fatalf("identity = %v, want bot; output: %s", got["identity"], out.String())
+	}
+	if _, hasCode := got["code"]; hasCode {
+		t.Fatalf("success envelope leaked outer code field: %s", out.String())
+	}
+	data, ok := got["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("data = %T, want object; output: %s", got["data"], out.String())
+	}
+	if data["id"] != "1" {
+		t.Fatalf("data.id = %v, want 1; output: %s", data["id"], out.String())
+	}
+}
+
+func TestHandleResponse_JSONWithJqUsesSuccessEnvelope(t *testing.T) {
+	body := []byte(`{"code":0,"msg":"ok","data":{"id":"1"}}`)
+	resp := newApiResp(body, map[string]string{"Content-Type": "application/json"})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{
+		Identity: core.AsBot,
+		JqExpr:   ".data.id",
+		Out:      &out,
+		ErrOut:   &errOut,
+		FileIO:   &localfileio.LocalFileIO{},
+	})
+	if err != nil {
+		t.Fatalf("HandleResponse failed: %v", err)
+	}
+	if strings.TrimSpace(out.String()) != "1" {
+		t.Fatalf("jq output = %q, want %q", out.String(), "1")
 	}
 }
 
@@ -232,6 +273,12 @@ func TestHandleResponse_JSONWithError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for non-zero code")
+	}
+	if _, ok := errs.ProblemOf(err); !ok {
+		t.Fatalf("expected typed error, got %T: %v", err, err)
+	}
+	if strings.Contains(out.String(), `"ok": true`) || strings.Contains(out.String(), `"ok":true`) {
+		t.Fatalf("unexpected success envelope on error path: %s", out.String())
 	}
 }
 
@@ -315,6 +362,76 @@ func TestHandleResponse_NonJSONError_502(t *testing.T) {
 	got := err.Error()
 	if !strings.Contains(got, "HTTP 502") || !strings.Contains(got, "Bad Gateway") {
 		t.Errorf("expected 'HTTP 502' and 'Bad Gateway' in error, got: %s", got)
+	}
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Errorf("expected *errs.NetworkError, got %T", err)
+	}
+	if output.ExitCodeOf(err) != output.ExitNetwork {
+		t.Errorf("expected ExitNetwork (%d) for 5xx, got %d", output.ExitNetwork, output.ExitCodeOf(err))
+	}
+}
+
+// TestHandleResponse_JSONErrorWithZeroBodyCodeNotSwallowed pins that an HTTP
+// status error whose JSON body omits a non-zero business code (e.g. 400 +
+// {"code":0,...}) still surfaces a typed error. CheckResponse treats code 0 as
+// success, so without the HTTP-status fallback a 4xx would be served as a
+// successful result and exit 0.
+func TestHandleResponse_JSONErrorWithZeroBodyCodeNotSwallowed(t *testing.T) {
+	resp := newApiRespWithStatus(400, []byte(`{"code":0,"msg":"bad request"}`),
+		map[string]string{"Content-Type": "application/json"})
+
+	var out, errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &errOut, FileIO: &localfileio.LocalFileIO{}})
+	if err == nil {
+		t.Fatalf("HTTP 400 with code:0 body must not be swallowed; got out=%q err=nil", out.String())
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Errorf("expected *errs.APIError, got %T", err)
+	}
+	if !strings.Contains(err.Error(), "HTTP 400") {
+		t.Errorf("expected 'HTTP 400' in error, got: %s", err.Error())
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got %d", output.ExitAPI, output.ExitCodeOf(err))
+	}
+}
+
+// TestHandleResponse_NoContentTypeError_404 pins that a 404 with an empty body
+// and no Content-Type header — which falls into the JSON branch and fails to
+// parse — is classified by HTTP status (api/not_found), not reported as an
+// internal decode failure.
+func TestHandleResponse_NoContentTypeError_404(t *testing.T) {
+	resp := newApiRespWithStatus(404, []byte(""), nil)
+
+	var out, errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &errOut, FileIO: &localfileio.LocalFileIO{}})
+	if err == nil {
+		t.Fatal("expected error for 404 with empty body and no Content-Type")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Errorf("expected *errs.APIError, got %T", err)
+	}
+	if apiErr != nil && apiErr.Subtype != errs.SubtypeNotFound {
+		t.Errorf("subtype = %q, want not_found", apiErr.Subtype)
+	}
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("expected ExitAPI (%d), got %d", output.ExitAPI, output.ExitCodeOf(err))
+	}
+}
+
+// TestHandleResponse_NoContentTypeError_502 pins that a 5xx with a non-JSON
+// body and no Content-Type is classified as a NetworkError by status, not an
+// internal decode failure.
+func TestHandleResponse_NoContentTypeError_502(t *testing.T) {
+	resp := newApiRespWithStatus(502, []byte("<html>Bad Gateway</html>"), nil)
+
+	var out, errOut bytes.Buffer
+	err := HandleResponse(resp, ResponseOptions{Out: &out, ErrOut: &errOut, FileIO: &localfileio.LocalFileIO{}})
+	if err == nil {
+		t.Fatal("expected error for 502 with non-JSON body and no Content-Type")
 	}
 	var netErr *errs.NetworkError
 	if !errors.As(err, &netErr) {

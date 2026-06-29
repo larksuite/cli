@@ -65,9 +65,9 @@ func TestFlagsFor_MapsAllFields(t *testing.T) {
 	if url == nil || url.Required {
 		t.Errorf("+sheet-create --url should not be cobra-required: %+v", url)
 	}
-	// hidden + int default
+	// visible + int default
 	cap := byName("+cells-get", "max-chars")
-	if cap == nil || !cap.Hidden || cap.Default != "200000" {
+	if cap == nil || cap.Hidden || cap.Default != "500000" {
 		t.Errorf("+cells-get --max-chars not mapped: %+v", cap)
 	}
 	// input sources
@@ -138,5 +138,26 @@ func TestFlagsFor_EveryRegisteredCommandHasDefs(t *testing.T) {
 				t.Errorf("%s --%s in JSON but missing from Go Flags", s.Command, name)
 			}
 		}
+	}
+}
+
+// TestFlagAcceptsStdin verifies the stdin-capability probe that decides whether
+// an "invalid JSON" error should also steer the caller toward stdin: a composite
+// flag (cells) accepts stdin, a plain locator (spreadsheet-token) does not, and
+// an unknown command/flag returns false without panicking (it runs on an error
+// path, unlike flagsFor).
+func TestFlagAcceptsStdin(t *testing.T) {
+	t.Parallel()
+	if !flagAcceptsStdin("+cells-set", "cells") {
+		t.Error("+cells-set --cells should accept stdin")
+	}
+	if flagAcceptsStdin("+cells-set", "spreadsheet-token") {
+		t.Error("--spreadsheet-token should not accept stdin")
+	}
+	if flagAcceptsStdin("+nope", "cells") {
+		t.Error("unknown command should be false (and must not panic)")
+	}
+	if flagAcceptsStdin("+cells-set", "nope") {
+		t.Error("unknown flag should be false")
 	}
 }

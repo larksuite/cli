@@ -105,3 +105,25 @@ func TestReadFrame_PropagatesEOF(t *testing.T) {
 		t.Errorf("err = %v, want io.EOF", err)
 	}
 }
+
+func TestHelloAckRejected_RoundTrip(t *testing.T) {
+	ack := NewHelloAckRejected("v1", "another consumer (pid 42) is already running for this subscription")
+	if !ack.Rejected || ack.RejectReason == "" {
+		t.Fatalf("NewHelloAckRejected fields: %+v", ack)
+	}
+	var buf bytes.Buffer
+	if err := Encode(&buf, ack); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	msg, err := Decode(bytes.TrimRight(buf.Bytes(), "\n"))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got, ok := msg.(*HelloAck)
+	if !ok {
+		t.Fatalf("decoded type = %T, want *HelloAck", msg)
+	}
+	if !got.Rejected || got.RejectReason != ack.RejectReason {
+		t.Errorf("roundtrip = %+v, want Rejected with reason", got)
+	}
+}

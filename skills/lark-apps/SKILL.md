@@ -1,7 +1,7 @@
 ---
 name: lark-apps
 version: 1.0.0
-description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、HTML静态站点发布、本地全栈开发、云端生成迭代。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站给人看，或提到妙搭/Spark/Miaoda、应用数据库、可见范围时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
+description: "妙搭（Spark/Miaoda）应用开发与托管：应用创建、HTML静态站点发布、本地全栈开发、云端生成迭代。当用户要开发/新建一个系统·工具·平台·应用，或要本地开发 / 云端开发 / 修改 / 部署 / 发布 / 上线 / 拿可分享链接，或用 HTML 做页面·网站·部署到妙搭，或提到妙搭/Spark/Miaoda（应用运行时域名形如 *.aiforce.cloud）、应用数据库、可见范围时使用。不负责普通云盘文件上传（lark-drive）、飞书文档编辑（lark-doc）、原生幻灯片创建（lark-slides）。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -28,6 +28,7 @@ metadata:
 | **部署/上线全栈应用**（"部署""上线""推上去并部署""发布到云端"）；查发布状态/历史 | `+release-create`（部署上线动作）, `+release-get`（轮询发布结果，finished 给 online_url / failed 给 error_logs）, `+release-list` | [`lark-apps-release-create.md`](references/lark-apps-release-create.md), [`lark-apps-release-get.md`](references/lark-apps-release-get.md), [`lark-apps-release-list.md`](references/lark-apps-release-list.md) |
 | 设置或查看运行时可见范围 | `+access-scope-set`, `+access-scope-get` | 对应 access-scope reference |
 | 云端 Agent 生成/迭代应用（开发方式已定为云端后） | `+session-create` -> `+chat` -> `+session-get` | [`lark-apps-cloud-dev.md`](references/lark-apps-cloud-dev.md) |
+| 查看某次会话某一轮（turn）的回复消息（含仍在生成中的本轮）/ 导出上一轮模型回复（"这一轮回复了什么""上一轮的回复""导出某轮消息"） | 先 `+session-get`（取 `latest_turn.turn_id`）-> `+session-messages-list --turn-id <id>`（仅 user 身份；分页用 `--page-token`） | [`lark-apps-session-messages-list.md`](references/lark-apps-session-messages-list.md) |
 
 ## 选择开发路径（进意图路由前先判这步）
 
@@ -47,8 +48,14 @@ metadata:
 
 - **发布意图判定**：用户要"可访问 / 线上 / 分享 / 新链接 / 上线" = 发布意图，先走发布链路、确认完成再给链接。
 - 完成 ≠ 发布：云端会话完成 / `+list is_published=true` 都不代表最新内容已部署。
-- 开发态链接 `https://miaoda.feishu.cn/app/{app_id}` 仅进编辑态，不能顶替发布当分享链接。
+- 开发态链接 `https://miaoda.feishu.cn/app/{app_id}`：进应用编辑/开发态、管理与继续开发应用的入口。发布成功后，连同发布态链接一并提供给用户（说明"管理 / 继续开发去这里"）；但它仅进编辑态，**不能**顶替发布态链接当分享链接。
 - 发布态链接来源：html → `+html-publish` 的 `data.url`；全栈 → `+release-get` 轮询 `finished` 给 `online_url` / `failed` 给 `error_logs`。
+- **可见范围**：发布态链接（html 的 `data.url`、全栈的 `online_url`）默认仅**创建者可见**，发给他人对方会无权限打不开。当可分享链接交付给用户前，先告知当前仅本人可见，再询问是否用 `+access-scope-set`（`tenant`/`public`/`specific`）放开（可先 `+access-scope-get` 查当前范围）。
+
+## 能力边界
+
+- lark-cli **不支持**配置应用的权限（应用内 RBAC、成员角色、协作者权限）/ 自动化 / 插件。`+access-scope-*` 只管运行时可见范围（谁能打开应用），不是角色权限。
+- 用户要配置权限 / 自动化 / 插件时，引导其使用开发态连接前往云端开发（妙搭 web）处理。
 
 ## app_id 获取
 
@@ -68,4 +75,4 @@ metadata:
 ## 高影响动作：确认与预授权
 
 - **预授权判定**：判断用户是否表达了"放手做完、不用中途逐步问我"的意图——明确免确认（如"别问 / 直接做 / 自己定"），或要求一气呵成做到完成（如"做完部署上线给我"）。是 → 整个流程按合理默认往下走、不再逐步确认（含 clone 到派生目录、发布等）；否 → 缺失参数（如目录）该问就问、高影响动作先确认。
-- **不豁免底线**：会删/丢数据或不可逆的 DB 操作（判据见 [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)）即便已预授权，也先 `--dry-run` 确认。
+- **禁止预授权判定底线**（即便已预授权也不豁免）：① 会删/丢数据或不可逆的 DB 操作（判据见 [`lark-apps-db-execute.md`](references/lark-apps-db-execute.md)）先 `--dry-run` 确认；② `+html-publish` 体积超限时（判据见 [`lark-apps-html-publish.md`](references/lark-apps-html-publish.md)），立即停止并转述超限项。

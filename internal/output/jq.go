@@ -10,6 +10,8 @@ import (
 	"math/big"
 
 	"github.com/itchyny/gojq"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // JqFilter applies a jq expression to data and writes the results to w.
@@ -31,11 +33,11 @@ func JqFilterRaw(w io.Writer, data interface{}, expr string) error {
 func jqFilter(w io.Writer, data interface{}, expr string, raw bool) error {
 	query, err := gojq.Parse(expr)
 	if err != nil {
-		return ErrValidation("invalid jq expression: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid jq expression: %s", err).WithCause(err)
 	}
 	code, err := gojq.Compile(query)
 	if err != nil {
-		return ErrValidation("invalid jq expression: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid jq expression: %s", err).WithCause(err)
 	}
 
 	// Normalize data through toGeneric so typed structs become map[string]any.
@@ -50,7 +52,7 @@ func jqFilter(w io.Writer, data interface{}, expr string, raw bool) error {
 			break
 		}
 		if err, isErr := v.(error); isErr {
-			return Errorf(ExitAPI, "jq_error", "jq error: %s", err)
+			return errs.NewAPIError(errs.SubtypeUnknown, "jq error: %s", err).WithCause(err)
 		}
 		if err := writeJqValue(w, v, raw); err != nil {
 			return err
@@ -66,10 +68,10 @@ func ValidateJqFlags(jqExpr, outputFlag, format string) error {
 		return nil
 	}
 	if outputFlag != "" {
-		return ErrValidation("--jq and --output are mutually exclusive")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --output are mutually exclusive")
 	}
 	if format != "" && format != "json" {
-		return ErrValidation("--jq and --format %s are mutually exclusive", format)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--jq and --format %s are mutually exclusive", format)
 	}
 	return ValidateJqExpression(jqExpr)
 }
@@ -78,11 +80,11 @@ func ValidateJqFlags(jqExpr, outputFlag, format string) error {
 func ValidateJqExpression(expr string) error {
 	query, err := gojq.Parse(expr)
 	if err != nil {
-		return ErrValidation("invalid jq expression: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid jq expression: %s", err).WithCause(err)
 	}
 	_, err = gojq.Compile(query)
 	if err != nil {
-		return ErrValidation("invalid jq expression: %s", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid jq expression: %s", err).WithCause(err)
 	}
 	return nil
 }
@@ -114,13 +116,13 @@ func writeJqValue(w io.Writer, v interface{}, raw bool) error {
 			enc.SetEscapeHTML(false)
 			enc.SetIndent("", "  ")
 			if err := enc.Encode(v); err != nil {
-				return Errorf(ExitInternal, "jq_error", "failed to marshal jq result: %s", err)
+				return errs.NewInternalError(errs.SubtypeSDKError, "failed to marshal jq result: %s", err).WithCause(err)
 			}
 			return nil
 		}
 		b, err := json.MarshalIndent(v, "", "  ")
 		if err != nil {
-			return Errorf(ExitInternal, "jq_error", "failed to marshal jq result: %s", err)
+			return errs.NewInternalError(errs.SubtypeSDKError, "failed to marshal jq result: %s", err).WithCause(err)
 		}
 		fmt.Fprintln(w, string(b))
 	}

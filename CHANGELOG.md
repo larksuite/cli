@@ -2,6 +2,141 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.58] - 2026-06-25
+
+### Features
+
+- **sheets**: Typed table I/O and error contract, workbook import/export, and skill refresh (#1355)
+- **base**: Add Base URL and title resolve shortcuts (#1338)
+- **drive**: Add `+member-add` shortcut with wiki space member collection collaborator support (#1204)
+- **doc**: Support `create` title option (#1536)
+- **doc**: Add `im-markdown` output format for doc fetch (#1550)
+- **whiteboard**: Export whiteboard as SVG and update whiteboard via SVG (#1559)
+- **card**: Support `card.action.trigger` event with auto-fetched card content (#1528)
+- **task**: Add task event consumer (#1510)
+
+### Bug Fixes
+
+- **doc**: Prefix docs resource shortcuts (#1564)
+- **binding**: Skip unix mode audit on Windows (#1525)
+
+### Documentation
+
+- **approval**: Sync approval skill for meta API commands (#1499)
+- **doc**: Restore lark-doc style requirements (#1579)
+- **im**: Document `chat.nickname` get/update/delete (#1378)
+- **im**: Clarify audio message opus requirement (#1271)
+
+### Build
+
+- **ci**: Add public content safeguards and reduce false positives
+
+## [v1.0.57] - 2026-06-23
+
+### Features
+
+- **slides**: Add `+screenshot` to capture slide page images (or render a single `<slide>` XML snippet), returning the local file path instead of Base64 (#1358)
+- **base**: Support record comments (#1043)
+- **search**: Surface search API notices (#1413)
+
+### Bug Fixes
+
+- **mail**: Resolve folder/label filter once per `+triage list` call (#1512)
+- **meta**: Backfill enum value descriptions from options (#1541)
+- **cli**: Add missing CLI headers for git credential helper (#1539)
+
+### Documentation
+
+- **doc**: Refine rich block, path, and block ID guidance (#1508)
+- **mail**: Trim lark-mail skill context (#1527)
+- **drive**: Add permission governance workflow guidance (#1292)
+
+### Build
+
+- **ci**: Bind semantic review to workflow run head (#1551)
+
+## [v1.0.56] - 2026-06-18
+
+### Features
+
+- **apps**: Add `+session-messages-list` for session turn reply messages (#1402)
+
+### Bug Fixes
+
+- **api**: Align API success envelopes (#1489)
+- **base**: Reject out-of-range pagination flags (#1495)
+
+### Refactor
+
+- Retire legacy error envelopes and enforce typed contract (#1449)
+
+### Documentation
+
+- **skills**: Soften lark-doc style guidance (#1463)
+
+### Build
+
+- Add CI quality gate with semantic review
+
+## [v1.0.55] - 2026-06-16
+
+### Features
+
+- **vc**: Support agent meeting event workflows (#1483)
+- **drive**: Support exporting Base structure snapshots (#1481)
+- **doc**: Add docx cover resource commands (#1468)
+- **doc**: Support `lang` for docx fetch v2 (#1459)
+- **event**: Optimize subscription precheck, links, and consumer guard (#1447)
+
+### Bug Fixes
+
+- **drive**: Validate drive import folder target (#1485)
+
+## [v1.0.54] - 2026-06-15
+
+### Features
+
+- **mail**: Auto-attach default signature on send/reply/forward (#1415)
+- **drive**: Support `original_creator_ids` filter in search (#1046)
+- **cli**: Simplify proxy plugin warning and gate it on TTY (#1448)
+
+### Bug Fixes
+
+- **doc**: Fix docs fetch and update ergonomics (#1466)
+- **vfs**: Reject blank local paths (#1460)
+- **vfs**: Reject Windows absolute paths cross-platform (#1401)
+- **event**: Clarify remote bus blocker recovery (#1454)
+
+### Refactor
+
+- Converge command pipelines onto a typed metadata model + catalog (#1191)
+
+### Documentation
+
+- **im**: Document `@mention` format per message type (text/post/card) (#1419)
+- **doc**: Clarify lark-doc create title guidance (#1474)
+- **skills**: Add rename prompt for import without `--name` (#1461)
+- **apps**: Drop Miaoda brand word from apps command help text (#1399)
+
+## [v1.0.53] - 2026-06-12
+
+### Features
+
+- **auth**: Revoke user tokens server-side on `auth logout` (#1434)
+- **auth**: Add `--json` flag support to auth subcommands (#1431)
+- **token**: Mint TAT via unified OAuth v3 Token Endpoint (#1408)
+- **note**: Split note into a dedicated domain with `+detail` and `+transcript` flows (#1345, #1417, #1435)
+- **im**: Unify sort flags into `--sort` field and `--order` direction (#1302)
+
+### Bug Fixes
+
+- **apps**: Read release error_logs from `data.error_logs` in `+release-get` (#1436)
+
+### Documentation
+
+- **skills**: Optimize whiteboard skill (#1371)
+- **skills**: Optimize okr skill (#1368)
+
 ## [v1.0.52] - 2026-06-11
 
 ### Features
@@ -1130,6 +1265,12 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.58]: https://github.com/larksuite/cli/releases/tag/v1.0.58
+[v1.0.57]: https://github.com/larksuite/cli/releases/tag/v1.0.57
+[v1.0.56]: https://github.com/larksuite/cli/releases/tag/v1.0.56
+[v1.0.55]: https://github.com/larksuite/cli/releases/tag/v1.0.55
+[v1.0.54]: https://github.com/larksuite/cli/releases/tag/v1.0.54
+[v1.0.53]: https://github.com/larksuite/cli/releases/tag/v1.0.53
 [v1.0.52]: https://github.com/larksuite/cli/releases/tag/v1.0.52
 [v1.0.51]: https://github.com/larksuite/cli/releases/tag/v1.0.51
 [v1.0.50]: https://github.com/larksuite/cli/releases/tag/v1.0.50

@@ -5,7 +5,6 @@ package drive
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -19,7 +18,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -640,8 +638,7 @@ func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file 
 		Body:       fd,
 	}, larkcore.WithFileUpload())
 	if err != nil {
-		var exitErr *output.ExitError
-		if errors.As(err, &exitErr) {
+		if errs.IsTyped(err) {
 			return "", "", err
 		}
 		return "", "", wrapDriveNetworkErr(err, "upload failed: %v", err)
@@ -735,8 +732,7 @@ func drivePushUploadMultipart(_ context.Context, runtime *common.RuntimeContext,
 			Body:       fd,
 		}, larkcore.WithFileUpload())
 		if doErr != nil {
-			var exitErr *output.ExitError
-			if errors.As(doErr, &exitErr) {
+			if errs.IsTyped(doErr) {
 				return "", doErr
 			}
 			return "", wrapDriveNetworkErr(doErr, "upload part %d/%d failed: %v", seq+1, blockNum, doErr)

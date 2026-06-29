@@ -19,6 +19,7 @@ import (
 type CheckOptions struct {
 	Factory *cmdutil.Factory
 	Scope   string
+	JSON    bool
 }
 
 // NewCmdAuthCheck creates the auth check subcommand.
@@ -37,6 +38,7 @@ func NewCmdAuthCheck(f *cmdutil.Factory, runF func(*CheckOptions) error) *cobra.
 	}
 
 	cmd.Flags().StringVar(&opts.Scope, "scope", "", "scopes to check (space-separated)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmd.MarkFlagRequired("scope")
 	cmdutil.SetRisk(cmd, "read")
 

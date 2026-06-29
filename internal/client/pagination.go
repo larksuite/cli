@@ -4,7 +4,6 @@
 package client
 
 import (
-	"context"
 	"fmt"
 	"io"
 
@@ -17,33 +16,6 @@ type PaginationOptions struct {
 	PageLimit int           // max pages to fetch; 0 = unlimited (default: 10)
 	PageDelay int           // ms, default 200
 	Identity  core.Identity // identity passed to checkErr; defaults to AsUser when empty
-}
-
-// PaginateWithJq aggregates all pages, checks for API errors, then applies a jq filter.
-// If checkErr detects an error, the raw result is printed as JSON before returning the error.
-func PaginateWithJq(ctx context.Context, ac *APIClient, request RawApiRequest,
-	jqExpr string, out io.Writer, pagOpts PaginationOptions,
-	checkErr func(interface{}, core.Identity) error) error {
-	result, err := ac.PaginateAll(ctx, request, pagOpts)
-	if err != nil {
-		return err
-	}
-	// Identity resolution honors pagOpts.Identity first, then the request's
-	// own identity, and only falls back to AsUser when neither caller
-	// supplied one. Without checking request.As, bot/auto requests would
-	// always be classified as user identity for checkErr.
-	identity := pagOpts.Identity
-	if identity == "" {
-		identity = request.As
-	}
-	if identity == "" || identity == core.AsAuto {
-		identity = core.AsUser
-	}
-	if apiErr := checkErr(result, identity); apiErr != nil {
-		output.FormatValue(out, result, output.FormatJSON)
-		return apiErr
-	}
-	return output.JqFilter(out, result, jqExpr)
 }
 
 func mergePagedResults(w io.Writer, results []interface{}) interface{} {

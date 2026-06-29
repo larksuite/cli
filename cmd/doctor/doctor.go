@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -94,7 +95,7 @@ func doctorRun(opts *DoctorOptions) error {
 		// underlying problem is still visible.
 		msg, hint := err.Error(), ""
 		if errors.Is(err, os.ErrNotExist) {
-			var cfgErr *core.ConfigError
+			var cfgErr *errs.ConfigError
 			if errors.As(core.NotConfiguredError(), &cfgErr) {
 				msg, hint = cfgErr.Message, cfgErr.Hint
 			}
@@ -108,7 +109,7 @@ func doctorRun(opts *DoctorOptions) error {
 	cfg, err := f.Config()
 	if err != nil {
 		hint := ""
-		var cfgErr *core.ConfigError
+		var cfgErr *errs.ConfigError
 		if errors.As(err, &cfgErr) {
 			hint = cfgErr.Hint
 		}

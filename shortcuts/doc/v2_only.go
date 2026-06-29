@@ -25,7 +25,6 @@ func docsAPIVersionCompatFlag() common.Flag {
 
 func docsCreateLegacyFlags() []docsLegacyFlag {
 	return []docsLegacyFlag{
-		{Name: "title", Replacement: "put the title in --content, for example <title>Title</title>"},
 		{Name: "markdown", Replacement: "use --content with --doc-format markdown"},
 		{Name: "folder-token", Replacement: "use --parent-token"},
 		{Name: "wiki-node", Replacement: "use --parent-token"},

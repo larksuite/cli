@@ -39,16 +39,16 @@ func (postConverter) Convert(ctx *ConvertContext) string {
 	if title, _ := body["title"].(string); title != "" {
 		parts = append(parts, title)
 	}
-	if blocks, _ := body["content"].([]interface{}); len(blocks) > 0 {
-		for _, para := range blocks {
-			elems, _ := para.([]interface{})
-			var line strings.Builder
-			for _, el := range elems {
-				elem, _ := el.(map[string]interface{})
-				line.WriteString(renderPostElem(elem))
-			}
-			parts = append(parts, line.String())
+	// Prefer content_v2 blocks; fallback to content blocks
+	blocks := selectContentBlocks(body)
+	for _, para := range blocks {
+		elems, _ := para.([]interface{})
+		var line strings.Builder
+		for _, el := range elems {
+			elem, _ := el.(map[string]interface{})
+			line.WriteString(renderPostElem(elem))
 		}
+		parts = append(parts, line.String())
 	}
 
 	result := strings.TrimSpace(strings.Join(parts, "\n"))
@@ -56,6 +56,17 @@ func (postConverter) Convert(ctx *ConvertContext) string {
 		return "[Rich text message]"
 	}
 	return ResolveMentionKeys(result, ctx.MentionMap)
+}
+
+// selectContentBlocks returns content_v2 blocks when present and non-empty;
+// otherwise falls back to content blocks. This implements the content_v2
+// priority rule for post messages.
+func selectContentBlocks(body map[string]interface{}) []interface{} {
+	if v2, ok := body["content_v2"].([]interface{}); ok && len(v2) > 0 {
+		return v2
+	}
+	blocks, _ := body["content"].([]interface{})
+	return blocks
 }
 
 func unwrapPostLocale(parsed map[string]interface{}) map[string]interface{} {
@@ -114,10 +125,14 @@ func renderPostElem(el map[string]interface{}) string {
 		var rendered string
 		switch {
 		case userId == "@_all" || userId == "all":
-			rendered = "@all"
+			rendered = `<at user_id="all"></at>`
 		default:
 			if name, _ := el["user_name"].(string); name != "" {
-				rendered = "@" + name
+				if userId != "" && strings.HasPrefix(userId, "ou") {
+					rendered = fmt.Sprintf(`<at user_id="%s">%s</at>`, userId, name)
+				} else {
+					rendered = "@" + name
+				}
 			} else {
 				rendered = "@" + userId
 			}
@@ -138,7 +153,7 @@ func renderPostElem(el map[string]interface{}) string {
 	case "img":
 		key, _ := el["image_key"].(string)
 		if key != "" {
-			return fmt.Sprintf("[Image: %s]", key)
+			return fmt.Sprintf("![Image](%s)", key)
 		}
 		return "[Image]"
 	case "media":

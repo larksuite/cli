@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 // TestFlagSchemas_EmbedParses asserts the synced flag-schemas.json
@@ -84,12 +84,12 @@ func TestPrintFlagSchema_NamedFlagReturnsSchemaSubtree(t *testing.T) {
 func TestPrintFlagSchema_UnknownFlagListsAvailable(t *testing.T) {
 	t.Parallel()
 	_, err := printFlagSchemaFor("+chart-create")("does-not-exist")
-	if err == nil {
-		t.Fatal("expected error for unknown flag, got nil")
+	ve := requireValidation(t, err, "+chart-create")
+	if !strings.Contains(ve.Message, "properties") {
+		t.Errorf("message should list available flags; got %q", ve.Message)
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "+chart-create") || !strings.Contains(msg, "properties") {
-		t.Errorf("error should mention shortcut + available flags; got %q", msg)
+	if ve.Param != "--flag-name" {
+		t.Errorf("param = %q, want --flag-name", ve.Param)
 	}
 }
 
@@ -175,9 +175,9 @@ func TestPrintSchema_SystemFlagAbsentForReadOnlyShortcut(t *testing.T) {
 }
 
 // TestPrintSchema_UnknownFlagNameIsStructured pins issue #6: an unregistered
-// --flag-name passed to --print-schema must surface as a structured
-// *output.ExitError (type print_schema_error), not a bare error string, so the
-// agent-facing introspection path stays machine-parseable.
+// --flag-name passed to --print-schema must surface as a typed
+// *errs.ValidationError, not a bare error string, so the agent-facing
+// introspection path stays machine-parseable.
 func TestPrintSchema_UnknownFlagNameIsStructured(t *testing.T) {
 	t.Parallel()
 	// PrintFlagSchema is wired during registration (shortcuts.go), not on the
@@ -191,12 +191,9 @@ func TestPrintSchema_UnknownFlagNameIsStructured(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for --print-schema with an unregistered flag name")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want a structured *output.ExitError", err)
-	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "print_schema_error" {
-		t.Errorf("error detail = %+v, want type print_schema_error", exitErr.Detail)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want a typed *errs.ValidationError", err)
 	}
 }
 

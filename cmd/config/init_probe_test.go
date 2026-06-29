@@ -31,10 +31,10 @@ type fakeRT struct {
 
 func (f *fakeRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	switch {
-	case strings.HasSuffix(req.URL.Path, "/auth/v3/tenant_access_token/internal"):
+	case strings.HasSuffix(req.URL.Path, "/oauth/v3/token"):
 		f.tatCalls++
 		if f.tatHandler == nil {
-			return jsonResp(200, `{"code":0,"tenant_access_token":"t-ok"}`), nil
+			return jsonResp(200, `{"code":0,"access_token":"t-ok","token_type":"Bearer"}`), nil
 		}
 		return f.tatHandler(req)
 	case strings.HasSuffix(req.URL.Path, "/application/v6/larksuite_cli_app/probe"):
@@ -84,14 +84,15 @@ func fakeFactory(t *testing.T, rt http.RoundTripper) (*cmdutil.Factory, *bytes.B
 }
 
 // assertConfigRejection asserts runProbe propagated a deterministic credential
-// rejection: a *errs.ConfigError (CategoryConfig / SubtypeInvalidClient) with
-// the expected upstream code. This is the same typed error every other
-// token-resolving command returns for the same bad credentials, and nothing is
-// written to stderr (the root dispatcher renders the envelope).
-func assertConfigRejection(t *testing.T, err error, errBuf *bytes.Buffer, wantCode int) {
+// rejection: a *errs.ConfigError (CategoryConfig / SubtypeInvalidClient). This
+// is the same typed error every other token-resolving command returns for the
+// same bad credentials, and nothing is written to stderr (the root dispatcher
+// renders the envelope). The numeric code is not asserted: the unified v3 Token
+// Endpoint reports invalid_client via the OAuth2 error string, not a Lark code.
+func assertConfigRejection(t *testing.T, err error, errBuf *bytes.Buffer) {
 	t.Helper()
 	if err == nil {
-		t.Fatalf("expected *errs.ConfigError (code %d), got nil", wantCode)
+		t.Fatal("expected *errs.ConfigError, got nil")
 	}
 	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
@@ -102,9 +103,6 @@ func assertConfigRejection(t *testing.T, err error, errBuf *bytes.Buffer, wantCo
 	}
 	if cfgErr.Subtype != errs.SubtypeInvalidClient {
 		t.Errorf("Subtype = %q, want %q", cfgErr.Subtype, errs.SubtypeInvalidClient)
-	}
-	if cfgErr.Code != wantCode {
-		t.Errorf("Code = %d, want %d", cfgErr.Code, wantCode)
 	}
 	if errBuf.Len() != 0 {
 		t.Errorf("runProbe must not write to stderr, got: %q", errBuf.String())
@@ -123,11 +121,13 @@ func assertSilent(t *testing.T, err error, errBuf *bytes.Buffer) {
 	}
 }
 
-// 10003 (bad / non-existent app_id) → ConfigError/InvalidClient, propagated.
-func TestRunProbe_TATCode10003_ReturnsConfigError(t *testing.T) {
+// invalid_client (bad / non-existent app_id or wrong secret) → the v3 Token
+// Endpoint returns HTTP 400 with the OAuth2 error → ConfigError/InvalidClient,
+// propagated. The probe endpoint must not be called when TAT fails.
+func TestRunProbe_TATInvalidClient_ReturnsConfigError(t *testing.T) {
 	rt := &fakeRT{
 		tatHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(200, `{"code":10003,"msg":"invalid param"}`), nil
+			return jsonResp(400, `{"error":"invalid_client","error_description":"The client secret is invalid.","code":20002}`), nil
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
@@ -137,28 +137,27 @@ func TestRunProbe_TATCode10003_ReturnsConfigError(t *testing.T) {
 	if rt.probeCalls != 0 {
 		t.Error("probe endpoint must not be called when TAT fails")
 	}
-	assertConfigRejection(t, err, errBuf, 10003)
+	assertConfigRejection(t, err, errBuf)
 }
 
-// 10014 (real app_id + wrong secret) → ConfigError/InvalidClient via codemeta —
-// the most common real-world rejection, propagated.
-func TestRunProbe_TATCode10014_ReturnsConfigError(t *testing.T) {
+// unauthorized_client is treated as the same credential rejection, propagated.
+func TestRunProbe_TATUnauthorizedClient_ReturnsConfigError(t *testing.T) {
 	rt := &fakeRT{
 		tatHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(200, `{"code":10014,"msg":"app secret invalid"}`), nil
+			return jsonResp(401, `{"error":"unauthorized_client","error_description":"client not authorized"}`), nil
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)
-	assertConfigRejection(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf, 10014)
+	assertConfigRejection(t, runProbe(context.Background(), f, "cli_x", "secret_y", core.BrandFeishu), errBuf)
 }
 
-// Any non-zero body code is a deterministic rejection and propagates (typed).
-// An unrecognized code falls back to *errs.APIError via BuildAPIError — still
-// typed, so the probe still surfaces it rather than swallowing.
-func TestRunProbe_TATUnknownBodyCode_Propagates(t *testing.T) {
+// Any other deterministic client-side OAuth error (e.g. invalid_scope) falls
+// back to *errs.APIError via BuildAPIError — still typed, so the probe surfaces
+// it rather than swallowing — but is not a credential (ConfigError) rejection.
+func TestRunProbe_TATOtherClientError_Propagates(t *testing.T) {
 	rt := &fakeRT{
 		tatHandler: func(req *http.Request) (*http.Response, error) {
-			return jsonResp(200, `{"code":99999,"msg":"future-unknown"}`), nil
+			return jsonResp(400, `{"code":20068,"error":"invalid_scope","error_description":"unauthorized scope"}`), nil
 		},
 	}
 	f, errBuf := fakeFactory(t, rt)

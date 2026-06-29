@@ -21,11 +21,15 @@ var BaseRecordHistoryList = common.Shortcut{
 		tableRefFlag(true),
 		recordRefFlag(true),
 		{Name: "max-version", Type: "int", Desc: "max version for next page"},
-		{Name: "page-size", Type: "int", Default: "30", Desc: "pagination size, max 50"},
+		{Name: "page-size", Type: "int", Default: "30", Desc: "pagination size, range 1-50"},
 	},
 	Tips: []string{
 		`Example: lark-cli base +record-history-list --base-token <base_token> --table-id <table_id> --record-id <record_id>`,
 		"This reads one record's history only; it is not a table-wide audit scan.",
+	},
+	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
+		_, err := common.ValidatePageSizeTyped(runtime, "page-size", 30, 1, 50)
+		return err
 	},
 	DryRun: dryRunRecordHistoryList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

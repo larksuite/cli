@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -45,7 +46,7 @@ func profileListRun(f *cmdutil.Factory) error {
 			output.PrintJson(f.IOStreams.Out, []profileListItem{})
 			return nil
 		}
-		return output.Errorf(output.ExitValidation, "config", "failed to load config: %v", err)
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "failed to load config: %v", err).WithCause(err)
 	}
 	if multi == nil || len(multi.Apps) == 0 {
 		output.PrintJson(f.IOStreams.Out, []profileListItem{})

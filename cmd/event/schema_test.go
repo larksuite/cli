@@ -96,6 +96,34 @@ func TestRunSchema_JSONOutput(t *testing.T) {
 	}
 }
 
+func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+
+	if err := runSchema(f, "task.task.update_user_access_v2", true); err != nil {
+		t.Fatalf("runSchema json: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	if payload["jq_root_path"] != ".event" {
+		t.Errorf("jq_root_path = %v, want .event", payload["jq_root_path"])
+	}
+	if payload["single_consumer"] != true {
+		t.Errorf("single_consumer = %v, want true", payload["single_consumer"])
+	}
+	resolved := payload["resolved_output_schema"].(map[string]interface{})
+	props := resolved["properties"].(map[string]interface{})
+	eventProps := props["event"].(map[string]interface{})["properties"].(map[string]interface{})
+	if got := eventProps["task_guid"].(map[string]interface{})["format"]; got != "task_guid" {
+		t.Errorf("task_guid format = %v, want task_guid", got)
+	}
+	if _, ok := eventProps["event_types"].(map[string]interface{})["items"].(map[string]interface{})["enum"]; !ok {
+		t.Fatalf("event_types enum missing in schema: %#v", eventProps["event_types"])
+	}
+}
+
 func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 	const syntheticKey = "test.evt_sub"
 	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })

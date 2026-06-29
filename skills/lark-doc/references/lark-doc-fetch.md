@@ -91,7 +91,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 }
 ```
 
-`content` 的格式由 `--doc-format` 决定。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+`content` 的格式由 `--doc-format` 决定；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
 
 ## 参数
 
@@ -99,7 +99,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 |------|------|------|
 | `--api-version` | 是 | 固定传 `v2` |
 | `--doc` | 是 | 文档 URL 或 token（支持 `/docx/` 和 `/wiki/`） |
-| `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `text` |
+| `--doc-format` | 否 | `xml`（默认）\| `markdown` \| `im-markdown`（仅用于获取内容后在 `lark-im` 场景下使用） |
 | `--detail` | 否 | `simple`（默认）\| `with-ids` \| `full` |
 | `--revision-id` | 否 | 文档版本号，`-1` = 最新（默认） |
 | `--scope` | 否 | `outline` \| `range` \| `keyword` \| `section`（省略 = 读整篇） |
@@ -124,6 +124,7 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 - `<img>` / `<source>` 带 `url` 时，直接用该 URL 下载即可（普通 HTTP GET），无需走 shortcut。
 - 没有 `url`、或只想预览 → `docs +media-preview --token <token> --output ./preview_media`
 - 明确下载，或目标是 `<whiteboard>`（画板只能走 shortcut） → `docs +media-download --token <token> --output ./downloaded_media`
+- 文档封面图不是正文素材；下载/更新/删除封面图 → `docs +resource-download/+resource-update/+resource-delete --type cover`
 
 ## 嵌入电子表格 / 多维表格
 
@@ -135,3 +136,4 @@ lark-cli docs +fetch --api-version v2 --doc Z1Fj...tnAc \
 - [lark-doc-update](lark-doc-update.md) — 更新文档
 - [lark-doc-media-preview](lark-doc-media-preview.md) — 预览素材
 - [lark-doc-media-download](lark-doc-media-download.md) — 下载素材/画板缩略图
+- [lark-doc-resource-cover](lark-doc-resource-cover.md) — 读取、更新、删除文档封面图

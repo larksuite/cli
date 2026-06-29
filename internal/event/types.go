@@ -42,6 +42,18 @@ const (
 	ParamInt    ParamType = "int"
 )
 
+// SubscriptionType marks whether an EventKey is delivered via Lark event
+// subscription or interactive callback subscription. It is a sibling of
+// EventType (which holds the concrete Lark event_type string).
+type SubscriptionType string
+
+const (
+	// SubTypeEvent: checked against the published app_versions event_infos.
+	SubTypeEvent SubscriptionType = "event"
+	// SubTypeCallback: checked against application/get subscribed_callbacks.
+	SubTypeCallback SubscriptionType = "callback"
+)
+
 // ParamValue.Desc is mandatory so AI consumers can decide which value to pick.
 type ParamValue struct {
 	Value string `json:"value"`
@@ -96,6 +108,10 @@ type KeyDefinition struct {
 	Description string `json:"description,omitempty"`
 	EventType   string `json:"event_type"`
 
+	// SubscriptionType selects which console "底账" the precheck reads.
+	// Empty is normalized to SubTypeEvent at RegisterKey.
+	SubscriptionType SubscriptionType `json:"subscription_type,omitempty"`
+
 	Params []ParamDef `json:"params,omitempty"`
 
 	Schema SchemaDef `json:"schema"`
@@ -148,4 +164,8 @@ type KeyDefinition struct {
 
 	BufferSize int `json:"buffer_size,omitempty"`
 	Workers    int `json:"workers,omitempty"`
+
+	// SingleConsumer rejects a second consumer for the same SubscriptionID at
+	// the bus handshake. Default false = unlimited consumers (fan-out).
+	SingleConsumer bool `json:"single_consumer,omitempty"`
 }

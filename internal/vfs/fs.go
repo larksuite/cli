@@ -26,8 +26,10 @@ type FS interface {
 
 	// Directory/File management
 	MkdirAll(path string, perm fs.FileMode) error
+	MkdirTemp(dir, pattern string) (string, error)
 	ReadDir(name string) ([]os.DirEntry, error)
 	Remove(name string) error
+	RemoveAll(path string) error
 	Rename(oldpath, newpath string) error
 
 	// Path resolution

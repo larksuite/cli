@@ -19,6 +19,7 @@ type ScopesOptions struct {
 	Factory *cmdutil.Factory
 	Ctx     context.Context
 	Format  string
+	JSON    bool
 }
 
 // NewCmdAuthScopes creates the auth scopes subcommand.
@@ -30,6 +31,9 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 		Short: "Query scopes enabled for the app",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Ctx = cmd.Context()
+			if opts.JSON {
+				opts.Format = "json"
+			}
 			if runF != nil {
 				return runF(opts)
 			}
@@ -38,6 +42,7 @@ func NewCmdAuthScopes(f *cmdutil.Factory, runF func(*ScopesOptions) error) *cobr
 	}
 
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json (default) | pretty")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmdutil.SetRisk(cmd, "read")
 
 	return cmd

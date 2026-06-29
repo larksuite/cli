@@ -128,6 +128,40 @@ func TestAPIClassifyContext(t *testing.T) {
 // TestCallAPITyped_NonJSON5xx pins that a non-JSON HTTP 5xx (e.g. a gateway 502
 // text/html page) is a retryable network/server_error carrying the header
 // log_id — not a mis-parsed internal/invalid_response.
+// TestDoAPIJSON_HTTPErrorWithZeroBodyCodeNotSwallowed pins that an HTTP status
+// error whose body omits a non-zero business code (e.g. 400 + {"code":0,...})
+// still surfaces a typed error. BuildAPIError treats code 0 as success and
+// returns nil, so the HTTP-status fallback must kick in — otherwise a 4xx
+// would be swallowed as (nil, nil).
+func TestDoAPIJSONTyped_HTTPErrorWithZeroBodyCodeNotSwallowed(t *testing.T) {
+	rt, reg := newCallAPITypedRuntime(t)
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/x/y",
+		Status:  400,
+		Headers: http.Header{"Content-Type": []string{"application/json"}},
+		RawBody: []byte(`{"code":0,"msg":"bad request"}`),
+	})
+
+	data, err := rt.DoAPIJSONTyped("POST", "/open-apis/x/y", nil, map[string]any{})
+	if err == nil {
+		t.Fatalf("HTTP 400 with code:0 body must not be swallowed; got data=%v err=nil", data)
+	}
+	if data != nil {
+		t.Errorf("data must be nil on HTTP error, got %v", data)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category = %s, want api", p.Category)
+	}
+	if p.Code != 400 {
+		t.Errorf("code = %d, want 400 (HTTP status used as code when body code is 0)", p.Code)
+	}
+}
+
 func TestCallAPITyped_NonJSON5xx(t *testing.T) {
 	rt, reg := newCallAPITypedRuntime(t)
 	reg.Register(&httpmock.Stub{
@@ -236,7 +270,7 @@ func TestDoAPIJSONTyped_RawClientErrorBecomesTypedInternal(t *testing.T) {
 }
 
 // TestDoAPIJSONTyped_NonZeroCode classifies a non-zero API code into a typed
-// errs.* error (carrying log_id), never a legacy output.ExitError envelope.
+// errs.* error (carrying log_id).
 func TestDoAPIJSONTyped_NonZeroCode(t *testing.T) {
 	rt, reg := newCallAPITypedRuntime(t)
 	reg.Register(&httpmock.Stub{
