@@ -673,6 +673,76 @@ func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
 	}
 }
 
+func TestCreate_ApprovalRoomMissingReason_GuidesRawAttendeesAPI(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_approval_room",
+					"summary":    "Approval Room",
+					"start_time": map[string]interface{}{"timestamp": "1742515200"},
+					"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_approval_room/attendees",
+		Body: map[string]interface{}{
+			"code": codeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "attendees[0].approval_reason is required for approval meeting rooms"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/events/evt_approval_room",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Approval Room",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "omm_room1",
+		"--as", "user",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for approval room missing approval_reason, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf returned !ok for %T", err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category=%q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want %q", p.Subtype, errs.SubtypeInvalidParameters)
+	}
+	if p.Code != codeInvalidParamsWithDetail {
+		t.Errorf("code=%d, want %d", p.Code, codeInvalidParamsWithDetail)
+	}
+	for _, want := range []string{"approval_reason", "calendar event.attendees create", "--as user", "rolled back successfully"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Errorf("hint should contain %q, got: %q", want, p.Hint)
+		}
+	}
+}
+
 // When the add-attendees call fails AND the rollback DELETE also fails, the
 // primary error stays the add failure (classification preserved) and the Hint
 // must surface BOTH the rollback failure reason and the orphan event_id so the
