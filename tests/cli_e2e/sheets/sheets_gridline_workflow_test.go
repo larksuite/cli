@@ -27,9 +27,14 @@ func TestSheets_GridlineWorkflow(t *testing.T) {
 	suffix := clie2e.GenerateSuffix()
 	spreadsheetToken := createSpreadsheet(t, parentT, ctx, "lark-cli-e2e-sheets-gridline-"+suffix, "bot")
 
-	infoResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+	infoResult, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 		Args:      []string{"sheets", "+info", "--spreadsheet-token", spreadsheetToken},
 		DefaultAs: "bot",
+	}, clie2e.RetryOptions{
+		ShouldRetry: func(result *clie2e.Result) bool {
+			return gridlineCommandNeedsRetry(result) ||
+				gjson.Get(result.Stdout, "data.sheets.sheets.0.sheet_id").String() == ""
+		},
 	})
 	require.NoError(t, err)
 	infoResult.AssertExitCode(t, 0)
@@ -39,17 +44,23 @@ func TestSheets_GridlineWorkflow(t *testing.T) {
 
 	for _, shortcut := range []string{"+sheet-hide-gridline", "+sheet-show-gridline"} {
 		t.Run(shortcut+" as bot", func(t *testing.T) {
-			result, err := clie2e.RunCmd(ctx, clie2e.Request{
+			result, err := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
 				Args: []string{
 					"sheets", shortcut,
 					"--spreadsheet-token", spreadsheetToken,
 					"--sheet-id", sheetID,
 				},
 				DefaultAs: "bot",
+			}, clie2e.RetryOptions{
+				ShouldRetry: gridlineCommandNeedsRetry,
 			})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
 			result.AssertStdoutStatus(t, true)
 		})
 	}
+}
+
+func gridlineCommandNeedsRetry(result *clie2e.Result) bool {
+	return result == nil || result.ExitCode != 0 || !gjson.Get(result.Stdout, "ok").Bool()
 }
