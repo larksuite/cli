@@ -48,10 +48,12 @@ These keys are enough for common workflow shells. Read the full schema only when
 
 | Step type | Minimal `data` keys |
 |---|---|
+| `AddRecordTrigger` | `table_name`, `watched_field_name`, optional `trigger_control_list` and `condition_list` |
 | `TimerTrigger` | `rule` (`DAILY` / `WORKDAY` are common), `start_time` as `YYYY-MM-DD HH:mm`, optional `is_never_end` |
 | `SetRecordTrigger` | `table_name`, `field_watch_info: [{ "field_name": "<field>" }]`, optional `trigger_control_list` and `condition_list` |
 | `ChangeRecordTrigger` | `table_name`, optional `trigger_control_list` and `condition_list`; use when add-or-change should trigger |
 | `FindRecordAction` | `table_name`, `field_names`, `should_proceed_when_no_results`, and exactly one of `filter_info` or `ref_info`; read the schema/guide when constructing that locator |
+| `GenerateAiTextAction` | `prompt` as text/ref items; later steps reference the generated text as `$.<stepId>`, not a nested path |
 | `LarkMessageAction` | `receiver`, `send_to_everyone`, `content`, optional `title`, `btn_list` as `[]` when no button is needed |
 | `Delay` | `duration` in minutes, range 1-120 |
 
