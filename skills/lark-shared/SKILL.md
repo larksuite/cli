@@ -25,7 +25,7 @@ lark-cli config init --new
 
 ### 认证任务速查
 
-认证、scope、业务域、登录态、退出登录态、撤销授权问题都走本技能，不要路由到 Claude settings / update-config。
+认证、scope、业务域、登录态、退出登录态、撤销授权问题都走本技能。
 
 | 用户意图 | 首选命令 / 回答 |
 |---|---|
