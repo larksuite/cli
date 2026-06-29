@@ -124,9 +124,15 @@ func resolveMeetingMessageType(runtime *common.RuntimeContext) (string, error) {
 		if text == "" {
 			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--text is required when --msg-type text").WithParam("--text")
 		}
+		if emojiType != "" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--emoji-type cannot be used when --msg-type text").WithParam("--emoji-type")
+		}
 	case meetingMessageTypeReaction:
 		if emojiType == "" {
 			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--emoji-type is required when --msg-type reaction").WithParam("--emoji-type")
+		}
+		if text != "" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--text cannot be used when --msg-type reaction").WithParam("--text")
 		}
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "--msg-type must be text or reaction").WithParam("--msg-type")

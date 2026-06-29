@@ -5,12 +5,16 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -28,6 +32,30 @@ func mustSetMeetingMessageSendFlag(t *testing.T, runtime *common.RuntimeContext,
 	t.Helper()
 	if err := runtime.Cmd.Flags().Set(name, value); err != nil {
 		t.Fatalf("Flags().Set(%q, %q) error = %v", name, value, err)
+	}
+}
+
+func assertMeetingMessageSendValidationError(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Errorf("Category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Param != wantParam {
+		t.Errorf("Param = %q, want %q", ve.Param, wantParam)
 	}
 }
 
@@ -94,9 +122,7 @@ func TestMeetingMessageSendValidateRejectsMeetingNumber(t *testing.T) {
 	mustSetMeetingMessageSendFlag(t, runtime, "text", "hello")
 
 	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
+	assertMeetingMessageSendValidationError(t, err, "--meeting-id")
 	if !strings.Contains(err.Error(), "9-digit meeting number") {
 		t.Fatalf("error = %v, want 9-digit meeting number hint", err)
 	}
@@ -108,11 +134,37 @@ func TestMeetingMessageSendValidateRejectsMissingEmojiType(t *testing.T) {
 	mustSetMeetingMessageSendFlag(t, runtime, "msg-type", "reaction")
 
 	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
-	if err == nil {
-		t.Fatal("expected validation error")
-	}
+	assertMeetingMessageSendValidationError(t, err, "--emoji-type")
 	if !strings.Contains(err.Error(), "--emoji-type is required") {
 		t.Fatalf("error = %v, want --emoji-type required", err)
+	}
+}
+
+func TestMeetingMessageSendValidateRejectsTextMessageWithEmojiType(t *testing.T) {
+	runtime := newMeetingMessageSendRuntime()
+	mustSetMeetingMessageSendFlag(t, runtime, "meeting-id", "7651377260537433044")
+	mustSetMeetingMessageSendFlag(t, runtime, "msg-type", "text")
+	mustSetMeetingMessageSendFlag(t, runtime, "text", "hello")
+	mustSetMeetingMessageSendFlag(t, runtime, "emoji-type", "LOVE")
+
+	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
+	assertMeetingMessageSendValidationError(t, err, "--emoji-type")
+	if !strings.Contains(err.Error(), "--emoji-type cannot be used") {
+		t.Fatalf("error = %v, want --emoji-type conflict", err)
+	}
+}
+
+func TestMeetingMessageSendValidateRejectsReactionMessageWithText(t *testing.T) {
+	runtime := newMeetingMessageSendRuntime()
+	mustSetMeetingMessageSendFlag(t, runtime, "meeting-id", "7651377260537433044")
+	mustSetMeetingMessageSendFlag(t, runtime, "msg-type", "reaction")
+	mustSetMeetingMessageSendFlag(t, runtime, "emoji-type", "LOVE")
+	mustSetMeetingMessageSendFlag(t, runtime, "text", "hello")
+
+	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
+	assertMeetingMessageSendValidationError(t, err, "--text")
+	if !strings.Contains(err.Error(), "--text cannot be used") {
+		t.Fatalf("error = %v, want --text conflict", err)
 	}
 }
 
@@ -138,5 +190,98 @@ func TestMeetingMessageSendDryRun_Text(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dry-run output missing %q: %s", want, out)
 		}
+	}
+}
+
+func TestMeetingMessageSendDryRun_ValidationErrorEnvelope(t *testing.T) {
+	runtime := newMeetingMessageSendRuntime()
+	mustSetMeetingMessageSendFlag(t, runtime, "meeting-id", "7651377260537433044")
+
+	dryRun := VCMeetingMessageSend.DryRun(context.Background(), runtime)
+	if got := dryRun.Format(); !strings.Contains(got, "--msg-type is required") {
+		t.Fatalf("dry-run error = %v, want --msg-type required", got)
+	}
+}
+
+func TestMeetingMessageSendExecute_Text(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    buildMeetingMessageSendPath(),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"msg_type": "text",
+				"uuid":     "cid-1",
+			},
+		},
+	}
+	reg.Register(stub)
+
+	err := mountAndRun(t, VCMeetingMessageSend, []string{
+		"+meeting-message-send", "--as", "user",
+		"--format", "pretty",
+		"--meeting-id", "7651377260537433044",
+		"--text", "hello",
+		"--uuid", "cid-1",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	var req map[string]interface{}
+	if err := json.Unmarshal(stub.CapturedBody, &req); err != nil {
+		t.Fatalf("failed to parse request body: %v", err)
+	}
+	for key, want := range map[string]string{
+		"meeting_id": "7651377260537433044",
+		"msg_type":   "text",
+		"content":    "hello",
+		"uuid":       "cid-1",
+	} {
+		if req[key] != want {
+			t.Errorf("%s = %v, want %s", key, req[key], want)
+		}
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"Meeting message sent.",
+		"Type:  text",
+		"UUID:  cid-1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output missing %q: %s", want, out)
+		}
+	}
+}
+
+func TestMeetingMessageSendExecute_ReactionFallsBackToRequestType(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    buildMeetingMessageSendPath(),
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	err := mountAndRun(t, VCMeetingMessageSend, []string{
+		"+meeting-message-send", "--as", "user",
+		"--format", "pretty",
+		"--meeting-id", "7651377260537433044",
+		"--msg-type", "reaction",
+		"--emoji-type", "LOVE",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+	if out := stdout.String(); !strings.Contains(out, "Type:  reaction") {
+		t.Fatalf("output missing fallback type: %s", out)
 	}
 }
