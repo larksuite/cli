@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules; lint and auto-fix mail HTML for Feishu editor compatibility. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, 校验邮件HTML, 检查邮件HTML, 邮件HTML兼容性, lint mail HTML, +lint-html, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
+description: "飞书邮箱 — draft, compose, send, reply, forward, read/search emails; manage drafts, folders, labels, contacts, attachments, trusted/blocked senders, and mail rules. Use when user mentions 起草邮件, 发邮件, 回复邮件, 转发邮件, 查看/搜索邮件, 收件箱, 邮件会话, 草稿, 附件, 邮件文件夹/标签/联系人, 信任发件人, 白名单, 屏蔽发件人, 黑名单, 收信规则, 邮件规则, 邮件HTML, lint mail HTML, +lint-html, trusted senders, blocked senders, mail rules."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -20,6 +20,7 @@ metadata:
 - **文件夹（Folder）**：邮件的组织容器。内置文件夹：`INBOX`、`SENT`、`DRAFT`、`SCHEDULED`、`TRASH`、`SPAM`、`ARCHIVED`，也可自定义。
 - **标签（Label）**：邮件的分类标记，内置标签如 `FLAGGED`（星标）。一封邮件可有多个标签。
 - **附件（Attachment）**：分为普通附件和内嵌图片（inline，通过 CID 引用）。
+- **信任/屏蔽发件人列表（Trusted / Blocked Senders）**：管理用户邮箱的发件人白名单/黑名单。加入白名单使用 `user_mailbox.allow_senders batch_create`；加入黑名单、屏蔽发件人、拉黑发件人使用 `user_mailbox.blocked_senders batch_create`。这不是收信规则，不要用 `user_mailbox.rules create` 代替。
 - **收信规则（Rule）**：自动处理收到的邮件的规则。可设置匹配条件（发件人、主题、收件人等）和执行动作（移动到文件夹、添加标签、标记已读、转发等）。通过 `user_mailbox.rules` 资源管理，支持创建、删除、列出、排序和更新。
 - **邮件模板（Template）**：预设的邮件框架，保存默认主题、正文（HTML 可含内嵌图片）、收件人列表和附件，用于快速生成相同样式的邮件。通过 `template_id` 引用。
 
@@ -64,6 +65,7 @@ metadata:
 | 不可逆删除 | `*.delete`、`drafts.delete` | ✅ 必须 |
 | 软删除 | `*.trash`、`*.batch_trash` | ✅ 必须 |
 | 取消定时 | `*.cancel_scheduled_send` | ✅ 必须 |
+| 修改信任/屏蔽发件人列表 | `allow_senders.batch_create` / `blocked_senders.batch_create` / `batch_remove` | ✅ 必须 |
 | 修改收信规则 | `rules.create` / `update` / `delete` | ✅ 必须 |
 | 标签变更 | `*.add_label`、`*.remove_label` | ❌ 可逆，免确认 |
 | 已读状态 | `*.mark_read` / `mark_unread` | ❌ 可逆，免确认 |
@@ -110,6 +112,29 @@ metadata:
 - 若当前结果返回了草稿打开链接，直接把链接展示给用户
 - 若用户需要，再继续帮他修改草稿或执行发送
 - 若本次产出了草稿且不是直接发信，则优先展示草稿打开链接；若当前输出没有链接，则静默处理
+
+### 发件人黑白名单：优先使用专用原子能力
+
+当用户要把某个地址或域名加入/移出自己的邮箱白名单或黑名单时，优先使用 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders`，不要用 `user_mailbox.rules create` 创建收信规则来模拟。
+
+| 用户意图 | 使用命令 |
+|---|---|
+| "信任/加入白名单/允许 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_create --as user` |
+| "屏蔽/拉黑/加入黑名单 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_create --as user` |
+| "移出白名单/取消信任 `<sender>`" | `lark-cli mail user_mailbox.allow_senders batch_remove --as user` |
+| "移出黑名单/取消屏蔽 `<sender>`" | `lark-cli mail user_mailbox.blocked_senders batch_remove --as user` |
+| "查看是否信任或屏蔽 `<sender>`" | 分别用 `allow_senders list` 和 `blocked_senders list`，在 `--params` 里传 `keyword` 搜索 |
+| 只说"加到我的名单里"但没说白名单或黑名单 | 先澄清要信任还是屏蔽，不要猜测，也不要写入 |
+
+加入 `cli-ai-block@example.test` 到自己的黑名单时，应先说明将使用：
+
+```bash
+lark-cli mail user_mailbox.blocked_senders batch_create --as user \
+  --params '{"user_mailbox_id":"me"}' \
+  --data '{"items":[{"sender":"cli-ai-block@example.test","sender_type":1}]}'
+```
+
+`sender_type=1` 表示邮箱地址，`sender_type=2` 表示域名。`user_mailbox.rules` 仅用于"主题包含 X 就标记已读/移动文件夹/转发"这类自动化收信规则，不用于管理信任或屏蔽发件人名单。
 
 ### CRITICAL — 首次使用任何命令前先查 `-h`
 
