@@ -373,10 +373,14 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 				return err
 			}
 			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // bounded by tar entry size
-				f.Close()
+				if cerr := f.Close(); cerr != nil {
+					return fmt.Errorf("copy tar entry: %w; close file: %v", err, cerr)
+				}
 				return err
 			}
-			f.Close()
+			if err := f.Close(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
