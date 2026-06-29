@@ -65,7 +65,7 @@ metadata:
 | 表单题目创建/更新 | `+form-questions-create` / `+form-questions-update` | 读 [lark-base-form-questions-create.md](references/lark-base-form-questions-create.md) / [lark-base-form-questions-update.md](references/lark-base-form-questions-update.md) |
 | 其他表单管理 | `+form-list/get/detail/create/update/delete` / `+form-questions-list/delete` | `+form-detail` 读 [lark-base-form-detail.md](references/lark-base-form-detail.md)；删除前确认目标表单 |
 | 仪表盘与组件 | `+dashboard-*` / `+dashboard-block-*` | 提到图表/看板/block 时先读 [lark-base-dashboard.md](references/lark-base-dashboard.md)；组件 `data_config` 读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)；读取图表计算结果用 `+dashboard-block-get-data` |
-| Workflow | `+workflow-*` | 创建/更新先读 [lark-base-workflow-quick.md](references/lark-base-workflow-quick.md)；quick 不覆盖的复杂 step 再按需读 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md)；list/get/enable/disable 只处理 workflow ID 与启停状态 |
+| Workflow | `+workflow-*` | 创建/更新先读 [lark-base-workflow-quick.md](references/lark-base-workflow-quick.md)；只查、启停、改标题并保留返回的 status/steps、或复用 `+workflow-get` 返回 steps 时不要读完整 schema；启停只用 `+workflow-enable/disable`；新增未知 step、分支、循环、引用或错误恢复再按需读 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) / [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) |
 | 高级权限与角色 | `+advperm-*` / `+role-*` | 角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；角色 create/update 或解读完整配置再读权限 JSON SSOT [role-config.md](references/role-config.md)；系统角色不可删除；关闭高级权限会影响自定义角色 |
 
 ## Base 心智模型
@@ -123,7 +123,7 @@ metadata:
 ## Dashboard / Workflow / Role
 
 - Dashboard 的复杂点是 block 的 `data_config`，不是 list/get/create/delete 命令参数。创建或更新 block 前先读 [dashboard-block-data-config.md](references/dashboard-block-data-config.md)，组件必须串行创建；`+dashboard-arrange` 是服务端智能布局，只在用户明确要求重排/美化时执行。`+dashboard-block-get-data` 读取图表最终计算结果，不返回 block 名称、类型、布局或 `data_config`；需要元数据先用 `+dashboard-block-get`。
-- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时先读 [lark-base-workflow-quick.md](references/lark-base-workflow-quick.md)，只在 quick 无法覆盖具体 step 类型、引用、分支、循环或错误恢复时，再按需读 [lark-base-workflow-guide.md](references/lark-base-workflow-guide.md) 和 steps JSON SSOT [lark-base-workflow-schema.md](references/lark-base-workflow-schema.md) 的相关小节；enable/disable/list 只需确认 workflow ID、当前启停状态和用户意图。
+- Workflow 的复杂点是 `steps` 结构。创建、更新或解释完整 workflow 时先读 [lark-base-workflow-quick.md](references/lark-base-workflow-quick.md)：quick 能判断是否只需 ID/状态、是否可复用 `+workflow-get` 返回结构，以及何时才需要打开完整 guide/schema 的相关小节；enable/disable/list 不读 steps schema。
 - Role 的复杂点是权限 JSON。角色操作先读入口 [lark-base-role-guide.md](references/lark-base-role-guide.md)；`+role-create` 只支持自定义角色；`+role-update` 是 delta merge；角色 create/update 或解读完整配置时读权限 JSON SSOT [role-config.md](references/role-config.md)。`+role-delete` 只适用于自定义角色，系统角色不可删除；删除角色和关闭高级权限前必须确认目标和影响。
 
 ## 常见恢复

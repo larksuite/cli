@@ -607,7 +607,9 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"workflow-id must start with wkf",
 				"steps may be an empty array",
 				"Use +workflow-get before +workflow-update",
-				"lark-base-workflow-schema.md",
+				"lark-base-workflow-quick.md",
+				"title checks",
+				"preserve-returned-step updates do not need it",
 			},
 		},
 		{

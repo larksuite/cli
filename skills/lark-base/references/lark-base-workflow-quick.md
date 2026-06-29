@@ -1,6 +1,6 @@
 # Workflow quick
 
-Use this as the first stop for Base workflow create/update tasks. Keep the full guide and schema as the source of truth for step fields; read only the relevant sections when this quick path is not enough.
+Use this as the first stop for Base workflow tasks. It decides the short path first; keep the full guide and schema as the source of truth for new step fields and read only the relevant sections when this quick path is not enough.
 
 ## Route
 
@@ -8,6 +8,7 @@ Use this as the first stop for Base workflow create/update tasks. Keep the full 
 |---|---|---|
 | Find a workflow by name | `+workflow-list --base-token <base> --as user --format json --jq '<filter>'` | Use `+workflow-get` only for the uniquely matched workflow you will inspect or update. |
 | Disable or enable | `+workflow-list` -> `+workflow-disable` / `+workflow-enable` | Do not read the steps schema; state changes do not modify steps. |
+| Inspect title/status/steps | `+workflow-get --workflow-id <wkf>` | Do not read schema just to report title, status, IDs, or that steps are empty. |
 | Create a workflow | `+base-block-create --type workflow --name "<title>"` -> `+workflow-update --workflow-id <wkf>` | Read schema sections only for the step types you need. |
 | Update workflow steps | `+workflow-get` -> edit returned `title/status/steps` -> `+workflow-update` | Full replacement semantics: keep fields you do not intend to change. |
 
@@ -24,6 +25,17 @@ lark-cli base +workflow-update --base-token <base_token> --as user --workflow-id
 
 New or newly configured workflows are not automatically enabled by an update. Call `+workflow-enable` only when the user asked for an active workflow or the task clearly requires activation.
 
+## Stay In The Short Path
+
+Do not open the full guide/schema for these tasks:
+
+- list workflows, find a unique workflow ID, enable, disable, or report current status;
+- rename a workflow by changing `title` while preserving returned `status` and `steps`; use `+workflow-enable` or `+workflow-disable` for state changes;
+- update an existing workflow by editing a small part of a `+workflow-get` response and leaving existing step `type`, `data`, `next`, and `children` shapes intact;
+- create an empty named workflow block when the user did not ask to configure trigger/action steps.
+
+Open the full guide/schema only when you must construct a new step data shape, add a step type that is not already present, change branch/loop links, write ref paths, or recover a platform schema error. When reading them locally, search for the heading first and read only that narrow section.
+
 ## Required Checks
 
 - Extract `base_token` from the `/base/<token>` URL before running Base commands.
@@ -38,6 +50,7 @@ Only read the full schema or guide when this quick file does not contain the nee
 
 | Need | Read |
 |---|---|
+| Common simple flow: record/timer trigger -> message, add/update/find record, delay, or AI text action | Search headings first; read only the exact guide example or schema step data section that is missing |
 | Basic step shape, `next`, `children.links` | `lark-base-workflow-schema.md` -> WorkflowStep / StepChildren |
 | Trigger type selection | `lark-base-workflow-schema.md` -> Trigger types |
 | Message receiver/content | `lark-base-workflow-schema.md` -> LarkMessageAction |
