@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -296,6 +297,8 @@ func TestMailWatchExecuteMapsFlagsToConsumeRunner(t *testing.T) {
 		"labels":     `["team"]`,
 		"folder-ids": `["INBOX"]`,
 		"folders":    `["news"]`,
+		"max-events": "1",
+		"timeout":    "90s",
 	})
 	f := &cmdutil.Factory{IOStreams: cmdutil.NewIOStreams(strings.NewReader(""), io.Discard, io.Discard)}
 	rt := &common.RuntimeContext{
@@ -342,8 +345,47 @@ func TestMailWatchExecuteMapsFlagsToConsumeRunner(t *testing.T) {
 	if gotOpts.ParamMap["watch_output_dir_full"] != "" {
 		t.Fatalf("watch_output_dir_full = %q, want empty without output-dir", gotOpts.ParamMap["watch_output_dir_full"])
 	}
+	if gotOpts.MaxEvents != 1 {
+		t.Fatalf("MaxEvents = %d, want 1", gotOpts.MaxEvents)
+	}
+	if gotOpts.Timeout != 90*time.Second {
+		t.Fatalf("Timeout = %v, want 90s", gotOpts.Timeout)
+	}
 	if !gotOpts.WatchStdinEOF {
 		t.Fatalf("WatchStdinEOF = false, want true")
+	}
+}
+
+func TestMailWatchMountedShortcutAcceptsExitControlFlags(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	var gotOpts consumecli.Options
+	oldRun := runMailWatchConsume
+	runMailWatchConsume = func(_ *cobra.Command, _ *cmdutil.Factory, _ string, opts consumecli.Options) error {
+		gotOpts = opts
+		return nil
+	}
+	t.Cleanup(func() { runMailWatchConsume = oldRun })
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch",
+		"--as", "user",
+		"--mailbox", "chenhuang@unbundle.top",
+		"--msg-format", "metadata",
+		"--format", "data",
+		"--max-events", "1",
+		"--timeout", "90s",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("runMountedMailShortcut() error = %v", err)
+	}
+	if gotOpts.MaxEvents != 1 {
+		t.Fatalf("MaxEvents = %d, want 1", gotOpts.MaxEvents)
+	}
+	if gotOpts.Timeout != 90*time.Second {
+		t.Fatalf("Timeout = %v, want 90s", gotOpts.Timeout)
+	}
+	if gotOpts.Envelope != nil {
+		t.Fatalf("Envelope = %#v, want nil for data output", gotOpts.Envelope)
 	}
 }
 
@@ -861,6 +903,8 @@ func mailWatchCommandForTest(t *testing.T, values map[string]string) *cobra.Comm
 			cmd.Flags().Bool(fl.Name, fl.Default == "true", "")
 		case "int":
 			cmd.Flags().Int(fl.Name, 0, "")
+		case "duration":
+			cmd.Flags().Duration(fl.Name, 0, "")
 		default:
 			cmd.Flags().String(fl.Name, fl.Default, "")
 		}

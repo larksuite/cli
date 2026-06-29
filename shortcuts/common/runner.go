@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
@@ -208,6 +209,12 @@ func (ctx *RuntimeContext) Bool(name string) bool {
 // Int returns an int flag value.
 func (ctx *RuntimeContext) Int(name string) int {
 	v, _ := ctx.Cmd.Flags().GetInt(name)
+	return v
+}
+
+// Duration returns a duration flag value.
+func (ctx *RuntimeContext) Duration(name string) time.Duration {
+	v, _ := ctx.Cmd.Flags().GetDuration(name)
 	return v
 }
 
@@ -1286,6 +1293,12 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 			var d int
 			fmt.Sscanf(fl.Default, "%d", &d)
 			cmd.Flags().Int(fl.Name, d, desc)
+		case "duration":
+			var d time.Duration
+			if fl.Default != "" {
+				d, _ = time.ParseDuration(fl.Default)
+			}
+			cmd.Flags().Duration(fl.Name, d, desc)
 		case "float64":
 			var d float64
 			fmt.Sscanf(fl.Default, "%g", &d)
