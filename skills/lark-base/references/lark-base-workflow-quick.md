@@ -36,6 +36,12 @@ Do not open the full guide/schema for these tasks:
 
 Open the full guide/schema only when you must construct a new step data shape, add a step type that is not already present, change branch/loop links, write ref paths, or recover a platform schema error. When reading them locally, search for the heading first and read only that narrow section.
 
+## Unsupported Trigger Boundaries
+
+- There is no native record-deleted trigger in the current workflow step schema. Do not search for or invent `DeleteRecordTrigger`, `DeletedRecordTrigger`, or `RecordDeletedTrigger`.
+- If the user asks for "record deleted" / "删除记录" to trigger a workflow, say the exact delete event is not supported by Base workflow steps. Offer a modelable alternative: set a status such as "离职/已删除" before deletion, clear a marker field, or update a boolean flag, then use `SetRecordTrigger` / `ChangeRecordTrigger`.
+- If the task must be triggered after a physical row is already deleted, stop and report the capability boundary instead of creating a misleading workflow.
+
 ## Required Checks
 
 - Extract `base_token` from the `/base/<token>` URL before running Base commands.
@@ -50,6 +56,7 @@ Only read the full schema or guide when this quick file does not contain the nee
 
 | Need | Read |
 |---|---|
+| Record deletion trigger | Do not read more for `DeleteRecordTrigger`; it is not supported. Model with status/field change before deletion, or report unsupported if exact deletion is required. |
 | Common simple flow: record/timer trigger -> message, add/update/find record, delay, or AI text action | Search headings first; read only the exact guide example or schema step data section that is missing |
 | Basic step shape, `next`, `children.links` | `lark-base-workflow-schema.md` -> WorkflowStep / StepChildren |
 | Trigger type selection | `lark-base-workflow-schema.md` -> Trigger types |
