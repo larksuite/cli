@@ -226,7 +226,7 @@ func pluginInstallLocal(rctx *common.RuntimeContext, projectPath, tgzPath string
 	}
 
 	// Extract to a temp dir first to read package.json
-	tmpDir, err := os.MkdirTemp("", "plugin-local-*") //nolint:forbidigo
+	tmpDir, err := os.MkdirTemp(projectPath, ".plugin-tmp-*") //nolint:forbidigo // same FS as node_modules to avoid EXDEV on Rename
 	if err != nil {
 		return appsFileIOError(err, "cannot create temp dir")
 	}
