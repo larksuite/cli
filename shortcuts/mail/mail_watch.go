@@ -59,7 +59,7 @@ func detectPromptInjection(content string) bool {
 var MailWatch = common.Shortcut{
 	Service:     "mail",
 	Command:     "+watch",
-	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
+	Description: "Watch incoming mail events. Prefer `lark-cli event consume mail.user_mailbox.event.message_received_v1`; `mail +watch` is a compatibility entry that maps to the same EventKey. Run with --print-output-schema to see per-format field reference before parsing output.",
 	Risk:        "read",
 	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},

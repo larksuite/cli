@@ -470,7 +470,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli mail +<verb> [flags]`）�
 | [`+messages`](references/lark-mail-messages.md) | Use when reading full content for multiple emails by message ID. Prefer this shortcut over calling raw mail user_mailbox.messages batch_get directly, because it base64url-decodes body fields and returns normalized per-message output that is easier to consume. |
 | [`+thread`](references/lark-mail-thread.md) | Use when querying a full mail conversation/thread by thread ID. Returns all messages in chronological order, including replies and drafts, with body content and attachments metadata, including inline images. |
 | [`+triage`](references/lark-mail-triage.md) | List mail summaries (date/from/subject/message_id). Use --query for full-text search, --filter for exact-match conditions. |
-| [`+watch`](references/lark-mail-watch.md) | Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output. |
+| [`+watch`](references/lark-mail-watch.md) | Watch incoming mail events. Prefer `lark-cli event consume mail.user_mailbox.event.message_received_v1`; `mail +watch` is a compatibility entry that maps to the same EventKey. Run with --print-output-schema to see per-format field reference before parsing output. |
 | [`+reply`](references/lark-mail-reply.md) | Reply to a message and save as draft (default). Use --confirm-send to send immediately after user confirmation. Sets Re: subject, In-Reply-To, and References headers automatically. |
 | [`+reply-all`](references/lark-mail-reply-all.md) | Reply to all recipients and save as draft (default). Use --confirm-send to send immediately after user confirmation. Includes all original To and CC automatically. |
 | [`+send`](references/lark-mail-send.md) | Compose a new email and save as draft (default). Use --confirm-send to send immediately after user confirmation. |
@@ -657,4 +657,3 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-
