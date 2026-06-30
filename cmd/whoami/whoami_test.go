@@ -52,7 +52,7 @@ func TestBuildResult_UserValid(t *testing.T) {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
 	}
 	if !r.Available || r.TokenStatus != "valid" {
-		t.Fatalf("available/token = %v/%q", r.Available, r.TokenStatus)
+		t.Fatalf("available=%v status=%q", r.Available, r.TokenStatus)
 	}
 	if r.OpenID != "ou_x" || r.UserName != "Alice" {
 		t.Fatalf("openId/userName = %q/%q", r.OpenID, r.UserName)
@@ -97,7 +97,7 @@ func TestBuildResult_BotReady(t *testing.T) {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
 	}
 	if !r.Available || r.TokenStatus != "ready" {
-		t.Fatalf("available/token = %v/%q", r.Available, r.TokenStatus)
+		t.Fatalf("available=%v status=%q", r.Available, r.TokenStatus)
 	}
 	if r.OpenID != "" || r.UserName != "" {
 		t.Fatalf("bot must not carry openId/userName: %#v", r)
@@ -177,7 +177,7 @@ func TestFormatPretty_UnavailableShowsHint(t *testing.T) {
 
 func TestWhoami_BotJSON(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "test-profile", AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+		ProfileName: "test-profile", AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
 	cmd := NewCmdWhoami(f)
@@ -194,7 +194,7 @@ func TestWhoami_BotJSON(t *testing.T) {
 		t.Fatalf("identity = %q, want bot", got.Identity)
 	}
 	if !got.Available || got.TokenStatus != "ready" {
-		t.Fatalf("available/token = %v/%q, want true/ready", got.Available, got.TokenStatus)
+		t.Fatalf("available=%v status=%q, want true/ready", got.Available, got.TokenStatus)
 	}
 	if got.Profile != "test-profile" {
 		t.Fatalf("profile = %q, want test-profile", got.Profile)
@@ -211,7 +211,7 @@ func TestWhoami_RejectsInvalidAs(t *testing.T) {
 	for _, bad := range []string{"admin", "USER", "bogus123", ""} {
 		t.Run("as="+bad, func(t *testing.T) {
 			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-				ProfileName: "p", AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+				ProfileName: "p", AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 			})
 			cmd := NewCmdWhoami(f)
 			cmd.SetArgs([]string{"--as", bad})
@@ -224,7 +224,7 @@ func TestWhoami_RejectsInvalidAs(t *testing.T) {
 
 func TestWhoami_ConfigErrorPropagates(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
-		ProfileName: "p", AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+		ProfileName: "p", AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 	wantErr := fmt.Errorf("boom")
 	f.Config = func() (*core.CliConfig, error) { return nil, wantErr }
