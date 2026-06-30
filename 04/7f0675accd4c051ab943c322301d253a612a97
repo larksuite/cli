@@ -2,7 +2,7 @@
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.5.2",
-  "base_commit_sha": "1870348fc928b7754d2d48cf930e65c0736e5582",
+  "base_commit_sha": "047f0675accd4c051ab943c322301d253a612a97",
   "prompts": {},
   "attestation_metadata": {},
   "remote_transcripts": {}
