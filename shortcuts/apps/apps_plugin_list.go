@@ -21,6 +21,7 @@ var AppsPluginList = common.Shortcut{
 	Risk:        "read",
 	Scopes:      []string{},
 	Tips: []string{
+		"Run in project root (like npm); does NOT take --app-id",
 		"Example: lark-cli apps +plugin-list",
 		"Example: lark-cli apps +plugin-list --format pretty",
 	},
