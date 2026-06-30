@@ -61,6 +61,9 @@ var AppsDBDataExport = common.Shortcut{
 		if n := rctx.Int("limit"); n <= 0 || n > dbDataExportMaxRows {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--limit must be a positive integer ≤ %d", dbDataExportMaxRows).WithParam("--limit")
 		}
+		if err := rejectOutputTraversal(rctx.Str("output")); err != nil {
+			return err
+		}
 		if _, _, err := exportFormatAndOutput(rctx); err != nil {
 			return err
 		}

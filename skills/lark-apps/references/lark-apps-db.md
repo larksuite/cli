@@ -29,7 +29,7 @@
 ## 约定（先读）
 
 - **环境 `--environment dev|online`（所有 db 命令统一默认 `dev`）**：看表、看结构、数据导入导出、变更追溯、审计、配额都按环境区分，写操作建议先在 `dev` 验。**注意：只有开启了多环境（`+db-env-create`）的应用才有 `dev` 分支；未开启多环境的应用其数据库在 `online`——对这类应用必须显式 `--environment online`，否则默认的 `dev` 分支不存在、会报错**。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。`+db-env-diff`/`+db-env-migrate` 是「dev→online 发布」语义、`+db-recovery-*` 作用于当前库，二者**没有** `--environment`。
-- **本地文件用工作目录内相对路径**：导入 `--file ./orders.csv`、导出 `--output ./out.csv`；路径在别处先 `cd` 过去或改成相对路径。
+- **本地文件 / `--output` 用工作目录内相对路径**：导入 `--file ./orders.csv`、导出 `--output ./out.csv`；绝对路径、或经 `..`/符号链接越出工作目录的 `--output` 会被拒（validation / exit 2）。路径在别处先 `cd` 过去或改成相对路径。
 - **高危操作必须带 `--yes`**：`+db-env-create`、`+db-data-import`、`+db-env-migrate`、`+db-recovery-apply` 缺省会被确认关卡拦下；动手前先用对应的预览命令或 `--dry-run` 看清影响。
 - **时间参数按口语自然传**（`--since`/`--until`/`--target`），格式见末尾。
 
@@ -149,6 +149,8 @@ lark-cli apps +db-quota-get --app-id app_xxx --environment dev
 - 日期 `2026-04-15`
 - 日期时间 `2026-04-15T10:00:00`
 - 带时区的 ISO 8601 `2026-04-15T10:00:00Z` / `2026-04-15T10:00:00+08:00`
+
+> **时区**：不带时区的 `日期` / `日期时间` 按**运行机器的本地时区**解析（再归一化到 UTC）。CI（UTC）与本地（如 UTC+8）跑同一条命令，时间边界会差几小时；要精确锁定时区时显式写 ISO 8601 带偏移（如 `...+08:00` / `...Z`）。`--target`（PITR 恢复）尤其建议带时区，避免恢复到非预期时间点。
 
 ## Agent 规则
 

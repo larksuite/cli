@@ -36,7 +36,7 @@ var AppsDBAuditList = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Type: "string_slice", Desc: "table(s) to list audit events for (repeatable)", Required: true},
-		{Name: "since", Desc: "filter: event at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ"},
+		{Name: "since", Desc: "filter: event at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ (bare date/datetime read in local timezone)"},
 		{Name: "until", Desc: "filter: event at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},

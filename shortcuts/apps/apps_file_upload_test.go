@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -143,8 +144,10 @@ func TestAppsFileUpload_EndToEnd(t *testing.T) {
 		t.Errorf("PUT Content-Type = %q, want image/png", putContentType)
 	}
 	// 原始文件名必须经 Content-Disposition 透传给 TOS（否则后端用 storage key 当文件名）。
-	if putCD != `attachment; filename="logo.png"` {
-		t.Errorf("PUT Content-Disposition = %q, want attachment; filename=\"logo.png\"", putCD)
+	// 断言按解析结果（format-agnostic）：mime.FormatMediaType 对无 tspecial 的名不加引号，
+	// 旧的写死字符串 `filename="logo.png"` 不再成立，但 filename 参数仍须等于原名。
+	if disp, params, err := mime.ParseMediaType(putCD); err != nil || disp != "attachment" || params["filename"] != "logo.png" {
+		t.Errorf("PUT Content-Disposition = %q, want disposition=attachment filename=logo.png (parse err=%v)", putCD, err)
 	}
 	got := stdout.String()
 	if !strings.Contains(got, `"path": "/1858537546760216.png"`) {
