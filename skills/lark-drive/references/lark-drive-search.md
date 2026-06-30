@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间（云盘/云存储）对象。
+基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，支持以**用户身份或应用身份**统一搜索云空间（云盘/云存储）对象。
 
 核心特性：
 
@@ -13,6 +13,8 @@
 - `--created-by-me` 一键从当前登录用户的 open_id 填 `original_creator_ids`，匹配“我最初创建的”；`--mine` 仍填 `creator_ids`，匹配 owner / 文档归属人
 
 > **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间（云盘/云存储）对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
+
+> **身份边界**：普通关键词、类型、文件夹、Wiki 空间、owner/open_id 等显式过滤支持 `--as user` 或 `--as bot`。`--mine` / `--created-by-me` 依赖当前登录用户 open_id 自动填充过滤条件；应用身份下如果没有配置用户 open_id，请改用显式 `--creator-ids` / `--original-creator-ids`。
 
 ## 命令
 
