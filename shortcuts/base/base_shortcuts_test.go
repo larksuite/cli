@@ -1060,6 +1060,15 @@ func TestBaseFieldValidate(t *testing.T) {
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
 		t.Fatalf("err=%v", err)
 	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"text"},{"name":"b","type":"text"}]`}, nil, nil)); err != nil {
+		t.Fatalf("array create validate err=%v", err)
+	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"text"},1]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json item 2 must be an object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"formula"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--i-have-read-guide is required") {
+		t.Fatalf("err=%v", err)
+	}
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `{"name":"f1","type":"formula"}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--i-have-read-guide is required") {
 		t.Fatalf("err=%v", err)
 	}
