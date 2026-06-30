@@ -78,6 +78,108 @@ func TestParseScopeAPI(t *testing.T) {
 	})
 }
 
+func TestValidateScopeAPIMethod(t *testing.T) {
+	for _, m := range []string{"GET", "POST", "PUT", "PATCH", "DELETE"} {
+		if err := validateScopeAPIMethod(m); err != nil {
+			t.Errorf("validateScopeAPIMethod(%q) = %v, want nil", m, err)
+		}
+	}
+	for _, m := range []string{"TRACE", "CONNECT", "OPTIONS", "HEAD", "", "get"} {
+		if err := validateScopeAPIMethod(m); err == nil {
+			t.Errorf("validateScopeAPIMethod(%q) = nil, want error", m)
+		}
+	}
+}
+
+func TestValidateScopeAPIPath(t *testing.T) {
+	for _, p := range []string{"/openapi/orders", "/openapi/v1/x"} {
+		if err := validateScopeAPIPath(p); err != nil {
+			t.Errorf("validateScopeAPIPath(%q) = %v, want nil", p, err)
+		}
+	}
+	for _, p := range []string{"", "openapi/x", "/openapi/../admin", "/..", "/openapi//x", "//x"} {
+		if err := validateScopeAPIPath(p); err == nil {
+			t.Errorf("validateScopeAPIPath(%q) = nil, want error", p)
+		}
+	}
+}
+
+func TestValidateRequestScopeFields(t *testing.T) {
+	ok := []map[string]interface{}{
+		{"allow_all": true},
+		{"allow_all": false, "http_infos": []interface{}{
+			map[string]interface{}{"http_method": "GET", "http_path": "/openapi/x"},
+		}},
+		{},
+	}
+	for _, rs := range ok {
+		if err := validateRequestScopeFields(rs); err != nil {
+			t.Errorf("validateRequestScopeFields(%v) = %v, want nil", rs, err)
+		}
+	}
+	bad := []map[string]interface{}{
+		{"foo": 1},                         // unknown top-level field
+		{"allow_all": "yes"},               // wrong type
+		{"http_infos": "x"},                // not an array
+		{"http_infos": []interface{}{"x"}}, // entry not an object
+		{"http_infos": []interface{}{map[string]interface{}{"http_method": "TRACE", "http_path": "/x"}}},           // bad method
+		{"http_infos": []interface{}{map[string]interface{}{"http_method": "GET", "http_path": "../x"}}},           // bad path
+		{"http_infos": []interface{}{map[string]interface{}{"http_method": "GET", "http_path": "/x", "extra": 1}}}, // unknown entry field
+	}
+	for _, rs := range bad {
+		if err := validateRequestScopeFields(rs); err == nil {
+			t.Errorf("validateRequestScopeFields(%v) = nil, want error", rs)
+		}
+	}
+}
+
+func TestParseRawScope(t *testing.T) {
+	if _, err := parseRawScope(`{"allow_all":true}`); err != nil {
+		t.Errorf("valid object errored: %v", err)
+	}
+	for _, raw := range []string{`["x"]`, `"s"`, `123`, `{"foo":1}`, `{bad`} {
+		if _, err := parseRawScope(raw); err == nil {
+			t.Errorf("parseRawScope(%q) = nil, want error", raw)
+		}
+	}
+}
+
+func TestParseScopeAPI_Rejects(t *testing.T) {
+	bad := []string{"TRACE /openapi/x", "CONNECT /x", "GET ../admin", "GET openapi/x", "GET /a//b"}
+	for _, in := range bad {
+		if _, err := parseScopeAPI(in); err == nil {
+			t.Errorf("parseScopeAPI(%q) = nil, want error", in)
+		}
+	}
+	// regression: legitimate input still parses (and lowercases the method)
+	info, err := parseScopeAPI("get /openapi/orders")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info["http_method"] != "GET" || info["http_path"] != "/openapi/orders" {
+		t.Errorf("info = %v", info)
+	}
+}
+
+func TestBuildRequestScope_RawValidation(t *testing.T) {
+	// unknown field now rejected (HIGH-2)
+	if _, err := buildRequestScope(false, nil, `{"foo":1}`); err == nil {
+		t.Errorf("raw scope with unknown field must error")
+	}
+	// non-object rejected
+	if _, err := buildRequestScope(false, nil, `["x"]`); err == nil {
+		t.Errorf("non-object raw scope must error")
+	}
+	// nested bad method rejected
+	if _, err := buildRequestScope(false, nil, `{"http_infos":[{"http_method":"TRACE","http_path":"/x"}]}`); err == nil {
+		t.Errorf("raw scope with bad nested method must error")
+	}
+	// regression: documented fields pass
+	if _, err := buildRequestScope(false, nil, `{"allow_all":true}`); err != nil {
+		t.Errorf("valid raw scope errored: %v", err)
+	}
+}
+
 func TestBuildRequestScope(t *testing.T) {
 	t.Run("nothing set -> nil", func(t *testing.T) {
 		rs, err := buildRequestScope(false, nil, "")
