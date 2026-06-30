@@ -63,8 +63,7 @@ func TestPluginInstall_SinglePlugin(t *testing.T) {
 
 	// Verify file extracted
 	manifestPath := filepath.Join(dir, "node_modules", "@test/my-plugin", "manifest.json")
-	if _, err := os.Stat(manifestPath); err != nil { //nolint:forbidigo
-		t.Fatalf("manifest.json not extracted: %v", err)
+	if _, err := os.Stat(manifestPath); err != nil {		t.Fatalf("manifest.json not extracted: %v", err)
 	}
 
 	// Verify package.json updated
@@ -92,8 +91,8 @@ func TestPluginInstall_AlreadyInstalled(t *testing.T) {
 	})
 	// Create an existing installed plugin with package.json containing version
 	pkgDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pkgDir, 0o755)                                                                //nolint:forbidigo
-	os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644) //nolint:forbidigo
+	os.MkdirAll(pkgDir, 0o755)
+	os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644)
 	chdirTest(t, dir)
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -126,7 +125,7 @@ func TestPluginExtractTGZ(t *testing.T) {
 		t.Fatalf("extract error: %v", err)
 	}
 
-	data, err := os.ReadFile(filepath.Join(destDir, "manifest.json")) //nolint:forbidigo
+	data, err := os.ReadFile(filepath.Join(destDir, "manifest.json"))
 	if err != nil {
 		t.Fatalf("manifest.json not extracted: %v", err)
 	}
@@ -153,7 +152,7 @@ func TestPluginExtractTGZ_PathTraversal(t *testing.T) {
 	if err := pluginExtractTGZ(&buf, destDir); err != nil {
 		t.Fatalf("extract should not error, but skip bad entries: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(destDir, "..", "..", "etc", "passwd")); err == nil { //nolint:forbidigo
+	if _, err := os.Stat(filepath.Join(destDir, "..", "..", "etc", "passwd")); err == nil {
 		t.Error("path traversal should have been blocked")
 	}
 }

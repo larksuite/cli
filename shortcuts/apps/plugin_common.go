@@ -56,7 +56,7 @@ func pluginCheckProjectDir(projectPath string) error {
 //     2.5 Read .env.local for MIAODA_APP_TYPE
 //  3. Detect by checking which directories exist under projectPath
 func pluginResolveCapDir(projectPath string) (string, error) {
-	if dir := os.Getenv("MIAODA_CAPABILITIES_DIR"); dir != "" { //nolint:forbidigo // env-based config lookup is intentional.
+	if dir := os.Getenv("MIAODA_CAPABILITIES_DIR"); dir != "" {
 		if filepath.IsAbs(dir) {
 			return dir, nil
 		}
@@ -64,7 +64,7 @@ func pluginResolveCapDir(projectPath string) (string, error) {
 	}
 
 	// 2. MIAODA_APP_TYPE: only appType=6 (Modern) uses shared/; everything else uses server/
-	appType := os.Getenv("MIAODA_APP_TYPE") //nolint:forbidigo // env-based config lookup is intentional.
+	appType := os.Getenv("MIAODA_APP_TYPE")
 	if appType == "" {
 		appType = pluginReadEnvLocalValue(projectPath, "MIAODA_APP_TYPE")
 	}
@@ -156,13 +156,11 @@ func pluginListCapabilities(capDir string) ([]map[string]interface{}, error) {
 // the list of dependent instance ids if any exist, or the underlying I/O error.
 func pluginCheckDependentInstances(projectPath, pluginKey string) error {
 	capDir, err := pluginResolveCapDir(projectPath)
-	if err != nil {
-		// No capabilities directory → no instances can exist → no conflict.
+	if err != nil { //nolint:nilerr -- best-effort: resolve failure means no capabilities dir, safe to skip
 		return nil
 	}
 	caps, err := pluginListCapabilities(capDir)
-	if err != nil {
-		// Cannot scan → best-effort, don't block.
+	if err != nil { //nolint:nilerr -- best-effort: scan failure should not block uninstall
 		return nil
 	}
 	var deps []string
@@ -179,26 +177,6 @@ func pluginCheckDependentInstances(projectPath, pluginKey string) error {
 	return appsFailedPreconditionError(
 		"plugin %q is still referenced by %d instance(s): %s", pluginKey, len(deps), strings.Join(deps, ", "),
 	).WithHint("delete these instances first (see <project-path>/.agents/skills/plugin-guide/SKILL.md for instance removal steps), clean up calling code and types, then retry uninstall")
-}
-
-// pluginCheckInstalled verifies that the plugin package is installed in node_modules
-// with a valid manifest.json.
-func pluginCheckInstalled(projectPath, pluginKey string) error {
-	pluginDir := filepath.Join(projectPath, "node_modules", pluginKey)
-	manifestPath := filepath.Join(pluginDir, "manifest.json")
-	if _, err := os.Stat(manifestPath); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; local stat for plugin check.
-		if os.IsNotExist(err) {
-			if pluginDirExists(pluginDir) {
-				return appsFailedPreconditionError(
-					"plugin %q exists in node_modules but manifest.json is missing; the package may not have been built correctly", pluginKey,
-				).WithHint("run 'lark-cli apps +plugin-install --name %s' to reinstall from registry", pluginKey)
-			}
-			return appsFailedPreconditionError("plugin %q is not installed", pluginKey).
-				WithHint("run 'lark-cli apps +plugin-install --name %s' to install", pluginKey)
-		}
-		return appsFileIOError(err, "cannot check plugin installation for %s", pluginKey)
-	}
-	return nil
 }
 
 // ── package.json helpers ──
@@ -330,7 +308,7 @@ func pluginInstalledVersion(projectPath, pluginKey string) string {
 func pluginExtractTGZ(r io.Reader, destDir string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("gzip: %w", err)
+		return fmt.Errorf("gzip: %w", err) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
 	}
 	defer gz.Close()
 
@@ -342,7 +320,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("tar: %w", err)
+			return fmt.Errorf("tar: %w", err) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
 		}
 
 		name := pluginStripFirstComponent(hdr.Name)
@@ -374,7 +352,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			}
 			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // bounded by tar entry size
 				if cerr := f.Close(); cerr != nil {
-					return fmt.Errorf("copy tar entry: %w; close file: %v", err, cerr)
+					return fmt.Errorf("copy tar entry: %w; close file: %w", err, cerr) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
 				}
 				return err
 			}

@@ -19,7 +19,7 @@ func TestPluginResolveProjectPath_DefaultToCwd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	cwd, _ := os.Getwd() //nolint:forbidigo
+	cwd, _ := os.Getwd()
 	if got != cwd {
 		t.Errorf("got %q, want cwd %q", got, cwd)
 	}
@@ -39,7 +39,7 @@ func TestPluginResolveProjectPath_ExplicitPath(t *testing.T) {
 
 func TestPluginCheckProjectDir_OK(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}"), 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := pluginCheckProjectDir(dir); err != nil {
@@ -99,7 +99,7 @@ func TestPluginResolveCapDir_AppTypeEnvShared(t *testing.T) {
 
 func TestPluginResolveCapDir_EnvLocal(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".env.local"), []byte("MIAODA_APP_TYPE=2\n"), 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, ".env.local"), []byte("MIAODA_APP_TYPE=2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, err := pluginResolveCapDir(dir)
@@ -113,7 +113,7 @@ func TestPluginResolveCapDir_EnvLocal(t *testing.T) {
 
 func TestPluginResolveCapDir_DetectServer(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "server", "capabilities"), 0o755); err != nil { //nolint:forbidigo
+	if err := os.MkdirAll(filepath.Join(dir, "server", "capabilities"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := pluginResolveCapDir(dir)
@@ -127,7 +127,7 @@ func TestPluginResolveCapDir_DetectServer(t *testing.T) {
 
 func TestPluginResolveCapDir_DetectShared(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "shared", "capabilities"), 0o755); err != nil { //nolint:forbidigo
+	if err := os.MkdirAll(filepath.Join(dir, "shared", "capabilities"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := pluginResolveCapDir(dir)
@@ -141,10 +141,10 @@ func TestPluginResolveCapDir_DetectShared(t *testing.T) {
 
 func TestPluginResolveCapDir_Ambiguous(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "server", "capabilities"), 0o755); err != nil { //nolint:forbidigo
+	if err := os.MkdirAll(filepath.Join(dir, "server", "capabilities"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(dir, "shared", "capabilities"), 0o755); err != nil { //nolint:forbidigo
+	if err := os.MkdirAll(filepath.Join(dir, "shared", "capabilities"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	_, err := pluginResolveCapDir(dir)
@@ -210,7 +210,7 @@ func TestPluginListCapabilities_WithFiles(t *testing.T) {
 	writeTestCapJSON(t, dir, "cap1.json", map[string]interface{}{"id": "cap1", "name": "Cap One"})
 	writeTestCapJSON(t, dir, "cap2.json", map[string]interface{}{"id": "cap2", "name": "Cap Two"})
 	// non-JSON file should be skipped
-	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore"), 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -226,7 +226,7 @@ func TestPluginListCapabilities_WithFiles(t *testing.T) {
 func TestPluginListCapabilities_SkipsMalformed(t *testing.T) {
 	dir := t.TempDir()
 	writeTestCapJSON(t, dir, "good.json", map[string]interface{}{"id": "good"})
-	if err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("not json"), 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, "bad.json"), []byte("not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -247,7 +247,7 @@ func writeTestCapJSON(t *testing.T, dir, filename string, data map[string]interf
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, filename), b, 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, filename), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -40,8 +40,8 @@ func TestPluginList_Installed(t *testing.T) {
 		},
 	})
 	manifestDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(manifestDir, 0o755)                                                                //nolint:forbidigo
-	os.WriteFile(filepath.Join(manifestDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644) //nolint:forbidigo
+	os.MkdirAll(manifestDir, 0o755)
+	os.WriteFile(filepath.Join(manifestDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644)
 	chdirTest(t, dir)
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -99,14 +99,14 @@ func TestPluginList_DeclaredNotInstalled(t *testing.T) {
 
 func chdirTest(t *testing.T, dir string) {
 	t.Helper()
-	prev, err := os.Getwd() //nolint:forbidigo
+	prev, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chdir(dir); err != nil { //nolint:forbidigo
+	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Chdir(prev) }) //nolint:forbidigo,errcheck
+	t.Cleanup(func() { os.Chdir(prev) }) //nolint:errcheck
 }
 
 func writeTestPkgJSON(t *testing.T, dir string, pkg map[string]interface{}) {
@@ -115,7 +115,7 @@ func writeTestPkgJSON(t *testing.T, dir string, pkg map[string]interface{}) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "package.json"), data, 0o644); err != nil { //nolint:forbidigo
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

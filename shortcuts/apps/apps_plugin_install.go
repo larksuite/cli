@@ -31,6 +31,7 @@ var AppsPluginInstall = common.Shortcut{
 	Description:       "Install a plugin package (download, extract, update package.json)",
 	Risk:              "write",
 	ConditionalScopes: []string{"spark:app:read"},
+	Scopes:            []string{},
 	AuthTypes:         []string{"user"},
 	Tips: []string{
 		"Example: lark-cli apps +plugin-install --name @official-plugins/ai-text-generate",
@@ -195,7 +196,7 @@ func pluginInstallAll(ctx context.Context, rctx *common.RuntimeContext, projectP
 			continue
 		}
 		if err := pluginInstallOne(ctx, rctx, projectPath, key, version); err != nil {
-			return fmt.Errorf("install %s: %w", key, err)
+			return errs.NewInternalError(errs.SubtypeUnknown, "install %s failed", key).WithCause(err)
 		}
 		installed++
 	}

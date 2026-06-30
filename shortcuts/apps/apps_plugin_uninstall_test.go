@@ -20,8 +20,8 @@ func TestPluginUninstall_Basic(t *testing.T) {
 		},
 	})
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
-	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)
+	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644)
 	chdirTest(t, dir)
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
@@ -34,7 +34,7 @@ func TestPluginUninstall_Basic(t *testing.T) {
 	}
 
 	// Verify node_modules removed
-	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) { //nolint:forbidigo
+	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
 		t.Error("node_modules plugin dir should be removed")
 	}
 
@@ -77,12 +77,12 @@ func TestPluginUninstall_BlockedByDependentInstance(t *testing.T) {
 	})
 	// Install plugin
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
-	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)
+	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644)
 
 	// Create a capability that references this plugin
 	capDir := filepath.Join(dir, "server", "capabilities")
-	os.MkdirAll(capDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(capDir, 0o755)
 	writeTestCapJSON(t, capDir, "my-instance.json", map[string]interface{}{
 		"id":        "my-instance",
 		"pluginKey": "@test/my-plugin",
@@ -100,7 +100,7 @@ func TestPluginUninstall_BlockedByDependentInstance(t *testing.T) {
 	}
 
 	// Verify plugin directory still exists (blocked)
-	if _, err := os.Stat(pluginDir); err != nil { //nolint:forbidigo
+	if _, err := os.Stat(pluginDir); err != nil {
 		t.Errorf("plugin directory should still exist after blocked uninstall: %v", err)
 	}
 
@@ -125,12 +125,12 @@ func TestPluginUninstall_WithUnrelatedInstances(t *testing.T) {
 		},
 	})
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
-	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)
+	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644)
 
 	// Create a capability that references a DIFFERENT plugin — should not block
 	capDir := filepath.Join(dir, "server", "capabilities")
-	os.MkdirAll(capDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(capDir, 0o755)
 	writeTestCapJSON(t, capDir, "other-instance.json", map[string]interface{}{
 		"id":        "other-instance",
 		"pluginKey": "@test/other-plugin",
@@ -148,7 +148,7 @@ func TestPluginUninstall_WithUnrelatedInstances(t *testing.T) {
 	}
 
 	// Verify plugin was removed
-	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) { //nolint:forbidigo
+	if _, err := os.Stat(pluginDir); !os.IsNotExist(err) {
 		t.Error("plugin directory should be removed")
 	}
 }
