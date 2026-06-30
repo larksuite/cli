@@ -1,7 +1,7 @@
 ---
 name: lark-im
 version: 1.0.0
-description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
+description: "飞书即时通讯：收发消息、建群/查群、读取或搜索群消息（含 @我/未回复）、管理群成员、消息置顶/取消置顶、发送和处理交互卡片、下载消息资源、管理表情/标记/Feed。用户要操作 IM 群聊、私聊、消息、线程、Pin、Feed 快捷入口、Feed 分组或卡片回调时使用；认证初始化、全局权限排查、历史会议和日程任务不属于本 skill。用户明确要求直接执行时，进入本 skill 用 lark-cli 执行，CLI 风险门禁负责必要确认。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -10,7 +10,33 @@ metadata:
 
 # im (v1)
 
-**CRITICAL — 开始前 MUST 先用 Read 工具读取 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，其中包含认证、权限处理**
+Use this skill directly for IM tasks. Read `../lark-shared/SKILL.md` only when you must initialize auth, switch profiles, recover from an auth/permission error, or interpret `_notice`; do not front-load shared rules for ordinary IM read/write flows.
+
+## Fast Routes
+
+Prefer these routes before `schema`, raw `api`, or broad list commands:
+
+| User intent | Start here | Avoid |
+| --- | --- | --- |
+| Find a group by name | `lark-cli im +chat-search --query "<name>" --format json` | `+chat-list` unless search fails; it can return many unrelated chats |
+| Create a group | `lark-cli im +chat-create --as user|bot --name "<name>" ... --format json` | Raw `im chats create` unless shortcut flags cannot express the request |
+| Send text / markdown / card / media | `lark-cli im +messages-send --chat-id oc_xxx --text ...` or `--msg-type interactive --content '<card JSON>'` | Guessing `schema im.messages.create`; that method is not exposed as an IM resource command |
+| Pin / unpin a message | `lark-cli im pins create --data '{"message_id":"om_xxx"}'` then `lark-cli im pins delete --message-id om_xxx --yes` | `+feed-shortcut-*`; Feed shortcuts pin chats in the sidebar, not messages |
+| Read messages in a named group | `+chat-search` first, then `+chat-messages-list --chat-id oc_xxx --page-size 10 --format json` | `+chat-list` or large `--page-size 50` pages when only a few messages are needed |
+| Search messages / @me | `+messages-search --as user --chat-id oc_xxx --is-at-me --page-size 20 --format json` | Bot identity for `+messages-search`; this shortcut is user-only |
+
+For large message pages, project fields with `--jq` instead of reading full persisted output, for example:
+
+```bash
+lark-cli im +chat-messages-list --chat-id oc_xxx --page-size 20 --format json \
+  --jq '.data.messages[] | {message_id, create_time, sender, content, mentions}'
+```
+
+## Guardrails
+
+- `@me` / `@我` means messages mentioning the current user. If a matched message was sent by the current user, do not count it as "someone mentioned me and I have not replied"; compare with the current user identity from `lark-cli auth status --json --verify` when needed.
+- For "unreplied @me" questions, search mentions first with `+messages-search --is-at-me`; do not dump a large chat history page before narrowing candidates.
+- If the user asks to create something and then update it or send an updated version, the final answer must preserve both facts: the initially created object and the updated/sent result.
 
 ## Core Concepts
 
@@ -121,127 +147,11 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 | [`+feed-group-list-item`](references/lark-im-feed-group-list-item.md) | List feed cards in a feed group (tag); user-only; enriches each item with chat_name resolved from feed_id; supports --page-all auto-pagination |
 | [`+feed-group-query-item`](references/lark-im-feed-group-query-item.md) | Look up specific feed cards in a feed group (tag) by ID; user-only; enriches each item with chat_name resolved from feed_id |
 
-## API Resources
+## Raw API Fallback
 
 ```bash
-lark-cli schema im.<resource>.<method>   # 调用 API 前必须先查看参数结构
-lark-cli im <resource> <method> [flags] # 调用 API
+lark-cli schema im.<resource>.<method>   # for one raw method
+lark-cli im <resource> <method> [flags] # call raw IM resource
 ```
 
-> **重要**：使用原生 API 时，必须先运行 `schema` 查看 `--data` / `--params` 参数结构，不要猜测字段格式。
-
-### chats
-
-  - `create` — 创建群。Identity: `bot` only (`tenant_access_token`).
-  - `get` — 获取群信息。Identity: supports `user` and `bot`; the caller must be in the target chat to get full details, and must belong to the same tenant for internal chats.
-  - `link` — 获取群分享链接。Identity: supports `user` and `bot`; the caller must be in the target chat, must be an owner or admin when chat sharing is restricted to owners/admins, and must belong to the same tenant for internal chats.
-  - `update` — 更新群信息。Identity: supports `user` and `bot`.
-
-### chat.members
-
-  - `bots` — 获取群内机器人列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
-  - `create` — 将用户或机器人拉入群聊。Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`.
-  - `delete` — 将用户或机器人移出群聊。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request.
-  - `get` — 获取群成员列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
-
-### chat.user_setting
-
-  - `batch_query` — 批量查询当前用户在群内的个人偏好设置 (e.g. `is_muted` mutes normal messages, `is_mute_at_all` mutes @all messages); up to 10 chats per request. Identity: `user` only (`user_access_token`); the caller must be in each target chat.
-  - `batch_update` — 批量更新当前用户在群内的个人偏好设置 (e.g. `is_muted` mutes normal messages, `is_mute_at_all` mutes @all messages); up to 10 chats per request. Identity: `user` only (`user_access_token`); the caller must be in each target chat.
-
-### chat.nickname
-
-  - `get` — 获取自己的群昵称。Get your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`); returns an empty string when no nickname is set.
-  - `update` — 设置自己的群昵称。Set or update your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`); `nickname` must be a non-empty string (max 300 bytes). Use DELETE to clear it.
-  - `delete` — 清空自己的群昵称。Clear your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`).
-
-### chat.managers
-
-  - `add_managers` — 指定群管理员。Identity: supports `user` and `bot`; only the group owner can add managers; max 10 managers per chat (20 for super-large chats), and at most 5 bots per request.
-  - `delete_managers` — 删除群管理员。Identity: supports `user` and `bot`; only the group owner can remove managers; max 50 users or 5 bots per request.
-
-### chat.moderation
-
-  - `get` — 获取群成员发言权限。Identity: supports `user` and `bot`; the caller must be in the target chat and belong to the same tenant.
-  - `update` — 更新群发言权限。Identity: supports `user` and `bot`; only the group owner (or creator bot with `im:chat:operate_as_owner`) can update; the caller must be in the chat.
-
-### messages
-
-  - `delete` — 撤回消息。Identity: supports `user` and `bot`; for `bot` calls, the bot must be in the chat to revoke group messages; to revoke another user's group message, the bot must be the owner, an admin, or the creator; for user P2P recalls, the target user must be within the bot's availability.
-  - `forward` — 转发消息。Identity: supports `user` and `bot`.
-  - `merge_forward` — 合并转发消息。Identity: `bot` only (`tenant_access_token`).
-  - `read_users` — 查询消息已读信息。Identity: `bot` only (`tenant_access_token`); the bot must be in the chat, and can only query read status for messages it sent within the last 7 days.
-  - `urgent_app` — 发送应用内加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
-  - `urgent_phone` — 发送电话加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
-  - `urgent_sms` — 发送短信加急。Identity: `bot` only (`tenant_access_token`); the bot must be the message sender and must be in the conversation that contains the message.
-
-### reactions
-
-  - `batch_query` — 批量获取消息表情。Identity: supports `user` and `bot`.[Must-read](references/lark-im-reactions.md)
-  - `create` — 添加消息表情回复。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.[Must-read](references/lark-im-reactions.md)
-  - `delete` — 删除消息表情回复。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message, and can only delete reactions added by itself.[Must-read](references/lark-im-reactions.md)
-  - `list` — 获取消息表情回复。Identity: supports `user` and `bot`; the caller must be in the conversation that contains the message.[Must-read](references/lark-im-reactions.md)
-
-### threads
-
-  - `forward` — 转发话题。Identity: supports `user` and `bot`.
-
-### images
-
-  - `create` — 上传图片。Identity: `bot` only (`tenant_access_token`).
-
-### pins
-
-  - `create` — Pin 消息。Identity: supports `user` and `bot`.
-  - `delete` — 移除 Pin 消息。Identity: supports `user` and `bot`.
-  - `list` — 获取群内 Pin 消息。Identity: supports `user` and `bot`.
-
-### feed.groups
-
-  - `batch_add_item` — Batch add feed cards to a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-  - `batch_query` — Batch query feed groups. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-  - `batch_remove_item` — Batch remove feed cards from a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-  - `create` — Create a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-  - `delete` — Delete a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-  - `update` — Update a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
-
-## 权限表
-
-| 方法 | 所需 scope |
-|------|-----------|
-| `chats.create` | `im:chat:create` |
-| `chats.get` | `im:chat:read` |
-| `chats.link` | `im:chat:read` |
-| `chats.update` | `im:chat:update` |
-| `chat.members.bots` | `im:chat.members:read` |
-| `chat.members.create` | `im:chat.members:write_only` |
-| `chat.members.delete` | `im:chat.members:write_only` |
-| `chat.members.get` | `im:chat.members:read` |
-| `chat.user_setting.batch_query` | `im:chat.user_setting:read` |
-| `chat.user_setting.batch_update` | `im:chat.user_setting:write` |
-| `chat.managers.add_managers` | `im:chat.managers:write_only` |
-| `chat.managers.delete_managers` | `im:chat.managers:write_only` |
-| `chat.moderation.get` | `im:chat.moderation:read` |
-| `chat.moderation.update` | `im:chat:moderation:write_only` |
-| `messages.delete` | `im:message:recall` |
-| `messages.forward` | `im:message` |
-| `messages.merge_forward` | `im:message` |
-| `messages.read_users` | `im:message:readonly` |
-| `messages.urgent_app` | `im:message.urgent` |
-| `messages.urgent_phone` | `im:message.urgent:phone` |
-| `messages.urgent_sms` | `im:message.urgent:sms` |
-| `reactions.batch_query` | `im:message.reactions:read` |
-| `reactions.create` | `im:message.reactions:write_only` |
-| `reactions.delete` | `im:message.reactions:write_only` |
-| `reactions.list` | `im:message.reactions:read` |
-| `threads.forward` | `im:message` |
-| `images.create` | `im:resource` |
-| `pins.create` | `im:message.pins:write_only` |
-| `pins.delete` | `im:message.pins:write_only` |
-| `pins.list` | `im:message.pins:read` |
-| `feed.groups.batch_add_item` | `im:feed_group_v1:write` |
-| `feed.groups.batch_query` | `im:feed_group_v1:read` |
-| `feed.groups.batch_remove_item` | `im:feed_group_v1:write` |
-| `feed.groups.create` | `im:feed_group_v1:write` |
-| `feed.groups.delete` | `im:feed_group_v1:write` |
-| `feed.groups.update` | `im:feed_group_v1:write` |
+Use raw methods only when no shortcut covers the task. Do not guess versioned names such as `im.v1.*`; this CLI uses resource names like `im.chats.create`, `im.chat.members.get`, `im.messages.forward`, `im.pins.create`, and `im.feed.groups.*`. For exact flags and scopes, use the single command's `--help` or single-method `schema`, not a broad resource schema dump.

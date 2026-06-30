@@ -207,6 +207,18 @@ var ImChatSearch = common.Shortcut{
 	},
 }
 
+// ImSearchChat is a hidden compatibility alias for agents that naturally try
+// the verb-first form before discovering the canonical +chat-search shortcut.
+var ImSearchChat = newHiddenChatSearchAlias()
+
+func newHiddenChatSearchAlias() common.Shortcut {
+	alias := ImChatSearch
+	alias.Command = "+search-chat"
+	alias.Description = "Hidden alias for +chat-search"
+	alias.Hidden = true
+	return alias
+}
+
 // buildSearchChatBody builds the JSON request body for POST /im/v2/chats/search
 // from the runtime flag values. The query string is normalized via
 // normalizeChatSearchQuery (hyphenated terms get quoted). The "filter" object
