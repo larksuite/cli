@@ -32,6 +32,8 @@ metadata:
 - 本轮 Base 不依赖 `lark-cli schema`。SKILL 只保留路由、风险和复杂 JSON/DSL；简单命令由命令自身的参数、tips 和错误恢复承接。
 - 用户要把 Excel / CSV / `.base` 导入成 Base 时，先转 `lark-cli drive +import --type bitable`，导入完成后再回到 Base 命令。
 - 认证、初始化、scope、身份切换、权限不足恢复属于 `lark-shared`；Base 文档只保留会影响 Base 路径选择的权限规则。
+- 用户给本地附件路径时，只检查当前工作目录下的精确路径和一次 `files/<name>` 相对路径；找不到就先报告缺失文件并停止，不要扩大到父目录、临时目录、全仓库搜索或派子 agent。
+- Base 业务命令返回 `authentication/token_missing` 时，停止继续 Base 探测；简短告知用户先运行 `lark-cli auth login --domain base` 或按错误中的 missing scope 授权。不要为了当前 Base 任务再查 auth help、生成/读取二维码图片，除非用户明确要求你代发起授权或要二维码。
 
 ## 先获取 Base Token 和所需 ID
 
