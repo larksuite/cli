@@ -156,12 +156,12 @@ func pluginListCapabilities(capDir string) ([]map[string]interface{}, error) {
 // the list of dependent instance ids if any exist, or the underlying I/O error.
 func pluginCheckDependentInstances(projectPath, pluginKey string) error {
 	capDir, err := pluginResolveCapDir(projectPath)
-	if err != nil { //nolint:nilerr -- best-effort: resolve failure means no capabilities dir, safe to skip
-		return nil
+	if err != nil {
+		return nil //nolint:nilerr // best-effort: no capabilities dir means no conflict
 	}
 	caps, err := pluginListCapabilities(capDir)
-	if err != nil { //nolint:nilerr -- best-effort: scan failure should not block uninstall
-		return nil
+	if err != nil {
+		return nil //nolint:nilerr // best-effort: scan failure should not block uninstall
 	}
 	var deps []string
 	for _, cap := range caps {
@@ -308,7 +308,7 @@ func pluginInstalledVersion(projectPath, pluginKey string) string {
 func pluginExtractTGZ(r io.Reader, destDir string) error {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return fmt.Errorf("gzip: %w", err) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
+		return fmt.Errorf("gzip: %w", err) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 	}
 	defer gz.Close()
 
@@ -320,7 +320,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("tar: %w", err) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
+			return fmt.Errorf("tar: %w", err) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 		}
 
 		name := pluginStripFirstComponent(hdr.Name)
@@ -352,7 +352,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			}
 			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // bounded by tar entry size
 				if cerr := f.Close(); cerr != nil {
-					return fmt.Errorf("copy tar entry: %w; close file: %w", err, cerr) //nolint:forbidigo -- intermediate helper error; callers wrap as typed
+					return fmt.Errorf("copy tar entry: %w; close file: %w", err, cerr) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 				}
 				return err
 			}
