@@ -542,7 +542,15 @@ func TestManagerGetKeepsStdoutEmptyWhenRefreshFails(t *testing.T) {
 	if err := manager.Store.Upsert(*record); err != nil {
 		t.Fatalf("Upsert expired record returned error: %v", err)
 	}
-	issuer.err = errors.New("permission denied")
+	samplePAT := testPublicSafeJoin("pat", "-sample")
+	samplePassword := "sample-password"
+	issuer.err = errs.NewAPIError(
+		errs.SubtypeUnknown,
+		"permission denied: "+
+			testCredentialAssignment("token", samplePAT)+" "+
+			testCredentialAssignment("password", samplePassword)+" "+
+			testCredentialURLWithUserInfo("example.com/git/u/app.git", samplePAT),
+	).WithHint("retry without " + testCredentialAssignment("token", samplePAT)).WithLogID("log_x")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -551,6 +559,22 @@ func TestManagerGetKeepsStdoutEmptyWhenRefreshFails(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	stderr := errOut.String()
+	for _, leaked := range []string{samplePAT, testCredentialAssignment("password", samplePassword), "user:" + samplePAT + "@"} {
+		if strings.Contains(stderr, leaked) {
+			t.Fatalf("stderr leaks %q: %s", leaked, stderr)
+		}
+	}
+	for _, want := range []string{
+		testRedactedAssignment("token"),
+		testRedactedAssignment("password"),
+		"https://***@example.com/git/u/app.git",
+		"log_id=log_x",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q in %s", want, stderr)
+		}
 	}
 	if !bytes.Contains(errOut.Bytes(), []byte("lark-cli apps +git-credential-init --app-id app_xxx")) {
 		t.Fatalf("stderr missing actionable hint: %q", errOut.String())
@@ -1411,10 +1435,36 @@ func TestSecretStoreBranches(t *testing.T) {
 	if err := NewSecretStore(newFakeKeychain()).Set("", "pat"); err == nil {
 		t.Fatal("SecretStore.Set empty ref returned nil error")
 	}
+	samplePAT := testPublicSafeJoin("pat", "-sample")
+	kc.setErr = errors.New("keychain set failed with " + testCredentialAssignment("token", samplePAT))
+	var setCfgErr *errs.ConfigError
+	setErr := NewSecretStore(kc).Set("ref", samplePAT)
+	if setErr == nil || !errors.As(setErr, &setCfgErr) {
+		t.Fatalf("SecretStore.Set keychain error = %T %v, want ConfigError", setErr, setErr)
+	}
+	assertProblem(t, setErr, errs.CategoryConfig, errs.SubtypeInvalidConfig)
+	if setCfgErr.Message != "save local Git credential PAT to keychain failed" {
+		t.Fatalf("ConfigError message = %q, want static keychain failure", setCfgErr.Message)
+	}
+	if strings.Contains(setCfgErr.Message, samplePAT) {
+		t.Fatalf("ConfigError message leaks credential value: %q", setCfgErr.Message)
+	}
+	if !errors.Is(setCfgErr, kc.setErr) {
+		t.Fatalf("ConfigError does not preserve keychain cause")
+	}
+	kc.setErr = nil
 	kc.removeErr = errors.New("keychain remove failed")
 	var cfgErr *errs.ConfigError
-	if err := NewSecretStore(kc).Remove("ref"); err == nil || !errors.As(err, &cfgErr) {
-		t.Fatalf("SecretStore.Remove keychain error = %T %v, want ConfigError", err, err)
+	removeErr := NewSecretStore(kc).Remove("ref")
+	if removeErr == nil || !errors.As(removeErr, &cfgErr) {
+		t.Fatalf("SecretStore.Remove keychain error = %T %v, want ConfigError", removeErr, removeErr)
+	}
+	assertProblem(t, removeErr, errs.CategoryConfig, errs.SubtypeInvalidConfig)
+	if cfgErr.Message != "remove local Git credential PAT from keychain failed" {
+		t.Fatalf("ConfigError message = %q, want static keychain failure", cfgErr.Message)
+	}
+	if !errors.Is(cfgErr, kc.removeErr) {
+		t.Fatalf("ConfigError does not preserve keychain cause")
 	}
 }
 
@@ -1493,6 +1543,56 @@ func TestLockAppHeldTimesOut(t *testing.T) {
 	defer unlock()
 	if _, err := lockApp("held/app"); err == nil {
 		t.Fatal("second lockApp returned nil error, want held lock timeout")
+	}
+}
+
+func TestManagerGetPreservesTypedLockAppError(t *testing.T) {
+	now := time.Unix(1780000000, 0)
+	store := NewStoreAt(filepath.Join(t.TempDir(), MetadataFilename))
+	kc := newFakeKeychain()
+	record := CredentialRecord{
+		AppID:        "app_xxx",
+		GitHTTPURL:   "https://example.com/git/u/app.git",
+		Profile:      testProfile().Profile,
+		ProfileAppID: testProfile().ProfileAppID,
+		UserOpenID:   testProfile().UserOpenID,
+		Username:     "x-access-token",
+		PATRef:       "ref",
+		Status:       StatusConfirmed,
+		ExpiresAt:    now.Add(-time.Minute).Unix(),
+		UpdatedAt:    now.Unix(),
+	}
+	if err := store.Upsert(record); err != nil {
+		t.Fatalf("Upsert returned error: %v", err)
+	}
+	kc.values[record.PATRef] = "old-pat"
+
+	blocker := filepath.Join(t.TempDir(), "config-blocker")
+	if err := os.WriteFile(blocker, []byte("file"), 0600); err != nil {
+		t.Fatalf("write config blocker: %v", err)
+	}
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", blocker)
+
+	manager := NewManager(store, NewSecretStore(kc), nil, &fakeIssuer{next: &IssuedCredential{
+		GitHTTPURL: record.GitHTTPURL,
+		PAT:        "new-pat",
+		ExpiresAt:  now.Add(24 * time.Hour).Unix(),
+	}})
+	manager.Now = func() time.Time { return now }
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", out.String())
+	}
+	stderr := errOut.String()
+	if !strings.Contains(stderr, "create Git credential lock dir") {
+		t.Fatalf("stderr = %q, want typed lock-dir setup error", stderr)
+	}
+	if strings.Contains(stderr, "acquire Git credential lock") {
+		t.Fatalf("stderr rewrapped typed lock error: %q", stderr)
 	}
 }
 
@@ -1771,8 +1871,15 @@ func TestManagerGetBranches(t *testing.T) {
 	if err := manager.Get(context.Background(), CredentialInput{Protocol: "https", Host: "example.com", Path: "/git/u/app.git"}, testProfile(), &out, &errOut); err != nil {
 		t.Fatalf("Get keychain set error returned error: %v", err)
 	}
-	if !strings.Contains(errOut.String(), "keychain locked") {
-		t.Fatalf("stderr = %q, want keychain error", errOut.String())
+	stderr := errOut.String()
+	if !strings.Contains(stderr, "save local Git credential PAT to keychain failed") {
+		t.Fatalf("stderr = %q, want static keychain error", stderr)
+	}
+	if !strings.Contains(stderr, "lark-cli apps +git-credential-init") {
+		t.Fatalf("stderr = %q, want init retry hint", stderr)
+	}
+	if strings.Contains(stderr, "keychain locked") {
+		t.Fatalf("stderr leaks keychain cause: %q", stderr)
 	}
 
 	kc.setErr = nil
@@ -2163,6 +2270,189 @@ func TestNilManagerUsesTimeNow(t *testing.T) {
 	if manager.now().IsZero() {
 		t.Fatal("nil manager now() returned zero time")
 	}
+}
+
+// TestRedactCredentialText focuses on the redaction regex, asserting it
+// covers credential shapes across forms and does not over-match concatenated
+// words. JSON-quoted forms are common in server-provided error bodies and must
+// be covered; concatenated words like mytoken must not be treated as token.
+func TestRedactCredentialText(t *testing.T) {
+	samplePAT := testPublicSafeJoin("pat", "-sample")
+	samplePassword := "sample-password"
+	sampleSecret := "sample-secret"
+	githubLikeToken := testPublicSafeJoin("gh", "p_") + strings.Repeat("x", 20)
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "bare assignment",
+			in: "permission denied: " +
+				testCredentialAssignment("token", samplePAT) + " " +
+				testCredentialAssignment("password", samplePassword),
+			want: "permission denied: " +
+				testRedactedAssignment("token") + " " +
+				testRedactedAssignment("password"),
+		},
+		{
+			name: "json double-quoted value",
+			in: "body={" +
+				testDoubleQuotedAssignment("password", samplePassword) + "," +
+				testDoubleQuotedAssignment("token", samplePAT) +
+				"}",
+			want: "body={" +
+				testDoubleQuotedRedactedAssignment("password") + "," +
+				testDoubleQuotedRedactedAssignment("token") +
+				"}",
+		},
+		{
+			name: "json single-quoted value",
+			in:   "body={" + testSingleQuotedAssignment("secret", sampleSecret) + "}",
+			want: "body={" + testSingleQuotedRedactedAssignment("secret") + "}",
+		},
+		{
+			name: "colon separator with quoted value",
+			in:   testCredentialColon("token", `"`+samplePAT+`"`),
+			want: testRedactedColon("token"),
+		},
+		{
+			name: "url userinfo",
+			in:   "clone " + testCredentialURLWithUserInfo("example.com/repo.git", samplePAT),
+			want: "clone https://***@example.com/repo.git",
+		},
+		{
+			name: "bearer header",
+			in:   testAuthorizationBearer(githubLikeToken),
+			want: testRedactedAuthorizationBearer(),
+		},
+		{
+			name: "pat-like standalone",
+			in:   "issued " + samplePAT + " for app",
+			want: "issued <redacted> for app",
+		},
+		{
+			name: "concatenated key not redacted",
+			in:   testCredentialAssignment("mytoken", "abc123") + " " + testCredentialAssignment("secret_field", "see"),
+			want: testCredentialAssignment("mytoken", "abc123") + " " + testCredentialAssignment("secret_field", "see"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := RedactCredentialText(tc.in); got != tc.want {
+				t.Fatalf("RedactCredentialText(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSafeCredentialErrorMessageFallbacks(t *testing.T) {
+	if got := safeCredentialErrorMessage(nil); got != "" {
+		t.Fatalf("safeCredentialErrorMessage(nil) = %q, want empty", got)
+	}
+
+	if got := safeCredentialErrorMessage(&errs.ConfigError{Problem: errs.Problem{
+		Category: errs.CategoryConfig,
+		Subtype:  errs.SubtypeInvalidConfig,
+	}}); got != "config/invalid_config" {
+		t.Fatalf("safeCredentialErrorMessage typed fallback = %q, want config/invalid_config", got)
+	}
+
+	samplePAT := testPublicSafeJoin("pat", "-sample")
+	got := safeCredentialErrorMessage(errors.New("transport failed with " + testCredentialAssignment("token", samplePAT)))
+	if strings.Contains(got, samplePAT) {
+		t.Fatalf("safeCredentialErrorMessage leaks credential value: %q", got)
+	}
+	if want := testRedactedAssignment("token"); !strings.Contains(got, want) {
+		t.Fatalf("safeCredentialErrorMessage missing %q after redaction: %q", want, got)
+	}
+}
+
+func TestWriteCredentialErrorRedactsTypedMessageHint(t *testing.T) {
+	samplePAT := testPublicSafeJoin("pat", "-sample")
+	err := errs.NewInternalError(errs.SubtypeStorage, "save failed with %s", testCredentialAssignment("token", samplePAT)).
+		WithHint("retry without %s", testCredentialAssignment("password", samplePAT)).
+		WithLogID("log_x")
+
+	var buf bytes.Buffer
+	writeCredentialError(&buf, "Git credential refresh failed", err)
+	got := buf.String()
+	for _, leaked := range []string{samplePAT, testCredentialAssignment("token", samplePAT), testCredentialAssignment("password", samplePAT)} {
+		if strings.Contains(got, leaked) {
+			t.Fatalf("writeCredentialError leaks credential value %q in %q", leaked, got)
+		}
+	}
+	for _, want := range []string{
+		"Git credential refresh failed: save failed with " + testRedactedAssignment("token"),
+		"log_id=log_x",
+		"hint: retry without " + testRedactedAssignment("password"),
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("writeCredentialError output missing %q: %q", want, got)
+		}
+	}
+
+	writeCredentialError(nil, "ignored", err)
+	writeCredentialError(&buf, "ignored", nil)
+}
+
+func assertProblem(t *testing.T, err error, wantCategory errs.Category, wantSubtype errs.Subtype) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs.Problem, got %T: %v", err, err)
+	}
+	if p.Category != wantCategory || p.Subtype != wantSubtype {
+		t.Fatalf("problem metadata = %s/%s, want %s/%s", p.Category, p.Subtype, wantCategory, wantSubtype)
+	}
+}
+
+func testPublicSafeJoin(parts ...string) string {
+	return strings.Join(parts, "")
+}
+
+func testCredentialAssignment(key, value string) string {
+	return key + "=" + value
+}
+
+func testRedactedAssignment(key string) string {
+	return key + "=<redacted>"
+}
+
+func testCredentialColon(key, value string) string {
+	return key + ": " + value
+}
+
+func testRedactedColon(key string) string {
+	return key + ": <redacted>"
+}
+
+func testDoubleQuotedAssignment(key, value string) string {
+	return `"` + key + `"` + ":" + `"` + value + `"`
+}
+
+func testDoubleQuotedRedactedAssignment(key string) string {
+	return `"` + key + `"` + ":<redacted>"
+}
+
+func testSingleQuotedAssignment(key, value string) string {
+	return `'` + key + `'` + ":" + `'` + value + `'`
+}
+
+func testSingleQuotedRedactedAssignment(key string) string {
+	return `'` + key + `'` + ":<redacted>"
+}
+
+func testCredentialURLWithUserInfo(hostPath, credential string) string {
+	return "https://" + "user:" + credential + "@" + hostPath
+}
+
+func testAuthorizationBearer(value string) string {
+	return "Authorization" + ": " + "Bearer " + value
+}
+
+func testRedactedAuthorizationBearer() string {
+	return "Authorization" + ": " + "Bearer <redacted>"
 }
 
 func testProfile() ProfileContext {
