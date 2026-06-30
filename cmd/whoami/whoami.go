@@ -40,8 +40,9 @@ type Options struct {
 
 // NewCmdWhoami creates the top-level whoami command. It reports the identity
 // that the next API call would actually use (resolved via Factory.ResolveAs),
-// together with the active profile, app, and token status. It is local-only:
-// no network calls are made.
+// together with the active profile, app, and token status. With the built-in
+// credential path it is local-only; when an external credential provider
+// manages tokens, resolving the identity may contact that provider.
 func NewCmdWhoami(f *cmdutil.Factory) *cobra.Command {
 	opts := &Options{Factory: f}
 	cmd := &cobra.Command{
@@ -67,10 +68,11 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 	ctx := cmd.Context()
 	flagAs := core.Identity(opts.As)
 	as := f.ResolveAs(ctx, cmd, flagAs)
-	// Reject an explicit --as that does not resolve to a usable identity, so a
-	// typo like `--as admin` fails clearly instead of echoing back a bogus
-	// identity. Keeps the §5.1 invariant (identity is always user or bot) and
-	// matches how api/service/shortcut commands validate the resolved identity.
+	// Validate as a real API call does (strict mode, then identity) so whoami
+	// can't preview an identity the next call would refuse.
+	if err := f.CheckStrictMode(ctx, as); err != nil {
+		return err
+	}
 	if err := f.CheckIdentity(as, []string{"user", "bot"}); err != nil {
 		return err
 	}
@@ -122,12 +124,14 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		Identity:       string(as),
 		IdentitySource: source,
 	}
+	// Use the diagnosed hint as-is: it is tailored to the credential source, so
+	// it never says "auth login" when that is blocked under an external provider.
 	switch as {
 	case core.AsBot:
 		res.Available = diag.Bot.Available
 		res.TokenStatus = diag.Bot.Status
 		if !diag.Bot.Available {
-			res.Hint = "Bot identity not configured. Set app secret or bot token (see `lark-cli config --help`)."
+			res.Hint = diag.Bot.Hint
 		}
 	default: // user
 		res.Available = diag.User.Available
@@ -138,7 +142,7 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 			res.TokenStatus = "missing"
 		}
 		if !diag.User.Available {
-			res.Hint = "No usable user token. Run `lark-cli auth login`."
+			res.Hint = diag.User.Hint
 		}
 	}
 	return res

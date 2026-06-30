@@ -5,15 +5,19 @@ package whoami
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/identitydiag"
 )
 
@@ -70,7 +74,7 @@ func TestBuildResult_UserValid(t *testing.T) {
 func TestBuildResult_UserMissingToken(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandLark}
 	diag := identitydiag.Result{
-		User: identitydiag.Identity{Available: false, TokenStatus: ""}, // never logged in
+		User: identitydiag.Identity{Available: false, TokenStatus: "", Hint: "run: lark-cli auth login --help"}, // never logged in
 	}
 	r := buildResult(cfg, core.AsUser, "auto-detect", diag)
 
@@ -80,8 +84,10 @@ func TestBuildResult_UserMissingToken(t *testing.T) {
 	if r.TokenStatus != "missing" {
 		t.Fatalf("tokenStatus = %q, want missing", r.TokenStatus)
 	}
-	if r.Hint == "" {
-		t.Fatalf("hint empty, want guidance")
+	// whoami renders the diagnosed hint verbatim (single source of truth) so it
+	// stays correct for the external-provider path without whoami knowing about it.
+	if r.Hint != diag.User.Hint {
+		t.Fatalf("hint = %q, want propagated %q", r.Hint, diag.User.Hint)
 	}
 	if r.DefaultAs != "auto" {
 		t.Fatalf("defaultAs = %q, want auto (empty normalized)", r.DefaultAs)
@@ -112,7 +118,7 @@ func TestBuildResult_BotReady(t *testing.T) {
 func TestBuildResult_BotNotConfigured(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandFeishu}
 	diag := identitydiag.Result{
-		Bot: identitydiag.Identity{Available: false, Status: "not_configured"},
+		Bot: identitydiag.Identity{Available: false, Status: "not_configured", Hint: "run: lark-cli config --help"},
 	}
 	r := buildResult(cfg, core.AsBot, "auto-detect", diag)
 
@@ -122,8 +128,8 @@ func TestBuildResult_BotNotConfigured(t *testing.T) {
 	if r.TokenStatus != "not_configured" {
 		t.Fatalf("tokenStatus = %q, want not_configured", r.TokenStatus)
 	}
-	if r.Hint == "" {
-		t.Fatalf("hint empty, want guidance")
+	if r.Hint != diag.Bot.Hint {
+		t.Fatalf("hint = %q, want propagated %q", r.Hint, diag.Bot.Hint)
 	}
 }
 
@@ -254,5 +260,107 @@ func TestWhoami_ConfigErrorPropagates(t *testing.T) {
 	// command-execution error.
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("Execute() error = %v, want it to wrap %v", err, wantErr)
+	}
+}
+
+func TestWhoami_StrictModeRejectsCrossIdentity(t *testing.T) {
+	// Bot-only account → strict mode bot. A real `--as user` call would be
+	// rejected by CheckStrictMode; whoami must reject it identically rather than
+	// previewing a user identity the next call would refuse.
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		ProfileName: "p", AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		SupportedIdentities: 2, // bot only
+	})
+	cmd := NewCmdWhoami(f)
+	cmd.SetArgs([]string{"--as", "user", "--json"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("Execute() with --as user under strict bot = nil, want strict-mode rejection")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("error type = %T, want *errs.ValidationError: %v", err, err)
+	}
+}
+
+type fakeExtProvider struct {
+	name    string
+	account *extcred.Account
+}
+
+func (p *fakeExtProvider) Name() string { return p.name }
+func (p *fakeExtProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return p.account, nil
+}
+func (p *fakeExtProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return nil, nil // no UAT served locally; whoami runs with verify=false
+}
+
+func externalWhoamiFactory(cfg *core.CliConfig) (*cmdutil.Factory, *bytes.Buffer) {
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: cfg.AppID}}},
+		nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	out := &bytes.Buffer{}
+	f := &cmdutil.Factory{
+		Config:     func() (*core.CliConfig, error) { return cfg, nil },
+		Credential: cred,
+		IOStreams:  &cmdutil.IOStreams{Out: out, ErrOut: &bytes.Buffer{}},
+	}
+	return f, out
+}
+
+// Regression for the external-provider blind spot: with credentials managed by
+// an extension provider, a signed-in user must read as available, and an
+// unavailable identity must not be told to "auth login" (which is blocked).
+func TestWhoami_ExternalProvider_UserReady(t *testing.T) {
+	cfg := &core.CliConfig{
+		ProfileName: "p", AppID: "cli_x", Brand: core.BrandFeishu,
+		SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice",
+	}
+	f, out := externalWhoamiFactory(cfg)
+
+	cmd := NewCmdWhoami(f)
+	cmd.SetArgs([]string{"--as", "user", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var got whoamiResult
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal: %v\n%s", err, out.String())
+	}
+	if got.Identity != "user" || !got.Available || got.TokenStatus != "ready" {
+		t.Fatalf("got %#v, want user/available/ready", got)
+	}
+	if got.Hint != "" {
+		t.Fatalf("hint = %q, want empty when available", got.Hint)
+	}
+}
+
+func TestWhoami_ExternalProvider_UserHintNotKeychain(t *testing.T) {
+	cfg := &core.CliConfig{
+		ProfileName: "p", AppID: "cli_x", Brand: core.BrandFeishu,
+		SupportedIdentities: uint8(extcred.SupportsUser), // user supported but not signed in
+	}
+	f, out := externalWhoamiFactory(cfg)
+
+	cmd := NewCmdWhoami(f)
+	cmd.SetArgs([]string{"--as", "user", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var got whoamiResult
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("Unmarshal: %v\n%s", err, out.String())
+	}
+	if got.Identity != "user" || got.Available {
+		t.Fatalf("got identity=%q available=%v, want user/false", got.Identity, got.Available)
+	}
+	if strings.Contains(got.Hint, "auth login") {
+		t.Fatalf("hint must not point at auth login under external provider: %q", got.Hint)
+	}
+	if !strings.Contains(got.Hint, "external") {
+		t.Fatalf("hint should explain external management: %q", got.Hint)
 	}
 }

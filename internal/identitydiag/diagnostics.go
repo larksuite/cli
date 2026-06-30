@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -61,10 +62,129 @@ func Diagnose(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, veri
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// An external provider mints tokens on demand and blocks interactive auth,
+	// so the built-in keychain heuristics and "auth login" hints don't apply.
+	if provider := activeExternalProvider(ctx, f); provider != "" {
+		return diagnoseExternal(ctx, f, cfg, provider, verify)
+	}
 	return Result{
 		Bot:  diagnoseBot(ctx, f, cfg, verify),
 		User: diagnoseUser(ctx, f, cfg, verify),
 	}
+}
+
+// activeExternalProvider returns the active extension provider name, or "".
+// An error degrades to the built-in path: an unreachable provider would already
+// have failed the f.Config() that produced cfg.
+func activeExternalProvider(ctx context.Context, f *cmdutil.Factory) string {
+	if f == nil || f.Credential == nil {
+		return ""
+	}
+	name, err := f.Credential.ActiveExtensionProviderName(ctx)
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+func diagnoseExternal(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, verify bool) Result {
+	if cfg == nil || cfg.AppID == "" {
+		notConfigured := Identity{
+			Status:  StatusNotConfigured,
+			Message: "not configured (missing app config)",
+			Hint:    externalCredentialHint(provider),
+		}
+		return Result{Bot: notConfigured, User: notConfigured}
+	}
+	// SupportedIdentities == 0 is "unspecified" — treat as both, per CanBot.
+	ids := extcred.IdentitySupport(cfg.SupportedIdentities)
+	supportsBot := cfg.SupportedIdentities == 0 || ids.Has(extcred.SupportsBot)
+	supportsUser := cfg.SupportedIdentities == 0 || ids.Has(extcred.SupportsUser)
+	return Result{
+		Bot:  diagnoseExternalBot(ctx, f, cfg, provider, supportsBot, verify),
+		User: diagnoseExternalUser(ctx, f, cfg, provider, supportsUser, verify),
+	}
+}
+
+func diagnoseExternalBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, supported, verify bool) Identity {
+	if !supported {
+		return notProvidedExternally("Bot", provider)
+	}
+	id := Identity{Status: StatusReady, Available: true, Message: "Bot identity: ready (provided by " + provider + ")"}
+	if !verify {
+		return id
+	}
+	token, err := resolveBotToken(ctx, f, cfg)
+	if err != nil {
+		return externalVerifyFailed(id, "Bot", provider, err)
+	}
+	info, err := fetchBotInfo(ctx, f, cfg, token)
+	if err != nil {
+		return externalVerifyFailed(id, "Bot", provider, err)
+	}
+	id.Verified = boolPtr(true)
+	id.OpenID = info.OpenID
+	id.AppName = info.AppName
+	return id
+}
+
+func diagnoseExternalUser(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, provider string, supported, verify bool) Identity {
+	if !supported {
+		return notProvidedExternally("User", provider)
+	}
+	// enrichUserInfo populates UserOpenId only after the provider returns and
+	// verifies a UAT (and clears it on failure), so a resolved open id is the
+	// external analogue of a keychain token being present.
+	if cfg.UserOpenId == "" {
+		return Identity{
+			Status:  StatusMissing,
+			Message: "User identity: not signed in via credential source " + provider,
+			Hint:    externalCredentialHint(provider),
+		}
+	}
+	id := Identity{
+		Status:      StatusReady,
+		Available:   true,
+		TokenStatus: StatusReady,
+		UserName:    cfg.UserName,
+		OpenID:      cfg.UserOpenId,
+		Message:     "User identity: ready (provided by " + provider + ")",
+	}
+	if !verify {
+		return id
+	}
+	if _, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsUser, cfg.AppID)); err != nil {
+		return externalVerifyFailed(id, "User", provider, err)
+	}
+	id.Verified = boolPtr(true)
+	return id
+}
+
+func notProvidedExternally(label, provider string) Identity {
+	return Identity{
+		Status:  StatusNotConfigured,
+		Message: label + " identity: not provided by credential source " + provider,
+		Hint:    externalCredentialHint(provider),
+	}
+}
+
+// externalVerifyFailed flips id to verify-failed, keeping any identity fields
+// (open id, user name) already resolved before the probe.
+func externalVerifyFailed(id Identity, label, provider string, err error) Identity {
+	id.Available = false
+	id.Verified = boolPtr(false)
+	id.Status = StatusVerifyFailed
+	id.TokenStatus = ""
+	id.Message = label + " identity: verify failed: " + err.Error()
+	id.Hint = externalCredentialHint(provider)
+	return id
+}
+
+// externalCredentialHint reports the constraint, not a remediation: the
+// identity is the provider's to manage, not lark-cli's to fix. What to do about
+// it is the caller's call — there may be no user to ask.
+func externalCredentialHint(provider string) string {
+	return fmt.Sprintf("managed by the external credential provider %q and cannot be configured via lark-cli", provider)
 }
 
 func diagnoseBot(ctx context.Context, f *cmdutil.Factory, cfg *core.CliConfig, verify bool) Identity {
