@@ -40,7 +40,7 @@ func TestPluginList_Installed(t *testing.T) {
 		},
 	})
 	manifestDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(manifestDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(manifestDir, 0o755)                                                                //nolint:forbidigo
 	os.WriteFile(filepath.Join(manifestDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644) //nolint:forbidigo
 	chdirTest(t, dir)
 

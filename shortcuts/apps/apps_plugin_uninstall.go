@@ -20,7 +20,7 @@ var AppsPluginUninstall = common.Shortcut{
 	Service:     appsService,
 	Command:     "+plugin-uninstall",
 	Description: "Uninstall a plugin package (remove from node_modules and package.json)",
-	Risk: "write",
+	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +plugin-uninstall --name @official-plugins/ai-text-generate",
 	},

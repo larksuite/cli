@@ -26,10 +26,10 @@ import (
 // Without --name it batch-installs all plugins declared in actionPlugins that
 // are not yet present in node_modules.
 var AppsPluginInstall = common.Shortcut{
-	Service:     appsService,
-	Command:     "+plugin-install",
-	Description: "Install a plugin package (download, extract, update package.json)",
-	Risk:             "write",
+	Service:           appsService,
+	Command:           "+plugin-install",
+	Description:       "Install a plugin package (download, extract, update package.json)",
+	Risk:              "write",
 	ConditionalScopes: []string{"spark:app:read"},
 	AuthTypes:         []string{"user"},
 	Tips: []string{

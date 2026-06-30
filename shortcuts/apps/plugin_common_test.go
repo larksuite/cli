@@ -239,7 +239,6 @@ func TestPluginListCapabilities_SkipsMalformed(t *testing.T) {
 	}
 }
 
-
 // --- helpers ---
 
 func writeTestCapJSON(t *testing.T, dir, filename string, data map[string]interface{}) {

@@ -20,7 +20,7 @@ func TestPluginUninstall_Basic(t *testing.T) {
 		},
 	})
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
 	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
 	chdirTest(t, dir)
 
@@ -77,7 +77,7 @@ func TestPluginUninstall_BlockedByDependentInstance(t *testing.T) {
 	})
 	// Install plugin
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
 	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
 
 	// Create a capability that references this plugin
@@ -125,7 +125,7 @@ func TestPluginUninstall_WithUnrelatedInstances(t *testing.T) {
 		},
 	})
 	pluginDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pluginDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(pluginDir, 0o755)                                                //nolint:forbidigo
 	os.WriteFile(filepath.Join(pluginDir, "manifest.json"), []byte("{}"), 0o644) //nolint:forbidigo
 
 	// Create a capability that references a DIFFERENT plugin — should not block

@@ -31,10 +31,10 @@ func TestPluginInstall_SinglePlugin(t *testing.T) {
 			"data": map[string]interface{}{
 				"items": []interface{}{
 					map[string]interface{}{
-						"key":                "@test/my-plugin",
-						"version":            "1.0.0",
-						"download_approach":  "inner",
-						"status":             "active",
+						"key":               "@test/my-plugin",
+						"version":           "1.0.0",
+						"download_approach": "inner",
+						"status":            "active",
 					},
 				},
 			},
@@ -92,7 +92,7 @@ func TestPluginInstall_AlreadyInstalled(t *testing.T) {
 	})
 	// Create an existing installed plugin with package.json containing version
 	pkgDir := filepath.Join(dir, "node_modules", "@test/my-plugin")
-	os.MkdirAll(pkgDir, 0o755) //nolint:forbidigo
+	os.MkdirAll(pkgDir, 0o755)                                                                //nolint:forbidigo
 	os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"1.0.0"}`), 0o644) //nolint:forbidigo
 	chdirTest(t, dir)
 

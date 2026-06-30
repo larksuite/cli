@@ -18,7 +18,7 @@ var AppsPluginList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+plugin-list",
 	Description: "List declared plugin packages and their installation status",
-	Risk: "read",
+	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +plugin-list",
 		"Example: lark-cli apps +plugin-list --format pretty",
