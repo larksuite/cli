@@ -32,10 +32,10 @@ func TestResolveSource(t *testing.T) {
 	}{
 		{"explicit flag user", true, core.AsUser, false, "", "flag"},
 		{"explicit flag bot", true, core.AsBot, false, "", "flag"},
-		{"flag auto falls through to auto-detect", true, core.AsAuto, true, "", "auto-detect"},
-		{"auto detected", false, "", true, "", "auto-detect"},
-		{"strict mode", false, "", false, core.AsBot, "strict-mode"},
-		{"default-as", false, "", false, "", "default-as"},
+		{"flag auto falls through to auto-detect", true, core.AsAuto, true, "", "auto_detect"},
+		{"auto detected", false, "", true, "", "auto_detect"},
+		{"strict mode", false, "", false, core.AsBot, "strict_mode"},
+		{"default_as", false, "", false, "", "default_as"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,18 +50,19 @@ func TestResolveSource(t *testing.T) {
 func TestBuildResult_UserValid(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "my-app", AppID: "cli_x", Brand: core.BrandLark, DefaultAs: core.AsAuto}
 	diag := identitydiag.Result{
-		User: identitydiag.Identity{Available: true, TokenStatus: "valid", OpenID: "ou_x", UserName: "Alice"},
+		User: identitydiag.Identity{Available: true, Status: "ready", TokenStatus: "valid", OpenID: "ou_x", UserName: "Alice"},
 	}
-	r := buildResult(cfg, core.AsUser, "auto-detect", diag)
+	r := buildResult(cfg, core.AsUser, "auto_detect", diag)
 
-	if r.Identity != "user" || r.IdentitySource != "auto-detect" {
+	if r.Identity != "user" || r.IdentitySource != "auto_detect" {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
 	}
-	if !r.Available || r.TokenStatus != "valid" {
+	// tokenStatus mirrors the unified Status vocab ("ready"), not the raw "valid".
+	if !r.Available || r.TokenStatus != "ready" {
 		t.Fatalf("available=%v status=%q", r.Available, r.TokenStatus)
 	}
-	if r.OpenID != "ou_x" || r.UserName != "Alice" {
-		t.Fatalf("openId/userName = %q/%q", r.OpenID, r.UserName)
+	if r.OnBehalfOf == nil || r.OnBehalfOf.OpenID != "ou_x" || r.OnBehalfOf.UserName != "Alice" {
+		t.Fatalf("onBehalfOf = %#v, want Alice/ou_x", r.OnBehalfOf)
 	}
 	if r.Hint != "" {
 		t.Fatalf("hint = %q, want empty", r.Hint)
@@ -74,9 +75,9 @@ func TestBuildResult_UserValid(t *testing.T) {
 func TestBuildResult_UserMissingToken(t *testing.T) {
 	cfg := &core.CliConfig{ProfileName: "p", AppID: "cli_x", Brand: core.BrandLark}
 	diag := identitydiag.Result{
-		User: identitydiag.Identity{Available: false, TokenStatus: "", Hint: "run: lark-cli auth login --help"}, // never logged in
+		User: identitydiag.Identity{Available: false, Status: "missing", Hint: "run: lark-cli auth login --help"}, // never logged in
 	}
-	r := buildResult(cfg, core.AsUser, "auto-detect", diag)
+	r := buildResult(cfg, core.AsUser, "auto_detect", diag)
 
 	if r.Available {
 		t.Fatalf("available = true, want false")
@@ -99,16 +100,16 @@ func TestBuildResult_BotReady(t *testing.T) {
 	diag := identitydiag.Result{
 		Bot: identitydiag.Identity{Available: true, Status: "ready"},
 	}
-	r := buildResult(cfg, core.AsBot, "default-as", diag)
+	r := buildResult(cfg, core.AsBot, "default_as", diag)
 
-	if r.Identity != "bot" || r.IdentitySource != "default-as" {
+	if r.Identity != "bot" || r.IdentitySource != "default_as" {
 		t.Fatalf("identity/source = %q/%q", r.Identity, r.IdentitySource)
 	}
 	if !r.Available || r.TokenStatus != "ready" {
 		t.Fatalf("available=%v status=%q", r.Available, r.TokenStatus)
 	}
-	if r.OpenID != "" || r.UserName != "" {
-		t.Fatalf("bot must not carry openId/userName: %#v", r)
+	if r.OnBehalfOf != nil {
+		t.Fatalf("bot must not carry onBehalfOf: %#v", r.OnBehalfOf)
 	}
 	if r.Hint != "" {
 		t.Fatalf("hint = %q, want empty", r.Hint)
@@ -120,7 +121,7 @@ func TestBuildResult_BotNotConfigured(t *testing.T) {
 	diag := identitydiag.Result{
 		Bot: identitydiag.Identity{Available: false, Status: "not_configured", Hint: "run: lark-cli config --help"},
 	}
-	r := buildResult(cfg, core.AsBot, "auto-detect", diag)
+	r := buildResult(cfg, core.AsBot, "auto_detect", diag)
 
 	if r.Available {
 		t.Fatalf("available = true, want false")
@@ -133,63 +134,13 @@ func TestBuildResult_BotNotConfigured(t *testing.T) {
 	}
 }
 
-func TestFormatPretty_User(t *testing.T) {
-	var buf bytes.Buffer
-	formatPretty(&buf, &whoamiResult{
-		Profile: "my-app", AppID: "cli_x", Brand: core.BrandLark,
-		Identity: "user", IdentitySource: "auto-detect",
-		Available: true, TokenStatus: "valid", OpenID: "ou_x", UserName: "Alice",
-	})
-	out := buf.String()
-	for _, want := range []string{
-		"Profile:  my-app (cli_x, lark)",
-		"Identity: user (auto-detect)",
-		"User:     Alice (ou_x)",
-		"Token:    valid",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q\n--- got ---\n%s", want, out)
-		}
-	}
-}
-
-func TestFormatPretty_BotNoUserLine(t *testing.T) {
-	var buf bytes.Buffer
-	formatPretty(&buf, &whoamiResult{
-		Profile: "p", AppID: "cli_x", Brand: core.BrandFeishu,
-		Identity: "bot", IdentitySource: "default-as",
-		Available: true, TokenStatus: "ready",
-	})
-	out := buf.String()
-	if strings.Contains(out, "User:") {
-		t.Errorf("bot output must not contain User: line\n%s", out)
-	}
-	if !strings.Contains(out, "Identity: bot (default-as)") || !strings.Contains(out, "Token:    ready") {
-		t.Errorf("unexpected bot output:\n%s", out)
-	}
-}
-
-func TestFormatPretty_UnavailableShowsHint(t *testing.T) {
-	var buf bytes.Buffer
-	formatPretty(&buf, &whoamiResult{
-		Profile: "p", AppID: "cli_x", Brand: core.BrandLark,
-		Identity: "user", IdentitySource: "auto-detect",
-		Available: false, TokenStatus: "missing",
-		Hint: "No usable user token. Run `lark-cli auth login`.",
-	})
-	out := buf.String()
-	if !strings.Contains(out, "Token:    missing — No usable user token.") {
-		t.Errorf("expected token line with hint, got:\n%s", out)
-	}
-}
-
 func TestWhoami_BotJSON(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "test-profile", AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
 	cmd := NewCmdWhoami(f)
-	cmd.SetArgs([]string{"--json"})
+	cmd.SetArgs([]string{}) // bare whoami: output is always JSON, no flag needed
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -210,8 +161,8 @@ func TestWhoami_BotJSON(t *testing.T) {
 	if got.IdentitySource == "" {
 		t.Fatalf("identitySource empty")
 	}
-	if got.OpenID != "" {
-		t.Fatalf("bot must not carry openId: %q", got.OpenID)
+	if got.OnBehalfOf != nil {
+		t.Fatalf("bot (self) must not carry onBehalfOf: %#v", got.OnBehalfOf)
 	}
 }
 
@@ -332,6 +283,9 @@ func TestWhoami_ExternalProvider_UserReady(t *testing.T) {
 	}
 	if got.Identity != "user" || !got.Available || got.TokenStatus != "ready" {
 		t.Fatalf("got %#v, want user/available/ready", got)
+	}
+	if got.OnBehalfOf == nil || got.OnBehalfOf.UserName != "Alice" || got.OnBehalfOf.OpenID != "ou_x" {
+		t.Fatalf("onBehalfOf = %#v, want Alice/ou_x (delegated)", got.OnBehalfOf)
 	}
 	if got.Hint != "" {
 		t.Fatalf("hint = %q, want empty when available", got.Hint)

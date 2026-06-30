@@ -5,8 +5,6 @@ package whoami
 
 import (
 	"context"
-	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -17,6 +15,13 @@ import (
 )
 
 // whoamiResult is the structured output of `lark-cli whoami`.
+//
+// The self-vs-delegated distinction is carried by `identity`: a bot identity is
+// the app acting as itself; a user identity is the app acting *on behalf of* a
+// person (calls are attributed to that user, who is not necessarily present).
+// onBehalfOf only *names* that person and so appears only once a user is
+// resolved — a user identity that is not signed in still has identity "user"
+// but no onBehalfOf yet. Do not read "no onBehalfOf" as "self"; read `identity`.
 type whoamiResult struct {
 	Profile        string         `json:"profile"`
 	AppID          string         `json:"appId"`
@@ -26,35 +31,44 @@ type whoamiResult struct {
 	IdentitySource string         `json:"identitySource"`
 	Available      bool           `json:"available"`
 	TokenStatus    string         `json:"tokenStatus"`
-	OpenID         string         `json:"openId,omitempty"`
-	UserName       string         `json:"userName,omitempty"`
+	OnBehalfOf     *delegatedUser `json:"onBehalfOf,omitempty"`
 	Hint           string         `json:"hint,omitempty"`
+}
+
+// delegatedUser is the user a user-identity acts on behalf of.
+type delegatedUser struct {
+	UserName string `json:"userName,omitempty"`
+	OpenID   string `json:"openId,omitempty"`
 }
 
 // Options holds inputs for the whoami command.
 type Options struct {
 	Factory *cmdutil.Factory
 	As      string
-	JSON    bool
 }
 
 // NewCmdWhoami creates the top-level whoami command. It reports the identity
 // that the next API call would actually use (resolved via Factory.ResolveAs),
-// together with the active profile, app, and token status. With the built-in
-// credential path it is local-only; when an external credential provider
-// manages tokens, resolving the identity may contact that provider.
+// together with the active profile, app, and token status. Output is always
+// JSON — whoami is consumed by agents. With the built-in credential path it is
+// local-only; when an external credential provider manages tokens, resolving
+// the identity may contact that provider.
 func NewCmdWhoami(f *cmdutil.Factory) *cobra.Command {
 	opts := &Options{Factory: f}
 	cmd := &cobra.Command{
 		Use:   "whoami",
-		Short: "Show the current effective identity, app, profile, and token status",
+		Short: "Show the current effective identity, app, profile, and token status (JSON)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return whoamiRun(cmd, opts)
 		},
 	}
 	cmdutil.DisableAuthCheck(cmd)
 	cmdutil.AddAPIIdentityFlag(context.Background(), cmd, f, &opts.As)
-	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
+	// Output is always JSON. Accept (and ignore) --json so existing
+	// `whoami --json` callers don't break; hide it to avoid implying a non-JSON
+	// mode exists.
+	cmd.Flags().Bool("json", true, "deprecated: output is always JSON")
+	_ = cmd.Flags().MarkHidden("json")
 	cmdutil.SetRisk(cmd, "read")
 	return cmd
 }
@@ -84,11 +98,7 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 	)
 	diag := identitydiag.Diagnose(ctx, f, cfg, false)
 	res := buildResult(cfg, as, source, diag)
-	if opts.JSON {
-		output.PrintJson(f.IOStreams.Out, res)
-		return nil
-	}
-	formatPretty(f.IOStreams.Out, res)
+	output.PrintJson(f.IOStreams.Out, res)
 	return nil
 }
 
@@ -96,17 +106,18 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 // Mirrors Factory.ResolveAs precedence: explicit flag wins; otherwise an
 // auto-detected result means auto-detect; otherwise a strict-mode forced
 // identity means strict-mode; otherwise it came from configured default-as.
+// Values are snake_case to match the other enum fields (e.g. tokenStatus).
 func resolveSource(changedAs bool, flagAs core.Identity, autoDetected bool, strictForced core.Identity) string {
 	if changedAs && (flagAs == core.AsUser || flagAs == core.AsBot) {
 		return "flag"
 	}
 	if autoDetected {
-		return "auto-detect"
+		return "auto_detect"
 	}
 	if strictForced != "" {
-		return "strict-mode"
+		return "strict_mode"
 	}
-	return "default-as"
+	return "default_as"
 }
 
 // buildResult maps the resolved identity and local diagnostics into the output.
@@ -135,37 +146,18 @@ func buildResult(cfg *core.CliConfig, as core.Identity, source string, diag iden
 		}
 	default: // user
 		res.Available = diag.User.Available
-		res.OpenID = diag.User.OpenID
-		res.UserName = diag.User.UserName
-		res.TokenStatus = diag.User.TokenStatus
-		if res.TokenStatus == "" {
-			res.TokenStatus = "missing"
+		// Use Status (not the raw TokenStatus) so the vocab matches the bot
+		// branch: "ready" means usable for both. available stays the canonical
+		// usable signal; tokenStatus is the readable state behind it.
+		res.TokenStatus = diag.User.Status
+		// Set onBehalfOf only when a user is actually resolved; an unresolved
+		// user identity (not signed in) has no one to act on behalf of yet.
+		if diag.User.UserName != "" || diag.User.OpenID != "" {
+			res.OnBehalfOf = &delegatedUser{UserName: diag.User.UserName, OpenID: diag.User.OpenID}
 		}
 		if !diag.User.Available {
 			res.Hint = diag.User.Hint
 		}
 	}
 	return res
-}
-
-// formatPretty writes the human-readable one-glance summary.
-func formatPretty(w io.Writer, r *whoamiResult) {
-	fmt.Fprintf(w, "Profile:  %s (%s, %s)\n", r.Profile, r.AppID, r.Brand)
-	fmt.Fprintf(w, "Identity: %s (%s)\n", r.Identity, r.IdentitySource)
-	if r.Identity == string(core.AsUser) && r.UserName != "" {
-		if r.OpenID != "" {
-			fmt.Fprintf(w, "User:     %s (%s)\n", r.UserName, r.OpenID)
-		} else {
-			fmt.Fprintf(w, "User:     %s\n", r.UserName)
-		}
-	}
-	token := r.TokenStatus
-	if !r.Available && r.Hint != "" {
-		token = r.TokenStatus + " — " + r.Hint
-	}
-	// Write the label and value as separate %s args rather than one combined
-	// literal. A single label-colon-value literal trips the public-content
-	// credential scanner as a false-positive credential assignment; splitting
-	// the args avoids it while producing identical output.
-	fmt.Fprintf(w, "%s%s\n", "Token:    ", token)
 }
