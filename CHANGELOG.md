@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.61] - 2026-06-30
+
+### Features
+
+- **apps**: Add `db`, `file`, `openapi-key` and observability shortcuts (#1596)
+- **identity**: Add `whoami` command showing effective identity (#1666)
+- **docs**: Add reference map flags (#1547)
+
+### Bug Fixes
+
+- **identity**: Correct identity diagnosis under external credential providers (#1693)
+- **cli**: Harden git credential error handling (#1676)
+
+### Documentation
+
+- **doc**: Guide document copy skill usage (#1673)
+- **doc**: Fix lark-doc media token examples (#1662)
+
 ## [v1.0.60] - 2026-06-29
 
 ### Features
@@ -1299,6 +1317,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.61]: https://github.com/larksuite/cli/releases/tag/v1.0.61
 [v1.0.60]: https://github.com/larksuite/cli/releases/tag/v1.0.60
 [v1.0.59]: https://github.com/larksuite/cli/releases/tag/v1.0.59
 [v1.0.58]: https://github.com/larksuite/cli/releases/tag/v1.0.58
