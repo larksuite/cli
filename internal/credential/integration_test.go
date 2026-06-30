@@ -5,6 +5,9 @@ package credential_test
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	extcred "github.com/larksuite/cli/extension/credential"
@@ -21,6 +24,22 @@ type noopKC struct{}
 func (n *noopKC) Get(service, account string) (string, error) { return "", nil }
 func (n *noopKC) Set(service, account, value string) error    { return nil }
 func (n *noopKC) Remove(service, account string) error        { return nil }
+
+type envTATRoundTripper struct {
+	gotBody string
+}
+
+func (rt *envTATRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Body != nil {
+		body, _ := io.ReadAll(req.Body)
+		rt.gotBody = string(body)
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Body:       io.NopCloser(strings.NewReader(`{"code":0,"access_token":"env_minted_tat","token_type":"Bearer","expires_in":7200}`)),
+		Header:     make(http.Header),
+	}, nil
+}
 
 func TestFullChain_EnvWins(t *testing.T) {
 	t.Setenv(envvars.CliAppID, "env_app")
@@ -49,6 +68,47 @@ func TestFullChain_EnvWins(t *testing.T) {
 	}
 	if result.Token != "env_uat" {
 		t.Errorf("expected env_uat, got %s", result.Token)
+	}
+}
+
+func TestFullChain_EnvAppSecretMintsTAT(t *testing.T) {
+	t.Setenv(envvars.CliAppID, "env_app")
+	t.Setenv(envvars.CliAppSecret, "env_secret")
+	t.Setenv(envvars.CliUserAccessToken, "")
+	t.Setenv(envvars.CliTenantAccessToken, "")
+
+	ep := &envprovider.Provider{}
+	rt := &envTATRoundTripper{}
+	cp := credential.NewCredentialProvider(
+		[]extcred.Provider{ep},
+		nil,
+		nil,
+		func() (*http.Client, error) {
+			return &http.Client{Transport: rt}, nil
+		},
+	)
+
+	acct, err := cp.ResolveAccount(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct.AppID != "env_app" || acct.AppSecret != "env_secret" {
+		t.Fatalf("unexpected account: %+v", acct)
+	}
+
+	result, err := cp.ResolveToken(context.Background(), credential.TokenSpec{
+		Type: credential.TokenTypeTAT, AppID: "env_app",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Token != "env_minted_tat" {
+		t.Errorf("expected env_minted_tat, got %s", result.Token)
+	}
+	for _, want := range []string{"grant_type=client_credentials", "client_id=env_app", "client_secret=env_secret"} {
+		if !strings.Contains(rt.gotBody, want) {
+			t.Fatalf("TAT request body missing %q: %s", want, rt.gotBody)
+		}
 	}
 }
 
