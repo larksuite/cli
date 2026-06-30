@@ -117,7 +117,7 @@ var AppsDBRecoveryApply = common.Shortcut{
 			})
 			return nil
 		}
-		final, perr := pollUntil(rctx.Ctx(), 2*time.Second, 30*time.Minute,
+		final, perr := pollUntil(rctx.Ctx(), 2*time.Second, 2*time.Minute,
 			func() (map[string]interface{}, error) {
 				return rctx.CallAPITyped("GET", appRecoveryApplyStatusPath(appID), nil, nil)
 			},
@@ -165,7 +165,7 @@ func runRecoveryPreview(rctx *common.RuntimeContext, appID, target string) (map[
 	if prid == "" {
 		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "recovery diff did not return preview_request_id")
 	}
-	return pollUntil(rctx.Ctx(), 1*time.Second, 10*time.Minute,
+	return pollUntil(rctx.Ctx(), 1*time.Second, 2*time.Minute,
 		func() (map[string]interface{}, error) {
 			return rctx.CallAPITyped("GET", appRecoveryDiffStatusPath(appID), map[string]interface{}{"preview_request_id": prid}, nil)
 		},

@@ -111,7 +111,7 @@ var AppsDBEnvMigrate = common.Shortcut{
 		}
 		// 有 task_id → 异步，轮询至终态；无 task_id（同步完成）则直接用 submit 结果。
 		if taskID != "" {
-			final, perr := pollUntil(rctx.Ctx(), 1*time.Second, 10*time.Minute,
+			final, perr := pollUntil(rctx.Ctx(), 1*time.Second, 2*time.Minute,
 				func() (map[string]interface{}, error) {
 					return rctx.CallAPITyped("GET", appEnvMigrateStatusPath(appID), map[string]interface{}{"task_id": taskID}, nil)
 				},
