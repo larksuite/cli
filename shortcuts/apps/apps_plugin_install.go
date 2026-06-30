@@ -34,9 +34,10 @@ var AppsPluginInstall = common.Shortcut{
 	Scopes:            []string{},
 	AuthTypes:         []string{"user"},
 	Tips: []string{
-		"Example: lark-cli apps +plugin-install --name @official-plugins/ai-text-generate",
-		"Example: lark-cli apps +plugin-install --name @official-plugins/ai-text-generate --version 1.0.0",
-		"Example: lark-cli apps +plugin-install  (install all declared plugins in package.json)",
+		"Run in project root (like npm); does NOT take --app-id",
+		"Example: lark-cli apps +plugin-install --name @official-plugins/ai-text-generate  (install or update to latest)",
+		"Example: lark-cli apps +plugin-install --name @official-plugins/ai-text-generate --version 1.0.0  (install or update to specific version)",
+		"Example: lark-cli apps +plugin-install  (batch install all declared plugins from package.json actionPlugins)",
 	},
 	Flags: []common.Flag{
 		{Name: "name", Desc: "plugin key (e.g. @official-plugins/ai-text-generate); omit to install all declared plugins"},
