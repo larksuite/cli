@@ -136,7 +136,14 @@ func putFileBytes(ctx context.Context, url string, content []byte, contentType, 
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
 	}
-	req.Header.Set("Content-Disposition", "attachment; filename=\""+sanitizeUploadFileName(fileName)+"\"")
+	// 用 mime.FormatMediaType 规范生成 Content-Disposition（自动按 RFC 2045 处理引号/转义），
+	// 不手工拼接 header，杜绝文件名里的特殊字符破坏 header 结构。filename 已先经 sanitizeUploadFileName
+	// 做 encodeURIComponent（控制字符/分隔符均 %XX 化），此处是第二道防线。
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": sanitizeUploadFileName(fileName)})
+	if disposition == "" {
+		disposition = "attachment"
+	}
+	req.Header.Set("Content-Disposition", disposition)
 	resp, err := newFileTransferClient().Do(req)
 	if err != nil {
 		// dial/transport 失败是典型可重试场景。
@@ -169,6 +176,11 @@ func sanitizeUploadFileName(name string) string {
 	enc := encodeURIComponent(b.String())
 	if enc == "" {
 		return "download_file"
+	}
+	// 防止 sanitize 后仍以 . 开头（如 .bashrc / .ssh）——下载落地可能覆盖本地隐藏文件，
+	// 前置下划线消除隐藏文件语义。
+	if strings.HasPrefix(enc, ".") {
+		enc = "_" + enc
 	}
 	return enc
 }

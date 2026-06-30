@@ -35,7 +35,7 @@ var AppsDBChangelogList = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "filter by target table"},
 		{Name: "change-id", Desc: "look up a single change by id (returns that one record only)"},
-		{Name: "since", Desc: "filter: changed at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ"},
+		{Name: "since", Desc: "filter: changed at or after; relative (7d/2h) | date | datetime | ISO 8601 w/ TZ (bare date/datetime read in local timezone)"},
 		{Name: "until", Desc: "filter: changed at or before; same formats as --since"},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},

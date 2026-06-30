@@ -84,8 +84,8 @@ var AppsDBExecute = common.Shortcut{
 			if err != nil {
 				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: %v", err)
 			}
-			// 归一化：把文件内容写回 --sql，下游（DryRun/Execute）统一从 sql 取。
-			rctx.Cmd.Flags().Set("sql", string(data))
+			// 仅本地校验非空；不把文件内容写回公开的 --sql flag（避免 SQL 内容进入
+			// flag dump / 结构化日志）。下游 DryRun/Execute 由 resolveExecuteSQL 在用时重新读取。
 			sql = strings.TrimSpace(string(data))
 		}
 		if sql == "" {
@@ -297,10 +297,29 @@ func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
 	}
 }
 
-// buildDBSQLBody 构造 sql 接口的 body：仅 sql（来源由 Validate 归一化到 --sql）。
+// resolveExecuteSQL 返回要执行的 SQL，在用时（DryRun/Execute）现读，使 --file 的内容
+// 不被写回公开的 --sql flag（避免泄露进 flag dump / 结构化日志）。优先 --sql（内联或 stdin，
+// 已由输入框架解析到 flag 值）；否则现读 --file。Validate 已先行校验可读且非空。
+func resolveExecuteSQL(rctx *common.RuntimeContext) (string, error) {
+	if strings.TrimSpace(rctx.Str("sql")) != "" {
+		return rctx.Str("sql"), nil
+	}
+	file := strings.TrimSpace(rctx.Str("file"))
+	if file == "" {
+		return "", nil
+	}
+	data, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// buildDBSQLBody 构造 sql 接口的 body：仅 sql（由 resolveExecuteSQL 在用时解析，--file 不入 flag）。
 func buildDBSQLBody(rctx *common.RuntimeContext) map[string]interface{} {
+	sql, _ := resolveExecuteSQL(rctx)
 	return map[string]interface{}{
-		"sql": rctx.Str("sql"),
+		"sql": sql,
 	}
 }
 

@@ -41,6 +41,9 @@ var AppsFileDownload = common.Shortcut{
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
+		if err := rejectOutputTraversal(rctx.Str("output")); err != nil {
+			return err
+		}
 		_, err := requireFilePath(rctx.Str("path"))
 		return err
 	},
