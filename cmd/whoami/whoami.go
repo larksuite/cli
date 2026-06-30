@@ -67,6 +67,13 @@ func whoamiRun(cmd *cobra.Command, opts *Options) error {
 	ctx := cmd.Context()
 	flagAs := core.Identity(opts.As)
 	as := f.ResolveAs(ctx, cmd, flagAs)
+	// Reject an explicit --as that does not resolve to a usable identity, so a
+	// typo like `--as admin` fails clearly instead of echoing back a bogus
+	// identity. Keeps the §5.1 invariant (identity is always user or bot) and
+	// matches how api/service/shortcut commands validate the resolved identity.
+	if err := f.CheckIdentity(as, []string{"user", "bot"}); err != nil {
+		return err
+	}
 	source := resolveSource(
 		cmd.Flags().Changed("as"),
 		flagAs,

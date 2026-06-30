@@ -207,6 +207,21 @@ func TestWhoami_BotJSON(t *testing.T) {
 	}
 }
 
+func TestWhoami_RejectsInvalidAs(t *testing.T) {
+	for _, bad := range []string{"admin", "USER", "bogus123", ""} {
+		t.Run("as="+bad, func(t *testing.T) {
+			f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+				ProfileName: "p", AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
+			})
+			cmd := NewCmdWhoami(f)
+			cmd.SetArgs([]string{"--as", bad})
+			if err := cmd.Execute(); err == nil {
+				t.Fatalf("Execute() with --as %q = nil, want validation error", bad)
+			}
+		})
+	}
+}
+
 func TestWhoami_ConfigErrorPropagates(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		ProfileName: "p", AppID: "test-app", AppSecret: "secret", Brand: core.BrandFeishu,
