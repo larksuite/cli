@@ -184,7 +184,7 @@ var MailWatch = common.Shortcut{
 
 		envelope := (*consume.OutputEnvelope)(nil)
 		if outputDir == "" && (outFormat == "json" || outFormat == "") {
-			envelope = &consume.OutputEnvelope{Identity: string(runtime.As())}
+			envelope = &consume.OutputEnvelope{Identity: string(core.AsUser)}
 		}
 		internalParams := map[string]string(nil)
 		if outputDir != "" {

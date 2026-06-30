@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
@@ -134,6 +135,16 @@ func TestRunRejectsInvalidEnumParamBeforePreConsume(t *testing.T) {
 	}
 	if params["msg_format"] != "中文格式" {
 		t.Fatalf("invalid value should not fall back to default, got %q", params["msg_format"])
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
+	}
+	if validationErr.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", validationErr.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if validationErr.Param != "msg_format" {
+		t.Fatalf("param = %q, want msg_format", validationErr.Param)
 	}
 }
 

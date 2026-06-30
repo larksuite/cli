@@ -141,6 +141,10 @@ type KeyDefinition struct {
 
 	Scopes []string `json:"scopes,omitempty"`
 
+	// ScopesForParams may narrow or expand Scopes after CLI params are parsed.
+	// Nil means Scopes applies to every mode.
+	ScopesForParams func(params map[string]string) []string `json:"-"`
+
 	// AuthTypes: whitelist of identities the EventKey accepts. Empty = no identity required.
 	AuthTypes []string `json:"auth_types,omitempty"`
 

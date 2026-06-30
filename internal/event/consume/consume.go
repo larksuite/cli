@@ -106,7 +106,7 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	ack, br, err := doHello(conn, opts.EventKey, []string{keyDef.EventType}, subscriptionID)
 	if err != nil {
-		return fmt.Errorf("handshake failed: %w", err)
+		return wrapHandshakeError(err)
 	}
 
 	var cleanup func() error
@@ -200,8 +200,10 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 	for _, p := range def.Params {
 		if p.Required {
 			if _, ok := params[p.Name]; !ok {
-				return fmt.Errorf("required param %q missing for EventKey %s. Run 'lark-cli event schema %s' for details",
-					p.Name, def.Key, def.Key)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"required param %q missing for EventKey %s. Run 'lark-cli event schema %s' for details",
+					p.Name, def.Key, def.Key).
+					WithParam(p.Name)
 			}
 		}
 	}
@@ -217,11 +219,15 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 			continue
 		}
 		if len(validNames) == 0 {
-			return fmt.Errorf("unknown param %q: EventKey %s accepts no params. Run 'lark-cli event schema %s' for details",
-				k, def.Key, def.Key)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"unknown param %q: EventKey %s accepts no params. Run 'lark-cli event schema %s' for details",
+				k, def.Key, def.Key).
+				WithParam(k)
 		}
-		return fmt.Errorf("unknown param %q for EventKey %s. valid params: %s. Run 'lark-cli event schema %s' for details",
-			k, def.Key, strings.Join(validNames, ", "), def.Key)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unknown param %q for EventKey %s. valid params: %s. Run 'lark-cli event schema %s' for details",
+			k, def.Key, strings.Join(validNames, ", "), def.Key).
+			WithParam(k)
 	}
 	for _, p := range def.Params {
 		if p.Type != event.ParamEnum {
@@ -235,10 +241,22 @@ func validateParams(def *event.KeyDefinition, params map[string]string) error {
 		if validValues[got] {
 			continue
 		}
-		return fmt.Errorf("invalid value %q for param %q on EventKey %s. valid values: %s. Run 'lark-cli event schema %s' for details",
-			got, p.Name, def.Key, strings.Join(paramValueNames(p), ", "), def.Key)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"invalid value %q for param %q on EventKey %s. valid values: %s. Run 'lark-cli event schema %s' for details",
+			got, p.Name, def.Key, strings.Join(paramValueNames(p), ", "), def.Key).
+			WithParam(p.Name)
 	}
 	return nil
+}
+
+func wrapHandshakeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	return errs.NewInternalError(errs.SubtypeSDKError, "handshake failed: %s", err).WithCause(err)
 }
 
 func allowedParamValues(p event.ParamDef) map[string]bool {

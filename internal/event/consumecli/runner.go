@@ -125,6 +125,7 @@ func Run(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o Options) err
 		EventKey: eventKey,
 		Identity: identity,
 		KeyDef:   keyDef,
+		Params:   paramMap,
 		AppVer:   appVer,
 	}
 	if err := PreflightEventTypes(pf); err != nil {
@@ -217,11 +218,16 @@ type PreflightCtx struct {
 	EventKey string
 	Identity core.Identity
 	KeyDef   *eventlib.KeyDefinition
+	Params   map[string]string
 	AppVer   *appmeta.AppVersion
 }
 
 func PreflightScopes(ctx context.Context, pf *PreflightCtx) error {
-	if len(pf.KeyDef.Scopes) == 0 || pf.Identity == "" {
+	scopes := pf.KeyDef.Scopes
+	if pf.KeyDef.ScopesForParams != nil {
+		scopes = pf.KeyDef.ScopesForParams(pf.Params)
+	}
+	if len(scopes) == 0 || pf.Identity == "" {
 		return nil
 	}
 	if ctx == nil {
@@ -245,7 +251,7 @@ func PreflightScopes(ctx context.Context, pf *PreflightCtx) error {
 		return nil
 	}
 
-	missing := auth.MissingScopes(storedScopes, pf.KeyDef.Scopes)
+	missing := auth.MissingScopes(storedScopes, scopes)
 	if len(missing) == 0 {
 		return nil
 	}
@@ -310,7 +316,7 @@ func SanitizeOutputDir(dir string) (string, error) {
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 			"%s %q: %s", ErrOutputDirUnsafe, dir, err).
 			WithParam("--output-dir").
-			WithCause(ErrOutputDirUnsafe)
+			WithCause(err)
 	}
 	return safe, nil
 }

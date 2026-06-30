@@ -6,9 +6,11 @@ package mail
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 )
 
@@ -129,7 +131,7 @@ func TestProcessOutputDirForcesFullFetchEvenForEventFormat(t *testing.T) {
 	raw := rawMailEvent(`{"event":{"mail_address":"alice@example.com","message_id":"msg_1"}}`)
 	got, err := processMessageReceived(context.Background(), rt, raw, map[string]string{
 		"mailbox":               "alice@example.com",
-		"msg_format":            "minimal",
+		"msg_format":            "event",
 		watchOutputDirFullParam: "true",
 	})
 	if err != nil {
@@ -143,6 +145,32 @@ func TestProcessOutputDirForcesFullFetchEvenForEventFormat(t *testing.T) {
 	}
 	if strings.Contains(string(got), `"message":`) {
 		t.Fatalf("output-dir payload should be bare full message, got: %s", got)
+	}
+}
+
+func TestFetchMessageDecodeErrorIsTyped(t *testing.T) {
+	rt := &stubClient{responses: map[string]json.RawMessage{
+		"GET " + mailboxPath("alice@example.com", "messages", "msg_1") + "?format=metadata": json.RawMessage(`{not json`),
+	}}
+
+	_, err := fetchMessage(context.Background(), rt, "alice@example.com", "msg_1", "metadata")
+	if err == nil {
+		t.Fatal("expected decode error")
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("error type = %T, want *errs.InternalError", err)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidResponse)
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("decode cause not preserved: %v", err)
 	}
 }
 

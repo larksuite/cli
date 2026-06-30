@@ -6,12 +6,17 @@ package consume
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 func TestWriterSink_PrettyFallbackWarnsOnce(t *testing.T) {
@@ -80,6 +85,37 @@ func TestNewSinkEnvelopeWrapsWriterOutput(t *testing.T) {
 	if string(got.Data) != `{"message_id":"msg_1"}` {
 		t.Fatalf("data = %s", got.Data)
 	}
+}
+
+func TestNewSinkOutputDirMkdirFailureIsTyped(t *testing.T) {
+	mkdirErr := errors.New("mkdir denied")
+	oldFS := vfs.DefaultFS
+	vfs.DefaultFS = failingSinkMkdirFS{OsFs: vfs.OsFs{}, err: mkdirErr}
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+
+	_, err := newSink(Options{OutputDir: "events-out"})
+	if err == nil {
+		t.Fatal("expected mkdir error")
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("error type = %T, want *errs.InternalError", err)
+	}
+	if internalErr.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeFileIO)
+	}
+	if !errors.Is(err, mkdirErr) {
+		t.Fatalf("cause not preserved: %v", err)
+	}
+}
+
+type failingSinkMkdirFS struct {
+	vfs.OsFs
+	err error
+}
+
+func (f failingSinkMkdirFS) MkdirAll(string, fs.FileMode) error {
+	return f.err
 }
 
 func TestWriterSink_PrettyNoErrOut(t *testing.T) {

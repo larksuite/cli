@@ -53,6 +53,7 @@ func Keys() []event.KeyDefinition {
 			Match:                 matchMailbox,
 			Process:               processMessageReceived,
 			Scopes:                mailScopes,
+			ScopesForParams:       mailScopesForParams,
 			AuthTypes:             []string{"user"},
 			RequiredConsoleEvents: []string{MessageReceivedEventKey},
 		},
@@ -62,6 +63,30 @@ func Keys() []event.KeyDefinition {
 var mailScopes = []string{
 	"mail:event",
 	"mail:user_mailbox.event.mail_address:read",
+	"mail:user_mailbox:readonly",
+	"mail:user_mailbox.message:readonly",
+	"mail:user_mailbox.message.address:read",
+	"mail:user_mailbox.message.subject:read",
+	"mail:user_mailbox.message.body:read",
+}
+
+func mailScopesForParams(params map[string]string) []string {
+	scopes := []string{
+		"mail:event",
+		"mail:user_mailbox.event.mail_address:read",
+	}
+	msgFormat := "metadata"
+	if params != nil && params["msg_format"] != "" {
+		msgFormat = params["msg_format"]
+	}
+	hasMetadataFilters := params != nil && (params["folder_ids"] != "" || params["folders"] != "" || params["label_ids"] != "" || params["labels"] != "")
+	if msgFormat == "event" && !hasMetadataFilters {
+		return scopes
+	}
+	return append(scopes, mailMessageReadScopes...)
+}
+
+var mailMessageReadScopes = []string{
 	"mail:user_mailbox:readonly",
 	"mail:user_mailbox.message:readonly",
 	"mail:user_mailbox.message.address:read",

@@ -4,9 +4,12 @@
 package consume
 
 import (
+	"errors"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // doHello must apply a read deadline on HelloAck so a wedged bus doesn't hang the consumer.
@@ -42,5 +45,32 @@ func TestDoHello_ReadDeadline(t *testing.T) {
 		}
 	case <-time.After(helloAckTimeout + 3*time.Second):
 		t.Fatal("doHello hung past deadline + 3s slack: read deadline is missing or not being honoured")
+	}
+}
+
+func TestWrapHandshakeErrorPreservesTypedProblem(t *testing.T) {
+	typed := errs.NewInternalError(errs.SubtypeInvalidResponse, "bad hello")
+
+	got := wrapHandshakeError(typed)
+
+	if got != typed {
+		t.Fatalf("typed handshake error was rewrapped: %T %v", got, got)
+	}
+}
+
+func TestWrapHandshakeErrorWrapsUntypedAsInternal(t *testing.T) {
+	cause := errors.New("wire closed")
+
+	got := wrapHandshakeError(cause)
+
+	var internalErr *errs.InternalError
+	if !errors.As(got, &internalErr) {
+		t.Fatalf("error type = %T, want *errs.InternalError", got)
+	}
+	if internalErr.Subtype != errs.SubtypeSDKError {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeSDKError)
+	}
+	if !errors.Is(got, cause) {
+		t.Fatalf("cause not preserved: %v", got)
 	}
 }

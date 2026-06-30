@@ -169,7 +169,7 @@ func fetchMailboxPrimaryEmail(ctx context.Context, rt event.APIClient, mailboxID
 		Data map[string]interface{} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return "", err
+		return "", mailDecodeResponseError("profile", err)
 	}
 	if email := extractPrimaryEmail(resp.Data); email != "" {
 		return email, nil
@@ -202,7 +202,7 @@ func fetchMessage(ctx context.Context, rt event.APIClient, mailbox, messageID, f
 		Data map[string]interface{} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, err
+		return nil, mailDecodeResponseError("message", err)
 	}
 	if msg, _ := resp.Data["message"].(map[string]interface{}); msg != nil {
 		return msg, nil
@@ -351,7 +351,7 @@ func listMailboxFolders(ctx context.Context, rt event.APIClient, mailboxID strin
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, err
+		return nil, mailDecodeResponseError("folders", err)
 	}
 	out := make([]folderInfo, 0, len(resp.Data.Items))
 	for _, item := range resp.Data.Items {
@@ -376,7 +376,7 @@ func listMailboxLabels(ctx context.Context, rt event.APIClient, mailboxID string
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(raw, &resp); err != nil {
-		return nil, err
+		return nil, mailDecodeResponseError("labels", err)
 	}
 	out := make([]labelInfo, 0, len(resp.Data.Items))
 	for _, item := range resp.Data.Items {
@@ -556,6 +556,12 @@ func watchFetchFailureValue(messageID, fetchFormat string, err error, eventBody 
 		payload["event"] = eventBody
 	}
 	return payload
+}
+
+func mailDecodeResponseError(resource string, err error) error {
+	return errs.NewInternalError(errs.SubtypeInvalidResponse,
+		"decode mail %s response: %s", resource, err).
+		WithCause(err)
 }
 
 func wrapSubscribeError(err error) error {
