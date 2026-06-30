@@ -6,10 +6,12 @@ package whoami
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/identitydiag"
@@ -215,8 +217,21 @@ func TestWhoami_RejectsInvalidAs(t *testing.T) {
 			})
 			cmd := NewCmdWhoami(f)
 			cmd.SetArgs([]string{"--as", bad})
-			if err := cmd.Execute(); err == nil {
+			err := cmd.Execute()
+			if err == nil {
 				t.Fatalf("Execute() with --as %q = nil, want validation error", bad)
+			}
+			// Lock in the typed validation contract: an unsupported identity must
+			// surface as a *errs.ValidationError on --as, not just any error.
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("Execute() with --as %q: error type = %T, want *errs.ValidationError: %v", bad, err, err)
+			}
+			if ve.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+			}
+			if ve.Param != "--as" {
+				t.Errorf("Param = %q, want %q", ve.Param, "--as")
 			}
 		})
 	}
@@ -231,7 +246,13 @@ func TestWhoami_ConfigErrorPropagates(t *testing.T) {
 
 	cmd := NewCmdWhoami(f)
 	cmd.SetArgs([]string{"--json"})
-	if err := cmd.Execute(); err == nil {
+	err := cmd.Execute()
+	if err == nil {
 		t.Fatalf("Execute() error = nil, want propagated config error")
+	}
+	// The f.Config() failure must propagate unchanged, not be masked by a later
+	// command-execution error.
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Execute() error = %v, want it to wrap %v", err, wantErr)
 	}
 }
