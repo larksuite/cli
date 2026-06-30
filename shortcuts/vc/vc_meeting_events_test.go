@@ -5,6 +5,7 @@ package vc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -54,6 +55,62 @@ func meetingEventsStub(events []interface{}, hasMore bool, pageToken string) *ht
 	}
 }
 
+func botInfoStub() *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/bot/v3/info",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"bot": map[string]interface{}{
+				"open_id":  "bot_001",
+				"app_name": "Demo Bot",
+			},
+		},
+	}
+}
+
+func botInfoErrorStub() *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/bot/v3/info",
+		Status: 500,
+		Body: map[string]interface{}{
+			"code": 99991663,
+			"msg":  "bot info unavailable",
+		},
+	}
+}
+
+func meetingDetailRosterStub(roster []interface{}) *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/7628568141510692381",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"meeting": map[string]interface{}{
+					"id":           "7628568141510692381",
+					"participants": roster,
+				},
+			},
+		},
+	}
+}
+
+func meetingDetailRosterErrorStub() *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/vc/v1/meetings/7628568141510692381",
+		Status: 500,
+		Body: map[string]interface{}{
+			"code": 99991663,
+			"msg":  "meeting detail unavailable",
+		},
+	}
+}
+
 func participantJoinedEvent() map[string]interface{} {
 	return map[string]interface{}{
 		"event_id":   "event-1",
@@ -73,6 +130,8 @@ func participantJoinedEvent() map[string]interface{} {
 					"participant": map[string]interface{}{
 						"id":        "bot_001",
 						"user_name": "Demo Bot",
+						"user_type": 2,
+						"user_role": 4,
 					},
 					"join_time": "2026-04-17T08:00:00Z",
 				},
@@ -112,7 +171,7 @@ func chatReceivedEvent() map[string]interface{} {
 			"chat_received_items": []interface{}{
 				map[string]interface{}{
 					"content":      "hello",
-					"message_type": 3,
+					"message_type": 1,
 					"operator": map[string]interface{}{
 						"id":        "u1",
 						"user_name": "Alice",
@@ -140,7 +199,7 @@ func multiChatReceivedEvent() map[string]interface{} {
 			"chat_received_items": []interface{}{
 				map[string]interface{}{
 					"content":      "第一条\n第二行",
-					"message_type": 3,
+					"message_type": 1,
 					"send_time":    "1776408061000",
 					"operator": map[string]interface{}{
 						"id":        "u1",
@@ -149,6 +208,44 @@ func multiChatReceivedEvent() map[string]interface{} {
 				},
 				map[string]interface{}{
 					"content":      "第二条",
+					"message_type": 1,
+					"send_time":    "1776408062000",
+					"operator": map[string]interface{}{
+						"id":        "u1",
+						"user_name": "Alice",
+					},
+				},
+			},
+		},
+	}
+}
+
+func mixedChatAndReactionEvent() map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-reaction",
+		"event_type": "chat_received",
+		"event_time": "2026-04-17T08:05:00Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "chat_received",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776407700",
+				"end_time":   "1776411300",
+			},
+			"chat_received_items": []interface{}{
+				map[string]interface{}{
+					"content":      "hello",
+					"message_type": 1,
+					"send_time":    "1776408061000",
+					"operator": map[string]interface{}{
+						"id":        "u1",
+						"user_name": "Alice",
+					},
+				},
+				map[string]interface{}{
+					"content":      "OK",
 					"message_type": 3,
 					"send_time":    "1776408062000",
 					"operator": map[string]interface{}{
@@ -414,7 +511,7 @@ func TestMeetingEvents_DryRun(t *testing.T) {
 		"--start", "1710000000",
 		"--end", "1710003600",
 		"--dry-run",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -442,7 +539,7 @@ func TestMeetingEvents_DryRun_PageAllUsesMaxLimit(t *testing.T) {
 		"--meeting-id", "7628568141510692381",
 		"--page-all",
 		"--dry-run",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -457,13 +554,15 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "pt_2"))
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
 		"--meeting-id", "7628568141510692381",
 		"--format", "json",
 		"--page-all",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -472,7 +571,7 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
-	if count := strings.Count(out, `"event_type":"participant_joined"`); count != 2 {
+	if count := strings.Count(out, `"summary":"participantbot_001(DemoBot)joined"`); count != 2 {
 		t.Fatalf("expected 2 aggregated events, got %d: %s", count, stdout.String())
 	}
 	if !strings.Contains(out, `"has_more":false`) {
@@ -483,6 +582,112 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "1710000000000000000"))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub([]interface{}{
+		map[string]interface{}{"id": "bot_001", "user_name": "Demo Bot", "participant_type": "2", "role": "4"},
+		map[string]interface{}{"id": "u1", "user_name": "Alice", "participant_type": "1", "role": "1"},
+	}))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := strings.ReplaceAll(stdout.String(), " ", "")
+	out = strings.ReplaceAll(out, "\n", "")
+	for _, want := range []string{
+		`"identity":{"id":"bot_001","name":"DemoBot","participant_type":"bot","role":"bot","is_self":true,"label":"DemoBot[bot,self]"}`,
+		`"current_roster":[`,
+		`"role":"host"`,
+		`"is_self":true`,
+		`"event_type":"participant_joined"`,
+		`"actors":[`,
+		`"start_time":"2026-04-17T06:35:00Z"`,
+		`"has_more":true`,
+		`"page_token":"1710000000000000000"`,
+		`"events":[`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("json output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_RosterErrorDoesNotBlockEvents(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterErrorStub())
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := strings.ReplaceAll(stdout.String(), " ", "")
+	out = strings.ReplaceAll(out, "\n", "")
+	for _, want := range []string{
+		`"event_type":"participant_joined"`,
+		`"current_roster":[]`,
+		`"warnings":[`,
+		`current_rosterunavailable`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("json output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_BotIdentityErrorDoesNotBlockEvents(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
+	reg.Register(botInfoErrorStub())
+	reg.Register(meetingDetailRosterStub(nil))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := strings.ReplaceAll(stdout.String(), " ", "")
+	out = strings.ReplaceAll(out, "\n", "")
+	for _, want := range []string{
+		`"event_type":"participant_joined"`,
+		`"identity":{"participant_type":"bot","role":"bot","is_self":true,"label":"bot"}`,
+		`"warnings":[`,
+		`identityunavailable`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("json output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_UserIdentitySkipsBotInfo(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, false, ""))
+	reg.Register(meetingDetailRosterStub([]interface{}{
+		map[string]interface{}{"id": "ou_testuser", "user_name": "Current User", "participant_type": "1", "role": "1"},
+		map[string]interface{}{"id": "u1", "user_name": "Alice", "participant_type": "1", "role": "1"},
+	}))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
@@ -498,13 +703,85 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
+		`"identity":{"id":"ou_testuser","participant_type":"human","role":"user","is_self":true,"label":"ou_testuser[human,user,self]"}`,
+		`"current_roster":[`,
+		`"id":"ou_testuser"`,
+		`"is_self":true`,
 		`"event_type":"participant_joined"`,
-		`"has_more":true`,
-		`"page_token":"1710000000000000000"`,
-		`"events":[`,
+		`"has_more":false`,
 	} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("json output missing %q: %s", want, stdout.String())
+			t.Fatalf("user json output missing %q: %s", want, stdout.String())
+		}
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_OngoingMeetingOmitsEndTime(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEventOngoing()}, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout.String()), &envelope); err != nil {
+		t.Fatalf("invalid json output: %v\n%s", err, stdout.String())
+	}
+	data := common.GetMap(envelope, "data")
+	meeting := common.GetMap(data, "meeting")
+	if got := common.GetString(meeting, "status"); got != "ongoing" {
+		t.Fatalf("meeting status = %q, want ongoing: %s", got, stdout.String())
+	}
+	if _, ok := meeting["end_time"]; ok {
+		t.Fatalf("ongoing meeting should not expose dirty top-level end_time: %s", stdout.String())
+	}
+}
+
+func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "1710000000000000000"))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub([]interface{}{
+		map[string]interface{}{"id": "bot_001", "user_name": "Demo Bot", "participant_type": "2", "role": "4"},
+	}))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "ndjson",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("ndjson lines = %d, want 2: %s", len(lines), stdout.String())
+	}
+	if !strings.Contains(lines[0], `"row_type":"event"`) || !strings.Contains(lines[0], `"event_type":"participant_joined"`) {
+		t.Fatalf("first ndjson row should be event: %s", lines[0])
+	}
+	for _, want := range []string{
+		`"row_type":"metadata"`,
+		`"has_more":true`,
+		`"page_token":"1710000000000000000"`,
+		`"identity":`,
+		`"current_roster":[`,
+	} {
+		if !strings.Contains(lines[1], want) {
+			t.Fatalf("metadata ndjson row missing %q: %s", want, lines[1])
 		}
 	}
 }
@@ -512,12 +789,14 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{chatReceivedEvent()}, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
 		"--meeting-id", "7628568141510692381",
 		"--format", "json",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -536,20 +815,59 @@ func TestMeetingEvents_ExecuteJSON_PrunesEmptySlices(t *testing.T) {
 			t.Fatalf("json output should not contain %q: %s", unwanted, out)
 		}
 	}
-	if !strings.Contains(out, `"message_type": 3`) {
+	if !strings.Contains(out, `"message_type": 1`) {
 		t.Fatalf("json output should keep numeric fields: %s", out)
+	}
+}
+
+func TestMeetingEvents_ExecuteJSON_PreservesReactionItems(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	reg.Register(meetingEventsStub([]interface{}{mixedChatAndReactionEvent()}, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
+
+	err := mountAndRun(t, VCMeetingEvents, []string{
+		"+meeting-events",
+		"--meeting-id", "7628568141510692381",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reg.Verify(t)
+
+	out := strings.ReplaceAll(stdout.String(), " ", "")
+	out = strings.ReplaceAll(out, "\n", "")
+	for _, want := range []string{
+		`"event_type":"chat_received"`,
+		`"chat_received_items":[`,
+		`"content":"OK"`,
+		`"message_type":3`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("json output missing %q: %s", want, stdout.String())
+		}
+	}
+	if strings.Contains(out, `"im_post"`) {
+		t.Fatalf("json output should not include IM post payload: %s", stdout.String())
 	}
 }
 
 func TestMeetingEvents_ExecutePretty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEventOngoing(), multiChatReceivedEvent(), magicShareStartedEvent()}, true, "1710000000000000000"))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub([]interface{}{
+		map[string]interface{}{"id": "bot_001", "user_name": "Demo Bot", "participant_type": "2", "role": "4"},
+		map[string]interface{}{"id": "u1", "user_name": "Alice", "participant_type": "1", "role": "1"},
+	}))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
 		"--meeting-id", "7628568141510692381",
 		"--format", "pretty",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -558,11 +876,15 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 
 	out := stdout.String()
 	for _, want := range []string{
+		"当前身份：Demo Bot [bot,self]",
+		"当前名单：",
+		"- Demo Bot [bot,self]",
+		"- Alice [human,host]",
 		"会议主题：项目例会",
 		"会议时间：2026-04-17 15:15:00（进行中）",
 		"Demo Bot(bot_001) 加入了会议",
-		"Alice(u1): [reaction] 第一条\\n第二行",
-		"Alice(u1): [reaction] 第二条",
+		"Alice(u1): [text] 第一条\\n第二行",
+		"Alice(u1): [text] 第二条",
 		"Bob(u2) 开始共享「共享文档」",
 		"URL: https://example.com/doc",
 		"page_token: 1710000000000000000",
@@ -582,12 +904,14 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 func TestMeetingEvents_ExecutePretty_PrintsPageTokenWithoutHasMore(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEventOngoing()}, false, "pt_last"))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
 		"--meeting-id", "7628568141510692381",
 		"--format", "pretty",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -606,12 +930,14 @@ func TestMeetingEvents_ExecutePretty_PrintsPageTokenWithoutHasMore(t *testing.T)
 func TestMeetingEvents_ExecuteEmpty(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub(nil, false, ""))
+	reg.Register(botInfoStub())
+	reg.Register(meetingDetailRosterStub(nil))
 
 	err := mountAndRun(t, VCMeetingEvents, []string{
 		"+meeting-events",
 		"--meeting-id", "7628568141510692381",
 		"--format", "pretty",
-		"--as", "user",
+		"--as", "bot",
 	}, f, stdout)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -881,6 +1207,57 @@ func TestMeetingEventUserWithID(t *testing.T) {
 				t.Fatalf("meetingEventUserWithID() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_UsesContractFields(t *testing.T) {
+	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+		"id":        "u1",
+		"user_name": "Alice",
+		"user_type": 1,
+		"user_role": 2,
+	}, meetingEventsIdentity{})
+
+	if got.ParticipantType != "human" || got.Role != "host" {
+		t.Fatalf("identity = %#v, want participant_type=human role=host", got)
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_UserRoleParticipant(t *testing.T) {
+	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+		"id":        "u1",
+		"user_name": "Alice",
+		"user_type": 1,
+		"user_role": 1,
+	}, meetingEventsIdentity{})
+
+	if got.Role != "participant" {
+		t.Fatalf("identity = %#v, want role=participant", got)
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_UserTypeApp(t *testing.T) {
+	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+		"id":        "ou_app",
+		"user_name": "Demo Bot",
+		"user_type": 10,
+		"user_role": 1,
+	}, meetingEventsIdentity{})
+
+	if got.ParticipantType != "bot" {
+		t.Fatalf("identity = %#v, want participant_type=bot", got)
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_IgnoresGenericTypeField(t *testing.T) {
+	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+		"id":        "u1",
+		"user_name": "Alice",
+		"type":      "bot",
+	}, meetingEventsIdentity{})
+
+	if got.ParticipantType != "human" {
+		t.Fatalf("identity = %#v, generic type field should not drive participant_type", got)
 	}
 }
 

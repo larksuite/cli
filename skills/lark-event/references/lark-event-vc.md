@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 
-## Key catalog (4)
+## Key catalog
 
 | EventKey | Purpose |
 |---|---|
@@ -10,8 +10,13 @@
 | `vc.meeting.participant_meeting_joined_v1` | The current user has joined a meeting |
 | `vc.meeting.participant_meeting_ended_v1` | A meeting the current user participates in has ended |
 | `vc.note.generated_v1` | A note has been generated (meeting, recording, upload, etc.) |
+| `vc.bot.meeting_invited_v1` | The bot is invited to a meeting |
+| `vc.bot.meeting_activity_v1` | The bot observes meeting activity |
+| `vc.bot.meeting_ended_v1` | A meeting observed by the bot has ended |
 
-All four keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. All require `--as user`.
+The user VC keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. They require `--as user`.
+
+The `vc.bot.*` keys are bot-observed events. They require `--as bot`, keep the original payload in `raw_event`, and do not call the user-side VC meeting subscription / unsubscription APIs.
 
 ## Scopes & auth
 
@@ -21,6 +26,9 @@ All four keys use a **Custom schema** (flat output) and carry a **PreConsume hoo
 | `vc.meeting.participant_meeting_joined_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.meeting.participant_meeting_ended_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.note.generated_v1` | `vc:note:read` | user |
+| `vc.bot.meeting_invited_v1` | App event subscription in the Developer Console | bot |
+| `vc.bot.meeting_activity_v1` | App event subscription in the Developer Console | bot |
+| `vc.bot.meeting_ended_v1` | App event subscription in the Developer Console | bot |
 
 ---
 
@@ -104,3 +112,41 @@ lark-cli event consume vc.note.generated_v1 --as user \
 lark-cli event consume vc.note.generated_v1 --as user \
   --jq 'select(.note_source.source_type == "meeting") | {note_id, meeting_id: .note_source.source_entity_id}'
 ```
+
+---
+
+## Bot-observed VC events
+
+Use bot identity for all `vc.bot.*` keys:
+
+```bash
+lark-cli event consume vc.bot.meeting_invited_v1 --as bot
+lark-cli event consume vc.bot.meeting_activity_v1 --as bot
+lark-cli event consume vc.bot.meeting_ended_v1 --as bot
+```
+
+These keys model what the bot observes. Do not treat them as aliases for:
+
+| Bot event | Not the same as |
+|---|---|
+| `vc.bot.meeting_invited_v1` | Meeting start events, participant join events, or IM meeting cards |
+| `vc.bot.meeting_activity_v1` | User-side `vc +meeting-events` open meeting activity queries |
+| `vc.bot.meeting_ended_v1` | `vc.meeting.participant_meeting_ended_v1` or open meeting resource ended events |
+
+### Output fields
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | string | Event type; one of the supported `vc.bot.*` keys |
+| `event_id` | string | Globally unique event ID; safe for deduplication |
+| `timestamp` | string (timestamp_ms) | Event delivery time from `header.create_time` when present |
+| `call_id` | string | Invitation call ID; pass through to VC agent join when present |
+| `meeting_no` | string | Meeting number from the bot event's declared meeting field |
+| `activity_event_type` | string | First `event.meeting_activity_items[].activity_event_type` value |
+| `raw_event` | object | Original bot event payload; authoritative for fields not exposed as stable top-level fields |
+
+Malformed or evolving payloads are not forced into fixed fields. If a payload cannot be parsed, `event consume` passes the raw payload through; if a field is not part of the documented event contract above, read `raw_event` instead of expecting it to be guessed into a stable top-level field.
+
+### Forwarding meeting activity to IM
+
+`lark-cli event consume` does not send IM messages automatically and does not expose IM-ready post payloads. If the user wants meeting activity forwarded into IM, use `vc +meeting-events --format json` to read structured events; for `chat_received_items[].message_type == 3`, construct the Feishu `post` node with `tag:"emotion"` and `emoji_type` from the item's `content`.
