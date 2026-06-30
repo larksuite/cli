@@ -136,6 +136,16 @@ func TestRunRejectsInvalidEnumParamBeforePreConsume(t *testing.T) {
 	if params["msg_format"] != "中文格式" {
 		t.Fatalf("invalid value should not fall back to default, got %q", params["msg_format"])
 	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok = false; error = %v", err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem subtype = %q, want %q", problem.Subtype, errs.SubtypeInvalidArgument)
+	}
 	var validationErr *errs.ValidationError
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error type = %T, want *errs.ValidationError; error = %v", err, err)
