@@ -46,13 +46,118 @@ func redactKeyInfo(info map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// parseScopeAPI parses a "--scope-api" value 'METHOD /openapi/path' into a snake_case httpInfo.
+// allowedScopeAPIMethods is the HTTP method whitelist for --scope-api / request_scope.
+var allowedScopeAPIMethods = map[string]struct{}{
+	"GET": {}, "POST": {}, "PUT": {}, "PATCH": {}, "DELETE": {},
+}
+
+// validateScopeAPIMethod rejects methods outside the whitelist (e.g. TRACE, CONNECT, empty).
+func validateScopeAPIMethod(method string) error {
+	if _, ok := allowedScopeAPIMethods[method]; !ok {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"http method %q not allowed; use one of GET, POST, PUT, PATCH, DELETE", method)
+	}
+	return nil
+}
+
+// validateScopeAPIPath enforces basic openapi route hygiene as a first line of defense.
+func validateScopeAPIPath(p string) error {
+	if p == "" || !strings.HasPrefix(p, "/") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"http path must start with '/', got %q", p)
+	}
+	if strings.Contains(p, "..") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"http path must not contain '..': %q", p)
+	}
+	if strings.Contains(p, "//") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"http path must not contain '//': %q", p)
+	}
+	return nil
+}
+
+// validateRequestScopeFields constrains a request_scope object to the documented
+// schema: only allow_all (bool) and http_infos ([{http_method, http_path}]). This
+// closes the raw --scope escape hatch from injecting undocumented fields.
+func validateRequestScopeFields(rs map[string]interface{}) error {
+	for k := range rs {
+		switch k {
+		case "allow_all", "http_infos":
+		default:
+			return errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"unknown field %q; only allow_all and http_infos are allowed", k)
+		}
+	}
+	if v, ok := rs["allow_all"]; ok {
+		if _, isBool := v.(bool); !isBool {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "allow_all must be a boolean")
+		}
+	}
+	if v, ok := rs["http_infos"]; ok {
+		arr, isArr := v.([]interface{})
+		if !isArr {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "http_infos must be an array")
+		}
+		for _, item := range arr {
+			m, isMap := item.(map[string]interface{})
+			if !isMap {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "each http_infos entry must be an object")
+			}
+			for k := range m {
+				switch k {
+				case "http_method", "http_path":
+				default:
+					return errs.NewValidationError(errs.SubtypeInvalidArgument,
+						"unknown field %q in http_infos entry; only http_method and http_path are allowed", k)
+				}
+			}
+			method, _ := m["http_method"].(string)
+			if err := validateScopeAPIMethod(method); err != nil {
+				return err
+			}
+			path, _ := m["http_path"].(string)
+			if err := validateScopeAPIPath(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// parseRawScope parses a raw --scope JSON value: it must be an object that
+// conforms to the request_scope schema (validated by validateRequestScopeFields).
+func parseRawScope(scopeRaw string) (map[string]interface{}, error) {
+	var rs interface{}
+	if err := json.Unmarshal([]byte(scopeRaw), &rs); err != nil {
+		return nil, err
+	}
+	obj, ok := rs.(map[string]interface{})
+	if !ok {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope must be a JSON object")
+	}
+	if err := validateRequestScopeFields(obj); err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// parseScopeAPI parses a "--scope-api" value 'METHOD /openapi/path' into a snake_case
+// httpInfo, validating the method against the whitelist and the path format.
 func parseScopeAPI(s string) (map[string]interface{}, error) {
 	fields := strings.Fields(strings.TrimSpace(s))
 	if len(fields) != 2 {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "expected 'METHOD /path', got %q", s)
 	}
-	return map[string]interface{}{"http_method": strings.ToUpper(fields[0]), "http_path": fields[1]}, nil
+	method := strings.ToUpper(fields[0])
+	if err := validateScopeAPIMethod(method); err != nil {
+		return nil, err
+	}
+	path := fields[1]
+	if err := validateScopeAPIPath(path); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"http_method": method, "http_path": path}, nil
 }
 
 // buildRequestScope assembles config.request_scope (snake_case) from the scope flags.
@@ -65,11 +170,7 @@ func buildRequestScope(scopeAll bool, scopeAPIs []string, scopeRaw string) (inte
 		if hasFriendly {
 			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--scope cannot be combined with --scope-all / --scope-api").WithParam("--scope")
 		}
-		var rs interface{}
-		if err := json.Unmarshal([]byte(scopeRaw), &rs); err != nil {
-			return nil, err
-		}
-		return rs, nil
+		return parseRawScope(scopeRaw)
 	}
 	if !hasFriendly {
 		return nil, nil
@@ -111,18 +212,21 @@ func buildKeyConfig(scopeAll bool, scopeAPIs []string, scopeRaw string, hasAllow
 // oapiKeyValidateScopeFlags validates the scope flag combination (shared by create/update).
 func oapiKeyValidateScopeFlags(rctx *common.RuntimeContext) error {
 	scopeRaw := strings.TrimSpace(rctx.Str("scope"))
-	if scopeRaw != "" && (rctx.Bool("scope-all") || len(rctx.StrArray("scope-api")) > 0) {
+	scopeAPIs := rctx.StrArray("scope-api")
+	if scopeRaw != "" && (rctx.Bool("scope-all") || len(scopeAPIs) > 0) {
 		return appsValidationParamError("--scope", "--scope cannot be combined with --scope-all / --scope-api").
 			WithHint("use either --scope (raw JSON) OR --scope-all/--scope-api, not both")
 	}
-	if scopeRaw != "" && !json.Valid([]byte(scopeRaw)) {
-		return appsValidationParamError("--scope", "--scope must be valid JSON").
-			WithHint("--scope takes raw JSON for config.request_scope; or use --scope-all / --scope-api 'METHOD /openapi/path'")
+	if scopeRaw != "" {
+		if _, err := parseRawScope(scopeRaw); err != nil {
+			return appsValidationParamError("--scope", "invalid --scope: %s", err).
+				WithHint("--scope takes a JSON object with only allow_all (bool) and http_infos ([{http_method, http_path}]); methods: GET, POST, PUT, PATCH, DELETE")
+		}
 	}
-	for _, a := range rctx.StrArray("scope-api") {
-		if len(strings.Fields(strings.TrimSpace(a))) != 2 {
-			return appsValidationParamError("--scope-api", "--scope-api must be 'METHOD /path', got %q", a).
-				WithHint("format: --scope-api 'METHOD /openapi/path' (routes come from the app's docs/openapi.json), e.g. --scope-api 'GET /openapi/orders'")
+	for _, a := range scopeAPIs {
+		if _, err := parseScopeAPI(a); err != nil {
+			return appsValidationParamError("--scope-api", "invalid --scope-api: %s", err).
+				WithHint("format: 'METHOD /openapi/path'; method one of GET, POST, PUT, PATCH, DELETE; path starts with '/', no '..' or '//'")
 		}
 	}
 	return nil
