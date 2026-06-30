@@ -31,6 +31,7 @@ func v2UpdateFlags() []common.Flag {
 		{Name: "pattern", Desc: "str_replace match pattern; XML mode is inline text, Markdown mode can match multiline text"},
 		{Name: "block-id", Desc: "target block ID(s) for block operations (comma-separated for batch delete); -1 means document end where supported"},
 		{Name: "src-block-ids", Desc: "comma-separated source block ids for block_copy_insert_after and block_move_after"},
+		{Name: "emulate", Type: "bool", Default: "false", Desc: "block_copy_insert_after/block_move_after only: client-side fallback for servers that reject src_block_ids (fetch source blocks, rebuild after --block-id, verify, then delete originals for move); rebuilt blocks get new ids, comments/#block_id anchors are not migrated, images are re-uploaded; supports p/h1-h9/ul/ol/li/blockquote/callout/pre/img blocks only"},
 		{Name: "revision-id", Desc: "base revision id; -1 means latest", Type: "int", Default: "-1"},
 	}
 }
@@ -107,12 +108,42 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command append requires --content").WithParam("--content")
 		}
 	}
+	if runtime.Bool("emulate") {
+		return validateUpdateEmulate(runtime, cmd, srcBlockIDs)
+	}
+	return nil
+}
+
+// validateUpdateEmulate checks the extra constraints of the --emulate
+// client-side fallback path. It runs after the per-command checks above, so
+// --block-id and --src-block-ids presence is already guaranteed.
+func validateUpdateEmulate(runtime *common.RuntimeContext, cmd, srcBlockIDs string) error {
+	if cmd != "block_move_after" && cmd != "block_copy_insert_after" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--emulate only applies to block_move_after and block_copy_insert_after, got --command %s", cmd).WithParam("--emulate")
+	}
+	if v := runtime.Int("revision-id"); v != -1 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--revision-id is not supported with --emulate: the emulation issues multiple writes and always targets the latest revision").WithParam("--revision-id")
+	}
+	ids := splitSrcBlockIDs(srcBlockIDs)
+	if len(ids) == 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--src-block-ids contains no block ids").WithParam("--src-block-ids")
+	}
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--src-block-ids contains duplicate block id %s", id).WithParam("--src-block-ids")
+		}
+		seen[id] = true
+	}
 	return nil
 }
 
 func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	// Validate has already accepted --doc; parseDocumentRef cannot fail here.
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
+	if runtime.Bool("emulate") {
+		return dryRunUpdateEmulated(runtime, ref, runtime.Str("command"))
+	}
 	body := buildUpdateBody(runtime)
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
 	return common.NewDryRunAPI().
@@ -124,6 +155,11 @@ func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.D
 
 func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
+
+	if runtime.Bool("emulate") {
+		// Validate has already restricted --emulate to move/copy commands.
+		return executeUpdateEmulated(runtime, ref, runtime.Str("command"))
+	}
 
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
 	body := buildUpdateBody(runtime)

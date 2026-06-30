@@ -116,6 +116,7 @@ func newUpdateShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[
 	cmd.Flags().String("pattern", "", "")
 	cmd.Flags().String("block-id", "", "")
 	cmd.Flags().String("src-block-ids", "", "")
+	cmd.Flags().Bool("emulate", false, "")
 	cmd.Flags().String("mode", "", "")
 	cmd.Flags().String("markdown", "", "")
 	cmd.Flags().String("selection-with-ellipsis", "", "")
