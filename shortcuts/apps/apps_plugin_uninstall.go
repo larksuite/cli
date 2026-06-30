@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -38,8 +37,10 @@ var AppsPluginUninstall = common.Shortcut{
 			Set("update_file", "package.json actionPlugins")
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		if strings.TrimSpace(rctx.Str("name")) == "" {
+		if key := strings.TrimSpace(rctx.Str("name")); key == "" {
 			return appsValidationParamError("--name", "--name is required")
+		} else if err := validatePluginKey(key); err != nil {
+			return err
 		}
 		projectPath, err := pluginResolveProjectPath("")
 		if err != nil {
@@ -59,7 +60,10 @@ var AppsPluginUninstall = common.Shortcut{
 			return err
 		}
 
-		pkgDir := filepath.Join(projectPath, "node_modules", key)
+		pkgDir, err := secureModulePath(projectPath, key)
+		if err != nil {
+			return err
+		}
 		if err := os.RemoveAll(pkgDir); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; remove plugin directory.
 			return appsFileIOError(err, "cannot remove %s", pkgDir)
 		}

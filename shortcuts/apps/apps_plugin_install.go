@@ -68,6 +68,11 @@ var AppsPluginInstall = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		if key := strings.TrimSpace(rctx.Str("name")); key != "" {
+			if err := validatePluginKey(key); err != nil {
+				return err
+			}
+		}
 		return pluginCheckProjectDir(projectPath)
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -134,7 +139,10 @@ func pluginInstallOne(ctx context.Context, rctx *common.RuntimeContext, projectP
 	}
 
 	// Extract to node_modules
-	destDir := filepath.Join(projectPath, "node_modules", key)
+	destDir, err := secureModulePath(projectPath, key)
+	if err != nil {
+		return err
+	}
 	if err := os.RemoveAll(destDir); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; clean before extract.
 		return appsFileIOError(err, "cannot clean %s", destDir)
 	}
@@ -247,7 +255,10 @@ func pluginInstallLocal(rctx *common.RuntimeContext, projectPath, tgzPath string
 	}
 
 	// Move to node_modules
-	destDir := filepath.Join(projectPath, "node_modules", key)
+	destDir, err := secureModulePath(projectPath, key)
+	if err != nil {
+		return err
+	}
 	if err := os.RemoveAll(destDir); err != nil { //nolint:forbidigo
 		return appsFileIOError(err, "cannot clean %s", destDir)
 	}
@@ -355,6 +366,9 @@ func pluginFindVersionInItems(data map[string]interface{}, key, version string) 
 
 // pluginDownloadPackage downloads a plugin .tgz via the download_package API.
 // The endpoint is POST with JSON body {plugin_key, plugin_version}.
+
+const pluginDownloadMaxBytes = 10 * 1024 * 1024
+
 func pluginDownloadPackage(ctx context.Context, rctx *common.RuntimeContext, key, version string) ([]byte, error) {
 	apiPath := apiBasePath + "/plugin/versions/download_package"
 	body, _ := json.Marshal(map[string]string{
@@ -380,7 +394,7 @@ func pluginDownloadPackage(ctx context.Context, rctx *common.RuntimeContext, key
 			WithRetryable()
 	}
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		hint := "check plugin key and version spelling"
 		if resp.StatusCode == 403 {
 			hint = "download token may have expired; retry the install to get a fresh token"
@@ -390,5 +404,16 @@ func pluginDownloadPackage(ctx context.Context, rctx *common.RuntimeContext, key
 		return nil, errs.NewAPIError(errs.SubtypeUnknown, "download failed for %s@%s: HTTP %d: %s", key, version, resp.StatusCode, string(respBody)).
 			WithHint(hint)
 	}
-	return io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, pluginDownloadMaxBytes+1))
+	if err != nil {
+		return nil, errs.NewNetworkError(errs.SubtypeNetworkTransport, "download failed for %s@%s: %v", key, version, err).
+			WithHint("check network connectivity and retry").
+			WithRetryable().
+			WithCause(err)
+	}
+	if len(data) > pluginDownloadMaxBytes {
+		return nil, errs.NewAPIError(errs.SubtypeUnknown, "plugin package %s@%s exceeds %d MB size limit", key, version, pluginDownloadMaxBytes/(1024*1024)).
+			WithHint("contact plugin maintainer to reduce package size")
+	}
+	return data, nil
 }

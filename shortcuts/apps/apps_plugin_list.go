@@ -17,7 +17,7 @@ import (
 var AppsPluginList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+plugin-list",
-	Description: "List declared plugin packages and their installation status",
+	Description: "List locally installed plugin packages and their installation status",
 	Risk:        "read",
 	Scopes:      []string{},
 	Tips: []string{

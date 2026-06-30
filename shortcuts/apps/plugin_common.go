@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -50,6 +51,41 @@ func pluginCheckProjectDir(projectPath string) error {
 	return nil
 }
 
+// validatePluginKey validates a plugin key for use in filesystem paths.
+// Rejects empty, ".", "..", absolute paths, path traversal, and control characters.
+func validatePluginKey(key string) error {
+	if key == "" || key == "." || key == ".." {
+		return appsValidationError("invalid plugin key: must not be empty, \".\", or \"..\"")
+	}
+	if filepath.IsAbs(key) {
+		return appsValidationError("invalid plugin key: must not be an absolute path: %q", key)
+	}
+	if strings.Contains(key, "..") {
+		return appsValidationError("invalid plugin key: must not contain path traversal: %q", key)
+	}
+	for _, r := range key {
+		if r < 32 || r == 127 {
+			return appsValidationError("invalid plugin key: contains control character (code %d)", r)
+		}
+	}
+	return nil
+}
+
+// secureModulePath validates the plugin key and joins it with
+// projectPath/node_modules, asserting the result stays within node_modules.
+func secureModulePath(projectPath, key string) (string, error) {
+	if err := validatePluginKey(key); err != nil {
+		return "", err
+	}
+	nodeModules := filepath.Join(projectPath, "node_modules")
+	resolved := filepath.Clean(filepath.Join(nodeModules, key))
+	expectedPrefix := filepath.Clean(nodeModules) + string(filepath.Separator)
+	if !strings.HasPrefix(resolved+string(filepath.Separator), expectedPrefix) {
+		return "", appsValidationError("plugin key %q resolves outside node_modules", key)
+	}
+	return resolved, nil
+}
+
 // pluginResolveCapDir resolves the capabilities directory using a 3-level fallback:
 //  1. MIAODA_CAPABILITIES_DIR env var
 //  2. MIAODA_APP_TYPE env var (2→server/capabilities, 6→shared/capabilities)
@@ -67,6 +103,12 @@ func pluginResolveCapDir(projectPath string) (string, error) {
 	appType := os.Getenv("MIAODA_APP_TYPE")
 	if appType == "" {
 		appType = pluginReadEnvLocalValue(projectPath, "MIAODA_APP_TYPE")
+	}
+	if appType != "" {
+		if _, err := strconv.Atoi(appType); err != nil {
+			return "", appsValidationError("MIAODA_APP_TYPE must be a number, got %q", appType).
+				WithHint("set MIAODA_APP_TYPE to a valid numeric value in .env.local")
+		}
 	}
 	if appType == "6" {
 		return filepath.Join(projectPath, "shared", "capabilities"), nil
@@ -302,6 +344,8 @@ func pluginInstalledVersion(projectPath, pluginKey string) string {
 
 // ── tgz extraction ──
 
+const pluginExtractMaxBytes = 10 * 1024 * 1024
+
 // pluginExtractTGZ extracts a gzipped tar archive into destDir, stripping the
 // first path component (npm convention: tarballs contain a "package/" prefix).
 // Path traversal entries are silently skipped.
@@ -338,6 +382,8 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 		}
 
 		switch hdr.Typeflag {
+		case tar.TypeSymlink, tar.TypeLink:
+			continue
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs; tgz extraction.
 				return err
@@ -350,7 +396,7 @@ func pluginExtractTGZ(r io.Reader, destDir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // bounded by tar entry size
+			if _, err := io.Copy(f, io.LimitReader(tr, pluginExtractMaxBytes)); err != nil {
 				if cerr := f.Close(); cerr != nil {
 					return fmt.Errorf("copy tar entry: %w; close file: %w", err, cerr) //nolint:forbidigo // intermediate helper error; callers wrap as typed
 				}
