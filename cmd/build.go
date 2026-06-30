@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/cmd/skill"
 	cmdupdate "github.com/larksuite/cli/cmd/update"
+	"github.com/larksuite/cli/cmd/whoami"
 	_ "github.com/larksuite/cli/events"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
@@ -194,6 +195,7 @@ func buildInternal(ctx context.Context, inv cmdutil.InvocationContext, opts ...B
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
 	rootCmd.AddCommand(profile.NewCmdProfile(f))
 	rootCmd.AddCommand(doctor.NewCmdDoctor(f))
+	rootCmd.AddCommand(whoami.NewCmdWhoami(f))
 	rootCmd.AddCommand(api.NewCmdApiWithContext(ctx, f, nil))
 	rootCmd.AddCommand(schema.NewCmdSchema(f, nil))
 	rootCmd.AddCommand(completion.NewCmdCompletion(f))
