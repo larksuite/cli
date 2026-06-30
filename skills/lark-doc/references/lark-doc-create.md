@@ -60,6 +60,7 @@ lark-cli docs +create --doc-format markdown --title "项目计划" --content $'#
 | ------------------- | -- |---------------------------------------------|
 | `--title`           | 否  | 文档标题，Markdown 导入时使用；XML 创建推荐在 `--content` 开头写 `<title>...</title>`；多个标题仅保留第一个并在 `warnings` / `degrade_details` 提示 |
 | `--content`         | 视情况 | 文档内容（XML 或 Markdown 格式）；不传 `--content` 时必须传 `--title` |
+| `--reference-map` | 否 | 结构化 `reference_map` JSON object；当 `--content` 使用正文外部载荷 / 引用映射时与内容一起传给服务，支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。通常用于回写已有 `document.reference_map`。 |
 | `--doc-format`      | 否  | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `--parent-token`    | 否  | 父文件夹或知识库节点 token（与 `--parent-position` 互斥）  |
 | `--parent-position` | 否  | 父节点位置，如 `my_library`（与 `--parent-token` 互斥） |

@@ -14,7 +14,7 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const docsFetchExtraParam = `{"enable_user_cite_reference_map":true}`
+const docsFetchExtraParam = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
@@ -69,6 +69,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 	data, err := doDocAPI(runtime, "POST", apiPath, body)
 	if err != nil {
+		return err
+	}
+	if err := processHTML5BlockReferenceMapForFetch(runtime, runtime.Str("doc-format"), ref.Token, data); err != nil {
 		return err
 	}
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {

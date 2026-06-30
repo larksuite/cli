@@ -505,14 +505,14 @@ func TestBuildFetchBodyIncludesFetchExtraParamByDefault(t *testing.T) {
 	if got["enable_user_cite_reference_map"] != true {
 		t.Fatalf("enable_user_cite_reference_map = %#v, want true in %#v", got["enable_user_cite_reference_map"], got)
 	}
-	if _, ok := got["return_html5_block_data"]; ok {
-		t.Fatalf("extra_param should not request html5 block data: %#v", got)
+	if got["return_html5_block_data"] != true {
+		t.Fatalf("return_html5_block_data = %#v, want true in %#v", got["return_html5_block_data"], got)
 	}
 	if _, ok := got["reference_map_mode"]; ok {
 		t.Fatalf("extra_param should not use legacy reference_map_mode: %#v", got)
 	}
-	if len(got) != 1 {
-		t.Fatalf("extra_param should only contain fetch reference_map toggle: %#v", got)
+	if len(got) != 2 {
+		t.Fatalf("extra_param should only contain fetch reference_map and html5 data toggles: %#v", got)
 	}
 }
 
