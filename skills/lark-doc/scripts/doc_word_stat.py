@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Lark Technologies Pte. Ltd.
+# SPDX-License-Identifier: MIT
 """Standalone Lark Docs word and character counter for XML or Markdown input."""
 
 from __future__ import annotations
@@ -75,7 +77,7 @@ ENGLISH_PUNCTUATION = set(
 )
 
 
-TokenKind = Literal["english", "number"]
+LexemeKind = Literal["english", "number"]
 
 
 @dataclass
@@ -156,8 +158,8 @@ def utf16_units(ch: str) -> int:
 class Counter:
     def __init__(self) -> None:
         self.stats = Stats()
-        self._token_kind: TokenKind | None = None
-        self._token_has_digit = False
+        self._lexeme_kind: LexemeKind | None = None
+        self._lexeme_has_digit = False
         self._symbol_run_length = 0
         self._at_boundary = True
 
@@ -202,7 +204,7 @@ class Counter:
             return
 
         if is_han(ch):
-            self._end_token()
+            self._end_lexeme()
             self._end_symbol_run(count_word=False)
             self.stats.han_chars += 1
             self.stats.word_count += 1
@@ -214,10 +216,10 @@ class Counter:
             self._end_symbol_run(count_word=False)
             self.stats.english_letters += 1
             self.stats.char_count += 1
-            if self._token_kind is None:
-                self._token_kind = "english"
-            elif self._token_kind == "number":
-                self._token_kind = "english"
+            if self._lexeme_kind is None:
+                self._lexeme_kind = "english"
+            elif self._lexeme_kind == "number":
+                self._lexeme_kind = "english"
             self._at_boundary = False
             return
 
@@ -229,7 +231,7 @@ class Counter:
             return
 
         if is_chinese_punctuation(ch):
-            self._end_token()
+            self._end_lexeme()
             self._end_symbol_run(count_word=False)
             self.stats.chinese_punctuations += 1
             self.stats.word_count += 1
@@ -238,15 +240,15 @@ class Counter:
             return
 
         if is_english_punctuation(ch):
-            keeps_token = self._token_kind == "english" and ch in {"'", "-"}
-            if not keeps_token:
-                had_token = self._token_kind is not None
-                self._end_token()
-                if not had_token and (self._symbol_run_length > 0 or self._at_boundary):
+            keeps_lexeme = self._lexeme_kind == "english" and ch in {"'", "-"}
+            if not keeps_lexeme:
+                had_lexeme = self._lexeme_kind is not None
+                self._end_lexeme()
+                if not had_lexeme and (self._symbol_run_length > 0 or self._at_boundary):
                     self._symbol_run_length += 1
             self.stats.english_punctuations += 1
             self.stats.char_count += 1
-            if keeps_token:
+            if keeps_lexeme:
                 self._at_boundary = False
             return
 
@@ -254,7 +256,7 @@ class Counter:
             self._write_symbol_char(ch)
             return
 
-        self._end_token()
+        self._end_lexeme()
         self._end_symbol_run(count_word=False)
         self._at_boundary = False
 
@@ -265,7 +267,7 @@ class Counter:
             return
 
         if is_han(ch):
-            self._end_token()
+            self._end_lexeme()
             self._end_symbol_run(count_word=False)
             self.stats.han_chars += 1
             self.stats.word_count += 1
@@ -277,10 +279,10 @@ class Counter:
             self._end_symbol_run(count_word=False)
             self.stats.english_letters += 1
             self.stats.char_count += 1
-            if self._token_kind is None:
-                self._token_kind = "english"
-            elif self._token_kind == "number":
-                self._token_kind = "english"
+            if self._lexeme_kind is None:
+                self._lexeme_kind = "english"
+            elif self._lexeme_kind == "number":
+                self._lexeme_kind = "english"
             self._at_boundary = False
             return
 
@@ -288,14 +290,14 @@ class Counter:
             self._end_symbol_run(count_word=False)
             self.stats.digits += 1
             self.stats.char_count += 1
-            self._token_has_digit = True
-            if self._token_kind is None:
-                self._token_kind = "number"
+            self._lexeme_has_digit = True
+            if self._lexeme_kind is None:
+                self._lexeme_kind = "number"
             self._at_boundary = False
             return
 
         if is_chinese_punctuation(ch):
-            self._end_token()
+            self._end_lexeme()
             self._end_symbol_run(count_word=False)
             self.stats.chinese_punctuations += 1
             self.stats.word_count += 1
@@ -304,25 +306,25 @@ class Counter:
             return
 
         if is_english_punctuation(ch):
-            # Apostrophes/hyphens can connect English tokens. Dot/comma/hyphen
-            # can format numeric tokens such as 3.14, 1,000, 2026-06-30, or
+            # Apostrophes/hyphens can connect English runs. Dot/comma/hyphen
+            # can format numeric runs such as 3.14, 1,000, 2026-06-30, or
             # 7-9. Alphanumeric versions like v1.2.3 should remain one semantic
-            # token too. These punctuations still count as characters.
-            keeps_token = (
-                self._token_kind == "english"
-                and (ch in {"'", "-"} or (self._token_has_digit and ch == "."))
+            # run too. These punctuations still count as characters.
+            keeps_lexeme = (
+                self._lexeme_kind == "english"
+                and (ch in {"'", "-"} or (self._lexeme_has_digit and ch == "."))
             ) or (
-                self._token_kind == "number"
+                self._lexeme_kind == "number"
                 and ch in {".", ",", "-"}
             )
-            if not keeps_token:
-                had_token = self._token_kind is not None
-                self._end_token()
-                if not had_token and (self._symbol_run_length > 0 or self._at_boundary):
+            if not keeps_lexeme:
+                had_lexeme = self._lexeme_kind is not None
+                self._end_lexeme()
+                if not had_lexeme and (self._symbol_run_length > 0 or self._at_boundary):
                     self._symbol_run_length += 1
             self.stats.english_punctuations += 1
             self.stats.char_count += 1
-            if keeps_token:
+            if keeps_lexeme:
                 self._at_boundary = False
             return
 
@@ -330,12 +332,12 @@ class Counter:
             self._write_symbol_char(ch)
             return
 
-        self._end_token()
+        self._end_lexeme()
         self._end_symbol_run(count_word=False)
         self._at_boundary = False
 
     def _write_symbol_char(self, ch: str) -> None:
-        self._end_token()
+        self._end_lexeme()
         self._end_symbol_run(count_word=False)
         units = utf16_units(ch)
         self.stats.symbol_words += 1
@@ -345,18 +347,18 @@ class Counter:
         self._at_boundary = False
 
     def _end_unit(self) -> None:
-        self._end_token()
+        self._end_lexeme()
         self._end_symbol_run(count_word=True)
 
-    def _end_token(self) -> None:
-        if self._token_kind == "english":
+    def _end_lexeme(self) -> None:
+        if self._lexeme_kind == "english":
             self.stats.english_words += 1
             self.stats.word_count += 1
-        elif self._token_kind == "number":
+        elif self._lexeme_kind == "number":
             self.stats.number_words += 1
             self.stats.word_count += 1
-        self._token_kind = None
-        self._token_has_digit = False
+        self._lexeme_kind = None
+        self._lexeme_has_digit = False
 
     def _end_symbol_run(self, *, count_word: bool) -> None:
         if self._symbol_run_length >= 2 and count_word:
