@@ -102,7 +102,8 @@ func NewCmdUpdate(f *cmdutil.Factory) *cobra.Command {
 		Long: `Update lark-cli to the latest version.
 
 Detects the installation method automatically:
-  - npm install: runs npm install -g @larksuite/cli@<version>
+  - npm install:  runs npm install -g @larksuite/cli@<version>
+  - pnpm install: runs pnpm add -g @larksuite/cli@<version>
   - manual/other: shows GitHub Releases download URL
 
 Use --json for structured output (for AI agents and scripts).
@@ -164,7 +165,7 @@ func updateRun(opts *UpdateOptions) error {
 	if !detect.CanAutoUpdate() {
 		return doManualUpdate(opts, io, cur, latest, detect, updater)
 	}
-	return doNpmUpdate(opts, io, cur, latest, updater)
+	return doAutoUpdate(opts, io, cur, latest, detect, updater)
 }
 
 // --- Output helpers ---
@@ -226,12 +227,23 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
+	if detect.Method == selfupdate.InstallPnpm {
+		fmt.Fprintf(io.ErrOut, "\nOr install via pnpm (note: skills will not be synced):\n  pnpm add -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
+	} else {
+		fmt.Fprintf(io.ErrOut, "\nOr install via npm (note: skills will not be synced):\n  npm install -g %s@%s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", selfupdate.NpmPackage, latest)
+	}
 	emitSkillsTextHints(io, skillsResult)
 	return nil
 }
 
-func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, updater *selfupdate.Updater) error {
+func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string, detect selfupdate.DetectResult, updater *selfupdate.Updater) error {
+	pm := "npm"
+	install := updater.RunNpmInstall
+	if detect.Method == selfupdate.InstallPnpm {
+		pm = "pnpm"
+		install = updater.RunPnpmInstall
+	}
+
 	restore, err := updater.PrepareSelfReplace()
 	if err != nil {
 		return reportError(opts, io, "update_error",
@@ -239,10 +251,10 @@ func doNpmUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string,
 	}
 
 	if !opts.JSON {
-		fmt.Fprintf(io.ErrOut, "Updating lark-cli %s %s %s via npm ...\n", cur, symArrow(), latest)
+		fmt.Fprintf(io.ErrOut, "Updating lark-cli %s %s %s via %s ...\n", cur, symArrow(), latest, pm)
 	}
 
-	npmResult := updater.RunNpmInstall(latest)
+	npmResult := install(latest)
 	if npmResult.Err != nil {
 		restore()
 		combined := npmResult.CombinedOutput()
