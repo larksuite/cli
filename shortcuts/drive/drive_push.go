@@ -787,6 +787,9 @@ func drivePushVerifyLocalSnapshot(runtime *common.RuntimeContext, file drivePush
 	if info.Size() != file.Size {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s snapshot size no longer matches", file.RelPath)
 	}
+	if modTimer, ok := info.(interface{ ModTime() time.Time }); ok && !modTimer.ModTime().Equal(file.ModTime) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s snapshot modtime no longer matches", file.RelPath)
+	}
 	return nil
 }
 

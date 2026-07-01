@@ -1277,6 +1277,80 @@ func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
 	if problem.Subtype != errs.SubtypeFailedPrecondition {
 		t.Fatalf("snapshot error subtype = %q, want %q", problem.Subtype, errs.SubtypeFailedPrecondition)
 	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("snapshot error category = %q, want %q", problem.Category, errs.CategoryValidation)
+	}
+	if errors.Unwrap(problemErr) == nil {
+		t.Fatalf("snapshot error cause was not preserved")
+	}
+}
+
+func TestDrivePushDetectsSameSizeLocalFileChangedBeforeUpload(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "changing.txt")
+	if err := os.WriteFile(localPath, []byte("before"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	originalModTime := time.Unix(100, 0)
+	changedModTime := time.Unix(200, 0)
+	if err := os.Chtimes(localPath, originalModTime, originalModTime); err != nil {
+		t.Fatalf("Chtimes original: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		OnMatch: func(req *http.Request) {
+			if err := os.WriteFile(localPath, []byte("AFTER!"), 0o644); err != nil {
+				t.Fatalf("mutate local file: %v", err)
+			}
+			if err := os.Chtimes(localPath, changedModTime, changedModTime); err != nil {
+				t.Fatalf("Chtimes changed: %v", err)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "changing.txt" || item["error_class"] != "local_file_changed" || item["subtype"] != "failed_precondition" {
+		t.Fatalf("unexpected failure metadata: %#v", item)
+	}
+	if got, _ := item["error"].(string); !strings.Contains(got, "snapshot modtime no longer matches") {
+		t.Fatalf("items[0].error = %q, want modtime mismatch", got)
+	}
+	if strings.Contains(stdout.String(), "httpmock: no stub") {
+		t.Fatalf("upload_all was called after local snapshot changed:\n%s", stdout.String())
+	}
 }
 
 // TestDrivePushSkipsDeleteAfterUploadFailure pins the half-sync safety

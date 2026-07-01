@@ -505,19 +505,20 @@ var DriveSync = common.Shortcut{
 				}
 				target := filepath.Join(rootRelToCwd, entry.RelPath)
 				if err := drivePullDownload(ctx, runtime, targetFile.DownloadToken, target, targetFile.ModifiedTime); err != nil {
+					downloadErr := err
 					rollbackErr := driveSyncRollbackRenamedLocal(oldAbsPath, newAbsPath)
 					errMsg := err.Error()
 					if rollbackErr != nil {
 						errMsg += "; rollback failed: " + rollbackErr.Error()
 					}
+					item, terminal := driveSyncFailedItem(entry.RelPath, entry.FileToken, "failed", "pull", "download", downloadErr)
 					if rollbackErr != nil {
-						err = errs.NewInternalError(errs.SubtypeFileIO, "%s", errMsg).WithCause(err)
+						item.Error = errMsg
 					}
-					item, terminal := driveSyncFailedItem(entry.RelPath, entry.FileToken, "failed", "pull", "download", err)
 					items = append(items, item)
 					failed++
 					if terminal {
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, downloadErr)
 						break
 					}
 					continue

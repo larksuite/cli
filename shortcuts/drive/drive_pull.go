@@ -281,7 +281,8 @@ var DrivePull = common.Shortcut{
 				// acceptable here. Shortcuts cannot import internal/vfs
 				// directly (depguard rule shortcuts-no-vfs).
 				if err := os.Remove(absPath); err != nil { //nolint:forbidigo // see comment above
-					item, _ := drivePullFailedItem(rel, "", "", "delete_failed", "delete_local", err)
+					deleteErr := errs.NewInternalError(errs.SubtypeFileIO, "delete local %q: %s", rel, err).WithCause(err)
+					item, _ := drivePullFailedItem(rel, "", "", "delete_failed", "delete_local", deleteErr)
 					items = append(items, item)
 					failed++
 					continue
