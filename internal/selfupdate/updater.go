@@ -32,6 +32,7 @@ type InstallMethod int
 
 const (
 	InstallNpm InstallMethod = iota
+	InstallPnpm
 	InstallManual
 )
 
@@ -53,22 +54,32 @@ var (
 
 // DetectResult holds installation detection results.
 type DetectResult struct {
-	Method       InstallMethod
-	ResolvedPath string
-	NpmAvailable bool
+	Method        InstallMethod
+	ResolvedPath  string
+	NpmAvailable  bool
+	PnpmAvailable bool
 }
 
 // CanAutoUpdate returns true if the CLI can update itself automatically.
 func (d DetectResult) CanAutoUpdate() bool {
-	return d.Method == InstallNpm && d.NpmAvailable
+	switch d.Method {
+	case InstallNpm:
+		return d.NpmAvailable
+	case InstallPnpm:
+		return d.PnpmAvailable
+	}
+	return false
 }
 
 // ManualReason returns a human-readable explanation of why auto-update is unavailable.
 func (d DetectResult) ManualReason() string {
-	if d.Method == InstallNpm && !d.NpmAvailable {
+	switch {
+	case d.Method == InstallNpm && !d.NpmAvailable:
 		return "installed via npm, but npm is not available in PATH"
+	case d.Method == InstallPnpm && !d.PnpmAvailable:
+		return "installed via pnpm, but pnpm is not available in PATH"
 	}
-	return "not installed via npm"
+	return "not installed via npm or pnpm"
 }
 
 // NpmResult holds the result of an npm install or skills update execution.
@@ -106,8 +117,8 @@ type Updater struct {
 // New creates an Updater with default (real) behavior.
 func New() *Updater { return &Updater{} }
 
-// DetectInstallMethod determines how the CLI was installed and whether
-// npm is available for auto-update.
+// DetectInstallMethod determines how the CLI was installed and whether the
+// owning package manager is available for auto-update.
 func (u *Updater) DetectInstallMethod() DetectResult {
 	if u.DetectOverride != nil {
 		return u.DetectOverride()
@@ -120,24 +131,40 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 	if err != nil {
 		return DetectResult{Method: InstallManual, ResolvedPath: exe}
 	}
+	_, npmErr := exec.LookPath("npm")
+	_, pnpmErr := exec.LookPath("pnpm")
+	return detectFromResolved(resolved, npmErr == nil, pnpmErr == nil)
+}
 
+// detectFromResolved classifies the resolved binary path into an install
+// method and records package-manager availability. Split out from
+// DetectInstallMethod so the classification is unit-testable without touching
+// the filesystem or PATH.
+func detectFromResolved(resolved string, npmOnPath, pnpmOnPath bool) DetectResult {
 	method := InstallManual
 	if strings.Contains(resolved, "node_modules") {
-		method = InstallNpm
-	}
-
-	npmAvailable := false
-	if method == InstallNpm {
-		if _, err := exec.LookPath("npm"); err == nil {
-			npmAvailable = true
+		if containsPnpmMarker(resolved) {
+			method = InstallPnpm
+		} else {
+			method = InstallNpm
 		}
 	}
-
-	return DetectResult{
-		Method:       method,
-		ResolvedPath: resolved,
-		NpmAvailable: npmAvailable,
+	d := DetectResult{Method: method, ResolvedPath: resolved}
+	switch method {
+	case InstallNpm:
+		d.NpmAvailable = npmOnPath
+	case InstallPnpm:
+		d.PnpmAvailable = pnpmOnPath
 	}
+	return d
+}
+
+// containsPnpmMarker reports whether the path contains pnpm's virtual-store
+// directory segment (".pnpm"), which distinguishes a pnpm global install from
+// an npm one. Both POSIX ("/.pnpm/") and Windows ("\.pnpm\") separators are
+// checked so the classification is OS-independent and unit-testable anywhere.
+func containsPnpmMarker(p string) bool {
+	return strings.Contains(p, "/.pnpm/") || strings.Contains(p, `\.pnpm\`)
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.

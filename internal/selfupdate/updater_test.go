@@ -371,3 +371,63 @@ func TestListOfficialSkillsFallsBack(t *testing.T) {
 		t.Fatalf("fallback call = %q, want larksuite/cli --list", called[1])
 	}
 }
+
+func TestContainsPnpmMarker(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/Users/x/Library/pnpm/global/5/node_modules/.pnpm/@larksuite+cli@1.0.44/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{"/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
+		{"/opt/homebrew/.pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
+		{`C:\Users\x\AppData\Local\pnpm\global\5\node_modules\.pnpm\@larksuite+cli@1.0.44\node_modules\@larksuite\cli\bin\lark-cli.exe`, true},
+		{"/usr/local/bin/lark-cli", false},
+	}
+	for _, c := range cases {
+		if got := containsPnpmMarker(c.path); got != c.want {
+			t.Errorf("containsPnpmMarker(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+func TestDetectInstallMethod_Pnpm(t *testing.T) {
+	u := &Updater{DetectOverride: nil}
+	u.DetectOverride = func() DetectResult {
+		// Exercise the real classification by feeding a resolved path via a small shim.
+		return detectFromResolved("/x/node_modules/.pnpm/@larksuite+cli@1.0.44/node_modules/@larksuite/cli/bin/lark-cli", true, true)
+	}
+	got := u.DetectInstallMethod()
+	if got.Method != InstallPnpm {
+		t.Errorf("Method = %v, want InstallPnpm", got.Method)
+	}
+	if !got.PnpmAvailable {
+		t.Errorf("PnpmAvailable = false, want true")
+	}
+}
+
+func TestDetectInstallMethod_NpmVsManual(t *testing.T) {
+	if m := detectFromResolved("/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", true, false).Method; m != InstallNpm {
+		t.Errorf("npm path Method = %v, want InstallNpm", m)
+	}
+	if m := detectFromResolved("/usr/local/bin/lark-cli", false, false).Method; m != InstallManual {
+		t.Errorf("manual path Method = %v, want InstallManual", m)
+	}
+}
+
+func TestCanAutoUpdate_Pnpm(t *testing.T) {
+	if !(DetectResult{Method: InstallPnpm, PnpmAvailable: true}).CanAutoUpdate() {
+		t.Error("pnpm available should CanAutoUpdate")
+	}
+	if (DetectResult{Method: InstallPnpm, PnpmAvailable: false}).CanAutoUpdate() {
+		t.Error("pnpm unavailable should not CanAutoUpdate")
+	}
+}
+
+func TestManualReason_Pnpm(t *testing.T) {
+	if got := (DetectResult{Method: InstallPnpm, NpmAvailable: false, PnpmAvailable: false}).ManualReason(); got != "installed via pnpm, but pnpm is not available in PATH" {
+		t.Errorf("pnpm reason = %q", got)
+	}
+	if got := (DetectResult{Method: InstallManual}).ManualReason(); got != "not installed via npm or pnpm" {
+		t.Errorf("manual reason = %q", got)
+	}
+}
