@@ -12,7 +12,7 @@ import (
 var BaseViewSetVisibleFields = common.Shortcut{
 	Service:     "base",
 	Command:     "+view-set-visible-fields",
-	Description: "Set view visible fields",
+	Description: "Set view visible fields order and visibility",
 	Risk:        "write",
 	Scopes:      []string{"base:view:write_only"},
 	AuthTypes:   authTypes(),
@@ -23,6 +23,7 @@ var BaseViewSetVisibleFields = common.Shortcut{
 		{Name: "json", Desc: `visible fields JSON object, e.g. {"visible_fields":["Name","Status"]}`, Required: true},
 	},
 	Tips: []string{
+		"Use this command when the user wants to reorder visible fields or hide columns; there is no generic +view-update shortcut.",
 		"Supported view types: grid, kanban, gallery, calendar, gantt.",
 		"Use a JSON object, not a bare array; primary field may be forced to the first position by the API.",
 		"visible_fields controls both visibility and order; include every field that should remain visible.",

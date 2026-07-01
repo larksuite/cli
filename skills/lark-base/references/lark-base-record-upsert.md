@@ -56,6 +56,7 @@ lark-cli base +record-upsert --base-token <base_token> --table-id <table_id> --r
 
 - 有 `--record-id` 就一定更新；不传就一定创建，不会自动查重或按业务键 upsert。
 - select 写入未知选项时平台可能自动新增选项；如果不是要新增选项，先用 `+field-list` / `+field-search-options` 确认真实选项名。
+- `link` CellValue 只表示“关联到现有记录”；它不是原生“子记录/层级记录”能力。用户只说“新增子记录”时，不要默认用自关联或双向关联字段替代。
 - 这是写入操作，执行前必须确认目标表和字段。
 
 ## 参考

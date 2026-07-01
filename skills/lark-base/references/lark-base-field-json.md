@@ -310,7 +310,9 @@
 - `link` 字段的单元格表示“当前记录关联到的对侧表记录集合”
 - `bidirectional` 默认 `false`
 - `bidirectional=true` 时，会在被关联表自动创建一个反向关联字段。任一侧记录的关联关系发生变更时，另一侧对应记录会自动同步更新
+- 自动创建的反向关联字段属于被关联表；如果拿这个反向字段 ID 在当前表执行 `+field-get`，会得到 `not_found`。要读取它，切到被关联表；只想维护关系时，继续操作当前表里的正向 `link` 字段
 - `bidirectional_link_field_name` 仅在 `bidirectional=true` 时使用
+- `link` / `bidirectional` 建模的是“关联记录”，不是 CLI 的原生“子记录/层级记录”能力；不要因为用户说“子记录”就默认改走自关联写入
 - 关联字段筛选：这个功能在 Base 前端支持，属于 UI-only 属性，OpenAPI 里不支持，CLI 不能读取、创建或更新；不要根据接口返回缺失判断未配置
 
 ```json
@@ -383,6 +385,8 @@
 ### 3.11 auto_number
 
 自动编号字段；不写 `style.rules` 时使用默认规则：`NO.001`。
+
+如果这次更新还要把新规则应用到已有记录，继续使用 `lark-cli base +field-update`，并额外加命令 flag `--reformat-existing-records --yes`。`reformat_existing_records` 不是字段 JSON 的一部分，不要把它写进 `style` 或旧的 `property.auto_serial` 结构里。
 
 最小写法：
 

@@ -2,12 +2,13 @@
 
 ## Metrics
 - Denominator: 78 leaf commands
-- Covered: 18
-- Coverage: 23.1%
+- Covered: 19
+- Coverage: 24.4%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
+- TestBaseFieldUpdateDryRun: proves `+field-update` 的自动编号重排路径与非 `auto_number` fail-fast，锁定 `base/v3 -> bitable/v1` 的 dry-run 请求形状。
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: dashboard, field, form, record, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
@@ -43,7 +44,7 @@
 | ✕ | base +field-get | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-list | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-search-options | shortcut |  | none | field workflows not covered |
-| ✕ | base +field-update | shortcut |  | none | field workflows not covered |
+| ✓ | base +field-update | shortcut | base_field_update_dryrun_test.go::TestBaseFieldUpdateDryRun | `--json`; `--reformat-existing-records`; `auto_number` 规则数组；dry-run only | request shape + validation fail-fast only |
 | ✕ | base +form-create | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-delete | shortcut |  | none | form workflows not covered |
 | ✕ | base +form-get | shortcut |  | none | form workflows not covered |

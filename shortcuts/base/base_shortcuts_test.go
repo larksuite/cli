@@ -461,6 +461,44 @@ func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
 	}
 }
 
+func TestBaseViewListTipsGuideRouting(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseViewList.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	for _, want := range []string{
+		"`--table-id` accepts a table ID or the table name directly; there is no `--table-name` flag.",
+		"Use +view-list only when the table is known but the view name is ambiguous",
+		"Grid row height, display density, and TableManager layout properties are not supported",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+}
+
+func TestBaseViewSetVisibleFieldsTipsGuideRouting(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseViewSetVisibleFields.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	if got := cmd.Short; got != "Set view visible fields order and visibility" {
+		t.Fatalf("short=%q", got)
+	}
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	for _, want := range []string{
+		"Use this command when the user wants to reorder visible fields or hide columns",
+		"there is no generic +view-update shortcut",
+		"primary field may be forced to the first position by the API",
+	} {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -804,6 +842,8 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"does not auto-upsert by business key",
 				"use +field-list to confirm real writable fields",
 				"do not write system fields, formula, lookup, or attachment fields",
+				"Link CellValue writes associations between existing records",
+				"not a native child-record or hierarchy feature",
 				"CellValue happy path: text/phone/url",
 				"select -> \"Todo\"",
 				"multi-select -> [\"Tag A\",\"Tag B\"]",
@@ -861,6 +901,26 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBaseFieldGetHelpGuidesAgents(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseFieldGet.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+
+	tips := strings.Join(cmdutil.GetTips(cmd), "\n")
+	wantTips := []string{
+		`lark-cli base +field-get --base-token <base_token> --table-id <table_id> --field-id "Status"`,
+		"field-id accepts a field ID (fld...) or the field name from the current table.",
+		"Returns full field configuration; use it as the baseline before +field-update.",
+		"bidirectional reverse-field ID returns not_found",
+		"linked table's auto-created reverse field",
+	}
+	for _, want := range wantTips {
+		if !strings.Contains(tips, want) {
+			t.Fatalf("tips missing %q:\n%s", want, tips)
+		}
 	}
 }
 
@@ -945,6 +1005,7 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	help := cmd.Flags().FlagUsages()
 	wantHelp := []string{
 		"complete field definition JSON object; update uses full PUT semantics, not a patch",
+		"for auto_number updates only: regenerate existing values with the updated numbering rules",
 	}
 	for _, want := range wantHelp {
 		if !strings.Contains(help, want) {
@@ -956,8 +1017,11 @@ func TestBaseFieldUpdateHelpGuidesAgents(t *testing.T) {
 	wantTips := []string{
 		`lark-cli base +field-update --base-token <base_token> --table-id <table_id> --field-id "Status" --json '{"name":"Status","type":"text"}' --yes`,
 		`"type":"select","multiple":false,"options":[{"name":"Todo"},{"name":"Done"}]`,
+		`"type":"auto_number","style":{"rules":[{"type":"text","text":"ORD-"}`,
 		"full field-definition PUT semantics",
 		"Read the current field first with +field-get",
+		"--reformat-existing-records",
+		"raw lark-cli api writes",
 		"Type conversion is allowlist-based",
 		"web UI",
 		"Formula and lookup updates require reading the corresponding guide first.",
@@ -1163,6 +1227,20 @@ func TestBaseRecordValidate(t *testing.T) {
 		nil,
 	)); err != nil {
 		t.Fatalf("record list filter-json validate err=%v", err)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1"},
+		nil,
+		map[string]int{"page-size": 1},
+	)); err != nil {
+		t.Fatalf("record list page-size alias validate err=%v", err)
+	}
+	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
+		map[string]string{"base-token": "b", "table-id": "tbl_1"},
+		nil,
+		map[string]int{"limit": 1, "page-size": 1},
+	)); err == nil || !strings.Contains(err.Error(), "--limit and --page-size are mutually exclusive") {
+		t.Fatalf("err=%v", err)
 	}
 	if err := BaseRecordList.Validate(ctx, newBaseTestRuntime(
 		map[string]string{"base-token": "b", "table-id": "tbl_1", "filter-json": `[["Status","==","Todo"]]`},

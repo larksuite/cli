@@ -37,6 +37,11 @@ var BaseViewList = common.Shortcut{
 		}
 		return nil
 	},
+	Tips: []string{
+		"`--table-id` accepts a table ID or the table name directly; there is no `--table-name` flag.",
+		"Use +view-list only when the table is known but the view name is ambiguous, or when a direct view command returned not_found and you need disambiguation.",
+		"Grid row height, display density, and TableManager layout properties are not supported by current +view-* shortcuts; stop and report unsupported instead of searching raw or legacy APIs.",
+	},
 	DryRun: dryRunViewList,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return executeViewList(runtime)

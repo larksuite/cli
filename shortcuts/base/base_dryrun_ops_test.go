@@ -94,6 +94,28 @@ func TestDryRunFieldOps(t *testing.T) {
 	assertDryRunContains(t, dryRunFieldSearchOptions(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1/options", "offset=3", "limit=30", "query=open")
 }
 
+func TestDryRunFieldUpdateAutoNumberReformat(t *testing.T) {
+	ctx := context.Background()
+	rt := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"field-id":   "fld_auto",
+			"json":       `{"name":"自动编号","type":"auto_number","style":{"rules":[{"type":"text","text":"ORD-"},{"type":"created_time","date_format":"yyyyMMdd"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}`,
+		},
+		map[string]bool{"reformat-existing-records": true},
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunFieldUpdate(ctx, rt),
+		"PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_auto",
+		"PUT /open-apis/bitable/v1/apps/app_x/tables/tbl_1/fields/fld_auto",
+		`"reformat_existing_records":true`,
+		`"value":"ORD-"`,
+	)
+}
+
 func TestDryRunRecordOps(t *testing.T) {
 	ctx := context.Background()
 
@@ -135,6 +157,13 @@ func TestDryRunRecordOps(t *testing.T) {
 		map[string]int{"limit": 1},
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, commaFieldRT), "limit=1", "offset=0", "field_id=A%2CB", "field_id=C")
+
+	pageSizeRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
+		nil,
+		map[string]int{"page-size": 1},
+	)
+	assertDryRunContains(t, dryRunRecordList(ctx, pageSizeRT), "limit=1", "offset=0")
 
 	searchRT := newBaseTestRuntime(
 		map[string]string{

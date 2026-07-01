@@ -824,6 +824,280 @@ func TestBaseFieldExecuteUpdate(t *testing.T) {
 	}
 }
 
+func TestBaseFieldExecuteUpdateNoOpReturnsStructuredSuccess(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 800070003,
+			"msg":  "failed",
+			"data": map[string]interface{}{
+				"error": map[string]interface{}{
+					"type":    "api_error",
+					"message": "no operation produced",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_x", "name": "Amount", "type": "number"},
+		},
+	})
+
+	if err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	data := decodeBaseEnvelope(t, stdout)
+	if data["updated"] != false {
+		t.Fatalf("updated = %#v, want false", data["updated"])
+	}
+	if data["noop"] != true {
+		t.Fatalf("noop = %#v, want true", data["noop"])
+	}
+	field, _ := data["field"].(map[string]interface{})
+	if got := common.GetString(field, "id"); got != "fld_x" {
+		t.Fatalf("field.id = %q, want %q", got, "fld_x")
+	}
+}
+
+func TestBaseFieldExecuteUpdateNoOpKeepsErrorWhenReadbackDoesNotMatch(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 800070003,
+			"msg":  "failed",
+			"data": map[string]interface{}{
+				"error": map[string]interface{}{
+					"type":    "api_error",
+					"message": "no operation produced",
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_x",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_x", "name": "Amount", "type": "text"},
+		},
+	})
+
+	err := runShortcut(t, BaseFieldUpdate, []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `{"name":"Amount","type":"number"}`, "--yes"}, factory, stdout)
+	if err == nil {
+		t.Fatal("expected mismatch readback to preserve the original no-op error")
+	}
+	if !strings.Contains(err.Error(), "no operation produced") {
+		t.Fatalf("err=%v, want no-op error", err)
+	}
+}
+
+func TestBaseFieldExecuteUpdateAutoNumberReformatNoOpStillErrors(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 800070003,
+			"msg":  "failed",
+			"data": map[string]interface{}{
+				"error": map[string]interface{}{
+					"type":    "api_error",
+					"message": "no operation produced",
+				},
+			},
+		},
+	})
+
+	args := []string{
+		"+field-update",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field-id", "fld_auto",
+		"--json", `{"name":"自动编号","type":"auto_number","style":{"rules":[{"type":"text","text":"ORD-"}]}}`,
+		"--reformat-existing-records",
+		"--yes",
+	}
+	err := runShortcut(t, BaseFieldUpdate, args, factory, stdout)
+	if err == nil {
+		t.Fatal("expected no-op auto-number reformat update to keep returning an error")
+	}
+	if !strings.Contains(err.Error(), "no operation produced") {
+		t.Fatalf("err=%v, want no-op error", err)
+	}
+}
+
+func TestBaseFieldExecuteUpdateAutoNumberReformat(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	updateStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_auto", "name": "自动编号", "type": "auto_number"},
+		},
+	}
+	reformatStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/bitable/v1/apps/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"field_id": "fld_auto", "field_name": "自动编号", "type": 1005},
+		},
+	}
+	readStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"id":   "fld_auto",
+				"name": "自动编号",
+				"type": "auto_number",
+				"style": map[string]interface{}{
+					"rules": []interface{}{
+						map[string]interface{}{"type": "text", "text": "ORD-"},
+						map[string]interface{}{"type": "created_time", "date_format": "yyyyMMdd"},
+						map[string]interface{}{"type": "text", "text": "-"},
+						map[string]interface{}{"type": "incremental_number", "length": 4},
+					},
+				},
+			},
+		},
+	}
+	readBackStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"id":   "fld_auto",
+				"name": "自动编号",
+				"type": "auto_number",
+				"style": map[string]interface{}{
+					"rules": []interface{}{
+						map[string]interface{}{"type": "text", "text": "ORD-"},
+						map[string]interface{}{"type": "created_time", "date_format": "yyyyMMdd"},
+						map[string]interface{}{"type": "text", "text": "-"},
+						map[string]interface{}{"type": "incremental_number", "length": 4},
+					},
+				},
+			},
+		},
+	}
+	reg.Register(updateStub)
+	reg.Register(reformatStub)
+	reg.Register(readStub)
+	reg.Register(readBackStub)
+
+	args := []string{
+		"+field-update",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field-id", "fld_auto",
+		"--json", `{"name":"自动编号","type":"auto_number","style":{"rules":[{"type":"text","text":"ORD-"},{"type":"created_time","date_format":"yyyyMMdd"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}`,
+		"--reformat-existing-records",
+		"--yes",
+	}
+	if err := runShortcut(t, BaseFieldUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["reformatted_existing_records"] != true {
+		t.Fatalf("reformatted_existing_records = %#v, want true", data["reformatted_existing_records"])
+	}
+	updateBody := decodeCapturedJSONBody(t, updateStub)
+	if updateBody["type"] != "auto_number" {
+		t.Fatalf("update body type = %#v", updateBody["type"])
+	}
+	reformatBody := decodeCapturedJSONBody(t, reformatStub)
+	property, _ := reformatBody["property"].(map[string]interface{})
+	autoSerial, _ := property["auto_serial"].(map[string]interface{})
+	if autoSerial["reformat_existing_records"] != true {
+		t.Fatalf("auto_serial.reformat_existing_records = %#v", autoSerial["reformat_existing_records"])
+	}
+	options, _ := autoSerial["options"].([]interface{})
+	if len(options) != 4 {
+		t.Fatalf("options len = %d, want 4", len(options))
+	}
+}
+
+func TestBaseFieldExecuteUpdateAutoNumberLegacyReformatShape(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	updateStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_auto", "name": "自动编号", "type": "auto_number"},
+		},
+	}
+	reformatStub := &httpmock.Stub{
+		Method: "PUT",
+		URL:    "/open-apis/bitable/v1/apps/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"field_id": "fld_auto", "field_name": "自动编号", "type": 1005},
+		},
+	}
+	readStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_auto", "name": "自动编号", "type": "auto_number"},
+		},
+	}
+	readBackStub := &httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_auto",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "fld_auto", "name": "自动编号", "type": "auto_number"},
+		},
+	}
+	reg.Register(updateStub)
+	reg.Register(reformatStub)
+	reg.Register(readStub)
+	reg.Register(readBackStub)
+
+	args := []string{
+		"+field-update",
+		"--base-token", "app_x",
+		"--table-id", "tbl_x",
+		"--field-id", "fld_auto",
+		"--json", `{"field_name":"自动编号","type":1005,"property":{"auto_serial":{"type":"custom","reformat_existing_records":true,"options":[{"type":"fixed_text","value":"HX-"},{"type":"created_time","value":"yyyyMMdd"},{"type":"fixed_text","value":"-N-"},{"type":"system_number","value":"4"}]}}}`,
+		"--yes",
+	}
+	if err := runShortcut(t, BaseFieldUpdate, args, factory, stdout); err != nil {
+		t.Fatalf("err=%v", err)
+	}
+
+	updateBody := decodeCapturedJSONBody(t, updateStub)
+	if updateBody["type"] != "auto_number" {
+		t.Fatalf("update body type = %#v", updateBody["type"])
+	}
+	style, _ := updateBody["style"].(map[string]interface{})
+	rules, _ := style["rules"].([]interface{})
+	if len(rules) != 4 {
+		t.Fatalf("rules len = %d, want 4", len(rules))
+	}
+	reformatBody := decodeCapturedJSONBody(t, reformatStub)
+	property, _ := reformatBody["property"].(map[string]interface{})
+	autoSerial, _ := property["auto_serial"].(map[string]interface{})
+	if autoSerial["reformat_existing_records"] != true {
+		t.Fatalf("auto_serial.reformat_existing_records = %#v", autoSerial["reformat_existing_records"])
+	}
+}
+
 func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1084,6 +1358,39 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 	})
 
+	t.Run("get hidden reverse field hint", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields/fld_reverse",
+			Body: map[string]interface{}{
+				"code": 800030201,
+				"msg":  "not_found",
+				"error": map[string]interface{}{
+					"message": "not_found",
+					"hint":    "List fields in the current table, then retry with the exact field id or name that belongs to this table.",
+					"path":    "/fields/:field_id",
+					"type":    "not_found",
+					"table":   map[string]interface{}{"id": "tbl_x", "name": "Data"},
+					"value":   "fld_reverse",
+				},
+			},
+		})
+
+		err := runShortcut(t, BaseFieldGet, []string{"+field-get", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_reverse"}, factory, stdout)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		var exitErr *output.ExitError
+		if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+			t.Fatalf("expected output.ExitError, got %T: %v", err, err)
+		}
+		if got := exitErr.Detail.Hint; !strings.Contains(got, "linked table's auto-created reverse field") || !strings.Contains(got, "+field-list / +field-get") {
+			t.Fatalf("hint=%q", got)
+		}
+	})
+
 	t.Run("create", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
 		reg.Register(&httpmock.Stub{
@@ -1274,6 +1581,38 @@ func TestBaseRecordExecuteReadCreateDelete(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"record_id_list"`) || !strings.Contains(got, `"Bob"`) || !strings.Contains(got, `"rec_2"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list page-size alias", func(t *testing.T) {
+		factory, stdout, reg := newExecuteFactory(t)
+		reg.Register(&httpmock.Stub{
+			Method: "GET",
+			URL:    "limit=1&offset=0",
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"fields":         []interface{}{"Name"},
+					"field_id_list":  []interface{}{"fld_name"},
+					"record_id_list": []interface{}{"rec_alias"},
+					"data":           []interface{}{[]interface{}{"Alias"}},
+					"total":          1,
+				},
+			},
+		})
+		if err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--page-size", "1", "--format", "json"}, factory, stdout); err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		if got := stdout.String(); !strings.Contains(got, `"rec_alias"`) || !strings.Contains(got, `"Alias"`) {
+			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("list rejects limit and page-size together", func(t *testing.T) {
+		factory, stdout, _ := newExecuteFactory(t)
+		err := runShortcut(t, BaseRecordList, []string{"+record-list", "--base-token", "app_x", "--table-id", "tbl_x", "--limit", "1", "--page-size", "1", "--format", "json"}, factory, stdout)
+		if err == nil || !strings.Contains(err.Error(), "--limit and --page-size are mutually exclusive") {
+			t.Fatalf("err=%v", err)
 		}
 	})
 

@@ -20,6 +20,14 @@ lark-cli base +field-update \
   --field-id <field_id> \
   --json '{"name":"负责人","type":"user","multiple":false,"description":"用于标记记录的直接负责人"}' \
   --yes
+
+lark-cli base +field-update \
+  --base-token <base_token> \
+  --table-id <table_id> \
+  --field-id "自动编号" \
+  --json '{"name":"自动编号","type":"auto_number","style":{"rules":[{"type":"text","text":"ORD-"},{"type":"created_time","date_format":"yyyyMMdd"},{"type":"text","text":"-"},{"type":"incremental_number","length":4}]}}' \
+  --reformat-existing-records \
+  --yes
 ```
 
 ## 参数
@@ -30,6 +38,7 @@ lark-cli base +field-update \
 | `--table-id <id_or_name>` | 是 | 表 ID 或表名 |
 | `--field-id <id_or_name>` | 是 | 字段 ID 或字段名 |
 | `--json <body>` | 是 | 字段属性 JSON 对象 |
+| `--reformat-existing-records` | 否 | 仅 `auto_number` 更新可用：按新的编号规则重排已有记录 |
 | `--yes` | 是 | 确认执行高风险字段更新 |
 
 > 这是**高风险写入操作**。`+field-update` 使用 `PUT` 全量字段定义语义；改变字段类型或关键配置可能影响整列已有数据的解释、展示或可用性。CLI 层要求显式传 `--yes`；如果用户已经明确目标和期望更新，可直接执行并带上 `--yes`。
@@ -46,6 +55,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 
 - `--json` 必须是 **JSON 对象**，顶层直接传字段定义。
 - 更新语义是 `PUT`（全量字段配置更新），不要只传零散片段；至少显式包含 `name`、`type`，并补齐该类型所需关键配置。
+- “将修改用于已有编号”是命令 flag，不是 JSON 字段：对自动编号使用 `--reformat-existing-records`，不要把 `reformat_existing_records` 塞进 `style` 或 `property.auto_serial`。
 - 所有字段类型都支持可选 `description`；支持纯文本，也支持 Markdown 链接。
 - `select` 更新时：`options` 仍按对象数组传，避免混入无效字段。
 - `link` 更新限制：
@@ -88,6 +98,7 @@ PUT /open-apis/base/v3/bases/:base_token/tables/:table_id/fields/:field_id
 1. 建议先用 `+field-get` 拉现状，再做最小化修改。
 2. `formula/lookup` 类型更新前先阅读对应指南。
 3. 如果这次更新会改变字段 `type` 先按下方“字段类型变更规则”判断能否执行。如果不修改 `type`，大多数场景都相对安全。
+4. 自动编号字段要把新规则应用到已有记录时，继续用 `+field-update`，并显式加 `--reformat-existing-records --yes`；不要改走 `lark-cli api`。
 
 ## 字段类型变更规则
 

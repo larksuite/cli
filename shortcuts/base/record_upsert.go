@@ -26,6 +26,7 @@ var BaseRecordUpsert = common.Shortcut{
 		"Happy path JSON is a top-level field map: each key is a real field name or field ID, each value is that field's CellValue.",
 		"Without --record-id this creates a record; with --record-id this updates that record. It does not auto-upsert by business key.",
 		"Before writing, use +field-list to confirm real writable fields; do not write system fields, formula, lookup, or attachment fields as normal CellValue.",
+		"Link CellValue writes associations between existing records. It is not a native child-record or hierarchy feature; only use it when the user explicitly wants a link relation in a real link field.",
 		"Use the record-upsert guide for command limits and edge cases.",
 	}, recordCellValueHappyPathTips...),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {

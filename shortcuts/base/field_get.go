@@ -21,6 +21,7 @@ var BaseFieldGet = common.Shortcut{
 		`Example: lark-cli base +field-get --base-token <base_token> --table-id <table_id> --field-id "Status"`,
 		"field-id accepts a field ID (fld...) or the field name from the current table.",
 		"Returns full field configuration; use it as the baseline before +field-update.",
+		"If a bidirectional reverse-field ID returns not_found here, it belongs to the linked table's auto-created reverse field; switch to that table or keep using the forward link field in the current table.",
 	},
 	DryRun: dryRunFieldGet,
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {

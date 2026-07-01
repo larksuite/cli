@@ -42,6 +42,21 @@ metadata:
 - 文档嵌入 Base 标签：直接读取 `<bitable>` / `<base_refer>` 的 `token` 作为 `--base-token`，`table-id` 作为 `--table-id`，`view-id` 作为 `--view-id`；孤立 raw token 不走 `+url-resolve`。
 - 仍无法定位且用户不是要新建 Base 时，先反问用户要操作哪一个 Base；用户要新建时才用 `+base-create`。
 
+> [!CAUTION]
+> 禁止使用 `lark-cli api` 对 Base 做写操作，也不要为了绕过 shortcut 能力缺口去调用 legacy / undocumented Base API。
+>
+> - Forbidden: `lark-cli api PUT "/open-apis/base/v3/bases/.../fields/..." --data ...`
+> - Forbidden: `lark-cli api PUT "/open-apis/bitable/v1/apps/.../fields/..." --data ...`
+>
+> 自动编号字段要“将修改用于已有编号”时，仍然停留在 `lark-cli base +field-update --reformat-existing-records --yes` 这条路径。
+
+> [!CAUTION]
+> `子记录` / `层级记录` 目前不是 `lark-cli base` 的原生能力，不要把自关联或双向关联 `link` 默认当作“子记录已完成”。
+>
+> - 用户只说“新增子记录 / 层级记录”时，先明确说明当前 CLI 没有原生命令，不要继续查 schema、仓库或试探自关联写入。
+> - 只有用户明确接受“关联记录”语义，且表里已有真实 `link` 字段时，才用 `+record-upsert` / `+record-batch-*` 写 link CellValue。
+> - `bidirectional` 自动创建的反向字段属于被关联表；如果拿这个反向字段 ID 在当前表执行 `+field-get` 返回 `not_found`，切到被关联表读结构，不要继续在当前表试探。
+
 ## 快速路由
 
 | 用户目标 | 优先命令 | 何时读 reference |
@@ -52,12 +67,12 @@ metadata:
 | 管理 Base 内资源目录 | `+base-block-create/move/rename/delete` | 创建或整理 Base 直接管理的 folder/table/docx/dashboard/workflow；资源内容继续用对应命令 |
 | 管理数据表 | `+table-list/get/create/update/delete` | 处理 table 的列出、详情、创建、重命名和删除 |
 | 列/查/删字段 | `+field-list/get/delete/search-options` | 写入前用 list/get 确认字段类型、选项、ID；删除前确认目标字段 |
-| 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
+| 创建/更新字段 | `+field-create` / `+field-update` | 必读 [lark-base-field-json.md](references/lark-base-field-json.md)；自动编号要把新规则应用到已有记录时直接加 `--reformat-existing-records --yes`；公式读 [formula-field-guide.md](references/formula-field-guide.md)；lookup 读 [lookup-field-guide.md](references/lookup-field-guide.md)；命令细节读 [lark-base-field-create.md](references/lark-base-field-create.md) / [lark-base-field-update.md](references/lark-base-field-update.md) |
 | 读记录明细 | `+record-get` / `+record-list` / `+record-search` | 涉及筛选、排序、Top/Bottom N、聚合、多表关联、全局结论时读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) |
 | 写记录 | `+record-upsert` / `+record-batch-create` / `+record-batch-update` | 必读 [lark-base-record-upsert.md](references/lark-base-record-upsert.md) / [lark-base-record-batch-create.md](references/lark-base-record-batch-create.md) / [lark-base-record-batch-update.md](references/lark-base-record-batch-update.md) 和 [lark-base-cell-value.md](references/lark-base-cell-value.md) |
 | 附件字段 | `+record-upload-attachment` / `+record-download-attachment` / `+record-remove-attachment` | 附件不要伪造成普通 CellValue；上传走本地文件，下载/删除按 file token 或字段定位 |
 | 删除记录 / 分享记录链接 / 历史 | `+record-delete` / `+record-share-link-create` / `+record-history-list` | 删除前确认 record；分享链接最多 100 条；历史读 [lark-base-record-history-list.md](references/lark-base-record-history-list.md)，只查单条记录，不做整表审计 |
-| 管理视图 | `+view-*` | `+view-set-filter` 读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)；其余配置先 get 现状，再按返回结构更新 |
+| 管理视图 | `+view-get/*`、`+view-set-*`、`+view-rename` | 字段显隐/顺序走 `+view-set-visible-fields`；筛选走 `+view-set-filter` 并读 [lark-base-view-set-filter.md](references/lark-base-view-set-filter.md)；分组/排序走 `+view-set-group` / `+view-set-sort`；不存在通用 `+view-update`，其余配置先 get 现状，再按对应 set 命令更新 |
 | 一次性聚合统计 | `+data-query` | 必读 [lark-base-data-analysis-sop.md](references/lark-base-data-analysis-sop.md) 和入口 [lark-base-data-query-guide.md](references/lark-base-data-query-guide.md)；完整 DSL 再读 [lark-base-data-query.md](references/lark-base-data-query.md) |
 | 公式字段 | `+field-create/update --json '{"type":"formula",...}'` | 必读 [formula-field-guide.md](references/formula-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
 | Lookup 字段 | `+field-create/update --json '{"type":"lookup",...}'` | 必读 [lookup-field-guide.md](references/lookup-field-guide.md)，读后再加隐藏确认 flag `--i-have-read-guide` |
@@ -118,7 +133,31 @@ metadata:
 - `+form-submit` 前必须先跑 `+form-detail`，读取 `questions[].type`、`required`、`filter` 和附件场景需要的 `base_token`；不要填写被 filter 隐藏的问题。
 - 表单附件不要写进 `fields`，放在 `--json.attachments`；提交附件时必须同时传表单所属 Base 的 `--base-token`。
 - `+view-set-filter` 是唯一保留的 view reference；sort/group/card/timebar/visible-fields 这类配置先用对应 get 命令读现状，保留未修改字段，只替换用户要求变更的配置。
+- 视图字段显隐和字段顺序统一走 `+view-set-visible-fields`；不要猜 `+view-update` 这类通用视图写命令。
+- 视图相关命令中的 `--table-id` 可直接传表 ID 或表名；没有单独的 `--table-name` flag。
 - 视图适合持久化、共享和 UI 复用；一次性筛选/排序可先用 `+record-list` / `+record-search` 的 filter/sort 验证结果，再按需要沉淀为持久视图。
+
+> [!CAUTION]
+> Base `+view-*` 当前不支持 grid 行高 / display density / TableManager 布局属性。
+>
+> - 用户要改“行高 / 密度 / TableManager 布局”时，直接说明当前 shortcut 不支持，不要继续 grep 仓库、猜 legacy API 或试探 undocumented view PATCH。
+> - 字段显隐/字段顺序、筛选、分组、排序、timebar、card 等仍走现有 `+view-set-*` 命令。
+
+## Token 与链接
+
+| 输入类型 | 含义 / 正确处理方式 |
+|---|---|
+| `/base/{token}` | 普通 Base 链接；提取 `/base/` 后的 token 作为 `--base-token` |
+| `/wiki/{token}` | Wiki 节点链接；先 `wiki +node-get`，当 `data.obj_type=bitable` 时使用 `data.obj_token` 作为 `--base-token` |
+| `/base/{token}?table={id}` | `table` 参数用于定位 Base 内对象：`tbl` 开头是数据表 `--table-id`；`blk` 开头是 dashboard ID；`wkf` 开头是 workflow ID |
+| `/base/{token}?view={id}` | `view` 参数用于定位表视图，提取为 `--view-id`；通常还需要确认 `table` 参数或先查表结构 |
+| `/share/base/form/{shareToken}` | 表单分享链接；这是表单 share token，走 `+form-detail` / `+form-submit --share-token <shareToken>` |
+| `/share/base/view/{shareToken}` | 视图分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
+| `/share/base/dashboard/{shareToken}` | 仪表盘分享链接；具有分享权限语义，暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开 |
+| `/record/{shareToken}` | 记录分享链接；暂不支持用 CLI 直接访问，引导用户在浏览器或飞书客户端打开。若用户想生成现有记录的分享链接，用 `+record-share-link-create --base-token <base_token> --table-id <table_id> --record-ids <record_id>` |
+| `/base/workspace/{token}` | BaseApp / workspace 链接；暂不支持用 CLI 直接访问 |
+
+`wiki +node-get` 返回非 `bitable` 时，不继续使用 Base 命令：`docx` 转文档，`sheet` 转表格，其他云空间对象转对应 skill 或 drive。
 
 ## Dashboard / Workflow / Role
 
