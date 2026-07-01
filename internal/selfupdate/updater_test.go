@@ -377,11 +377,20 @@ func TestContainsPnpmMarker(t *testing.T) {
 		path string
 		want bool
 	}{
+		// Classic virtual-store layout (.pnpm segment).
 		{"/Users/x/Library/pnpm/global/5/node_modules/.pnpm/@larksuite+cli@1.0.44/node_modules/@larksuite/cli/bin/lark-cli", true},
-		{"/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
-		{"/opt/homebrew/.pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
 		{`C:\Users\x\AppData\Local\pnpm\global\5\node_modules\.pnpm\@larksuite+cli@1.0.44\node_modules\@larksuite\cli\bin\lark-cli.exe`, true},
+		// Global content-addressable store layout (pnpm 11): resolved path runs
+		// through the pnpm home store, a "pnpm" segment with no ".pnpm".
+		{"/Users/x/Library/pnpm/store/v11/links/@larksuite/cli/1.0.59/abc123/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{"/home/x/.local/share/pnpm/store/v10/@larksuite/cli/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{`C:\Users\x\AppData\Local\pnpm\store\v11\links\@larksuite\cli\node_modules\@larksuite\cli\bin\lark-cli.exe`, true},
+		// npm and non-package installs — no pnpm/.pnpm segment.
+		{"/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
 		{"/usr/local/bin/lark-cli", false},
+		// Substrings that must NOT match: segment must be exactly pnpm/.pnpm.
+		{"/opt/homebrew/.pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
+		{"/opt/pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
 	}
 	for _, c := range cases {
 		if got := containsPnpmMarker(c.path); got != c.want {
@@ -452,5 +461,39 @@ func TestRunPnpmInstall_Error(t *testing.T) {
 	u := &Updater{PnpmInstallOverride: func(string) *NpmResult { return &NpmResult{Err: wantErr} }}
 	if got := u.RunPnpmInstall("2.0.0"); !errors.Is(got.Err, wantErr) {
 		t.Errorf("err = %v, want %v", got.Err, wantErr)
+	}
+}
+
+func TestSkillsInvocation(t *testing.T) {
+	addArgs := []string{"-y", "skills", "add", "https://open.feishu.cn", "-g", "-y"}
+	cases := []struct {
+		name          string
+		method        InstallMethod
+		pnpmAvailable bool
+		args          []string
+		wantLauncher  string
+		wantRest      []string
+	}{
+		{"pnpm install + pnpm available → pnpm dlx, drop leading -y", InstallPnpm, true, addArgs,
+			"pnpm", []string{"dlx", "skills", "add", "https://open.feishu.cn", "-g", "-y"}},
+		{"pnpm install but pnpm unavailable → npx unchanged", InstallPnpm, false, addArgs,
+			"npx", addArgs},
+		{"npm install → npx unchanged", InstallNpm, false, addArgs,
+			"npx", addArgs},
+		{"manual install → npx unchanged", InstallManual, false, []string{"-y", "skills", "ls", "-g"},
+			"npx", []string{"-y", "skills", "ls", "-g"}},
+		{"pnpm without a leading -y → prepend dlx only", InstallPnpm, true, []string{"skills", "ls", "-g"},
+			"pnpm", []string{"dlx", "skills", "ls", "-g"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotLauncher, gotRest := skillsInvocation(c.method, c.pnpmAvailable, c.args)
+			if gotLauncher != c.wantLauncher {
+				t.Errorf("launcher = %q, want %q", gotLauncher, c.wantLauncher)
+			}
+			if strings.Join(gotRest, " ") != strings.Join(c.wantRest, " ") {
+				t.Errorf("rest = %v, want %v", gotRest, c.wantRest)
+			}
+		})
 	}
 }

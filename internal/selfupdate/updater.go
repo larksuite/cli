@@ -160,12 +160,17 @@ func detectFromResolved(resolved string, npmOnPath, pnpmOnPath bool) DetectResul
 	return d
 }
 
-// containsPnpmMarker reports whether the path contains pnpm's virtual-store
-// directory segment (".pnpm"), which distinguishes a pnpm global install from
-// an npm one. Both POSIX ("/.pnpm/") and Windows ("\.pnpm\") separators are
-// checked so the classification is OS-independent and unit-testable anywhere.
+// containsPnpmMarker reports whether the resolved binary path belongs to a
+// pnpm-managed install. pnpm exposes two layouts: the classic virtual store
+// (a ".pnpm" directory segment) and the global content-addressable store,
+// whose resolved path runs through pnpm's home directory (e.g.
+// "~/Library/pnpm/store/v11/links/...") — a "pnpm" directory segment with no
+// ".pnpm". Matching either "pnpm" or ".pnpm" as a path segment covers both.
+// Both POSIX ("/") and Windows ("\") separators are checked so the
+// classification is OS-independent and unit-testable anywhere.
 func containsPnpmMarker(p string) bool {
-	return strings.Contains(p, "/.pnpm/") || strings.Contains(p, `\.pnpm\`)
+	return strings.Contains(p, "/.pnpm/") || strings.Contains(p, `\.pnpm\`) ||
+		strings.Contains(p, "/pnpm/") || strings.Contains(p, `\pnpm\`)
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.
@@ -312,19 +317,40 @@ func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult 
 	return u.runSkillsCommand(args...)
 }
 
+// skillsInvocation decides how to launch the `skills` CLI. When the lark-cli
+// itself was installed via pnpm and pnpm is available, it uses `pnpm dlx` so
+// pnpm-only environments (pnpm's standalone installer bundles Node without
+// putting npm/npx on PATH) can still sync skills after a self-update.
+// Otherwise it uses `npx`. The npx auto-confirm flag "-y", when present as the
+// leading arg, maps to `pnpm dlx`'s default non-interactive behavior and is
+// dropped for the pnpm launcher. Kept pure (no exec/PATH access) so the
+// launcher selection is unit-testable on any platform.
+func skillsInvocation(method InstallMethod, pnpmAvailable bool, args []string) (launcher string, rest []string) {
+	if method == InstallPnpm && pnpmAvailable {
+		r := args
+		if len(r) > 0 && r[0] == "-y" {
+			r = r[1:]
+		}
+		return "pnpm", append([]string{"dlx"}, r...)
+	}
+	return "npx", args
+}
+
 func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
 	if u.SkillsCommandOverride != nil {
 		return u.SkillsCommandOverride(args...)
 	}
 	r := &NpmResult{}
-	npxPath, err := exec.LookPath("npx")
+	det := u.DetectInstallMethod()
+	launcher, cmdArgs := skillsInvocation(det.Method, det.PnpmAvailable, args)
+	binPath, err := exec.LookPath(launcher)
 	if err != nil {
-		r.Err = fmt.Errorf("npx not found in PATH: %w", err)
+		r.Err = fmt.Errorf("%s not found in PATH: %w", launcher, err)
 		return r
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, args...)
+	cmd := exec.CommandContext(ctx, binPath, cmdArgs...)
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
