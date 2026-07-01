@@ -1,0 +1,24 @@
+skills/lark-minutes/references/lark-minutes-upload.md
+  s_2901d183322a2b::t_bf01c64dbb94b3 34-35
+  s_2901d183322a2b::t_534c7d6c90c202 37,39
+  s_2901d183322a2b::t_54ae65fae3f9f4 50-51
+  s_2901d183322a2b::t_689ee677024fa0 84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a93d4afb332198a17f39b9c90484b6a73e3f840e",
+  "prompts": {},
+  "sessions": {
+    "s_2901d183322a2b": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a3d1af176cb2c600607cd22",
+        "model": "openrouter-1o__dev"
+      },
+      "human_author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
