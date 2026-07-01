@@ -1,0 +1,14 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "906826d4a1907110ef9e642711f0a26f9923e141",
+  "prompts": {},
+  "humans": {
+    "h_8777f2f97c2274": {
+      "author": "xiongyuanwen-byted <xiongyuanwen@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
