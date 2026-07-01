@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -223,6 +224,65 @@ func TestRunCmd(t *testing.T) {
 		assert.NotContains(t, env, "LARKSUITE_CLI_APP_ID=cli_app_test")
 		assert.NotContains(t, env, "LARKSUITE_CLI_USER_ACCESS_TOKEN=uat_test")
 	})
+
+	t.Run("retries structured retryable service errors by default", func(t *testing.T) {
+		useFastDefaultRetry(t)
+
+		fake := newFakeCLI(t)
+		statePath := filepath.Join(t.TempDir(), "retry-count")
+		result, err := RunCmd(context.Background(), Request{
+			BinaryPath: fake.BinaryPath,
+			Args:       []string{"fail-once-retryable", statePath},
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 0)
+		result.AssertStdoutStatus(t, true)
+
+		countBytes, err := os.ReadFile(statePath)
+		require.NoError(t, err)
+		assert.Equal(t, "2\n", string(countBytes))
+	})
+
+	t.Run("does not retry non-retryable service errors by default", func(t *testing.T) {
+		useFastDefaultRetry(t)
+
+		fake := newFakeCLI(t)
+		statePath := filepath.Join(t.TempDir(), "retry-count")
+		result, err := RunCmd(context.Background(), Request{
+			BinaryPath: fake.BinaryPath,
+			Args:       []string{"always-non-retryable", statePath},
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 1)
+
+		countBytes, err := os.ReadFile(statePath)
+		require.NoError(t, err)
+		assert.Equal(t, "1\n", string(countBytes))
+	})
+}
+
+func TestRunCmdWithRetry(t *testing.T) {
+	t.Run("does not include RunCmd default retry as a nested retry", func(t *testing.T) {
+		useFastDefaultRetry(t)
+
+		fake := newFakeCLI(t)
+		statePath := filepath.Join(t.TempDir(), "retry-count")
+		result, err := RunCmdWithRetry(context.Background(), Request{
+			BinaryPath: fake.BinaryPath,
+			Args:       []string{"fail-once-retryable", statePath},
+		}, RetryOptions{
+			Attempts:     1,
+			InitialDelay: time.Millisecond,
+			MaxDelay:     time.Millisecond,
+			ShouldRetry:  ResultHasRetryableError,
+		})
+		require.NoError(t, err)
+		result.AssertExitCode(t, 1)
+
+		countBytes, err := os.ReadFile(statePath)
+		require.NoError(t, err)
+		assert.Equal(t, "1\n", string(countBytes))
+	})
 }
 
 type fakeCLI struct {
@@ -260,6 +320,35 @@ if [ "$1" = "emit-stdin" ]; then
   exit 0
 fi
 
+if [ "$1" = "fail-once-retryable" ]; then
+  state="$2"
+  count=0
+  if [ -f "$state" ]; then
+    count="$(cat "$state")"
+  fi
+  count=$((count + 1))
+  echo "$count" > "$state"
+  if [ "$count" -eq 1 ]; then
+    echo "Deleting folder fake..." >&2
+    echo '{"ok":false,"error":{"type":"api","code":1061045,"message":"resource contention occurred, please retry.","retryable":true}}' >&2
+    exit 1
+  fi
+  echo '{"ok":true}'
+  exit 0
+fi
+
+if [ "$1" = "always-non-retryable" ]; then
+  state="$2"
+  count=0
+  if [ -f "$state" ]; then
+    count="$(cat "$state")"
+  fi
+  count=$((count + 1))
+  echo "$count" > "$state"
+  echo '{"ok":false,"error":{"type":"api","code":123,"message":"validation failed","retryable":false}}' >&2
+  exit 1
+fi
+
 exit_code=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -289,6 +378,19 @@ exit "$exit_code"
 	return fakeCLI{
 		BinaryPath: binaryPath,
 	}
+}
+
+func useFastDefaultRetry(t *testing.T) {
+	t.Helper()
+
+	oldInitialDelay := defaultRetryInitialDelay
+	oldMaxDelay := defaultRetryMaxDelay
+	defaultRetryInitialDelay = time.Millisecond
+	defaultRetryMaxDelay = time.Millisecond
+	t.Cleanup(func() {
+		defaultRetryInitialDelay = oldInitialDelay
+		defaultRetryMaxDelay = oldMaxDelay
+	})
 }
 
 func assertSamePath(t *testing.T, want string, got string) {

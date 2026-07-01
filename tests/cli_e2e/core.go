@@ -26,6 +26,13 @@ const projectRootMarkerDir = "tests"
 const cliBinaryName = "lark-cli"
 const CleanupTimeout = 30 * time.Second
 
+var (
+	defaultRetryAttempts        = 4
+	defaultRetryInitialDelay    = 1 * time.Second
+	defaultRetryMaxDelay        = 6 * time.Second
+	defaultRetryBackoffMultiple = 2
+)
+
 func SkipWithoutUserToken(t *testing.T) {
 	t.Helper()
 	if os.Getenv("LARKSUITE_CLI_USER_ACCESS_TOKEN") != "" {
@@ -112,7 +119,16 @@ type RetryOptions struct {
 }
 
 // RunCmd executes lark-cli and captures stdout/stderr/exit code.
+// Service errors that return {"error":{"retryable":true}} are retried with
+// bounded exponential backoff so individual tests do not need to remember
+// RunCmdWithRetry for normal transient server contention.
 func RunCmd(ctx context.Context, req Request) (*Result, error) {
+	return RunCmdWithRetry(ctx, req, RetryOptions{
+		ShouldRetry: ResultHasRetryableError,
+	})
+}
+
+func runCmdOnce(ctx context.Context, req Request) (*Result, error) {
 	binaryPath, err := ResolveBinaryPath(req)
 	if err != nil {
 		return nil, err
@@ -186,16 +202,16 @@ func buildCommandEnv(req Request) []string {
 // RunCmdWithRetry reruns a command when the result matches the configured retry condition.
 func RunCmdWithRetry(ctx context.Context, req Request, opts RetryOptions) (*Result, error) {
 	if opts.Attempts <= 0 {
-		opts.Attempts = 4
+		opts.Attempts = defaultRetryAttempts
 	}
 	if opts.InitialDelay <= 0 {
-		opts.InitialDelay = 1 * time.Second
+		opts.InitialDelay = defaultRetryInitialDelay
 	}
 	if opts.MaxDelay <= 0 {
-		opts.MaxDelay = 6 * time.Second
+		opts.MaxDelay = defaultRetryMaxDelay
 	}
 	if opts.BackoffMultiple <= 1 {
-		opts.BackoffMultiple = 2
+		opts.BackoffMultiple = defaultRetryBackoffMultiple
 	}
 	if opts.ShouldRetry == nil {
 		opts.ShouldRetry = func(result *Result) bool {
@@ -206,7 +222,7 @@ func RunCmdWithRetry(ctx context.Context, req Request, opts RetryOptions) (*Resu
 	delay := opts.InitialDelay
 	var lastResult *Result
 	for attempt := 1; attempt <= opts.Attempts; attempt++ {
-		result, err := RunCmd(ctx, req)
+		result, err := runCmdOnce(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -232,6 +248,23 @@ func RunCmdWithRetry(ctx context.Context, req Request, opts RetryOptions) (*Resu
 	}
 
 	return lastResult, nil
+}
+
+// ResultHasRetryableError reports whether lark-cli returned a structured
+// service error with error.retryable=true in either output stream.
+func ResultHasRetryableError(result *Result) bool {
+	if result == nil {
+		return false
+	}
+	return rawHasRetryableError(result.Stdout) || rawHasRetryableError(result.Stderr)
+}
+
+func rawHasRetryableError(raw string) bool {
+	payload := extractJSONPayload(raw)
+	if payload == "" {
+		return false
+	}
+	return gjson.Get(payload, "error.retryable").Bool()
 }
 
 // GenerateSuffix returns a high-entropy UTC timestamp suffix suitable for remote test resource names.
@@ -271,26 +304,11 @@ func isCleanupSuppressedResult(result *Result) bool {
 		return false
 	}
 
-	raw := strings.TrimSpace(result.Stdout)
-	if raw == "" {
-		raw = strings.TrimSpace(result.Stderr)
+	payload := extractJSONPayload(result.Stdout)
+	if payload == "" {
+		payload = extractJSONPayload(result.Stderr)
 	}
-	if raw == "" {
-		return false
-	}
-
-	start := strings.LastIndex(raw, "\n{")
-	if start >= 0 {
-		start++
-	} else {
-		start = strings.Index(raw, "{")
-	}
-	if start < 0 {
-		return false
-	}
-
-	payload := raw[start:]
-	if !gjson.Valid(payload) {
+	if payload == "" {
 		return false
 	}
 
@@ -304,6 +322,32 @@ func isCleanupSuppressedResult(result *Result) bool {
 	}
 
 	return errType == "api_error" && (errCode == 800004135 || strings.Contains(errMessage, " limited"))
+}
+
+func extractJSONPayload(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if gjson.Valid(raw) {
+		return raw
+	}
+
+	start := strings.LastIndex(raw, "\n{")
+	if start >= 0 {
+		start++
+	} else {
+		start = strings.Index(raw, "{")
+	}
+	if start < 0 {
+		return ""
+	}
+
+	payload := raw[start:]
+	if !gjson.Valid(payload) {
+		return ""
+	}
+	return payload
 }
 
 // ResolveBinaryPath finds the CLI binary path using request, env, then PATH.
