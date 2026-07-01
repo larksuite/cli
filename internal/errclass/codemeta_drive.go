@@ -10,8 +10,15 @@ import "github.com/larksuite/cli/errs"
 // ambiguous codes fall back to CategoryAPI via BuildAPIError.
 // BuildAPIError consumes this map via mergeCodeMeta + LookupCodeMeta.
 var driveCodeMeta = map[int]CodeMeta{
-	1061044: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},          // parent folder does not exist (upload)
-	1069302: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters}, // comment endpoint "Invalid or missing parameters"
+	1061001: {Category: errs.CategoryAPI, Subtype: errs.SubtypeServerError, Retryable: true}, // Drive "unknown error"
+	1061002: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // params error
+	1061004: {Category: errs.CategoryAuthorization, Subtype: errs.SubtypePermissionDenied},   // forbidden
+	1061007: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // file has been deleted
+	1061043: {Category: errs.CategoryAPI, Subtype: errs.SubtypeQuotaExceeded},                // file size beyond limit
+	1061044: {Category: errs.CategoryAPI, Subtype: errs.SubtypeNotFound},                     // parent folder does not exist (upload)
+	1062009: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // actual size inconsistent with declared size
+	1069302: {Category: errs.CategoryAPI, Subtype: errs.SubtypeInvalidParameters},            // comment endpoint "Invalid or missing parameters"
+	2200:    {Category: errs.CategoryAPI, Subtype: errs.SubtypeServerError, Retryable: true}, // Drive tenant/internal errors
 }
 
 func init() { mergeCodeMeta(driveCodeMeta, "drive") }

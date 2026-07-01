@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -29,12 +30,25 @@ const (
 )
 
 type drivePushItem struct {
-	RelPath   string `json:"rel_path"`
-	FileToken string `json:"file_token,omitempty"`
-	Action    string `json:"action"`
-	Version   string `json:"version,omitempty"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
-	Error     string `json:"error,omitempty"`
+	RelPath    string `json:"rel_path"`
+	FileToken  string `json:"file_token,omitempty"`
+	Action     string `json:"action"`
+	Version    string `json:"version,omitempty"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+	Error      string `json:"error,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
+	Code       int    `json:"code,omitempty"`
+	Subtype    string `json:"subtype,omitempty"`
+	Retryable  bool   `json:"retryable,omitempty"`
+}
+
+type drivePushFailureDecision struct {
+	Class     string
+	Code      int
+	Subtype   string
+	Retryable bool
+	Terminal  bool
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -248,9 +262,14 @@ var DrivePush = common.Shortcut{
 				continue
 			}
 			if _, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, relDir, folderCache); ensureErr != nil {
-				items = append(items, drivePushItem{RelPath: relDir, Action: "failed", Error: ensureErr.Error()})
+				item, terminal := drivePushFailedItem(relDir, "", "failed", "create_folder", 0, ensureErr)
+				items = append(items, item)
 				failed++
 				uploadFailed = true
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, ensureErr)
+					break
+				}
 				continue
 			}
 			items = append(items, drivePushItem{RelPath: relDir, FileToken: folderCache[relDir], Action: "folder_created"})
@@ -266,6 +285,9 @@ var DrivePush = common.Shortcut{
 
 		for _, rel := range localPaths {
 			localFile := localFiles[rel]
+			if uploadFailed && drivePushHasTerminalFailure(items) {
+				break
+			}
 
 			if entry, ok := remoteFiles[rel]; ok {
 				if drivePushShouldSkipExisting(localFile, entry, ifExists) {
@@ -275,9 +297,14 @@ var DrivePush = common.Shortcut{
 				}
 				parentToken, parentErr := drivePushEnsureParentToken(ctx, runtime, folderToken, rel, folderCache)
 				if parentErr != nil {
-					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "failed", SizeBytes: localFile.Size, Error: parentErr.Error()})
+					item, terminal := drivePushFailedItem(rel, entry.FileToken, "failed", "create_folder", localFile.Size, parentErr)
+					items = append(items, item)
 					failed++
 					uploadFailed = true
+					if terminal {
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, parentErr)
+						break
+					}
 					continue
 				}
 				token, version, upErr := drivePushUploadFile(ctx, runtime, localFile, entry.FileToken, parentToken)
@@ -301,9 +328,14 @@ var DrivePush = common.Shortcut{
 					if failedToken == "" {
 						failedToken = entry.FileToken
 					}
-					items = append(items, drivePushItem{RelPath: rel, FileToken: failedToken, Action: "failed", SizeBytes: localFile.Size, Error: upErr.Error()})
+					item, terminal := drivePushFailedItem(rel, failedToken, "failed", "upload", localFile.Size, upErr)
+					items = append(items, item)
 					failed++
 					uploadFailed = true
+					if terminal {
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, upErr)
+						break
+					}
 					continue
 				}
 				items = append(items, drivePushItem{RelPath: rel, FileToken: token, Action: "overwritten", Version: version, SizeBytes: localFile.Size})
@@ -314,16 +346,26 @@ var DrivePush = common.Shortcut{
 			parentRel := drivePushParentRel(rel)
 			parentToken, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, parentRel, folderCache)
 			if ensureErr != nil {
-				items = append(items, drivePushItem{RelPath: rel, Action: "failed", SizeBytes: localFile.Size, Error: ensureErr.Error()})
+				item, terminal := drivePushFailedItem(rel, "", "failed", "create_folder", localFile.Size, ensureErr)
+				items = append(items, item)
 				failed++
 				uploadFailed = true
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, ensureErr)
+					break
+				}
 				continue
 			}
 			token, _, upErr := drivePushUploadFile(ctx, runtime, localFile, "", parentToken)
 			if upErr != nil {
-				items = append(items, drivePushItem{RelPath: rel, Action: "failed", SizeBytes: localFile.Size, Error: upErr.Error()})
+				item, terminal := drivePushFailedItem(rel, "", "failed", "upload", localFile.Size, upErr)
+				items = append(items, item)
 				failed++
 				uploadFailed = true
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, upErr)
+					break
+				}
 				continue
 			}
 			items = append(items, drivePushItem{RelPath: rel, FileToken: token, Action: "uploaded", SizeBytes: localFile.Size})
@@ -362,7 +404,8 @@ var DrivePush = common.Shortcut{
 						continue
 					}
 					if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
-						items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "delete_failed", Error: err.Error()})
+						item, _ := drivePushFailedItem(rel, entry.FileToken, "delete_failed", "delete", 0, err)
+						items = append(items, item)
 						failed++
 						continue
 					}
@@ -378,6 +421,7 @@ var DrivePush = common.Shortcut{
 				"skipped":        skipped,
 				"failed":         failed,
 				"deleted_remote": deletedRemote,
+				"aborted":        drivePushHasTerminalFailure(items),
 			},
 			"items": items,
 		}
@@ -400,6 +444,7 @@ var DrivePush = common.Shortcut{
 type drivePushLocalFile struct {
 	RelPath  string
 	OpenPath string
+	AbsPath  string
 	FileName string
 	Size     int64
 	ModTime  time.Time
@@ -457,6 +502,7 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 		files[relSlash] = drivePushLocalFile{
 			RelPath:  relSlash,
 			OpenPath: relToCwd,
+			AbsPath:  absPath,
 			FileName: filepath.Base(rel),
 			Size:     info.Size(),
 			ModTime:  info.ModTime(),
@@ -505,6 +551,74 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 	// Remote is already at least as new as the local file, so another
 	// upload would be redundant.
 	return cmp >= 0
+}
+
+func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
+	decision := drivePushClassifyFailure(err)
+	item := drivePushItem{
+		RelPath:    relPath,
+		FileToken:  fileToken,
+		Action:     action,
+		SizeBytes:  sizeBytes,
+		Error:      err.Error(),
+		Phase:      phase,
+		ErrorClass: decision.Class,
+		Code:       decision.Code,
+		Subtype:    decision.Subtype,
+		Retryable:  decision.Retryable,
+	}
+	return item, decision.Terminal
+}
+
+func drivePushClassifyFailure(err error) drivePushFailureDecision {
+	decision := drivePushFailureDecision{Class: "unknown", Retryable: errs.IsRetryable(err)}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		return decision
+	}
+	decision.Code = problem.Code
+	decision.Subtype = string(problem.Subtype)
+	decision.Retryable = problem.Retryable
+
+	switch {
+	case problem.Category == errs.CategoryAuthorization && problem.Code == 99991672:
+		decision.Class = "app_scope_missing"
+		decision.Terminal = true
+	case problem.Category == errs.CategoryAuthorization && problem.Code == 99991679:
+		decision.Class = "user_scope_missing"
+		decision.Terminal = true
+	case problem.Category == errs.CategoryAuthorization && problem.Subtype == errs.SubtypePermissionDenied:
+		decision.Class = "permission_denied"
+		decision.Terminal = true
+	case problem.Subtype == errs.SubtypeInvalidParameters || problem.Code == 1061002:
+		decision.Class = "invalid_api_parameters"
+		decision.Terminal = true
+	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
+		decision.Class = "rate_limited"
+	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
+		decision.Class = "file_size_limit"
+	case problem.Code == 1062009:
+		decision.Class = "upload_size_mismatch"
+	case problem.Subtype == errs.SubtypeNotFound || problem.Code == 1061007:
+		decision.Class = "remote_not_found"
+	case problem.Subtype == errs.SubtypeServerError || problem.Code == 1061001 || problem.Code == 2200:
+		decision.Class = "server_error"
+	case problem.Subtype == errs.SubtypeFailedPrecondition:
+		decision.Class = "local_file_changed"
+	default:
+		decision.Class = string(problem.Subtype)
+	}
+	return decision
+}
+
+func drivePushHasTerminalFailure(items []drivePushItem) bool {
+	for _, item := range items {
+		switch item.ErrorClass {
+		case "app_scope_missing", "user_scope_missing", "permission_denied", "invalid_api_parameters":
+			return true
+		}
+	}
+	return false
 }
 
 func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {
@@ -600,6 +714,12 @@ func drivePushEnsureParentToken(ctx context.Context, runtime *common.RuntimeCont
 // the three-step prepare/part/finish flow, which mirrors drive +upload's
 // existing multipart logic.
 func drivePushUploadFile(ctx context.Context, runtime *common.RuntimeContext, file drivePushLocalFile, existingToken, parentToken string) (string, string, error) {
+	if err := drivePushValidateUploadRequest(file, existingToken, parentToken); err != nil {
+		return "", "", err
+	}
+	if err := drivePushVerifyLocalSnapshot(file); err != nil {
+		return "", "", err
+	}
 	if file.Size > common.MaxDriveMediaUploadSinglePartSize {
 		token, err := drivePushUploadMultipart(ctx, runtime, file, existingToken, parentToken)
 		// Multipart finish does not return version on the existing
@@ -610,6 +730,41 @@ func drivePushUploadFile(ctx context.Context, runtime *common.RuntimeContext, fi
 		return token, "", err
 	}
 	return drivePushUploadAll(ctx, runtime, file, existingToken, parentToken)
+}
+
+func drivePushValidateUploadRequest(file drivePushLocalFile, existingToken, parentToken string) error {
+	if strings.TrimSpace(file.FileName) == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot upload %q: file name is empty", file.RelPath)
+	}
+	if file.Size < 0 {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot upload %q: file size is negative", file.RelPath)
+	}
+	if strings.TrimSpace(parentToken) == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot upload %q: parent folder token is empty", file.RelPath)
+	}
+	if err := validate.ResourceName(parentToken, "parent_node"); err != nil {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot upload %q: %s", file.RelPath, err)
+	}
+	if existingToken != "" {
+		if err := validate.ResourceName(existingToken, "file_token"); err != nil {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "cannot overwrite %q: %s", file.RelPath, err)
+		}
+	}
+	return nil
+}
+
+func drivePushVerifyLocalSnapshot(file drivePushLocalFile) error {
+	info, err := os.Stat(file.AbsPath)
+	if err != nil {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s is no longer readable: %v", file.RelPath, err).WithCause(err)
+	}
+	if !info.Mode().IsRegular() {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s is no longer a regular file", file.RelPath)
+	}
+	if info.Size() != file.Size || !info.ModTime().Equal(file.ModTime) {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s snapshot size/mtime no longer matches", file.RelPath)
+	}
+	return nil
 }
 
 func drivePushUploadAll(_ context.Context, runtime *common.RuntimeContext, file drivePushLocalFile, existingToken, parentToken string) (string, string, error) {

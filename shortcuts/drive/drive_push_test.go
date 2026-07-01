@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -980,6 +981,185 @@ func TestDrivePushOverwritePartialSuccessSurfacesReturnedToken(t *testing.T) {
 	}
 	if strings.Contains(out, `"file_token": "tok_keep_old"`) {
 		t.Errorf("must NOT fall back to entry.FileToken when upload_all returned a token; got: %s", out)
+	}
+}
+
+func TestDrivePushAbortsAfterUploadParamsError(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("A"), 0o644); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "b.txt"), []byte("B"), 0o644); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 1061002,
+			"msg":  "params error.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"failed": 1`,
+		`"aborted": true`,
+		`"rel_path": "a.txt"`,
+		`"error_class": "invalid_api_parameters"`,
+		`"code": 1061002`,
+		`"subtype": "invalid_parameters"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"rel_path": "b.txt"`) {
+		t.Fatalf("non-retryable upload params error must abort before b.txt, got:\n%s", out)
+	}
+}
+
+func TestDrivePushAbortsAfterCreateFolderMissingScope(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll(filepath.Join("local", "a"), 0o755); err != nil {
+		t.Fatalf("MkdirAll a: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join("local", "b"), 0o755); err != nil {
+		t.Fatalf("MkdirAll b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/create_folder",
+		Body: map[string]interface{}{
+			"code": 99991672,
+			"msg":  "Access denied. One of the following scopes is required: [drive:drive, space:folder:create].",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"failed": 1`,
+		`"aborted": true`,
+		`"rel_path": "a"`,
+		`"phase": "create_folder"`,
+		`"error_class": "app_scope_missing"`,
+		`"code": 99991672`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"rel_path": "b"`) {
+		t.Fatalf("missing folder-create scope must abort before b, got:\n%s", out)
+	}
+}
+
+func TestDrivePushDetectsLocalFileChangedBeforeUpload(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	localPath := filepath.Join("local", "changing.txt")
+	if err := os.WriteFile(localPath, []byte("before"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		OnMatch: func(req *http.Request) {
+			if err := os.WriteFile(localPath, []byte("after-change"), 0o644); err != nil {
+				t.Fatalf("mutate local file: %v", err)
+			}
+		},
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		`"failed": 1`,
+		`"aborted": false`,
+		`"error_class": "local_file_changed"`,
+		`"subtype": "failed_precondition"`,
+		`local file changed during push`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("stdout missing %s:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "httpmock: no stub") {
+		t.Fatalf("upload_all was called after local snapshot changed:\n%s", out)
 	}
 }
 
