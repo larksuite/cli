@@ -174,6 +174,9 @@ func TestUpdatePnpm_InstallError_JSON(t *testing.T) {
 	if out := stdout.String(); !strings.Contains(out, `"ok": false`) || !strings.Contains(out, "update_error") {
 		t.Errorf("expected failure envelope, got: %s", out)
 	}
+	if out := stdout.String(); !strings.Contains(out, "pnpm install failed") {
+		t.Errorf("expected message to report pnpm as the package manager, got: %s", out)
+	}
 }
 
 func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {

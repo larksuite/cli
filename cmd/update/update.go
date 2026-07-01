@@ -261,7 +261,7 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok": false, "error": map[string]interface{}{
-					"type": "update_error", "message": fmt.Sprintf("npm install failed: %s", npmResult.Err),
+					"type": "update_error", "message": fmt.Sprintf("%s install failed: %s", pm, npmResult.Err),
 					"detail": selfupdate.Truncate(combined, maxNpmOutput),
 					"hint":   permissionHint(combined),
 				},
