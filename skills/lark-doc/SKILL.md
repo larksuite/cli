@@ -46,7 +46,7 @@ lark-cli docs +update --doc "文档URL或token" --command append --content '<p>�
 - `resource-*` 目前仅支持 Docx 封面资源；其他图片、附件或素材请走 `+media-*`
 - 如果目标是画板/whiteboard/画板缩略图 → 只能用 `lark-cli docs +media-download --type whiteboard`（不要用 `+media-preview`）
 - 拿到 spreadsheet URL/token 后 → 切到 `lark-sheets` 做对象内部操作
-- 用户需要统计文档的**总字数 / 总字符数**（word count / character count）时，使用 [`scripts/doc_word_stat.py`](scripts/doc_word_stat.py)：优先 `docs +fetch --doc "$DOC" --doc-format xml --detail full --format json | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml --lark-json --pretty`；若已有本地 XML/Markdown 文件，可直接 `python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml|md /absolute/path/file`，或 `cat /absolute/path/file | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml|md`。
+- 用户需要统计文档的**总字数 / 总字符数**（word count / character count）时，使用 [`scripts/doc_word_stat.py`](scripts/doc_word_stat.py)：在线文档优先 `lark-cli docs +fetch --doc "$URL" --doc-format xml --detail full --format json | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml --lark-json --pretty`；本地 XML/Markdown 文件用 `python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml|md /absolute/path/file`，也可从 stdin 读取。
 - 用户说"给文档加评论""查看评论""回复评论""给评论加/删除表情 reaction" → 切到 `lark-drive` 处理
 - 文档内容中出现嵌入的 `<sheet>`、`<bitable>` 或 `<cite file-type="sheets|bitable">` 标签时 → **必须主动提取 token 并切到对应技能下钻读取内部数据**，不能只呈现标签本身
 
@@ -58,33 +58,6 @@ lark-cli docs +update --doc "文档URL或token" --command append --content '<p>�
 | `<cite type="doc" file-type="bitable" token="..." table-id="...">` | 同 `<bitable>` | [`lark-base`](../lark-base/SKILL.md) |
 | `<vc-transcribe-tab vc-node-id="...">` | `vc-node-id` -> note_id | [`lark-note`](../lark-note/SKILL.md)：先 `note +detail --note-id <vc-node-id>` |
 | `<synced_reference src-token="..." src-block-id="...">` | `src-token` -> doc_token, `src-block-id` -> block_id | 用 `docs +fetch` 读取 src-token 文档，定位 block |
-
-## 文档统计（字数 / 字符数）
-
-当用户需要统计 Docx / Wiki 文档的总字数或总字符数时，使用本 skill 附带脚本 [`scripts/doc_word_stat.py`](scripts/doc_word_stat.py)。脚本需要 Python 3，输出 JSON；核心字段是 `word_count`（总字数）和 `char_count`（总字符数）。
-
-在线飞书文档优先读取 XML 的 full 内容，并把 `docs +fetch --format json` 的输出交给脚本解析：
-
-```bash
-lark-cli docs +fetch --doc "$DOC" --doc-format xml --detail full --format json \
-  | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml --lark-json --pretty
-```
-
-如果输入已经是本地文件，直接指定协议和绝对路径：
-
-```bash
-python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml /absolute/path/doc.xml
-python3 skills/lark-doc/scripts/doc_word_stat.py --protocol md /absolute/path/doc.md
-```
-
-也可以通过 stdin 测试本地文件或上游命令输出：
-
-```bash
-cat /absolute/path/doc.xml | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol xml --pretty
-cat /absolute/path/doc.md | python3 skills/lark-doc/scripts/doc_word_stat.py --protocol md --pretty
-```
-
-如需确认是否遇到尚未覆盖的块类型，追加 `--fail-on-unsupported --fail-on-unknown`；默认模式会尽量递归统计可提取文本，并在输出的 `unsupported_blocks` / `unknown_blocks` 中提示后续可扩展项。
 
 ## Shortcuts（推荐优先使用）
 

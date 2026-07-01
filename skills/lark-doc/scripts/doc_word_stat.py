@@ -1014,15 +1014,15 @@ Examples:
     cat /absolute/path/doc.xml | python3 doc_word_stat.py --protocol xml --pretty
 
   Lark CLI XML fetch, JSON envelope output:
-    lark-cli docs +fetch --doc "$DOC" --doc-format xml --detail full --format json \\
+    lark-cli docs +fetch --doc "$URL" --doc-format xml --detail full --format json \\
       | python3 doc_word_stat.py --protocol xml --lark-json --pretty
 
   Lark CLI Markdown fetch, raw content output:
-    lark-cli docs +fetch --doc "$DOC" --doc-format markdown \\
+    lark-cli docs +fetch --doc "$URL" --doc-format markdown \\
       | python3 doc_word_stat.py --protocol md
 
   Strict integration for agents or automation:
-    lark-cli docs +fetch --doc "$DOC" --doc-format xml --detail full --format json \\
+    lark-cli docs +fetch --doc "$URL" --doc-format xml --detail full --format json \\
       | python3 doc_word_stat.py --protocol xml --lark-json --fail-on-unsupported --fail-on-unknown
 """
 
