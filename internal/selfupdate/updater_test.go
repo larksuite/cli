@@ -388,9 +388,13 @@ func TestContainsPnpmMarker(t *testing.T) {
 		// npm and non-package installs — no pnpm/.pnpm segment.
 		{"/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
 		{"/usr/local/bin/lark-cli", false},
-		// Substrings that must NOT match: segment must be exactly pnpm/.pnpm.
+		// Substrings that must NOT match: segment must be exactly .pnpm, or
+		// "pnpm" immediately followed by "store".
 		{"/opt/homebrew/.pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
 		{"/opt/pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
+		// A bare "pnpm" directory NOT followed by "store" (e.g. an npm install
+		// living under a dir named pnpm) must not be misclassified as pnpm.
+		{"/opt/pnpm/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
 	}
 	for _, c := range cases {
 		if got := containsPnpmMarker(c.path); got != c.want {

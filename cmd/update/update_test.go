@@ -147,6 +147,9 @@ func TestUpdatePnpm_Human(t *testing.T) {
 	if !strings.Contains(out, "via pnpm") {
 		t.Errorf("expected 'via pnpm' in stderr, got: %s", out)
 	}
+	if !strings.Contains(out, "Updating skills via pnpm dlx ...") {
+		t.Errorf("expected skills sync to report pnpm dlx launcher, got: %s", out)
+	}
 	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message, got: %s", out)
 	}
@@ -387,6 +390,9 @@ func TestUpdateNpm_Human(t *testing.T) {
 	out := stderr.String()
 	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "Updating skills via npx ...") {
+		t.Errorf("expected skills sync to report npx launcher for npm install, got: %s", out)
 	}
 }
 

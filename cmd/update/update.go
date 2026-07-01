@@ -316,7 +316,11 @@ func doAutoUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest string
 	fmt.Fprintf(io.ErrOut, "\n%s Successfully updated lark-cli from %s to %s\n", symOK(), cur, latest)
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
 	if skillsResult != nil {
-		fmt.Fprintf(io.ErrOut, "\nUpdating skills ...\n")
+		skillsPM := "npx"
+		if detect.Method == selfupdate.InstallPnpm && detect.PnpmAvailable {
+			skillsPM = "pnpm dlx"
+		}
+		fmt.Fprintf(io.ErrOut, "\nUpdating skills via %s ...\n", skillsPM)
 	}
 	emitSkillsTextHints(io, skillsResult)
 	return nil

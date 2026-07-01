@@ -164,13 +164,22 @@ func detectFromResolved(resolved string, npmOnPath, pnpmOnPath bool) DetectResul
 // pnpm-managed install. pnpm exposes two layouts: the classic virtual store
 // (a ".pnpm" directory segment) and the global content-addressable store,
 // whose resolved path runs through pnpm's home directory (e.g.
-// "~/Library/pnpm/store/v11/links/...") — a "pnpm" directory segment with no
-// ".pnpm". Matching either "pnpm" or ".pnpm" as a path segment covers both.
-// Both POSIX ("/") and Windows ("\") separators are checked so the
+// "~/Library/pnpm/store/v11/links/...") — a "pnpm" segment immediately
+// followed by "store". Matching only these two shapes (rather than any bare
+// "pnpm" segment) avoids misclassifying an npm install that merely lives under
+// a directory named "pnpm". Windows separators are normalized to "/" so the
 // classification is OS-independent and unit-testable anywhere.
 func containsPnpmMarker(p string) bool {
-	return strings.Contains(p, "/.pnpm/") || strings.Contains(p, `\.pnpm\`) ||
-		strings.Contains(p, "/pnpm/") || strings.Contains(p, `\pnpm\`)
+	parts := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
+	for i, part := range parts {
+		if part == ".pnpm" {
+			return true
+		}
+		if part == "pnpm" && i+1 < len(parts) && parts[i+1] == "store" {
+			return true
+		}
+	}
+	return false
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.
