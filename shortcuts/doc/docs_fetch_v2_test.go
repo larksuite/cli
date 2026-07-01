@@ -579,6 +579,34 @@ func TestDocsFetchIMMarkdownRequestsMarkdownFromAPI(t *testing.T) {
 	}
 }
 
+func TestDocsFetchIMMarkdownIgnoresHTML5BlockInsideCodeFence(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-im-markdown-code-fence"))
+	registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents/doxcnFetchIMMarkdownFence/fetch", map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcnFetchIMMarkdownFence",
+			"revision_id": float64(1),
+			"content":     "```xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n```\n",
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "doxcnFetchIMMarkdownFence",
+		"--doc-format", "im-markdown",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v\nraw=%s", err, stdout.String())
+	}
+}
+
 func TestDocsFetchMarkdownDetailDowngradesToSimple(t *testing.T) {
 	t.Parallel()
 

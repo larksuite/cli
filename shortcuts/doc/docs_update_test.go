@@ -4,6 +4,7 @@ package doc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -60,6 +61,28 @@ func TestDocsUpdateDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 				t.Fatalf("dry-run block_id = %#v, want %q", got, want)
 			}
 		})
+	}
+}
+
+func TestDocsUpdateDryRunReportsReferenceMapBuildError(t *testing.T) {
+	t.Parallel()
+
+	runtime := newUpdateShortcutTestRuntime(t, "", map[string]string{
+		"content": `<html5-block path="@missing.html"></html5-block>`,
+	})
+	raw, err := json.Marshal(dryRunUpdateV2(context.Background(), runtime))
+	if err != nil {
+		t.Fatalf("marshal dry-run output: %v", err)
+	}
+	var dry map[string]interface{}
+	if err := json.Unmarshal(raw, &dry); err != nil {
+		t.Fatalf("decode dry-run output: %v\n%s", err, raw)
+	}
+	if got := common.GetString(dry, "error"); !strings.Contains(got, `html5-block path "missing.html" cannot be read`) {
+		t.Fatalf("dry-run error = %q, want reference_map build error; raw=%s", got, raw)
+	}
+	if api, _ := dry["api"].([]interface{}); len(api) > 0 {
+		t.Fatalf("dry-run should not fall back to a request body after build error: %s", raw)
 	}
 }
 

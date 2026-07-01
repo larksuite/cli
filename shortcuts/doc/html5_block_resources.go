@@ -439,7 +439,8 @@ func applyOutsideCodeFences(content string, fn func(segment string) string) stri
 	}
 
 	for _, line := range strings.SplitAfter(content, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			if !inFence {
 				flush()
 				inFence = true
@@ -548,10 +549,10 @@ func nextHTML5BlockRef(refMap html5BlockReferenceMap) func() string {
 }
 
 func writeHTML5BlockReferenceFile(runtime *common.RuntimeContext, docToken string, ref string, html string) (string, error) {
-	if !html5BlockSafeNamePattern.MatchString(docToken) {
+	if !isSafeHTML5BlockResourceName(docToken) {
 		return "", common.ValidationErrorf("document_id %q cannot be used as a resource directory name", docToken).WithParam("document_id")
 	}
-	if !html5BlockSafeNamePattern.MatchString(ref) {
+	if !isSafeHTML5BlockResourceName(ref) {
 		return "", common.ValidationErrorf("html5-block data-ref %q cannot be used as a file name", ref).WithParam("data-ref")
 	}
 	relPath := filepath.Join(html5BlockReferenceRoot, docToken, ref+".html")
@@ -567,6 +568,10 @@ func writeHTML5BlockReferenceFile(runtime *common.RuntimeContext, docToken strin
 		return "", errs.NewInternalError(errs.SubtypeFileIO, "cannot write html5-block reference file %q: %v", relPath, err).WithCause(err)
 	}
 	return relPath, nil
+}
+
+func isSafeHTML5BlockResourceName(name string) bool {
+	return name != "." && name != ".." && html5BlockSafeNamePattern.MatchString(name)
 }
 
 func rewriteHTML5BlockStartTags(content string, fn func(raw string) (string, error)) (string, error) {

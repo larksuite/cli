@@ -71,7 +71,7 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
-	if err := processHTML5BlockReferenceMapForFetch(runtime, runtime.Str("doc-format"), ref.Token, data); err != nil {
+	if err := processHTML5BlockReferenceMapForFetch(runtime, effectiveFetchFormat(runtime), ref.Token, data); err != nil {
 		return err
 	}
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {

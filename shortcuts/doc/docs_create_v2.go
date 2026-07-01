@@ -18,7 +18,7 @@ func v2CreateFlags() []common.Flag {
 	return []common.Flag{
 		{Name: "title", Desc: "document title; when provided, the CLI prepends it to --content as <title>...</title> so the title wins over later content titles"},
 		{Name: "content", Desc: "document body; XML by default or Markdown when --doc-format markdown. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
-		{Name: "reference-map", Desc: "结构化 `reference_map` JSON object；当 `--content` 使用正文外部载荷 / 引用映射时与内容一起传给服务，支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。通常用于回写已有 `document.reference_map`。", Input: []string{common.File, common.Stdin}},
+		{Name: "reference-map", Desc: docsReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
 		{Name: "doc-format", Desc: "content format; xml is default and supports richer DocxXML blocks, markdown imports plain Markdown", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "parent-token", Desc: "parent folder token or wiki node token; mutually exclusive with --parent-position"},
 		{Name: "parent-position", Desc: "parent position such as my_library; mutually exclusive with --parent-token"},
@@ -55,7 +55,7 @@ func validateCreateV2(_ context.Context, runtime *common.RuntimeContext) error {
 func dryRunCreateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	body, err := buildCreateBodyWithHTML5ReferenceMap(runtime)
 	if err != nil {
-		body = buildCreateBody(runtime)
+		return common.NewDryRunAPI().Set("error", err.Error())
 	}
 	desc := "OpenAPI: create document"
 	if runtime.IsBot() {

@@ -457,9 +457,36 @@ func TestDocsFetchV2MissingHTML5BlockReferenceFails(t *testing.T) {
 }
 
 func TestHTML5BlockMarkdownCodeFenceIsIgnored(t *testing.T) {
-	content := "```xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n```\n"
-	if hasProcessableHTML5Block("markdown", content) {
-		t.Fatalf("html5-block inside markdown code fence should be ignored")
+	for _, fence := range []string{"```", "~~~"} {
+		t.Run(fence, func(t *testing.T) {
+			content := fence + "xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n" + fence + "\n"
+			if hasProcessableHTML5Block("markdown", content) {
+				t.Fatalf("html5-block inside markdown code fence should be ignored")
+			}
+		})
+	}
+}
+
+func TestWriteHTML5BlockReferenceFileRejectsDotNames(t *testing.T) {
+	runtime := newFetchShortcutTestRuntime(t, "", nil)
+	tests := []struct {
+		name     string
+		docToken string
+		ref      string
+		want     string
+	}{
+		{name: "dot doc token", docToken: ".", ref: "html5_1", want: "document_id"},
+		{name: "dotdot doc token", docToken: "..", ref: "html5_1", want: "document_id"},
+		{name: "dot ref", docToken: "doxcn_fetch", ref: ".", want: "data-ref"},
+		{name: "dotdot ref", docToken: "doxcn_fetch", ref: "..", want: "data-ref"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := writeHTML5BlockReferenceFile(runtime, tt.docToken, tt.ref, "<html></html>")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("writeHTML5BlockReferenceFile() error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 
