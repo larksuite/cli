@@ -52,6 +52,9 @@ func isPlaceholderValue(value string) bool {
 	normalized := strings.ToLower(trimmed)
 	if normalized == "" ||
 		normalized == "=" ||
+		printfPlaceholderValue(normalized) ||
+		htmlEntityAnglePlaceholder(normalized) ||
+		starMaskedPlaceholder(normalized) ||
 		percentWrappedPlaceholder(normalized) ||
 		angleWrappedPlaceholder(normalized) ||
 		urlWithAnglePlaceholder(normalized) ||
@@ -61,14 +64,42 @@ func isPlaceholderValue(value string) bool {
 	return namedPlaceholderValue(normalized)
 }
 
+func htmlEntityAnglePlaceholder(value string) bool {
+	if !strings.HasPrefix(value, "&lt;") || !strings.HasSuffix(value, "&gt;") {
+		return false
+	}
+	return anglePlaceholderIdentifier(strings.TrimSuffix(strings.TrimPrefix(value, "&lt;"), "&gt;"))
+}
+
+func starMaskedPlaceholder(value string) bool {
+	var stars int
+	for _, r := range value {
+		if r == '*' {
+			stars++
+			continue
+		}
+		return false
+	}
+	return stars >= 3
+}
+
 func namedPlaceholderValue(value string) bool {
 	switch value {
-	case "...", "placeholder", "redacted", "<redacted>", "xxxx", "test-secret":
+	case "...", "***", "****", "placeholder", "redacted", "<redacted>", "xxxx", "test-secret", "test-token", "dry-run", "dry_run":
 		return true
 	}
 	return strings.Contains(value, "cli_example") ||
 		allXPlaceholder(value) ||
 		conventionalNamedPlaceholderValue(value)
+}
+
+func printfPlaceholderValue(value string) bool {
+	switch value {
+	case "%d", "%s", "%q", "%v", "%w", "%x", "%T":
+		return true
+	default:
+		return false
+	}
 }
 
 func allXPlaceholder(value string) bool {

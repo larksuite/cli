@@ -770,6 +770,172 @@ func TestScanFileAllowsPythonArgumentTokens(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsPythonCredentialTypeAnnotations(t *testing.T) {
+	got := ScanFile("fixtures/doc_word_stat.py", []byte(strings.Join([]string{
+		"class Counter:",
+		"    def __init__(self) -> None:",
+		"        self._token_kind: TokenKind | None = None",
+		"        self.access_token: AccessToken | None = None",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("python credential-shaped type annotations should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsSourceCodeCredentialNonSecretLiterals(t *testing.T) {
+	got := ScanFile("fixtures/auth_paths.go", []byte(strings.Join([]string{
+		`const PathOAuthTokenV2 = "/open-apis/authen/v2/oauth/token"`,
+		`return fmt.Errorf("failed to remove token: %v", err)`,
+		`const LarkErrTokenMissing = "token_missing"`,
+		`const LarkErrTokenExpired = 99991677`,
+		`const CliAppSecret = "LARKSUITE_CLI_APP_SECRET"`,
+		`const LargeAttachmentTokenAttr = "data-mail-token"`,
+		`const fakeOfficeTokenPrefix = "fake_office_"`,
+		`fmt.Fprintf(w, "  - token=%s  filename=%s\n", att.Token, att.FileName)`,
+		`tokenTypeHint := "access_token"`,
+		`const TokenTenant Token = "tenant"`,
+		`const secretKeyPrefix = "appsecret:"`,
+		`output.PrintJson(out, map[string]interface{}{"appSecret": "****"})`,
+		`return &credential.TokenResult{Token: "test-token"}, nil`,
+		`fmt.Fprintf(w, "password=%s\n", pat)`,
+		`text += "(img_token:" + imgToken + ")"`,
+		`map[string]interface{}{"token": "string(optional, from inspect)"}`,
+		`this.token = token;`,
+		`// AppSecret: "appsecret:<appId>"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("source code non-secret literals should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsCredentialLikePublicPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
+		`app_secret=***`,
+		`{"token":"&lt;wiki_token&gt;"}`,
+		`{"token":"Pgrrwvr***********UnRb"}`,
+		`"scope_name": "auth:user_access_token:read"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("public placeholders and scope identifiers should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsPartiallyMaskedCredentialValues(t *testing.T) {
+	got := ScanFile("fixtures/config.md", []byte(strings.Join([]string{
+		"client_secret=realprefix***realsuffix",
+		"client_secret=ab********cd",
+		"access_token=ab********cd",
+		"refresh_token=realprefix********realsuffix",
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("partially masked credential findings = %d, want 4: %#v", count, got)
+	}
+}
+
+func TestScanFileAllowsDryRunCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/ci.yml", []byte(strings.Join([]string{
+		"LARKSUITE_CLI_APP_SECRET=dry-run",
+		"client_secret: dry_run",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("dry-run credential placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsTypedCredentialAssignmentsWithSecretRHS(t *testing.T) {
+	cases := []struct {
+		name string
+		file string
+		text string
+	}{
+		{
+			name: "typescript simple secret",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string = "real-client-secret-value"`,
+		},
+		{
+			name: "typescript numeric password",
+			file: "fixtures/source_secret.ts",
+			text: `const password: string = "12345678901234567890"`,
+		},
+		{
+			name: "typescript union secret",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string | undefined = "real-client-secret-value"`,
+		},
+		{
+			name: "python simple secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: str = "real-client-secret-value"`,
+		},
+		{
+			name: "python union secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: str | None = "real-client-secret-value"`,
+		},
+		{
+			name: "python optional secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: Optional[str] = "real-client-secret-value"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ScanFile(tc.file, []byte(tc.text+"\n"))
+			if !findingRules(got)["public_content_generic_credential"] {
+				t.Fatalf("typed credential assignment should be reported: %#v", got)
+			}
+		})
+	}
+}
+
+func TestScanFileDetectsCredentialShapedSourceCodeLiterals(t *testing.T) {
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	got := ScanFile("fixtures/source_secret.go", []byte(strings.Join([]string{
+		`const ClientSecret = "real-client-secret-value"`,
+		`const GithubToken = "` + githubToken + `"`,
+		`const Password = "12345678901234567890"`,
+		`const ClientSecretNumber = "12345678901234567890"`,
+		`const ClientSecretFormat = "abc%sdefreal"`,
+		`fmt.Println("done"); const ClientSecret = "abc%sdefreal"`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 6 {
+		t.Fatalf("source code credential-shaped literal findings = %d, want 6: %#v", count, got)
+	}
+}
+
+func TestScanFileAllowsPrintfCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
+		"client_secret=%s",
+		"access_token=%v",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("printf placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
 func TestScanFileAllowsEllipsisCredentialPlaceholders(t *testing.T) {
 	got := ScanFile("fixtures/lark-doc-fetch.md", []byte(strings.Join([]string{
 		`<img token="..." url="https://..." width="..." height="..."/>`,

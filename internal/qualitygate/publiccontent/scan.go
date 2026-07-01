@@ -54,8 +54,9 @@ func scanText(file, source, text string, detectorFile bool) []Finding {
 			keyName, _ := normalizedCredentialAssignmentKey(match[0])
 			if value == "" ||
 				isNonSecretLiteralValue(value) ||
-				isBenignCodeCredentialExpression(file, value) ||
+				isBenignCodeCredentialExpression(file, line, match[0], value) ||
 				isPlaceholderValue(value) ||
+				isPermissionScopeIdentifierAssignment(keyName, value) ||
 				isResourceTokenPlaceholderAssignment(keyName, value) {
 				continue
 			}
@@ -266,7 +267,7 @@ func isResourceTokenPlaceholderAssignment(key, value string) bool {
 	case key == "retry_without_token" && numericStringPlaceholderValue(value):
 		return true
 	case tokenLikePlaceholderKey(key):
-		return tokenLikePlaceholderValue(value)
+		return tokenLikePlaceholderValue(key, value)
 	default:
 		return false
 	}
@@ -278,12 +279,13 @@ func tokenLikePlaceholderKey(key string) bool {
 		strings.HasSuffix(key, "-token")
 }
 
-func tokenLikePlaceholderValue(value string) bool {
+func tokenLikePlaceholderValue(key, value string) bool {
 	normalized := strings.ToLower(strings.Trim(value, `"'`))
 	if normalized == "" || credentialShapedIdentifier(normalized) {
 		return false
 	}
 	return resourceTokenPlaceholderValue(value) ||
+		maskedTokenFixturePlaceholderValue(key, normalized) ||
 		isPlaceholderValue(value) ||
 		normalized == "token" ||
 		strings.Contains(normalized, "...") ||
@@ -291,6 +293,51 @@ func tokenLikePlaceholderValue(value string) bool {
 		strings.Contains(normalized, "_or_") ||
 		strings.HasSuffix(normalized, "_token") ||
 		strings.HasPrefix(normalized, ".")
+}
+
+func maskedTokenFixturePlaceholderValue(key, value string) bool {
+	if authCredentialTokenKey(key) {
+		return false
+	}
+	var stars, alnum int
+	for _, r := range value {
+		switch {
+		case r == '*':
+			stars++
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			alnum++
+		default:
+			return false
+		}
+	}
+	return stars >= 6 && alnum > 0
+}
+
+func authCredentialTokenKey(key string) bool {
+	switch strings.ReplaceAll(strings.ToLower(key), "-", "_") {
+	case "access_token",
+		"refresh_token",
+		"session_token",
+		"bearer_token",
+		"auth_token",
+		"authorization_token",
+		"id_token":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPermissionScopeIdentifierAssignment(key, value string) bool {
+	if !strings.HasSuffix(key, "_token") {
+		return false
+	}
+	switch strings.ToLower(strings.Trim(value, `"',;`)) {
+	case "read", "write", "modify", "readonly", "get_as_user":
+		return true
+	default:
+		return false
+	}
 }
 
 func idempotencyTokenPlaceholderValue(value string) bool {
@@ -333,20 +380,87 @@ func numericStringPlaceholderValue(value string) bool {
 	return true
 }
 
-func isBenignCodeCredentialExpression(file, value string) bool {
+func isBenignCodeCredentialExpression(file, line, match, value string) bool {
 	normalized := strings.TrimSpace(value)
 	if strings.HasPrefix(normalized, "regexp.MustCompile(") {
 		return true
 	}
-	if !sourceCodeFile(file) || quotedLiteral(value) || credentialShapedValue(value) {
+	if !sourceCodeFile(file) || credentialShapedValue(value) {
 		return false
+	}
+	if rhs, ok := sourceCodeTypedCredentialRHS(line, match); ok {
+		return isBenignTypedCredentialRHS(rhs)
+	}
+	rawValueQuoted := credentialAssignmentRawValueQuoted(match)
+	if sourceCodeLiteralLooksNonSecret(normalized, !rawValueQuoted) {
+		return true
+	}
+	if sourceCodeFormatStringLiteral(normalized) && sourceCodeFormatArgumentContext(line, match) {
+		return true
+	}
+	if strings.Contains(match, "+") {
+		return true
+	}
+	if rawValueQuoted {
+		return false
+	}
+	if quotedLiteral(value) {
+		return sourceCodeLiteralLooksNonSecret(value, false)
 	}
 	return codeReferenceExpression(normalized)
 }
 
+func sourceCodeTypedCredentialRHS(line, match string) (string, bool) {
+	idx := strings.Index(line, match)
+	if idx < 0 {
+		return "", false
+	}
+	key, ok := credentialAssignmentKey(match)
+	if !ok {
+		return "", false
+	}
+	rest := strings.TrimSpace(line[idx+len(key):])
+	if !strings.HasPrefix(rest, ":") {
+		return "", false
+	}
+	typeAndRHS := strings.TrimSpace(strings.TrimPrefix(rest, ":"))
+	assignmentIdx := strings.Index(typeAndRHS, "=")
+	if assignmentIdx < 0 {
+		return "", false
+	}
+	return strings.TrimSpace(typeAndRHS[assignmentIdx+1:]), true
+}
+
+func isBenignTypedCredentialRHS(value string) bool {
+	value = strings.TrimRight(strings.TrimSpace(value), ",;")
+	if value == "" || isNonSecretLiteralValue(value) || isPlaceholderValue(value) {
+		return true
+	}
+	if credentialShapedValue(value) {
+		return false
+	}
+	if sourceCodeLiteralLooksNonSecret(value, !quotedLiteral(value)) {
+		return true
+	}
+	if quotedLiteral(value) {
+		return false
+	}
+	return codeReferenceExpression(value)
+}
+
+func credentialAssignmentRawValueQuoted(match string) bool {
+	key, ok := credentialAssignmentKey(match)
+	if !ok {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(match[len(key):], ":"))
+	rest = strings.TrimSpace(strings.TrimPrefix(rest, "="))
+	return strings.HasPrefix(rest, `"`) || strings.HasPrefix(rest, `'`)
+}
+
 func sourceCodeFile(file string) bool {
 	switch filepath.Ext(file) {
-	case ".go", ".py":
+	case ".go", ".js", ".jsx", ".py", ".ts", ".tsx":
 		return true
 	default:
 		return false
@@ -360,7 +474,147 @@ func quotedLiteral(value string) bool {
 			(strings.HasPrefix(normalized, `'`) && strings.HasSuffix(normalized, `'`)))
 }
 
+func sourceCodeLiteralLooksNonSecret(value string, allowNumeric bool) bool {
+	literal := strings.Trim(strings.TrimSpace(value), `"'`)
+	if strings.HasPrefix(literal, "/") {
+		return true
+	}
+	return (allowNumeric && numericStringPlaceholderValue(literal)) ||
+		sourceCodeEnvVarNameLiteral(literal) ||
+		sourceCodeAttributeNameLiteral(literal) ||
+		sourceCodeFakeOrPlaceholderLiteral(literal) ||
+		sourceCodeCredentialTermLiteral(literal) ||
+		sourceCodeCredentialPrefixLiteral(literal) ||
+		sourceCodeVocabularyLiteral(literal) ||
+		sourceCodeSchemaTypeLiteral(literal) ||
+		benignCredentialStatusLiteral(literal)
+}
+
+func sourceCodeFormatArgumentContext(line, match string) bool {
+	idx := strings.Index(line, match)
+	if idx < 0 {
+		return false
+	}
+	prefix := line[:idx]
+	if semicolon := strings.LastIndex(prefix, ";"); semicolon >= 0 {
+		prefix = prefix[semicolon+1:]
+	}
+	return strings.Contains(prefix, "fmt.") ||
+		strings.Contains(prefix, "log.") ||
+		strings.Contains(prefix, "printf(") ||
+		strings.Contains(prefix, "Printf(") ||
+		strings.Contains(prefix, "Errorf(") ||
+		strings.Contains(prefix, "Fprintf(")
+}
+
+func sourceCodeFormatStringLiteral(value string) bool {
+	for i := 0; i < len(value)-1; i++ {
+		if value[i] != '%' {
+			continue
+		}
+		if value[i+1] == '%' {
+			i++
+			continue
+		}
+		j := i + 1
+		for j < len(value) && strings.ContainsRune("#+- 0.0123456789", rune(value[j])) {
+			j++
+		}
+		if j < len(value) && strings.ContainsRune("vTtbcdoOqxXUeEfFgGspw", rune(value[j])) {
+			return true
+		}
+	}
+	return false
+}
+
+func sourceCodeEnvVarNameLiteral(value string) bool {
+	if value == "" || !strings.Contains(value, "_") {
+		return false
+	}
+	var hasCredentialMarker bool
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_':
+		default:
+			return false
+		}
+	}
+	for _, marker := range []string{"TOKEN", "SECRET", "KEY", "PASSWORD", "PASSWD"} {
+		if strings.Contains(value, marker) {
+			hasCredentialMarker = true
+			break
+		}
+	}
+	return hasCredentialMarker
+}
+
+func sourceCodeAttributeNameLiteral(value string) bool {
+	normalized := strings.ToLower(value)
+	return strings.HasPrefix(normalized, "data-") && delimitedPlaceholderIdentifier(normalized)
+}
+
+func sourceCodeFakeOrPlaceholderLiteral(value string) bool {
+	normalized := strings.ToLower(value)
+	return strings.HasPrefix(normalized, "fake_") ||
+		strings.HasPrefix(normalized, "fake-") ||
+		strings.Contains(normalized, "placeholder") ||
+		(strings.Contains(normalized, "<") && strings.Contains(normalized, ">"))
+}
+
+func sourceCodeCredentialTermLiteral(value string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(value, "-", "_"))
+	return conventionalCredentialPlaceholderName(normalized)
+}
+
+func sourceCodeCredentialPrefixLiteral(value string) bool {
+	switch strings.ToLower(value) {
+	case "appsecret:":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceCodeVocabularyLiteral(value string) bool {
+	switch strings.ToLower(value) {
+	case "bot", "tenant", "user":
+		return true
+	default:
+		return false
+	}
+}
+
+func sourceCodeSchemaTypeLiteral(value string) bool {
+	normalized := strings.ToLower(value)
+	return normalized == "string" || strings.HasPrefix(normalized, "string(")
+}
+
+func benignCredentialStatusLiteral(value string) bool {
+	normalized := strings.ToLower(strings.ReplaceAll(value, "-", "_"))
+	if !delimitedPlaceholderIdentifier(normalized) {
+		return false
+	}
+	for _, marker := range []string{
+		"bad_fmt",
+		"expired",
+		"format",
+		"invalid",
+		"missing",
+		"permission",
+		"status",
+		"type",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func codeReferenceExpression(value string) bool {
+	value = strings.TrimRight(strings.TrimSpace(value), ";")
 	if value == "" {
 		return false
 	}
@@ -369,7 +623,10 @@ func codeReferenceExpression(value string) bool {
 			return true
 		}
 	}
-	return codeIdentifier(value) && !credentialNameFragment(value)
+	if !codeIdentifier(value) {
+		return false
+	}
+	return codeIdentifier(value)
 }
 
 func codeIdentifier(value string) bool {
@@ -384,16 +641,6 @@ func codeIdentifier(value string) bool {
 		}
 	}
 	return true
-}
-
-func credentialNameFragment(value string) bool {
-	normalized := strings.ToLower(value)
-	for _, marker := range []string{"secret", "token", "password", "passwd", "key"} {
-		if strings.Contains(normalized, marker) {
-			return true
-		}
-	}
-	return false
 }
 
 func isNonSecretLiteralValue(value string) bool {
