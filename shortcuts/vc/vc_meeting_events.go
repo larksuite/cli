@@ -176,6 +176,7 @@ type meetingEventsEvent struct {
 
 func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, currentRoster []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
 	output := meetingEventsOutput{
+		Meeting:   meetingEventsMeetingFromPayload(nil),
 		Identity:  identity,
 		HasMore:   common.GetBool(data, "has_more"),
 		PageToken: common.GetString(data, "page_token"),
@@ -191,8 +192,8 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 			continue
 		}
 		payload := common.GetMap(event, "payload")
-		if output.Meeting.ID == "" {
-			output.Meeting = meetingEventsMeetingFromPayload(common.GetMap(payload, "meeting"))
+		if meeting := common.GetMap(payload, "meeting"); meeting != nil {
+			output.Meeting = meetingEventsMeetingFromPayload(meeting)
 		}
 		output.Events = append(output.Events, meetingEventsEventFromPayload(event, output.Identity))
 	}

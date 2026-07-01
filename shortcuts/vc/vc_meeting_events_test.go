@@ -747,6 +747,31 @@ func TestMeetingEvents_ExecuteJSON_OngoingMeetingOmitsEndTime(t *testing.T) {
 	}
 }
 
+func TestBuildMeetingEventsOutput_UsesLatestMeetingSnapshot(t *testing.T) {
+	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{
+		participantJoinedEventOngoing(),
+		participantJoinedEvent(),
+	}, nil, meetingEventsIdentity{})
+
+	if got := out.Meeting.Status; got != "ended" {
+		t.Fatalf("meeting status = %q, want ended", got)
+	}
+	if got := out.Meeting.EndTime; got != "2026-04-17T07:35:00Z" {
+		t.Fatalf("meeting end_time = %q, want latest ended snapshot", got)
+	}
+	if got := len(out.Events); got != 2 {
+		t.Fatalf("events len = %d, want 2", got)
+	}
+}
+
+func TestBuildMeetingEventsOutput_EmptyEventsHasUnknownMeetingStatus(t *testing.T) {
+	out := buildMeetingEventsOutput(map[string]interface{}{}, nil, nil, meetingEventsIdentity{})
+
+	if got := out.Meeting.Status; got != "unknown" {
+		t.Fatalf("meeting status = %q, want unknown", got)
+	}
+}
+
 func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "1710000000000000000"))
