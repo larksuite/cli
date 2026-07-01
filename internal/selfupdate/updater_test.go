@@ -431,3 +431,26 @@ func TestManualReason_Pnpm(t *testing.T) {
 		t.Errorf("manual reason = %q", got)
 	}
 }
+
+func TestRunPnpmInstall_Override(t *testing.T) {
+	u := &Updater{PnpmInstallOverride: func(version string) *NpmResult {
+		r := &NpmResult{}
+		r.Stdout.WriteString("added @larksuite/cli@" + version)
+		return r
+	}}
+	got := u.RunPnpmInstall("2.0.0")
+	if got.Err != nil {
+		t.Fatalf("unexpected err: %v", got.Err)
+	}
+	if !strings.Contains(got.CombinedOutput(), "2.0.0") {
+		t.Errorf("output = %q, want version echoed", got.CombinedOutput())
+	}
+}
+
+func TestRunPnpmInstall_Error(t *testing.T) {
+	wantErr := errors.New("boom")
+	u := &Updater{PnpmInstallOverride: func(string) *NpmResult { return &NpmResult{Err: wantErr} }}
+	if got := u.RunPnpmInstall("2.0.0"); !errors.Is(got.Err, wantErr) {
+		t.Errorf("err = %v, want %v", got.Err, wantErr)
+	}
+}

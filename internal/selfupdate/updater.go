@@ -103,6 +103,7 @@ func (r *NpmResult) CombinedOutput() string {
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
+	PnpmInstallOverride      func(version string) *NpmResult
 	SkillsIndexFetchOverride func() *NpmResult
 	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
@@ -186,6 +187,29 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	r.Err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		r.Err = fmt.Errorf("npm install timed out after %s", npmInstallTimeout)
+	}
+	return r
+}
+
+// RunPnpmInstall executes pnpm add -g @larksuite/cli@<version>.
+func (u *Updater) RunPnpmInstall(version string) *NpmResult {
+	if u.PnpmInstallOverride != nil {
+		return u.PnpmInstallOverride(version)
+	}
+	r := &NpmResult{}
+	pnpmPath, err := exec.LookPath("pnpm")
+	if err != nil {
+		r.Err = fmt.Errorf("pnpm not found in PATH: %w", err)
+		return r
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), npmInstallTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, pnpmPath, "add", "-g", NpmPackage+"@"+version)
+	cmd.Stdout = &r.Stdout
+	cmd.Stderr = &r.Stderr
+	r.Err = cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		r.Err = fmt.Errorf("pnpm install timed out after %s", npmInstallTimeout)
 	}
 	return r
 }
