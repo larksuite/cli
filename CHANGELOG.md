@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.62] - 2026-07-01
+
+### Features
+
+- **vc**: Add meeting message send shortcut (#1643)
+- **doc**: Add document word statistics helper (#1697)
+- **cli**: Interactive upgrade prompt for bare `lark-cli` invocation (#1498)
+- **install**: Fail closed when `checksums.txt` is missing during install (#1503)
+
+### Bug Fixes
+
+- **drive**: Improve batch failure handling for push/pull/sync (#1703)
+- **base**: Support JSON array input for field create (#1661)
+- **task**: Expose completion state in `my tasks` output (#1641)
+- **cli**: Reduce public content credential false positives (#1700)
+
 ## [v1.0.61] - 2026-06-30
 
 ### Features
@@ -1317,6 +1333,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.62]: https://github.com/larksuite/cli/releases/tag/v1.0.62
 [v1.0.61]: https://github.com/larksuite/cli/releases/tag/v1.0.61
 [v1.0.60]: https://github.com/larksuite/cli/releases/tag/v1.0.60
 [v1.0.59]: https://github.com/larksuite/cli/releases/tag/v1.0.59
