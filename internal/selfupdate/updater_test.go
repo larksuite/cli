@@ -12,11 +12,13 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/vfs"
 )
 
@@ -174,6 +176,39 @@ func TestDetectInstallMethodPnpmShim(t *testing.T) {
 	}
 }
 
+func TestDetectInstallMethodPnpmGlobalTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX-style pnpm global target")
+	}
+
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "global", "v11", "f111-19f1c1c585b", "node_modules", "@larksuite", "cli", "scripts", "run.js")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pathDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pathDir, "pnpm"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", pathDir)
+
+	oldFS := vfs.DefaultFS
+	t.Cleanup(func() { vfs.DefaultFS = oldFS })
+	vfs.DefaultFS = executableTestFS{exe: bin}
+
+	got := New().DetectInstallMethod()
+	if got.Method != InstallPnpm {
+		t.Fatalf("Method = %v, want InstallPnpm (path: %s)", got.Method, got.ResolvedPath)
+	}
+	if !got.PnpmAvailable {
+		t.Fatal("PnpmAvailable = false, want true")
+	}
+}
+
 func TestDetectInstallMethodNpm(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses POSIX-style npm global path")
@@ -215,7 +250,7 @@ func TestRunPnpmInstallUsesExpectedArgs(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "pnpm")
 	logPath := filepath.Join(dir, "pnpm.log")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \""+logPath+"\"\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nfor arg do printf '%s\\n' \"$arg\"; done >> \""+logPath+"\"\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
@@ -228,8 +263,27 @@ func TestRunPnpmInstallUsesExpectedArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := strings.TrimSpace(string(raw)), "add -g @larksuite/cli@2.0.0"; got != want {
+	if got, want := strings.Split(strings.TrimSpace(string(raw)), "\n"), []string{"add", "-g", "@larksuite/cli@2.0.0"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %q, want %q", got, want)
+	}
+}
+
+func TestRunPnpmInstallMissingBinaryUsesTypedError(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	result := New().RunPnpmInstall("2.0.0")
+	if result.Err == nil {
+		t.Fatal("RunPnpmInstall() err = nil, want typed error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(result.Err, &validationErr) {
+		t.Fatalf("RunPnpmInstall() err type = %T, want *errs.ValidationError", result.Err)
+	}
+	if validationErr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Fatalf("Subtype = %q, want %q", validationErr.Subtype, errs.SubtypeFailedPrecondition)
+	}
+	if errors.Unwrap(result.Err) == nil {
+		t.Fatal("RunPnpmInstall() error should preserve the underlying LookPath cause")
 	}
 }
 

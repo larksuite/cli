@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/transport"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -167,6 +168,10 @@ func detectInstallMethod(resolved string) InstallMethod {
 	if strings.Contains(normalized, "/node_modules/.pnpm/") {
 		return InstallPnpm
 	}
+	if strings.Contains(normalized, "/global/") &&
+		strings.Contains(normalized, "/node_modules/@larksuite/cli/") {
+		return InstallPnpm
+	}
 	if strings.Contains(normalized, "/node_modules/") {
 		return InstallNpm
 	}
@@ -228,7 +233,9 @@ func (u *Updater) RunPnpmInstall(version string) *NpmResult {
 	r := &NpmResult{}
 	pnpmPath, err := exec.LookPath("pnpm")
 	if err != nil {
-		r.Err = fmt.Errorf("pnpm not found in PATH: %w", err)
+		r.Err = errs.NewValidationError(errs.SubtypeFailedPrecondition, "pnpm not found in PATH: %s", err).
+			WithHint("install pnpm or update manually from GitHub Releases").
+			WithCause(err)
 		return r
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), npmInstallTimeout)
@@ -238,7 +245,8 @@ func (u *Updater) RunPnpmInstall(version string) *NpmResult {
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
-		r.Err = fmt.Errorf("pnpm add timed out after %s", npmInstallTimeout)
+		r.Err = errs.NewNetworkError(errs.SubtypeNetworkTimeout, "pnpm add timed out after %s", npmInstallTimeout).
+			WithCause(context.DeadlineExceeded)
 	}
 	return r
 }

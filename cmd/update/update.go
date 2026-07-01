@@ -230,7 +230,7 @@ func doManualUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, latest stri
 	fmt.Fprintf(io.ErrOut, "To update manually, download the latest release:\n")
 	fmt.Fprintf(io.ErrOut, "  Release:   %s\n", releaseURL(latest))
 	fmt.Fprintf(io.ErrOut, "  Changelog: %s\n", changelogURL())
-	fmt.Fprintf(io.ErrOut, manualInstallHint(detect.Method, latest))
+	fmt.Fprint(io.ErrOut, manualInstallHint(detect.Method, latest))
 	emitSkillsTextHints(io, skillsResult)
 	return nil
 }
@@ -286,7 +286,7 @@ func doPackageManagerUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, lat
 	if err := updater.VerifyBinary(latest); err != nil {
 		restore()
 		msg := fmt.Sprintf("new binary verification failed: %s", err)
-		hint := verificationFailureHint(updater, latest, reinstallCommand(manager, latest))
+		hint := verificationFailureHint(updater, latest, manager)
 		if opts.JSON {
 			output.PrintJson(io.Out, map[string]interface{}{
 				"ok":    false,
@@ -322,22 +322,29 @@ func doPackageManagerUpdate(opts *UpdateOptions, io *cmdutil.IOStreams, cur, lat
 	return nil
 }
 
-func packageManagerPermissionHint(manager, output string) string {
+func packageManagerPermissionHint(manager, combinedOutput string) string {
 	if manager == "npm" {
-		return permissionHint(output)
+		return permissionHint(combinedOutput)
 	}
-	if manager == "pnpm" && strings.Contains(output, "EACCES") && !isWindows() {
+	if manager == "pnpm" && strings.Contains(combinedOutput, "EACCES") && !isWindows() {
 		return "Permission denied. Check pnpm global directory permissions or run: pnpm setup"
 	}
 	return ""
 }
 
 func manualInstallHint(method selfupdate.InstallMethod, latest string) string {
-	manager := "npm"
-	if method == selfupdate.InstallPnpm {
-		manager = "pnpm"
+	switch method {
+	case selfupdate.InstallNpm:
+		return packageManagerInstallHint("npm", latest)
+	case selfupdate.InstallPnpm:
+		return packageManagerInstallHint("pnpm", latest)
+	default:
+		return ""
 	}
-	return fmt.Sprintf("\nOr install via %s (note: skills will not be synced):\n  %s\n  npx skills add larksuite/cli -y -g   # sync skills separately\n", manager, reinstallCommand(manager, latest))
+}
+
+func packageManagerInstallHint(manager, latest string) string {
+	return fmt.Sprintf("\nOr install via %s (note: skills will not be synced):\n  %s\n  %s   # sync skills separately\n", manager, reinstallCommand(manager, latest), skillsSyncCommand(manager))
 }
 
 func permissionHint(npmOutput string) string {
@@ -347,11 +354,11 @@ func permissionHint(npmOutput string) string {
 	return ""
 }
 
-func verificationFailureHint(updater *selfupdate.Updater, latest, reinstall string) string {
+func verificationFailureHint(updater *selfupdate.Updater, latest, manager string) string {
 	if updater.CanRestorePreviousVersion() {
 		return "the previous version has been restored"
 	}
-	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): %s && npx skills add larksuite/cli -y -g, or download %s", reinstall, releaseURL(latest))
+	return fmt.Sprintf("automatic rollback is unavailable on this platform; reinstall manually (skills will not be synced): %s && %s, or download %s", reinstallCommand(manager, latest), skillsSyncCommand(manager), releaseURL(latest))
 }
 
 func reinstallCommand(manager, latest string) string {
@@ -361,6 +368,13 @@ func reinstallCommand(manager, latest string) string {
 	default:
 		return fmt.Sprintf("npm install -g %s@%s", selfupdate.NpmPackage, latest)
 	}
+}
+
+func skillsSyncCommand(manager string) string {
+	if manager == "pnpm" {
+		return "pnpm dlx skills add larksuite/cli -y -g"
+	}
+	return "npx skills add larksuite/cli -y -g"
 }
 
 func runSkillsAndState(updater *selfupdate.Updater, io *cmdutil.IOStreams, stateVersion string, force bool) *skillscheck.SyncResult {
