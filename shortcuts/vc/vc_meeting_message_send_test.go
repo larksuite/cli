@@ -168,6 +168,31 @@ func TestMeetingMessageSendValidateRejectsReactionMessageWithText(t *testing.T) 
 	}
 }
 
+func TestMeetingMessageSendValidateRejectsLongText(t *testing.T) {
+	runtime := newMeetingMessageSendRuntime()
+	mustSetMeetingMessageSendFlag(t, runtime, "meeting-id", "7651377260537433044")
+	mustSetMeetingMessageSendFlag(t, runtime, "text", strings.Repeat("a", meetingMessageMaxTextBytes+1))
+
+	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
+	assertMeetingMessageSendValidationError(t, err, "--text")
+	if !strings.Contains(err.Error(), "--text is too long") {
+		t.Fatalf("error = %v, want --text too long", err)
+	}
+}
+
+func TestMeetingMessageSendValidateRejectsLongUUID(t *testing.T) {
+	runtime := newMeetingMessageSendRuntime()
+	mustSetMeetingMessageSendFlag(t, runtime, "meeting-id", "7651377260537433044")
+	mustSetMeetingMessageSendFlag(t, runtime, "text", "hello")
+	mustSetMeetingMessageSendFlag(t, runtime, "uuid", strings.Repeat("u", meetingMessageMaxUUIDBytes+1))
+
+	err := VCMeetingMessageSend.Validate(context.Background(), runtime)
+	assertMeetingMessageSendValidationError(t, err, "--uuid")
+	if !strings.Contains(err.Error(), "--uuid is too long") {
+		t.Fatalf("error = %v, want --uuid too long", err)
+	}
+}
+
 func TestMeetingMessageSendDryRun_Text(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
 	err := mountAndRun(t, VCMeetingMessageSend, []string{

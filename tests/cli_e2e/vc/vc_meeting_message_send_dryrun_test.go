@@ -5,6 +5,7 @@ package vc
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,6 +78,30 @@ func TestVCMeetingMessageSendDryRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVCMeetingMessageSendDryRunRejectsLongUUID(t *testing.T) {
+	setVCMeetingMessageSendDryRunEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"vc", "+meeting-message-send",
+			"--meeting-id", "7651377260537433044",
+			"--text", "hello from dry-run",
+			"--uuid", strings.Repeat("u", 129),
+			"--dry-run",
+		},
+		DefaultAs: "user",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+	require.Equal(t, "validation", gjson.Get(result.Stderr, "error.type").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "invalid_argument", gjson.Get(result.Stderr, "error.subtype").String(), "stderr:\n%s", result.Stderr)
+	require.Equal(t, "--uuid", gjson.Get(result.Stderr, "error.param").String(), "stderr:\n%s", result.Stderr)
+	require.Contains(t, gjson.Get(result.Stderr, "error.message").String(), "--uuid is too long", "stderr:\n%s", result.Stderr)
+	require.Empty(t, result.Stdout)
 }
 
 func setVCMeetingMessageSendDryRunEnv(t *testing.T) {

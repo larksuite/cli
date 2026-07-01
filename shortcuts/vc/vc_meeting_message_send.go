@@ -17,6 +17,9 @@ import (
 const (
 	meetingMessageTypeText     = "text"
 	meetingMessageTypeReaction = "reaction"
+	// Keep the client-side cap below the server-side content limit.
+	meetingMessageMaxTextBytes = 48 * 1024
+	meetingMessageMaxUUIDBytes = 128
 )
 
 // VCMeetingMessageSend sends an in-meeting text message or reaction emoji.
@@ -39,7 +42,7 @@ var VCMeetingMessageSend = common.Shortcut{
 		if err := validateMeetingEventsMeetingID(runtime.Str("meeting-id")); err != nil {
 			return err
 		}
-		_, err := resolveMeetingMessageType(runtime)
+		_, err := validateMeetingMessagePayload(runtime)
 		return err
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -83,7 +86,7 @@ func buildMeetingMessageSendPath() string {
 }
 
 func buildMeetingMessageSendBody(runtime *common.RuntimeContext) (map[string]interface{}, error) {
-	msgType, err := resolveMeetingMessageType(runtime)
+	msgType, err := validateMeetingMessagePayload(runtime)
 	if err != nil {
 		return nil, err
 	}
@@ -101,6 +104,23 @@ func buildMeetingMessageSendBody(runtime *common.RuntimeContext) (map[string]int
 		body["uuid"] = uuid
 	}
 	return body, nil
+}
+
+func validateMeetingMessagePayload(runtime *common.RuntimeContext) (string, error) {
+	msgType, err := resolveMeetingMessageType(runtime)
+	if err != nil {
+		return "", err
+	}
+	if msgType == meetingMessageTypeText {
+		text := strings.TrimSpace(runtime.Str("text"))
+		if len(text) > meetingMessageMaxTextBytes {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, fmt.Sprintf("--text is too long; max %d bytes", meetingMessageMaxTextBytes)).WithParam("--text")
+		}
+	}
+	if uuid := strings.TrimSpace(runtime.Str("uuid")); len(uuid) > meetingMessageMaxUUIDBytes {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, fmt.Sprintf("--uuid is too long; max %d bytes", meetingMessageMaxUUIDBytes)).WithParam("--uuid")
+	}
+	return msgType, nil
 }
 
 func resolveMeetingMessageType(runtime *common.RuntimeContext) (string, error) {
