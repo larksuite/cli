@@ -727,7 +727,7 @@ class ExtractContext:
 
 class Handler(Protocol):
     def extract(self, block: Block, registry: "Registry", ctx: ExtractContext) -> list[Segment]:
-        ...
+        raise NotImplementedError
 
 
 def block_id(block: Block) -> str | None:
