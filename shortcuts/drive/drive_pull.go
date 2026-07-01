@@ -37,11 +37,16 @@ const (
 )
 
 type drivePullItem struct {
-	RelPath   string `json:"rel_path"`
-	FileToken string `json:"file_token,omitempty"`
-	SourceID  string `json:"source_id,omitempty"`
-	Action    string `json:"action"`
-	Error     string `json:"error,omitempty"`
+	RelPath    string `json:"rel_path"`
+	FileToken  string `json:"file_token,omitempty"`
+	SourceID   string `json:"source_id,omitempty"`
+	Action     string `json:"action"`
+	Error      string `json:"error,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
+	Code       int    `json:"code,omitempty"`
+	Subtype    string `json:"subtype,omitempty"`
+	Retryable  bool   `json:"retryable,omitempty"`
 }
 
 type drivePullTarget struct {
@@ -189,6 +194,9 @@ var DrivePull = common.Shortcut{
 		sort.Strings(downloadablePaths)
 
 		for _, rel := range downloadablePaths {
+			if drivePullHasTerminalFailure(items) {
+				break
+			}
 			targetFile := remoteFiles[rel]
 			downloadToken := targetFile.DownloadToken
 			itemFileToken := targetFile.ItemFileToken
@@ -204,13 +212,9 @@ var DrivePull = common.Shortcut{
 				// pre-existing file under --if-exists=skip silently
 				// hides the conflict. Surface as a failure.
 				if info.IsDir() {
-					items = append(items, drivePullItem{
-						RelPath:   rel,
-						FileToken: itemFileToken,
-						SourceID:  itemSourceID,
-						Action:    "failed",
-						Error:     fmt.Sprintf("local path is a directory, remote is a regular file: %s", target),
-					})
+					conflictErr := errs.NewValidationError(errs.SubtypeFailedPrecondition, "local path is a directory, remote is a regular file: %s", target)
+					item, _ := drivePullFailedItem(rel, itemFileToken, itemSourceID, "failed", "local", conflictErr)
+					items = append(items, item)
 					failed++
 					downloadFailed++
 					continue
@@ -223,9 +227,14 @@ var DrivePull = common.Shortcut{
 			}
 
 			if err := drivePullDownload(ctx, runtime, downloadToken, target, targetFile.ModifiedTime); err != nil {
-				items = append(items, drivePullItem{RelPath: rel, FileToken: itemFileToken, SourceID: itemSourceID, Action: "failed", Error: err.Error()})
+				item, terminal := drivePullFailedItem(rel, itemFileToken, itemSourceID, "failed", "download", err)
+				items = append(items, item)
 				failed++
 				downloadFailed++
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +pull after terminal %s failure: %v\n", item.Phase, err)
+					break
+				}
 				continue
 			}
 			items = append(items, drivePullItem{RelPath: rel, FileToken: itemFileToken, SourceID: itemSourceID, Action: "downloaded"})
@@ -251,7 +260,8 @@ var DrivePull = common.Shortcut{
 			for _, absPath := range localAbsPaths {
 				rel, relErr := filepath.Rel(safeRoot, absPath)
 				if relErr != nil {
-					items = append(items, drivePullItem{RelPath: absPath, Action: "delete_failed", Error: relErr.Error()})
+					item, _ := drivePullFailedItem(absPath, "", "", "delete_failed", "delete_local", relErr)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -271,7 +281,8 @@ var DrivePull = common.Shortcut{
 				// acceptable here. Shortcuts cannot import internal/vfs
 				// directly (depguard rule shortcuts-no-vfs).
 				if err := os.Remove(absPath); err != nil { //nolint:forbidigo // see comment above
-					items = append(items, drivePullItem{RelPath: rel, Action: "delete_failed", Error: err.Error()})
+					item, _ := drivePullFailedItem(rel, "", "", "delete_failed", "delete_local", err)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -286,6 +297,7 @@ var DrivePull = common.Shortcut{
 				"skipped":       skipped,
 				"failed":        failed,
 				"deleted_local": deletedLocal,
+				"aborted":       drivePullHasTerminalFailure(items),
 			},
 			"items": items,
 		}
@@ -315,6 +327,32 @@ var DrivePull = common.Shortcut{
 		runtime.Out(payload, nil)
 		return nil
 	},
+}
+
+func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err error) (drivePullItem, bool) {
+	decision := driveClassifyBatchFailure(err)
+	item := drivePullItem{
+		RelPath:    relPath,
+		FileToken:  fileToken,
+		SourceID:   sourceID,
+		Action:     action,
+		Error:      err.Error(),
+		Phase:      phase,
+		ErrorClass: decision.Class,
+		Code:       decision.Code,
+		Subtype:    decision.Subtype,
+		Retryable:  decision.Retryable,
+	}
+	return item, decision.Terminal
+}
+
+func drivePullHasTerminalFailure(items []drivePullItem) bool {
+	for _, item := range items {
+		if driveTerminalBatchErrorClass(item.ErrorClass) {
+			return true
+		}
+	}
+	return false
 }
 
 // drivePullDownload streams one Drive file into the local mirror target and

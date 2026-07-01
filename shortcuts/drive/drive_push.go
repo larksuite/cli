@@ -43,7 +43,7 @@ type drivePushItem struct {
 	Retryable  bool   `json:"retryable,omitempty"`
 }
 
-type drivePushFailureDecision struct {
+type driveBatchFailureDecision struct {
 	Class     string
 	Code      int
 	Subtype   string
@@ -267,7 +267,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, ensureErr)
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -302,7 +302,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, parentErr)
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
 					continue
@@ -333,7 +333,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
-						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, upErr)
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
 					continue
@@ -351,7 +351,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, ensureErr)
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
 				continue
@@ -363,7 +363,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
-					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after non-retryable %s failure: %v\n", item.Phase, upErr)
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
 				continue
@@ -554,7 +554,7 @@ func drivePushShouldSkipSmart(localFile drivePushLocalFile, remoteFile driveRemo
 }
 
 func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int64, err error) (drivePushItem, bool) {
-	decision := drivePushClassifyFailure(err)
+	decision := driveClassifyBatchFailure(err)
 	item := drivePushItem{
 		RelPath:    relPath,
 		FileToken:  fileToken,
@@ -570,8 +570,8 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 	return item, decision.Terminal
 }
 
-func drivePushClassifyFailure(err error) drivePushFailureDecision {
-	decision := drivePushFailureDecision{Class: "unknown", Retryable: errs.IsRetryable(err)}
+func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
+	decision := driveBatchFailureDecision{Class: "unknown", Retryable: errs.IsRetryable(err)}
 	problem, ok := errs.ProblemOf(err)
 	if !ok {
 		return decision
@@ -590,11 +590,15 @@ func drivePushClassifyFailure(err error) drivePushFailureDecision {
 	case problem.Category == errs.CategoryAuthorization && problem.Subtype == errs.SubtypePermissionDenied:
 		decision.Class = "permission_denied"
 		decision.Terminal = true
+	case problem.Category == errs.CategoryNetwork && problem.Code == http.StatusForbidden:
+		decision.Class = "permission_denied"
+		decision.Terminal = true
 	case problem.Subtype == errs.SubtypeInvalidParameters || problem.Code == 1061002:
 		decision.Class = "invalid_api_parameters"
 		decision.Terminal = true
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
+		decision.Terminal = true
 	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
 		decision.Class = "file_size_limit"
 	case problem.Code == 1062009:
@@ -603,6 +607,7 @@ func drivePushClassifyFailure(err error) drivePushFailureDecision {
 		decision.Class = "remote_not_found"
 	case problem.Subtype == errs.SubtypeServerError || problem.Code == 1061001 || problem.Code == 2200:
 		decision.Class = "server_error"
+		decision.Terminal = true
 	case problem.Subtype == errs.SubtypeFailedPrecondition:
 		decision.Class = "local_file_changed"
 	default:
@@ -613,12 +618,20 @@ func drivePushClassifyFailure(err error) drivePushFailureDecision {
 
 func drivePushHasTerminalFailure(items []drivePushItem) bool {
 	for _, item := range items {
-		switch item.ErrorClass {
-		case "app_scope_missing", "user_scope_missing", "permission_denied", "invalid_api_parameters":
+		if driveTerminalBatchErrorClass(item.ErrorClass) {
 			return true
 		}
 	}
 	return false
+}
+
+func driveTerminalBatchErrorClass(errorClass string) bool {
+	switch errorClass {
+	case "app_scope_missing", "user_scope_missing", "permission_denied", "invalid_api_parameters", "rate_limited", "server_error":
+		return true
+	default:
+		return false
+	}
 }
 
 func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {

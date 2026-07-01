@@ -26,11 +26,16 @@ const (
 )
 
 type driveSyncItem struct {
-	RelPath   string `json:"rel_path"`
-	FileToken string `json:"file_token,omitempty"`
-	Action    string `json:"action"`
-	Direction string `json:"direction,omitempty"` // "pull" or "push"
-	Error     string `json:"error,omitempty"`
+	RelPath    string `json:"rel_path"`
+	FileToken  string `json:"file_token,omitempty"`
+	Action     string `json:"action"`
+	Direction  string `json:"direction,omitempty"` // "pull" or "push"
+	Error      string `json:"error,omitempty"`
+	Phase      string `json:"phase,omitempty"`
+	ErrorClass string `json:"error_class,omitempty"`
+	Code       int    `json:"code,omitempty"`
+	Subtype    string `json:"subtype,omitempty"`
+	Retryable  bool   `json:"retryable,omitempty"`
 }
 
 // DriveSync performs a two-way sync between a local directory and a Drive
@@ -296,11 +301,15 @@ var DriveSync = common.Shortcut{
 		// Mirror local directory structure first (same as +push), so
 		// empty local directories are not silently dropped.
 		for _, relDir := range localDirs {
+			if driveSyncHasTerminalFailure(items) {
+				break
+			}
 			if _, alreadyRemote := folderCache[relDir]; alreadyRemote {
 				continue
 			}
 			if _, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, relDir, folderCache); ensureErr != nil {
-				items = append(items, driveSyncItem{RelPath: relDir, Action: "failed", Direction: "push", Error: ensureErr.Error()})
+				item, _ := driveSyncFailedItem(relDir, "", "failed", "push", "create_folder", ensureErr)
+				items = append(items, item)
 				failed++
 				continue
 			}
@@ -310,6 +319,9 @@ var DriveSync = common.Shortcut{
 
 		// 2a. Pull new_remote files.
 		for _, entry := range newRemote {
+			if driveSyncHasTerminalFailure(items) {
+				break
+			}
 			targetFile, ok := pullRemoteFiles[entry.RelPath]
 			if !ok {
 				// Non-file type (doc, shortcut, etc.) — skip.
@@ -317,8 +329,13 @@ var DriveSync = common.Shortcut{
 			}
 			target := filepath.Join(rootRelToCwd, entry.RelPath)
 			if err := drivePullDownload(ctx, runtime, targetFile.DownloadToken, target, targetFile.ModifiedTime); err != nil {
-				items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: entry.FileToken, Action: "failed", Direction: "pull", Error: err.Error()})
+				item, terminal := driveSyncFailedItem(entry.RelPath, entry.FileToken, "failed", "pull", "download", err)
+				items = append(items, item)
 				failed++
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
+					break
+				}
 				continue
 			}
 			items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: entry.FileToken, Action: "downloaded", Direction: "pull"})
@@ -327,6 +344,9 @@ var DriveSync = common.Shortcut{
 
 		// 2b. Push new_local files.
 		for _, entry := range newLocal {
+			if driveSyncHasTerminalFailure(items) {
+				break
+			}
 			localFile, ok := pushLocalFiles[entry.RelPath]
 			if !ok {
 				items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "skipped", Direction: "push", Error: "local file disappeared during sync"})
@@ -336,14 +356,20 @@ var DriveSync = common.Shortcut{
 			parentRel := drivePushParentRel(entry.RelPath)
 			parentToken, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, parentRel, folderCache)
 			if ensureErr != nil {
-				items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "failed", Direction: "push", Error: ensureErr.Error()})
+				item, _ := driveSyncFailedItem(entry.RelPath, "", "failed", "push", "create_folder", ensureErr)
+				items = append(items, item)
 				failed++
 				continue
 			}
 			token, _, upErr := drivePushUploadFile(ctx, runtime, localFile, "", parentToken)
 			if upErr != nil {
-				items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "failed", Direction: "push", Error: upErr.Error()})
+				item, terminal := driveSyncFailedItem(entry.RelPath, token, "failed", "push", "upload", upErr)
+				items = append(items, item)
 				failed++
+				if terminal {
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
+					break
+				}
 				continue
 			}
 			items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: token, Action: "uploaded", Direction: "push"})
@@ -352,6 +378,9 @@ var DriveSync = common.Shortcut{
 
 		// 2c. Resolve modified files by --on-conflict strategy.
 		for _, entry := range modified {
+			if driveSyncHasTerminalFailure(items) {
+				break
+			}
 			remoteFile := remoteFiles[entry.RelPath]
 			localFile, hasLocal := pushLocalFiles[entry.RelPath]
 			if !hasLocal {
@@ -379,8 +408,13 @@ var DriveSync = common.Shortcut{
 				}
 				target := filepath.Join(rootRelToCwd, entry.RelPath)
 				if err := drivePullDownload(ctx, runtime, targetFile.DownloadToken, target, targetFile.ModifiedTime); err != nil {
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: entry.FileToken, Action: "failed", Direction: "pull", Error: err.Error()})
+					item, terminal := driveSyncFailedItem(entry.RelPath, entry.FileToken, "failed", "pull", "download", err)
+					items = append(items, item)
 					failed++
+					if terminal {
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
+						break
+					}
 					continue
 				}
 				items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: entry.FileToken, Action: "downloaded", Direction: "pull"})
@@ -396,7 +430,8 @@ var DriveSync = common.Shortcut{
 				}
 				parentToken, parentErr := drivePushEnsureFolder(ctx, runtime, folderToken, drivePushParentRel(entry.RelPath), folderCache)
 				if parentErr != nil {
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: existingToken, Action: "failed", Direction: "push", Error: parentErr.Error()})
+					item, _ := driveSyncFailedItem(entry.RelPath, existingToken, "failed", "push", "create_folder", parentErr)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -411,8 +446,13 @@ var DriveSync = common.Shortcut{
 					if failedToken == "" {
 						failedToken = existingToken
 					}
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: failedToken, Action: "failed", Direction: "push", Error: upErr.Error()})
+					item, terminal := driveSyncFailedItem(entry.RelPath, failedToken, "failed", "push", "upload", upErr)
+					items = append(items, item)
 					failed++
+					if terminal {
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
+						break
+					}
 					continue
 				}
 				items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: token, Action: "overwritten", Direction: "push"})
@@ -433,7 +473,8 @@ var DriveSync = common.Shortcut{
 				}
 				suffixedRel, err := relPathWithUniqueFileTokenSuffix(entry.RelPath, remoteFile.FileToken, occupied)
 				if err != nil {
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "failed", Direction: "conflict", Error: err.Error()})
+					item, _ := driveSyncFailedItem(entry.RelPath, "", "failed", "conflict", "conflict", err)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -441,7 +482,9 @@ var DriveSync = common.Shortcut{
 				oldAbsPath := filepath.Join(safeRoot, filepath.FromSlash(entry.RelPath))
 				newAbsPath := filepath.Join(safeRoot, filepath.FromSlash(suffixedRel))
 				if err := os.Rename(oldAbsPath, newAbsPath); err != nil { //nolint:forbidigo // shortcuts cannot import internal/vfs (depguard rule shortcuts-no-vfs); safeRoot is validated.
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "failed", Direction: "conflict", Error: fmt.Sprintf("rename local: %s", err)})
+					renameErr := errs.NewInternalError(errs.SubtypeFileIO, "rename local: %s", err).WithCause(err)
+					item, _ := driveSyncFailedItem(entry.RelPath, "", "failed", "conflict", "conflict", renameErr)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -454,7 +497,9 @@ var DriveSync = common.Shortcut{
 					if rollbackErr != nil {
 						errMsg += "; rollback failed: " + rollbackErr.Error()
 					}
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "failed", Direction: "pull", Error: errMsg})
+					notFoundErr := errs.NewAPIError(errs.SubtypeNotFound, "%s", errMsg)
+					item, _ := driveSyncFailedItem(entry.RelPath, "", "failed", "pull", "download", notFoundErr)
+					items = append(items, item)
 					failed++
 					continue
 				}
@@ -465,8 +510,16 @@ var DriveSync = common.Shortcut{
 					if rollbackErr != nil {
 						errMsg += "; rollback failed: " + rollbackErr.Error()
 					}
-					items = append(items, driveSyncItem{RelPath: entry.RelPath, FileToken: entry.FileToken, Action: "failed", Direction: "pull", Error: errMsg})
+					if rollbackErr != nil {
+						err = errs.NewInternalError(errs.SubtypeFileIO, "%s", errMsg).WithCause(err)
+					}
+					item, terminal := driveSyncFailedItem(entry.RelPath, entry.FileToken, "failed", "pull", "download", err)
+					items = append(items, item)
 					failed++
+					if terminal {
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
+						break
+					}
 					continue
 				}
 				items = append(items, driveSyncItem{RelPath: entry.RelPath, Action: "renamed_local", Direction: "conflict"})
@@ -492,6 +545,7 @@ var DriveSync = common.Shortcut{
 				"pushed":  pushed,
 				"skipped": skipped,
 				"failed":  failed,
+				"aborted": driveSyncHasTerminalFailure(items),
 			},
 			"items": items,
 		}
@@ -518,6 +572,32 @@ func driveSyncStatusRemoteFiles(pullRemoteFiles map[string]drivePullTarget) map[
 		remoteFiles[relPath] = driveStatusRemoteFile{FileToken: fileToken, ModifiedTime: target.ModifiedTime}
 	}
 	return remoteFiles
+}
+
+func driveSyncFailedItem(relPath, fileToken, action, direction, phase string, err error) (driveSyncItem, bool) {
+	decision := driveClassifyBatchFailure(err)
+	item := driveSyncItem{
+		RelPath:    relPath,
+		FileToken:  fileToken,
+		Action:     action,
+		Direction:  direction,
+		Error:      err.Error(),
+		Phase:      phase,
+		ErrorClass: decision.Class,
+		Code:       decision.Code,
+		Subtype:    decision.Subtype,
+		Retryable:  decision.Retryable,
+	}
+	return item, decision.Terminal
+}
+
+func driveSyncHasTerminalFailure(items []driveSyncItem) bool {
+	for _, item := range items {
+		if driveTerminalBatchErrorClass(item.ErrorClass) {
+			return true
+		}
+	}
+	return false
 }
 
 // driveSyncAskConflict prompts the user for a conflict resolution strategy

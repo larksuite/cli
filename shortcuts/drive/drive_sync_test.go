@@ -311,6 +311,72 @@ func TestDriveSyncRemoteWinsPullsNewRemoteAndPushesNewLocal(t *testing.T) {
 	}
 }
 
+func TestDriveSyncAbortsAfterNewRemoteDownloadRateLimit(t *testing.T) {
+	syncTestConfig := &core.CliConfig{
+		AppID: "drive-sync-rate-limit", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, syncTestConfig)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file", "modified_time": "100"},
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file", "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  http.StatusTooManyRequests,
+		RawBody: []byte(`{"code":99991400,"msg":"request trigger frequency limit"}`),
+		Headers: http.Header{"Content-Type": []string{"application/json"}},
+	})
+
+	err := mountAndRunDrive(t, DriveSync, []string{
+		"+sync",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--quick",
+		"--as", "bot",
+	}, f, stdout)
+	assertDriveSyncPartialFailure(t, err)
+
+	summary := driveSyncStdoutSummary(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	items := driveSyncStdoutItems(t, stdout.Bytes())
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item.RelPath != "a.txt" || item.Direction != "pull" || item.Phase != "download" || item.ErrorClass != "rate_limited" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item.Code != 99991400 || !item.Retryable {
+		t.Fatalf("unexpected failure classification: %#v", item)
+	}
+	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("b.txt should not be downloaded after terminal rate limit; stat err=%v", statErr)
+	}
+}
+
 // TestDriveSyncLocalWinsPushesOverRemote verifies that --on-conflict=local-wins
 // pushes the local version over the remote file.
 func TestDriveSyncLocalWinsPushesOverRemote(t *testing.T) {
@@ -3082,4 +3148,20 @@ func driveSyncStdoutItems(t *testing.T, stdout []byte) []driveSyncItem {
 		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
 	}
 	return envelope.Data.Items
+}
+
+func driveSyncStdoutSummary(t *testing.T, stdout []byte) map[string]interface{} {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			Summary map[string]interface{} `json:"summary"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
+	}
+	if envelope.Data.Summary == nil {
+		t.Fatalf("stdout missing data.summary; raw=%s", string(stdout))
+	}
+	return envelope.Data.Summary
 }
