@@ -57,6 +57,26 @@ func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult, npmFn func(s
 	t.Cleanup(func() { newUpdater = origNew })
 }
 
+func mockDetectAndPnpm(t *testing.T, result selfupdate.DetectResult, pnpmFn func(string) *selfupdate.NpmResult) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.NpmInstallOverride = func(version string) *selfupdate.NpmResult {
+			r := &selfupdate.NpmResult{}
+			r.Err = fmt.Errorf("npm should not run for pnpm install")
+			return r
+		}
+		u.PnpmInstallOverride = pnpmFn
+		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
+}
+
 func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
 	return func() *selfupdate.NpmResult {
 		r := &selfupdate.NpmResult{}
@@ -263,6 +283,74 @@ func TestUpdateNpm_Human(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := stderr.String()
+	if !strings.Contains(out, "Successfully updated") {
+		t.Errorf("expected success message in stderr, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+
+	calledVersion := ""
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(version string) *selfupdate.NpmResult {
+			calledVersion = version
+			return &selfupdate.NpmResult{}
+		},
+	)
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calledVersion != "2.0.0" {
+		t.Fatalf("pnpm install called with version %q, want 2.0.0", calledVersion)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in output, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(version string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "via pnpm") {
+		t.Errorf("expected pnpm update path in stderr, got: %s", out)
+	}
 	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message in stderr, got: %s", out)
 	}
@@ -637,6 +725,32 @@ func TestUpdateCheck_JSON_Npm(t *testing.T) {
 	}
 }
 
+func TestUpdateCheck_JSON_Pnpm(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json", "--check"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "update_available"`) {
+		t.Errorf("expected update_available action, got: %s", out)
+	}
+	if !strings.Contains(out, `"auto_update": true`) {
+		t.Errorf("expected auto_update:true for pnpm, got: %s", out)
+	}
+}
+
 func TestUpdateCheck_Human_Npm(t *testing.T) {
 	f, _, stderr := newTestFactory(t)
 	cmd := NewCmdUpdate(f)
@@ -689,6 +803,36 @@ func TestUpdateCheck_Human_Manual(t *testing.T) {
 	}
 	if strings.Contains(out, "lark-cli update` to install") {
 		t.Errorf("should NOT suggest 'lark-cli update' for manual install, got: %s", out)
+	}
+}
+
+func TestUpdatePnpmNotFound_FallsBackToManual(t *testing.T) {
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetect(t, selfupdate.DetectResult{
+		Method:        selfupdate.InstallPnpm,
+		ResolvedPath:  "/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli",
+		PnpmAvailable: false,
+	})
+
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, `"action": "manual_required"`) {
+		t.Errorf("expected manual_required when pnpm not found, got: %s", out)
+	}
+	if !strings.Contains(out, "pnpm is not available") {
+		t.Errorf("expected 'pnpm is not available' reason when pnpm detected but missing, got: %s", out)
 	}
 }
 
@@ -760,6 +904,21 @@ func TestPermissionHint(t *testing.T) {
 	currentOS = "linux"
 	if got := permissionHint("some other error"); got != "" {
 		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
+	}
+}
+
+func TestManualInstallHintUsesDetectedPackageManager(t *testing.T) {
+	pnpmHint := manualInstallHint(selfupdate.InstallPnpm, "2.0.0")
+	if !strings.Contains(pnpmHint, "pnpm add -g @larksuite/cli@2.0.0") {
+		t.Fatalf("pnpm manual hint = %q, want pnpm add command", pnpmHint)
+	}
+	if strings.Contains(pnpmHint, "npm install -g") {
+		t.Fatalf("pnpm manual hint should not suggest npm install: %q", pnpmHint)
+	}
+
+	npmHint := manualInstallHint(selfupdate.InstallNpm, "2.0.0")
+	if !strings.Contains(npmHint, "npm install -g @larksuite/cli@2.0.0") {
+		t.Fatalf("npm manual hint = %q, want npm install command", npmHint)
 	}
 }
 

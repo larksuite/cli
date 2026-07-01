@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-// Package selfupdate handles installation detection, npm-based updates,
+// Package selfupdate handles installation detection, package-manager updates,
 // skills updates, and platform-specific binary replacement for the CLI
 // self-update flow.
 package selfupdate
@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type InstallMethod int
 
 const (
 	InstallNpm InstallMethod = iota
+	InstallPnpm
 	InstallManual
 )
 
@@ -44,6 +46,7 @@ const (
 	skillsUpdateTimeout    = 2 * time.Minute
 	skillsIndexMaxBodySize = 1 << 20
 	verifyTimeout          = 10 * time.Second
+	shimReadLimit          = 64 << 10
 )
 
 var (
@@ -53,14 +56,22 @@ var (
 
 // DetectResult holds installation detection results.
 type DetectResult struct {
-	Method       InstallMethod
-	ResolvedPath string
-	NpmAvailable bool
+	Method        InstallMethod
+	ResolvedPath  string
+	NpmAvailable  bool
+	PnpmAvailable bool
 }
 
 // CanAutoUpdate returns true if the CLI can update itself automatically.
 func (d DetectResult) CanAutoUpdate() bool {
-	return d.Method == InstallNpm && d.NpmAvailable
+	switch d.Method {
+	case InstallNpm:
+		return d.NpmAvailable
+	case InstallPnpm:
+		return d.PnpmAvailable
+	default:
+		return false
+	}
 }
 
 // ManualReason returns a human-readable explanation of why auto-update is unavailable.
@@ -68,7 +79,10 @@ func (d DetectResult) ManualReason() string {
 	if d.Method == InstallNpm && !d.NpmAvailable {
 		return "installed via npm, but npm is not available in PATH"
 	}
-	return "not installed via npm"
+	if d.Method == InstallPnpm && !d.PnpmAvailable {
+		return "installed via pnpm, but pnpm is not available in PATH"
+	}
+	return "not installed via npm or pnpm"
 }
 
 // NpmResult holds the result of an npm install or skills update execution.
@@ -92,6 +106,7 @@ func (r *NpmResult) CombinedOutput() string {
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
+	PnpmInstallOverride      func(version string) *NpmResult
 	SkillsIndexFetchOverride func() *NpmResult
 	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
@@ -121,23 +136,65 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 		return DetectResult{Method: InstallManual, ResolvedPath: exe}
 	}
 
-	method := InstallManual
-	if strings.Contains(resolved, "node_modules") {
-		method = InstallNpm
+	method := detectInstallMethod(resolved)
+	if method == InstallManual {
+		method = detectShimInstallMethod(resolved)
 	}
 
 	npmAvailable := false
+	pnpmAvailable := false
 	if method == InstallNpm {
 		if _, err := exec.LookPath("npm"); err == nil {
 			npmAvailable = true
 		}
+	} else if method == InstallPnpm {
+		if _, err := exec.LookPath("pnpm"); err == nil {
+			pnpmAvailable = true
+		}
 	}
 
 	return DetectResult{
-		Method:       method,
-		ResolvedPath: resolved,
-		NpmAvailable: npmAvailable,
+		Method:        method,
+		ResolvedPath:  resolved,
+		NpmAvailable:  npmAvailable,
+		PnpmAvailable: pnpmAvailable,
 	}
+}
+
+func detectInstallMethod(resolved string) InstallMethod {
+	normalized := normalizePathText(resolved)
+	normalized = "/" + strings.Trim(normalized, "/") + "/"
+	if strings.Contains(normalized, "/node_modules/.pnpm/") {
+		return InstallPnpm
+	}
+	if strings.Contains(normalized, "/node_modules/") {
+		return InstallNpm
+	}
+	return InstallManual
+}
+
+func detectShimInstallMethod(resolved string) InstallMethod {
+	file, err := vfs.Open(resolved)
+	if err != nil {
+		return InstallManual
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, shimReadLimit))
+	if err != nil {
+		return InstallManual
+	}
+	content := normalizePathText(string(data))
+	if strings.Contains(content, "cmd-shim-target=") &&
+		strings.Contains(content, "/global/") &&
+		strings.Contains(content, "/node_modules/@larksuite/cli/") {
+		return InstallPnpm
+	}
+	return InstallManual
+}
+
+func normalizePathText(s string) string {
+	return strings.ReplaceAll(filepath.ToSlash(s), "\\", "/")
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.
@@ -159,6 +216,29 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	r.Err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		r.Err = fmt.Errorf("npm install timed out after %s", npmInstallTimeout)
+	}
+	return r
+}
+
+// RunPnpmInstall executes pnpm add -g @larksuite/cli@<version>.
+func (u *Updater) RunPnpmInstall(version string) *NpmResult {
+	if u.PnpmInstallOverride != nil {
+		return u.PnpmInstallOverride(version)
+	}
+	r := &NpmResult{}
+	pnpmPath, err := exec.LookPath("pnpm")
+	if err != nil {
+		r.Err = fmt.Errorf("pnpm not found in PATH: %w", err)
+		return r
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), npmInstallTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, pnpmPath, "add", "-g", NpmPackage+"@"+version)
+	cmd.Stdout = &r.Stdout
+	cmd.Stderr = &r.Stderr
+	r.Err = cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		r.Err = fmt.Errorf("pnpm add timed out after %s", npmInstallTimeout)
 	}
 	return r
 }
