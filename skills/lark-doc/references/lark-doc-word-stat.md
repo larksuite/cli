@@ -1,6 +1,6 @@
 # 文档统计：总字数 / 总字符数
 
-当用户需要统计 Docx / Wiki 文档的总字数或总字符数时，使用本 skill 附带脚本 `scripts/doc_word_stat.py`。不要人工估算，也不要只读取 simple 摘要后统计。
+当用户需要统计 Docx / Wiki 文档的总字数或总字符数时，使用本 skill 附带脚本 `scripts/doc_word_stat.py`。统计口径以该脚本为准，不要改用其他方式自行计算，也不要只读取 simple 摘要后统计。
 
 ## 调用方式
 
