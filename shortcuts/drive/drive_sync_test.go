@@ -369,7 +369,7 @@ func TestDriveSyncAbortsAfterNewRemoteDownloadRateLimit(t *testing.T) {
 	if item.RelPath != "a.txt" || item.Direction != "pull" || item.Phase != "download" || item.ErrorClass != "rate_limited" {
 		t.Fatalf("unexpected failed item: %#v", item)
 	}
-	if item.Code != 99991400 || !item.Retryable {
+	if item.Code != 99991400 || item.Retryable == nil || !*item.Retryable {
 		t.Fatalf("unexpected failure classification: %#v", item)
 	}
 	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {

@@ -35,7 +35,7 @@ type driveSyncItem struct {
 	ErrorClass string `json:"error_class,omitempty"`
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
-	Retryable  bool   `json:"retryable,omitempty"`
+	Retryable  *bool  `json:"retryable,omitempty"`
 }
 
 // DriveSync performs a two-way sync between a local directory and a Drive
@@ -586,7 +586,7 @@ func driveSyncFailedItem(relPath, fileToken, action, direction, phase string, er
 		ErrorClass: decision.Class,
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
-		Retryable:  decision.Retryable,
+		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
 }

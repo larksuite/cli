@@ -46,7 +46,7 @@ type drivePullItem struct {
 	ErrorClass string `json:"error_class,omitempty"`
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
-	Retryable  bool   `json:"retryable,omitempty"`
+	Retryable  *bool  `json:"retryable,omitempty"`
 }
 
 type drivePullTarget struct {
@@ -341,7 +341,7 @@ func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err
 		ErrorClass: decision.Class,
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
-		Retryable:  decision.Retryable,
+		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
 }

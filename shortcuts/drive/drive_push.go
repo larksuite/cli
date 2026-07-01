@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
 	"path"
 	"path/filepath"
 	"sort"
@@ -40,7 +39,7 @@ type drivePushItem struct {
 	ErrorClass string `json:"error_class,omitempty"`
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
-	Retryable  bool   `json:"retryable,omitempty"`
+	Retryable  *bool  `json:"retryable,omitempty"`
 }
 
 type driveBatchFailureDecision struct {
@@ -392,7 +391,11 @@ var DrivePush = common.Shortcut{
 			}
 			sort.Strings(remoteRelPaths)
 
+			abortDelete := false
 			for _, rel := range remoteRelPaths {
+				if abortDelete {
+					break
+				}
 				keepToken := ""
 				if _, ok := localFiles[rel]; ok {
 					if chosen, ok := remoteFiles[rel]; ok {
@@ -404,9 +407,14 @@ var DrivePush = common.Shortcut{
 						continue
 					}
 					if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
-						item, _ := drivePushFailedItem(rel, entry.FileToken, "delete_failed", "delete", 0, err)
+						item, terminal := drivePushFailedItem(rel, entry.FileToken, "delete_failed", "delete", 0, err)
 						items = append(items, item)
 						failed++
+						if terminal {
+							fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, err)
+							abortDelete = true
+							break
+						}
 						continue
 					}
 					items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "deleted_remote"})
@@ -444,7 +452,6 @@ var DrivePush = common.Shortcut{
 type drivePushLocalFile struct {
 	RelPath  string
 	OpenPath string
-	AbsPath  string
 	FileName string
 	Size     int64
 	ModTime  time.Time
@@ -502,7 +509,6 @@ func drivePushWalkLocal(root, cwdCanonical string) (map[string]drivePushLocalFil
 		files[relSlash] = drivePushLocalFile{
 			RelPath:  relSlash,
 			OpenPath: relToCwd,
-			AbsPath:  absPath,
 			FileName: filepath.Base(rel),
 			Size:     info.Size(),
 			ModTime:  info.ModTime(),
@@ -565,9 +571,13 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		ErrorClass: decision.Class,
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
-		Retryable:  decision.Retryable,
+		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
+}
+
+func driveBoolPtr(v bool) *bool {
+	return &v
 }
 
 func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
@@ -730,7 +740,7 @@ func drivePushUploadFile(ctx context.Context, runtime *common.RuntimeContext, fi
 	if err := drivePushValidateUploadRequest(file, existingToken, parentToken); err != nil {
 		return "", "", err
 	}
-	if err := drivePushVerifyLocalSnapshot(file); err != nil {
+	if err := drivePushVerifyLocalSnapshot(runtime, file); err != nil {
 		return "", "", err
 	}
 	if file.Size > common.MaxDriveMediaUploadSinglePartSize {
@@ -766,16 +776,16 @@ func drivePushValidateUploadRequest(file drivePushLocalFile, existingToken, pare
 	return nil
 }
 
-func drivePushVerifyLocalSnapshot(file drivePushLocalFile) error {
-	info, err := os.Stat(file.AbsPath)
+func drivePushVerifyLocalSnapshot(runtime *common.RuntimeContext, file drivePushLocalFile) error {
+	info, err := runtime.FileIO().Stat(file.OpenPath)
 	if err != nil {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s is no longer readable: %v", file.RelPath, err).WithCause(err)
 	}
 	if !info.Mode().IsRegular() {
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s is no longer a regular file", file.RelPath)
 	}
-	if info.Size() != file.Size || !info.ModTime().Equal(file.ModTime) {
-		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s snapshot size/mtime no longer matches", file.RelPath)
+	if info.Size() != file.Size {
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "local file changed during push: %s snapshot size no longer matches", file.RelPath)
 	}
 	return nil
 }
