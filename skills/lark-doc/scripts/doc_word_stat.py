@@ -611,6 +611,13 @@ SUBTYPE_ATTR_TAGS = {
     "sub-page-list",
 }
 
+MAX_XML_INPUT_CHARS = 20_000_000
+FORBIDDEN_XML_DECL_RE = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+
+class UserInputError(ValueError):
+    pass
+
 
 def local_name(tag: str) -> str:
     if "}" in tag:
@@ -628,10 +635,20 @@ def block_type_for(elem: ET.Element) -> str:
     return TYPE_ALIASES.get(tag, tag)
 
 
+def ensure_safe_xml_source(source: str) -> None:
+    if len(source) > MAX_XML_INPUT_CHARS:
+        raise UserInputError(
+            f"XML input is too large ({len(source)} chars, limit {MAX_XML_INPUT_CHARS})"
+        )
+    if FORBIDDEN_XML_DECL_RE.search(source):
+        raise UserInputError("XML input must not contain DOCTYPE or ENTITY declarations")
+
+
 def parse_xml(source: str) -> list[Block]:
     source = source.strip()
     if not source:
         return []
+    ensure_safe_xml_source(source)
     try:
         root = ET.fromstring(source)
     except ET.ParseError:
@@ -1004,6 +1021,26 @@ def read_resource_texts(path: str | None) -> dict[str, str]:
     return {str(key): str(value) for key, value in payload.items()}
 
 
+def extract_lark_json_content(source: str) -> str:
+    try:
+        envelope = json.loads(source)
+    except json.JSONDecodeError as exc:
+        raise UserInputError(f"could not parse lark-cli JSON envelope: {exc}") from exc
+
+    if not isinstance(envelope, dict):
+        raise UserInputError("lark-cli JSON envelope must be an object")
+    data = envelope.get("data")
+    if not isinstance(data, dict):
+        raise UserInputError("lark-cli JSON envelope is missing object field data")
+    document = data.get("document")
+    if not isinstance(document, dict):
+        raise UserInputError("lark-cli JSON envelope is missing object field data.document")
+    content = document.get("content")
+    if not isinstance(content, str):
+        raise UserInputError("lark-cli JSON envelope is missing string field data.document.content")
+    return content
+
+
 HELP_EPILOG = """
 Examples:
   Local XML file:
@@ -1088,11 +1125,18 @@ def main() -> int:
     args = parse_args()
     source = read_input(args.input)
     if args.lark_json:
-        envelope = json.loads(source)
-        source = envelope["data"]["document"]["content"]
+        try:
+            source = extract_lark_json_content(source)
+        except UserInputError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     if args.protocol == "xml":
-        blocks = parse_xml(source)
+        try:
+            blocks = parse_xml(source)
+        except (ET.ParseError, UserInputError) as exc:
+            print(f"error: could not parse XML input: {exc}", file=sys.stderr)
+            return 1
     else:
         blocks = parse_markdown(source)
 
