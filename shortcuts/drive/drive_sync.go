@@ -25,6 +25,10 @@ const (
 	driveSyncOnConflictAsk        = "ask"
 )
 
+func driveSyncActionScopes() []string {
+	return []string{"drive:file:download", "drive:file:upload", "space:folder:create"}
+}
+
 type driveSyncItem struct {
 	RelPath    string `json:"rel_path"`
 	FileToken  string `json:"file_token,omitempty"`
@@ -71,6 +75,7 @@ var DriveSync = common.Shortcut{
 		"Default --on-conflict=remote-wins pulls the remote version when both sides changed a file. Use local-wins to push instead, keep-both to rename and keep both copies, or ask for interactive resolution.",
 		"Pass --quick for faster best-effort diff detection using modified_time instead of SHA-256 hash (no remote file downloads needed during diffing).",
 		"Because +sync acts on the diff, --quick can still pull, overwrite, or rename files when timestamps differ even if file contents are actually unchanged.",
+		"Actual sync execution pre-flights download, upload, and folder-create scopes before listing or walking, so missing grants fail before any partial sync can start.",
 		"Only entries with type=file are synced; online docs (docx, sheet, bitable, mindnote, slides) and shortcuts are skipped.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -115,10 +120,8 @@ var DriveSync = common.Shortcut{
 			duplicateRemote = driveDuplicateRemoteFail
 		}
 		quick := runtime.Bool("quick")
-		if !quick {
-			if err := runtime.EnsureScopes([]string{"drive:file:download"}); err != nil {
-				return err
-			}
+		if err := runtime.EnsureScopes(driveSyncActionScopes()); err != nil {
+			return err
 		}
 
 		safeRoot, err := validate.SafeInputPath(localDir)
@@ -267,18 +270,6 @@ var DriveSync = common.Shortcut{
 		var pulled, pushed, skipped, failed int
 		items := make([]driveSyncItem, 0)
 
-		if quick && driveSyncNeedsDownloadScope(newRemote, modified, conflictResolutions) {
-			if err := runtime.EnsureScopes([]string{"drive:file:download"}); err != nil {
-				return err
-			}
-		}
-		plannedUploads := driveSyncPlannedUploadPaths(newLocal, modified, conflictResolutions)
-		if len(plannedUploads) > 0 {
-			if err := runtime.EnsureScopes([]string{"drive:file:upload"}); err != nil {
-				return err
-			}
-		}
-
 		// Build push infrastructure: local walk for push + remote views + folder cache.
 		folderCache := map[string]string{"": folderToken}
 		for relDir, entry := range remoteFolders {
@@ -290,12 +281,6 @@ var DriveSync = common.Shortcut{
 		pushLocalFiles, localDirs, err := drivePushWalkLocal(safeRoot, cwdCanonical)
 		if err != nil {
 			return err
-		}
-
-		if driveSyncNeedsCreateScope(plannedUploads, localDirs, folderCache) {
-			if err := runtime.EnsureScopes([]string{"space:folder:create"}); err != nil {
-				return err
-			}
 		}
 
 		// Mirror local directory structure first (same as +push), so
@@ -637,51 +622,6 @@ func driveSyncAskConflict(relPath string, runtime *common.RuntimeContext) (strin
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid conflict choice for %q: %q (expected one of remote/local/keep/skip)", relPath, strings.TrimSpace(line)).WithParam("--on-conflict")
 	}
-}
-
-func driveSyncNeedsDownloadScope(newRemote, modified []driveStatusEntry, conflictResolutions map[string]string) bool {
-	if len(newRemote) > 0 {
-		return true
-	}
-	for _, entry := range modified {
-		switch conflictResolutions[entry.RelPath] {
-		case driveSyncOnConflictRemoteWins, driveSyncOnConflictKeepBoth:
-			return true
-		}
-	}
-	return false
-}
-
-func driveSyncPlannedUploadPaths(newLocal, modified []driveStatusEntry, conflictResolutions map[string]string) []string {
-	planned := make([]string, 0, len(newLocal)+len(modified))
-	for _, entry := range newLocal {
-		planned = append(planned, entry.RelPath)
-	}
-	for _, entry := range modified {
-		if conflictResolutions[entry.RelPath] == driveSyncOnConflictLocalWins {
-			planned = append(planned, entry.RelPath)
-		}
-	}
-	return planned
-}
-
-func driveSyncNeedsCreateScope(uploadPaths []string, localDirs []string, folderCache map[string]string) bool {
-	for _, relPath := range uploadPaths {
-		parentRel := drivePushParentRel(relPath)
-		if parentRel == "" {
-			continue
-		}
-		if _, ok := folderCache[parentRel]; !ok {
-			return true
-		}
-	}
-	// Empty local directories also need create_folder if not already on Drive.
-	for _, relDir := range localDirs {
-		if _, ok := folderCache[relDir]; !ok {
-			return true
-		}
-	}
-	return false
 }
 
 func driveSyncRollbackRenamedLocal(oldAbsPath, newAbsPath string) error {
