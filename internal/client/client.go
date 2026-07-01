@@ -220,9 +220,6 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if apiErr := classifyStreamAPIError(resp.StatusCode, errBody, streamLogID(resp.Header), c.Config, as); apiErr != nil {
-			return nil, apiErr
-		}
 		msg := strings.TrimSpace(string(errBody))
 		subtype := errs.SubtypeNetworkTransport
 		if resp.StatusCode >= 500 {
@@ -242,37 +239,6 @@ func (c *APIClient) DoStream(ctx context.Context, req *larkcore.ApiReq, as core.
 	}
 
 	return resp, nil
-}
-
-func classifyStreamAPIError(status int, rawBody []byte, logID string, cfg *core.CliConfig, as core.Identity) error {
-	var result map[string]interface{}
-	if err := json.Unmarshal(rawBody, &result); err != nil {
-		return nil
-	}
-	if len(result) == 0 {
-		return nil
-	}
-	if logID != "" {
-		if _, present := result["log_id"]; !present {
-			result["log_id"] = logID
-		}
-	}
-	apiErr := errclass.BuildAPIError(result, errclass.ClassifyContext{
-		Brand:    string(cfg.Brand),
-		AppID:    cfg.AppID,
-		Identity: string(as),
-	})
-	if apiErr != nil {
-		return apiErr
-	}
-	if status == http.StatusForbidden {
-		e := errs.NewPermissionError(errs.SubtypePermissionDenied, "HTTP 403: %s", strings.TrimSpace(string(rawBody))).WithCode(status)
-		if logID != "" {
-			e = e.WithLogID(logID)
-		}
-		return e
-	}
-	return nil
 }
 
 func streamLogID(header http.Header) string {

@@ -311,9 +311,9 @@ func TestDriveSyncRemoteWinsPullsNewRemoteAndPushesNewLocal(t *testing.T) {
 	}
 }
 
-func TestDriveSyncAbortsAfterNewRemoteDownloadRateLimit(t *testing.T) {
+func TestDriveSyncAbortsAfterNewRemoteDownloadForbidden(t *testing.T) {
 	syncTestConfig := &core.CliConfig{
-		AppID: "drive-sync-rate-limit", AppSecret: "test-secret", Brand: core.BrandFeishu,
+		AppID: "drive-sync-forbidden", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
 	f, stdout, _, reg := cmdutil.TestFactory(t, syncTestConfig)
 
@@ -340,9 +340,8 @@ func TestDriveSyncAbortsAfterNewRemoteDownloadRateLimit(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/tok_a/download",
-		Status:  http.StatusTooManyRequests,
-		RawBody: []byte(`{"code":99991400,"msg":"request trigger frequency limit"}`),
-		Headers: http.Header{"Content-Type": []string{"application/json"}},
+		Status:  http.StatusForbidden,
+		RawBody: []byte("forbidden"),
 	})
 
 	err := mountAndRunDrive(t, DriveSync, []string{
@@ -366,14 +365,14 @@ func TestDriveSyncAbortsAfterNewRemoteDownloadRateLimit(t *testing.T) {
 		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
 	}
 	item := items[0]
-	if item.RelPath != "a.txt" || item.Direction != "pull" || item.Phase != "download" || item.ErrorClass != "rate_limited" {
+	if item.RelPath != "a.txt" || item.Direction != "pull" || item.Phase != "download" || item.ErrorClass != "permission_denied" {
 		t.Fatalf("unexpected failed item: %#v", item)
 	}
-	if item.Code != 99991400 || item.Retryable == nil || !*item.Retryable {
+	if item.Code != http.StatusForbidden || item.Retryable == nil || *item.Retryable {
 		t.Fatalf("unexpected failure classification: %#v", item)
 	}
 	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {
-		t.Fatalf("b.txt should not be downloaded after terminal rate limit; stat err=%v", statErr)
+		t.Fatalf("b.txt should not be downloaded after terminal permission failure; stat err=%v", statErr)
 	}
 }
 

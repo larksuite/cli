@@ -1032,7 +1032,7 @@ func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
 	}
 }
 
-func TestDrivePullAbortsAfterDownloadRateLimit(t *testing.T) {
+func TestDrivePullAbortsAfterDownloadForbidden(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
 	tmpDir := t.TempDir()
@@ -1058,9 +1058,8 @@ func TestDrivePullAbortsAfterDownloadRateLimit(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method:  "GET",
 		URL:     "/open-apis/drive/v1/files/tok_a/download",
-		Status:  http.StatusTooManyRequests,
-		RawBody: []byte(`{"code":99991400,"msg":"request trigger frequency limit"}`),
-		Headers: http.Header{"Content-Type": []string{"application/json"}},
+		Status:  http.StatusForbidden,
+		RawBody: []byte("forbidden"),
 	})
 
 	err := mountAndRunDrive(t, DrivePull, []string{
@@ -1082,14 +1081,14 @@ func TestDrivePullAbortsAfterDownloadRateLimit(t *testing.T) {
 		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
 	}
 	item := items[0]
-	if item["rel_path"] != "a.txt" || item["phase"] != "download" || item["error_class"] != "rate_limited" {
+	if item["rel_path"] != "a.txt" || item["phase"] != "download" || item["error_class"] != "permission_denied" {
 		t.Fatalf("unexpected failed item: %#v", item)
 	}
-	if item["code"] != float64(99991400) || item["retryable"] != true {
+	if item["code"] != float64(http.StatusForbidden) || item["retryable"] != false {
 		t.Fatalf("unexpected failure classification: %#v", item)
 	}
 	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {
-		t.Fatalf("b.txt should not be downloaded after terminal rate limit; stat err=%v", statErr)
+		t.Fatalf("b.txt should not be downloaded after terminal permission failure; stat err=%v", statErr)
 	}
 }
 
