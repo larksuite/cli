@@ -66,31 +66,24 @@ var MinutesSpeakerReplace = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
-		dr := common.NewDryRunAPI()
-		if strings.TrimSpace(runtime.Str("from-speaker-id")) != "" && strings.TrimSpace(runtime.Str("from-user-id")) == "" {
-			dr.GET(minuteTranscriptSpeakerlistPath(minuteToken)).Desc("Resolve --from-speaker-id when it is a display name")
-		}
-		return dr.PUT(fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken))).
+		return common.NewDryRunAPI().
+			PUT(fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken))).
 			Body(buildSpeakerReplaceRequestBody(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
-		fromSpeakerInput := strings.TrimSpace(runtime.Str("from-speaker-id"))
+		fromSpeakerID := strings.TrimSpace(runtime.Str("from-speaker-id"))
+		fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
 		toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
 
-		fromSpeakerID, fromUserID, err := resolveSpeakerReplaceFrom(runtime, minuteToken)
-		if err != nil {
-			return err
-		}
-
-		_, err = runtime.CallAPITyped(http.MethodPut,
+		_, err := runtime.CallAPITyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken)),
 			map[string]interface{}{"user_id_type": "open_id"}, buildSpeakerReplaceRequestBodyResolved(fromSpeakerID, fromUserID, toUserID))
 		if err != nil {
-			return minutesSpeakerReplaceError(err, minuteToken, speakerReplaceSourceLabel(fromSpeakerInput, fromSpeakerID, fromUserID))
+			return minutesSpeakerReplaceError(err, minuteToken, speakerReplaceSourceLabel(fromSpeakerID, fromUserID))
 		}
 
-		runtime.OutFormat(buildSpeakerReplaceOutputData(fromSpeakerInput, minuteToken, fromSpeakerID, fromUserID, toUserID), nil, nil)
+		runtime.OutFormat(buildSpeakerReplaceOutputData(minuteToken, fromSpeakerID, fromUserID, toUserID), nil, nil)
 		return nil
 	},
 }
@@ -114,26 +107,20 @@ func buildSpeakerReplaceRequestBodyResolved(fromSpeakerID, fromUserID, toUserID 
 	return body
 }
 
-func buildSpeakerReplaceOutputData(fromSpeakerInput, minuteToken, fromSpeakerID, fromUserID, toUserID string) map[string]interface{} {
+func buildSpeakerReplaceOutputData(minuteToken, fromSpeakerID, fromUserID, toUserID string) map[string]interface{} {
 	out := map[string]interface{}{
 		"minute_token": minuteToken,
 		"to_user_id":   toUserID,
 	}
 	if fromSpeakerID != "" {
 		out["from_speaker_id"] = fromSpeakerID
-		if fromSpeakerInput != "" && fromSpeakerInput != fromSpeakerID {
-			out["from_speaker_input"] = fromSpeakerInput
-		}
 	} else {
 		out["from_user_id"] = fromUserID
 	}
 	return out
 }
 
-func speakerReplaceSourceLabel(fromSpeakerInput, fromSpeakerID, fromUserID string) string {
-	if fromSpeakerInput != "" {
-		return fromSpeakerInput
-	}
+func speakerReplaceSourceLabel(fromSpeakerID, fromUserID string) string {
 	if fromSpeakerID != "" {
 		return fromSpeakerID
 	}

@@ -81,6 +81,8 @@ lark-cli minutes +speaker-replace \
 
 Agent 必须先 `lark-cli api GET .../speakerlist`，再 `+speaker-replace`；`--from-speaker-id` 只接受 `speaker_id`。
 
+`+speaker-replace` **不会**自己请求 speakerlist：`--from-speaker-id` 的值会原样发给替换接口。整条链路只在 Agent 一开始查一次 speakerlist，务必传入上一步拿到的 `speaker_id`（不要传展示名，否则替换接口会返回 speaker-not-found）。
+
 ### 2. 新说话人必须是 open_id
 
 `--to-user-id` 仅支持 `ou_` 开头的 open_id，**不支持直接传姓名**；如果用户只给了姓名，请先用 [lark-contact](../../lark-contact/SKILL.md) 把姓名解析成 `open_id`。
