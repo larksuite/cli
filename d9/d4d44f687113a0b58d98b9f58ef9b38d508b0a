@@ -1,0 +1,144 @@
+cmd/auth/qrcode.go
+  f0c3e8c60d474faa 15,87 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c5fad1b3cde019b04df0c","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":15},{"Single":87}]}]}
+cmd/auth/login_messages.go
+  f0c3e8c60d474faa 117 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c5fad1b3cde019b04df0c","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":117}]}]}
+cmd/auth/login.go
+  f0c3e8c60d474faa 456,482 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c5fad1b3cde019b04df0c","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":456},{"Single":482}]}]}
+cmd/auth/auth_test.go
+  f0c3e8c60d474faa 64 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c5fad1b3cde019b04df0c","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":64}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d9d4d44f687113a0b58d98b9f58ef9b38d508b0a",
+  "prompts": {
+    "f0c3e8c60d474faa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0b20b01b3cde019b04d56e",
+        "model": "glm-5.1__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 4,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "cmd/auth/auth_test.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 64
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c5fad1b3cde019b04df0c",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 64
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "cmd/auth/login.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 456
+          },
+          {
+            "Single": 482
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c5fad1b3cde019b04df0c",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 456
+              },
+              {
+                "Single": 482
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "cmd/auth/login_messages.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 117
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c5fad1b3cde019b04df0c",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 117
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "cmd/auth/qrcode.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 15
+          },
+          {
+            "Single": 87
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c5fad1b3cde019b04df0c",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 15
+              },
+              {
+                "Single": 87
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "f0c3e8c60d474faa": {
+      "tool": "trae",
+      "conversation_id": "6a0b20b01b3cde019b04d56e",
+      "session_id": "6a0b20b01b3cde019b04d56e",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}

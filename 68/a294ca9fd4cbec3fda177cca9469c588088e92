@@ -1,0 +1,66 @@
+skills/lark-doc/SKILL.md
+  s_cc6163693f5078::t_8502cb89a3ad2f 4,8 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a45d72e448f5499e4f7906d","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":4},{"Single":8}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "68a294ca9fd4cbec3fda177cca9469c588088e92",
+  "prompts": {},
+  "sessions": {
+    "s_cc6163693f5078": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a4293ba448f5499e4f788e0",
+        "model": "gpt-5.4__dev"
+      },
+      "human_author": "zhanglei.1103 <zhanglei.1103@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-doc/SKILL.md": [
+      {
+        "hash": "s_cc6163693f5078::t_8502cb89a3ad2f",
+        "line_ranges": [
+          {
+            "Single": 4
+          },
+          {
+            "Single": 8
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a45d72e448f5499e4f7906d",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 4
+              },
+              {
+                "Single": 8
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_cc6163693f5078": {
+      "tool": "trae",
+      "conversation_id": "6a4293ba448f5499e4f788e0",
+      "session_id": "6a4293ba448f5499e4f788e0",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_cc6163693f5078::t_8502cb89a3ad2f": {
+      "tool": "trae",
+      "conversation_id": "6a4293ba448f5499e4f788e0",
+      "session_id": "6a4293ba448f5499e4f788e0",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}

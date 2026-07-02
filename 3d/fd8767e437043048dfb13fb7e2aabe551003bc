@@ -1,0 +1,31 @@
+internal/auth/errors.go
+  da740088c07aa8ee 32-42,46-47,52-54
+cmd/error_auth_hint.go
+  da740088c07aa8ee 7,10,15,32-34,78,80-88,90-96,98-103,105-140
+internal/auth/uat_client.go
+  da740088c07aa8ee 72,96,104
+cmd/root.go
+  da740088c07aa8ee 211,218,220-222,242-247,440-441,452,459,471-476
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "3dfd8767e437043048dfb13fb7e2aabe551003bc",
+  "prompts": {
+    "da740088c07aa8ee": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a06db261b3cde019b04cc60",
+        "model": "Doubao_1_6__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 196,
+      "total_deletions": 36,
+      "accepted_lines": 105,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

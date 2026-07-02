@@ -1,0 +1,144 @@
+skills/lark-shared/SKILL.md
+  f0c3e8c60d474faa 17 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c64341b3cde019b04df9b","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":17}]}]}
+cmd/auth/login.go
+  f0c3e8c60d474faa 273 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c64341b3cde019b04df9b","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":273}]}]}
+cmd/auth/login_test.go
+  f0c3e8c60d474faa 951,1064 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c64341b3cde019b04df9b","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":951},{"Single":1064}]}]}
+cmd/auth/login_messages.go
+  f0c3e8c60d474faa 62,98 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a0c64341b3cde019b04df9b","tool_type":"agent","tool_id":"SearchReplace","line_ranges":[{"Single":62},{"Single":98}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fccb4d48102cbe0a51e2c7dd5d11287419e883d4",
+  "prompts": {
+    "f0c3e8c60d474faa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a0b20b01b3cde019b04d56e",
+        "model": "glm-5.1__dev"
+      },
+      "human_author": "zhaojunchang <zhaojunchang@bytedance.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  },
+  "attestation_metadata": {
+    "cmd/auth/login.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 273
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c64341b3cde019b04df9b",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 273
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "cmd/auth/login_messages.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 62
+          },
+          {
+            "Single": 98
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c64341b3cde019b04df9b",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 62
+              },
+              {
+                "Single": 98
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "cmd/auth/login_test.go": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 951
+          },
+          {
+            "Single": 1064
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c64341b3cde019b04df9b",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 951
+              },
+              {
+                "Single": 1064
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "skills/lark-shared/SKILL.md": [
+      {
+        "hash": "f0c3e8c60d474faa",
+        "line_ranges": [
+          {
+            "Single": 17
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a0c64341b3cde019b04df9b",
+            "tool_type": "agent",
+            "tool_id": "SearchReplace",
+            "line_ranges": [
+              {
+                "Single": 17
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "f0c3e8c60d474faa": {
+      "tool": "trae",
+      "conversation_id": "6a0b20b01b3cde019b04d56e",
+      "session_id": "6a0b20b01b3cde019b04d56e",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
