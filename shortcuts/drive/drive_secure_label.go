@@ -18,6 +18,13 @@ const (
 	secureLabelUpdateScope = "docs:secure_label:write_only"
 )
 
+type secureLabelOperation string
+
+const (
+	secureLabelOperationList   secureLabelOperation = "list"
+	secureLabelOperationUpdate secureLabelOperation = "update"
+)
+
 var secureLabelTypes = permApplyTypes
 
 // DriveSecureLabelList lists secure labels available to the current user.
@@ -57,7 +64,7 @@ var DriveSecureLabelList = common.Shortcut{
 			nil,
 		)
 		if err != nil {
-			return decorateSecureLabelError(err)
+			return decorateSecureLabelError(err, secureLabelOperationList)
 		}
 		runtime.OutFormat(data, nil, nil)
 		return nil
@@ -121,7 +128,7 @@ var DriveSecureLabelUpdate = common.Shortcut{
 			body,
 		)
 		if err != nil {
-			return decorateSecureLabelError(err)
+			return decorateSecureLabelError(err, secureLabelOperationUpdate)
 		}
 		runtime.Out(data, nil)
 		return nil
@@ -143,6 +150,8 @@ func resolveSecureLabelTarget(raw, explicitType string) (token, docType string, 
 	return resolvePermApplyTarget(raw, explicitType)
 }
 
+// normalizeSecureLabelID trims a label id and rejects display names before the
+// request reaches Drive, where they otherwise surface as opaque JSON errors.
 func normalizeSecureLabelID(raw string) (string, error) {
 	labelID := strings.TrimSpace(raw)
 	if labelID == "" {
@@ -159,7 +168,9 @@ func normalizeSecureLabelID(raw string) (string, error) {
 	return labelID, nil
 }
 
-func decorateSecureLabelError(err error) error {
+// decorateSecureLabelError appends command-aware recovery guidance while
+// preserving upstream/classifier hints already attached to the typed error.
+func decorateSecureLabelError(err error, operation secureLabelOperation) error {
 	if err == nil {
 		return nil
 	}
@@ -167,15 +178,41 @@ func decorateSecureLabelError(err error) error {
 	if !ok {
 		return err
 	}
-	switch p.Code {
-	case 99991400:
-		p.Hint = "secure label updates are rate limited; retry later with exponential backoff and serialize bulk updates"
-	case 1063013:
-		p.Hint = "secure label downgrade requires approval; request approval or choose a non-downgrade label before retrying"
-	case 1063002:
-		p.Hint = "the current user lacks permission to update this file's secure label; use a user with file and security-label permission"
-	case 1063001, 99992402, 9499:
-		p.Hint = "check --token/--type and pass a secure label ID from `lark-cli drive +secure-label-list`, not the display name"
+	guidance := secureLabelErrorGuidance(p.Code, operation)
+	if guidance == "" {
+		return err
+	}
+	if p.Hint == "" {
+		p.Hint = guidance
+	} else if !strings.Contains(p.Hint, guidance) {
+		p.Hint = p.Hint + "; " + guidance
 	}
 	return err
+}
+
+// secureLabelErrorGuidance returns recovery guidance for secure-label API
+// failures whose generic code-level classification needs command context.
+func secureLabelErrorGuidance(code int, operation secureLabelOperation) string {
+	switch code {
+	case 99991400:
+		if operation == secureLabelOperationUpdate {
+			return "secure label updates are rate limited; retry later with exponential backoff and serialize bulk updates"
+		}
+		return "secure label listing is rate limited; retry later with exponential backoff"
+	case 1063013:
+		if operation == secureLabelOperationUpdate {
+			return "secure label downgrade requires approval; request approval or choose a non-downgrade label before retrying"
+		}
+	case 1063002:
+		if operation == secureLabelOperationUpdate {
+			return "the current user lacks permission to update this file's secure label; use a user with file and security-label permission"
+		}
+		return "the current user lacks permission to list secure labels; use a user with security-label read permission"
+	case 1063001, 99992402, 9499:
+		if operation == secureLabelOperationUpdate {
+			return "check --token/--type and pass a secure label ID from `lark-cli drive +secure-label-list`, not the display name"
+		}
+		return "check secure label list parameters such as --page-size, --page-token, and --lang"
+	}
+	return ""
 }

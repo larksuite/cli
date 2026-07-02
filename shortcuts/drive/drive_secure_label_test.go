@@ -92,13 +92,54 @@ func TestDriveSecureLabelList_ExecuteSuccess(t *testing.T) {
 	}
 }
 
+func TestDriveSecureLabelList_RateLimitPreservesUpstreamHint(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v2/my_secure_labels?page_size=10",
+		Status: 429,
+		Body: map[string]interface{}{
+			"code": 99991400,
+			"msg":  "rate limit exceeded",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "server says slow down"},
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDrive(t, DriveSecureLabelList, []string{
+		"+secure-label-list",
+		"--as", "user",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("expected rate limit error")
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected APIError, got %T: %v", err, err)
+	}
+	if apiErr.Subtype != errs.SubtypeRateLimit || apiErr.Code != 99991400 || !apiErr.Retryable {
+		t.Fatalf("problem = %+v, want code=99991400 subtype=rate_limit retryable=true", apiErr.Problem)
+	}
+	for _, want := range []string{"server says slow down", "secure label listing is rate limited"} {
+		if !strings.Contains(apiErr.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, apiErr.Hint)
+		}
+	}
+	if strings.Contains(apiErr.Hint, "updates are rate limited") {
+		t.Fatalf("list hint should not use update-specific wording: %q", apiErr.Hint)
+	}
+}
+
 func TestDriveSecureLabelUpdate_DryRunInfersTypeFromURL(t *testing.T) {
 	t.Parallel()
 	f, stdout, _, _ := cmdutil.TestFactory(t, driveTestConfig())
 	err := mountAndRunDrive(t, DriveSecureLabelUpdate, []string{
 		"+secure-label-update",
 		"--token", "https://example.feishu.cn/docx/doxTok123?from=share",
-		"--label-id", "7217780879644737539",
+		"--label-id", " 7217780879644737539 ",
 		"--dry-run", "--as", "user",
 	}, f, stdout)
 	if err != nil {
@@ -134,7 +175,7 @@ func TestDriveSecureLabelUpdate_ExecuteSuccess(t *testing.T) {
 		"+secure-label-update",
 		"--token", "doxTok123",
 		"--type", "docx",
-		"--label-id", "7217780879644737539",
+		"--label-id", " 7217780879644737539 ",
 		"--as", "user",
 	}, f, stdout)
 	if err != nil {
