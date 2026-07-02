@@ -15,6 +15,7 @@
 | 操作需求 | 使用工具 | 说明 |
 |---------|---------|------|
 | 查看工作簿结构 | `+workbook-info` | 获取子表列表、名称、行列数、冻结位置等元数据 |
+| 获取当前 revision | `+get-revision` | 获取当前文档 revision（版本号），可作为 recover / undo / changeset 复核的版本锚点 |
 | 新建工作簿（可预填数据） | `+workbook-create` | 从内存数据建一张新表（`--values` / `--sheets` typed） |
 | 导入本地文件为新表 | `+workbook-import` | 把本地 `.xlsx` / `.xls` / `.csv` 导入为新的飞书电子表格 |
 | 导出工作簿到本地 | `+workbook-export` | 导出为本地 `.xlsx`（整簿）或单子表 `.csv` |
@@ -37,6 +38,7 @@
 | Shortcut | Risk | 分组 |
 | --- | --- | --- |
 | `+workbook-info` | read | 工作簿 |
+| `+get-revision` | read | 工作簿 |
 | `+sheet-create` | write | 工作簿 |
 | `+sheet-delete` | high-risk-write | 工作簿 |
 | `+sheet-rename` | write | 工作簿 |
@@ -54,6 +56,12 @@
 ## Flags
 
 ### `+workbook-info`
+
+_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+
+_仅含公共 / 系统 flag。_
+
+### `+get-revision`
 
 _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 
@@ -207,6 +215,10 @@ _一个或多个子表的 typed 数据，每个数组元素写入一张子表；
 > - 要操作 `bitable` 子表里的数据：该子表条目会附带 `bitable_app_token` + `bitable_table_id` 两个字段，直接用多维表格命令操作，例如 `lark-cli base +record-list --base-token <bitable_app_token> --table-id <bitable_table_id>`（记录增删改查、字段、视图等整套 `lark-cli base` 命令均可用）。不要走 sheets 网格命令。
 > - `bitable` / `#UNSUPPORTED_TYPE` 子表条目**只含** `sheet_id` / `sheet_name` / `index` / `resource_type`（bitable 另加上述两个 token）以及 `is_hidden` / `tab_color`；**不输出** `row_count` / `column_count` / `merged_cells_count` / `chart_count` / `pivot_table_count` / `float_image_count` / `frozen_*` 等网格指标（对非网格子表无意义）。
 > - tab 管理类操作（`+sheet-rename` / `+sheet-move` / `+sheet-delete` / `+sheet-hide` 等）对任意 `resource_type` 的子表都合法，不受此限制。
+
+### `+get-revision`
+
+输出契约：返回单个 `revision` 字段，即当前文档版本号。它是 recover / undo / `+changeset-get` 的版本锚点：如果刚执行过一次读写操作，也可以直接复用那次响应里的 `revision`；当只想单独取当前版本号、且不需要其它结构信息时，用 `+get-revision` 最直接。
 
 ### `+workbook-create`
 

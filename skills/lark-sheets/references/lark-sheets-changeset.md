@@ -6,10 +6,6 @@
 
 典型场景：AI agent 对表格做了一批编辑后，想确认它"说做的"和"真正落到表格上的"是否一致——拉取编辑前版本到编辑后版本之间的 changeset，逐条核对 action 是否覆盖了用户要求的修改、有没有多改 / 漏改。
 
-| 目的 | 用这个 shortcut | 数据去向 |
-|------|----------------|---------|
-| 取两个版本间的原始变更操作 | `+changeset-get` | 对话上下文 |
-
 ## 版本（revision）语义
 
 - 这里的"版本"指表格的 **CS revision**（每次提交单调递增的修订号），不是文档历史里的命名版本。
@@ -19,21 +15,20 @@
 
 ## Shortcuts
 
-| Shortcut | Risk | 操作对象 |
-|----------|------|---------|
-| `+changeset-get` | read | 版本区间 changeset |
+| Shortcut | Risk | 分组 |
+| --- | --- | --- |
+| `+changeset-get` | read | 变更记录 |
 
 ## Flags
 
 ### `+changeset-get`
 
-_公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
+_公共：URL/token（无 sheet 定位）_
 
-| flag | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `--url` / `--spreadsheet-token` | string | 二选一必填 | 表格定位 |
-| `--start-revision` | int | 必填 | 起始版本（CS revision），≥ 1，作为"编辑前"基线 |
-| `--end-revision` | int | 可选 | 结束版本（CS revision）；省略 → 取最新版本。`end - start + 1 ≤ 20` |
+| Flag | Type | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `--start-revision` | int | required | 起始版本（编辑前基线，>= 1） |
+| `--end-revision` | int | optional | 结束版本（省略取最新） |
 
 ## 返回结构
 
@@ -80,3 +75,31 @@ _公共：URL/token（无 sheet 定位） · 系统：`--dry-run`_
 - `+changeset-get` 是**只读**操作，不改动表格。
 - 大跨度 / 大批量编辑的 changeset 可能体积较大；输出在传输层已 gzip。必要时缩小版本区间。
 - 该工具走只读 scope `sheets:spreadsheet:read`，需要对表格有查看权限。
+
+## Examples
+
+### `+changeset-get`
+
+公共：`--url` / `--spreadsheet-token`（二选一，无 sheet 定位）。changeset 是工作簿级历史，不接受 sheet 定位 flag。
+
+示例：
+
+```bash
+# 只传起始版本 → 返回从该版本到最新的全部 changeset（最常用：复核 AI 编辑前后的差异）
+lark-cli sheets +changeset-get --url "https://example.feishu.cn/sheets/shtXXX" --start-revision 120
+
+# 传起始 + 结束版本（版本差 end-start+1 ≤ 20）
+lark-cli sheets +changeset-get --spreadsheet-token shtXXX --start-revision 120 --end-revision 135
+```
+
+输出契约（envelope.data）：
+
+- `latest_revision` — 当前表格最新版本号（与查询区间无关）
+- `start_revision` / `end_revision` — 实际查询区间（省略 `--end-revision` 时 `end_revision` = 最新版本）
+- `changesets[]` — 按版本顺序排列；每项含 `revision` / `create_time` / `actions`（原始操作列表）/ `is_self_edit` / `is_ai_edit`
+
+### Validate / DryRun / Execute 约束
+
+- `Validate` 阶段只做 XOR 检查（`--url` / `--spreadsheet-token` 二选一）与版本上限校验（`--start-revision ≥ 1`，传了 `--end-revision` 时 `end ≥ start` 且 `end - start + 1 ≤ 20`）；**禁止**联网。
+- `DryRun` 输出请求模板，不实际拉取 changeset。
+- `Execute` 阶段才发起 changeset 查询；省略 `--end-revision` 时由服务端解析为最新 revision。
