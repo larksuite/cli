@@ -30,6 +30,8 @@ metadata:
 
 **CRITICAL — 生成任何 XML 之前，MUST 先用 Read 工具读取 [xml-schema-quick-ref.md](references/xml-schema-quick-ref.md)，禁止凭记忆猜测 XML 结构。**
 
+**CRITICAL — PPT 生成与模板编辑硬约束：PPT 的尺寸是 960x540，确保主体内容在页面边界内。多用生图，辅助搜图，必须要图文并茂。不要为了画出一个具象物体而堆叠 3 个以上仅用于拟形的 shape。生成背景图时必须在 prompt 中明确要求不要出现任何文字。用户指定 PPT 模板时，用 lark-drive 技能导入成 lark slides，回读理解每页版式后，直接在该 slides 上编辑，可以填改文字和图片、按需增删模板页，必须严格沿用原版式和字体，只改内容不做设计，完成后回读并微调，凝练文字或缩减字号消除文字溢出，调整 shape 顺序或位置避免文字遮挡。**
+
 **CRITICAL — 新建演示文稿或大幅改写页面时，MUST 先生成 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`，再生成 XML。先创建对应目录，规划层规则和中间产物生命周期见 [planning-layer.md](references/planning-layer.md)。仅替换一个标题、插入一个块等小型已有页编辑可豁免。**
 
 **CRITICAL — 新建演示文稿或大幅改写页面时，生成 XML 前 MUST 读取 [visual-planning.md](references/visual-planning.md)，确保 `layout_type`、`visual_focus`、`text_density` 实际改变页面几何、主视觉和文本量。**
