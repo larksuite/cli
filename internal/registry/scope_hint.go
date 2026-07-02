@@ -59,13 +59,9 @@ func BuildConsoleScopeURL(brand core.LarkBrand, appID, scope string) string {
 	if appID == "" || scope == "" {
 		return ""
 	}
-	host := "open.feishu.cn"
-	if brand == core.BrandLark {
-		host = "open.larksuite.com"
-	}
 	return fmt.Sprintf(
-		"https://%s/page/scope-apply?clientID=%s&scopes=%s",
-		host,
+		"%s/page/scope-apply?clientID=%s&scopes=%s",
+		core.ResolveOpenBaseURL(brand),
 		url.QueryEscape(appID),
 		url.QueryEscape(scope),
 	)
