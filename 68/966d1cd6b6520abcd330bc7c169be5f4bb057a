@@ -1,0 +1,16 @@
+skills/lark-calendar/SKILL.md
+  h_28e3eba6e3c972 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "68966d1cd6b6520abcd330bc7c169be5f4bb057a",
+  "prompts": {},
+  "humans": {
+    "h_28e3eba6e3c972": {
+      "author": "calendar-assistant <tangfengyuan@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
