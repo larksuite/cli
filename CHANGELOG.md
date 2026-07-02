@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.64] - 2026-07-02
+
+### Features
+
+- **im**: Upgrade card send to Card 2.0 with full component reference (#1688)
+- **im**: Add `+chat-members-list` shortcut for member listing (#1398)
+- **okr**: Semi-plain text format with mention position preservation and `patch` shortcut (#1671)
+
+### Bug Fixes
+
+- **cli**: Point permission-apply link at official `/page/scope-apply` entry (#1722)
+- **cli**: Improve secure label error handling (#1707)
+- **cli**: Reduce public content token false positives
+- **cli**: Increase npm registry fetch timeout to 15s during update check (#1724)
+- **doc**: Align word statistics compound tokens (#1706)
+
+### Documentation
+
+- **approval**: Add detailed command-to-reference mapping for the approval skill (#1630)
+- **doc**: Support `reference_map` in docs (#1690)
+- **slides**: Refresh generation guidance — add constraints, drop template toolchain, and inline lint XML fixtures
+
 ## [v1.0.62] - 2026-07-01
 
 ### Features
@@ -1333,6 +1355,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.64]: https://github.com/larksuite/cli/releases/tag/v1.0.64
 [v1.0.62]: https://github.com/larksuite/cli/releases/tag/v1.0.62
 [v1.0.61]: https://github.com/larksuite/cli/releases/tag/v1.0.61
 [v1.0.60]: https://github.com/larksuite/cli/releases/tag/v1.0.60
