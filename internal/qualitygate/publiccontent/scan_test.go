@@ -61,6 +61,19 @@ func TestScanFileWarnsForPrivateIPv4Examples(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsPrivateIPv4SourceFixtures(t *testing.T) {
+	got := ScanFile("internal/transport/warn_test.go", []byte(strings.Join([]string{
+		`proxy := "http://user:pass@10.0.0.1:3128"`,
+		`target := "socks5://admin:secret@172.16.0.1:1080"`,
+		`host := "192.168.0.10"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_private_ipv4" {
+			t.Fatalf("private IPv4 source fixtures should not be public content findings: %#v", got)
+		}
+	}
+}
+
 func TestSemanticCandidateRequiresSpecificRiskSignals(t *testing.T) {
 	benign := semanticCandidate("docs/network.md", "file", "For a local lab, use RFC1918 example host 192.168."+"0.10 only.", 1)
 	if len(benign) != 0 {
@@ -632,6 +645,45 @@ func TestScanFileAllowsCredentialURLPlaceholders(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsCredentialURLFixtures(t *testing.T) {
+	got := ScanFile("fixtures/network_test.go", []byte(strings.Join([]string{
+		`proxy := "http://user:pass@proxy:8080"`,
+		`repo := "https://u:t@h/r.git"`,
+		`target := "https://attacker:pw@open.feishu.cn"`,
+		`proxy := "http://admin:s3cret@127.0.0.1:3128"`,
+		`repo := "http://x-token:PAT_abc@git.host/app_x.git"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_credential_url" {
+			t.Fatalf("credential URL fixtures should not be credential URL findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsRootCredentialURLFixtures(t *testing.T) {
+	got := ScanFile("fixtures/network.md", []byte(strings.Join([]string{
+		`proxy: http://user:pass@proxy:8080`,
+		`repo: https://u:t@h/r.git`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_credential_url" {
+			t.Fatalf("root credential URL fixtures should not be credential URL findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsRootPrivateIPv4Fixtures(t *testing.T) {
+	got := ScanFile("testdata/network.md", []byte(strings.Join([]string{
+		`endpoint: http://10.0.0.1:8080`,
+		`redis: 192.168.1.10:6379`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_private_ipv4" {
+			t.Fatalf("root private IPv4 fixtures should not be private IPv4 findings: %#v", got)
+		}
+	}
+}
+
 func TestScanFileDetectsCredentialURLsWithRedactedSubstringPasswords(t *testing.T) {
 	got := ScanFile("docs/config.yaml", []byte("DATABASE_URL=postgres://user:notredactedreal@example.invalid/db\n"))
 	for _, item := range got {
@@ -648,6 +700,7 @@ func TestScanFileDetectsCredentialURLsWithPlaceholderUserAndRealPassword(t *test
 		"DATABASE_URL=postgres://<user>:real-secret@example.invalid/db",
 		"DATABASE_URL=postgres://<user>:" + stripeLike + "@example.invalid/db",
 		"URL=https://<user>:real-secret@example.invalid/path",
+		"REPO=https://x-token:" + stripeLike + "@git.host/app.git",
 	}, "\n")+"\n"))
 	var count int
 	for _, item := range got {
@@ -661,8 +714,8 @@ func TestScanFileDetectsCredentialURLsWithPlaceholderUserAndRealPassword(t *test
 			}
 		}
 	}
-	if count != 3 {
-		t.Fatalf("placeholder-user credential URL findings = %d, want 3: %#v", count, got)
+	if count != 4 {
+		t.Fatalf("placeholder-user credential URL findings = %d, want 4: %#v", count, got)
 	}
 }
 
@@ -721,6 +774,68 @@ func TestScanFileAllowsBenignJSONTokenFields(t *testing.T) {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("benign JSON token field should not be credential finding: %#v", got)
 		}
+	}
+}
+
+func TestScanFileAllowsWeakTokenFieldsWithoutCredentialEvidence(t *testing.T) {
+	got := ScanFile("docs/resource-tokens.md", []byte(strings.Join([]string{
+		`{"token":"img_abc123"}`,
+		`{"token":"img_live_secret"}`,
+		`{"token":"img_prod_key"}`,
+		`token=ab********cd`,
+		`{"image_token":"img_live_secret"}`,
+		`{"data_mail_token":"mail_abc123"}`,
+		`{"whiteboard_token":"board_v3_example"}`,
+		`{"want_token":"token from callback"}`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("weak token fields without credential evidence should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsWeakTokenFieldsWithHighConfidenceCredentialValues(t *testing.T) {
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	stripeToken := "sk_" + "live_1234567890abcdef"
+	randomToken := strings.Join([]string{
+		"a1b2c3d4",
+		"e5f6g7h8",
+		"i9j0k1l2",
+		"m3n4p5q6",
+	}, "")
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		`{"token":"` + githubToken + `"}`,
+		`token=` + stripeToken,
+		`{"image_token":"` + githubToken + `"}`,
+		`{"token":"` + randomToken + `"}`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("high-confidence weak token credential findings = %d, want 4: %#v", count, got)
+	}
+}
+
+func TestScanFileDetectsStrongAuthTokenKeysWithFixtureLikeValues(t *testing.T) {
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		`{"access_token":"img_abc123"}`,
+		`{"api_token":"img_live_secret"}`,
+		`{"service_token":"ab********cd"}`,
+		`{"bot_token":"board_v3_example"}`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("strong auth token key findings = %d, want 4: %#v", count, got)
 	}
 }
 
@@ -1052,10 +1167,12 @@ func TestScanFileDetectsCredentialShapedTokenLikePlaceholderValues(t *testing.T)
 	}
 }
 
-func TestScanFileDetectsNonFixtureMinuteTokenValues(t *testing.T) {
+func TestScanFileAllowsNonFixtureResourceTokenValues(t *testing.T) {
 	got := ScanFile("fixtures/minutes_search_test.go", []byte(`{"token":"minute_real_secret"}`+"\n"))
-	if !findingRules(got)["public_content_generic_credential"] {
-		t.Fatalf("non-fixture minute token should be credential finding: %#v", got)
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("resource-like bare token value should not be credential finding: %#v", got)
+		}
 	}
 }
 
