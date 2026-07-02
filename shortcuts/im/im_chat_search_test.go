@@ -4,6 +4,7 @@
 package im
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -98,5 +99,24 @@ func TestChatSearch_SortFlagSurface(t *testing.T) {
 	}
 	if got := strings.Join(aliasFlag.Enum, ","); got != "create_time_desc,update_time_desc,member_count_desc" {
 		t.Errorf("--sort-by Enum = %q", got)
+	}
+}
+
+func TestSearchChatAliasParity(t *testing.T) {
+	if ImSearchChat.Command != "+search-chat" {
+		t.Fatalf("ImSearchChat.Command = %q, want +search-chat", ImSearchChat.Command)
+	}
+	if !ImSearchChat.Hidden {
+		t.Fatalf("ImSearchChat must stay hidden so +chat-search remains canonical")
+	}
+
+	rt := newSearchTestRT(t, map[string]string{
+		"query":     "team",
+		"page-size": "10",
+	})
+	canonical := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), rt))
+	alias := mustMarshalDryRun(t, ImSearchChat.DryRun(context.Background(), rt))
+	if alias != canonical {
+		t.Fatalf("alias dry-run differs from canonical:\nalias=%s\ncanonical=%s", alias, canonical)
 	}
 }
