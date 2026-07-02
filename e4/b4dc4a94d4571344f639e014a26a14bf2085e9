@@ -1,3 +1,5 @@
+shortcuts/doc/doc_media_upload.go
+  s_cc6163693f5078::t_b807c4ce8a6ec2 26-27
 skills/lark-doc/SKILL.md
   h_54bf2f3e6bf1fe 8
   s_6a8ffca22746e6::t_35ec564cd5f604 50
@@ -14,8 +16,6 @@ skills/lark-doc/references/lark-doc-mindnote.md
   s_cc6163693f5078::t_c152c6c51f20f1 102,125-126
   s_6a8ffca22746e6::t_014dc04c6153aa 133-134
   s_e068822b94fe55::t_7e4e968a39a7e2 135
-shortcuts/doc/doc_media_upload.go
-  s_cc6163693f5078::t_b807c4ce8a6ec2 26-27
 ---
 {
   "schema_version": "authorship/3.0.0",
