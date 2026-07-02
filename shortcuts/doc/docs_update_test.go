@@ -4,8 +4,8 @@ package doc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -64,25 +64,36 @@ func TestDocsUpdateDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 	}
 }
 
-func TestDocsUpdateDryRunReportsReferenceMapBuildError(t *testing.T) {
+func TestBuildUpdateBodyWithHTML5ReferenceMapReportsPathError(t *testing.T) {
 	t.Parallel()
 
 	runtime := newUpdateShortcutTestRuntime(t, "", map[string]string{
 		"content": `<html5-block path="@missing.html"></html5-block>`,
 	})
-	raw, err := json.Marshal(dryRunUpdateV2(context.Background(), runtime))
-	if err != nil {
-		t.Fatalf("marshal dry-run output: %v", err)
+
+	_, err := buildUpdateBodyWithHTML5ReferenceMap(runtime)
+	if err == nil {
+		t.Fatal("buildUpdateBodyWithHTML5ReferenceMap() succeeded, want error")
 	}
-	var dry map[string]interface{}
-	if err := json.Unmarshal(raw, &dry); err != nil {
-		t.Fatalf("decode dry-run output: %v\n%s", err, raw)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok = false for %T (%v)", err, err)
 	}
-	if got := common.GetString(dry, "error"); !strings.Contains(got, `html5-block path "missing.html" cannot be read`) {
-		t.Fatalf("dry-run error = %q, want reference_map build error; raw=%s", got, raw)
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("category = %q, want %q", p.Category, errs.CategoryValidation)
 	}
-	if api, _ := dry["api"].([]interface{}); len(api) > 0 {
-		t.Fatalf("dry-run should not fall back to a request body after build error: %s", raw)
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError", err)
+	}
+	if validationErr.Param != "path" {
+		t.Fatalf("param = %q, want path", validationErr.Param)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("error should preserve os.ErrNotExist cause, got: %v", err)
 	}
 }
 

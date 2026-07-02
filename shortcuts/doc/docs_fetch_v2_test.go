@@ -605,6 +605,18 @@ func TestDocsFetchIMMarkdownIgnoresHTML5BlockInsideCodeFence(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("decode output: %v\nraw=%s", err, stdout.String())
 	}
+	if errField, ok := envelope["error"]; ok {
+		t.Fatalf("fetch output should not contain error: %#v", errField)
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	doc, _ := data["document"].(map[string]interface{})
+	content, _ := doc["content"].(string)
+	if !strings.Contains(content, "```xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n```") {
+		t.Fatalf("fenced html5-block should stay in content, got:\n%s", content)
+	}
+	if _, ok := doc["reference_map"]; ok {
+		t.Fatalf("fenced html5-block should not create reference_map side effects: %#v", doc["reference_map"])
+	}
 }
 
 func TestDocsFetchMarkdownDetailDowngradesToSimple(t *testing.T) {

@@ -149,7 +149,7 @@ func TestDocsUpdateV2HTML5BlockReferenceMapFromPath(t *testing.T) {
 				map[string]interface{}{
 					"block_type":  "html5-block",
 					"block_id":    "blk_html5",
-					"block_token": "blk_html5",
+					"block_token": "boardXXXX",
 				},
 			},
 		},
