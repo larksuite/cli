@@ -114,7 +114,7 @@
       }
     ]
   },
-  "+get-revision": {
+  "+revision-get": {
     "risk": "read",
     "flags": [
       {

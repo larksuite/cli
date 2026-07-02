@@ -10,9 +10,9 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// ─── lark_sheet_get_revision ───────────────────────────────────────────
+// ─── lark_sheet_revision_get ───────────────────────────────────────────
 //
-// GetRevision is a read-only derivative over get_workbook_structure that
+// RevisionGet is a read-only derivative over get_workbook_structure that
 // projects out only the document revision (version number). The backend
 // surfaces `revision` on every read/write tool response, so this shortcut
 // needs no dedicated backend tool — it issues the lightest existing read
@@ -20,17 +20,17 @@ import (
 // field callers want.
 //
 // The revision is the anchor for recover / undo. Callers that have just run a
-// write already have it in that write's response; +get-revision is the
+// write already have it in that write's response; +revision-get is the
 // explicit, zero-side-effect way to fetch the current value on its own.
-var GetRevision = common.Shortcut{
+var RevisionGet = common.Shortcut{
 	Service:     "sheets",
-	Command:     "+get-revision",
+	Command:     "+revision-get",
 	Description: "Get the spreadsheet's current document revision (version number).",
 	Risk:        "read",
 	Scopes:      []string{"sheets:spreadsheet:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
-	Flags:       flagsFor("+get-revision"),
+	Flags:       flagsFor("+revision-get"),
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		_, err := resolveSpreadsheetToken(runtime)
 		return err

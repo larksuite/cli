@@ -5,7 +5,7 @@ package sheets
 
 import "testing"
 
-func TestProjectRevision(t *testing.T) {
+func TestRevisionGetProjectRevision(t *testing.T) {
 	t.Parallel()
 
 	t.Run("extracts revision from a workbook-structure object", func(t *testing.T) {

@@ -70,7 +70,7 @@ func shortcutList() []common.Shortcut {
 	return []common.Shortcut{
 		// lark_sheet_workbook
 		WorkbookInfo,
-		GetRevision,
+		RevisionGet,
 		SheetCreate,
 		SheetDelete,
 		SheetRename,

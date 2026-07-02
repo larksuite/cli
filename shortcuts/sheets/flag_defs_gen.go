@@ -195,7 +195,7 @@ var flagDefs = map[string]commandDef{
 		Flags: []flagDef{
 			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet URL (XOR with `--spreadsheet-token`)"},
 			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet token (XOR with `--url`)"},
-			{Name: "start-revision", Kind: "own", Type: "int", Required: "required", Desc: "Start version (CS revision); the 'before' baseline for review (must be >= 1)"},
+			{Name: "start-revision", Kind: "own", Type: "int", Required: "required", Desc: "Start version (CS revision); the before baseline for review (must be >= 1)"},
 			{Name: "end-revision", Kind: "own", Type: "int", Required: "optional", Desc: "End version (CS revision); defaults to the latest revision. Gap (end-start+1) must be <= 20", Default: "-1"},
 		},
 	},
@@ -784,6 +784,14 @@ var flagDefs = map[string]commandDef{
 			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
 		},
 	},
+	"+revision-get": {
+		Risk: "read",
+		Flags: []flagDef{
+			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
+			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
+			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
+		},
+	},
 	"+rows-resize": {
 		Risk: "write",
 		Flags: []flagDef{
@@ -1018,14 +1026,6 @@ var flagDefs = map[string]commandDef{
 		},
 	},
 	"+workbook-info": {
-		Risk: "read",
-		Flags: []flagDef{
-			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
-			{Name: "spreadsheet-token", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
-			{Name: "dry-run", Kind: "system", Type: "bool", Required: "optional"},
-		},
-	},
-	"+get-revision": {
 		Risk: "read",
 		Flags: []flagDef{
 			{Name: "url", Kind: "public", Type: "string", Required: "xor", Desc: "Spreadsheet locator"},
