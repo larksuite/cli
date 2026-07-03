@@ -16,9 +16,27 @@ Messages sent by this tool are visible to other people. Before calling it, you *
 
 **Do not** send messages without explicit user approval.
 
-When using `--as bot`, the message is sent in the app's name, so make sure the app has already been added to the target chat.
-
 When using `--as user`, the message is sent as the authorized end user and requires the `im:message.send_as_user` and `im:message` scopes.
+
+## Precondition: The Bot Must Be In The Chat (`--as bot` + `--chat-id`)
+
+A bot **cannot** post to a group it is not a member of. Sending anyway fails with **error 230002 `Bot/User can NOT be out of the chat`** and the task cannot complete until the bot is added.
+
+**Before the first `--as bot --chat-id` send in a chat, ensure the bot is a member.** Concretely:
+
+- If you just created the group with `--as user`, add the bot right after (the authorized user must be in the group):
+
+  ```bash
+  # <bot app_id> is this app's own cli_xxx (see the app console / your config)
+  lark-cli im chat.members create \
+    --params '{"chat_id":"oc_xxx","member_id_type":"app_id"}' \
+    --data '{"id_list":["cli_xxx"]}' --as user
+  ```
+
+- If you are creating the group with `--as bot`, the creating bot is already a member — no extra step needed.
+- If you are unsure whether the bot is in the chat, either add it as above (adding an already-present bot is harmless) or check with `lark-cli im chat.members bots --params '{"chat_id":"oc_xxx"}'`.
+
+If a send still returns **230002**, do **not** treat the task as failed: add the bot with the command above, then re-run the exact same send. The CLI attaches this recovery command to the error's `hint` — follow it and retry.
 
 ## Choose The Right Content Flag
 
@@ -200,6 +218,16 @@ lark-cli im +messages-send --chat-id oc_xxx --markdown $'## Test\n\nhello' --dry
 - Using `--content` without making the JSON match the effective `--msg-type`.
 - Explicitly setting `--msg-type` to something that conflicts with `--text`, `--markdown`, or media flags.
 - Mixing `--text`, `--markdown`, or `--content` with media flags in one command.
+- Sending `--as bot` to a `--chat-id` without first ensuring the bot is a member of that chat. This fails with 230002 — see the precondition above and the table below.
+
+## Common Errors and Troubleshooting
+
+| Symptom | Root Cause | Solution |
+|---------|-----------|----------|
+| `Bot/User can NOT be out of the chat` (230002), `--as bot` + `--chat-id` | The bot is not a member of the target group | Add the bot with user identity, then retry the same send: `lark-cli im chat.members create --params '{"chat_id":"oc_xxx","member_id_type":"app_id"}' --data '{"id_list":["cli_xxx"]}' --as user` (`cli_xxx` is this app's own app_id). This is **recoverable** — do not report the task as failed without adding the bot and retrying. |
+| `Bot/User can NOT be out of the chat` (230002), `--as user` | The authorized user is not a member of the target group | Send to a chat the user belongs to, or have the user added to the group first; user membership cannot be granted by the app itself |
+| Permission denied (99991672) | Missing `im:message:send_as_bot` (bot) or `im:message.send_as_user` + `im:message` (user) scope | Enable the required scope for the app in the Open Platform console |
+| Message sends but `@mention` does not resolve | `<at>` syntax does not match the message type | Use the per-type `<at>` forms in the @Mention Format section below |
 
 ## `content` Format Reference
 

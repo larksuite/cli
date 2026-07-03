@@ -199,6 +199,11 @@ var ImMessagesSend = common.Shortcut{
 		resData, err := runtime.DoAPIJSONTyped(http.MethodPost, "/open-apis/im/v1/messages",
 			larkcore.QueryParams{"receive_id_type": []string{receiveIdType}}, data)
 		if err != nil {
+			if runtime.IsBot() {
+				// Bot-identity group send to a chat the bot is not in fails with
+				// 230002; attach the add-bot-then-retry recovery command.
+				return enrichBotNotInChatErr(err, chatFlag, runtime.Config.AppID)
+			}
 			return err
 		}
 

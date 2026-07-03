@@ -6,10 +6,45 @@ package im
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
 )
+
+// botNotInChatCode is Lark API error 230002 ("Bot/User can NOT be out of the
+// chat"), returned when a bot tries to post to a group chat it is not a member
+// of. The bot must be added to the chat before it can send there.
+const botNotInChatCode = 230002
+
+// enrichBotNotInChatErr augments a 230002 error from a bot-identity group send
+// with an actionable recovery hint: add the bot to the chat with user identity,
+// then retry. chatID is the target group; it is empty for P2P sends, which are
+// left unchanged because their recovery differs (there is no membership to add).
+// appID is the bot's own app ID (runtime.Config.AppID) used to fill id_list; a
+// cli_xxx placeholder is used when it is unavailable. Errors with any other code
+// (and the nil error) are returned unchanged, preserving classification.
+func enrichBotNotInChatErr(err error, chatID, appID string) error {
+	if err == nil || chatID == "" {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Code != botNotInChatCode {
+		return err
+	}
+	botID := appID
+	if botID == "" {
+		botID = "cli_xxx" // the bot's own app_id; see `lark-cli config` / the app console
+	}
+	hint := fmt.Sprintf(
+		"the bot is not a member of chat %s, so it cannot post there. "+
+			"Add the bot to the chat with user identity, then retry the send:\n"+
+			"lark-cli im chat.members create "+
+			"--params '{\"chat_id\":\"%s\",\"member_id_type\":\"app_id\"}' "+
+			"--data '{\"id_list\":[\"%s\"]}' --as user",
+		chatID, chatID, botID)
+	return appendIMRecoveryHint(err, hint)
+}
 
 // wrapIMNetworkErr returns err unchanged when it is already a typed errs.*
 // error (preserving its subtype / code / log_id from the runtime boundary),
