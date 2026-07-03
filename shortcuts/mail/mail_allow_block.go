@@ -178,7 +178,14 @@ var MailAllowBlockDelete = common.Shortcut{
 			map[string]interface{}{"senders": addresses},
 		)
 		if err != nil {
-			return allowBlockDecorateAPIError(err)
+			if allowBlockIsNonObjectSuccess(err) {
+				data = map[string]interface{}{"deleted_count": len(addresses)}
+			} else {
+				return allowBlockDecorateAPIError(err)
+			}
+		}
+		if data == nil {
+			data = map[string]interface{}{}
 		}
 		out := allowBlockDeleteOutput{
 			Type:         listType,
@@ -420,6 +427,16 @@ func allowBlockDecorateAPIError(err error) error {
 		appendAllowBlockHint(p, "Check sender email/domain format and keep each request within 100 senders.")
 	}
 	return err
+}
+
+func allowBlockIsNonObjectSuccess(err error) bool {
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+		return false
+	}
+	text := strings.ToLower(p.Message)
+	return strings.Contains(text, "non-object json response") ||
+		strings.Contains(text, "sdk returned an invalid json response")
 }
 
 func appendAllowBlockHint(p *errs.Problem, hint string) {

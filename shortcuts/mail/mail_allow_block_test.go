@@ -159,34 +159,60 @@ func TestAllowBlockSetReadsAddressFileAndPostsItems(t *testing.T) {
 }
 
 func TestAllowBlockDeletePreservesAddressCase(t *testing.T) {
-	f, stdout, _, reg := mailShortcutTestFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "DELETE",
-		URL:    "/user_mailboxes/me/blocked_senders/batch_delete",
-		BodyFilter: func(body []byte) bool {
-			var payload struct {
-				Senders []string `json:"senders"`
-			}
-			if err := json.Unmarshal(body, &payload); err != nil {
-				return false
-			}
-			return len(payload.Senders) == 1 && payload.Senders[0] == "MixedCase@Example.COM"
-		},
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"deleted_count": 1,
+	tests := []struct {
+		name             string
+		body             interface{}
+		rawBody          []byte
+		wantDeletedCount int
+	}{
+		{
+			name: "meta object response",
+			body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{
+					"deleted_count": 1,
+				},
 			},
+			wantDeletedCount: 1,
 		},
-	})
-
-	err := runMountedMailShortcut(t, MailAllowBlockDelete, []string{
-		"+allow-block-delete", "--type", "block", "--address", "MixedCase@Example.COM",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
+		{
+			name:             "boe non object success response",
+			rawBody:          []byte("true"),
+			wantDeletedCount: 1,
+		},
 	}
-	reg.Verify(t)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			f, stdout, _, reg := mailShortcutTestFactory(t)
+			reg.Register(&httpmock.Stub{
+				Method: "DELETE",
+				URL:    "/user_mailboxes/me/blocked_senders/batch_delete",
+				BodyFilter: func(body []byte) bool {
+					var payload struct {
+						Senders []string `json:"senders"`
+					}
+					if err := json.Unmarshal(body, &payload); err != nil {
+						return false
+					}
+					return len(payload.Senders) == 1 && payload.Senders[0] == "MixedCase@Example.COM"
+				},
+				Body:    tc.body,
+				RawBody: tc.rawBody,
+			})
+
+			err := runMountedMailShortcut(t, MailAllowBlockDelete, []string{
+				"+allow-block-delete", "--type", "block", "--address", "MixedCase@Example.COM",
+			}, f, stdout)
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			reg.Verify(t)
+			out := decodeShortcutEnvelopeData(t, stdout)
+			if got := int(out["deleted_count"].(float64)); got != tc.wantDeletedCount {
+				t.Fatalf("deleted_count = %d, want %d; stdout=%s", got, tc.wantDeletedCount, stdout.String())
+			}
+		})
+	}
 }
 
 func TestAllowBlockListAggregatesAllowAndBlock(t *testing.T) {
