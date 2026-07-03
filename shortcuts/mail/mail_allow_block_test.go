@@ -31,40 +31,46 @@ func TestAllowBlockShortcutsAreRegistered(t *testing.T) {
 
 func TestAllowBlockValidate(t *testing.T) {
 	tests := []struct {
-		name     string
-		shortcut common.Shortcut
-		args     []string
-		wantErr  string
+		name      string
+		shortcut  common.Shortcut
+		args      []string
+		wantErr   string
+		wantParam string
 	}{
 		{
-			name:     "list rejects page size over cap",
-			shortcut: MailAllowBlockList,
-			args:     []string{"+allow-block-list", "--page-size", "101"},
-			wantErr:  "--page-size",
+			name:      "list rejects page size over cap",
+			shortcut:  MailAllowBlockList,
+			args:      []string{"+allow-block-list", "--page-size", "101"},
+			wantErr:   "--page-size",
+			wantParam: "--page-size",
 		},
 		{
-			name:     "search requires query",
-			shortcut: MailAllowBlockSearch,
-			args:     []string{"+allow-block-search", "--query", "   "},
-			wantErr:  "--query",
+			name:      "search requires query",
+			shortcut:  MailAllowBlockSearch,
+			args:      []string{"+allow-block-search", "--query", "   "},
+			wantErr:   "--query",
+			wantParam: "--query",
 		},
 		{
-			name:     "search caps query length",
-			shortcut: MailAllowBlockSearch,
-			args:     []string{"+allow-block-search", "--query", strings.Repeat("x", 256)},
-			wantErr:  "255",
+			name:      "search caps query length",
+			shortcut:  MailAllowBlockSearch,
+			args:      []string{"+allow-block-search", "--query", strings.Repeat("x", 256)},
+			wantErr:   "255",
+			wantParam: "--query",
 		},
 		{
-			name:     "set forbids all type",
-			shortcut: MailAllowBlockSet,
-			args:     []string{"+allow-block-set", "--type", "all", "--address", "a@example.com"},
-			wantErr:  "--type",
+			name:      "set forbids all type",
+			shortcut:  MailAllowBlockSet,
+			args:      []string{"+allow-block-set", "--type", "all", "--address", "a@example.com"},
+			wantErr:   "--type",
+			wantParam: "--type",
 		},
 		{
-			name:     "delete requires address",
-			shortcut: MailAllowBlockDelete,
-			args:     []string{"+allow-block-delete", "--type", "block"},
-			wantErr:  "at least one sender",
+			name:      "delete requires address",
+			shortcut:  MailAllowBlockDelete,
+			args:      []string{"+allow-block-delete", "--type", "block"},
+			wantErr:   "at least one sender",
+			wantParam: "--address",
 		},
 	}
 
@@ -73,7 +79,29 @@ func TestAllowBlockValidate(t *testing.T) {
 			f, stdout, _, _ := mailShortcutTestFactory(t)
 			err := runMountedMailShortcut(t, tc.shortcut, tc.args, f, stdout)
 			assertValidationError(t, err, tc.wantErr)
+			assertAllowBlockValidationProblem(t, err, tc.wantParam)
 		})
+	}
+}
+
+func assertAllowBlockValidationProblem(t *testing.T, err error, wantParam string) {
+	t.Helper()
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed validation problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation {
+		t.Fatalf("problem category = %q, want %q", p.Category, errs.CategoryValidation)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("problem subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
+	}
+	if got := ve.Param; got != wantParam {
+		t.Fatalf("validation param = %q, want %q", got, wantParam)
 	}
 }
 

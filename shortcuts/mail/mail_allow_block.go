@@ -11,8 +11,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
-	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -333,7 +331,7 @@ func allowBlockResourcePath(mailboxID, listType string) string {
 func allowBlockAddresses(runtime *common.RuntimeContext) ([]string, error) {
 	values := splitAllowBlockAddresses(runtime.Str("address"))
 	if file := strings.TrimSpace(runtime.Str("address-file")); file != "" {
-		fromFile, err := readAllowBlockAddressFile(file)
+		fromFile, err := readAllowBlockAddressFile(runtime, file)
 		if err != nil {
 			return nil, err
 		}
@@ -363,12 +361,20 @@ func splitAllowBlockAddresses(raw string) []string {
 	return values
 }
 
-func readAllowBlockAddressFile(path string) ([]string, error) {
-	safePath, err := validate.SafeInputPath(path)
-	if err != nil {
-		return nil, mailValidationParamError("--address-file", "unsafe address file path: %s", err).WithCause(err)
+func readAllowBlockAddressFile(runtime *common.RuntimeContext, path string) ([]string, error) {
+	if err := runtime.ValidatePath(path); err != nil {
+		return nil, mailValidationParamError("--address-file", "unsafe address file path: %s", err).WithCause(mailInputStatError(err))
 	}
-	raw, err := vfs.ReadFile(safePath)
+	fio := runtime.FileIO()
+	if fio == nil {
+		return nil, mailFileIOError("cannot read address file %q: no file I/O provider", nil, path)
+	}
+	f, err := fio.Open(path)
+	if err != nil {
+		return nil, mailFileIOError("cannot read address file %q: %s", err, path, err)
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(f)
 	if err != nil {
 		return nil, mailFileIOError("cannot read address file %q: %s", err, path, err)
 	}

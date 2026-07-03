@@ -50,4 +50,4 @@ Delete sends addresses exactly as provided, including casing, so legacy mixed-ca
 
 ## Safety
 
-Before set/delete, preview the target list, sender count, and sender values, then ask the user to confirm. Do not add the user's own address, aliases, or internal tenant domains; if the API rejects them, remove those entries and retry.
+Before set/delete, preview the target list, sender count, and sender values, then ask the user to confirm. Do not add the user's own address, aliases, or internal tenant domains. If the API rejects any entry, surface the rejected values, show the adjusted final sender list and count, and ask the user to confirm again before retrying.
