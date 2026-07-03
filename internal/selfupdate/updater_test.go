@@ -501,3 +501,17 @@ func TestSkillsInvocation(t *testing.T) {
 		})
 	}
 }
+
+// TestDetectInstallMethod_Caches locks the fix for the post-update re-detection
+// hazard: DetectInstallMethod must return the first (pre-update) detection on
+// subsequent calls, so the skills launcher chosen after the binary is replaced
+// stays consistent with what was detected — and reported — before the update.
+func TestDetectInstallMethod_Caches(t *testing.T) {
+	u := New()
+	cached := DetectResult{Method: InstallPnpm, PnpmAvailable: true, ResolvedPath: "/x/pnpm/store/v11/links/@larksuite/cli/1.0.0/node_modules/@larksuite/cli/bin/lark-cli"}
+	u.detectCache = &cached
+	got := u.DetectInstallMethod()
+	if got.Method != InstallPnpm || !got.PnpmAvailable {
+		t.Errorf("expected cached pnpm result to be returned, got %+v", got)
+	}
+}

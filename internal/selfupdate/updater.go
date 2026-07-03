@@ -113,6 +113,17 @@ type Updater struct {
 	// running binary is successfully renamed to .old. Used by
 	// CanRestorePreviousVersion to report whether rollback is possible.
 	backupCreated bool
+
+	// detectCache memoizes the first real DetectInstallMethod result. How this
+	// binary was installed cannot change during a single process, so caching is
+	// the correct semantics — and it is required for correctness: the update
+	// flow mutates the install (pnpm add -g / npm install -g) before syncing
+	// skills, so a re-detection at skills time could resolve a now-stale
+	// os.Executable path and misclassify. Seeded pre-update by the first call
+	// (updateRun), it keeps the post-update skills launcher consistent with the
+	// launcher reported to the user. Not goroutine-safe; the update flow is
+	// sequential.
+	detectCache *DetectResult
 }
 
 // New creates an Updater with default (real) behavior.
@@ -124,6 +135,16 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 	if u.DetectOverride != nil {
 		return u.DetectOverride()
 	}
+	if u.detectCache != nil {
+		return *u.detectCache
+	}
+	result := u.detectInstallMethod()
+	u.detectCache = &result
+	return result
+}
+
+// detectInstallMethod performs the real (uncached) detection.
+func (u *Updater) detectInstallMethod() DetectResult {
 	exe, err := vfs.Executable()
 	if err != nil {
 		return DetectResult{Method: InstallManual}
