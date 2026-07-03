@@ -230,10 +230,12 @@ lark-cli mail user_mailbox.allow_senders batch_remove --as user \
 
 1. `allow_senders` 与 `blocked_senders` 互斥；把同一邮箱或域名加入一边时，服务端会从另一边移除对应记录。
 2. 删除语义在 CLI / HTTP 面叫 `batch_remove`；后端 RPC 方法名里的 `BatchDelete*` 不是 CLI 命令名，不要猜 `batch_delete`。
-3. 单用户黑白名单合计最多 2000 项；单次 `batch_create` / `batch_remove` 最多 100 项。超大列表要分批处理。
-4. `batch_create` 可能返回 `failed_items` 且整体 `code=0`。逐项读取 `reason_code`：`INVALID` 表示格式不合法，`SELF_ADDRESS` / `SELF_DOMAIN` 表示不能把用户本人地址或域加入名单；不要只看命令退出成功就认定全部成功。
-5. `list --keyword` 依赖服务端搜索缓存。若返回“缓存构建中/稍后重试”类错误，等待数秒后用相同参数重试；不要把它当作永久失败，也不要立即改用租户级名单接口。
-6. 读写自己的名单优先使用 `--as user` 和 `user_mailbox_id=me`；应用身份代操作指定邮箱时必须传显式邮箱地址，不能用 `me`。
+3. 用户级 `user_mailbox.allow_senders` / `user_mailbox.blocked_senders` 只支持 `batch_create`、`list`、`batch_remove`。没有 `update`、`patch`、描述修改或元数据修改命令；不要借用相邻资源的 `patch` / `update` 语义。
+4. 不得通过数据库、内部表（例如 `mail_directory_staging.*`）或任何非 `lark-cli` 路径修改名单记录。用户要求修改描述、备注或其他元数据时，应说明当前不支持；如果只是调整 sender 值或类型，只能先 `batch_remove` 旧项，再用 `batch_create` 添加新项。
+5. 单用户黑白名单合计最多 2000 项；单次 `batch_create` / `batch_remove` 最多 100 项。超大列表要分批处理。
+6. `batch_create` 可能返回 `failed_items` 且整体 `code=0`。逐项读取 `reason_code`：`INVALID` 表示格式不合法，`SELF_ADDRESS` / `SELF_DOMAIN` 表示不能把用户本人地址或域加入名单；不要只看命令退出成功就认定全部成功。
+7. `list --keyword` 依赖服务端搜索缓存。若返回“缓存构建中/稍后重试”类错误，等待数秒后用相同参数重试；不要把它当作永久失败，也不要立即改用租户级名单接口。
+8. 读写自己的名单优先使用 `--as user` 和 `user_mailbox_id=me`；应用身份代操作指定邮箱时必须传显式邮箱地址，不能用 `me`。
 
 ### 发送后确认投递状态
 
