@@ -35,7 +35,7 @@ var AppsDBAuditEnable = common.Shortcut{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "table to enable audit for", Required: true},
 		{Name: "retention", Default: "7d", Enum: auditRetentions, Desc: "how long to keep audit logs"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -96,7 +96,7 @@ var AppsDBAuditDisable = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "table to disable audit for", Required: true},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
