@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.65] - 2026-07-03
+
+### Features
+
+- **doc**: Add `+history-list`, `+history-revert`, and `+history-revert-status` shortcuts for document version history (#1612)
+
+### Bug Fixes
+
+- **minutes**: `+speaker-replace` no longer refetches the speaker list — `--from-speaker-id` is passed through as-is (#1731)
+
+### Documentation
+
+- **drive**: Document 30-char query limit for `+search` (#1560)
+- **doc**: Add mindnote guidance to lark-doc skill (#1581)
+- **doc**: Sync lark-doc skill content from online-doc (#1701)
+
 ## [v1.0.64] - 2026-07-02
 
 ### Features
@@ -1355,6 +1371,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.65]: https://github.com/larksuite/cli/releases/tag/v1.0.65
 [v1.0.64]: https://github.com/larksuite/cli/releases/tag/v1.0.64
 [v1.0.62]: https://github.com/larksuite/cli/releases/tag/v1.0.62
 [v1.0.61]: https://github.com/larksuite/cli/releases/tag/v1.0.61
