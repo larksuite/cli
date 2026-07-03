@@ -1,7 +1,7 @@
 ---
 name: lark-mail
 version: 1.0.0
-description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, and mail rules; lint and auto-fix mail HTML for Feishu editor compatibility. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, 校验邮件HTML, 检查邮件HTML, 邮件HTML兼容性, lint mail HTML, +lint-html, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
+description: "飞书邮箱 — draft, compose, send, reply, forward, read, and search emails; manage drafts, folders, labels, contacts, attachments, mail rules, and user mailbox allow/block senders; lint and auto-fix mail HTML for Feishu editor compatibility. Use when user mentions 起草邮件, 写一封邮件, 拟邮件, 草稿, 发通知邮件, 发送邮件, 发邮件, 回复邮件, 转发邮件, 查看邮件, 看邮件, 读邮件, 搜索邮件, 查邮件, 收件箱, 邮件会话, 编辑草稿, 管理草稿, 下载附件, 邮件文件夹, 邮件标签, 邮件联系人, 监听新邮件, 收信规则, 邮件规则, 用户级发件人白名单, 用户级发件人黑名单, 允许发件人, 屏蔽发件人, allow_senders, blocked_senders, sender allow list, sender block list, 校验邮件HTML, 检查邮件HTML, 邮件HTML兼容性, lint mail HTML, +lint-html, draft, compose, send email, reply, forward, inbox, mail thread, mail rules."
 metadata:
   requires:
     bins: ["lark-cli"]
