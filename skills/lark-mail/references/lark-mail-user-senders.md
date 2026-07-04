@@ -4,9 +4,11 @@
 
 管理当前邮箱用户自己的允许发件人和屏蔽发件人名单。该能力不同于租户级 `allowed_senders` / `blocked_senders`，不要混用。
 
-## 命令形态
+## API 形态
 
-CLI 使用复数资源名：
+该能力依赖服务端新 OpenAPI。命令只有在本地 CLI registry 已同步这些资源后才可调用；调用前必须用 `lark-cli mail -h` 和下级 `-h` 确认可用资源。
+
+资源名：
 
 - `user_mailbox.allow_senders`
 - `user_mailbox.blocked_senders`
@@ -17,57 +19,30 @@ CLI 使用复数资源名：
 - `batch_create`
 - `batch_remove`
 
-没有 `batch_set` / `batch_delete` 命令；不要用 Meta 单数资源名 `user_mailbox.allow_sender` 或 `user_mailbox.blocked_sender` 作为 CLI resource。
+没有 `batch_set` / `batch_delete` 方法；不要用 Meta 单数资源名 `user_mailbox.allow_sender` 或 `user_mailbox.blocked_sender` 作为 CLI resource。
 
 ## Scope 与风险
 
-| 命令 | Scope | 风险 |
+| API | Scope | 风险 |
 |---|---|---|
-| `user_mailbox.allow_senders list` | `mail:user_mailbox:readonly` | 只读 |
-| `user_mailbox.blocked_senders list` | `mail:user_mailbox:readonly` | 只读 |
-| `user_mailbox.allow_senders batch_create` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| `user_mailbox.allow_senders batch_remove` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| `user_mailbox.blocked_senders batch_create` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| `user_mailbox.blocked_senders batch_remove` | `mail:user_mailbox` | 写入，执行前必须确认 |
+| allow_senders list | `mail:user_mailbox:readonly` | 只读 |
+| blocked_senders list | `mail:user_mailbox:readonly` | 只读 |
+| allow_senders batch_create | `mail:user_mailbox` | 写入，执行前必须确认 |
+| allow_senders batch_remove | `mail:user_mailbox` | 写入，执行前必须确认 |
+| blocked_senders batch_create | `mail:user_mailbox` | 写入，执行前必须确认 |
+| blocked_senders batch_remove | `mail:user_mailbox` | 写入，执行前必须确认 |
 
 写操作会改变用户收信策略。执行前必须向用户展示名单类型、动作和发件人数量，并取得确认。
 
-## 示例
+## 请求形态
 
-```bash
-# 列出白名单
-lark-cli mail user_mailbox.allow_senders list --as user \
-  --params '{"user_mailbox_id":"me","page_size":20}'
+读取名单时通过 params 传入 `user_mailbox_id`、`keyword`、`page_size` 和 `page_token`。
 
-# 查询黑名单
-lark-cli mail user_mailbox.blocked_senders list --as user \
-  --params '{"user_mailbox_id":"me","keyword":"example.com","page_size":20}'
+加入名单时通过 params 传入 `user_mailbox_id`，通过 data 传入 `items`；`items[].sender_type` 中 1 表示邮箱地址，2 表示域名。
 
-# 加入白名单：sender_type 1=邮箱地址，2=域名
-lark-cli mail user_mailbox.allow_senders batch_create --as user \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"items":[{"sender":"a@example.com","sender_type":1}]}'
+删除名单时通过 params 传入 `user_mailbox_id`，通过 data 传入 `senders` 字符串数组。
 
-# 从黑名单删除
-lark-cli mail user_mailbox.blocked_senders batch_remove --as user \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"senders":["bad@example.com"]}'
-```
-
-## Dry-run
-
-变更前可先用 `--dry-run` 检查请求形态：
-
-```bash
-lark-cli mail user_mailbox.allow_senders list --as user \
-  --params '{"user_mailbox_id":"me"}' \
-  --dry-run
-
-lark-cli mail user_mailbox.blocked_senders batch_create --as user \
-  --params '{"user_mailbox_id":"me"}' \
-  --data '{"items":[{"sender":"bad@example.com","sender_type":1}]}' \
-  --dry-run
-```
+变更前可先用 `--dry-run` 检查请求形态；写操作必须在执行前向用户展示名单类型、动作和发件人数量。
 
 ## 参数提示
 

@@ -433,18 +433,18 @@ lark-cli mail +message --message-id <id>
 
 ### 用户级发件人白名单 / 黑名单
 
-通过原生 API 管理当前邮箱用户自己的允许 / 屏蔽发件人名单。详见 [用户级发件人名单](references/lark-mail-user-senders.md)。
+通过原生 API 管理当前邮箱用户自己的允许 / 屏蔽发件人名单。该能力需要本地 CLI registry 已同步对应资源；调用前先用 `lark-cli mail -h` 和下级 `-h` 确认可用命令。详见 [用户级发件人名单](references/lark-mail-user-senders.md)。
 
-| 能力 | 命令 | Scope | 风险 |
+| 能力 | API | Scope | 风险 |
 |---|---|---|---|
-| 列出或查询白名单 | `lark-cli mail user_mailbox.allow_senders list --as user --params '{"user_mailbox_id":"me","page_size":20}'` | `mail:user_mailbox:readonly` | 只读 |
-| 批量加入白名单 | `lark-cli mail user_mailbox.allow_senders batch_create --as user --params '{"user_mailbox_id":"me"}' --data '{"items":[{"sender":"a@example.com","sender_type":1}]}'` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| 批量删除白名单 | `lark-cli mail user_mailbox.allow_senders batch_remove --as user --params '{"user_mailbox_id":"me"}' --data '{"senders":["a@example.com"]}'` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| 列出或查询黑名单 | `lark-cli mail user_mailbox.blocked_senders list --as user --params '{"user_mailbox_id":"me","keyword":"example.com"}'` | `mail:user_mailbox:readonly` | 只读 |
-| 批量加入黑名单 | `lark-cli mail user_mailbox.blocked_senders batch_create --as user --params '{"user_mailbox_id":"me"}' --data '{"items":[{"sender":"bad@example.com","sender_type":1}]}'` | `mail:user_mailbox` | 写入，执行前必须确认 |
-| 批量删除黑名单 | `lark-cli mail user_mailbox.blocked_senders batch_remove --as user --params '{"user_mailbox_id":"me"}' --data '{"senders":["bad@example.com"]}'` | `mail:user_mailbox` | 写入，执行前必须确认 |
+| 列出或查询白名单 | allow_senders list | `mail:user_mailbox:readonly` | 只读 |
+| 批量加入白名单 | allow_senders batch_create | `mail:user_mailbox` | 写入，执行前必须确认 |
+| 批量删除白名单 | allow_senders batch_remove | `mail:user_mailbox` | 写入，执行前必须确认 |
+| 列出或查询黑名单 | blocked_senders list | `mail:user_mailbox:readonly` | 只读 |
+| 批量加入黑名单 | blocked_senders batch_create | `mail:user_mailbox` | 写入，执行前必须确认 |
+| 批量删除黑名单 | blocked_senders batch_remove | `mail:user_mailbox` | 写入，执行前必须确认 |
 
-注意：命令资源名使用 CLI 复数形式 `allow_senders` / `blocked_senders`；Meta 方法 ID 中的单数 `allow_sender` / `blocked_sender` 不直接作为 CLI resource。已注册方法名是 `batch_create` / `batch_remove`，不要猜成 `batch_set` / `batch_delete`。
+注意：资源名使用复数形式 `allow_senders` / `blocked_senders`；Meta 方法 ID 中的单数 `allow_sender` / `blocked_sender` 不直接作为 CLI resource。方法名是 `batch_create` / `batch_remove`，不要猜成 `batch_set` / `batch_delete`。
 
 ## 原生 API 调用规则
 
@@ -654,13 +654,13 @@ lark-cli mail <resource> <method> [flags] # 调用 API
   - `modify` — 修改邮件会话
   - `trash` — 删除邮件会话
 
-### user_mailbox.allow_senders
+### 用户级白名单资源
 
   - `list` — 列出或查询用户级发件人白名单
   - `batch_create` — 批量加入用户级发件人白名单
   - `batch_remove` — 批量删除用户级发件人白名单
 
-### user_mailbox.blocked_senders
+### 用户级黑名单资源
 
   - `list` — 列出或查询用户级发件人黑名单
   - `batch_create` — 批量加入用户级发件人黑名单
@@ -727,9 +727,9 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.allow_senders.list` | `mail:user_mailbox:readonly` |
-| `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox` |
-| `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox` |
-| `user_mailbox.blocked_senders.list` | `mail:user_mailbox:readonly` |
-| `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox` |
-| `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox` |
+| allow_senders list | `mail:user_mailbox:readonly` |
+| allow_senders batch_create | `mail:user_mailbox` |
+| allow_senders batch_remove | `mail:user_mailbox` |
+| blocked_senders list | `mail:user_mailbox:readonly` |
+| blocked_senders batch_create | `mail:user_mailbox` |
+| blocked_senders batch_remove | `mail:user_mailbox` |
