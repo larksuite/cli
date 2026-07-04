@@ -33,7 +33,7 @@ lark-cli mail +allow-block-search --as user --type block --query spam@example.co
 
 ```bash
 lark-cli mail +allow-block-set --as user --type allow --address trusted@example.com,partner.com
-lark-cli mail +allow-block-set --as user --type block --address-file senders.txt
+lark-cli mail +allow-block-set --as user --type block --address blocked@example.com,spam.example
 ```
 
 `--type` must be `allow` or `block`; `all` is not valid for writes. `--address` supports comma-separated addresses or domains. `--address-file` is a relative file path with one sender per line. The merged sender count must be 1-100.
