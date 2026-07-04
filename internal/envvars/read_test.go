@@ -50,3 +50,82 @@ func TestAgentName_RejectsOverlongValue(t *testing.T) {
 		t.Fatalf("AgentName() returned non-empty for %d-byte value (max %d)", len(longVal), agentNameMaxLen)
 	}
 }
+
+func TestAgentTrace_EmptyWhenEnvUnset(t *testing.T) {
+	t.Setenv(CliAgentTrace, "")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty when env unset", got)
+	}
+}
+
+func TestAgentTrace_ReturnsCleanValue(t *testing.T) {
+	t.Setenv(CliAgentTrace, "trace-abc-123")
+	if got := AgentTrace(); got != "trace-abc-123" {
+		t.Fatalf("AgentTrace() = %q, want %q", got, "trace-abc-123")
+	}
+}
+
+func TestAgentTrace_TrimsWhitespace(t *testing.T) {
+	t.Setenv(CliAgentTrace, "  trace-trim  ")
+	if got := AgentTrace(); got != "trace-trim" {
+		t.Fatalf("AgentTrace() = %q, want %q (whitespace trimmed)", got, "trace-trim")
+	}
+}
+
+func TestAgentTrace_OnlyWhitespace_ReturnsEmpty(t *testing.T) {
+	t.Setenv(CliAgentTrace, "   ")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for whitespace-only value", got)
+	}
+}
+
+func TestAgentTrace_RejectsCRLF(t *testing.T) {
+	t.Setenv(CliAgentTrace, "val\r\nX-Evil: attack")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for CR/LF value", got)
+	}
+}
+
+func TestAgentTrace_RejectsLF(t *testing.T) {
+	t.Setenv(CliAgentTrace, "val\nX-Evil: attack")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for LF value", got)
+	}
+}
+
+func TestAgentTrace_RejectsTab(t *testing.T) {
+	t.Setenv(CliAgentTrace, "val\tinjected")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for tab value", got)
+	}
+}
+
+func TestAgentTrace_RejectsControlChar(t *testing.T) {
+	t.Setenv(CliAgentTrace, "val\x01injected")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for control char value", got)
+	}
+}
+
+func TestAgentTrace_RejectsDEL(t *testing.T) {
+	t.Setenv(CliAgentTrace, "val\x7finjected")
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() = %q, want empty for DEL value", got)
+	}
+}
+
+func TestAgentTrace_RejectsOverlongValue(t *testing.T) {
+	longVal := strings.Repeat("a", agentTraceMaxLen+1)
+	t.Setenv(CliAgentTrace, longVal)
+	if got := AgentTrace(); got != "" {
+		t.Fatalf("AgentTrace() returned non-empty for %d-byte value (max %d)", len(longVal), agentTraceMaxLen)
+	}
+}
+
+func TestAgentTrace_AcceptsMaxLengthValue(t *testing.T) {
+	val := strings.Repeat("a", agentTraceMaxLen)
+	t.Setenv(CliAgentTrace, val)
+	if got := AgentTrace(); got != val {
+		t.Fatalf("AgentTrace() = %q, want %d-byte value accepted", got, agentTraceMaxLen)
+	}
+}

@@ -9,10 +9,17 @@ import (
 	"unicode"
 )
 
-const agentNameMaxLen = 128
+const (
+	agentNameMaxLen  = 128
+	agentTraceMaxLen = 1024
+)
 
 func AgentName() string {
 	return sanitizeSingleLine(os.Getenv(CliAgentName), agentNameMaxLen)
+}
+
+func AgentTrace() string {
+	return sanitizeSingleLine(os.Getenv(CliAgentTrace), agentTraceMaxLen)
 }
 
 func sanitizeSingleLine(raw string, maxLen int) string {
