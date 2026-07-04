@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.66] - 2026-07-04
+
+### Misc
+
+- No user-facing changes.
+
 ## [v1.0.65] - 2026-07-03
 
 ### Features
@@ -1371,6 +1377,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66
 [v1.0.65]: https://github.com/larksuite/cli/releases/tag/v1.0.65
 [v1.0.64]: https://github.com/larksuite/cli/releases/tag/v1.0.64
 [v1.0.62]: https://github.com/larksuite/cli/releases/tag/v1.0.62
