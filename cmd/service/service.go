@@ -658,6 +658,9 @@ func buildServiceRequest(opts *ServiceMethodOptions) (client.RawApiRequest, *cmd
 		if err != nil {
 			return client.RawApiRequest{}, nil, err
 		}
+		if err := validateApprovalInstanceCreateData(opts.SchemaPath, data); err != nil {
+			return client.RawApiRequest{}, nil, err
+		}
 		request.Data = data
 		if opts.Output != "" {
 			request.ExtraOpts = append(request.ExtraOpts, larkcore.WithFileDownload())
