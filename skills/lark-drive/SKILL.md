@@ -29,6 +29,7 @@ metadata:
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.pptx` 导入成飞书幻灯片，使用 `lark-cli drive +import --type slides`；当前 PPTX 导入上限是 500MB。
+- 批量执行 `drive +import` 且目标是同一个位置（同一 `--folder-token`、默认根目录，或同一 `--target-token`）时，必须串行执行；不要并发导入到同一位置，服务端可能返回并发冲突错误。
 - 用户要在 Drive 里上传、创建、读取、局部 patch 或覆盖更新**原生 `.md` 文件**（不是导入成 docx），切到 [`lark-markdown`](../lark-markdown/SKILL.md)。
 - 用户要比较原生 `.md` 文件的**历史版本差异**，或比较远端 Markdown 与本地草稿，切到 [`lark-markdown`](../lark-markdown/SKILL.md) 的 `lark-cli markdown +diff`；需要版本号时先用 `drive +version-history`。
 - 用户要查看、下载、回滚或删除文件的**历史版本**，使用 `drive +version-history`、`drive +version-get`、`drive +version-revert`、`drive +version-delete`；这组命令同时支持 `--as user` 和 `--as bot`，自动化场景优先 `--as bot`。
@@ -102,6 +103,7 @@ lark-cli drive +inspect --url 'https://xxx.feishu.cn/wiki/wikcnXXX'
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides/bitable） |
+| `232140101` / `232140100` / `233523001`（常见于 `drive +import` 的 `job_error_msg`） | 同一位置下存在并发导入 / 创建操作 | 批量导入到同一文件夹、根目录或同一 `--target-token` 时改为串行执行；每个失败项每次重试前等待几秒，总共最多重试 3 次，仍失败就停止并报告冲突 |
 
 ### 权限能力入口
 
