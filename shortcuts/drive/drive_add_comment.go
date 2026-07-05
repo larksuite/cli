@@ -962,11 +962,14 @@ func firstPresentValue(m map[string]interface{}, keys ...string) interface{} {
 // Column is converted from letter to 0-based index (A=0), row from 1-based to 0-based.
 func parseSheetCellRef(input string) (*sheetAnchor, error) {
 	parts := strings.SplitN(input, "!", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	if len(parts) != 2 {
 		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id for sheet must be <sheetId>!<cell> (e.g. a281f9!D6), got %q", input).WithParam("--block-id")
 	}
-	sheetID := parts[0]
+	sheetID := strings.TrimSpace(parts[0])
 	cell := strings.TrimSpace(parts[1])
+	if sheetID == "" || cell == "" {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--block-id for sheet must be <sheetId>!<cell> (e.g. a281f9!D6), got %q", input).WithParam("--block-id")
+	}
 
 	// Parse cell reference like "D6" into col letter + row number.
 	i := 0

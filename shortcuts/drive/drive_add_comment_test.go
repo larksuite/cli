@@ -797,6 +797,7 @@ func TestParseSheetCellRef(t *testing.T) {
 		{"AA1", "s1!AA1", "s1", 26, 0},
 		{"lowercase", "s1!d6", "s1", 3, 5},
 		{"B10", "sheet1!B10", "sheet1", 1, 9},
+		{"trims spaces", " s1 ! D6 ", "s1", 3, 5},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -814,7 +815,7 @@ func TestParseSheetCellRef(t *testing.T) {
 
 func TestParseSheetCellRefInvalid(t *testing.T) {
 	t.Parallel()
-	cases := []string{"", "noExclamation", "s1!", "!A1", "s1!123", "s1!A"}
+	cases := []string{"", "noExclamation", "s1!", "!A1", "   !A1", "s1!123", "s1!A"}
 	for _, input := range cases {
 		t.Run(input, func(t *testing.T) {
 			t.Parallel()
