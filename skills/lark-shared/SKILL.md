@@ -1,12 +1,20 @@
 ---
 name: lark-shared
 version: 1.0.0
-description: "Use for lark-cli setup/auth tasks: auth login/status/logout, user vs bot identity, business-domain permissions (--domain, including all/docs/drive), missing scopes, revoking authorization, or handling _notice JSON."
+description: "Use for lark-cli shared rules: current-date anchoring, auth login/status/logout, user vs bot identity, business-domain permissions (--domain, including all/docs/drive), missing scopes, revoking authorization, or handling _notice JSON."
 ---
 
 # lark-cli 共享规则
 
 本技能指导你如何通过lark-cli操作飞书资源, 以及有哪些注意事项。
+
+## 日期锚点与相对日期
+
+当用户使用“今天 / 明天 / 本周 / 上周 / 今年 / 当前年份”等相对日期时：
+
+1. 先以运行环境或系统消息中的当前日期和时区为锚点；如果缺少可靠锚点，先执行 `date` 获取本机日期，再解析用户请求。
+2. 日期加减、周边界和时间戳转换必须使用系统命令或脚本计算，不要心算。
+3. 示例中的日期只用于说明格式；禁止从示例、历史对话、模型训练时间或旧文档推断当前年份，尤其不要默认使用 2025。
 
 ## 配置初始化
 
