@@ -70,7 +70,7 @@ func validateApprovalInstanceCreateData(schemaPath string, data any) error {
 	return errs.NewValidationError(errs.SubtypeInvalidArgument,
 		"approval instances create does not support form control type(s): %s",
 		strings.Join(parts, ", ")).
-		WithParam("form").
+		WithParam("--data").
 		WithHint("remove unsupported controls from --data.form or create the approval in the Lark/Feishu client")
 }
 
