@@ -162,7 +162,7 @@ func Keys() []event.KeyDefinition {
 		{
 			Key:         eventTypeBotMeetingActivity,
 			DisplayName: "Bot meeting activity",
-			Description: "Triggered when the bot observes activity in a meeting; keeps the raw bot payload and extracts stable activity fields",
+			Description: "Triggered when the bot observes activity in a meeting; extracts meeting_activity_items one level up for direct consumption",
 			EventType:   eventTypeBotMeetingActivity,
 			Schema: event.SchemaDef{
 				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCBotEventOutput{})},

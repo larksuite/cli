@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,11 +125,10 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 				}
 			}`,
 			want: VCBotEventOutput{
-				Type:              eventTypeBotMeetingActivity,
-				EventID:           "ev_activity",
-				Timestamp:         "1776409469274",
-				MeetingNo:         "987654321",
-				ActivityEventType: "chat_received",
+				Type:      eventTypeBotMeetingActivity,
+				EventID:   "ev_activity",
+				Timestamp: "1776409469274",
+				MeetingNo: "987654321",
 			},
 		},
 		{
@@ -146,7 +146,7 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 					"meeting_activity_items": [{
 						"activity_event_type": "chat_received",
 						"chat_received_items": [
-							{"message_type": 1, "content": "ws test"},
+							{"message_type": 1, "content": "ws test", "operator": {"id": {"open_id": "ou_1", "union_id": "on_1", "user_id": "u_1"}}},
 							{"message_type": 3, "content": "OK"}
 						],
 						"meeting": {"meeting_no": "427607561"}
@@ -154,11 +154,10 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 				}
 			}`,
 			want: VCBotEventOutput{
-				Type:              eventTypeBotMeetingActivity,
-				EventID:           "ev_activity_content",
-				Timestamp:         "1776409469276",
-				MeetingNo:         "427607561",
-				ActivityEventType: "chat_received",
+				Type:      eventTypeBotMeetingActivity,
+				EventID:   "ev_activity_content",
+				Timestamp: "1776409469276",
+				MeetingNo: "427607561",
 			},
 		},
 		{
@@ -197,9 +196,6 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 			if out.MeetingNo != tc.want.MeetingNo {
 				t.Errorf("MeetingNo = %q, want %q", out.MeetingNo, tc.want.MeetingNo)
 			}
-			if out.ActivityEventType != tc.want.ActivityEventType {
-				t.Errorf("ActivityEventType = %q, want %q", out.ActivityEventType, tc.want.ActivityEventType)
-			}
 			var row map[string]any
 			if err := json.Unmarshal(got, &row); err != nil {
 				t.Fatalf("Process output is not valid JSON: %v\nraw=%s", err, string(got))
@@ -207,15 +203,46 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 			if _, ok := row["raw_event"]; ok {
 				t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
 			}
-			payload, ok := row["payload"].(map[string]any)
-			if !ok {
-				t.Fatalf("normal bot event output should include event-body payload: %s", string(got))
-			}
-			if _, ok := payload["header"]; ok {
-				t.Fatalf("payload should not include the top-level envelope header: %s", string(got))
-			}
-			if _, ok := payload["schema"]; ok {
-				t.Fatalf("payload should not include the top-level envelope schema: %s", string(got))
+			if tc.eventType == eventTypeBotMeetingActivity {
+				if _, ok := row["activity_event_type"]; ok {
+					t.Fatalf("meeting activity output should not include singular activity_event_type: %s", string(got))
+				}
+				if _, ok := row["activity_event_types"]; ok {
+					t.Fatalf("meeting activity output should not include top-level activity_event_types: %s", string(got))
+				}
+				if _, ok := row["activity_events"]; ok {
+					t.Fatalf("meeting activity output should use meeting_activity_items, not activity_events: %s", string(got))
+				}
+				if _, ok := row["payload"]; ok {
+					t.Fatalf("meeting activity output should lift meeting_activity_items out of payload: %s", string(got))
+				}
+				items, ok := row["meeting_activity_items"].([]any)
+				if !ok || len(items) == 0 {
+					t.Fatalf("meeting activity output should include meeting_activity_items: %s", string(got))
+				}
+				if tc.name == "meeting activity ignores nested reaction details" {
+					first, _ := items[0].(map[string]any)
+					chatItems, _ := first["chat_received_items"].([]any)
+					chatItem, _ := chatItems[0].(map[string]any)
+					operator, _ := chatItem["operator"].(map[string]any)
+					if got := operator["id"]; got != "ou_1" {
+						t.Fatalf("operator id = %#v, want open_id string", got)
+					}
+					if strings.Contains(string(got), "union_id") || strings.Contains(string(got), "user_id") {
+						t.Fatalf("meeting_activity_items should not expose union_id/user_id: %s", string(got))
+					}
+				}
+			} else {
+				payload, ok := row["payload"].(map[string]any)
+				if !ok {
+					t.Fatalf("normal bot event output should include event-body payload: %s", string(got))
+				}
+				if _, ok := payload["header"]; ok {
+					t.Fatalf("payload should not include the top-level envelope header: %s", string(got))
+				}
+				if _, ok := payload["schema"]; ok {
+					t.Fatalf("payload should not include the top-level envelope schema: %s", string(got))
+				}
 			}
 		})
 	}
@@ -256,8 +283,8 @@ func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsStableEnvelope(t 
 	if out.Type != eventTypeBotMeetingActivity {
 		t.Fatalf("Type = %q, want %q", out.Type, eventTypeBotMeetingActivity)
 	}
-	if out.MeetingNo != "" || out.ActivityEventType != "" {
-		t.Fatalf("stable fields = meeting_no:%q activity_event_type:%q, want empty", out.MeetingNo, out.ActivityEventType)
+	if out.MeetingNo != "" || len(out.MeetingActivityItems) != 0 {
+		t.Fatalf("stable fields = meeting_no:%q meeting_activity_items:%#v, want empty", out.MeetingNo, out.MeetingActivityItems)
 	}
 	var row map[string]any
 	if err := json.Unmarshal(got, &row); err != nil {
@@ -267,7 +294,7 @@ func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsStableEnvelope(t 
 		t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
 	}
 	if _, ok := row["payload"].(map[string]any); !ok {
-		t.Fatalf("normal bot event output should include event-body payload: %s", string(got))
+		t.Fatalf("malformed activity output should keep event-body payload: %s", string(got))
 	}
 }
 

@@ -14,13 +14,13 @@ import (
 
 // VCBotEventOutput is the compact shape for bot-observed VC events.
 type VCBotEventOutput struct {
-	Type              string          `json:"type"                         desc:"Event type; one of the supported vc.bot.* keys"`
-	EventID           string          `json:"event_id,omitempty"           desc:"Globally unique event ID; safe for deduplication"`
-	Timestamp         string          `json:"timestamp,omitempty"          desc:"Event delivery time (ms timestamp string); taken from header.create_time when present" kind:"timestamp_ms"`
-	CallID            string          `json:"call_id,omitempty"            desc:"Bot invitation call ID; pass through to vc agent join when present"`
-	MeetingNo         string          `json:"meeting_no,omitempty"         desc:"Meeting number from the bot event's declared meeting field"`
-	ActivityEventType string          `json:"activity_event_type,omitempty" desc:"First event.meeting_activity_items[].activity_event_type value"`
-	Payload           json.RawMessage `json:"payload,omitempty"             desc:"Original bot event body without schema/header envelope; parse by type and activity_event_type"`
+	Type                 string                   `json:"type"                             desc:"Event type; one of the supported vc.bot.* keys"`
+	EventID              string                   `json:"event_id,omitempty"               desc:"Globally unique event ID; safe for deduplication"`
+	Timestamp            string                   `json:"timestamp,omitempty"              desc:"Event delivery time (ms timestamp string); taken from header.create_time when present" kind:"timestamp_ms"`
+	CallID               string                   `json:"call_id,omitempty"                desc:"Bot invitation call ID; pass through to vc agent join when present"`
+	MeetingNo            string                   `json:"meeting_no,omitempty"             desc:"Meeting number from the bot event's declared meeting field"`
+	MeetingActivityItems []map[string]interface{} `json:"meeting_activity_items,omitempty" desc:"event.meeting_activity_items extracted one level up for direct consumption; nested user id objects are normalized to open_id strings"`
+	Payload              json.RawMessage          `json:"payload,omitempty"                 desc:"Original bot event body without schema/header envelope for non-activity events or malformed activity payloads"`
 }
 
 func processVCBotMeetingInvited(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
@@ -51,17 +51,6 @@ type vcBotMeetingInvitedEvent struct {
 	} `json:"meeting"`
 }
 
-type vcBotMeetingActivityEvent struct {
-	MeetingActivityItems []vcBotMeetingActivityItem `json:"meeting_activity_items"`
-}
-
-type vcBotMeetingActivityItem struct {
-	ActivityEventType string `json:"activity_event_type"`
-	Meeting           struct {
-		MeetingNo string `json:"meeting_no"`
-	} `json:"meeting"`
-}
-
 type vcBotMeetingEndedEvent struct {
 	MeetingNo string `json:"meeting_no"`
 }
@@ -81,7 +70,6 @@ func processVCBotEvent(raw *event.RawEvent) (json.RawMessage, error) {
 		Type:      eventType,
 		EventID:   envelope.Header.EventID,
 		Timestamp: envelope.Header.CreateTime,
-		Payload:   append(json.RawMessage(nil), envelope.Event...),
 	}
 	fillBotEventOutput(eventType, envelope.Event, out)
 	return json.Marshal(out)
@@ -96,19 +84,32 @@ func fillBotEventOutput(eventType string, data json.RawMessage, out *VCBotEventO
 		}
 		out.CallID = strings.TrimSpace(payload.CallID)
 		out.MeetingNo = strings.TrimSpace(payload.Meeting.MeetingNo)
+		out.Payload = cloneRawMessage(data)
 	case eventTypeBotMeetingActivity:
-		payload, err := decodeBotMeetingActivityEvent(data)
+		body, err := decodeBotMeetingActivityBody(data)
 		if err != nil {
+			out.Payload = cloneRawMessage(data)
 			return
 		}
-		out.MeetingNo = botActivityMeetingNo(payload.MeetingActivityItems)
-		out.ActivityEventType = botActivityEventType(payload.MeetingActivityItems)
+		items := botActivityItems(body)
+		if len(items) == 0 {
+			out.Payload = cloneRawMessage(data)
+			return
+		}
+		out.MeetingNo = botActivityMeetingNo(items)
+		meetingActivityItems := normalizeBotActivityItems(items)
+		if len(meetingActivityItems) == 0 {
+			out.Payload = cloneRawMessage(data)
+			return
+		}
+		out.MeetingActivityItems = meetingActivityItems
 	case eventTypeBotMeetingEnded:
 		payload, err := decodeBotMeetingEndedEvent(data)
 		if err != nil {
 			return
 		}
 		out.MeetingNo = strings.TrimSpace(payload.MeetingNo)
+		out.Payload = cloneRawMessage(data)
 	}
 }
 
@@ -120,10 +121,10 @@ func decodeBotMeetingInvitedEvent(data json.RawMessage) (vcBotMeetingInvitedEven
 	return payload, nil
 }
 
-func decodeBotMeetingActivityEvent(data json.RawMessage) (vcBotMeetingActivityEvent, error) {
-	var payload vcBotMeetingActivityEvent
+func decodeBotMeetingActivityBody(data json.RawMessage) (map[string]interface{}, error) {
+	var payload map[string]interface{}
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return vcBotMeetingActivityEvent{}, err
+		return nil, err
 	}
 	return payload, nil
 }
@@ -136,20 +137,69 @@ func decodeBotMeetingEndedEvent(data json.RawMessage) (vcBotMeetingEndedEvent, e
 	return payload, nil
 }
 
-func botActivityMeetingNo(items []vcBotMeetingActivityItem) string {
-	for _, item := range items {
-		if meetingNo := strings.TrimSpace(item.Meeting.MeetingNo); meetingNo != "" {
+func cloneRawMessage(data json.RawMessage) json.RawMessage {
+	return append(json.RawMessage(nil), data...)
+}
+
+func botActivityItems(body map[string]interface{}) []interface{} {
+	items, _ := body["meeting_activity_items"].([]interface{})
+	return items
+}
+
+func botActivityMeetingNo(items []interface{}) string {
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		meeting, _ := item["meeting"].(map[string]interface{})
+		if meetingNo := strings.TrimSpace(stringValue(meeting["meeting_no"])); meetingNo != "" {
 			return meetingNo
 		}
 	}
 	return ""
 }
 
-func botActivityEventType(items []vcBotMeetingActivityItem) string {
-	for _, item := range items {
-		if eventType := strings.TrimSpace(item.ActivityEventType); eventType != "" {
-			return eventType
+func normalizeBotActivityItems(items []interface{}) []map[string]interface{} {
+	normalized := make([]map[string]interface{}, 0, len(items))
+	for _, raw := range items {
+		item, _ := raw.(map[string]interface{})
+		if item == nil {
+			continue
+		}
+		normalizedItem, _ := normalizeBotActivityValue(item).(map[string]interface{})
+		if normalizedItem != nil {
+			normalized = append(normalized, normalizedItem)
 		}
 	}
-	return ""
+	return normalized
+}
+
+func normalizeBotActivityValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		normalized := make(map[string]interface{}, len(typed))
+		for key, nested := range typed {
+			if key == "id" {
+				if idMap, ok := nested.(map[string]interface{}); ok {
+					if openID := strings.TrimSpace(stringValue(idMap["open_id"])); openID != "" {
+						normalized[key] = openID
+					}
+					continue
+				}
+			}
+			normalized[key] = normalizeBotActivityValue(nested)
+		}
+		return normalized
+	case []interface{}:
+		normalized := make([]interface{}, 0, len(typed))
+		for _, item := range typed {
+			normalized = append(normalized, normalizeBotActivityValue(item))
+		}
+		return normalized
+	default:
+		return value
+	}
+}
+
+func stringValue(value interface{}) string {
+	text, _ := value.(string)
+	return text
 }
