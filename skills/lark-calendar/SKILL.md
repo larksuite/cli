@@ -45,13 +45,15 @@ lark-cli calendar +agenda --as user
 | 场景 | 前置要求 |
 |------|----------|
 | 预约日程/会议、查会议室 | 先读 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) |
-| 编辑已有日程 | 先定位目标日程 `event_id`；若是重复性日程，必须定位到具体实例的 `event_id`（禁止使用原重复日程 ID） |
+| 编辑已有日程 | 先定位目标日程 `event_id` |
+| 编辑/删除重复性日程 | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，按操作范围（仅此次/全部/此次及后续）执行 |
 | 删除/修改后验证 | 等待 2 秒再查询（API 最终一致性），不要告知用户你等待了 |
 | 调用任何 Shortcut | 先读其对应 reference 文档 |
 
 ## 核心概念
 
-- **日程实例（Instance）**：重复性日程展开后的具体时间实例。操作重复日程的某次实例时，必须先定位该实例的 `event_id`，禁止使用原重复日程的 `event_id`。
+- **日程实例（Instance）**：重复性日程展开后的具体时间实例。「仅此次」操作时使用具体实例的 `event_id`；「全部」或「此次及后续」操作时需对原重复性日程操作（使用原日程 `event_id`），并按需处理例外。
+- **重复性日程例外（Exception）**：对重复性日程某次实例做过「仅此次」编辑后产生的独立日程（拥有独立 `event_id`）。删除/更新「全部」时必须同时处理例外，否则例外会残留。
 - **全天日程（All-day Event）**：只按日期占用、没有具体起止时刻的日程，结束日期是包含在日程时间内的。
 - **时间块 vs 时间范围**：时间块是具体确定的连续时间段（如 `14:00~15:00`），时间范围是泛指（如"今天下午"）。`+room-find` 必须基于确定时间块，不能基于模糊范围。
 - **会议室（Room）**："room"不是"房间"，是"会议室"。会议室是日程的一种参与人（resource attendee），不能脱离日程单独预定。
@@ -71,6 +73,7 @@ lark-cli calendar +agenda --as user
 | 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
 | 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再 [`vc +detail`](../lark-vc/references/lark-vc-detail.md) → [`note +detail`](../lark-note/references/lark-note-detail.md) / [`minutes +detail`](../lark-minutes/references/lark-minutes-detail.md) |
 | 预约/改约日程、添加/移除参会人、添加/更换会议室、调整时间 | 先判断新建 vs 编辑，再进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md) |
+| 编辑/删除重复性日程（「改这个重复日程」「删掉后面的」「全部取消」等） | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，确认操作范围后执行 |
 
 ## 任务类型分流
 

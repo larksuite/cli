@@ -43,7 +43,7 @@ lark-cli calendar +update \
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--event-id <id>` | 是 | 要更新的日程 ID。重复性日程要先定位到目标实例的 `event_id`，不要直接使用原重复日程 ID |
+| `--event-id <id>` | 是 | 要更新的日程 ID。重复性日程请根据操作范围选择 ID，详见 [重复性日程操作规范](lark-calendar-recurring.md) |
 | `--calendar-id <id>` | 否 | 日历 ID（省略则使用 `primary`） |
 | `--summary <text>` | 否 | 新日程标题。仅在显式传入 `--summary` 时更新；若传空字符串，会把标题清空 |
 | `--description <text>` | 否 | 新日程描述。目前 API 方式不支持编辑富文本描述；如果日程描述通过客户端编辑为富文本内容，则使用 API 更新描述会导致富文本格式丢失。仅在显式传入 `--description` 时更新；若传空字符串，会把描述清空 |
@@ -65,7 +65,7 @@ lark-cli calendar +update \
 - 只想修改标题、描述、时间或重复规则时，不需要同时传 `--add-attendee-ids` 或 `--remove-attendee-ids`。
 - 如需替换某个参与人、群组或会议室，使用 `--remove-attendee-ids <旧ID>` + `--add-attendee-ids <新ID>`。
 - 会议室是 resource attendee，必须使用 `omm_` ID 添加到参会人列表，不能脱离日程单独预定。
-- 更新重复性日程的某一次实例时，必须先通过 `+agenda`、`+search-event` 或实例视图定位该实例的 `event_id`。
+- 更新重复性日程时，必须先确定操作范围（仅此次/全部/此次及后续），然后按 [重复性日程操作规范](lark-calendar-recurring.md) 执行。
 - 如果需要验证更新结果，等待至少 2 秒后再查询，避免同步延迟导致读到旧数据。
 - 当同一次命令组合多个动作时，执行顺序为“日程字段 -> 移除参会人 -> 添加参会人”。若中途失败，不会自动回滚已成功步骤；错误信息会说明已完成的步骤。
 
