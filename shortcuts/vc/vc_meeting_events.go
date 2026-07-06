@@ -168,10 +168,8 @@ type meetingEventsEvent struct {
 	EventID   string                  `json:"event_id,omitempty"`
 	EventType string                  `json:"event_type,omitempty"`
 	EventTime string                  `json:"event_time,omitempty"`
-	Summary   string                  `json:"summary,omitempty"`
 	Actors    []meetingEventsIdentity `json:"actors,omitempty"`
 	Payload   map[string]interface{}  `json:"payload,omitempty"`
-	Raw       map[string]interface{}  `json:"raw,omitempty"`
 }
 
 func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, currentRoster []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
@@ -197,7 +195,7 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 		}
 		output.Events = append(output.Events, meetingEventsEventFromPayload(event, output.Identity))
 	}
-	output.CurrentRoster = meetingEventsCurrentRoster(currentRoster, output.Identity)
+	output.CurrentRoster = enrichMeetingEventsCurrentRoster(meetingEventsCurrentRoster(currentRoster, output.Identity), output.Events)
 	return output
 }
 
@@ -217,7 +215,7 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 		Role:            "user",
 		IsSelf:          true,
 	}
-	identity.Label = identityLabel(identity)
+	identity.Label = currentIdentityLabel(identity)
 	if userOpenID == "" {
 		return identity, "identity unavailable: current user open_id is unavailable"
 	}
@@ -227,7 +225,7 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 func fetchMeetingEventsCurrentRoster(runtime *common.RuntimeContext) ([]interface{}, string) {
 	meetingID := strings.TrimSpace(runtime.Str("meeting-id"))
 	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
-		map[string]interface{}{"with_participants": "true", "query_mode": "0"}, nil)
+		map[string]interface{}{"with_participants": "true", "query_mode": "0", "user_id_type": "open_id"}, nil)
 	if err != nil {
 		return nil, fmt.Sprintf("current_roster unavailable: %v", err)
 	}
@@ -248,7 +246,7 @@ func meetingEventsBotIdentity(botInfo *common.BotInfo) meetingEventsIdentity {
 		Role:            "bot",
 		IsSelf:          true,
 	}
-	identity.Label = identityLabel(identity)
+	identity.Label = currentIdentityLabel(identity)
 	return identity
 }
 
@@ -276,14 +274,11 @@ func meetingEventsMeetingFromPayload(meeting map[string]interface{}) meetingEven
 
 func meetingEventsEventFromPayload(event map[string]interface{}, selfIdentity meetingEventsIdentity) meetingEventsEvent {
 	payload := common.GetMap(event, "payload")
-	rawCopy := cloneStringMap(event)
 	out := meetingEventsEvent{
 		EventID:   common.GetString(event, "event_id"),
 		EventType: meetingEventType(event),
 		EventTime: meetingEventsTimeString(common.GetString(event, "event_time")),
-		Summary:   meetingEventSummary(event),
 		Payload:   payload,
-		Raw:       rawCopy,
 	}
 	out.Actors = eventActors(out.EventType, payload, selfIdentity)
 	return out
@@ -301,6 +296,30 @@ func meetingEventsCurrentRoster(rawRoster []interface{}, selfIdentity meetingEve
 			participant = nested
 		}
 		roster = append(roster, meetingEventsIdentityFromParticipant(participant, selfIdentity))
+	}
+	return roster
+}
+
+func enrichMeetingEventsCurrentRoster(roster []meetingEventsIdentity, events []meetingEventsEvent) []meetingEventsIdentity {
+	typeByID := make(map[string]string)
+	for _, event := range events {
+		for _, actor := range event.Actors {
+			if actor.ID == "" || !isKnownParticipantType(actor.ParticipantType) {
+				continue
+			}
+			if _, exists := typeByID[actor.ID]; !exists {
+				typeByID[actor.ID] = actor.ParticipantType
+			}
+		}
+	}
+	for i := range roster {
+		if !isUnknownParticipantType(roster[i].ParticipantType) {
+			continue
+		}
+		if participantType := typeByID[roster[i].ID]; participantType != "" {
+			roster[i].ParticipantType = participantType
+			roster[i].Label = identityLabel(roster[i])
+		}
 	}
 	return roster
 }
@@ -378,7 +397,7 @@ func meetingEventsParticipantTypeFromParticipantType(raw string) string {
 	case "":
 		return ""
 	default:
-		return raw
+		return "unknown"
 	}
 }
 
@@ -399,8 +418,21 @@ func meetingEventsParticipantTypeFromUserType(raw string) string {
 	case "":
 		return ""
 	default:
-		return raw
+		return "unknown"
 	}
+}
+
+func isKnownParticipantType(participantType string) bool {
+	switch participantType {
+	case "human", "bot":
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnknownParticipantType(participantType string) bool {
+	return participantType == "" || participantType == "unknown"
 }
 
 func meetingEventsRoleFromRosterRole(raw string) string {
@@ -481,6 +513,11 @@ func identityLabel(identity meetingEventsIdentity) string {
 	return fmt.Sprintf("%s [%s]", name, strings.Join(tags, ","))
 }
 
+func currentIdentityLabel(identity meetingEventsIdentity) string {
+	identity.IsSelf = false
+	return identityLabel(identity)
+}
+
 func meetingEventsTimeString(raw string) string {
 	if parsed, ok := parseFlexibleTime(raw); ok {
 		return parsed.UTC().Format(time.RFC3339)
@@ -511,10 +548,8 @@ func meetingEventsEventRows(events []meetingEventsEvent, metadata map[string]int
 			"event_id":   event.EventID,
 			"event_type": event.EventType,
 			"event_time": event.EventTime,
-			"summary":    event.Summary,
 			"actors":     event.Actors,
 			"payload":    event.Payload,
-			"raw":        event.Raw,
 		}
 		rows = append(rows, row)
 	}

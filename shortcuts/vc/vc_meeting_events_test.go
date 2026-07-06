@@ -569,11 +569,25 @@ func TestMeetingEvents_ExecuteJSON_PageAll(t *testing.T) {
 	}
 	reg.Verify(t)
 
+	var envelope map[string]interface{}
+	if err := json.Unmarshal([]byte(stdout.String()), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v: %s", err, stdout.String())
+	}
+	events := common.GetSlice(common.GetMap(envelope, "data"), "events")
+	if got := len(events); got != 2 {
+		t.Fatalf("events len = %d, want 2: %s", got, stdout.String())
+	}
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if _, ok := event["summary"]; ok {
+			t.Fatalf("event should not expose summary: %s", stdout.String())
+		}
+		if _, ok := event["raw"]; ok {
+			t.Fatalf("event should not expose raw: %s", stdout.String())
+		}
+	}
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
-	if count := strings.Count(out, `"summary":"participantbot_001(DemoBot)joined"`); count != 2 {
-		t.Fatalf("expected 2 aggregated events, got %d: %s", count, stdout.String())
-	}
 	if !strings.Contains(out, `"has_more":false`) {
 		t.Fatalf("expected final has_more=false: %s", stdout.String())
 	}
@@ -602,7 +616,7 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
-		`"identity":{"id":"bot_001","name":"DemoBot","participant_type":"bot","role":"bot","is_self":true,"label":"DemoBot[bot,self]"}`,
+		`"identity":{"id":"bot_001","name":"DemoBot","participant_type":"bot","role":"bot","is_self":true,"label":"DemoBot[bot]"}`,
 		`"current_roster":[`,
 		`"role":"host"`,
 		`"is_self":true`,
@@ -615,6 +629,14 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("json output missing %q: %s", want, stdout.String())
+		}
+	}
+	for _, unwanted := range []string{
+		`"summary":`,
+		`"raw":`,
+	} {
+		if strings.Contains(out, unwanted) {
+			t.Fatalf("json output should not contain %q: %s", unwanted, stdout.String())
 		}
 	}
 }
@@ -703,7 +725,7 @@ func TestMeetingEvents_ExecuteJSON_UserIdentitySkipsBotInfo(t *testing.T) {
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
-		`"identity":{"id":"ou_testuser","participant_type":"human","role":"user","is_self":true,"label":"ou_testuser[human,user,self]"}`,
+		`"identity":{"id":"ou_testuser","participant_type":"human","role":"user","is_self":true,"label":"ou_testuser[human,user]"}`,
 		`"current_roster":[`,
 		`"id":"ou_testuser"`,
 		`"is_self":true`,
@@ -797,6 +819,14 @@ func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
 	}
 	if !strings.Contains(lines[0], `"row_type":"event"`) || !strings.Contains(lines[0], `"event_type":"participant_joined"`) {
 		t.Fatalf("first ndjson row should be event: %s", lines[0])
+	}
+	for _, unwanted := range []string{
+		`"summary":`,
+		`"raw":`,
+	} {
+		if strings.Contains(lines[0], unwanted) {
+			t.Fatalf("event ndjson row should not contain %q: %s", unwanted, lines[0])
+		}
 	}
 	for _, want := range []string{
 		`"row_type":"metadata"`,
@@ -901,7 +931,7 @@ func TestMeetingEvents_ExecutePretty(t *testing.T) {
 
 	out := stdout.String()
 	for _, want := range []string{
-		"当前身份：Demo Bot [bot,self]",
+		"当前身份：Demo Bot [bot]",
 		"当前名单：",
 		"- Demo Bot [bot,self]",
 		"- Alice [human,host]",
@@ -1271,6 +1301,46 @@ func TestMeetingEventsIdentityFromParticipant_UserTypeApp(t *testing.T) {
 
 	if got.ParticipantType != "bot" {
 		t.Fatalf("identity = %#v, want participant_type=bot", got)
+	}
+}
+
+func TestMeetingEventsIdentityFromParticipant_UnknownUserType(t *testing.T) {
+	got := meetingEventsIdentityFromParticipant(map[string]interface{}{
+		"id":        "u_unknown",
+		"user_name": "Unknown",
+		"user_type": 0,
+		"user_role": 1,
+	}, meetingEventsIdentity{})
+
+	if got.ParticipantType != "unknown" {
+		t.Fatalf("identity = %#v, want participant_type=unknown", got)
+	}
+}
+
+func TestBuildMeetingEventsOutput_EnrichesUnknownRosterTypeFromActors(t *testing.T) {
+	event := participantJoinedEvent()
+	payload := common.GetMap(event, "payload")
+	items := common.GetSlice(payload, "participant_joined_items")
+	item, _ := items[0].(map[string]interface{})
+	item["participant"] = map[string]interface{}{
+		"id":        "ou_bot",
+		"user_name": "Meeting Bot",
+		"user_type": 10,
+		"user_role": 1,
+	}
+
+	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{event}, []interface{}{
+		map[string]interface{}{"id": "ou_bot", "user_name": "Meeting Bot", "user_type": 0, "role": "3"},
+	}, meetingEventsIdentity{})
+
+	if got := len(out.CurrentRoster); got != 1 {
+		t.Fatalf("current_roster len = %d, want 1", got)
+	}
+	if got := out.CurrentRoster[0].ParticipantType; got != "bot" {
+		t.Fatalf("current_roster participant_type = %q, want bot: %#v", got, out.CurrentRoster[0])
+	}
+	if got := out.CurrentRoster[0].Label; got != "Meeting Bot [bot,participant]" {
+		t.Fatalf("current_roster label = %q, want enriched bot label", got)
 	}
 }
 
