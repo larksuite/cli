@@ -616,7 +616,7 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
-			`"identity":{"id":"bot_001","name":"DemoBot","participant_type":"bot","is_self":true,"label":"DemoBot[bot]"}`,
+		`"identity":{"id":"bot_001","name":"DemoBot","participant_type":"bot","is_self":true,"label":"DemoBot[bot]"}`,
 		`"current_participants":[`,
 		`"role":"host"`,
 		`"is_self":true`,
@@ -693,7 +693,7 @@ func TestMeetingEvents_ExecuteJSON_BotIdentityErrorDoesNotBlockEvents(t *testing
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
 		`"event_type":"participant_joined"`,
-			`"identity":{"participant_type":"bot","is_self":true,"label":"bot"}`,
+		`"identity":{"participant_type":"bot","is_self":true,"label":"bot"}`,
 		`"warnings":[`,
 		`identityunavailable`,
 	} {
@@ -725,7 +725,7 @@ func TestMeetingEvents_ExecuteJSON_UserIdentitySkipsBotInfo(t *testing.T) {
 	out := strings.ReplaceAll(stdout.String(), " ", "")
 	out = strings.ReplaceAll(out, "\n", "")
 	for _, want := range []string{
-			`"identity":{"id":"ou_testuser","participant_type":"human","is_self":true,"label":"ou_testuser[human]"}`,
+		`"identity":{"id":"ou_testuser","participant_type":"human","is_self":true,"label":"ou_testuser[human]"}`,
 		`"current_participants":[`,
 		`"id":"ou_testuser"`,
 		`"is_self":true`,

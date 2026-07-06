@@ -208,12 +208,12 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 		return meetingEventsBotIdentity(botInfo), ""
 	}
 	userOpenID := strings.TrimSpace(runtime.UserOpenId())
-		identity := meetingEventsIdentity{
-			ID:              userOpenID,
-			Name:            strings.TrimSpace(runtime.Config.UserName),
-			ParticipantType: "human",
-			IsSelf:          true,
-		}
+	identity := meetingEventsIdentity{
+		ID:              userOpenID,
+		Name:            strings.TrimSpace(runtime.Config.UserName),
+		ParticipantType: "human",
+		IsSelf:          true,
+	}
 	identity.Label = currentIdentityLabel(identity)
 	if userOpenID == "" {
 		return identity, "identity unavailable: current user open_id is unavailable"
