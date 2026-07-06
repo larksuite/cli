@@ -103,15 +103,15 @@ var VCMeetingEvents = common.Shortcut{
 		}
 		events = compactMeetingEvents(events)
 		identity, identityWarning := meetingEventsCurrentIdentity(runtime)
-		currentRoster, rosterWarning := fetchMeetingEventsCurrentRoster(runtime)
-		outData := buildMeetingEventsOutput(data, events, currentRoster, identity, identityWarning, rosterWarning)
+		currentParticipants, participantsWarning := fetchMeetingEventsCurrentParticipants(runtime)
+		outData := buildMeetingEventsOutput(data, events, currentParticipants, identity, identityWarning, participantsWarning)
 		metadata := map[string]interface{}{
-			"row_type":       "metadata",
-			"meeting":        outData.Meeting,
-			"identity":       outData.Identity,
-			"current_roster": outData.CurrentRoster,
-			"has_more":       outData.HasMore,
-			"page_token":     outData.PageToken,
+			"row_type":             "metadata",
+			"meeting":              outData.Meeting,
+			"identity":             outData.Identity,
+			"current_participants": outData.CurrentParticipants,
+			"has_more":             outData.HasMore,
+			"page_token":           outData.PageToken,
 		}
 		if len(outData.Warnings) > 0 {
 			metadata["warnings"] = outData.Warnings
@@ -137,13 +137,13 @@ var VCMeetingEvents = common.Shortcut{
 }
 
 type meetingEventsOutput struct {
-	Meeting       meetingEventsMeeting    `json:"meeting"`
-	Identity      meetingEventsIdentity   `json:"identity"`
-	CurrentRoster []meetingEventsIdentity `json:"current_roster"`
-	Events        []meetingEventsEvent    `json:"events"`
-	Warnings      []string                `json:"warnings,omitempty"`
-	HasMore       bool                    `json:"has_more"`
-	PageToken     string                  `json:"page_token,omitempty"`
+	Meeting             meetingEventsMeeting    `json:"meeting"`
+	Identity            meetingEventsIdentity   `json:"identity"`
+	CurrentParticipants []meetingEventsIdentity `json:"current_participants"`
+	Events              []meetingEventsEvent    `json:"events"`
+	Warnings            []string                `json:"warnings,omitempty"`
+	HasMore             bool                    `json:"has_more"`
+	PageToken           string                  `json:"page_token,omitempty"`
 }
 
 type meetingEventsMeeting struct {
@@ -172,7 +172,7 @@ type meetingEventsEvent struct {
 	Payload   map[string]interface{}  `json:"payload,omitempty"`
 }
 
-func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, currentRoster []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
+func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, currentParticipants []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
 	output := meetingEventsOutput{
 		Meeting:   meetingEventsMeetingFromPayload(nil),
 		Identity:  identity,
@@ -195,7 +195,7 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 		}
 		output.Events = append(output.Events, meetingEventsEventFromPayload(event, output.Identity))
 	}
-	output.CurrentRoster = enrichMeetingEventsCurrentRoster(meetingEventsCurrentRoster(currentRoster, output.Identity), output.Events)
+	output.CurrentParticipants = enrichMeetingEventsCurrentParticipants(meetingEventsCurrentParticipants(currentParticipants, output.Identity), output.Events)
 	return output
 }
 
@@ -222,12 +222,12 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 	return identity, ""
 }
 
-func fetchMeetingEventsCurrentRoster(runtime *common.RuntimeContext) ([]interface{}, string) {
+func fetchMeetingEventsCurrentParticipants(runtime *common.RuntimeContext) ([]interface{}, string) {
 	meetingID := strings.TrimSpace(runtime.Str("meeting-id"))
 	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
 		map[string]interface{}{"with_participants": "true", "query_mode": "0", "user_id_type": "open_id"}, nil)
 	if err != nil {
-		return nil, fmt.Sprintf("current_roster unavailable: %v", err)
+		return nil, fmt.Sprintf("current_participants unavailable: %v", err)
 	}
 	if meeting := common.GetMap(data, "meeting"); meeting != nil {
 		return common.GetSlice(meeting, "participants"), ""
@@ -284,9 +284,9 @@ func meetingEventsEventFromPayload(event map[string]interface{}, selfIdentity me
 	return out
 }
 
-func meetingEventsCurrentRoster(rawRoster []interface{}, selfIdentity meetingEventsIdentity) []meetingEventsIdentity {
-	roster := make([]meetingEventsIdentity, 0, len(rawRoster))
-	for _, raw := range rawRoster {
+func meetingEventsCurrentParticipants(rawParticipants []interface{}, selfIdentity meetingEventsIdentity) []meetingEventsIdentity {
+	participants := make([]meetingEventsIdentity, 0, len(rawParticipants))
+	for _, raw := range rawParticipants {
 		item, _ := raw.(map[string]interface{})
 		if item == nil {
 			continue
@@ -295,12 +295,12 @@ func meetingEventsCurrentRoster(rawRoster []interface{}, selfIdentity meetingEve
 		if nested := common.GetMap(item, "participant"); nested != nil {
 			participant = nested
 		}
-		roster = append(roster, meetingEventsIdentityFromParticipant(participant, selfIdentity))
+		participants = append(participants, meetingEventsIdentityFromParticipant(participant, selfIdentity))
 	}
-	return roster
+	return participants
 }
 
-func enrichMeetingEventsCurrentRoster(roster []meetingEventsIdentity, events []meetingEventsEvent) []meetingEventsIdentity {
+func enrichMeetingEventsCurrentParticipants(participants []meetingEventsIdentity, events []meetingEventsEvent) []meetingEventsIdentity {
 	typeByID := make(map[string]string)
 	nameByID := make(map[string]string)
 	for _, event := range events {
@@ -320,25 +320,25 @@ func enrichMeetingEventsCurrentRoster(roster []meetingEventsIdentity, events []m
 			}
 		}
 	}
-	for i := range roster {
+	for i := range participants {
 		changed := false
-		if roster[i].Name == "" {
-			if name := nameByID[roster[i].ID]; name != "" {
-				roster[i].Name = name
+		if participants[i].Name == "" {
+			if name := nameByID[participants[i].ID]; name != "" {
+				participants[i].Name = name
 				changed = true
 			}
 		}
-		if isUnknownParticipantType(roster[i].ParticipantType) {
-			if participantType := typeByID[roster[i].ID]; participantType != "" {
-				roster[i].ParticipantType = participantType
+		if isUnknownParticipantType(participants[i].ParticipantType) {
+			if participantType := typeByID[participants[i].ID]; participantType != "" {
+				participants[i].ParticipantType = participantType
 				changed = true
 			}
 		}
 		if changed {
-			roster[i].Label = identityLabel(roster[i])
+			participants[i].Label = identityLabel(participants[i])
 		}
 	}
-	return roster
+	return participants
 }
 
 func eventActors(eventType string, payload map[string]interface{}, selfIdentity meetingEventsIdentity) []meetingEventsIdentity {
@@ -419,7 +419,7 @@ func meetingEventsParticipantTypeFromParticipantType(raw string) string {
 }
 
 func meetingEventsParticipantRole(participant map[string]interface{}) string {
-	if raw := meetingEventsRoleFromRosterRole(fieldValueString(participant, "role")); raw != "" {
+	if raw := meetingEventsRoleFromParticipantRole(fieldValueString(participant, "role")); raw != "" {
 		return raw
 	}
 	return meetingEventsRoleFromEventUserRole(fieldValueString(participant, "user_role"))
@@ -452,7 +452,7 @@ func isUnknownParticipantType(participantType string) bool {
 	return participantType == "" || participantType == "unknown"
 }
 
-func meetingEventsRoleFromRosterRole(raw string) string {
+func meetingEventsRoleFromParticipantRole(raw string) string {
 	raw = strings.ToLower(strings.TrimSpace(raw))
 	switch raw {
 	case "1", "host":
@@ -580,9 +580,9 @@ func renderMeetingEventsCompactPretty(w io.Writer, data meetingEventsOutput, tim
 	if data.Identity.Label != "" {
 		fmt.Fprintf(w, "当前身份：%s\n", escapePrettyText(data.Identity.Label))
 	}
-	if len(data.CurrentRoster) > 0 {
+	if len(data.CurrentParticipants) > 0 {
 		fmt.Fprintln(w, "当前名单：")
-		for _, participant := range data.CurrentRoster {
+		for _, participant := range data.CurrentParticipants {
 			fmt.Fprintf(w, "- %s\n", escapePrettyText(participant.Label))
 		}
 		fmt.Fprintln(w)
