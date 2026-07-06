@@ -794,6 +794,23 @@ func TestBuildMeetingEventsOutput_EmptyEventsHasUnknownMeetingStatus(t *testing.
 	}
 }
 
+func TestMeetingEventsMeetingFromPayload_StartOnlyIsOngoing(t *testing.T) {
+	got := meetingEventsMeetingFromPayload(map[string]interface{}{
+		"id":         "m1",
+		"start_time": "1776410100",
+	})
+
+	if got.Status != "ongoing" {
+		t.Fatalf("meeting status = %q, want ongoing", got.Status)
+	}
+	if got.StartTime != "2026-04-17T07:15:00Z" {
+		t.Fatalf("meeting start_time = %q, want normalized RFC3339", got.StartTime)
+	}
+	if got.EndTime != "" {
+		t.Fatalf("meeting end_time = %q, want empty", got.EndTime)
+	}
+}
+
 func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	reg.Register(meetingEventsStub([]interface{}{participantJoinedEvent()}, true, "1710000000000000000"))
@@ -838,6 +855,30 @@ func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
 		if !strings.Contains(lines[1], want) {
 			t.Fatalf("metadata ndjson row missing %q: %s", want, lines[1])
 		}
+	}
+}
+
+func TestMeetingEventsEventRows_OmitsEmptyEventFields(t *testing.T) {
+	rows := meetingEventsEventRows([]meetingEventsEvent{
+		{EventType: "unknown_event"},
+	}, nil)
+	if len(rows) != 1 {
+		t.Fatalf("rows len = %d, want 1", len(rows))
+	}
+	row, ok := rows[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("row type = %T, want map", rows[0])
+	}
+	for _, unwanted := range []string{"event_id", "event_time", "actors", "payload"} {
+		if _, exists := row[unwanted]; exists {
+			t.Fatalf("row should omit %q when empty: %#v", unwanted, row)
+		}
+	}
+	if got := row["row_type"]; got != "event" {
+		t.Fatalf("row_type = %v, want event", got)
+	}
+	if got := row["event_type"]; got != "unknown_event" {
+		t.Fatalf("event_type = %v, want unknown_event", got)
 	}
 }
 

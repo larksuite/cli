@@ -261,6 +261,9 @@ func meetingEventsMeetingFromPayload(meeting map[string]interface{}) meetingEven
 	}
 	start, hasStart := parseFlexibleTime(out.StartTime)
 	end, hasEnd := parseFlexibleTime(out.EndTime)
+	if hasStart && !hasEnd {
+		out.Status = "ongoing"
+	}
 	if hasStart && hasEnd {
 		if end.After(start) {
 			out.Status = "ended"
@@ -560,20 +563,26 @@ func cloneStringMap(in map[string]interface{}) map[string]interface{} {
 func meetingEventsEventRows(events []meetingEventsEvent, metadata map[string]interface{}) []interface{} {
 	rows := make([]interface{}, 0, len(events)+1)
 	for _, event := range events {
-		row := map[string]interface{}{
-			"row_type":   "event",
-			"event_id":   event.EventID,
-			"event_type": event.EventType,
-			"event_time": event.EventTime,
-			"actors":     event.Actors,
-			"payload":    event.Payload,
-		}
+		row := meetingEventsEventRow(event)
 		rows = append(rows, row)
 	}
 	if metadata != nil {
 		rows = append(rows, metadata)
 	}
 	return rows
+}
+
+func meetingEventsEventRow(event meetingEventsEvent) map[string]interface{} {
+	raw, err := json.Marshal(event)
+	if err != nil {
+		return map[string]interface{}{"row_type": "event"}
+	}
+	var row map[string]interface{}
+	if err := json.Unmarshal(raw, &row); err != nil {
+		return map[string]interface{}{"row_type": "event"}
+	}
+	row["row_type"] = "event"
+	return row
 }
 
 func renderMeetingEventsCompactPretty(w io.Writer, data meetingEventsOutput, timeline meetingTimeline) {
