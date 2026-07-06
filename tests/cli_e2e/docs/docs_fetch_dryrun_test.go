@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Lark Technologies Pte. Ltd.
 // SPDX-License-Identifier: MIT
 
-package doc
+package docs
 
 import (
 	"context"
@@ -23,7 +23,7 @@ func TestDocsFetchDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 		Args: []string{
 			"docs", "+fetch",
 			"--doc", "doxcnDryRunCompat",
-			"--api-version", "legacy",
+			"--api-version", "v1",
 			"--dry-run",
 		},
 		DefaultAs: "bot",

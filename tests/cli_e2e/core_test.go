@@ -5,6 +5,7 @@ package clie2e
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,8 +227,6 @@ func TestRunCmd(t *testing.T) {
 	})
 
 	t.Run("retries structured retryable service errors by default", func(t *testing.T) {
-		useFastDefaultRetry(t)
-
 		fake := newFakeCLI(t)
 		statePath := filepath.Join(t.TempDir(), "retry-count")
 		result, err := RunCmd(context.Background(), Request{
@@ -244,8 +243,6 @@ func TestRunCmd(t *testing.T) {
 	})
 
 	t.Run("does not retry non-retryable service errors by default", func(t *testing.T) {
-		useFastDefaultRetry(t)
-
 		fake := newFakeCLI(t)
 		statePath := filepath.Join(t.TempDir(), "retry-count")
 		result, err := RunCmd(context.Background(), Request{
@@ -263,8 +260,6 @@ func TestRunCmd(t *testing.T) {
 
 func TestRunCmdWithRetry(t *testing.T) {
 	t.Run("does not include RunCmd default retry as a nested retry", func(t *testing.T) {
-		useFastDefaultRetry(t)
-
 		fake := newFakeCLI(t)
 		statePath := filepath.Join(t.TempDir(), "retry-count")
 		result, err := RunCmdWithRetry(context.Background(), Request{
@@ -282,6 +277,35 @@ func TestRunCmdWithRetry(t *testing.T) {
 		countBytes, err := os.ReadFile(statePath)
 		require.NoError(t, err)
 		assert.Equal(t, "1\n", string(countBytes))
+	})
+}
+
+func TestWaitForCondition(t *testing.T) {
+	t.Run("polls until condition succeeds", func(t *testing.T) {
+		attempts := 0
+		err := WaitForCondition(context.Background(), WaitOptions{
+			Timeout:  50 * time.Millisecond,
+			Interval: time.Millisecond,
+		}, func() (bool, error) {
+			attempts++
+			return attempts == 2, nil
+		})
+
+		require.NoError(t, err)
+		assert.Equal(t, 2, attempts)
+	})
+
+	t.Run("returns custom timeout error", func(t *testing.T) {
+		wantErr := errors.New("still visible")
+		err := WaitForCondition(context.Background(), WaitOptions{
+			Timeout:      time.Millisecond,
+			Interval:     time.Millisecond,
+			TimeoutError: func() error { return wantErr },
+		}, func() (bool, error) {
+			return false, nil
+		})
+
+		assert.ErrorIs(t, err, wantErr)
 	})
 }
 
@@ -378,19 +402,6 @@ exit "$exit_code"
 	return fakeCLI{
 		BinaryPath: binaryPath,
 	}
-}
-
-func useFastDefaultRetry(t *testing.T) {
-	t.Helper()
-
-	oldInitialDelay := defaultRetryInitialDelay
-	oldMaxDelay := defaultRetryMaxDelay
-	defaultRetryInitialDelay = time.Millisecond
-	defaultRetryMaxDelay = time.Millisecond
-	t.Cleanup(func() {
-		defaultRetryInitialDelay = oldInitialDelay
-		defaultRetryMaxDelay = oldMaxDelay
-	})
 }
 
 func assertSamePath(t *testing.T, want string, got string) {
