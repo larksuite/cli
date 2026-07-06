@@ -38,15 +38,15 @@ lark-cli vc +meeting-list-active --as bot --user-id ou_xxx --format json
 ```bash
 # 方式 1：先让应用机器人入会，直接从 join 响应拿 meeting.id
 lark-cli vc +meeting-join --as bot --meeting-number 123456789 --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 
 # 方式 2：应用机器人已经在会中时，用应用身份发现 meeting_id
 lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 
 # 方式 3：查询当前登录用户所在会议发生了什么
 lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
 ```
 
 ## 多会议选择

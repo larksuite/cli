@@ -14,14 +14,14 @@
 ## 命令
 
 ```bash
-# 默认用法：全量拉取当前身份可见事件；Agent 优先使用结构化 JSON
-lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format json
+# 默认用法：全量拉取当前身份可见事件；输出易读时间线
+lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format pretty
 
 # 指定时间范围，并拉全该时间窗内当前可见事件
-lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --page-all --format json
+lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --start 2026-04-17T15:00:00+08:00 --end 2026-04-17T16:00:00+08:00 --page-all --format pretty
 
 # 基于上一次保存的 page_token 继续查新增事件
-lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token <last_page_token> --page-all --format json
+lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token <last_page_token> --page-all --format pretty
 ```
 
 ## 参数
@@ -72,14 +72,14 @@ lark-cli vc +meeting-events --as bot --meeting-id <id>
 
 ```bash
 lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 ```
 
 如果要查询当前登录用户所在会议：
 
 ```bash
 lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
 ```
 
 若应用机器人已离会、未入会、或会议已经无法再判断身份，后端通常会报：
@@ -102,19 +102,19 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format json
 
 执行准则：
 
-- **默认命令模板**：`lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format json`
+- **默认命令模板**：`lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-all --format pretty`
 - 如果你发现自己执行成了不带 `--page-all` 的单页查询，而响应里又出现 `has_more=true` / `more available` / 非空 `page_token`，应立刻意识到这只是部分结果。
-- 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token <returned_page_token> --page-all --format json`
+- 遇到上述情况，默认补救方式是继续使用返回的 `page_token` 续拉，例如：`lark-cli vc +meeting-events --as <same_identity> --meeting-id <id> --page-token <returned_page_token> --page-all --format pretty`
 - 只有在用户明确要求“就看第一页”“先不要翻页”时，才不要默认带 `--page-all`
 - 只要你是基于 `+meeting-events` 来回答一场**正在进行中的会议内容**，就不能直接复用上一次查询结果。无论用户是在问“现在是谁在说话”“刚刚发生了什么”“最新事件有哪些”，还是让你“总结一下这个会议讲什么”，都必须先重新执行一次 `+meeting-events`，确认拿到的是最新事件流，再回答用户。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。
 
 ### 5. 输出格式差异
 
-- `--format json`：Agent 默认格式。结构化契约，顶层包含 `meeting`、`identity`、`current_roster`、`events`、`has_more`、`page_token`。参会人身份统一含 `participant_type`、`role`、`is_self`、`label`；每条事件保留 `payload` 便于追溯细节。
-- `--format pretty`：输出当前身份、当前名单和逐条时间线，只在直接给人阅读“发生了什么”时使用。
+- `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`current_roster`、`events`、`has_more`、`page_token`。参会人身份统一含 `participant_type`、`role`、`is_self`、`label`；每条事件保留 `payload` 便于追溯细节。
+- `--format pretty`：默认推荐格式，输出当前身份、当前名单和逐条时间线，适合快速理解“发生了什么”。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
-**选型原则**：只在 `json`、`pretty`、`ndjson` 之间选择。Agent 读取、总结、转发和二次处理时默认用 `--page-all --format json`；只有要把时间线直接展示给人看时才用 `--format pretty`；需要流式消费时用 `--format ndjson`。
+**选型原则**：只在 `pretty`、`json`、`ndjson` 之间选择。目标是告诉用户“发生了什么”时，用 `--page-all --format pretty`；需要稳定字段给 agent 做结构化消费、总结、转发或二次处理时用 `--format json`；需要流式消费时用 `--format ndjson`。
 
 > **注意**：pretty 输出中的正文文本会做单行转义，真实换行会显示为 `\n`，避免打乱时间线布局。
 
@@ -231,21 +231,21 @@ JOIN=$(lark-cli vc +meeting-join --as bot --meeting-number 123456789 --format js
 MID=$(echo "$JOIN" | jq -r '.data.meeting.id')
 
 # 第 2 步：用 meeting.id 读取当前可见事件
-lark-cli vc +meeting-events --as bot --meeting-id "$MID" --page-all --format json
+lark-cli vc +meeting-events --as bot --meeting-id "$MID" --page-all --format pretty
 ```
 
 ### 场景 1b：应用机器人已在会中，先发现 meeting_id 再读事件
 
 ```bash
 lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
-lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as bot --meeting-id <id> --page-all --format pretty
 ```
 
 ### 场景 1c：当前登录用户正在会中，先发现 meeting_id 再读事件
 
 ```bash
 lark-cli vc +meeting-list-active --as user --format json
-lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format json
+lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pretty
 ```
 
 ### 场景 2：过滤某段时间内的事件
@@ -257,7 +257,7 @@ lark-cli vc +meeting-events \
   --start 2026-04-17T15:00:00+08:00 \
   --end 2026-04-17T16:00:00+08:00 \
   --page-all \
-  --format json
+  --format pretty
 ```
 
 ### 场景 3：基于上一次的 `page_token` 继续查新增事件
@@ -270,7 +270,7 @@ lark-cli vc +meeting-events \
   --meeting-id <id> \
   --page-token <last_page_token> \
   --page-all \
-  --format json
+  --format pretty
 ```
 
 适用规则：
