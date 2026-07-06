@@ -263,12 +263,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E scope
+        id: e2e_scope
+        run: scripts/e2e_scope.sh
       - name: Build lark-cli
         run: make build
       - name: Run dry-run E2E tests
@@ -277,7 +282,19 @@ jobs:
           LARKSUITE_CLI_APP_ID: dry-run
           LARKSUITE_CLI_APP_SECRET: dry-run
           LARKSUITE_CLI_BRAND: feishu
-        run: go test -v -count=1 -timeout=5m ./tests/cli_e2e/... -run 'DryRun|Regression'
+        run: |
+          if [ "${{ steps.e2e_scope.outputs.mode }}" = "skip" ]; then
+            echo "No dry-run CLI E2E needed: ${{ steps.e2e_scope.outputs.reason }}"
+            exit 0
+          fi
+          packages="${{ steps.e2e_scope.outputs.dry_packages }}"
+          if [ -z "$packages" ]; then
+            echo "::error::No dry-run CLI E2E packages resolved for mode ${{ steps.e2e_scope.outputs.mode }}"
+            exit 1
+          fi
+          echo "Dry-run CLI E2E scope: ${{ steps.e2e_scope.outputs.mode }} (${{ steps.e2e_scope.outputs.reason }})"
+          echo "Dry-run CLI E2E packages: $packages"
+          go test -v -count=1 -timeout=5m $packages -run 'DryRun|Regression'
 
   e2e-live:
     needs: [unit-test, lint, script-test, deterministic-gate]
@@ -292,15 +309,21 @@ jobs:
       TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E scope
+        id: e2e_scope
+        run: scripts/e2e_scope.sh
       - name: Build lark-cli
         run: make build
       - name: Configure bot credentials
+        if: ${{ steps.e2e_scope.outputs.mode != 'skip' }}
         run: |
           if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
             echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
@@ -311,15 +334,20 @@ jobs:
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
         run: |
-          packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
+          if [ "${{ steps.e2e_scope.outputs.mode }}" = "skip" ]; then
+            echo "No live CLI E2E needed: ${{ steps.e2e_scope.outputs.reason }}"
+            exit 0
+          fi
+          packages="${{ steps.e2e_scope.outputs.live_packages }}"
           if [ -z "$packages" ]; then
-            echo "No CLI E2E packages to test after exclusions."
+            echo "::error::No live CLI E2E packages resolved for mode ${{ steps.e2e_scope.outputs.mode }}"
             exit 1
           fi
-          packages_arg=$(printf '%s\n' "$packages" | paste -sd' ' -)
-          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages_arg" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
+          echo "Live CLI E2E scope: ${{ steps.e2e_scope.outputs.mode }} (${{ steps.e2e_scope.outputs.reason }})"
+          echo "Live CLI E2E packages: $packages"
+          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
       - name: Publish CLI E2E test report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.e2e_scope.outputs.mode != 'skip' }}
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: CLI E2E Tests

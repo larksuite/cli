@@ -215,6 +215,35 @@ if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
   exit 1
 fi
 
+if ! grep -Fq "name: Resolve CLI E2E scope" <<<"$dry_run_section" ||
+   ! grep -Fq "id: e2e_scope" <<<"$dry_run_section" ||
+   ! grep -Fq "run: scripts/e2e_scope.sh" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should resolve changed-file CLI E2E scope before running tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_scope.outputs.dry_packages" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should use resolved dry_packages instead of always running the full suite"
+  exit 1
+fi
+
+if ! grep -Fq "No dry-run CLI E2E needed" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should explicitly skip when scope mode is skip"
+  exit 1
+fi
+
+if ! grep -Fq "name: Resolve CLI E2E scope" <<<"$section" ||
+   ! grep -Fq "id: e2e_scope" <<<"$section" ||
+   ! grep -Fq "run: scripts/e2e_scope.sh" <<<"$section"; then
+  echo "e2e-live should resolve changed-file CLI E2E scope before credentials and tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_scope.outputs.live_packages" <<<"$section"; then
+  echo "e2e-live should use resolved live_packages instead of always running the full suite"
+  exit 1
+fi
+
 if ! grep -Fq "permissions:" <<<"$section" ||
    ! grep -Fq "contents: read" <<<"$section" ||
    ! grep -Fq "checks: write" <<<"$section"; then
@@ -237,13 +266,23 @@ if ! grep -Fq "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_A
   exit 1
 fi
 
+if ! awk '
+  /^      - name: Configure bot credentials/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_scope\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Configure bot credentials/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$section"; then
+  echo "e2e-live should only configure bot credentials when scope mode is not skip"
+  exit 1
+fi
+
 if grep -Fq "steps.live_e2e_credentials.outputs.configured" <<<"$section"; then
   echo "e2e-live build, configure, test, and report steps should not be gated by a skip-state output"
   exit 1
 fi
 
-if ! grep -Fq "if: \${{ !cancelled() }}" <<<"$section"; then
-  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled"
+if ! grep -Fq "if: \${{ !cancelled() && steps.e2e_scope.outputs.mode != 'skip' }}" <<<"$section"; then
+  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled or scope is skip"
   exit 1
 fi
 
