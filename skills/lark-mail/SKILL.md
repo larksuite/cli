@@ -738,9 +738,9 @@ lark-cli mail <resource> <method> [flags] # 调用 API
 | `user_mailbox.threads.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.threads.modify` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.threads.trash` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.allow_senders.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.allow_senders.batch_create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.allow_senders.batch_remove` | `mail:user_mailbox.message:modify` |
-| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:modify` |
+| `user_mailbox.blocked_senders.list` | `mail:user_mailbox.message:readonly` |
 | `user_mailbox.blocked_senders.batch_create` | `mail:user_mailbox.message:modify` |
 | `user_mailbox.blocked_senders.batch_remove` | `mail:user_mailbox.message:modify` |
