@@ -545,21 +545,6 @@ func meetingEventsTimeString(raw string) string {
 	return strings.TrimSpace(raw)
 }
 
-func cloneStringMap(in map[string]interface{}) map[string]interface{} {
-	if in == nil {
-		return nil
-	}
-	raw, err := json.Marshal(in)
-	if err != nil {
-		return in
-	}
-	var out map[string]interface{}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return in
-	}
-	return out
-}
-
 func meetingEventsEventRows(events []meetingEventsEvent, metadata map[string]interface{}) []interface{} {
 	rows := make([]interface{}, 0, len(events)+1)
 	for _, event := range events {

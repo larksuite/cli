@@ -18,7 +18,7 @@ func TestVCKeys_BotEventsRegistered(t *testing.T) {
 
 	for _, eventType := range []string{
 		eventTypeBotMeetingInvited,
-		eventTypeBotMeetingEvent,
+		eventTypeBotMeetingActivity,
 		eventTypeBotMeetingEnded,
 	} {
 		t.Run(eventType, func(t *testing.T) {
@@ -84,7 +84,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 		},
 		{
 			name:      "meeting activity",
-			eventType: eventTypeBotMeetingEvent,
+			eventType: eventTypeBotMeetingActivity,
 			process:   processVCBotMeetingEvent,
 			payload: `{
 				"schema": "2.0",
@@ -124,7 +124,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 				}
 			}`,
 			want: VCBotEventOutput{
-				Type:              eventTypeBotMeetingEvent,
+				Type:              eventTypeBotMeetingActivity,
 				EventID:           "ev_activity",
 				Timestamp:         "1776409469274",
 				MeetingNo:         "987654321",
@@ -133,7 +133,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 		},
 		{
 			name:      "meeting activity preserves reaction content in raw event",
-			eventType: eventTypeBotMeetingEvent,
+			eventType: eventTypeBotMeetingActivity,
 			process:   processVCBotMeetingEvent,
 			payload: `{
 				"schema": "2.0",
@@ -154,7 +154,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 				}
 			}`,
 			want: VCBotEventOutput{
-				Type:              eventTypeBotMeetingEvent,
+				Type:              eventTypeBotMeetingActivity,
 				EventID:           "ev_activity_content",
 				Timestamp:         "1776409469276",
 				MeetingNo:         "427607561",
@@ -219,7 +219,7 @@ func TestProcessVCBotMeetingEvent_MalformedPassthrough(t *testing.T) {
 
 	raw := &event.RawEvent{
 		EventID:   "ev_bad",
-		EventType: eventTypeBotMeetingEvent,
+		EventType: eventTypeBotMeetingActivity,
 		Payload:   json.RawMessage(`not json`),
 		Timestamp: time.Now(),
 	}
@@ -235,7 +235,7 @@ func TestProcessVCBotMeetingEvent_MalformedPassthrough(t *testing.T) {
 func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsRawEvent(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	out := runBotEventProcess(t, eventTypeBotMeetingEvent, processVCBotMeetingEvent, `{
+	out := runBotEventProcess(t, eventTypeBotMeetingActivity, processVCBotMeetingEvent, `{
 		"schema": "2.0",
 		"header": {
 			"event_id": "ev_bad_activity",
@@ -246,8 +246,8 @@ func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsRawEvent(t *testi
 			"meeting_activity_items": ["not an activity item"]
 		}
 	}`)
-	if out.Type != eventTypeBotMeetingEvent {
-		t.Fatalf("Type = %q, want %q", out.Type, eventTypeBotMeetingEvent)
+	if out.Type != eventTypeBotMeetingActivity {
+		t.Fatalf("Type = %q, want %q", out.Type, eventTypeBotMeetingActivity)
 	}
 	if out.MeetingNo != "" || out.ActivityEventType != "" {
 		t.Fatalf("stable fields = meeting_no:%q activity_event_type:%q, want empty", out.MeetingNo, out.ActivityEventType)

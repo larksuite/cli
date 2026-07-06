@@ -69,7 +69,6 @@ type vcBotMeetingEndedEvent struct {
 func processVCBotEvent(raw *event.RawEvent) (json.RawMessage, error) {
 	var envelope vcBotEventEnvelope
 	decoder := json.NewDecoder(bytes.NewReader(raw.Payload))
-	decoder.UseNumber()
 	if err := decoder.Decode(&envelope); err != nil {
 		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
 	}
@@ -97,7 +96,7 @@ func fillBotEventOutput(eventType string, data json.RawMessage, out *VCBotEventO
 		}
 		out.CallID = strings.TrimSpace(payload.CallID)
 		out.MeetingNo = strings.TrimSpace(payload.Meeting.MeetingNo)
-	case eventTypeBotMeetingEvent:
+	case eventTypeBotMeetingActivity:
 		payload, err := decodeBotMeetingActivityEvent(data)
 		if err != nil {
 			return
