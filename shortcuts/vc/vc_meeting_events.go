@@ -208,13 +208,12 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 		return meetingEventsBotIdentity(botInfo), ""
 	}
 	userOpenID := strings.TrimSpace(runtime.UserOpenId())
-	identity := meetingEventsIdentity{
-		ID:              userOpenID,
-		Name:            strings.TrimSpace(runtime.Config.UserName),
-		ParticipantType: "human",
-		Role:            "user",
-		IsSelf:          true,
-	}
+		identity := meetingEventsIdentity{
+			ID:              userOpenID,
+			Name:            strings.TrimSpace(runtime.Config.UserName),
+			ParticipantType: "human",
+			IsSelf:          true,
+		}
 	identity.Label = currentIdentityLabel(identity)
 	if userOpenID == "" {
 		return identity, "identity unavailable: current user open_id is unavailable"
@@ -237,13 +236,12 @@ func fetchMeetingEventsCurrentParticipants(runtime *common.RuntimeContext) ([]in
 
 func meetingEventsBotIdentity(botInfo *common.BotInfo) meetingEventsIdentity {
 	if botInfo == nil {
-		return meetingEventsIdentity{ParticipantType: "bot", Role: "bot", IsSelf: true, Label: "bot"}
+		return meetingEventsIdentity{ParticipantType: "bot", IsSelf: true, Label: "bot"}
 	}
 	identity := meetingEventsIdentity{
 		ID:              botInfo.OpenID,
 		Name:            botInfo.AppName,
 		ParticipantType: "bot",
-		Role:            "bot",
 		IsSelf:          true,
 	}
 	identity.Label = currentIdentityLabel(identity)
@@ -386,7 +384,7 @@ func meetingEventsIdentityFromParticipant(participant map[string]interface{}, se
 		if selfIdentity.ParticipantType == "bot" && (identity.ParticipantType == "" || identity.ParticipantType == "human") {
 			identity.ParticipantType = "bot"
 		}
-		if selfIdentity.Role == "bot" && (identity.Role == "" || identity.Role == "participant") {
+		if selfIdentity.ParticipantType == "bot" && (identity.Role == "" || identity.Role == "participant") {
 			identity.Role = "bot"
 		}
 	}
