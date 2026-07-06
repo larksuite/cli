@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -1259,12 +1260,16 @@ func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) 
 }
 
 func extractURLToken(raw, marker string) (string, bool) {
-	idx := strings.Index(raw, marker)
-	if idx < 0 {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
 		return "", false
 	}
-	token := raw[idx+len(marker):]
-	if end := strings.IndexAny(token, "/?#"); end >= 0 {
+	path := u.Path
+	if !strings.HasPrefix(path, marker) {
+		return "", false
+	}
+	token := path[len(marker):]
+	if end := strings.IndexByte(token, '/'); end >= 0 {
 		token = token[:end]
 	}
 	token = strings.TrimSpace(token)

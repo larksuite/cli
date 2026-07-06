@@ -21,8 +21,8 @@ var permApplyTypes = []string{
 }
 
 // permApplyURLMarkers maps document URL path markers to the `type` value the
-// apply-permission endpoint expects. Markers are disjoint strings (each begins
-// with "/" and ends with "/"), so a simple substring scan disambiguates them.
+// apply-permission endpoint expects. Markers are checked against the parsed URL
+// path, not the raw input, so query strings and fragments cannot spoof a type.
 var permApplyURLMarkers = []struct {
 	Marker string
 	Type   string

@@ -187,6 +187,21 @@ func TestParseCommentDocRef(t *testing.T) {
 			input:   "https://example.com/not-a-doc",
 			wantErr: "unsupported --doc input",
 		},
+		{
+			name:    "marker inside query does not infer type",
+			input:   "https://example.larksuite.com/not-a-doc?next=/slides/pres_123",
+			wantErr: "unsupported --doc input",
+		},
+		{
+			name:    "marker mid path does not infer type",
+			input:   "https://example.larksuite.com/space/wiki/wikcn123",
+			wantErr: "unsupported --doc input",
+		},
+		{
+			name:    "non-url path with marker does not infer type",
+			input:   "tmp/wiki/wikcn123",
+			wantErr: "unsupported --doc input",
+		},
 	}
 
 	for _, tt := range tests {
@@ -2085,6 +2100,19 @@ func TestExtractURLTokenEmptyAfterMarker(t *testing.T) {
 	_, ok := extractURLToken("https://example.com/sheets/", "/sheets/")
 	if ok {
 		t.Fatal("expected false for empty token after marker")
+	}
+}
+
+func TestExtractURLTokenIgnoresMarkersOutsideURLPathPrefix(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"https://example.com/not-a-doc?next=/sheets/shtToken",
+		"https://example.com/docx/sheets/shtToken",
+		"tmp/sheets/shtToken",
+	} {
+		if got, ok := extractURLToken(input, "/sheets/"); ok {
+			t.Fatalf("extractURLToken(%q) = %q, true; want false", input, got)
+		}
 	}
 }
 

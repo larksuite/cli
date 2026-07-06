@@ -86,6 +86,19 @@ func TestResolvePermApplyTarget_UnrecognizedURL(t *testing.T) {
 	}
 }
 
+func TestResolvePermApplyTarget_IgnoresMarkersOutsideURLPathPrefix(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		"https://example.feishu.cn/unknown/xyz?next=/docx/doxTok123",
+		"https://example.feishu.cn/space/docx/doxTok123",
+	} {
+		_, _, err := resolvePermApplyTarget(raw, "")
+		if err == nil || !strings.Contains(err.Error(), "could not infer token") {
+			t.Fatalf("resolvePermApplyTarget(%q) error = %v, want infer error", raw, err)
+		}
+	}
+}
+
 func TestResolvePermApplyTarget_Empty(t *testing.T) {
 	t.Parallel()
 	_, _, err := resolvePermApplyTarget("   ", "docx")
