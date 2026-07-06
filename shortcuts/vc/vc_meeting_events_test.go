@@ -116,6 +116,7 @@ func participantJoinedEvent() map[string]interface{} {
 		"event_id":   "event-1",
 		"event_type": "participant_joined",
 		"event_time": "2026-04-17T08:00:00Z",
+		"group":      "group-1",
 		"payload": map[string]interface{}{
 			"activity_event_type": "participant_joined",
 			"meeting": map[string]interface{}{
@@ -621,6 +622,7 @@ func TestMeetingEvents_ExecuteJSON(t *testing.T) {
 		`"role":"host"`,
 		`"is_self":true`,
 		`"event_type":"participant_joined"`,
+		`"group":"group-1"`,
 		`"actors":[`,
 		`"start_time":"2026-04-17T06:35:00Z"`,
 		`"has_more":true`,
@@ -834,7 +836,7 @@ func TestMeetingEvents_ExecuteNDJSONIncludesMetadataRow(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("ndjson lines = %d, want 2: %s", len(lines), stdout.String())
 	}
-	if !strings.Contains(lines[0], `"row_type":"event"`) || !strings.Contains(lines[0], `"event_type":"participant_joined"`) {
+	if !strings.Contains(lines[0], `"row_type":"event"`) || !strings.Contains(lines[0], `"event_type":"participant_joined"`) || !strings.Contains(lines[0], `"group":"group-1"`) {
 		t.Fatalf("first ndjson row should be event: %s", lines[0])
 	}
 	for _, unwanted := range []string{
@@ -869,7 +871,7 @@ func TestMeetingEventsEventRows_OmitsEmptyEventFields(t *testing.T) {
 	if !ok {
 		t.Fatalf("row type = %T, want map", rows[0])
 	}
-	for _, unwanted := range []string{"event_id", "event_time", "actors", "payload"} {
+	for _, unwanted := range []string{"event_id", "event_time", "group", "actors", "payload"} {
 		if _, exists := row[unwanted]; exists {
 			t.Fatalf("row should omit %q when empty: %#v", unwanted, row)
 		}

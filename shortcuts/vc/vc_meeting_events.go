@@ -168,6 +168,7 @@ type meetingEventsEvent struct {
 	EventID   string                  `json:"event_id,omitempty"`
 	EventType string                  `json:"event_type,omitempty"`
 	EventTime string                  `json:"event_time,omitempty"`
+	Group     interface{}             `json:"group,omitempty"`
 	Actors    []meetingEventsIdentity `json:"actors,omitempty"`
 	Payload   map[string]interface{}  `json:"payload,omitempty"`
 }
@@ -279,6 +280,7 @@ func meetingEventsEventFromPayload(event map[string]interface{}, selfIdentity me
 		EventID:   common.GetString(event, "event_id"),
 		EventType: meetingEventType(event),
 		EventTime: meetingEventsTimeString(common.GetString(event, "event_time")),
+		Group:     event["group"],
 		Payload:   payload,
 	}
 	out.Actors = eventActors(out.EventType, payload, selfIdentity)

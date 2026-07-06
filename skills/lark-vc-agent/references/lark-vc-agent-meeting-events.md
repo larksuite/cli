@@ -110,7 +110,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 ### 5. 输出格式差异
 
-- `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`current_participants`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；参会人身份统一含 `participant_type`、`role`、`is_self`、`label`；每条事件保留 `payload` 便于追溯细节。
+- `--format json`：结构化契约，顶层包含 `meeting`、`identity`、`current_participants`、`events`、`has_more`、`page_token`。`identity` 表示当前读取身份；参会人身份统一含 `participant_type`、`role`、`is_self`、`label`；每条事件保留 `group` 用于聚合分组，保留 `payload` 便于追溯细节。
 - `--format pretty`：默认推荐格式，输出当前身份、当前名单和逐条时间线，适合快速理解“发生了什么”。
 - `--format ndjson`：输出事件行，并带 metadata 行，适合流式消费。
 
@@ -161,7 +161,7 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 | `meeting` | 会议身份与时间状态，包含 `id/topic/meeting_no/start_time/end_time/status` |
 | `identity` | 当前读取身份，包含 `id/name/participant_type/is_self/label` |
 | `current_participants` | 服务端当前参会人名单；当参会人缺少姓名或类型为 `unknown` 时，CLI 会用同 ID 的事件 actor 信息补全，不做完整历史 replay |
-| `events` | 结构化事件列表；每条事件含 `actors` 和事件细节 `payload` |
+| `events` | 结构化事件列表；每条事件含用于聚合分组的 `group`、参与者 `actors` 和事件细节 `payload` |
 | `warnings` | 非阻断告警列表，例如当前名单补充信息不可用；事件列表本身仍可使用 |
 | `has_more` | 是否还有下一页 |
 | `page_token` | 下一页游标 |
