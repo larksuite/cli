@@ -75,7 +75,7 @@ var AppsDBAuditStatus = common.Shortcut{
 
 // buildAuditStatusParams 组装 audit_status 查询参数：env 及可选 table（单表查询）。
 func buildAuditStatusParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": dbEnv(rctx)}
+	params := dbEnvParams(rctx, map[string]interface{}{})
 	if t := strings.TrimSpace(rctx.Str("table")); t != "" {
 		params["table"] = t
 	}

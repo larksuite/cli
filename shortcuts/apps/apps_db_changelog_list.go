@@ -77,10 +77,9 @@ var AppsDBChangelogList = common.Shortcut{
 
 // buildChangelogParams 组装 changelog_list 查询参数：env / page_size 及可选 table/change_id/since/until/page_token。
 func buildChangelogParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	addStr := func(flag, key string) {
 		if v := strings.TrimSpace(rctx.Str(flag)); v != "" {
 			params[key] = v

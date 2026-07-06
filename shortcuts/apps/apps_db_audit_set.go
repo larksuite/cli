@@ -47,7 +47,7 @@ var AppsDBAuditEnable = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appAuditSetPath(appID)).
 			Desc("Enable table audit").
-			Params(map[string]interface{}{"env": dbEnv(rctx)}).
+			Params(dbEnvParams(rctx, map[string]interface{}{})).
 			Body(map[string]interface{}{"table": strings.TrimSpace(rctx.Str("table")), "enabled": true, "retention": rctx.Str("retention")})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -60,7 +60,7 @@ var AppsDBAuditEnable = common.Shortcut{
 		stop := rctx.StartSpinner("Enabling audit logging for " + table)
 		defer stop()
 		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			map[string]interface{}{"env": dbEnv(rctx)},
+			dbEnvParams(rctx, map[string]interface{}{}),
 			map[string]interface{}{"table": table, "enabled": true, "retention": retention})
 		stop()
 		if err != nil {
@@ -108,7 +108,7 @@ var AppsDBAuditDisable = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appAuditSetPath(appID)).
 			Desc("Disable table audit").
-			Params(map[string]interface{}{"env": dbEnv(rctx)}).
+			Params(dbEnvParams(rctx, map[string]interface{}{})).
 			Body(map[string]interface{}{"table": strings.TrimSpace(rctx.Str("table")), "enabled": false})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -118,7 +118,7 @@ var AppsDBAuditDisable = common.Shortcut{
 		}
 		table := strings.TrimSpace(rctx.Str("table"))
 		data, err := rctx.CallAPITyped("POST", appAuditSetPath(appID),
-			map[string]interface{}{"env": dbEnv(rctx)},
+			dbEnvParams(rctx, map[string]interface{}{}),
 			map[string]interface{}{"table": table, "enabled": false})
 		if err != nil {
 			return withAppsHint(err, dbAuditSetHint)

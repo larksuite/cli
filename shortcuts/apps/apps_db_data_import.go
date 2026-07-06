@@ -76,7 +76,7 @@ var AppsDBDataImport = common.Shortcut{
 		return common.NewDryRunAPI().
 			POST(appDataImportPath(appID)).
 			Desc("Import data file into Miaoda app table (multipart upload)").
-			Params(map[string]interface{}{"env": dbEnv(rctx), "table": importTableName(rctx)}).
+			Params(dbEnvParams(rctx, map[string]interface{}{"table": importTableName(rctx)})).
 			Body(map[string]interface{}{"file_name": fileName, "file": "<contents of --file>"})
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -100,10 +100,14 @@ var AppsDBDataImport = common.Shortcut{
 		fd.AddField("file_name", fileName)
 		fd.AddFile("file", bytes.NewReader(content))
 
+		importQuery := larkcore.QueryParams{"table": []string{table}}
+		if env := dbEnv(rctx); env != "" {
+			importQuery["env"] = []string{env}
+		}
 		resp, err := rctx.DoAPI(&larkcore.ApiReq{
 			HttpMethod:  http.MethodPost,
 			ApiPath:     appDataImportPath(appID),
-			QueryParams: larkcore.QueryParams{"env": []string{dbEnv(rctx)}, "table": []string{table}},
+			QueryParams: importQuery,
 			Body:        fd,
 		}, larkcore.WithFileUpload())
 		if err != nil {

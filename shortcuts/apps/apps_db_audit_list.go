@@ -145,7 +145,10 @@ func fetchExistingTables(rctx *common.RuntimeContext, appID, env string) (map[st
 	existing := map[string]bool{}
 	token := ""
 	for {
-		params := map[string]interface{}{"env": env, "page_size": 100}
+		params := map[string]interface{}{"page_size": 100}
+		if env != "" {
+			params["env"] = env
+		}
 		if token != "" {
 			params["page_token"] = token
 		}
@@ -168,7 +171,11 @@ func fetchExistingTables(rctx *common.RuntimeContext, appID, env string) (map[st
 
 // fetchAuditEnabledTables 拉审计状态，返回当前已开启审计的表名集合（status 命令同源接口）。
 func fetchAuditEnabledTables(rctx *common.RuntimeContext, appID, env string) (map[string]bool, error) {
-	data, err := rctx.CallAPITyped("GET", appAuditStatusPath(appID), map[string]interface{}{"env": env}, nil)
+	statusParams := map[string]interface{}{}
+	if env != "" {
+		statusParams["env"] = env
+	}
+	data, err := rctx.CallAPITyped("GET", appAuditStatusPath(appID), statusParams, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -208,11 +215,10 @@ func auditListTables(rctx *common.RuntimeContext) []string {
 
 // buildAuditListParams 组装 audit_list 查询参数：env / tables(逗号拼接) / page_size 及可选 since/until/page_token。
 func buildAuditListParams(rctx *common.RuntimeContext, tables []string) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"tables":    strings.Join(tables, ","),
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	addStr := func(flag, key string) {
 		if v := strings.TrimSpace(rctx.Str(flag)); v != "" {
 			params[key] = v

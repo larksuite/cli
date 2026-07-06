@@ -80,7 +80,7 @@ var AppsDBTableGet = common.Shortcut{
 // CLI 检测 rctx.Format == "pretty" 时给 server 带 format=ddl，要求返 CREATE 语句文本；
 // 其他 format（含默认 json）不传该参数，让 server 返默认结构化字段。
 func buildDBTableGetParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": dbEnv(rctx)}
+	params := dbEnvParams(rctx, map[string]interface{}{})
 	if rctx.Format == "pretty" {
 		params["format"] = "ddl"
 	}

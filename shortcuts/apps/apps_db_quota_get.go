@@ -41,14 +41,14 @@ var AppsDBQuotaGet = common.Shortcut{
 		return common.NewDryRunAPI().
 			GET(appDbQuotaPath(appID)).
 			Desc("Get Miaoda app database storage usage").
-			Params(map[string]interface{}{"env": dbEnv(rctx)})
+			Params(dbEnvParams(rctx, map[string]interface{}{}))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		appID, err := requireAppID(rctx.Str("app-id"))
 		if err != nil {
 			return err
 		}
-		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), map[string]interface{}{"env": dbEnv(rctx)}, nil)
+		data, err := rctx.CallAPITyped("GET", appDbQuotaPath(appID), dbEnvParams(rctx, map[string]interface{}{}), nil)
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}

@@ -291,10 +291,9 @@ func parseErrorSentinel(data string) (int, string) {
 //
 // CLI 永远走 DBA 模式，原子性由用户在 SQL 内显式 BEGIN/COMMIT 控制；不暴露 transactional flag 给用户。
 func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
-	return map[string]interface{}{
-		"env":           dbEnv(rctx),
+	return dbEnvParams(rctx, map[string]interface{}{
 		"transactional": false,
-	}
+	})
 }
 
 // resolveExecuteSQL 返回要执行的 SQL，在用时（DryRun/Execute）现读，使 --file 的内容

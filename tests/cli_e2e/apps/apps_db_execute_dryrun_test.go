@@ -37,8 +37,8 @@ func TestAppsDBExecuteDryRun(t *testing.T) {
 			"CLI is DBA mode → must send transactional=false in query")
 		assert.False(t, gjson.Get(result.Stdout, "api.0.body.transactional").Exists(),
 			"transactional should be in query, not body")
-		assert.Equal(t, "", gjson.Get(result.Stdout, "api.0.params.env").String(),
-			"default: no --environment → CLI sends empty env, server picks workspace default branch")
+		assert.False(t, gjson.Get(result.Stdout, "api.0.params.env").Exists(),
+			"default: no --environment → env key must be omitted (server picks workspace default branch)")
 	})
 
 	t.Run("OnlineEnvSwitch", func(t *testing.T) {

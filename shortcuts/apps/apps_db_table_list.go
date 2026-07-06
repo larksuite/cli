@@ -110,10 +110,9 @@ func projectTableListItems(raw interface{}) []dbTableListItem {
 }
 
 func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	if token := strings.TrimSpace(rctx.Str("page-token")); token != "" {
 		params["page_token"] = token
 	}
