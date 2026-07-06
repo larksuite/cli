@@ -90,7 +90,7 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --dry-run
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
 # 第 2 步：使用返回的 meeting.id 查询会中事件
-lark-cli vc +meeting-events --as bot --meeting-id <meeting.id> --page-all --format pretty
+lark-cli vc +meeting-events --as bot --meeting-id <meeting.id> --page-all --format json
 ```
 
 如果 bot 已经在会中，也可以通过 active meeting 找回 `meeting_id`：
