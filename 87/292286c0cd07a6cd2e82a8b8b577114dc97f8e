@@ -1,0 +1,14 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "87292286c0cd07a6cd2e82a8b8b577114dc97f8e",
+  "prompts": {},
+  "humans": {
+    "h_dd4da245385dd2": {
+      "author": "zhengzhijie <zhengzhijie.j@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
