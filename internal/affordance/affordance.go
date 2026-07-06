@@ -77,14 +77,10 @@ func loadService(service string) map[string]json.RawMessage {
 // space→dot fallback covers domains where the two already coincide.
 func commandFormResolver(service string) func(string) string {
 	byForm := map[string]string{}
-	for _, svc := range registry.EmbeddedServicesTyped() {
-		if svc.Name != service {
-			continue
-		}
+	if svc, ok := registry.SchemaCatalog().Service(service); ok {
 		for _, ref := range apicatalog.ServiceMethods(svc, nil) {
 			byForm[strings.Join(ref.CommandPath()[1:], " ")] = ref.Method.ID
 		}
-		break
 	}
 	return func(h string) string {
 		h = strings.TrimSpace(h)
