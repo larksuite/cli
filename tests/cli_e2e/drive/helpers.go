@@ -14,6 +14,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+var driveDeleteVisibilityTimeout = 60 * time.Second
+
 // CreateDriveFolder creates a Drive folder, optionally under a parent folder, and
 // deletes it during parent cleanup.
 func CreateDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, name string, defaultAs string, parentFolderToken string) string {
@@ -83,13 +85,13 @@ func DeleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs
 		return deleteResult, fmt.Errorf("drive resource %s/%s still exists after delete failed: exit=%d stdout=%s stderr=%s", docType, token, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 	}
 	if err := WaitDriveResourceDeleted(ctx, token, docType, defaultAs); err != nil {
-		return deleteResult, err
+		return deleteResult, clie2e.CleanupWarningf("drive resource %s/%s still visible after accepted delete: %w", docType, token, err)
 	}
 	return deleteResult, nil
 }
 
 func WaitDriveResourceDeleted(ctx context.Context, token, docType, defaultAs string) error {
-	deadline := time.NewTimer(20 * time.Second)
+	deadline := time.NewTimer(driveDeleteVisibilityTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
@@ -107,7 +109,7 @@ func WaitDriveResourceDeleted(ctx context.Context, token, docType, defaultAs str
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-deadline.C:
-			return fmt.Errorf("drive resource %s/%s still exists after delete", docType, token)
+			return fmt.Errorf("drive resource %s/%s still exists %s after delete", docType, token, driveDeleteVisibilityTimeout)
 		case <-ticker.C:
 		}
 	}

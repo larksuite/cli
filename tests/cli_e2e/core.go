@@ -24,7 +24,7 @@ import (
 const EnvBinaryPath = "LARK_CLI_BIN"
 const projectRootMarkerDir = "tests"
 const cliBinaryName = "lark-cli"
-const CleanupTimeout = 30 * time.Second
+const CleanupTimeout = 90 * time.Second
 
 func SkipWithoutUserToken(t *testing.T) {
 	t.Helper()
@@ -100,6 +100,39 @@ type Result struct {
 	Stdout     string
 	Stderr     string
 	RunErr     error
+}
+
+type cleanupWarningError struct {
+	err error
+}
+
+func (e *cleanupWarningError) Error() string {
+	return e.err.Error()
+}
+
+func (e *cleanupWarningError) Unwrap() error {
+	return e.err
+}
+
+// CleanupWarning marks a cleanup verification issue as non-fatal after the
+// destructive cleanup command itself has already succeeded.
+func CleanupWarning(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &cleanupWarningError{err: err}
+}
+
+// CleanupWarningf formats and marks a cleanup warning.
+func CleanupWarningf(format string, args ...any) error {
+	return CleanupWarning(fmt.Errorf(format, args...))
+}
+
+// IsCleanupWarning reports whether err should be logged without failing the
+// parent test.
+func IsCleanupWarning(err error) bool {
+	var warning *cleanupWarningError
+	return errors.As(err, &warning)
 }
 
 // RetryOptions configures retry behavior for flaky external API calls.
@@ -251,6 +284,10 @@ func ReportCleanupFailure(parentT *testing.T, prefix string, result *Result, err
 	parentT.Helper()
 
 	if err != nil {
+		if IsCleanupWarning(err) {
+			parentT.Logf("%s: %v", prefix, err)
+			return
+		}
 		parentT.Errorf("%s: %v", prefix, err)
 		return
 	}
