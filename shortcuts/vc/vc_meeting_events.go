@@ -302,22 +302,39 @@ func meetingEventsCurrentRoster(rawRoster []interface{}, selfIdentity meetingEve
 
 func enrichMeetingEventsCurrentRoster(roster []meetingEventsIdentity, events []meetingEventsEvent) []meetingEventsIdentity {
 	typeByID := make(map[string]string)
+	nameByID := make(map[string]string)
 	for _, event := range events {
 		for _, actor := range event.Actors {
-			if actor.ID == "" || !isKnownParticipantType(actor.ParticipantType) {
+			if actor.ID == "" {
 				continue
 			}
-			if _, exists := typeByID[actor.ID]; !exists {
-				typeByID[actor.ID] = actor.ParticipantType
+			if actor.Name != "" {
+				if _, exists := nameByID[actor.ID]; !exists {
+					nameByID[actor.ID] = actor.Name
+				}
+			}
+			if isKnownParticipantType(actor.ParticipantType) {
+				if _, exists := typeByID[actor.ID]; !exists {
+					typeByID[actor.ID] = actor.ParticipantType
+				}
 			}
 		}
 	}
 	for i := range roster {
-		if !isUnknownParticipantType(roster[i].ParticipantType) {
-			continue
+		changed := false
+		if roster[i].Name == "" {
+			if name := nameByID[roster[i].ID]; name != "" {
+				roster[i].Name = name
+				changed = true
+			}
 		}
-		if participantType := typeByID[roster[i].ID]; participantType != "" {
-			roster[i].ParticipantType = participantType
+		if isUnknownParticipantType(roster[i].ParticipantType) {
+			if participantType := typeByID[roster[i].ID]; participantType != "" {
+				roster[i].ParticipantType = participantType
+				changed = true
+			}
+		}
+		if changed {
 			roster[i].Label = identityLabel(roster[i])
 		}
 	}

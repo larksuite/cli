@@ -1330,7 +1330,7 @@ func TestBuildMeetingEventsOutput_EnrichesUnknownRosterTypeFromActors(t *testing
 	}
 
 	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{event}, []interface{}{
-		map[string]interface{}{"id": "ou_bot", "user_name": "Meeting Bot", "user_type": 0, "role": "3"},
+		map[string]interface{}{"id": "ou_bot", "user_type": 0, "role": "3"},
 	}, meetingEventsIdentity{})
 
 	if got := len(out.CurrentRoster); got != 1 {
@@ -1339,8 +1339,35 @@ func TestBuildMeetingEventsOutput_EnrichesUnknownRosterTypeFromActors(t *testing
 	if got := out.CurrentRoster[0].ParticipantType; got != "bot" {
 		t.Fatalf("current_roster participant_type = %q, want bot: %#v", got, out.CurrentRoster[0])
 	}
+	if got := out.CurrentRoster[0].Name; got != "Meeting Bot" {
+		t.Fatalf("current_roster name = %q, want actor name", got)
+	}
 	if got := out.CurrentRoster[0].Label; got != "Meeting Bot [bot,participant]" {
 		t.Fatalf("current_roster label = %q, want enriched bot label", got)
+	}
+}
+
+func TestBuildMeetingEventsOutput_DoesNotOverwriteRosterName(t *testing.T) {
+	event := participantJoinedEvent()
+	payload := common.GetMap(event, "payload")
+	items := common.GetSlice(payload, "participant_joined_items")
+	item, _ := items[0].(map[string]interface{})
+	item["participant"] = map[string]interface{}{
+		"id":        "ou_user",
+		"user_name": "Event Name",
+		"user_type": 1,
+		"user_role": 1,
+	}
+
+	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{event}, []interface{}{
+		map[string]interface{}{"id": "ou_user", "user_name": "Roster Name", "user_type": 1, "role": "3"},
+	}, meetingEventsIdentity{})
+
+	if got := out.CurrentRoster[0].Name; got != "Roster Name" {
+		t.Fatalf("current_roster name = %q, want roster name", got)
+	}
+	if got := out.CurrentRoster[0].Label; got != "Roster Name [human,participant]" {
+		t.Fatalf("current_roster label = %q, want roster label", got)
 	}
 }
 
