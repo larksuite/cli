@@ -263,7 +263,56 @@
 - `<chartLegend>`
 - `<chartTooltip>`
 
-如果要写图表 XML，建议直接以 XSD 为准，不要自行发明更简化的 chart DSL。
+完整图表类型覆盖示例见 [slides_chart_demo.xml](slides_chart_demo.xml)，其中包含柱状、条形、折线、面积、饼 / 环、雷达等原生 `<chart>` 示例，以及散点、气泡、漏斗、帕累托、瀑布等 `<whiteboard>` SVG 图表示例。
+
+组合图示例（来自 [slides_chart_demo.xml](slides_chart_demo.xml)）：
+
+```xml
+<chart width="556" height="350" topLeftX="42" topLeftY="132">
+  <chartPlotArea>
+    <chartPlot type="combo">
+      <chartExtra/>
+      <chartSeriesList>
+        <chartSeries index="1" comboType="column"/>
+        <chartSeries index="2" comboType="line" yAxisPosition="right">
+          <chartTooltip format="0%"/>
+        </chartSeries>
+      </chartSeriesList>
+    </chartPlot>
+    <chartAxes>
+      <chartAxis type="x">
+        <chartLabel fontSize="10"/>
+      </chartAxis>
+      <chartAxis type="y" position="left">
+        <chartGridLine color="rgb(226, 232, 240)"/>
+        <chartLabel fontSize="10"/>
+      </chartAxis>
+      <chartAxis type="y" position="right">
+        <chartLabel fontSize="10" format="0%"/>
+      </chartAxis>
+    </chartAxes>
+  </chartPlotArea>
+  <chartLegend position="bottom" fontSize="11"/>
+  <chartData>
+    <dim1>
+      <chartField name="季度">24Q1,24Q2,24Q3,24Q4,25Q1,25Q2,25Q3,25Q4</chartField>
+    </dim1>
+    <dim2>
+      <chartField name="营收">180,195,210,245,220,238,258,296</chartField>
+      <chartField name="增速">0.08,0.12,0.15,0.18,0.22,0.22,0.23,0.21</chartField>
+    </dim2>
+  </chartData>
+  <chartTitle fontSize="12" color="rgba(15, 30, 58, 1)" bold="true">营收（亿美元, 左轴） · 同比增速（%, 右轴）</chartTitle>
+  <chartStyle>
+    <chartBackground color="rgba(0, 0, 0, 0)"/>
+    <chartBorder color="rgb(222, 224, 227)" width="0"/>
+    <chartColorTheme>
+      <color value="rgb(28, 71, 120)"/>
+      <color value="rgb(240, 129, 54)"/>
+    </chartColorTheme>
+  </chartStyle>
+</chart>
+```
 
 ## 样式元素
 
