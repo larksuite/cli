@@ -288,6 +288,6 @@ func minutesTodoError(err error, minuteToken string) error {
 	}
 	p.Subtype = errs.SubtypePermissionDenied
 	p.Message = fmt.Sprintf("No edit permission for minute %q: cannot update todos.", minuteToken)
-	p.Hint = "Ask the minute owner for minute edit permission"
+	p.Hint = fmt.Sprintf("Ask the user before running: minutes +apply-permission --minute-token %s --perm edit", minuteToken)
 	return err
 }
