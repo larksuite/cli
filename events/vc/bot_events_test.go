@@ -207,6 +207,16 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 			if _, ok := row["raw_event"]; ok {
 				t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
 			}
+			payload, ok := row["payload"].(map[string]any)
+			if !ok {
+				t.Fatalf("normal bot event output should include event-body payload: %s", string(got))
+			}
+			if _, ok := payload["header"]; ok {
+				t.Fatalf("payload should not include the top-level envelope header: %s", string(got))
+			}
+			if _, ok := payload["schema"]; ok {
+				t.Fatalf("payload should not include the top-level envelope schema: %s", string(got))
+			}
 		})
 	}
 }
@@ -255,6 +265,9 @@ func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsStableEnvelope(t 
 	}
 	if _, ok := row["raw_event"]; ok {
 		t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
+	}
+	if _, ok := row["payload"].(map[string]any); !ok {
+		t.Fatalf("normal bot event output should include event-body payload: %s", string(got))
 	}
 }
 

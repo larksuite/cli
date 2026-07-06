@@ -143,8 +143,9 @@ These keys model what the bot observes. Do not treat them as aliases for:
 | `call_id` | string | Invitation call ID; pass through to VC agent join when present |
 | `meeting_no` | string | Meeting number from the bot event's declared meeting field |
 | `activity_event_type` | string | First `event.meeting_activity_items[].activity_event_type` value |
+| `payload` | object | Original bot event body without the `schema` / `header` envelope; parse it by `type` and `activity_event_type` |
 
-Normal bot-event output intentionally does not include the full raw payload. Use it as a realtime trigger or routing signal. If you need detailed in-meeting activity content such as chat text, reactions, subtitles, or magic-share documents, query `vc +meeting-events --format json` for the meeting. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
+Normal bot-event output intentionally does not include the full raw envelope. Use stable top-level fields for routing and `payload` for the concrete event body. For richer cross-event meeting analysis or IM forwarding, prefer `vc +meeting-events --format json`, which normalizes actors, current participants, chat/reaction payloads, subtitles, and magic-share events. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
 
 ### Forwarding meeting activity to IM
 

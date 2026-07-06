@@ -14,12 +14,13 @@ import (
 
 // VCBotEventOutput is the compact shape for bot-observed VC events.
 type VCBotEventOutput struct {
-	Type              string `json:"type"                         desc:"Event type; one of the supported vc.bot.* keys"`
-	EventID           string `json:"event_id,omitempty"           desc:"Globally unique event ID; safe for deduplication"`
-	Timestamp         string `json:"timestamp,omitempty"          desc:"Event delivery time (ms timestamp string); taken from header.create_time when present" kind:"timestamp_ms"`
-	CallID            string `json:"call_id,omitempty"            desc:"Bot invitation call ID; pass through to vc agent join when present"`
-	MeetingNo         string `json:"meeting_no,omitempty"         desc:"Meeting number from the bot event's declared meeting field"`
-	ActivityEventType string `json:"activity_event_type,omitempty" desc:"First event.meeting_activity_items[].activity_event_type value"`
+	Type              string          `json:"type"                         desc:"Event type; one of the supported vc.bot.* keys"`
+	EventID           string          `json:"event_id,omitempty"           desc:"Globally unique event ID; safe for deduplication"`
+	Timestamp         string          `json:"timestamp,omitempty"          desc:"Event delivery time (ms timestamp string); taken from header.create_time when present" kind:"timestamp_ms"`
+	CallID            string          `json:"call_id,omitempty"            desc:"Bot invitation call ID; pass through to vc agent join when present"`
+	MeetingNo         string          `json:"meeting_no,omitempty"         desc:"Meeting number from the bot event's declared meeting field"`
+	ActivityEventType string          `json:"activity_event_type,omitempty" desc:"First event.meeting_activity_items[].activity_event_type value"`
+	Payload           json.RawMessage `json:"payload,omitempty"             desc:"Original bot event body without schema/header envelope; parse by type and activity_event_type"`
 }
 
 func processVCBotMeetingInvited(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
@@ -80,6 +81,7 @@ func processVCBotEvent(raw *event.RawEvent) (json.RawMessage, error) {
 		Type:      eventType,
 		EventID:   envelope.Header.EventID,
 		Timestamp: envelope.Header.CreateTime,
+		Payload:   append(json.RawMessage(nil), envelope.Event...),
 	}
 	fillBotEventOutput(eventType, envelope.Event, out)
 	return json.Marshal(out)
