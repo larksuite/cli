@@ -16,7 +16,7 @@
 
 The user VC keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. They require `--as user`.
 
-The `vc.bot.*` keys are bot-observed events. They require `--as bot`, keep the original payload in `raw_event`, and do not call the user-side VC meeting subscription / unsubscription APIs.
+The `vc.bot.*` keys are bot-observed events. They require `--as bot`, emit a compact stable summary, and do not call the user-side VC meeting subscription / unsubscription APIs.
 
 ## Scopes & auth
 
@@ -143,9 +143,8 @@ These keys model what the bot observes. Do not treat them as aliases for:
 | `call_id` | string | Invitation call ID; pass through to VC agent join when present |
 | `meeting_no` | string | Meeting number from the bot event's declared meeting field |
 | `activity_event_type` | string | First `event.meeting_activity_items[].activity_event_type` value |
-| `raw_event` | object | Original bot event payload; authoritative for fields not exposed as stable top-level fields |
 
-Malformed or evolving payloads are not forced into fixed fields. If a payload cannot be parsed, `event consume` passes the raw payload through; if a field is not part of the documented event contract above, read `raw_event` instead of expecting it to be guessed into a stable top-level field.
+Normal bot-event output intentionally does not include the full raw payload. Use it as a realtime trigger or routing signal. If you need detailed in-meeting activity content such as chat text, reactions, subtitles, or magic-share documents, query `vc +meeting-events --format json` for the meeting. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
 
 ### Forwarding meeting activity to IM
 

@@ -48,7 +48,7 @@ func TestVCKeys_BotEventsRegistered(t *testing.T) {
 	}
 }
 
-func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
+func TestProcessVCBotEvents_StableFields(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	cases := []struct {
@@ -132,7 +132,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 			},
 		},
 		{
-			name:      "meeting activity preserves reaction content in raw event",
+			name:      "meeting activity ignores nested reaction details",
 			eventType: eventTypeBotMeetingActivity,
 			process:   processVCBotMeetingEvent,
 			payload: `{
@@ -187,7 +187,7 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out := runBotEventProcess(t, tc.eventType, tc.process, tc.payload)
+			got, out := runBotEventProcess(t, tc.eventType, tc.process, tc.payload)
 			if out.Type != tc.want.Type || out.EventID != tc.want.EventID || out.Timestamp != tc.want.Timestamp {
 				t.Errorf("type/event_id/timestamp = %q/%q/%q", out.Type, out.EventID, out.Timestamp)
 			}
@@ -200,15 +200,12 @@ func TestProcessVCBotEvents_StableFieldsAndRawEvent(t *testing.T) {
 			if out.ActivityEventType != tc.want.ActivityEventType {
 				t.Errorf("ActivityEventType = %q, want %q", out.ActivityEventType, tc.want.ActivityEventType)
 			}
-			if len(out.RawEvent) == 0 {
-				t.Fatal("RawEvent must be preserved")
+			var row map[string]any
+			if err := json.Unmarshal(got, &row); err != nil {
+				t.Fatalf("Process output is not valid JSON: %v\nraw=%s", err, string(got))
 			}
-			var raw map[string]any
-			if err := json.Unmarshal(out.RawEvent, &raw); err != nil {
-				t.Fatalf("RawEvent is not valid JSON: %v", err)
-			}
-			if raw["schema"] != "2.0" {
-				t.Errorf("RawEvent schema = %v, want 2.0", raw["schema"])
+			if _, ok := row["raw_event"]; ok {
+				t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
 			}
 		})
 	}
@@ -232,10 +229,10 @@ func TestProcessVCBotMeetingEvent_MalformedPassthrough(t *testing.T) {
 	}
 }
 
-func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsRawEvent(t *testing.T) {
+func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsStableEnvelope(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
-	out := runBotEventProcess(t, eventTypeBotMeetingActivity, processVCBotMeetingEvent, `{
+	got, out := runBotEventProcess(t, eventTypeBotMeetingActivity, processVCBotMeetingEvent, `{
 		"schema": "2.0",
 		"header": {
 			"event_id": "ev_bad_activity",
@@ -252,12 +249,16 @@ func TestProcessVCBotMeetingEvent_MalformedActivityPayloadKeepsRawEvent(t *testi
 	if out.MeetingNo != "" || out.ActivityEventType != "" {
 		t.Fatalf("stable fields = meeting_no:%q activity_event_type:%q, want empty", out.MeetingNo, out.ActivityEventType)
 	}
-	if len(out.RawEvent) == 0 {
-		t.Fatal("RawEvent must be preserved")
+	var row map[string]any
+	if err := json.Unmarshal(got, &row); err != nil {
+		t.Fatalf("Process output is not valid JSON: %v\nraw=%s", err, string(got))
+	}
+	if _, ok := row["raw_event"]; ok {
+		t.Fatalf("normal bot event output should not include raw_event: %s", string(got))
 	}
 }
 
-func runBotEventProcess(t *testing.T, eventType string, process event.ProcessFunc, payload string) VCBotEventOutput {
+func runBotEventProcess(t *testing.T, eventType string, process event.ProcessFunc, payload string) (json.RawMessage, VCBotEventOutput) {
 	t.Helper()
 	raw := &event.RawEvent{
 		EventID:   "raw_" + eventType,
@@ -273,5 +274,5 @@ func runBotEventProcess(t *testing.T, eventType string, process event.ProcessFun
 	if err := json.Unmarshal(got, &out); err != nil {
 		t.Fatalf("unmarshal output: %v\n%s", err, string(got))
 	}
-	return out
+	return got, out
 }
