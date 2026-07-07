@@ -138,8 +138,26 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 		return err
 	}
 	if len(body) == 0 {
-		return appsValidationParamError("--cron",
-			"no update fields provided; pass --cron/--timezone/--table/--event/--fields/--white-ip-list/--event-type/--instance-status/--task-status/--approval-code/--description or a webhook action flag")
+		// No specific flag failed; every condition-carrying flag is a legitimate
+		// candidate. Emit a Param-less validation error and enumerate candidates
+		// in Params so `apps +update` precedent style is followed and agents get
+		// structured recovery guidance.
+		reason := "no update fields provided; pass at least one condition flag or a webhook action flag"
+		return appsValidationError("%s", reason).
+			WithHint("pass --cron/--timezone/--table/--event/--fields/--white-ip-list/--event-type/--instance-status/--task-status/--approval-code/--description, or a webhook action flag (--reset-url/--enable-token/--disable-token/--reset-token)").
+			WithParams(
+				appsInvalidParam("--cron", reason),
+				appsInvalidParam("--timezone", reason),
+				appsInvalidParam("--table", reason),
+				appsInvalidParam("--event", reason),
+				appsInvalidParam("--fields", reason),
+				appsInvalidParam("--white-ip-list", reason),
+				appsInvalidParam("--event-type", reason),
+				appsInvalidParam("--instance-status", reason),
+				appsInvalidParam("--task-status", reason),
+				appsInvalidParam("--approval-code", reason),
+				appsInvalidParam("--description", reason),
+			)
 	}
 	data, err := rctx.CallAPITyped("PATCH", automationItemPath(appID, name), nil, body)
 	if err != nil {

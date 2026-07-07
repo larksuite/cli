@@ -5,9 +5,11 @@ package apps
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -64,15 +66,36 @@ func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
 }
 
 // TestAutomationUpdate_NoFieldsRejected covers the empty-PATCH guard: at least
-// one condition-carrying flag or a webhook action flag must be present.
+// one condition-carrying flag or a webhook action flag must be present. The
+// error is intentionally Param-less (no single user flag failed); recovery
+// candidates are structured in Params + Hint, matching the +update precedent.
 func TestAutomationUpdate_NoFieldsRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1"})
 	err := runAutomationUpdate(rctx)
-	// The surrogate Param is --cron (the primary condition flag); recovery
-	// guidance in the message lists every accepted flag. Message text is not
-	// asserted here (AGENTS.md rule) — only the typed metadata.
-	assertValidationParamError(t, err, "--cron")
+	if err == nil {
+		t.Fatal("empty PATCH must be rejected")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Category != errs.CategoryValidation {
+		t.Errorf("category = %s, want %s", ve.Category, errs.CategoryValidation)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %s, want %s", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != "" {
+		t.Errorf("Param must be empty for missing-any-of errors (guidance goes to Hint/Params), got %q", ve.Param)
+	}
+	if ve.Hint == "" {
+		t.Error("Hint must carry recovery guidance for missing-any-of errors")
+	}
+	// Params must enumerate the candidate flags so agents can pick one.
+	if len(ve.Params) < 5 {
+		t.Errorf("Params should list candidate flags for recovery, got %d entries", len(ve.Params))
+	}
 }
 
 // TestAutomationUpdate_ResetURLRequiresAppEnv exercises the Validate-time check
