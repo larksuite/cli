@@ -103,10 +103,6 @@ func parseTypedEnvelope(t *testing.T, stderr *bytes.Buffer) typedErrorEnvelope {
 }
 
 func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
-	return buildStrictModeIntegrationRootCmdWithSetup(t, f, nil)
-}
-
-func buildStrictModeIntegrationRootCmdWithSetup(t *testing.T, f *cmdutil.Factory, setup func(*cobra.Command)) *cobra.Command {
 	t.Helper()
 	rootCmd := &cobra.Command{Use: "lark-cli"}
 	rootCmd.SilenceErrors = true
@@ -119,9 +115,6 @@ func buildStrictModeIntegrationRootCmdWithSetup(t *testing.T, f *cmdutil.Factory
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
 	service.RegisterServiceCommands(rootCmd, f)
 	shortcuts.RegisterShortcuts(rootCmd, f)
-	if setup != nil {
-		setup(rootCmd)
-	}
 	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
@@ -362,16 +355,10 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnv
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
-	rootCmd := buildStrictModeIntegrationRootCmdWithSetup(t, f, func(rootCmd *cobra.Command) {
-		fixture := &cobra.Command{Use: "strict-fixture"}
-		botOnly := &cobra.Command{Use: "bot-only", RunE: func(*cobra.Command, []string) error { return nil }}
-		cmdutil.SetSupportedIdentities(botOnly, []string{"bot"})
-		fixture.AddCommand(botOnly)
-		rootCmd.AddCommand(fixture)
-	})
+	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"strict-fixture", "bot-only",
+		"im", "images", "create", "--data", `{"image_type":"message","image":"x"}`, "--dry-run",
 	})
 
 	if code != output.ExitValidation {
