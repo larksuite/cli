@@ -104,6 +104,20 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
+	// Validate --cron/--white-ip-list up-front so illegal values surface a
+	// field-specific error instead of being silently dropped by
+	// buildAutomationUpdateBody (which would either report the generic
+	// no-fields error or PATCH without the intended field).
+	if c := strings.TrimSpace(rctx.Str("cron")); c != "" {
+		if err := validateCronExpr(c); err != nil {
+			return err
+		}
+	}
+	if raw := strings.TrimSpace(rctx.Str("white-ip-list")); raw != "" {
+		if _, err := parseIPListFlag(raw); err != nil {
+			return err
+		}
+	}
 	body := buildAutomationUpdateBody(rctx)
 	if len(body) == 0 {
 		return appsValidationParamError("--cron",

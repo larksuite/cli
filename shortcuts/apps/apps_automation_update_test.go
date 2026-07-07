@@ -46,6 +46,27 @@ func TestAutomationUpdate_WhiteIPListPatch(t *testing.T) {
 	}
 }
 
+func TestAutomationUpdate_InvalidCronRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "t1", "trigger-type": "cron", "cron": "*/5 * * * *"})
+	err := runAutomationUpdate(rctx)
+	if err == nil {
+		t.Fatal("illegal --cron (below 30-minute minimum) must be rejected up-front")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "cron") && !strings.Contains(msg, "30") {
+		t.Errorf("error should be cron-specific, got %q", msg)
+	}
+}
+
+func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook", "white-ip-list": "{bad json"})
+	if err := runAutomationUpdate(rctx); err == nil {
+		t.Fatal("illegal --white-ip-list must be rejected up-front")
+	}
+}
+
 func TestAutomationUpdateMeta_HighRisk(t *testing.T) {
 	if AppsAutomationUpdate.Risk != "high-risk-write" {
 		t.Errorf("update must be high-risk-write, got %q", AppsAutomationUpdate.Risk)
