@@ -86,7 +86,7 @@ func buildAutomationListParams(rctx *common.RuntimeContext) map[string]interface
 	return params
 }
 
-// executeAutomationListAll 循环翻页聚合到 has_more=false（spec Rule-1-1，禁止静默漏项）。
+// executeAutomationListAll 循环翻页聚合到 has_more=false（禁止静默漏项）。
 func executeAutomationListAll(rctx *common.RuntimeContext, path string, params map[string]interface{}) error {
 	all := make([]interface{}, 0, 16)
 	token := ""
@@ -114,7 +114,7 @@ func executeAutomationListAll(rctx *common.RuntimeContext, path string, params m
 }
 
 // outputAutomationList 输出 items + 分页提示。逐条对 items 套 redactWebhookToken，
-// 抹掉 trigger_condition.token_value（spec Rule-2-2，list/get 恒不返回明文 Bearer Token）；
+// 抹掉 trigger_condition.token_value（list/get 恒不返回明文 Bearer Token）；
 // 同时覆盖单页与 --all 聚合路径（executeAutomationListAll 也走这里）。
 func outputAutomationList(rctx *common.RuntimeContext, data map[string]interface{}) error {
 	items := common.GetSlice(data, "items")

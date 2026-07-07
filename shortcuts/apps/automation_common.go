@@ -14,7 +14,7 @@ import (
 
 // automationBasePath 是触发器公网 OpenAPI 前缀。注意：触发器归属独立的
 // apaas/triggers 服务，端点开在 apaas 域，不复用 apps 域的
-// apiBasePath = "/open-apis/spark/v1"（见 spec Decision-009）。
+// apiBasePath = "/open-apis/spark/v1"）。
 const automationBasePath = "/open-apis/apaas/v1"
 
 func automationListPath(appID string) string {
@@ -61,7 +61,7 @@ func mapTriggerType(cliType string) (string, error) {
 
 // validateCronExpr 校验五段式 cron 表达式，并兜底最小间隔 30 分钟。
 // 这是给 Agent 的即时提示；后端 OpenAPI 层也会校验（ErrInvalidCronTab /
-// ErrCronIntervalTooSmall），CLI 本地拦截只为更快反馈（spec Decision-005）。
+// ErrCronIntervalTooSmall），CLI 本地拦截只为更快反馈。
 func validateCronExpr(expr string) error {
 	fields := strings.Fields(strings.TrimSpace(expr))
 	if len(fields) != 5 {
@@ -87,7 +87,7 @@ func validateCronExpr(expr string) error {
 const defaultCronTimezone = "Asia/Shanghai"
 
 // approvalStatusSets 是 feishu-approval 两种 event-type 各自的合法状态集合。
-// 后端 OpenAPI 不逐值校验 status，CLI 本地分桶校验是唯一保障（spec Rule-6-1）。
+// 后端 OpenAPI 不逐值校验 status，CLI 本地分桶校验是唯一保障。
 var approvalStatusSets = map[string]map[string]struct{}{
 	"approval_instance": setOf("PENDING", "APPROVED", "REJECTED", "CANCELED", "DELETED", "REVERTED", "OVERTIME_CLOSE", "OVERTIME_RECOVER"),
 	"approval_task":     setOf("REVERTED", "PENDING", "APPROVED", "REJECTED", "TRANSFERRED", "ROLLBACK", "DONE", "OVERTIME_CLOSE", "OVERTIME_RECOVER"),
@@ -146,7 +146,7 @@ func validateApprovalStatuses(eventType string, statuses []string) error {
 	}
 	for _, s := range statuses {
 		if _, valid := set[strings.ToUpper(strings.TrimSpace(s))]; !valid {
-			// spec Error-004: 列出该 event-type 的合法状态集合，便于 Agent 修正。
+			// 列出该 event-type 的合法状态集合，便于 Agent 修正。
 			return appsValidationParamError("--"+statusFlagFor(eventType),
 				"status %q is not valid for event-type %q; valid values: %s",
 				s, eventType, sortedStatusList(set))
@@ -173,7 +173,7 @@ func statusFlagFor(eventType string) string {
 }
 
 // buildApprovalCondition 产出 feishu_approval_condition body。approval_code 可选：
-// 空则省略（匹配所有审批定义，spec Rule-6-2），不发空串。
+// 空则省略（匹配所有审批定义），不发空串。
 func buildApprovalCondition(code, eventType string, statuses []string) (map[string]interface{}, error) {
 	if err := validateApprovalStatuses(eventType, statuses); err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func buildApprovalCondition(code, eventType string, statuses []string) (map[stri
 	return cond, nil
 }
 
-// statusBodyFromAction 把 enable/disable 命令映射到同一 status 端点的 body（spec Decision-008）。
+// statusBodyFromAction 把 enable/disable 命令映射到同一 status 端点的 body。
 func statusBodyFromAction(enable bool) map[string]interface{} {
 	if enable {
 		return map[string]interface{}{"status": "enabled"}
@@ -194,7 +194,7 @@ func statusBodyFromAction(enable bool) map[string]interface{} {
 }
 
 // redactWebhookToken 返回触发器详情的副本，把 trigger_condition.token_value 抹成 nil。
-// 内部后端读结构可能解密返回明文 token，脱敏是 CLI/公网层职责（spec Rule-2-2），
+// 内部后端读结构可能解密返回明文 token，脱敏是 CLI/公网层职责，
 // 不修改入参。非 webhook 或无 token_value 时原样返回浅拷贝。
 func redactWebhookToken(info map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(info))

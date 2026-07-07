@@ -103,7 +103,7 @@ func TestValidateApprovalStatuses(t *testing.T) {
 	if err := validateApprovalStatuses("bogus", []string{"APPROVED"}); err == nil {
 		t.Error("unknown event-type must error")
 	}
-	// spec Error-004: rejection message must list the valid status set for the
+	// rejection message must list the valid status set for the
 	// event-type so the agent can correct itself.
 	err := validateApprovalStatuses("approval_instance", []string{"TRANSFERRED"})
 	if err == nil {
@@ -123,7 +123,7 @@ func TestValidateApprovalStatuses(t *testing.T) {
 }
 
 func TestBuildApprovalCondition_CodeOptional(t *testing.T) {
-	// approval_code omitted → matches all definitions, no error (Rule-6-2)
+	// approval_code omitted → matches all definitions, no error
 	c, err := buildApprovalCondition("", "approval_instance", []string{"APPROVED"})
 	if err != nil {
 		t.Fatalf("empty approval_code must be allowed: %v", err)
