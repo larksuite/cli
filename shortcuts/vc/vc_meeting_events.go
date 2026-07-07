@@ -27,6 +27,9 @@ const (
 	minVCMeetingEventsPageSize = 20
 	maxVCMeetingEventsPageSize = 100
 	maxVCMeetingEventsPages    = 200
+	leaveReasonUserLeft        = 1
+	leaveReasonMeetingEnded    = 2
+	leaveReasonKicked          = 3
 )
 
 var meetingDisplayLocation = time.FixedZone("UTC+8", 8*60*60)
@@ -167,6 +170,12 @@ type meetingEventsEvent struct {
 	Payload   map[string]interface{}  `json:"payload,omitempty"`
 }
 
+type meetingEventsEndSignal struct {
+	Ended      bool
+	EndTime    time.Time
+	HasEndTime bool
+}
+
 func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
 	output := meetingEventsOutput{
 		Meeting:   meetingEventsMeetingFromPayload(nil),
@@ -190,6 +199,7 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 		}
 		output.Events = append(output.Events, meetingEventsEventFromPayload(event, output.Identity))
 	}
+	applyMeetingEventsEndSignal(&output.Meeting, meetingEventsEndSignalFromEvents(events))
 	return output
 }
 
@@ -250,6 +260,47 @@ func meetingEventsMeetingFromPayload(meeting map[string]interface{}) meetingEven
 		}
 	}
 	return out
+}
+
+func applyMeetingEventsEndSignal(meeting *meetingEventsMeeting, signal meetingEventsEndSignal) {
+	if meeting == nil || !signal.Ended {
+		return
+	}
+	meeting.Status = "ended"
+	if signal.HasEndTime {
+		meeting.EndTime = signal.EndTime.UTC().Format(time.RFC3339)
+	}
+}
+
+func meetingEventsEndSignalFromEvents(events []interface{}) meetingEventsEndSignal {
+	var signal meetingEventsEndSignal
+	for _, raw := range events {
+		event, _ := raw.(map[string]interface{})
+		if event == nil || meetingEventType(event) != "participant_left" {
+			continue
+		}
+		payload := common.GetMap(event, "payload")
+		if payload == nil {
+			continue
+		}
+		fallbackTime, fallbackOK := parseFlexibleTime(common.GetString(event, "event_time"))
+		for _, rawItem := range common.GetSlice(payload, "participant_left_items") {
+			item, _ := rawItem.(map[string]interface{})
+			if item == nil || int(common.GetFloat(item, "leave_reason")) != leaveReasonMeetingEnded {
+				continue
+			}
+			signal.Ended = true
+			endTime, ok := parseFlexibleTime(common.GetString(item, "leave_time"))
+			if !ok {
+				endTime, ok = fallbackTime, fallbackOK
+			}
+			if ok && (!signal.HasEndTime || endTime.After(signal.EndTime)) {
+				signal.EndTime = endTime
+				signal.HasEndTime = true
+			}
+		}
+	}
+	return signal
 }
 
 func meetingEventsEventFromPayload(event map[string]interface{}, selfIdentity meetingEventsIdentity) meetingEventsEvent {
@@ -703,6 +754,7 @@ func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 			timeline.entries = append(timeline.entries, entry)
 		}
 	}
+	applyMeetingTimelineEndSignal(&timeline, meetingEventsEndSignalFromEvents(events))
 	sort.SliceStable(timeline.entries, func(i, j int) bool {
 		left := timeline.entries[i]
 		right := timeline.entries[j]
@@ -721,6 +773,24 @@ func buildMeetingEventTimeline(events []interface{}) meetingTimeline {
 		}
 	})
 	return timeline
+}
+
+func applyMeetingTimelineEndSignal(timeline *meetingTimeline, signal meetingEventsEndSignal) {
+	if timeline == nil || !signal.Ended {
+		return
+	}
+	if signal.HasEndTime {
+		if !timeline.hasStart || signal.EndTime.After(timeline.startTime) {
+			timeline.endTime = signal.EndTime
+			timeline.hasEnd = true
+			return
+		}
+		timeline.hasEnd = false
+		return
+	}
+	if timeline.hasStart && timeline.hasEnd && !timeline.endTime.After(timeline.startTime) {
+		timeline.hasEnd = false
+	}
 }
 
 func populateMeetingHeader(timeline *meetingTimeline, meeting map[string]interface{}) {
@@ -1065,9 +1135,9 @@ func needsColon(description string) bool {
 
 func leaveAction(item map[string]interface{}) string {
 	switch int(common.GetFloat(item, "leave_reason")) {
-	case 2:
+	case leaveReasonMeetingEnded:
 		return "因会议结束离开了会议"
-	case 3:
+	case leaveReasonKicked:
 		return "被移出了会议"
 	default:
 		return "离开了会议"

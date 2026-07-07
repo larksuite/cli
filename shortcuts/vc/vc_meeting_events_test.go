@@ -120,6 +120,36 @@ func participantJoinedEventOngoing() map[string]interface{} {
 	return event
 }
 
+func participantLeftEventWithReason(leaveReason int) map[string]interface{} {
+	return map[string]interface{}{
+		"event_id":   "event-left",
+		"event_type": "participant_left",
+		"event_time": "2026-04-17T07:18:50Z",
+		"payload": map[string]interface{}{
+			"activity_event_type": "participant_left",
+			"meeting": map[string]interface{}{
+				"id":         "7628568141510692381",
+				"topic":      "项目例会",
+				"meeting_no": "724939760",
+				"start_time": "1776410100",
+				"end_time":   "1776410100",
+			},
+			"participant_left_items": []interface{}{
+				map[string]interface{}{
+					"participant": map[string]interface{}{
+						"id":        "bot_001",
+						"user_name": "Demo Bot",
+						"user_type": 2,
+						"user_role": 4,
+					},
+					"leave_time":   "1776410330000",
+					"leave_reason": leaveReason,
+				},
+			},
+		},
+	}
+}
+
 func chatReceivedEvent() map[string]interface{} {
 	return map[string]interface{}{
 		"event_id":   "event-2",
@@ -695,6 +725,46 @@ func TestMeetingEvents_ExecuteJSON_OngoingMeetingOmitsEndTime(t *testing.T) {
 	}
 }
 
+func TestBuildMeetingEventsOutput_MeetingEndedLeaveReasonOverridesDirtyMeetingEndTime(t *testing.T) {
+	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{
+		participantLeftEventWithReason(leaveReasonMeetingEnded),
+	}, meetingEventsIdentity{})
+
+	if got := out.Meeting.Status; got != "ended" {
+		t.Fatalf("meeting status = %q, want ended", got)
+	}
+	if got := out.Meeting.EndTime; got != "2026-04-17T07:18:50Z" {
+		t.Fatalf("meeting end_time = %q, want leave time", got)
+	}
+}
+
+func TestBuildMeetingEventsOutput_NormalLeaveReasonDoesNotEndMeeting(t *testing.T) {
+	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{
+		participantLeftEventWithReason(leaveReasonUserLeft),
+	}, meetingEventsIdentity{})
+
+	if got := out.Meeting.Status; got != "ongoing" {
+		t.Fatalf("meeting status = %q, want ongoing", got)
+	}
+	if got := out.Meeting.EndTime; got != "" {
+		t.Fatalf("meeting end_time = %q, want empty", got)
+	}
+}
+
+func TestRenderMeetingEventsPretty_MeetingEndedLeaveReasonOverridesDirtyMeetingEndTime(t *testing.T) {
+	timeline := buildMeetingEventTimeline([]interface{}{
+		participantLeftEventWithReason(leaveReasonMeetingEnded),
+	})
+	got := renderMeetingEventsPretty(timeline)
+
+	if strings.Contains(got, "进行中") {
+		t.Fatalf("pretty output should not show ongoing for meeting-ended leave reason: %s", got)
+	}
+	if !strings.Contains(got, "会议时间：2026-04-17 15:15:00 - 2026-04-17 15:18:50") {
+		t.Fatalf("pretty output missing derived meeting end window: %s", got)
+	}
+}
+
 func TestBuildMeetingEventsOutput_UsesLatestMeetingSnapshot(t *testing.T) {
 	out := buildMeetingEventsOutput(map[string]interface{}{}, []interface{}{
 		participantJoinedEventOngoing(),
@@ -1183,9 +1253,9 @@ func TestLeaveAction(t *testing.T) {
 		item map[string]interface{}
 		want string
 	}{
-		{name: "meeting ended", item: map[string]interface{}{"leave_reason": 2}, want: "因会议结束离开了会议"},
-		{name: "kicked", item: map[string]interface{}{"leave_reason": 3}, want: "被移出了会议"},
-		{name: "default", item: map[string]interface{}{"leave_reason": 1}, want: "离开了会议"},
+		{name: "meeting ended", item: map[string]interface{}{"leave_reason": leaveReasonMeetingEnded}, want: "因会议结束离开了会议"},
+		{name: "kicked", item: map[string]interface{}{"leave_reason": leaveReasonKicked}, want: "被移出了会议"},
+		{name: "default", item: map[string]interface{}{"leave_reason": leaveReasonUserLeft}, want: "离开了会议"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
