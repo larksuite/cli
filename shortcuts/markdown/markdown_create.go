@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -139,21 +140,32 @@ func normalizeMarkdownFolderToken(token string) (string, error) {
 	if strings.Contains(token, "://") {
 		ref, ok := common.ParseResourceURL(token)
 		if !ok {
-			return "", markdownValidationParamError("--folder-token", "--folder-token URL is unsupported; pass a Drive folder URL or raw folder token")
+			return "", markdownValidationParamError("--folder-token", "--folder-token URL is unsupported").
+				WithHint("Pass a Drive folder URL or raw folder token.")
 		}
 		if ref.Type != "folder" {
 			return "", markdownValidationParamError("--folder-token",
-				"--folder-token must identify a Drive folder; got a %s URL. Use --wiki-token for wiki nodes or pass a Drive folder URL/token.",
+				"--folder-token must identify a Drive folder; got a %s URL",
 				ref.Type,
-			)
+			).WithHint("Use --wiki-token for wiki nodes or pass a Drive folder URL/token.")
+		}
+		if err := validateMarkdownTargetTokenName(ref.Token, "--folder-token"); err != nil {
+			return "", err
 		}
 		return ref.Token, nil
 	}
+	if err := rejectMarkdownPartialToken(token, "--folder-token"); err != nil {
+		return "", err
+	}
 	switch markdownKnownResourceTokenKind(token) {
 	case "wiki":
-		return "", markdownValidationParamError("--folder-token", "--folder-token looks like a wiki node token; pass it with --wiki-token instead")
+		return "", markdownValidationParamError("--folder-token", "--folder-token looks like a wiki node token").
+			WithHint("Pass it with --wiki-token instead.")
 	case "doc", "docx", "sheet", "bitable", "mindnote", "slides", "file":
 		return "", markdownValidationParamError("--folder-token", "--folder-token must be a Drive folder token, not a %s token", markdownKnownResourceTokenKind(token))
+	}
+	if err := validateMarkdownTargetTokenName(token, "--folder-token"); err != nil {
+		return "", err
 	}
 	return token, nil
 }
@@ -163,20 +175,45 @@ func normalizeMarkdownWikiToken(token string) (string, error) {
 	if strings.Contains(token, "://") {
 		ref, ok := common.ParseResourceURL(token)
 		if !ok {
-			return "", markdownValidationParamError("--wiki-token", "--wiki-token URL is unsupported; pass a wiki node URL or raw wiki node token")
+			return "", markdownValidationParamError("--wiki-token", "--wiki-token URL is unsupported").
+				WithHint("Pass a wiki node URL or raw wiki node token.")
 		}
 		if ref.Type != "wiki" {
 			return "", markdownValidationParamError("--wiki-token",
-				"--wiki-token must identify a wiki node; got a %s URL. Resolve document URLs with `lark-cli wiki +node-get --node-token <url>` and use the returned node_token.",
+				"--wiki-token must identify a wiki node; got a %s URL",
 				ref.Type,
-			)
+			).WithHint("Resolve document URLs with `lark-cli wiki +node-get --node-token <url>` and use the returned node_token.")
+		}
+		if err := validateMarkdownTargetTokenName(ref.Token, "--wiki-token"); err != nil {
+			return "", err
 		}
 		return ref.Token, nil
+	}
+	if err := rejectMarkdownPartialToken(token, "--wiki-token"); err != nil {
+		return "", err
 	}
 	if kind := markdownKnownResourceTokenKind(token); kind != "" && kind != "wiki" {
 		return "", markdownValidationParamError("--wiki-token", "--wiki-token must be a wiki node token, not a %s token", kind)
 	}
+	if err := validateMarkdownTargetTokenName(token, "--wiki-token"); err != nil {
+		return "", err
+	}
 	return token, nil
+}
+
+func rejectMarkdownPartialToken(token, flagName string) error {
+	if strings.ContainsAny(token, "/?#") {
+		return markdownValidationParamError(flagName, "%s must be a raw token, not a path, query, or fragment", flagName).
+			WithHint("Pass a full Lark URL, or copy only the token value without path/query/fragment characters.")
+	}
+	return nil
+}
+
+func validateMarkdownTargetTokenName(token, flagName string) error {
+	if err := validate.ResourceName(token, flagName); err != nil {
+		return markdownValidationParamError(flagName, "%s", err).WithCause(err)
+	}
+	return nil
 }
 
 func markdownKnownResourceTokenKind(token string) string {

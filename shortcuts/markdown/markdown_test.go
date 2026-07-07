@@ -481,7 +481,14 @@ func TestMarkdownCreateRejectsWikiURLInFolderToken(t *testing.T) {
 		"--content", "# hello",
 		"--folder-token", "https://feishu.cn/wiki/wikcnWrongFlag",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "Use --wiki-token") {
+	if err == nil {
+		t.Fatalf("expected folder-token URL type error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+	}
+	if !strings.Contains(p.Message, "must identify a Drive folder") || !strings.Contains(p.Hint, "Use --wiki-token") {
 		t.Fatalf("expected folder-token URL type error, got %v", err)
 	}
 }
@@ -495,7 +502,14 @@ func TestMarkdownCreateRejectsDocURLInWikiToken(t *testing.T) {
 		"--content", "# hello",
 		"--wiki-token", "https://feishu.cn/docx/docxWrongFlag",
 	}, f, stdout)
-	if err == nil || !strings.Contains(err.Error(), "must identify a wiki node") {
+	if err == nil {
+		t.Fatalf("expected wiki-token URL type error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+	}
+	if !strings.Contains(p.Message, "must identify a wiki node") || !strings.Contains(p.Hint, "+node-get") {
 		t.Fatalf("expected wiki-token URL type error, got %v", err)
 	}
 }

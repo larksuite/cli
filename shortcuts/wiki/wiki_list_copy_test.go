@@ -5,6 +5,7 @@ package wiki
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -138,7 +139,21 @@ func TestWikiNodeListRejectsNonNumericSpaceID(t *testing.T) {
 	err := mountAndRunWiki(t, WikiNodeList, []string{
 		"+node-list", "--space-id", "wikcnABC", "--as", "user",
 	}, factory, nil)
-	if err == nil || !strings.Contains(err.Error(), "--space-id must be a numeric wiki space_id") {
+	if err == nil {
+		t.Fatalf("expected numeric space_id validation error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--space-id" {
+		t.Fatalf("problem = %#v param=%q, want validation/invalid_argument/--space-id", p, validationErr.Param)
+	}
+	if !strings.Contains(p.Message, "--space-id must be a numeric wiki space_id") || !strings.Contains(p.Hint, "+space-list") {
 		t.Fatalf("expected numeric space_id validation error, got %v", err)
 	}
 }
@@ -153,7 +168,21 @@ func TestWikiNodeListRejectsDocumentURLAsParentNodeToken(t *testing.T) {
 		"--parent-node-token", "https://feishu.cn/docx/docxABC",
 		"--as", "user",
 	}, factory, nil)
-	if err == nil || !strings.Contains(err.Error(), "must identify a wiki node") {
+	if err == nil {
+		t.Fatalf("expected parent-node-token URL type validation error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument || validationErr.Param != "--parent-node-token" {
+		t.Fatalf("problem = %#v param=%q, want validation/invalid_argument/--parent-node-token", p, validationErr.Param)
+	}
+	if !strings.Contains(p.Message, "must identify a wiki node") || !strings.Contains(p.Hint, "+node-get") {
 		t.Fatalf("expected parent-node-token URL type validation error, got %v", err)
 	}
 }
