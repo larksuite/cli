@@ -18,13 +18,15 @@ const (
 	tfString      = "string"
 	tfBool        = "bool"
 	tfStringArray = "string_array"
-	tfInt         = "int"
 )
 
 func automationUpdateFlagDefs() map[string]string {
 	return map[string]string{
 		"app-id": tfString, "name": tfString, "trigger-type": tfString, "description": tfString,
 		"cron": tfString, "timezone": tfString, "white-ip-list": tfString,
+		"table": tfString, "event": tfString, "fields": tfString,
+		"approval-code": tfString, "event-type": tfString,
+		"instance-status": tfStringArray, "task-status": tfStringArray,
 		"reset-url": tfBool, "app-env": tfString,
 		"enable-token": tfBool, "disable-token": tfBool, "reset-token": tfBool,
 	}
@@ -33,17 +35,15 @@ func automationUpdateFlagDefs() map[string]string {
 func TestWebhookResetURL_RequiresAppEnv(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true"})
-	if err := runWebhookURLReset(rctx); err == nil {
-		t.Error("--reset-url without --app-env must error")
-	}
+	err := runWebhookURLReset(rctx)
+	assertValidationParamError(t, err, "--app-env")
 }
 
 func TestWebhookResetURL_InvalidAppEnv(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true", "app-env": "prod"})
-	if err := runWebhookURLReset(rctx); err == nil {
-		t.Error("--app-env must be preview or runtime")
-	}
+	err := runWebhookURLReset(rctx)
+	assertValidationParamError(t, err, "--app-env")
 }
 
 func TestWebhookResetURL_PostsAppEnv(t *testing.T) {
@@ -74,5 +74,37 @@ func TestWebhookEnableToken_SurfacesTokenOnce(t *testing.T) {
 	out := stdoutBuf.String()
 	if !strings.Contains(out, "test-token") {
 		t.Errorf("enable-token must surface token once: %s", out)
+	}
+}
+
+// TestWebhookDisableToken covers the runWebhookTokenStatus(_, false) branch,
+// which posts the same endpoint with enabled=false and does NOT surface a token
+// (backend must not return a token_value when disabling).
+func TestWebhookDisableToken(t *testing.T) {
+	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "disable-token": "true"})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/token/status",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"token_enabled": false}},
+	})
+	if err := runWebhookTokenStatus(rctx, false); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+}
+
+// TestWebhookResetToken covers the reset-token endpoint: it must surface the
+// rotated token value once so operators can capture it.
+func TestWebhookResetToken(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "reset-token": "true"})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/token/reset",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"token_value": "test-token"}},
+	})
+	if err := runWebhookTokenReset(rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if !strings.Contains(stdoutBuf.String(), "test-token") {
+		t.Errorf("reset-token must surface rotated token once: %s", stdoutBuf.String())
 	}
 }

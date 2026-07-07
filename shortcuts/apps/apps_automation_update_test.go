@@ -26,12 +26,15 @@ func TestAutomationUpdate_PatchCronOnly(t *testing.T) {
 	}
 }
 
+// TestAutomationUpdate_MutuallyExclusiveWebhookFlags exercises the mutex check
+// on webhook action flags. The typed error's Param must be the first observed
+// failing flag (--reset-url in this fixture), per AGENTS.md: Param names only
+// actual failed user input.
 func TestAutomationUpdate_MutuallyExclusiveWebhookFlags(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "reset-url": "true", "reset-token": "true"})
-	if err := AppsAutomationUpdate.Validate(context.Background(), rctx); err == nil {
-		t.Error("two webhook action flags at once must fail validation")
-	}
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--reset-url")
 }
 
 func TestAutomationUpdate_WhiteIPListPatch(t *testing.T) {
@@ -50,21 +53,128 @@ func TestAutomationUpdate_InvalidCronRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "trigger-type": "cron", "cron": "*/5 * * * *"})
 	err := runAutomationUpdate(rctx)
-	if err == nil {
-		t.Fatal("illegal --cron (below 30-minute minimum) must be rejected up-front")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "cron") && !strings.Contains(msg, "30") {
-		t.Errorf("error should be cron-specific, got %q", msg)
-	}
+	assertValidationParamError(t, err, "--cron")
 }
 
 func TestAutomationUpdate_InvalidWhiteIPListRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook", "white-ip-list": "{bad json"})
-	if err := runAutomationUpdate(rctx); err == nil {
-		t.Fatal("illegal --white-ip-list must be rejected up-front")
+	err := runAutomationUpdate(rctx)
+	assertValidationParamError(t, err, "--white-ip-list")
+}
+
+// TestAutomationUpdate_NoFieldsRejected covers the empty-PATCH guard: at least
+// one condition-carrying flag or a webhook action flag must be present.
+func TestAutomationUpdate_NoFieldsRejected(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "t1"})
+	err := runAutomationUpdate(rctx)
+	// The surrogate Param is --cron (the primary condition flag); recovery
+	// guidance in the message lists every accepted flag. Message text is not
+	// asserted here (AGENTS.md rule) — only the typed metadata.
+	assertValidationParamError(t, err, "--cron")
+}
+
+// TestAutomationUpdate_ResetURLRequiresAppEnv exercises the Validate-time check
+// that --reset-url requires --app-env.
+func TestAutomationUpdate_ResetURLRequiresAppEnv(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true"})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--app-env")
+}
+
+// TestAutomationUpdate_PatchRecordChange covers A5: --trigger-type record-change
+// with --table/--event dispatches to record_change_condition rebuild.
+func TestAutomationUpdate_PatchRecordChange(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
+			"table": "tbl_1", "event": "UPDATE", "fields": `["fld1"]`,
+		})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH", URL: "/open-apis/apaas/v1/apps/app_x/triggers/rc1",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "rc1", "trigger_type": "record_change"}},
+	})
+	if err := runAutomationUpdate(rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
 	}
+	if !strings.Contains(stdoutBuf.String(), "rc1") {
+		t.Errorf("update output = %s", stdoutBuf.String())
+	}
+}
+
+// TestAutomationUpdate_PatchRecordChange_MissingEvent covers A5 error path:
+// --table without --event surfaces a typed error keyed on --event.
+func TestAutomationUpdate_PatchRecordChange_MissingEvent(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
+			"table": "tbl_1",
+		})
+	err := runAutomationUpdate(rctx)
+	assertValidationParamError(t, err, "--event")
+}
+
+// TestAutomationUpdate_PatchRecordChange_InvalidFieldsJSON covers A5: bad JSON
+// in --fields is rejected up-front by parseFieldsFlag with Param=--fields.
+func TestAutomationUpdate_PatchRecordChange_InvalidFieldsJSON(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "rc1", "trigger-type": "record-change",
+			"table": "tbl_1", "event": "UPDATE", "fields": "{bad json",
+		})
+	err := runAutomationUpdate(rctx)
+	assertValidationParamError(t, err, "--fields")
+}
+
+// TestAutomationUpdate_PatchApproval covers A5: feishu-approval dispatch.
+func TestAutomationUpdate_PatchApproval(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
+			"event-type": "approval_instance", "instance-status": "approved",
+		})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH", URL: "/open-apis/apaas/v1/apps/app_x/triggers/apv",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "apv", "trigger_type": "feishu_approval"}},
+	})
+	if err := runAutomationUpdate(rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	if !strings.Contains(stdoutBuf.String(), "apv") {
+		t.Errorf("update output = %s", stdoutBuf.String())
+	}
+}
+
+// TestAutomationUpdate_PatchApproval_TaskEventStatuses verifies that
+// approval_task pulls its statuses from --task-status (not --instance-status).
+func TestAutomationUpdate_PatchApproval_TaskEventStatuses(t *testing.T) {
+	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
+			"event-type": "approval_task", "task-status": "DONE",
+		})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH", URL: "/open-apis/apaas/v1/apps/app_x/triggers/apv",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "apv"}},
+	})
+	if err := runAutomationUpdate(rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+}
+
+// TestAutomationUpdate_PatchApproval_MissingStatuses: --event-type without
+// --instance-status / --task-status surfaces a typed error keyed on the status
+// flag matching the event-type.
+func TestAutomationUpdate_PatchApproval_MissingStatuses(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "apv", "trigger-type": "feishu-approval",
+			"event-type": "approval_instance",
+		})
+	err := runAutomationUpdate(rctx)
+	assertValidationParamError(t, err, "--instance-status")
 }
 
 func TestAutomationUpdateMeta_HighRisk(t *testing.T) {

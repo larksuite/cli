@@ -40,21 +40,16 @@ func TestMapTriggerType(t *testing.T) {
 			t.Errorf("mapTriggerType(%q) = %q, %v; want %q", in, got, err, want)
 		}
 	}
-	if _, err := mapTriggerType("bogus"); err == nil {
-		t.Error("unknown trigger type must error")
-	}
+	err := func() error { _, e := mapTriggerType("bogus"); return e }()
+	assertValidationParamError(t, err, "--trigger-type")
 }
 
 func TestValidateCronExpr(t *testing.T) {
 	if err := validateCronExpr("0 9 * * *"); err != nil {
 		t.Errorf("valid daily cron rejected: %v", err)
 	}
-	if err := validateCronExpr("0 9 * *"); err == nil {
-		t.Error("4-field cron must be rejected (needs 5 fields)")
-	}
-	if err := validateCronExpr("*/5 * * * *"); err == nil {
-		t.Error("5-minute interval must be rejected (< 30 min floor)")
-	}
+	assertValidationParamError(t, validateCronExpr("0 9 * *"), "--cron")
+	assertValidationParamError(t, validateCronExpr("*/5 * * * *"), "--cron")
 	if err := validateCronExpr("*/30 * * * *"); err != nil {
 		t.Errorf("30-minute interval must pass: %v", err)
 	}
@@ -68,9 +63,8 @@ func TestBuildCronCondition(t *testing.T) {
 	if c["cron"] != "0 9 * * *" || c["timezone"] != "Asia/Shanghai" {
 		t.Errorf("cron condition = %+v; want default tz Asia/Shanghai", c)
 	}
-	if _, err := buildCronCondition("*/5 * * * *", ""); err == nil {
-		t.Error("sub-30min cron must error")
-	}
+	_, err = buildCronCondition("*/5 * * * *", "")
+	assertValidationParamError(t, err, "--cron")
 }
 
 func TestBuildRecordChangeCondition(t *testing.T) {
@@ -81,12 +75,10 @@ func TestBuildRecordChangeCondition(t *testing.T) {
 	if c["event"] != "UPDATE" || c["table"] != "tbl_1" {
 		t.Errorf("record_change = %+v; event must be uppercased", c)
 	}
-	if _, err := buildRecordChangeCondition("", "UPDATE", nil); err == nil {
-		t.Error("missing table must error")
-	}
-	if _, err := buildRecordChangeCondition("tbl_1", "", nil); err == nil {
-		t.Error("missing event must error")
-	}
+	_, err = buildRecordChangeCondition("", "UPDATE", nil)
+	assertValidationParamError(t, err, "--table")
+	_, err = buildRecordChangeCondition("tbl_1", "", nil)
+	assertValidationParamError(t, err, "--event")
 }
 
 func TestValidateApprovalStatuses(t *testing.T) {
@@ -96,16 +88,24 @@ func TestValidateApprovalStatuses(t *testing.T) {
 	if err := validateApprovalStatuses("approval_task", []string{"TRANSFERRED"}); err != nil {
 		t.Errorf("valid task status rejected: %v", err)
 	}
-	// TRANSFERRED only valid for task, not instance
-	if err := validateApprovalStatuses("approval_instance", []string{"TRANSFERRED"}); err == nil {
-		t.Error("TRANSFERRED must be rejected for approval_instance")
-	}
-	if err := validateApprovalStatuses("bogus", []string{"APPROVED"}); err == nil {
-		t.Error("unknown event-type must error")
-	}
-	// rejection message must list the valid status set for the
-	// event-type so the agent can correct itself.
+	// TRANSFERRED is task-only; must be rejected for approval_instance, keyed on
+	// --instance-status per statusFlagFor.
 	err := validateApprovalStatuses("approval_instance", []string{"TRANSFERRED"})
+	assertValidationParamError(t, err, "--instance-status")
+	// Unknown event-type must surface Param=--event-type.
+	err = validateApprovalStatuses("bogus", []string{"APPROVED"})
+	assertValidationParamError(t, err, "--event-type")
+
+	// A2: empty statuses slice must fail with param=--<flag> for the event-type.
+	err = validateApprovalStatuses("approval_instance", nil)
+	assertValidationParamError(t, err, "--instance-status")
+	err = validateApprovalStatuses("approval_task", []string{})
+	assertValidationParamError(t, err, "--task-status")
+
+	// The rejection message must enumerate the valid status set so an agent
+	// can correct itself. Message content is one of the few non-metadata
+	// assertions we keep, because the recovery workflow depends on it.
+	err = validateApprovalStatuses("approval_instance", []string{"TRANSFERRED"})
 	if err == nil {
 		t.Fatal("TRANSFERRED must be rejected for approval_instance")
 	}
@@ -116,7 +116,6 @@ func TestValidateApprovalStatuses(t *testing.T) {
 	if !strings.Contains(msg, "APPROVED") || !strings.Contains(msg, "PENDING") {
 		t.Errorf("error must enumerate the instance status set, got: %s", msg)
 	}
-	// TRANSFERRED is task-only; it must NOT appear in the instance valid list.
 	if strings.Contains(msg, "TRANSFERRED") && !strings.Contains(msg, "not valid") {
 		t.Errorf("instance valid-list must not include task-only TRANSFERRED, got: %s", msg)
 	}

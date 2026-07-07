@@ -144,6 +144,11 @@ func validateApprovalStatuses(eventType string, statuses []string) error {
 		return appsValidationParamError("--event-type",
 			"unknown --event-type %q; want approval_task or approval_instance", eventType)
 	}
+	if len(statuses) == 0 {
+		flag := statusFlagFor(eventType)
+		return appsValidationParamError("--"+flag,
+			"--%s is required for event-type %q (at least one status)", flag, eventType)
+	}
 	for _, s := range statuses {
 		if _, valid := set[strings.ToUpper(strings.TrimSpace(s))]; !valid {
 			// 列出该 event-type 的合法状态集合，便于 Agent 修正。
