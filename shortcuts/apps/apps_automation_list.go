@@ -113,17 +113,33 @@ func executeAutomationListAll(rctx *common.RuntimeContext, path string, params m
 	return outputAutomationList(rctx, out)
 }
 
-// outputAutomationList 输出 items + 分页提示。
+// outputAutomationList 输出 items + 分页提示。逐条对 items 套 redactWebhookToken，
+// 抹掉 trigger_condition.token_value（spec Rule-2-2，list/get 恒不返回明文 Bearer Token）；
+// 同时覆盖单页与 --all 聚合路径（executeAutomationListAll 也走这里）。
 func outputAutomationList(rctx *common.RuntimeContext, data map[string]interface{}) error {
 	items := common.GetSlice(data, "items")
-	rctx.OutFormat(data, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "%d trigger(s)\n", len(items))
-		for _, it := range items {
+	redacted := make([]interface{}, 0, len(items))
+	for _, it := range items {
+		if m, ok := it.(map[string]interface{}); ok {
+			redacted = append(redacted, redactWebhookToken(m))
+		} else {
+			redacted = append(redacted, it)
+		}
+	}
+	// 保留分页字段供 PaginationHint/PaginationMeta 读取（读的是同一个 map）。
+	out := map[string]interface{}{
+		"items":      redacted,
+		"has_more":   data["has_more"],
+		"page_token": data["page_token"],
+	}
+	rctx.OutFormat(out, nil, func(w io.Writer) {
+		fmt.Fprintf(w, "%d trigger(s)\n", len(redacted))
+		for _, it := range redacted {
 			if m, ok := it.(map[string]interface{}); ok {
 				fmt.Fprintf(w, "- %v  [%v]  %v\n", m["name"], m["trigger_type"], m["status"])
 			}
 		}
-		fmt.Fprint(w, common.PaginationHint(data, len(items)))
+		fmt.Fprint(w, common.PaginationHint(out, len(redacted)))
 	})
 	return nil
 }

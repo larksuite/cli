@@ -89,3 +89,35 @@ func TestAutomationListParams_TriggerTypePushdown(t *testing.T) {
 		t.Errorf("trigger_type must be pushed to query: %+v", params)
 	}
 }
+
+// list/get 恒不返回明文 Bearer Token（spec Rule-2-2）。webhook item 的
+// trigger_condition.token_value 必须逐条脱敏，token_enabled 保留。
+func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+		map[string]string{"app-id": "app_x"})
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Body: map[string]interface{}{"code": 0, "msg": "", "data": map[string]interface{}{
+			"items": []interface{}{
+				map[string]interface{}{
+					"name": "t_wh", "trigger_type": "webhook", "status": "enabled",
+					"trigger_condition": map[string]interface{}{
+						"preview_url": "https://p", "runtime_url": "https://r",
+						"token_enabled": true, "token_value": "PLAINTEXT_LIST_TOKEN",
+					},
+				},
+			},
+			"has_more": false, "page_token": "",
+		}},
+	})
+	if err := AppsAutomationList.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	out := stdoutBuf.String()
+	if strings.Contains(out, "PLAINTEXT_LIST_TOKEN") {
+		t.Errorf("list must never surface plaintext token: %s", out)
+	}
+	if !strings.Contains(out, "token_enabled") {
+		t.Errorf("list must expose token_enabled: %s", out)
+	}
+}
