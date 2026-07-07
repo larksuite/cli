@@ -514,6 +514,81 @@ func TestMarkdownCreateRejectsDocURLInWikiToken(t *testing.T) {
 	}
 }
 
+func TestNormalizeMarkdownTargetTokensRejectAmbiguousInputs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		run      func() (string, error)
+		wantMsg  string
+		wantHint string
+	}{
+		{
+			name:     "wiki token passed as folder token",
+			run:      func() (string, error) { return normalizeMarkdownFolderToken("wik_placeholder_wrong") },
+			wantMsg:  "--folder-token looks like a wiki node token",
+			wantHint: "--wiki-token",
+		},
+		{
+			name:     "folder token path fragment",
+			run:      func() (string, error) { return normalizeMarkdownFolderToken("folder_token/child") },
+			wantMsg:  "--folder-token must be a raw token",
+			wantHint: "full Lark URL",
+		},
+		{
+			name:     "doc token passed as wiki token",
+			run:      func() (string, error) { return normalizeMarkdownWikiToken("docx_placeholder_wrong") },
+			wantMsg:  "--wiki-token must be a wiki node token",
+			wantHint: "",
+		},
+		{
+			name:     "wiki token query fragment",
+			run:      func() (string, error) { return normalizeMarkdownWikiToken("wik_placeholder?from=copy") },
+			wantMsg:  "--wiki-token must be a raw token",
+			wantHint: "path/query/fragment",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.run()
+			if err == nil {
+				t.Fatalf("expected validation error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+			}
+			if !strings.Contains(p.Message, tt.wantMsg) {
+				t.Fatalf("message = %q, want substring %q", p.Message, tt.wantMsg)
+			}
+			if tt.wantHint != "" && !strings.Contains(p.Hint, tt.wantHint) {
+				t.Fatalf("hint = %q, want substring %q", p.Hint, tt.wantHint)
+			}
+		})
+	}
+}
+
+func TestNormalizeMarkdownTargetTokensAcceptRawTokens(t *testing.T) {
+	t.Parallel()
+
+	folderToken, err := normalizeMarkdownFolderToken("folder_token_raw")
+	if err != nil {
+		t.Fatalf("normalizeMarkdownFolderToken() error = %v", err)
+	}
+	if folderToken != "folder_token_raw" {
+		t.Fatalf("folder token = %q", folderToken)
+	}
+
+	wikiToken, err := normalizeMarkdownWikiToken("wik_placeholder_raw")
+	if err != nil {
+		t.Fatalf("normalizeMarkdownWikiToken() error = %v", err)
+	}
+	if wikiToken != "wik_placeholder_raw" {
+		t.Fatalf("wiki token = %q", wikiToken)
+	}
+}
+
 func TestMarkdownUploadProblemAddsQuotaAndServerHints(t *testing.T) {
 	t.Parallel()
 

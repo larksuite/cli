@@ -199,6 +199,66 @@ func TestWikiNodeListNormalizesWikiURLParentNodeToken(t *testing.T) {
 	}
 }
 
+func TestWikiNodeListRejectsAmbiguousSpaceAndParentTokens(t *testing.T) {
+	t.Parallel()
+
+	if err := validateWikiNodeListSpaceID("https://example.invalid/wiki/space"); err == nil {
+		t.Fatalf("expected URL space-id validation error")
+	} else {
+		p, ok := errs.ProblemOf(err)
+		if !ok {
+			t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+		}
+		if !strings.Contains(p.Message, "not a URL or path") || !strings.Contains(p.Hint, "+space-list") {
+			t.Fatalf("problem = %#v, want URL/path message and +space-list hint", p)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		input   string
+		wantMsg string
+	}{
+		{
+			name:    "partial wiki path",
+			input:   "wik_placeholder/child",
+			wantMsg: "raw wiki node token",
+		},
+		{
+			name:    "document token",
+			input:   "docx_placeholder_parent",
+			wantMsg: "must be a wiki node token",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := normalizeWikiNodeListParentToken(tt.input)
+			if err == nil {
+				t.Fatalf("expected parent token validation error")
+			}
+			p, ok := errs.ProblemOf(err)
+			if !ok {
+				t.Fatalf("ProblemOf() ok=false for %T: %v", err, err)
+			}
+			if !strings.Contains(p.Message, tt.wantMsg) {
+				t.Fatalf("message = %q, want substring %q", p.Message, tt.wantMsg)
+			}
+		})
+	}
+}
+
+func TestWikiNodeListAcceptsEmptyParentToken(t *testing.T) {
+	t.Parallel()
+
+	token, err := normalizeWikiNodeListParentToken("")
+	if err != nil {
+		t.Fatalf("normalizeWikiNodeListParentToken(empty) error = %v", err)
+	}
+	if token != "" {
+		t.Fatalf("token = %q, want empty", token)
+	}
+}
+
 func TestWikiNodeListProblemAddsActionableHint(t *testing.T) {
 	t.Parallel()
 
