@@ -732,6 +732,65 @@ func TestDrivePushDeleteRemoteAbortsAfterTerminalFailure(t *testing.T) {
 	}
 }
 
+func TestDrivePushDeleteRemoteTreatsAlreadyDeletedAsNoop(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_orphan", "name": "orphan.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/drive/v1/files/tok_orphan",
+		Body: map[string]interface{}{
+			"code": 1061007,
+			"msg":  "file has been delete.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--delete-remote",
+		"--yes",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("already-deleted remote should be an idempotent success, got: %v\nstdout: %s", err, stdout.String())
+	}
+
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["failed"]; got != float64(0) {
+		t.Fatalf("summary.failed = %v, want 0", got)
+	}
+	if got := summary["deleted_remote"]; got != float64(0) {
+		t.Fatalf("summary.deleted_remote = %v, want 0 because CLI did not delete it in this run", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item["action"] != "already_deleted" || item["file_token"] != "tok_orphan" {
+		t.Fatalf("unexpected already-deleted item: %#v", item)
+	}
+}
+
 func TestDrivePushNewestOverwritesChosenDuplicateAndDeletesSibling(t *testing.T) {
 	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
 
@@ -1133,6 +1192,78 @@ func TestDrivePushAbortsAfterUploadParamsError(t *testing.T) {
 	for _, item := range items {
 		if item["rel_path"] == "b.txt" {
 			t.Fatalf("terminal upload params error must abort before b.txt, got items=%#v", items)
+		}
+	}
+}
+
+func TestDrivePushAbortsAfterUploadParentNodeMissing(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "a.txt"), []byte("A"), 0o644); err != nil {
+		t.Fatalf("WriteFile a: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join("local", "b.txt"), []byte("B"), 0o644); err != nil {
+		t.Fatalf("WriteFile b: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{"files": []interface{}{}, "has_more": false},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/files/upload_all",
+		Body: map[string]interface{}{
+			"code": 1061044,
+			"msg":  "parent node not exist.",
+		},
+	})
+
+	err := mountAndRunDrive(t, DrivePush, []string{
+		"+push",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	if err == nil {
+		t.Fatalf("expected partial failure, got nil\nstdout: %s", stdout.String())
+	}
+	var pfErr *output.PartialFailureError
+	if !errors.As(err, &pfErr) {
+		t.Fatalf("expected *output.PartialFailureError, got %T: %v", err, err)
+	}
+	summary, items := splitDrivePushStdout(t, stdout.Bytes())
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a.txt" || item["phase"] != "upload" || item["error_class"] != "parent_node_missing" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(1061044) || item["subtype"] != "not_found" || item["retryable"] != false {
+		t.Fatalf("unexpected failure metadata: %#v", item)
+	}
+	if got, _ := item["hint"].(string); !strings.Contains(got, "--folder-token") || !strings.Contains(got, "parent") {
+		t.Fatalf("hint should point at the destination parent folder, got item=%#v", item)
+	}
+	for _, item := range items {
+		if item["rel_path"] == "b.txt" {
+			t.Fatalf("parent-node missing must abort before b.txt, got items=%#v", items)
 		}
 	}
 }
