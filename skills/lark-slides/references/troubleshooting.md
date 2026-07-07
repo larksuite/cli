@@ -46,7 +46,7 @@
 | 400 XML 格式错误 | XML 语法错误 | 检查标签闭合、属性引号、特殊字符转义 |
 | 400 请求包装错误 | `--data` 未按 schema 包装 | 检查是否传入 `xml_presentation.content` 或 `slide.content` |
 | 创建成功但页面空白 / 内容缺失 / 布局错乱 | 常见于 `--slides '[...]'` 的 shell 转义或长参数传递问题 | 改用两步创建，并在创建后立即读取 XML 验证 |
-| 403 权限不足 | 身份或 scope 不匹配 | 先检查是否误用了 bot 身份，再确认 scope 和文档权限 |
+| 403 权限不足 | 身份或 scope 不匹配 | 先检查是否误用了 bot 身份，再确认 scope 和文档权限；无权限时根据错误响应引导用户解决 |
 | 404 演示文稿不存在 | `xml_presentation_id` 不正确或无权限 | 检查 token；wiki URL 需先解析真实 `obj_token` |
 | 404 幻灯片不存在 | `slide_id` 不正确 | 重新读取 presentation 或 slide，确认最新 ID |
 | 400 无法删除唯一幻灯片 | 演示文稿至少保留一页 | 先创建新页，再删除旧页 |
