@@ -1400,6 +1400,22 @@ func TestMeetingEventSummary(t *testing.T) {
 	}
 }
 
+func TestMeetingEventsEventFromPayloadUsesActivityEventTypeFallback(t *testing.T) {
+	event := participantJoinedEvent()
+	delete(event, "event_type")
+
+	got := meetingEventsEventFromPayload(event, meetingEventsIdentity{})
+	if got.EventType != "participant_joined" {
+		t.Fatalf("EventType = %q, want participant_joined", got.EventType)
+	}
+	if len(got.Actors) != 1 {
+		t.Fatalf("actors len = %d, want 1: %#v", len(got.Actors), got.Actors)
+	}
+	if got.Actors[0].ID != "bot_001" {
+		t.Fatalf("actor id = %q, want bot_001", got.Actors[0].ID)
+	}
+}
+
 func TestEscapePrettyText(t *testing.T) {
 	got := escapePrettyText("line1\nline2\t\r" + string(rune(0x07)))
 	want := `line1\nline2\t\r\u0007`

@@ -1163,7 +1163,10 @@ func meetingEventUserWithID(user map[string]interface{}) string {
 }
 
 func meetingEventType(event map[string]interface{}) string {
-	return common.GetString(event, "event_type")
+	if eventType := common.GetString(event, "event_type"); eventType != "" {
+		return eventType
+	}
+	return common.GetString(common.GetMap(event, "payload"), "activity_event_type")
 }
 
 func meetingEventSummary(event map[string]interface{}) string {
