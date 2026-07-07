@@ -46,7 +46,7 @@
 
 ### cron（定时）
 
-```
+```bash
 +automation-create --app-id <id> --name daily --trigger-type cron \
   --cron '0 9 * * *' [--timezone Asia/Shanghai]
 ```
@@ -57,7 +57,7 @@
 
 ### record-change（记录变更）
 
-```
+```bash
 +automation-create --app-id <id> --name onUpd --trigger-type record-change \
   --table <table_id> --event UPDATE [--fields '["status"]']
 ```
@@ -68,7 +68,7 @@
 
 ### webhook（外部回调）
 
-```
+```bash
 +automation-create --app-id <id> --name hook --trigger-type webhook \
   [--white-ip-list '["1.1.1.1","2.2.2.2"]']
 ```
@@ -79,7 +79,7 @@
 
 ### feishu-approval（飞书审批）
 
-```
+```bash
 +automation-create --app-id <id> --name apv --trigger-type feishu-approval \
   --event-type approval_instance --instance-status APPROVED [--approval-code <code>]
 ```
@@ -97,7 +97,7 @@
 
 - `+automation-get` / `+automation-list`：**恒不返回明文 Bearer Token**——`trigger_condition.token_value` 被抹为 `null`。用户想知道「token 是什么」时，list/get 都查不到明文。
 - `+automation-update --enable-token` / `--reset-token`：明文 Bearer Token **仅当次 stdout 回显一次**，同时 stderr 打印一次性告警：
-  ```
+  ```text
   warning: this bearer token is shown only once and is NOT stored by lark-cli — copy it now and store it in your own secret manager.
   ```
 - Webhook URL 同理：`--reset-url` 后新 URL 仅当次回显一次，旧 URL 立即失效。
