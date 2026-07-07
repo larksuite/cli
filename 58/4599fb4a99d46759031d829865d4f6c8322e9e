@@ -1,0 +1,16 @@
+skills/lark-calendar/SKILL.md
+  h_240304df382660 15,33,37,42-92,98,104-105,156,159,162-165,167,169,171,173,175,177,179,181-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "584599fb4a99d46759031d829865d4f6c8322e9e",
+  "prompts": {},
+  "humans": {
+    "h_240304df382660": {
+      "author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
