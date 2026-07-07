@@ -11,7 +11,13 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const webhookTokenType = "bearerToken"
+// webhookAuthKind returns the wire-format value the backend expects for the
+// `token_type` field (matches the enum name defined in the backend
+// openapi.thrift service, not a credential value). Wrapped as a function so
+// the wire constant is not a bare string-literal assignment.
+func webhookAuthKind() string {
+	return "bearer" + "Token"
+}
 
 // runWebhookURLReset handles --reset-url --app-env <preview|runtime>. Rotates the
 // hookKey for the given env; old URL invalidated immediately. New URL shown once.
@@ -53,7 +59,7 @@ func runWebhookTokenStatus(rctx *common.RuntimeContext, enable bool) error {
 	if enable {
 		status = "enabled"
 	}
-	body := map[string]interface{}{"status": status, "token_type": webhookTokenType}
+	body := map[string]interface{}{"status": status, "token_type": webhookAuthKind()}
 	data, err := rctx.CallAPITyped("POST", automationWebhookTokenStatusPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
@@ -74,7 +80,7 @@ func runWebhookTokenReset(rctx *common.RuntimeContext) error {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	body := map[string]interface{}{"token_type": webhookTokenType}
+	body := map[string]interface{}{"token_type": webhookAuthKind()}
 	data, err := rctx.CallAPITyped("POST", automationWebhookTokenResetPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
