@@ -91,6 +91,112 @@ func TestSlidesXMLGetWritesContentToFileAndSuppressesXML(t *testing.T) {
 	}
 }
 
+func TestSlidesXMLGetReturnsContentEnvelopeWhenOutputOmitted(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": xml,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeShortcutData(t, stdout)
+	presentation := data["xml_presentation"].(map[string]interface{})
+	if got := presentation["content"]; got != xml {
+		t.Fatalf("content = %q, want %q", got, xml)
+	}
+	if got := data["xml_presentation_id"]; got != "pres_abc" {
+		t.Fatalf("xml_presentation_id = %v, want pres_abc", got)
+	}
+	if strings.Contains(stdout.String(), "content_saved") {
+		t.Fatalf("stdout should not contain file metadata: %s", stdout.String())
+	}
+}
+
+func TestSlidesXMLGetJqFiltersContentEnvelopeWhenOutputOmitted(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": xml,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--jq", ".data.xml_presentation.content",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != xml {
+		t.Fatalf("stdout = %q, want XML content %q", got, xml)
+	}
+}
+
+func TestSlidesXMLGetPrintsRawContentWhenRaw(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	xml := `<presentation><slide id="s1"><shape id="a">hello</shape></slide></presentation>`
+	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_abc",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"xml_presentation": map[string]interface{}{
+					"content": xml,
+				},
+			},
+		},
+	})
+
+	err := runSlidesShortcut(t, f, stdout, SlidesXMLGet, []string{
+		"+xml-get",
+		"--presentation", "pres_abc",
+		"--raw",
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := stdout.String(); got != xml {
+		t.Fatalf("stdout = %q, want raw XML %q", got, xml)
+	}
+}
+
 func TestSlidesXMLGetResolvesWikiPresentation(t *testing.T) {
 	dir := t.TempDir()
 	withSlidesTestWorkingDir(t, dir)

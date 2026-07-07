@@ -31,7 +31,7 @@ metadata:
 | 新建 PPT | 先规划 `slide_plan.json`，再按复杂度选择一步或两步创建 | `planning-layer.md`、`visual-planning.md`、`asset-planning.md`、`slides +create` |
 | 从模板创建或编辑已有本地 PPTX | 导入 PPTX 为 Slides | `lark-slides-pptx-template-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
-| 读取或分析已有 PPT | 解析 slides/wiki token，回读全文或单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `xml_presentations.get`、`xml_presentation.slide.get` |
+| 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get` |
 | 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面 | `slides +screenshot`、`lark-slides-screenshot.md` |
 | 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `slides +media-upload`，或 `+create --slides` 的 `@./path` 占位符 |
 | 在 slide 中绘制图表 | 雷达图、饼图、环形图用 `<chart>`，柱状图、条形图、折线图用 `shape` + `line`，Mermaid 用 `<whiteboard>` | `xml-schema-quick-ref.md`、需要 `<whiteboard>` 再看 `lark-slides-whiteboard.md` |
@@ -170,7 +170,7 @@ Step 3: 按 slide_plan.json 生成 XML → 创建
   - 创建方式按“创建方式选择”判断；图片、复杂 XML、转义和 3350001 排查按 lark-slides-create.md、media-upload.md、troubleshooting.md 执行
 
 Step 4: 审查 & 交付
-  - 创建完成后，必须用 xml_presentations.get 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
+  - 创建完成后，必须用 `slides +xml-get` 读取全文 XML，并按 validation-checklist.md 做显式验证记录，包括 XML 文本重叠检查
   - 失败或部分成功按 troubleshooting.md 处理；局部问题优先用 `+replace-slide` 修正
   - 没问题 → 交付：告知用户演示文稿 ID 和访问方式
 ```
@@ -261,11 +261,12 @@ Shortcut 是对常用操作的高级封装（`lark-cli slides +<verb> [flags]`�
 | Shortcut | 说明 |
 |----------|------|
 | [`+create`](references/lark-slides-create.md) | 创建 PPT（可选 `--slides` 一步添加页面，支持 `<img src="@./local.png">` 占位符自动上传） |
+| `+xml-get` | 读取全文 XML 并保存到本地文件，避免终端输出被截断 |
 | [`+media-upload`](references/lark-slides-media-upload.md) | 上传本地图片到指定演示文稿，返回 `file_token`（用作 `<img src="...">`），最大 20 MB |
 | [`+replace-slide`](references/lark-slides-replace-slide.md) | 对已有幻灯片页面进行块级替换/插入（`block_replace` / `block_insert`），自动注入 id 和 `<content/>`，不改变页序 |
 | [`+replace-pages`](references/lark-slides-replace-pages.md) | 在原演示文稿内批量重建多个页面：先创建新页到旧页前，再删除旧页；适合已有 Slides 的多页大改，不新建链接 |
 
-没有 Shortcut 覆盖时使用原生 API。高频资源：`xml_presentations.get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
+没有 Shortcut 覆盖时使用原生 API。高频资源：`slides +xml-get` 读取全文；`xml_presentation.slide.create/delete/get/replace` 管理单页。
 
 ```bash
 lark-cli schema slides.<resource>.<method>   # 调用 API 前必须先查看参数结构
