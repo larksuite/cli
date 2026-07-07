@@ -2,7 +2,7 @@
 
 > **Prerequisite:** Read [`../SKILL.md`](../SKILL.md) first for the `event consume` essentials (commands, subprocess contract, jq usage).
 
-## Key catalog
+## Key catalog (4)
 
 | EventKey | Purpose |
 |---|---|
@@ -10,13 +10,8 @@
 | `vc.meeting.participant_meeting_joined_v1` | The current user has joined a meeting |
 | `vc.meeting.participant_meeting_ended_v1` | A meeting the current user participates in has ended |
 | `vc.note.generated_v1` | A note has been generated (meeting, recording, upload, etc.) |
-| `vc.bot.meeting_invited_v1` | The bot is invited to a meeting |
-| `vc.bot.meeting_activity_v1` | The bot observes meeting activity |
-| `vc.bot.meeting_ended_v1` | A meeting observed by the bot has ended |
 
-The user VC keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. They require `--as user`.
-
-The `vc.bot.*` keys are bot-observed events. They require `--as bot`, emit a compact stable summary, and do not call the user-side VC meeting subscription / unsubscription APIs.
+All four keys use a **Custom schema** (flat output) and carry a **PreConsume hook** that auto-subscribes / unsubscribes via OAPI on first / last consumer. All require `--as user`.
 
 ## Scopes & auth
 
@@ -26,9 +21,6 @@ The `vc.bot.*` keys are bot-observed events. They require `--as bot`, emit a com
 | `vc.meeting.participant_meeting_joined_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.meeting.participant_meeting_ended_v1` | `vc:meeting.meetingevent:read` | user |
 | `vc.note.generated_v1` | `vc:note:read` | user |
-| `vc.bot.meeting_invited_v1` | App event subscription in the Developer Console | bot |
-| `vc.bot.meeting_activity_v1` | App event subscription in the Developer Console | bot |
-| `vc.bot.meeting_ended_v1` | App event subscription in the Developer Console | bot |
 
 ---
 
@@ -112,41 +104,3 @@ lark-cli event consume vc.note.generated_v1 --as user \
 lark-cli event consume vc.note.generated_v1 --as user \
   --jq 'select(.note_source.source_type == "meeting") | {note_id, meeting_id: .note_source.source_entity_id}'
 ```
-
----
-
-## Bot-observed VC events
-
-Use bot identity for all `vc.bot.*` keys:
-
-```bash
-lark-cli event consume vc.bot.meeting_invited_v1 --as bot
-lark-cli event consume vc.bot.meeting_activity_v1 --as bot
-lark-cli event consume vc.bot.meeting_ended_v1 --as bot
-```
-
-These keys model what the bot observes. Do not treat them as aliases for:
-
-| Bot event | Not the same as |
-|---|---|
-| `vc.bot.meeting_invited_v1` | Meeting start events, participant join events, or IM meeting cards |
-| `vc.bot.meeting_activity_v1` | User-side `vc +meeting-events` open meeting activity queries |
-| `vc.bot.meeting_ended_v1` | `vc.meeting.participant_meeting_ended_v1` or open meeting resource ended events |
-
-### Output fields
-
-| Field | Type | Description |
-|---|---|---|
-| `type` | string | Event type; one of the supported `vc.bot.*` keys |
-| `event_id` | string | Globally unique event ID; safe for deduplication |
-| `timestamp` | string (timestamp_ms) | Event delivery time from `header.create_time` when present |
-| `call_id` | string | Invitation call ID; pass through to VC agent join when present |
-| `meeting_no` | string | Stable top-level meeting number. For `vc.bot.meeting_activity_v1`, this mirrors the first activity item's `meeting.meeting_no`; for invited/ended events, it comes from the event body directly. Prefer this field for routing and joins across `vc.bot.*` keys |
-| `meeting_activity_items` | object[] | Only emitted for normal `vc.bot.meeting_activity_v1` output. This is `event.meeting_activity_items` lifted one level up; each item keeps its own `activity_event_type` and `meeting`, and nested user `id` objects keep only `id.open_id` |
-| `payload` | object | Fallback/event-body field for non-activity bot events (`vc.bot.meeting_invited_v1`, `vc.bot.meeting_ended_v1`) or malformed activity payloads. Normal `vc.bot.meeting_activity_v1` output does not include `payload` |
-
-Normal bot-event output intentionally does not include the full raw envelope. Use stable top-level fields for routing. For `vc.bot.meeting_activity_v1`, consume `meeting_activity_items[]` directly and branch on each item's `activity_event_type`; do not read activity content from `payload`, because normal activity output does not emit it. Do not assume one delivered bot event contains only one activity type. Meeting metadata stays on each activity item under `meeting`; there is no top-level `meeting` field. `meeting_no` remains top-level even when item-level `meeting.meeting_no` is also present so agents can use the same scalar field across invited, activity, and ended bot events. For richer cross-event meeting analysis or IM forwarding, prefer `vc +meeting-events --format json`, which normalizes actors, chat/reaction payloads, subtitles, and magic-share events. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
-
-### Forwarding meeting activity to IM
-
-`lark-cli event consume` does not send IM messages automatically and does not expose IM-ready post payloads. If the user wants meeting activity forwarded into IM, use `vc +meeting-events --format json` to read structured events; for `chat_received_items[].message_type == 3`, construct the Feishu `post` node with `tag:"emotion"` and `emoji_type` from the item's `content`.
