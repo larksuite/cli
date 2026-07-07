@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -281,6 +282,17 @@ func numericAsFloat(raw interface{}) (float64, bool) {
 		return float64(v), true
 	case json.Number:
 		f, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case string:
+		// 服务端有些数值字段（如 recovery diff 的 inserted/deleted 行数）以字符串下发。
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(s, 64)
 		if err != nil {
 			return 0, false
 		}

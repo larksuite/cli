@@ -105,8 +105,10 @@ func TestAppsDBEnvMigrate_DryRunBody(t *testing.T) {
 // 异步：submit 返 task_id，status 立刻 applied → CLI 对外统一 migrated。
 func TestAppsDBEnvMigrate_AsyncPollSuccess(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
+	// Reusable：Execute 现在会先打一次 dry_run 预览拿待发布数、再打 apply（对齐 miaoda-cli 的
+	// diff-then-apply，兜底服务端 apply 少报 changes_applied 的情况），故同一 POST 端点被调用两次。
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: dbEnvMigrateURL,
+		Method: "POST", URL: dbEnvMigrateURL, Reusable: true,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"from": "dev", "to": "online", "task_id": "t1"}},
 	})
 	reg.Register(&httpmock.Stub{
@@ -126,8 +128,10 @@ func TestAppsDBEnvMigrate_AsyncPollSuccess(t *testing.T) {
 // TestAppsDBEnvMigrate_PollFailedSurfacesError 验证轮询到 failed 时返回 API/server_error 类型错误，携带服务端 message 与恢复 hint。
 func TestAppsDBEnvMigrate_PollFailedSurfacesError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
+	// Reusable：Execute 现在会先打一次 dry_run 预览拿待发布数、再打 apply（对齐 miaoda-cli 的
+	// diff-then-apply，兜底服务端 apply 少报 changes_applied 的情况），故同一 POST 端点被调用两次。
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: dbEnvMigrateURL,
+		Method: "POST", URL: dbEnvMigrateURL, Reusable: true,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"from": "dev", "to": "online", "task_id": "t1"}},
 	})
 	reg.Register(&httpmock.Stub{
