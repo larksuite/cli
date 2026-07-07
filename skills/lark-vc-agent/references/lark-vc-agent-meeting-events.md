@@ -182,9 +182,12 @@ lark-cli vc +meeting-events --as user --meeting-id <id> --page-all --format pret
 
 对 `event_type == "chat_received"` 的事件逐项处理 `payload.chat_received_items`：
 
-- `message_type == 3` 是会中 reaction；构造 IM `post` 内容时，把同一 item 的 `content` 直接写成 `{"tag":"emotion","emoji_type":"<content>"}`。
+- `message_type == 3` 是会中 reaction；构造 IM `post` 内容时，以 [`lark-im` reaction emoji 列表](../../lark-im/references/lark-im-reactions.md) 作为 IM `emotion` 白名单。白名单内的 key 写成 `{"tag":"emotion","emoji_type":"<content>"}`，例如 `JIAYI`、`THUMBSUP`、`OK`。
+- 对不在 IM reaction emoji 白名单内的 reaction key，保留原始 key 但写成文本节点，例如 `{"tag":"text","text":"[<content>]"}`；不应直接写入 `emotion.emoji_type`，否则 IM 发送会失败。
+- 不要大小写归一化或猜测映射；`content` 是原始 reaction key，必须原样判断。
 - 其他聊天消息写成文本节点：`{"tag":"text","text":"<content>"}`。
-- 最终调用 `im +messages-send --msg-type post --content '<post-json>'`，其中 `<post-json>` 必须保留上面构造出的 `emotion` 节点；不要用 `--markdown` 承载会中 reaction。
+- 最终调用 `im +messages-send --msg-type post --content '<post-json>'`，其中 `<post-json>` 应混合使用可渲染 `emotion` 节点和文本 fallback；不要用 `--markdown` 承载会中 reaction。
+- 如果 IM 返回 `message_content_emotion_tag's emoji_type is invalid`，只降级非法 reaction key，不要把整条消息退化成纯文本。
 - 如果用户原始请求已经明确“发给我 / 推送给我 / 发到我的聊天框 / 发到我的单聊”，这已经覆盖本次收件人、内容和发送动作，直接发送给当前用户，不要再二次询问“是否发送”。
 - 默认用应用身份 `--as bot` 发送；只有用户明确要求“用本人身份 / 用户身份发送”时才切到 `--as user`。
 - 如果用户要求发给某个群或其他人但收件人不可唯一确定，只询问缺失的收件人信息。
