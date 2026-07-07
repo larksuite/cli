@@ -32,7 +32,7 @@ metadata:
 | 从模板创建或编辑已有本地 PPTX | 导入 PPTX 为 Slides | `lark-slides-pptx-template-workflows.md` |
 | 编辑单个标题、文本块、图片或局部元素 | 优先块级替换/插入，不改页序 | `slides +replace-slide`、`lark-slides-replace-slide.md` |
 | 读取或分析已有 PPT | 解析 slides/wiki token，用 shortcut 回读全文 XML 或读取单页 XML，保存 `xml_presentation_id`、`slide_id`、`revision_id` | `slides +xml-get`、`xml_presentation.slide.get` |
-| 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面 | `slides +screenshot`、`lark-slides-screenshot.md` |
+| 获取幻灯片页面截图 | 用 `slide_id` 或页号指定页面，一次不超过 10 页 | `slides +screenshot`、`lark-slides-screenshot.md` |
 | 上传或使用图片 | 先上传为 `file_token`，禁止直接写 http(s) 外链 | `slides +media-upload`，或 `+create --slides` 的 `@./path` 占位符 |
 | 在 slide 中绘制图表 | 雷达图、饼图、环形图用 `<chart>`，柱状图、条形图、折线图用 `shape` + `line`，Mermaid 用 `<whiteboard>` | `xml-schema-quick-ref.md`、需要 `<whiteboard>` 再看 `lark-slides-whiteboard.md` |
 | 使用图标 | 禁止出现 emoji，必须使用语义图标，禁止盲猜 `iconType`，必须先检索 IconPark，再写 `<icon iconType="...">`，必须设置 fillColor | `iconpark_tool.py search → resolve`、`iconpark.md` |
