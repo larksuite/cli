@@ -73,8 +73,8 @@ metadata:
    - 再根据 `note_id`、`minute_token` 和用户意图，按 [`lark-vc`](../lark-vc/SKILL.md) 的产物决策读取正文、逐字稿或妙记。
    - 想看参会人快照：用 `vc meeting get --with-participants`（见 [`lark-vc`](../lark-vc/SKILL.md)）
 5. **默认必须使用** **`--page-all`**，除非用户明确要求“只查一页”，或确实需要控制返回体大小。
-6. 命令默认输出结构化事件契约：`meeting`、`identity`、`current_participants`、`events`、`warnings`、`has_more`、`page_token`；`identity` 表示当前读取身份，参会人含 `participant_type`、`role`、`is_self` 和可读 `label`，事件保留 `group` 用于聚合分组，细节保留在 `payload`。
-7. 输出格式默认优先 `--format pretty`（时间线更易读，并带当前身份与当前名单标签）；需要稳定字段做结构化处理时用 `--format json`；需要流式消费事件时用 `--format ndjson`。
+6. 命令默认输出结构化事件契约：`meeting`、`identity`、`events`、`warnings`、`has_more`、`page_token`；`identity` 表示当前读取身份，事件 actor 含 `participant_type`、`role` 和可读 `label`，事件细节保留在 `payload`。
+7. 输出格式默认优先 `--format pretty`（时间线更易读，并带当前身份标签）；需要稳定字段做结构化处理时用 `--format json`；需要流式消费事件时用 `--format ndjson`。
 8. **必须识别分页信号**：只要响应里出现 `has_more=true`、pretty 里的 `more available`，或返回了非空 `page_token`，就不能把当前结果当作完整事件流；默认应继续分页，或明确告诉用户当前只是部分结果。
 9. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
 10. **只要你是基于** **`+meeting-events`** **来回答一场正在进行中的会议内容，就不能直接复用旧结果。** 无论用户是在问“现在/刚刚/最新”的状态，还是让你“总结一下这个会议讲什么”，都必须先重新拉一次当前事件流，确认拿到的是最新信息，再基于最新结果回答。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。

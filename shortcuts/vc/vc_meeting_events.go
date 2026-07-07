@@ -18,7 +18,6 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
-	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -103,15 +102,13 @@ var VCMeetingEvents = common.Shortcut{
 		}
 		events = compactMeetingEvents(events)
 		identity, identityWarning := meetingEventsCurrentIdentity(runtime)
-		currentParticipants, participantsWarning := fetchMeetingEventsCurrentParticipants(runtime)
-		outData := buildMeetingEventsOutput(data, events, currentParticipants, identity, identityWarning, participantsWarning)
+		outData := buildMeetingEventsOutput(data, events, identity, identityWarning)
 		metadata := map[string]interface{}{
-			"row_type":             "metadata",
-			"meeting":              outData.Meeting,
-			"identity":             outData.Identity,
-			"current_participants": outData.CurrentParticipants,
-			"has_more":             outData.HasMore,
-			"page_token":           outData.PageToken,
+			"row_type":   "metadata",
+			"meeting":    outData.Meeting,
+			"identity":   outData.Identity,
+			"has_more":   outData.HasMore,
+			"page_token": outData.PageToken,
 		}
 		if len(outData.Warnings) > 0 {
 			metadata["warnings"] = outData.Warnings
@@ -137,13 +134,12 @@ var VCMeetingEvents = common.Shortcut{
 }
 
 type meetingEventsOutput struct {
-	Meeting             meetingEventsMeeting    `json:"meeting"`
-	Identity            meetingEventsIdentity   `json:"identity"`
-	CurrentParticipants []meetingEventsIdentity `json:"current_participants"`
-	Events              []meetingEventsEvent    `json:"events"`
-	Warnings            []string                `json:"warnings,omitempty"`
-	HasMore             bool                    `json:"has_more"`
-	PageToken           string                  `json:"page_token,omitempty"`
+	Meeting   meetingEventsMeeting  `json:"meeting"`
+	Identity  meetingEventsIdentity `json:"identity"`
+	Events    []meetingEventsEvent  `json:"events"`
+	Warnings  []string              `json:"warnings,omitempty"`
+	HasMore   bool                  `json:"has_more"`
+	PageToken string                `json:"page_token,omitempty"`
 }
 
 type meetingEventsMeeting struct {
@@ -160,7 +156,6 @@ type meetingEventsIdentity struct {
 	Name            string `json:"name,omitempty"`
 	ParticipantType string `json:"participant_type,omitempty"`
 	Role            string `json:"role,omitempty"`
-	IsSelf          bool   `json:"is_self"`
 	Label           string `json:"label,omitempty"`
 }
 
@@ -168,12 +163,11 @@ type meetingEventsEvent struct {
 	EventID   string                  `json:"event_id,omitempty"`
 	EventType string                  `json:"event_type,omitempty"`
 	EventTime string                  `json:"event_time,omitempty"`
-	Group     interface{}             `json:"group,omitempty"`
 	Actors    []meetingEventsIdentity `json:"actors,omitempty"`
 	Payload   map[string]interface{}  `json:"payload,omitempty"`
 }
 
-func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, currentParticipants []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
+func buildMeetingEventsOutput(data map[string]interface{}, events []interface{}, identity meetingEventsIdentity, warnings ...string) meetingEventsOutput {
 	output := meetingEventsOutput{
 		Meeting:   meetingEventsMeetingFromPayload(nil),
 		Identity:  identity,
@@ -196,7 +190,6 @@ func buildMeetingEventsOutput(data map[string]interface{}, events []interface{},
 		}
 		output.Events = append(output.Events, meetingEventsEventFromPayload(event, output.Identity))
 	}
-	output.CurrentParticipants = enrichMeetingEventsCurrentParticipants(meetingEventsCurrentParticipants(currentParticipants, output.Identity), output.Events)
 	return output
 }
 
@@ -213,39 +206,24 @@ func meetingEventsCurrentIdentity(runtime *common.RuntimeContext) (meetingEvents
 		ID:              userOpenID,
 		Name:            strings.TrimSpace(runtime.Config.UserName),
 		ParticipantType: "human",
-		IsSelf:          true,
 	}
-	identity.Label = currentIdentityLabel(identity)
+	identity.Label = identityLabel(identity)
 	if userOpenID == "" {
 		return identity, "identity unavailable: current user open_id is unavailable"
 	}
 	return identity, ""
 }
 
-func fetchMeetingEventsCurrentParticipants(runtime *common.RuntimeContext) ([]interface{}, string) {
-	meetingID := strings.TrimSpace(runtime.Str("meeting-id"))
-	data, err := runtime.CallAPITyped(http.MethodGet, fmt.Sprintf("/open-apis/vc/v1/meetings/%s", validate.EncodePathSegment(meetingID)),
-		map[string]interface{}{"with_participants": "true", "query_mode": "0", "user_id_type": "open_id"}, nil)
-	if err != nil {
-		return nil, fmt.Sprintf("current_participants unavailable: %v", err)
-	}
-	if meeting := common.GetMap(data, "meeting"); meeting != nil {
-		return common.GetSlice(meeting, "participants"), ""
-	}
-	return nil, ""
-}
-
 func meetingEventsBotIdentity(botInfo *common.BotInfo) meetingEventsIdentity {
 	if botInfo == nil {
-		return meetingEventsIdentity{ParticipantType: "bot", IsSelf: true, Label: "bot"}
+		return meetingEventsIdentity{ParticipantType: "bot", Label: "bot"}
 	}
 	identity := meetingEventsIdentity{
 		ID:              botInfo.OpenID,
 		Name:            botInfo.AppName,
 		ParticipantType: "bot",
-		IsSelf:          true,
 	}
-	identity.Label = currentIdentityLabel(identity)
+	identity.Label = identityLabel(identity)
 	return identity
 }
 
@@ -280,68 +258,10 @@ func meetingEventsEventFromPayload(event map[string]interface{}, selfIdentity me
 		EventID:   common.GetString(event, "event_id"),
 		EventType: meetingEventType(event),
 		EventTime: meetingEventsTimeString(common.GetString(event, "event_time")),
-		Group:     event["group"],
 		Payload:   payload,
 	}
 	out.Actors = eventActors(out.EventType, payload, selfIdentity)
 	return out
-}
-
-func meetingEventsCurrentParticipants(rawParticipants []interface{}, selfIdentity meetingEventsIdentity) []meetingEventsIdentity {
-	participants := make([]meetingEventsIdentity, 0, len(rawParticipants))
-	for _, raw := range rawParticipants {
-		item, _ := raw.(map[string]interface{})
-		if item == nil {
-			continue
-		}
-		participant := item
-		if nested := common.GetMap(item, "participant"); nested != nil {
-			participant = nested
-		}
-		participants = append(participants, meetingEventsIdentityFromParticipant(participant, selfIdentity))
-	}
-	return participants
-}
-
-func enrichMeetingEventsCurrentParticipants(participants []meetingEventsIdentity, events []meetingEventsEvent) []meetingEventsIdentity {
-	typeByID := make(map[string]string)
-	nameByID := make(map[string]string)
-	for _, event := range events {
-		for _, actor := range event.Actors {
-			if actor.ID == "" {
-				continue
-			}
-			if actor.Name != "" {
-				if _, exists := nameByID[actor.ID]; !exists {
-					nameByID[actor.ID] = actor.Name
-				}
-			}
-			if isKnownParticipantType(actor.ParticipantType) {
-				if _, exists := typeByID[actor.ID]; !exists {
-					typeByID[actor.ID] = actor.ParticipantType
-				}
-			}
-		}
-	}
-	for i := range participants {
-		changed := false
-		if participants[i].Name == "" {
-			if name := nameByID[participants[i].ID]; name != "" {
-				participants[i].Name = name
-				changed = true
-			}
-		}
-		if isUnknownParticipantType(participants[i].ParticipantType) {
-			if participantType := typeByID[participants[i].ID]; participantType != "" {
-				participants[i].ParticipantType = participantType
-				changed = true
-			}
-		}
-		if changed {
-			participants[i].Label = identityLabel(participants[i])
-		}
-	}
-	return participants
 }
 
 func eventActors(eventType string, payload map[string]interface{}, selfIdentity meetingEventsIdentity) []meetingEventsIdentity {
@@ -382,7 +302,6 @@ func meetingEventsIdentityFromParticipant(participant map[string]interface{}, se
 		Role:            meetingEventsParticipantRole(participant),
 	}
 	if identity.ID != "" && selfIdentity.ID != "" && identity.ID == selfIdentity.ID {
-		identity.IsSelf = true
 		if selfIdentity.ParticipantType == "bot" && (identity.ParticipantType == "" || identity.ParticipantType == "human") {
 			identity.ParticipantType = "bot"
 		}
@@ -440,19 +359,6 @@ func meetingEventsParticipantTypeFromUserType(raw string) string {
 	default:
 		return "unknown"
 	}
-}
-
-func isKnownParticipantType(participantType string) bool {
-	switch participantType {
-	case "human", "bot":
-		return true
-	default:
-		return false
-	}
-}
-
-func isUnknownParticipantType(participantType string) bool {
-	return participantType == "" || participantType == "unknown"
 }
 
 func meetingEventsRoleFromParticipantRole(raw string) string {
@@ -524,18 +430,10 @@ func identityLabel(identity meetingEventsIdentity) string {
 	if identity.Role != "" && identity.Role != identity.ParticipantType {
 		tags = append(tags, identity.Role)
 	}
-	if identity.IsSelf {
-		tags = append(tags, "self")
-	}
 	if len(tags) == 0 {
 		return name
 	}
 	return fmt.Sprintf("%s [%s]", name, strings.Join(tags, ","))
-}
-
-func currentIdentityLabel(identity meetingEventsIdentity) string {
-	identity.IsSelf = false
-	return identityLabel(identity)
 }
 
 func meetingEventsTimeString(raw string) string {
@@ -573,13 +471,6 @@ func meetingEventsEventRow(event meetingEventsEvent) map[string]interface{} {
 func renderMeetingEventsCompactPretty(w io.Writer, data meetingEventsOutput, timeline meetingTimeline) {
 	if data.Identity.Label != "" {
 		fmt.Fprintf(w, "当前身份：%s\n", escapePrettyText(data.Identity.Label))
-	}
-	if len(data.CurrentParticipants) > 0 {
-		fmt.Fprintln(w, "当前名单：")
-		for _, participant := range data.CurrentParticipants {
-			fmt.Fprintf(w, "- %s\n", escapePrettyText(participant.Label))
-		}
-		fmt.Fprintln(w)
 	}
 	if len(timeline.entries) == 0 {
 		fmt.Fprintln(w, "No meeting events.")

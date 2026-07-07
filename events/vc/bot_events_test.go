@@ -102,7 +102,7 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 					],
 					"meeting_activity_items": [{
 						"activity_event_type": "chat_received",
-						"meeting": {"meeting_no": "987654321"},
+						"meeting": {"id": "m1", "meeting_no": "987654321", "topic": "demo meeting"},
 						"chat_received_items": [
 							{"message_type": 1, "content": "hello"},
 							{"message_type": 3, "content": "JIAYI", "reaction_type": {"emoji_type": "SHOULD_NOT_COLLECT"}},
@@ -216,17 +216,28 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 				if _, ok := row["payload"]; ok {
 					t.Fatalf("meeting activity output should lift meeting_activity_items out of payload: %s", string(got))
 				}
+				meeting, ok := row["meeting"].(map[string]any)
+				if !ok || meeting["meeting_no"] != tc.want.MeetingNo {
+					t.Fatalf("meeting activity output should include top-level meeting: %s", string(got))
+				}
 				items, ok := row["meeting_activity_items"].([]any)
 				if !ok || len(items) == 0 {
 					t.Fatalf("meeting activity output should include meeting_activity_items: %s", string(got))
+				}
+				for _, rawItem := range items {
+					item, _ := rawItem.(map[string]any)
+					if _, ok := item["meeting"]; ok {
+						t.Fatalf("meeting_activity_items should not repeat meeting: %s", string(got))
+					}
 				}
 				if tc.name == "meeting activity ignores nested reaction details" {
 					first, _ := items[0].(map[string]any)
 					chatItems, _ := first["chat_received_items"].([]any)
 					chatItem, _ := chatItems[0].(map[string]any)
 					operator, _ := chatItem["operator"].(map[string]any)
-					if got := operator["id"]; got != "ou_1" {
-						t.Fatalf("operator id = %#v, want open_id string", got)
+					id, _ := operator["id"].(map[string]any)
+					if got := id["open_id"]; got != "ou_1" {
+						t.Fatalf("operator id.open_id = %#v, want ou_1", got)
 					}
 					if strings.Contains(string(got), "union_id") || strings.Contains(string(got), "user_id") {
 						t.Fatalf("meeting_activity_items should not expose union_id/user_id: %s", string(got))

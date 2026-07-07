@@ -142,10 +142,11 @@ These keys model what the bot observes. Do not treat them as aliases for:
 | `timestamp` | string (timestamp_ms) | Event delivery time from `header.create_time` when present |
 | `call_id` | string | Invitation call ID; pass through to VC agent join when present |
 | `meeting_no` | string | Meeting number from the bot event's declared meeting field |
-| `meeting_activity_items` | object[] | `event.meeting_activity_items` extracted one level up for `vc.bot.meeting_activity_v1`; each item carries its own `activity_event_type`, and nested user `id` objects are normalized to open_id strings |
+| `meeting` | object | First `event.meeting_activity_items[].meeting` object extracted one level up for `vc.bot.meeting_activity_v1` |
+| `meeting_activity_items` | object[] | `event.meeting_activity_items` extracted one level up for `vc.bot.meeting_activity_v1`; item-level duplicate `meeting` is removed, each item carries its own `activity_event_type`, and nested user `id` objects keep `id.open_id` |
 | `payload` | object | Original bot event body without the `schema` / `header` envelope for non-activity events or malformed activity payloads |
 
-Normal bot-event output intentionally does not include the full raw envelope. Use stable top-level fields for routing; for `vc.bot.meeting_activity_v1`, consume `meeting_activity_items[]` directly and branch on each item's `activity_event_type`. Do not assume one delivered bot event contains only one activity type. For richer cross-event meeting analysis or IM forwarding, prefer `vc +meeting-events --format json`, which normalizes actors, current participants, chat/reaction payloads, subtitles, and magic-share events. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
+Normal bot-event output intentionally does not include the full raw envelope. Use stable top-level fields for routing; for `vc.bot.meeting_activity_v1`, consume `meeting_activity_items[]` directly and branch on each item's `activity_event_type`. Do not assume one delivered bot event contains only one activity type. The repeated item-level `meeting` object is lifted to top-level `meeting` to avoid duplicating meeting metadata in every item. For richer cross-event meeting analysis or IM forwarding, prefer `vc +meeting-events --format json`, which normalizes actors, chat/reaction payloads, subtitles, and magic-share events. If the top-level event envelope cannot be parsed at all, `event consume` still passes the raw payload through for diagnostics.
 
 ### Forwarding meeting activity to IM
 
