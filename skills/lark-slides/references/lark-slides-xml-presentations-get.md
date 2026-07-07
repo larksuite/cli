@@ -56,15 +56,15 @@ lark-cli slides xml_presentations get --as user --params '{"xml_presentation_id"
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation": {
       "presentation_id": "slides_example_presentation_id",
       "revision_id": 1,
       "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
     }
-  },
-  "msg": "success"
+  }
 }
 ```
 

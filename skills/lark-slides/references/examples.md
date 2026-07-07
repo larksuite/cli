@@ -65,15 +65,15 @@ lark-cli slides xml_presentations get --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation": {
       "presentation_id": "slides_example_presentation_id",
       "revision_id": 3,
       "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
     }
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -94,12 +94,12 @@ lark-cli slides xml_presentation.slide create --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "slide_id": "slide_example_id",
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -116,11 +116,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "revision_id": 101
-  },
-  "msg": "success"
+  }
 }
 ```
 

@@ -61,11 +61,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{"xml_presenta
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 

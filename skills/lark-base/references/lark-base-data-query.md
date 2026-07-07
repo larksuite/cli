@@ -347,28 +347,28 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 |------|------|------|------|
 | `format` | string | 是 | 固定为 `"flat"`，表示返回扁平化的对象数组 |
 
-## API 出参详情
+## CLI 出参详情
 
-**成功时：**
+**成功时**（stdout，判断成功用 `ok == true` 或退出码 0）：
 
 ```json
-{"code": 0, "data": {"main_data": [{"dim_city": {"value": "北京"}, "total_amount": {"value": 12345.00}}, ...]}, "msg": ""}
+{"ok": true, "identity": "user", "data": {"main_data": [{"dim_city": {"value": "北京"}, "total_amount": {"value": 12345.00}}, ...]}}
 ```
 
-**失败时：**
+**失败时**（stderr 类型化错误信封，非零退出码；`error.code` 是上游 API 错误码）：
 
 ```json
-{"code": 800004006, "data": {"error": {"code": 800004006, ...}}, "msg": "DSL validation failed"}
+{"ok": false, "identity": "user", "error": {"type": "api", "subtype": "...", "code": 800004006, "message": "DSL validation failed", "hint": "..."}}
 ```
 
 **Response 字段：**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `code` | int | 状态码，0 为成功 |
-| `msg` | string | 错误信息 |
+| `ok` | bool | 是否成功 |
 | `data.main_data` | []object | 查询结果数组，每个元素为一行数据 |
-| `data.error` | object | 失败时的错误详情 |
+| `error.code` | int | 失败时的上游 API 错误码 |
+| `error.message` / `error.hint` | string | 失败原因与建议的恢复动作 |
 
 每行数据的字段值封装在 CellValue 中：
 
@@ -387,7 +387,7 @@ value 使用预定义关键字机制，第一个元素为字符串常量名称�
 
 ## 返回值
 
-命令成功后输出 `data` 字段的内容：
+命令成功后，成功信封的 `data` 字段即查询结果：
 
 ```json
 {

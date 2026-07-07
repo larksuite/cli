@@ -69,7 +69,7 @@ LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 lark-cli a
 遇到权限相关错误时，**根据当前身份类型采取不同解决方案**。
 
 错误响应中包含关键信息：
-- `permission_violations`：列出缺失的 scope (N选1)
+- `missing_scopes`：列出缺失的 scope (N选1)
 - `console_url`：飞书开发者后台的权限配置链接
 - `hint`：建议的修复命令
 
@@ -178,22 +178,22 @@ lark-cli 对高风险写操作（`risk: "high-risk-write"`）有强制确认门�
 ```json
 {
   "ok": false,
+  "identity": "bot",
   "error": {
-    "type": "confirmation_required",
+    "type": "confirmation",
+    "subtype": "confirmation_required",
     "message": "drive +delete requires confirmation",
     "hint": "add --yes to confirm",
-    "risk": {
-      "level": "high-risk-write",
-      "action": "drive +delete"
-    }
+    "risk": "high-risk-write",
+    "action": "drive +delete"
   }
 }
 ```
 
 **遇到这种情况，不要当普通错误放弃。** 按以下流程处理：
 
-1. **识别**：看到子进程 exit code = `10` 且 stderr JSON 里 `error.type == "confirmation_required"`
-2. **向用户确认**：把 `error.risk.action` 和关键参数展示给用户，明确告知"这是高风险操作"，等待用户显式同意
+1. **识别**：看到子进程 exit code = `10` 且 stderr JSON 里 `error.type == "confirmation"`、`error.subtype == "confirmation_required"`
+2. **向用户确认**：把 `error.action`、`error.risk` 和关键参数展示给用户，明确告知"这是高风险操作"，等待用户显式同意
 3. **用户同意** → 在你**原始 argv 的末尾追加 `--yes`** 后重试
 4. **用户拒绝** → 终止流程，不要擅自改写参数或跳过门禁
 

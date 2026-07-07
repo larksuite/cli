@@ -24,7 +24,7 @@
 
 ## 远端同名文件冲突
 
-如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（`error.type=duplicate_remote_path`），且不会上传、覆盖或进入 `--delete-remote` 删除阶段。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
+如果 Drive 中多个条目映射到同一个 `rel_path`，默认直接失败（stderr 类型化错误信封：`error.type=validation`、`error.subtype=failed_precondition`，`error.params[]` 逐条列出冲突的 `rel_path` 及碰撞条目），且不会上传、覆盖或进入 `--delete-remote` 删除阶段。只有“多个 `type=file` 同名”的场景支持显式策略；`file-folder` 这类异构冲突始终直接失败。
 
 | 策略 | 行为 |
 |------|------|

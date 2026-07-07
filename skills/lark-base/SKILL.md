@@ -85,7 +85,7 @@ metadata:
 ## 身份与权限降级
 
 - 默认显式使用 `--as user` 操作用户资源；只有用户明确要求应用身份时，才直接用 `--as bot`。
-- user 身份报 scope/授权不足，或错误中包含 `permission_violations` / `hint`，先转 `lark-shared` 做用户授权恢复，不要直接降级 bot。
+- user 身份报 scope/授权不足，或错误中包含 `missing_scopes` / `hint`，先转 `lark-shared` 做用户授权恢复，不要直接降级 bot。
 - user 身份报资源级无访问且无授权恢复提示时，才可用 `--as bot` 重试一次；bot 仍失败就停止重试并按权限错误处理。
 - `91403` 或明确不可访问错误不要循环换身份重试。
 - `+base-create` / `+base-copy` 若用 bot 身份执行，关注返回中的 `permission_grant`，并把用户是否可打开新 Base 告知用户。
