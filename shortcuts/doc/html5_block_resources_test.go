@@ -116,6 +116,61 @@ func TestDocsCreateV2HTML5BlockReferenceMapFromPath(t *testing.T) {
 	}
 }
 
+func TestDocsCreateV2WhiteboardFileInputs(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	files := map[string]string{
+		"diagram.svg":   `<svg viewBox="0 0 10 10"><text>A</text></svg>`,
+		"flow.mmd":      "flowchart TD\nA --> B",
+		"sequence.puml": "@startuml\nAlice -> Bob: hi\n@enduml",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(name, []byte(content), 0o600); err != nil {
+			t.Fatalf("WriteFile(%s) error: %v", name, err)
+		}
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+	stub := registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents", map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcn_new_doc",
+			"revision_id": float64(1),
+		},
+	})
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", strings.Join([]string{
+			`<whiteboard type="svg" path="@diagram.svg"></whiteboard>`,
+			`<whiteboard type="mermaid">@flow.mmd</whiteboard>`,
+			`<whiteboard type="plantUML" path="@sequence.puml"/>`,
+		}, "\n"),
+		"--as", "user",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := decodeRequestBody(t, stub.CapturedBody)
+	got := body["content"].(string)
+	for _, want := range []string{
+		`<whiteboard type="svg"><svg viewBox="0 0 10 10"><text>A</text></svg></whiteboard>`,
+		"<whiteboard type=\"mermaid\">flowchart TD\nA --> B</whiteboard>",
+		"<whiteboard type=\"plantuml\">@startuml\nAlice -> Bob: hi\n@enduml</whiteboard>",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("content missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, `path="@`) {
+		t.Fatalf("content still contains whiteboard path attr: %s", got)
+	}
+	if _, ok := body["reference_map"]; ok {
+		t.Fatalf("whiteboard file input must not create reference_map: %#v", body)
+	}
+}
+
 func findDocsTestFlag(flags []common.Flag, name string) common.Flag {
 	for _, flag := range flags {
 		if flag.Name == name {
@@ -404,6 +459,35 @@ func TestDocsCreateV2HTML5BlockPathReadFailure(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), `html5-block path "missing.html" cannot be read from the current working directory`) {
 		t.Fatalf("expected path read error, got: %v", err)
+	}
+}
+
+func TestDocsCreateV2WhiteboardFileInputReportsAllMissingPaths(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--content", strings.Join([]string{
+			`<whiteboard type="svg" path="@missing.svg"></whiteboard>`,
+			`<whiteboard type="mermaid">@missing.mmd</whiteboard>`,
+			`<whiteboard type="plantuml" path="@missing.puml"></whiteboard>`,
+		}, "\n"),
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected aggregated whiteboard path error")
+	}
+	for _, want := range []string{
+		`whiteboard svg path "missing.svg" cannot be read`,
+		`whiteboard mermaid path "missing.mmd" cannot be read`,
+		`whiteboard plantuml path "missing.puml" cannot be read`,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %q:\n%v", want, err)
+		}
 	}
 }
 
