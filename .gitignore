@@ -52,3 +52,8 @@ cover*.out
 
 lark-env.sh
 /automations/
+
+# harness 工作产物（dev-workflow 硬门规则：不进 lark-cli 仓库）
+docs/superpowers/
+tests_e2e/
+tests_skill_eval/
