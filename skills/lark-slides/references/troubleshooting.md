@@ -16,7 +16,7 @@
 遇到 `invalid param`、某一页创建失败、页面空白或布局错乱时，按顺序处理：
 
 1. 记录 `xml_presentation_id`，不要假设失败代表什么都没创建。
-2. 用 `xml_presentations.get` 回读，确认是否已有部分页面写入。
+2. 用 `slides +xml-get` 回读，确认是否已有部分页面写入。
 3. 检查失败页是否含未转义字符：`Q&A -> Q&amp;A`，文本 `<` / `>` 写成 `&lt;` / `&gt;`，属性 URL `a=1&b=2 -> a=1&amp;b=2`。
 4. 检查标签闭合、属性引号、`<content>` 结构，以及 `<slide>` 直接子元素。
 5. 页面空白、溢出、重叠或越界时，按 [validation-checklist.md](validation-checklist.md) 运行 XML 文本重叠检查，并人工核对越界、截断、图文压盖等视觉风险；工具当前只会报告 `xml_not_well_formed` / `bbox_overlap`。
@@ -53,7 +53,7 @@
 | 1061002 媒体上传 params error | slides 媒体上传参数不符合约定 | 用 `slides +media-upload`，不要手拼原生 `medias/upload_all`；slides 唯一可用 `parent_type` 是 `slide_file` |
 | 1061004 forbidden | 当前身份对演示文稿无编辑权限 | 确认 user/bot 对目标 PPT 有编辑权限；bot 常见于 PPT 非该 bot 创建 |
 | 3350001 | XML 非 well-formed、XML 结构不符合服务端要求，或 replace 片段问题 | 优先检查未转义字符；replace 场景再看 `block_id` 和 `<content/>` |
-| 3350002 | `revision_id` 大于当前版本 | 用 `-1` 取当前版本，或重新读 `xml_presentations.get` 取最新 `revision_id` |
+| 3350002 | `revision_id` 大于当前版本 | 用 `-1` 取当前版本，或重新用 `slides +xml-get` 取最新 `revision_id` |
 | validation: unsafe file path | `--file` 给了绝对路径或上层路径 | `--file` 必须是 CWD 内相对路径；先 `cd` 到素材目录再执行 |
 
 ## Command-Specific References

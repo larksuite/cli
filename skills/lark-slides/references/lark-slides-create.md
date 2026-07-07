@@ -134,4 +134,4 @@ lark-cli slides xml_presentation.slide create --as user \
 ## 相关命令
 
 - [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 添加幻灯片页面
-- [xml_presentations get](lark-slides-xml-presentations-get.md) — 读取 PPT 内容
+- [slides +xml-get](lark-slides-xml-get.md) — 读取 PPT 内容并保存到本地文件

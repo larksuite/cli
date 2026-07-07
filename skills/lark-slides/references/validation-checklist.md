@@ -7,7 +7,7 @@
 ## Required Flow
 
 1. 记录创建或编辑返回的 `xml_presentation_id`，以及已知的 `slide_id` / `revision_id`。
-2. 用 `xml_presentations.get` 回读全文 XML。
+2. 用 `slides +xml-get` 回读全文 XML 到本地文件。
 3. 检查实际页数是否符合计划或用户要求。
 4. 检查每页 `<data>` 内是否有预期主要元素。
 5. 检查没有明显空白页、破损页、缺失标题或缺失主视觉。
@@ -19,13 +19,15 @@
 回读命令：
 
 ```bash
-lark-cli slides xml_presentations get --as user \
-  --params '{"xml_presentation_id":"YOUR_ID"}'
+lark-cli slides +xml-get --as user \
+  --presentation "YOUR_ID" \
+  --output .lark-slides/plan/<deck-or-task-id>/readback.xml \
+  --json
 ```
 
 ## Automated XML Text Overlap Lint
 
-回读 XML 保存到本地文件后，优先运行 XML 语法和文本重叠静态检查：
+`slides +xml-get` 保存 XML 到本地文件后，优先运行 XML 语法和文本重叠静态检查：
 
 ```bash
 python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentation.xml>
@@ -101,7 +103,7 @@ python3 skills/lark-slides/scripts/xml_text_overlap_lint.py --input <presentatio
 
 ```text
 验证记录：
-- 回读：已执行 xml_presentations.get，实际页数 N / 预期 N。
+- 回读：已执行 slides +xml-get，实际页数 N / 预期 N。
 - 关键页：架构解释 / Self-Attention / 对比或演进 / 总结页均存在。
 - 结构：检查了主要 shape/img/table/chart 元素，无明显空白页或破损页。
 - 布局：检查了标题层级、主视觉、重叠/越界/文本溢出风险。

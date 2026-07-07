@@ -188,7 +188,7 @@ lark-cli slides xml_presentation.slide create --as user \
 4. **fill / border 写法**: 颜色填充使用 `<fill><fillColor color="..."/></fill>`，边框常用 `<border color="..." width="2"/>`
 5. **插入位置**: 通过 `before_slide_id` 指定插入目标，而不是用 `position`
 6. **JSON 转义**: 如果直接内联 XML，需要正确转义双引号
-7. **建议**: 先使用 `xml_presentations.get` 获取现有结构，再添加新页面
+7. **建议**: 先使用 `slides +xml-get` 获取现有结构，再添加新页面
 
 ## 批量添加建议
 
@@ -214,7 +214,7 @@ done
 ## 相关命令
 
 - [slides +create](lark-slides-create.md) - 创建空白 PPT
-- [xml_presentations get](lark-slides-xml-presentations-get.md) - 读取 PPT 内容
+- [slides +xml-get](lark-slides-xml-get.md) - 读取 PPT 内容并保存到本地文件
 - [xml_presentation.slide delete](lark-slides-xml-presentation-slide-delete.md) - 删除幻灯片页面
 - [xml-format-guide.md](xml-format-guide.md) - XML 格式详细规范
 - [xml-schema-quick-ref.md](xml-schema-quick-ref.md) - Schema 快速参考

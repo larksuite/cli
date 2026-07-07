@@ -106,5 +106,5 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 - [slides +replace-slide](lark-slides-replace-slide.md) — 块级替换 shortcut（推荐）
 - [xml_presentation.slide replace](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考
-- [xml_presentations get](lark-slides-xml-presentations-get.md) — 读整个 PPT
+- [slides +xml-get](lark-slides-xml-get.md) — 读整个 PPT 并保存到本地文件
 - [lark-slides-edit-workflows.md](lark-slides-edit-workflows.md) — 读-改-写闭环
