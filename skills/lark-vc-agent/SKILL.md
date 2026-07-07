@@ -78,7 +78,7 @@ metadata:
 8. **必须识别分页信号**：只要响应里出现 `has_more=true`、pretty 里的 `more available`，或返回了非空 `page_token`，就不能把当前结果当作完整事件流；默认应继续分页，或明确告诉用户当前只是部分结果。
 9. 保留响应里的 `page_token`，下次增量拉取直接续，不要从头再拉。
 10. **只要你是基于** **`+meeting-events`** **来回答一场正在进行中的会议内容，就不能直接复用旧结果。** 无论用户是在问“现在/刚刚/最新”的状态，还是让你“总结一下这个会议讲什么”，都必须先重新拉一次当前事件流，确认拿到的是最新信息，再基于最新结果回答。只有在用户明确要求基于某次历史快照继续分析时，才可以复用旧结果。
-11. **会中聊天 / 互动转发到 IM 时基于 JSON 事件构造 IM post。** `chat_received_items[].message_type == 3` 表示会中 reaction，必须把同一 item 的 `content` 作为 Feishu post `emotion.emoji_type`；普通聊天按文本发送。不要从 pretty/Markdown 重新拼消息，也不要把 reaction 改写成普通文本。用户已说“发给我 / 推送给我 / 发到我的单聊”时，默认用 bot 身份直接发当前用户；收件人不明确时只补问收件人。
+11. **会中聊天 / 互动转发到 IM 时基于 JSON 事件构造 IM post。** `chat_received_items[].message_type == 3` 表示会中 reaction；构造 IM post 时，先用 [`lark-im` reaction emoji 白名单](../lark-im/references/lark-im-reactions.md) 判断同一 item 的 `content`：白名单内才写成 Feishu post `emotion` 节点，不在白名单内则保留原始 key 并写成文本节点，例如 `[CanNotSee]`。普通聊天按文本发送。不要从 pretty/Markdown 重新拼消息，也不要把整条消息退化成纯文本；只降级非法 reaction key。用户已说“发给我 / 推送给我 / 发到我的单聊”时，默认用 bot 身份直接发当前用户；收件人不明确时只补问收件人。
 12. 用户直接问“这个会议讲了什么 / 现在讲到哪了”且上下文没有明确 `meeting_id` 时，先用用户身份发现当前会议；如果用户明确要求应用机器人视角，或上下文已经是应用机器人参会流程，再用应用身份发现。若返回多个会议，展示候选并让用户选择。
 13. 用户直接提供 **9 位会议号** 并询问会中事件/会议内容时，默认把它当作 active meeting 的筛选条件：先按当前身份查 active meetings，并在返回里匹配 `meeting_no == <9位会议号>`；匹配到唯一会议后取长数字 `meeting_id`，再用同一身份查事件。只有用户明确要求“入会 / 让应用机器人旁听 / 代我参会”时才改用 `+meeting-join`。
 
