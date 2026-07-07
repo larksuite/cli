@@ -259,25 +259,19 @@ func prepareWhiteboardWriteContent(runtime *common.RuntimeContext, format string
 		return rewrite(content)
 	}
 
-	var (
-		out strings.Builder
-		err error
-	)
-	out.WriteString(applyOutsideCodeFences(content, func(segment string) string {
-		if err != nil {
-			return segment
-		}
+	var rewriteErrs []error
+	out := applyOutsideCodeFences(content, func(segment string) string {
 		outSegment, rewriteErr := rewrite(segment)
 		if rewriteErr != nil {
-			err = rewriteErr
+			rewriteErrs = append(rewriteErrs, rewriteErr)
 			return segment
 		}
 		return outSegment
-	}))
-	if err != nil {
-		return "", err
+	})
+	if len(rewriteErrs) > 0 {
+		return "", aggregateWhiteboardRewriteErrors(rewriteErrs)
 	}
-	return out.String(), nil
+	return out, nil
 }
 
 func rewriteWhiteboardFileRefs(runtime *common.RuntimeContext, content string) (string, error) {
@@ -399,7 +393,10 @@ func readWhiteboardPath(runtime *common.RuntimeContext, pathValue string, typ st
 	}
 	data, err := cmdutil.ReadInputFile(runtime.FileIO(), clean)
 	if err != nil {
-		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", typ, clean, err).WithParam("path").WithCause(err)
+		return "", common.ValidationErrorf("whiteboard %s path %q cannot be read from the current working directory; check that the file exists relative to where lark-cli is running: %v", typ, clean, err).
+			WithParam("path").
+			WithParams(errs.InvalidParam{Name: clean, Reason: fmt.Sprintf("whiteboard %s path cannot be read", typ)}).
+			WithCause(err)
 	}
 	return string(data), nil
 }
@@ -446,11 +443,49 @@ func whiteboardContentForType(typ string, data string) string {
 }
 
 func aggregateWhiteboardRewriteErrors(rewriteErrs []error) error {
-	messages := make([]string, 0, len(rewriteErrs))
-	for _, err := range rewriteErrs {
+	flatErrs := flattenWhiteboardRewriteErrors(rewriteErrs)
+	messages := make([]string, 0, len(flatErrs))
+	params := make([]errs.InvalidParam, 0, len(flatErrs))
+	for _, err := range flatErrs {
 		messages = append(messages, err.Error())
+		params = append(params, whiteboardInvalidParamsFromError(err)...)
 	}
-	return common.ValidationErrorf("whiteboard file input failed: %s", strings.Join(messages, "; ")).WithParam("whiteboard").WithCause(errors.Join(rewriteErrs...))
+	validationErr := common.ValidationErrorf("whiteboard file input failed: %s", strings.Join(messages, "; ")).
+		WithParam("whiteboard").
+		WithCause(errors.Join(flatErrs...))
+	if len(params) > 0 {
+		validationErr.WithParams(params...)
+	}
+	return validationErr
+}
+
+func flattenWhiteboardRewriteErrors(rewriteErrs []error) []error {
+	flatErrs := make([]error, 0, len(rewriteErrs))
+	for _, err := range rewriteErrs {
+		var validationErr *errs.ValidationError
+		if errors.As(err, &validationErr) && validationErr.Param == "whiteboard" && validationErr.Cause != nil {
+			if joined, ok := validationErr.Cause.(interface{ Unwrap() []error }); ok {
+				flatErrs = append(flatErrs, flattenWhiteboardRewriteErrors(joined.Unwrap())...)
+				continue
+			}
+		}
+		flatErrs = append(flatErrs, err)
+	}
+	return flatErrs
+}
+
+func whiteboardInvalidParamsFromError(err error) []errs.InvalidParam {
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		return nil
+	}
+	if len(validationErr.Params) > 0 {
+		return validationErr.Params
+	}
+	if validationErr.Param != "" {
+		return []errs.InvalidParam{{Name: validationErr.Param, Reason: validationErr.Message}}
+	}
+	return nil
 }
 
 func validateHTML5BlockWriteElementBodies(format string, content string) error {

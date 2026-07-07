@@ -6,11 +6,13 @@ package doc
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -480,13 +482,97 @@ func TestDocsCreateV2WhiteboardFileInputReportsAllMissingPaths(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected aggregated whiteboard path error")
 	}
-	for _, want := range []string{
+	assertWhiteboardFileInputValidation(t, err, []string{
+		"missing.svg",
+		"missing.mmd",
+		"missing.puml",
+	}, []string{
 		`whiteboard svg path "missing.svg" cannot be read`,
 		`whiteboard mermaid path "missing.mmd" cannot be read`,
 		`whiteboard plantuml path "missing.puml" cannot be read`,
-	} {
+	})
+}
+
+func TestDocsCreateV2WhiteboardFileInputMarkdownReportsMissingPathsAcrossFences(t *testing.T) {
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
+
+	err := runDocsCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--api-version", "v2",
+		"--doc-format", "markdown",
+		"--content", strings.Join([]string{
+			`<whiteboard type="svg" path="@before.svg"></whiteboard>`,
+			"```",
+			`<whiteboard type="svg" path="@inside.svg"></whiteboard>`,
+			"```",
+			`<whiteboard type="plantuml" path="@after.puml"></whiteboard>`,
+		}, "\n"),
+		"--as", "user",
+	})
+	if err == nil {
+		t.Fatal("expected aggregated whiteboard path error")
+	}
+	assertWhiteboardFileInputValidation(t, err, []string{
+		"before.svg",
+		"after.puml",
+	}, []string{
+		`whiteboard svg path "before.svg" cannot be read`,
+		`whiteboard plantuml path "after.puml" cannot be read`,
+	})
+	if strings.Contains(err.Error(), "inside.svg") {
+		t.Fatalf("error should ignore fenced whiteboard path, got: %v", err)
+	}
+}
+
+func assertWhiteboardFileInputValidation(t *testing.T, err error, wantParams []string, wantMessages []string) {
+	t.Helper()
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T %v", err, err)
+	}
+	if problem.Category != errs.CategoryValidation || problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("category/subtype = %s/%s, want %s/%s", problem.Category, problem.Subtype, errs.CategoryValidation, errs.SubtypeInvalidArgument)
+	}
+
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got %T %v", err, err)
+	}
+	if validationErr.Param != "whiteboard" {
+		t.Fatalf("param = %q, want whiteboard", validationErr.Param)
+	}
+	if validationErr.Cause == nil {
+		t.Fatal("expected aggregated error to preserve cause")
+	}
+	var childValidationErr *errs.ValidationError
+	if !errors.As(validationErr.Cause, &childValidationErr) || childValidationErr.Cause == nil {
+		t.Fatalf("expected child validation cause to preserve file read cause, got %#v", validationErr.Cause)
+	}
+
+	gotParams := make(map[string]string, len(validationErr.Params))
+	for _, param := range validationErr.Params {
+		gotParams[param.Name] = param.Reason
+	}
+	if len(gotParams) != len(wantParams) {
+		t.Fatalf("params = %#v, want names %v", validationErr.Params, wantParams)
+	}
+	for _, param := range wantParams {
+		reason, ok := gotParams[param]
+		if !ok {
+			t.Fatalf("params = %#v, want name %q", validationErr.Params, param)
+		}
+		if reason == "" {
+			t.Fatalf("param %q missing reason: %#v", param, validationErr.Params)
+		}
+	}
+	for _, want := range wantMessages {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error missing %q:\n%v", want, err)
+		}
+		if !strings.Contains(validationErr.Cause.Error(), want) {
+			t.Fatalf("cause missing %q:\n%v", want, validationErr.Cause)
 		}
 	}
 }
