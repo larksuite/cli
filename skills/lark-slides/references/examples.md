@@ -65,15 +65,15 @@ lark-cli slides xml_presentations get --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation": {
       "presentation_id": "slides_example_presentation_id",
       "revision_id": 3,
       "content": "<presentation xmlns=\"http://www.larkoffice.com/sml/2.0\" height=\"540\" width=\"960\">...</presentation>"
     }
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -94,12 +94,12 @@ lark-cli slides xml_presentation.slide create --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "slide_id": "slide_example_id",
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -116,11 +116,11 @@ lark-cli slides xml_presentation.slide delete --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "revision_id": 101
-  },
-  "msg": "success"
+  }
 }
 ```
 
@@ -179,6 +179,7 @@ lark-cli slides +replace-slide --as user \
 ```json
 {
   "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation_id": "slides_example_presentation_id",
     "slide_id": "slide_example_id",
@@ -211,8 +212,10 @@ lark-cli slides +replace-slide --as user \
 ```json
 {
   "ok": false,
+  "identity": "user",
   "error": {
     "type": "api",
+    "subtype": "unknown",
     "code": 3350001,
     "message": "API error: [3350001] invalid param",
     "hint": "common causes: (1) block_id not found in current slide ..."
@@ -220,7 +223,7 @@ lark-cli slides +replace-slide --as user \
 }
 ```
 
-整批作为原子事务，任一 part 失败则整批不生效；按 `failed_part_index` 定位修正后重发。
+整批作为原子事务，任一 part 失败则整批不生效；按 `error.hint` 检查 `block_id`、XML 结构或页面边界后重发。
 
 ## 常见处理技巧
 

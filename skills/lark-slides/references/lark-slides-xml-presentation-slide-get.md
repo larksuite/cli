@@ -65,15 +65,15 @@ lark-cli slides xml_presentation.slide get --as user --params '{
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "slide": {
       "slide_id": "slide_example_id",
       "content": "<slide id=\"slide_example_id\"><style/><data>...</data></slide>"
     },
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 

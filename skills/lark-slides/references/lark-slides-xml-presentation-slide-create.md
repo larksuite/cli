@@ -141,12 +141,12 @@ lark-cli slides xml_presentation.slide create --as user \
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "slide_id": "slide_example_id",
     "revision_id": 100
-  },
-  "msg": "success"
+  }
 }
 ```
 

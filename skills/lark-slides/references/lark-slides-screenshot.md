@@ -66,7 +66,8 @@ lark-cli slides +screenshot --as user \
 
 ```json
 {
-  "code": 0,
+  "ok": true,
+  "identity": "user",
   "data": {
     "xml_presentation_id": "slides_example_presentation_id",
     "output_dir": ".lark-slides/screenshots",
@@ -79,8 +80,7 @@ lark-cli slides +screenshot --as user \
         "size": 12345
       }
     ]
-  },
-  "msg": "success"
+  }
 }
 ```
 

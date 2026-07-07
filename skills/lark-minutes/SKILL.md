@@ -120,9 +120,9 @@ lark-cli minutes +todo --minute-token <token> --as user --todos '[
 
 **更新 / 删除前**：先用 `minutes +detail --minute-tokens <token> --todo` 读取 `todos[].todo_id`（按 `content` 匹配目标条目；列表顺序不保证稳定，**不要**用"第 2 条"代替 `todo_id`）。
 
-**无编辑权限**：若 CLI 返回 `error.type=no_edit_permission`，表示对**这条妙记**没有编辑权，应请所有者授权；**不要**误走 `auth login --scope`。
+**无编辑权限**：若 CLI 返回 `error.subtype=permission_denied`，表示对**这条妙记**没有编辑权，应请所有者授权；**不要**误走 `auth login --scope`。
 
-**逐字稿关键词替换无命中**：`minutes +word-replace` 时，若 CLI 返回 `error.type=words_not_found`，表示传入的 `source_word` 在该妙记逐字稿中**一个都没匹配到**，未做任何替换。这是**参数问题不是权限问题**：先用 `minutes +detail --minute-tokens <token> --transcript` 读取当前逐字稿，核对 `source_word` 的精确写法与大小写后重试。
+**逐字稿关键词替换无命中**：`minutes +word-replace` 时，若 CLI 返回 `error.subtype=not_found`，表示传入的 `source_word` 在该妙记逐字稿中**一个都没匹配到**，未做任何替换。这是**参数问题不是权限问题**：先用 `minutes +detail --minute-tokens <token> --transcript` 读取当前逐字稿，核对 `source_word` 的精确写法与大小写后重试。
 
 **替换 AI 总结全文**：见 [minutes +summary](references/lark-minutes-summary.md)。
 
