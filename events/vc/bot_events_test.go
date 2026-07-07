@@ -216,9 +216,8 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 				if _, ok := row["payload"]; ok {
 					t.Fatalf("meeting activity output should lift meeting_activity_items out of payload: %s", string(got))
 				}
-				meeting, ok := row["meeting"].(map[string]any)
-				if !ok || meeting["meeting_no"] != tc.want.MeetingNo {
-					t.Fatalf("meeting activity output should include top-level meeting: %s", string(got))
+				if _, ok := row["meeting"]; ok {
+					t.Fatalf("meeting activity output should not include top-level meeting: %s", string(got))
 				}
 				items, ok := row["meeting_activity_items"].([]any)
 				if !ok || len(items) == 0 {
@@ -226,8 +225,12 @@ func TestProcessVCBotEvents_StableFields(t *testing.T) {
 				}
 				for _, rawItem := range items {
 					item, _ := rawItem.(map[string]any)
-					if _, ok := item["meeting"]; ok {
-						t.Fatalf("meeting_activity_items should not repeat meeting: %s", string(got))
+					meeting, ok := item["meeting"].(map[string]any)
+					if !ok {
+						t.Fatalf("meeting_activity_items should keep meeting on each item: %s", string(got))
+					}
+					if meeting["meeting_no"] == nil {
+						t.Fatalf("meeting_activity_items meeting should keep meeting_no: %s", string(got))
 					}
 				}
 				if tc.name == "meeting activity ignores nested reaction details" {

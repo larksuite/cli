@@ -19,7 +19,6 @@ type VCBotEventOutput struct {
 	Timestamp            string                   `json:"timestamp,omitempty"              desc:"Event delivery time (ms timestamp string); taken from header.create_time when present" kind:"timestamp_ms"`
 	CallID               string                   `json:"call_id,omitempty"                desc:"Bot invitation call ID; pass through to vc agent join when present"`
 	MeetingNo            string                   `json:"meeting_no,omitempty"             desc:"Meeting number from the bot event's declared meeting field"`
-	Meeting              map[string]interface{}   `json:"meeting,omitempty"                desc:"Meeting object extracted from the first activity item that carries one"`
 	MeetingActivityItems []map[string]interface{} `json:"meeting_activity_items,omitempty" desc:"event.meeting_activity_items extracted one level up for direct consumption; nested user id objects keep id.open_id"`
 	Payload              json.RawMessage          `json:"payload,omitempty"                 desc:"Original bot event body without schema/header envelope for non-activity events or malformed activity payloads"`
 }
@@ -98,7 +97,6 @@ func fillBotEventOutput(eventType string, data json.RawMessage, out *VCBotEventO
 			return
 		}
 		out.MeetingNo = botActivityMeetingNo(items)
-		out.Meeting = normalizeBotActivityMeeting(items)
 		meetingActivityItems := normalizeBotActivityItems(items)
 		if len(meetingActivityItems) == 0 {
 			out.Payload = cloneRawMessage(data)
@@ -159,19 +157,6 @@ func botActivityMeetingNo(items []interface{}) string {
 	return ""
 }
 
-func normalizeBotActivityMeeting(items []interface{}) map[string]interface{} {
-	for _, raw := range items {
-		item, _ := raw.(map[string]interface{})
-		meeting, _ := item["meeting"].(map[string]interface{})
-		if len(meeting) == 0 {
-			continue
-		}
-		normalized, _ := normalizeBotActivityValue(meeting).(map[string]interface{})
-		return normalized
-	}
-	return nil
-}
-
 func normalizeBotActivityItems(items []interface{}) []map[string]interface{} {
 	normalized := make([]map[string]interface{}, 0, len(items))
 	for _, raw := range items {
@@ -181,7 +166,6 @@ func normalizeBotActivityItems(items []interface{}) []map[string]interface{} {
 		}
 		normalizedItem, _ := normalizeBotActivityValue(item).(map[string]interface{})
 		if normalizedItem != nil {
-			delete(normalizedItem, "meeting")
 			normalized = append(normalized, normalizedItem)
 		}
 	}
