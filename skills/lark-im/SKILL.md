@@ -189,6 +189,10 @@ lark-cli im <resource> <method> [flags] # 调用 API
   - `delete` — Delete a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
   - `update` — Update a feed group. Identity: `user` only (`user_access_token`).[Must-read](references/lark-im-feed-groups.md)
 
+### draft
+
+  - `create` — 写入草稿。Identity: `user` only (`user_access_token`); `scene` enum: use `1` (`CHAT_INPUT`) for the main chat input and provide `chat_id`, use `2` (`MSG_THREAD`) for the thread/reply input and provide `thread_id`, and do not choose `0` (`UNKNOWN`) unless the task explicitly asks for the unknown scene.
+
 ## 权限表
 
 | 方法 | 所需 scope |
@@ -229,3 +233,4 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `feed.groups.create` | `im:feed_group_v1:write` |
 | `feed.groups.delete` | `im:feed_group_v1:write` |
 | `feed.groups.update` | `im:feed_group_v1:write` |
+| `draft.create` | `im:message.draft_write_as_user` |
