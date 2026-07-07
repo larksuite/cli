@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -130,6 +131,59 @@ func TestWikiNodeListRequiresSpaceID(t *testing.T) {
 	}
 }
 
+func TestWikiNodeListRejectsNonNumericSpaceID(t *testing.T) {
+	t.Parallel()
+
+	factory, _, _, _ := cmdutil.TestFactory(t, wikiTestConfig())
+	err := mountAndRunWiki(t, WikiNodeList, []string{
+		"+node-list", "--space-id", "wikcnABC", "--as", "user",
+	}, factory, nil)
+	if err == nil || !strings.Contains(err.Error(), "--space-id must be a numeric wiki space_id") {
+		t.Fatalf("expected numeric space_id validation error, got %v", err)
+	}
+}
+
+func TestWikiNodeListRejectsDocumentURLAsParentNodeToken(t *testing.T) {
+	t.Parallel()
+
+	factory, _, _, _ := cmdutil.TestFactory(t, wikiTestConfig())
+	err := mountAndRunWiki(t, WikiNodeList, []string{
+		"+node-list",
+		"--space-id", "7211568716812369922",
+		"--parent-node-token", "https://feishu.cn/docx/docxABC",
+		"--as", "user",
+	}, factory, nil)
+	if err == nil || !strings.Contains(err.Error(), "must identify a wiki node") {
+		t.Fatalf("expected parent-node-token URL type validation error, got %v", err)
+	}
+}
+
+func TestWikiNodeListNormalizesWikiURLParentNodeToken(t *testing.T) {
+	t.Parallel()
+
+	token, err := normalizeWikiNodeListParentToken("https://feishu.cn/wiki/wikcnPARENT?from=copy")
+	if err != nil {
+		t.Fatalf("normalizeWikiNodeListParentToken() error = %v", err)
+	}
+	if token != "wikcnPARENT" {
+		t.Fatalf("token = %q, want wikcnPARENT", token)
+	}
+}
+
+func TestWikiNodeListProblemAddsActionableHint(t *testing.T) {
+	t.Parallel()
+
+	err := errs.NewAPIError(errs.SubtypeInvalidParameters, "param err: invalid page_token").WithCode(131002)
+	got := wikiNodeListProblem(err, nil)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf() ok=false")
+	}
+	if !strings.Contains(p.Hint, "page token is invalid or stale") {
+		t.Fatalf("hint = %q, want invalid page token guidance", p.Hint)
+	}
+}
+
 func TestWikiNodeListReturnsNodesForSpace(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
@@ -137,14 +191,14 @@ func TestWikiNodeListReturnsNodesForSpace(t *testing.T) {
 
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
 				"has_more": false,
 				"items": []interface{}{
 					map[string]interface{}{
-						"space_id":          "space_123",
+						"space_id":          "7211568716812369922",
 						"node_token":        "wik_node_1",
 						"obj_token":         "docx_1",
 						"obj_type":          "docx",
@@ -154,7 +208,7 @@ func TestWikiNodeListReturnsNodesForSpace(t *testing.T) {
 						"has_child":         true,
 					},
 					map[string]interface{}{
-						"space_id":          "space_123",
+						"space_id":          "7211568716812369922",
 						"node_token":        "wik_node_2",
 						"obj_token":         "docx_2",
 						"obj_type":          "docx",
@@ -170,7 +224,7 @@ func TestWikiNodeListReturnsNodesForSpace(t *testing.T) {
 	})
 
 	err := mountAndRunWiki(t, WikiNodeList, []string{
-		"+node-list", "--space-id", "space_123", "--as", "bot",
+		"+node-list", "--space-id", "7211568716812369922", "--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
@@ -211,14 +265,14 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 
 	stub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes?page_size=50&parent_node_token=wik_parent",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes?page_size=50&parent_node_token=wik_parent",
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
 				"has_more": false,
 				"items": []interface{}{
 					map[string]interface{}{
-						"space_id":          "space_123",
+						"space_id":          "7211568716812369922",
 						"node_token":        "wik_child",
 						"obj_token":         "docx_child",
 						"obj_type":          "docx",
@@ -235,7 +289,7 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 	reg.Register(stub)
 
 	err := mountAndRunWiki(t, WikiNodeList, []string{
-		"+node-list", "--space-id", "space_123", "--parent-node-token", "wik_parent", "--as", "bot",
+		"+node-list", "--space-id", "7211568716812369922", "--parent-node-token", "wik_parent", "--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
@@ -286,7 +340,7 @@ func TestWikiNodeListResolvesMyLibraryForUser(t *testing.T) {
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"space": map[string]interface{}{
-					"space_id":   "space_personal_42",
+					"space_id":   "7211568716812369923",
 					"name":       "My Library",
 					"space_type": "my_library",
 				},
@@ -296,14 +350,14 @@ func TestWikiNodeListResolvesMyLibraryForUser(t *testing.T) {
 	// Step 2: list nodes in the resolved space.
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_personal_42/nodes",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369923/nodes",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"has_more": false,
 				"items": []interface{}{
 					map[string]interface{}{
-						"space_id":   "space_personal_42",
+						"space_id":   "7211568716812369923",
 						"node_token": "wik_personal_1",
 						"title":      "Personal Note",
 					},
@@ -334,8 +388,8 @@ func TestWikiNodeListResolvesMyLibraryForUser(t *testing.T) {
 	if envelope.Meta.Count != 1 {
 		t.Fatalf("meta.count = %v, want 1", envelope.Meta.Count)
 	}
-	if envelope.Data.Nodes[0]["space_id"] != "space_personal_42" {
-		t.Fatalf("nodes[0].space_id = %v, want space_personal_42", envelope.Data.Nodes[0]["space_id"])
+	if envelope.Data.Nodes[0]["space_id"] != "7211568716812369923" {
+		t.Fatalf("nodes[0].space_id = %v, want 7211568716812369923", envelope.Data.Nodes[0]["space_id"])
 	}
 }
 
@@ -758,21 +812,21 @@ func TestWikiNodeListDefaultIsSinglePage(t *testing.T) {
 	// test pins down the "default = single page" contract.
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"has_more":   true,
 				"page_token": "tok_next",
 				"items": []interface{}{
-					map[string]interface{}{"space_id": "space_123", "node_token": "wik_1", "title": "First"},
+					map[string]interface{}{"space_id": "7211568716812369922", "node_token": "wik_1", "title": "First"},
 				},
 			},
 		},
 	})
 
 	err := mountAndRunWiki(t, WikiNodeList, []string{
-		"+node-list", "--space-id", "space_123", "--as", "bot",
+		"+node-list", "--space-id", "7211568716812369922", "--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
@@ -802,14 +856,14 @@ func TestWikiNodeListPrettyFormatRendersFields(t *testing.T) {
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
 	reg.Register(&httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/space_123/nodes",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes",
 		Body: map[string]interface{}{
 			"code": 0, "msg": "success",
 			"data": map[string]interface{}{
 				"has_more": false,
 				"items": []interface{}{
 					map[string]interface{}{
-						"space_id":   "space_123",
+						"space_id":   "7211568716812369922",
 						"node_token": "wik_1",
 						"obj_type":   "docx",
 						"obj_token":  "docx_1",
@@ -822,7 +876,7 @@ func TestWikiNodeListPrettyFormatRendersFields(t *testing.T) {
 	})
 
 	err := mountAndRunWiki(t, WikiNodeList, []string{
-		"+node-list", "--space-id", "space_123", "--format", "pretty", "--as", "bot",
+		"+node-list", "--space-id", "7211568716812369922", "--format", "pretty", "--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)

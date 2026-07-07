@@ -446,6 +446,84 @@ func TestMarkdownCreateDryRunWithWikiToken(t *testing.T) {
 	}
 }
 
+func TestMarkdownCreateDryRunNormalizesFolderURL(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello",
+		"--folder-token", "https://feishu.cn/drive/folder/fldcnMarkdownTarget",
+		"--dry-run",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, `"parent_type": "explorer"`) {
+		t.Fatalf("dry-run missing explorer parent_type: %s", out)
+	}
+	if !strings.Contains(out, `"parent_node": "fldcnMarkdownTarget"`) {
+		t.Fatalf("dry-run did not normalize folder URL to token: %s", out)
+	}
+	if strings.Contains(out, "https://feishu.cn/drive/folder/") {
+		t.Fatalf("dry-run leaked raw folder URL instead of token: %s", out)
+	}
+}
+
+func TestMarkdownCreateRejectsWikiURLInFolderToken(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello",
+		"--folder-token", "https://feishu.cn/wiki/wikcnWrongFlag",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "Use --wiki-token") {
+		t.Fatalf("expected folder-token URL type error, got %v", err)
+	}
+}
+
+func TestMarkdownCreateRejectsDocURLInWikiToken(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
+
+	err := mountAndRunMarkdown(t, MarkdownCreate, []string{
+		"+create",
+		"--name", "README.md",
+		"--content", "# hello",
+		"--wiki-token", "https://feishu.cn/docx/docxWrongFlag",
+	}, f, stdout)
+	if err == nil || !strings.Contains(err.Error(), "must identify a wiki node") {
+		t.Fatalf("expected wiki-token URL type error, got %v", err)
+	}
+}
+
+func TestMarkdownUploadProblemAddsQuotaAndServerHints(t *testing.T) {
+	t.Parallel()
+
+	quotaErr := errs.NewAPIError(errs.SubtypeQuotaExceeded, "file quota exceeded").WithCode(1061101)
+	got := markdownUploadProblem(quotaErr, markdownUploadAllAction)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf(quotaErr) ok=false")
+	}
+	if !strings.Contains(p.Hint, "storage quota is exhausted") {
+		t.Fatalf("quota hint = %q", p.Hint)
+	}
+
+	serverErr := errs.NewAPIError(errs.SubtypeServerError, "NA").WithCode(233523001).WithRetryable()
+	got = markdownUploadProblem(serverErr, markdownUploadAllAction)
+	p, ok = errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("ProblemOf(serverErr) ok=false")
+	}
+	if !p.Retryable || !strings.Contains(p.Hint, "transient server error") {
+		t.Fatalf("server retryable=%v hint=%q", p.Retryable, p.Hint)
+	}
+}
+
 func TestMarkdownCreateDryRunReportsSourceFileError(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, markdownTestConfig())
 

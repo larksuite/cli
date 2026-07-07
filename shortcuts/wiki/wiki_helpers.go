@@ -6,6 +6,7 @@ package wiki
 import (
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -25,4 +26,18 @@ func wikiNodeURL(brand core.LarkBrand, node *wikiNodeRecord) string {
 		return u
 	}
 	return common.BuildResourceURL(brand, "wiki", node.NodeToken)
+}
+
+func appendWikiProblemHint(err error, hint string) error {
+	if strings.TrimSpace(hint) == "" {
+		return err
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		if strings.TrimSpace(p.Hint) != "" {
+			p.Hint = p.Hint + "\n" + hint
+		} else {
+			p.Hint = hint
+		}
+	}
+	return err
 }
