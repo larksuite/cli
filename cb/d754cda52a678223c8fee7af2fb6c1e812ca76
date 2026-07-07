@@ -1,9 +1,19 @@
 ---
 {
   "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.3.4",
+  "git_ai_version": "1.6.5",
   "base_commit_sha": "cbd754cda52a678223c8fee7af2fb6c1e812ca76",
   "prompts": {},
+  "sessions": {
+    "s_817e1d2fe731cd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c51-0c8e-7800-8c55-96d6c45808fd",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
   "attestation_metadata": {},
   "remote_transcripts": {}
 }
