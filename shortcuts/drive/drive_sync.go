@@ -40,7 +40,6 @@ type driveSyncItem struct {
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
 	Retryable  *bool  `json:"retryable,omitempty"`
-	Terminal   bool   `json:"-"`
 }
 
 // DriveSync performs a two-way sync between a local directory and a Drive
@@ -269,6 +268,7 @@ var DriveSync = common.Shortcut{
 
 		// --- Phase 2: Execute sync operations ---
 		var pulled, pushed, skipped, failed int
+		aborted := false
 		items := make([]driveSyncItem, 0)
 
 		// Build push infrastructure: local walk for push + remote views + folder cache.
@@ -287,16 +287,21 @@ var DriveSync = common.Shortcut{
 		// Mirror local directory structure first (same as +push), so
 		// empty local directories are not silently dropped.
 		for _, relDir := range localDirs {
-			if driveSyncHasTerminalFailure(items) {
+			if aborted {
 				break
 			}
 			if _, alreadyRemote := folderCache[relDir]; alreadyRemote {
 				continue
 			}
 			if _, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, relDir, folderCache); ensureErr != nil {
-				item, _ := driveSyncFailedItem(relDir, "", "failed", "push", "create_folder", ensureErr)
+				item, terminal := driveSyncFailedItem(relDir, "", "failed", "push", "create_folder", ensureErr)
 				items = append(items, item)
 				failed++
+				if terminal {
+					aborted = true
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, ensureErr)
+					break
+				}
 				continue
 			}
 			items = append(items, driveSyncItem{RelPath: relDir, FileToken: folderCache[relDir], Action: "folder_created", Direction: "push"})
@@ -305,7 +310,7 @@ var DriveSync = common.Shortcut{
 
 		// 2a. Pull new_remote files.
 		for _, entry := range newRemote {
-			if driveSyncHasTerminalFailure(items) {
+			if aborted {
 				break
 			}
 			targetFile, ok := pullRemoteFiles[entry.RelPath]
@@ -319,6 +324,7 @@ var DriveSync = common.Shortcut{
 				items = append(items, item)
 				failed++
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
 					break
 				}
@@ -330,7 +336,7 @@ var DriveSync = common.Shortcut{
 
 		// 2b. Push new_local files.
 		for _, entry := range newLocal {
-			if driveSyncHasTerminalFailure(items) {
+			if aborted {
 				break
 			}
 			localFile, ok := pushLocalFiles[entry.RelPath]
@@ -342,9 +348,14 @@ var DriveSync = common.Shortcut{
 			parentRel := drivePushParentRel(entry.RelPath)
 			parentToken, ensureErr := drivePushEnsureFolder(ctx, runtime, folderToken, parentRel, folderCache)
 			if ensureErr != nil {
-				item, _ := driveSyncFailedItem(entry.RelPath, "", "failed", "push", "create_folder", ensureErr)
+				item, terminal := driveSyncFailedItem(entry.RelPath, "", "failed", "push", "create_folder", ensureErr)
 				items = append(items, item)
 				failed++
+				if terminal {
+					aborted = true
+					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, ensureErr)
+					break
+				}
 				continue
 			}
 			token, _, upErr := drivePushUploadFile(ctx, runtime, localFile, "", parentToken)
@@ -353,6 +364,7 @@ var DriveSync = common.Shortcut{
 				items = append(items, item)
 				failed++
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
@@ -364,7 +376,7 @@ var DriveSync = common.Shortcut{
 
 		// 2c. Resolve modified files by --on-conflict strategy.
 		for _, entry := range modified {
-			if driveSyncHasTerminalFailure(items) {
+			if aborted {
 				break
 			}
 			remoteFile := remoteFiles[entry.RelPath]
@@ -398,6 +410,7 @@ var DriveSync = common.Shortcut{
 					items = append(items, item)
 					failed++
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, err)
 						break
 					}
@@ -416,9 +429,14 @@ var DriveSync = common.Shortcut{
 				}
 				parentToken, parentErr := drivePushEnsureFolder(ctx, runtime, folderToken, drivePushParentRel(entry.RelPath), folderCache)
 				if parentErr != nil {
-					item, _ := driveSyncFailedItem(entry.RelPath, existingToken, "failed", "push", "create_folder", parentErr)
+					item, terminal := driveSyncFailedItem(entry.RelPath, existingToken, "failed", "push", "create_folder", parentErr)
 					items = append(items, item)
 					failed++
+					if terminal {
+						aborted = true
+						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, parentErr)
+						break
+					}
 					continue
 				}
 				token, _, upErr := drivePushUploadFile(ctx, runtime, localFile, existingToken, parentToken)
@@ -436,6 +454,7 @@ var DriveSync = common.Shortcut{
 					items = append(items, item)
 					failed++
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
@@ -504,6 +523,7 @@ var DriveSync = common.Shortcut{
 					items = append(items, item)
 					failed++
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +sync after terminal %s failure: %v\n", item.Phase, downloadErr)
 						break
 					}
@@ -532,7 +552,7 @@ var DriveSync = common.Shortcut{
 				"pushed":  pushed,
 				"skipped": skipped,
 				"failed":  failed,
-				"aborted": driveSyncHasTerminalFailure(items),
+				"aborted": aborted,
 			},
 			"items": items,
 		}
@@ -574,18 +594,8 @@ func driveSyncFailedItem(relPath, fileToken, action, direction, phase string, er
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
 		Retryable:  driveBoolPtr(decision.Retryable),
-		Terminal:   decision.Terminal,
 	}
 	return item, decision.Terminal
-}
-
-func driveSyncHasTerminalFailure(items []driveSyncItem) bool {
-	for _, item := range items {
-		if item.Terminal {
-			return true
-		}
-	}
-	return false
 }
 
 // driveSyncAskConflict prompts the user for a conflict resolution strategy

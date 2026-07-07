@@ -41,7 +41,6 @@ type drivePushItem struct {
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
 	Retryable  *bool  `json:"retryable,omitempty"`
-	Terminal   bool   `json:"-"`
 }
 
 type driveBatchFailureDecision struct {
@@ -243,6 +242,7 @@ var DrivePush = common.Shortcut{
 		// locally and now on Drive too), which is the worst-of-both-worlds
 		// outcome the review flagged.
 		uploadFailed := false
+		aborted := false
 
 		// folderCache holds rel_path → folder_token. Seeded from the remote
 		// listing (so we don't recreate folders that already exist) and
@@ -269,6 +269,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
@@ -287,7 +288,7 @@ var DrivePush = common.Shortcut{
 
 		for _, rel := range localPaths {
 			localFile := localFiles[rel]
-			if uploadFailed && drivePushHasTerminalFailure(items) {
+			if uploadFailed && aborted {
 				break
 			}
 
@@ -304,6 +305,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
@@ -335,6 +337,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
@@ -353,6 +356,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
@@ -365,6 +369,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
@@ -418,6 +423,7 @@ var DrivePush = common.Shortcut{
 						items = append(items, item)
 						failed++
 						if terminal {
+							aborted = true
 							fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, err)
 							abortDelete = true
 							break
@@ -436,7 +442,7 @@ var DrivePush = common.Shortcut{
 				"skipped":        skipped,
 				"failed":         failed,
 				"deleted_remote": deletedRemote,
-				"aborted":        drivePushHasTerminalFailure(items),
+				"aborted":        aborted,
 			},
 			"items": items,
 		}
@@ -580,7 +586,6 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
 		Retryable:  driveBoolPtr(decision.Retryable),
-		Terminal:   decision.Terminal,
 	}
 	return item, decision.Terminal
 }
@@ -642,15 +647,6 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 func drivePushIsAlreadyDeleted(err error) bool {
 	problem, ok := errs.ProblemOf(err)
 	return ok && problem.Code == 1061007
-}
-
-func drivePushHasTerminalFailure(items []drivePushItem) bool {
-	for _, item := range items {
-		if item.Terminal {
-			return true
-		}
-	}
-	return false
 }
 
 func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {
