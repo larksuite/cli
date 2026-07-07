@@ -97,7 +97,7 @@ func runAutomationUpdate(rctx *common.RuntimeContext) error {
 	}
 }
 
-// runAutomationPatch PATCHes only the changed condition/description fields (Rule-7-1).
+// runAutomationPatch PATCHes only the changed condition/description fields.
 func runAutomationPatch(rctx *common.RuntimeContext) error {
 	appID, err := requireAppID(rctx.Str("app-id"))
 	if err != nil {
