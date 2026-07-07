@@ -119,6 +119,34 @@ Each slide must include:
 - `text_density`: `low`, `medium`, or `high`.
 - `speaker_intent`: why the speaker needs this page and how it advances the story.
 
+Optional slide fields:
+
+- `chart_contract`: required when the page plan includes a standard data chart that `<chart>` supports. Use this shape:
+
+```json
+{
+  "chart_contract": {
+    "required": true,
+    "render_as": "native_chart",
+    "chart_type": "line",
+    "data_source": "mock_placeholder",
+    "data_series_required": true,
+    "placeholder_label_required": true,
+    "manual_shape_fallback_allowed": false
+  }
+}
+```
+
+When `chart_contract.required == true`, XML generation must produce a `<chart>` element on that slide. A shape, line, polyline, or whiteboard approximation does not satisfy the plan.
+
+`data_source` must be one of:
+
+- `user_provided`: the user supplied concrete values, tables, CSV, or metric lists; use them and do not replace them with mock data.
+- `mock_placeholder`: the user asked for a placeholder, template, example, or later-replaceable chart position; use mock data in native `<chart>`.
+- `mock_required_by_intent`: the user did not provide concrete values but asked for data expression, charts, trends, comparisons, or distributions; use mock data in native `<chart>`.
+
+`data_series_required` means the generated XML must include `<chartData>`. It does not require user-provided real-world values. When real values are unavailable but chart expression is part of the user's intent, write mock or placeholder values into native `<chart>` and label them clearly instead of switching to manual drawing primitives or metric blocks.
+
 ## Layout Vocabulary
 
 Use one of these `layout_type` values unless the user explicitly needs a custom structure:
@@ -183,6 +211,7 @@ Use an object for one planned asset, an array for multiple real needs, or `asset
 - `purpose`: why this asset helps the page's key message.
 - `suggested_query`: short future lookup hint only; do not execute it unless separately requested.
 - `fallback_if_missing`: concrete XML-native visual plan using shapes, labels, tables, whiteboard diagrams, or placeholder panels.
+- `chart_contract`: when `asset_type` is `chart` and the visual is a supported standard data chart, set this optional slide-level field so generation is locked to native `<chart>`.
 
 For detailed rules and examples, read `asset-planning.md`.
 
@@ -190,7 +219,7 @@ Good examples:
 
 - `{"asset_type":"architecture_diagram","purpose":"Explain component relationships.","suggested_query":"service architecture diagram","fallback_if_missing":"Draw a component diagram with grouped boxes, connector arrows, and short labels."}`
 - `{"asset_type":"logo","purpose":"Identify the customer context.","suggested_query":"customer logo","fallback_if_missing":"Use a text label in a small badge."}`
-- `{"asset_type":"chart","purpose":"Show adoption trend.","suggested_query":"monthly adoption trend chart","fallback_if_missing":"Draw a simple trend line chart with axis labels and data points."}`
+- `{"asset_type":"chart","purpose":"Show adoption trend.","suggested_query":"monthly adoption trend chart","fallback_if_missing":"Render a native `<chart>` using the provided series when available; otherwise render a native `<chart>` with mock placeholder values and label it as 模拟数据，仅占位，待替换真实数据."}`
 
 ## XML Generation Contract
 
@@ -201,6 +230,7 @@ Before writing each slide XML, map the plan fields to concrete decisions:
 - `visual_focus` determines the largest visual region or emphasized object.
 - `text_density` caps visible text volume.
 - `asset_need` informs placeholder diagrams, icons, charts, screenshots, or shape-based fallback visuals only. Missing real assets must use `fallback_if_missing`, not blank regions.
+- `chart_contract` locks supported standard data charts to native `<chart>` output. Manual approximations are allowed only when the planned chart type is unsupported by `<chart>` or when the visual is explicitly non-data/decorative.
 
 After creating the PPT, fetch the presentation and verify:
 
