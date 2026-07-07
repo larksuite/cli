@@ -90,7 +90,7 @@ func TestAutomationListParams_TriggerTypePushdown(t *testing.T) {
 	}
 }
 
-// list/get 恒不返回明文 Bearer Token（spec Rule-2-2）。webhook item 的
+// list/get 恒不返回明文 Bearer Token。webhook item 的
 // trigger_condition.token_value 必须逐条脱敏，token_enabled 保留。
 func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
