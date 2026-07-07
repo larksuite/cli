@@ -2,6 +2,21 @@
 
 管理妙搭应用的自动化触发器（定时 / 记录变更 / Webhook / 飞书审批四类）。全部操作需 `--as user`（AuthType: user）。`--help` 是参数细节的完整来源；本文件只记录 Agent 不看就会做错的领域规则。
 
+## 何时用本 skill（路由锚点）
+
+**当用户消息里出现「妙搭应用名 / app_id」+ 以下任一意图，路由本 skill，不要走 lark-event 或 lark-openapi-explorer：**
+
+- 「（每天 / 定时 / 每 N 小时 / 每周 X）自动跑 / 自动触发 / 定时同步」→ `+automation-create --trigger-type cron`
+- 「数据表 / 记录 / 表里 X 字段（新增 / 更新 / 删除 / 变化）时（触发 / 通知 / 处理）」→ `+automation-create --trigger-type record-change`
+- 「（webhook / 外部回调 / 外部系统调用 / HTTP 触发）」→ `+automation-create --trigger-type webhook`
+- 「（审批 / 报销 / 请假 / 出差）（通过 / 拒绝 / 提交 / 撤回）后自动 X」→ `+automation-create --trigger-type feishu-approval`
+- 「这个应用配了哪些（自动化 / 触发器 / 定时任务）」→ `+automation-list`
+- 「（暂停 / 停用 / 先别自动跑 / 关掉自动触发）某个（触发器 / 定时任务 / 自动化）」→ `+automation-disable`（不是 update 改条件、不是 delete——本 skill 不提供删除）
+- 「换 / 重置 webhook 回调地址 / URL」→ `+automation-update --reset-url --app-env <preview|runtime>`
+- 「换 / 重置 / 轮换 webhook token / bearer」→ `+automation-update --reset-token`
+
+**边界（防误路由）**：`lark-event` 是**实时事件流消费**（agent 长连接订阅事件），不管妙搭应用触发器的**配置**；用户说「配 / 设置一个触发器」而不是「订阅事件流」时，本 skill 才是正确选择。「审批通过触发」在妙搭应用语境下属于本 skill 的 `feishu-approval` 类型，不是 lark-event。
+
 ## 命令路由
 
 | 命令 | 用途 | Risk |
@@ -88,6 +103,16 @@
 - `--disable-token`（关闭 token 校验，**不可逆**）
 
 四个 Webhook 动作 flag（`--reset-url` / `--enable-token` / `--disable-token` / `--reset-token`）**每次只能传一个**。不确定影响时先跑 `--dry-run` 看将发出的请求（不含明文）。
+
+### 执行前必须完成的确认步骤（高危写强制协议）
+
+**在带 `--yes` 执行任何高危写之前，Agent 必须先完成以下 3 件事**，缺一不可——即使用户口气很急、即使命令一眼就明：
+
+1. **确认目标唯一**：不允许"猜名字"或"批量试所有可能的名字"。若不确定 `--name`，先 `+automation-list --app-id <id>` 让用户在候选中点名；`--name` 不明的绝不执行写操作，更不要 for 循环批量试。
+2. **确认可选参数已定**：`--reset-url` 必须由用户明确指定 `--app-env preview` 还是 `runtime`；不要默认取 runtime 或 preview。同一触发器的 preview/runtime 是两条独立的 URL，误重置另一条不可回退。
+3. **告知不可逆后果并等确认**：把即将发生的 3 件事复述给用户——（a）旧 URL/Token 立即永久失效；（b）新 URL/Token 仅当次回显一次、CLI 不保存；（c）本次操作无法撤销——等用户回复"确认"再加 `--yes` 跑。
+
+只要有一项没做，就先跟用户对齐、不要执行。这些是 skill 层的护栏，不是 CLI 层的（CLI 只强制 `--yes`，不强制上面 3 件事）。
 
 ## ⚠️ 安全告警：无鉴权公网回调组合态
 
