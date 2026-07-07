@@ -3,7 +3,10 @@
 
 package apps
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAutomationPaths(t *testing.T) {
 	if got := automationListPath("app_x"); got != "/open-apis/apaas/v1/apps/app_x/triggers" {
@@ -99,6 +102,23 @@ func TestValidateApprovalStatuses(t *testing.T) {
 	}
 	if err := validateApprovalStatuses("bogus", []string{"APPROVED"}); err == nil {
 		t.Error("unknown event-type must error")
+	}
+	// spec Error-004: rejection message must list the valid status set for the
+	// event-type so the agent can correct itself.
+	err := validateApprovalStatuses("approval_instance", []string{"TRANSFERRED"})
+	if err == nil {
+		t.Fatal("TRANSFERRED must be rejected for approval_instance")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "valid values:") {
+		t.Errorf("error must list valid values, got: %s", msg)
+	}
+	if !strings.Contains(msg, "APPROVED") || !strings.Contains(msg, "PENDING") {
+		t.Errorf("error must enumerate the instance status set, got: %s", msg)
+	}
+	// TRANSFERRED is task-only; it must NOT appear in the instance valid list.
+	if strings.Contains(msg, "TRANSFERRED") && !strings.Contains(msg, "not valid") {
+		t.Errorf("instance valid-list must not include task-only TRANSFERRED, got: %s", msg)
 	}
 }
 

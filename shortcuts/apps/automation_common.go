@@ -5,6 +5,7 @@ package apps
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -145,11 +146,23 @@ func validateApprovalStatuses(eventType string, statuses []string) error {
 	}
 	for _, s := range statuses {
 		if _, valid := set[strings.ToUpper(strings.TrimSpace(s))]; !valid {
+			// spec Error-004: 列出该 event-type 的合法状态集合，便于 Agent 修正。
 			return appsValidationParamError("--"+statusFlagFor(eventType),
-				"status %q is not valid for event-type %q", s, eventType)
+				"status %q is not valid for event-type %q; valid values: %s",
+				s, eventType, sortedStatusList(set))
 		}
 	}
 	return nil
+}
+
+// sortedStatusList 返回状态集合的稳定排序、逗号分隔字符串，用于错误提示。
+func sortedStatusList(set map[string]struct{}) string {
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return strings.Join(out, ", ")
 }
 
 func statusFlagFor(eventType string) string {
