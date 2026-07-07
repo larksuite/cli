@@ -11,7 +11,9 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
@@ -25,6 +27,96 @@ type fakeRT struct {
 
 func (f *fakeRT) CallAPI(_ context.Context, _, _ string, _ interface{}) (json.RawMessage, error) {
 	return nil, f.err
+}
+
+type scriptedTransport struct {
+	dials          atomic.Int32
+	consumeDone    chan error
+	sawPreShutdown atomic.Bool
+}
+
+func (s *scriptedTransport) Listen(string) (net.Listener, error) {
+	return nil, errors.New("not implemented")
+}
+func (s *scriptedTransport) Address(string) string { return "scripted" }
+func (s *scriptedTransport) Cleanup(string)        {}
+
+func (s *scriptedTransport) Dial(string) (net.Conn, error) {
+	client, server := net.Pipe()
+	switch s.dials.Add(1) {
+	case 1:
+		go func() {
+			defer server.Close()
+			br := bufio.NewReader(server)
+			line, err := protocol.ReadFrame(br)
+			if err != nil {
+				return
+			}
+			msg, err := protocol.Decode(bytes.TrimRight(line, "\n"))
+			if err != nil {
+				return
+			}
+			if _, ok := msg.(*protocol.StatusQuery); ok {
+				_ = protocol.Encode(server, protocol.NewStatusResponse(123, 1, 0, nil))
+			}
+		}()
+	case 2:
+		go s.serveConsume(server)
+	default:
+		server.Close()
+		client.Close()
+		return nil, errors.New("unexpected extra dial")
+	}
+	return client, nil
+}
+
+func (s *scriptedTransport) serveConsume(conn net.Conn) {
+	defer conn.Close()
+	br := bufio.NewReader(conn)
+
+	line, err := protocol.ReadFrame(br)
+	if err != nil {
+		s.consumeDone <- err
+		return
+	}
+	msg, err := protocol.Decode(bytes.TrimRight(line, "\n"))
+	if err != nil {
+		s.consumeDone <- err
+		return
+	}
+	if _, ok := msg.(*protocol.Hello); !ok {
+		s.consumeDone <- errors.New("expected hello")
+		return
+	}
+	if err := protocol.Encode(conn, protocol.NewHelloAck("v1", true)); err != nil {
+		s.consumeDone <- err
+		return
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+		line, err := protocol.ReadFrame(br)
+		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				continue
+			}
+			s.consumeDone <- err
+			return
+		}
+		msg, err := protocol.Decode(bytes.TrimRight(line, "\n"))
+		if err != nil {
+			continue
+		}
+		if _, ok := msg.(*protocol.PreShutdownCheck); ok {
+			s.sawPreShutdown.Store(true)
+			_ = protocol.Encode(conn, protocol.NewPreShutdownAck(true))
+			s.consumeDone <- nil
+			return
+		}
+	}
+	s.consumeDone <- errors.New("timed out waiting for pre-shutdown check")
 }
 
 func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
@@ -55,6 +147,58 @@ func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "simulated normalize failure") {
 		t.Errorf("underlying error not propagated: %v", err)
+	}
+}
+
+func TestRun_StdinClosedWaitsUntilAfterPreConsumeThenCleansUp(t *testing.T) {
+	const key = "test.evt_stdin_closed_after_preconsume"
+	var preConsumeCalled atomic.Bool
+	var cleanupCalled atomic.Bool
+	event.RegisterKey(event.KeyDefinition{
+		Key:       key,
+		EventType: key,
+		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		PreConsume: func(ctx context.Context, _ event.APIClient, _ map[string]string) (func() error, error) {
+			if err := ctx.Err(); err != nil {
+				t.Fatalf("PreConsume ctx already canceled: %v", err)
+			}
+			preConsumeCalled.Store(true)
+			return func() error {
+				cleanupCalled.Store(true)
+				return nil
+			}, nil
+		},
+	})
+	defer event.UnregisterKeyForTest(key)
+
+	stdinClosed := make(chan struct{})
+	close(stdinClosed)
+	tr := &scriptedTransport{consumeDone: make(chan error, 1)}
+
+	err := Run(context.Background(), tr, "app", "", "", Options{
+		EventKey:    key,
+		Runtime:     &fakeRT{},
+		Quiet:       true,
+		StdinClosed: stdinClosed,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !preConsumeCalled.Load() {
+		t.Fatal("PreConsume was not called")
+	}
+	if !tr.sawPreShutdown.Load() {
+		t.Fatal("PreShutdownCheck was not sent")
+	}
+	if !cleanupCalled.Load() {
+		t.Fatal("cleanup was not called")
+	}
+	select {
+	case err := <-tr.consumeDone:
+		if err != nil {
+			t.Fatalf("scripted server error: %v", err)
+		}
+	default:
 	}
 }
 

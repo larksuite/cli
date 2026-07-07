@@ -1,5 +1,5 @@
 
-# mail +watch
+# mail watch
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
@@ -10,7 +10,13 @@
 ## 命令
 
 ```bash
-# 默认：表格输出 message 元数据
+# 推荐：统一事件框架入口
+lark-cli event consume mail.user_mailbox.event.message_received_v1 \
+  --as user \
+  --param mailbox=me \
+  --param msg_format=metadata
+
+# mail +watch 是兼容入口，内部映射到 event consume
 lark-cli mail +watch
 
 # 仅输出 message 数据（jq 友好）
@@ -37,8 +43,16 @@ lark-cli mail +watch --folders '["收件箱项目"]' --label-ids '["FLAGGED"]'
 # 写入文件
 lark-cli mail +watch --msg-format metadata --output-dir ./mail-events
 
+# 直接使用事件框架写文件；文件名为框架通用 nanos_pid_seq.json 格式
+lark-cli event consume mail.user_mailbox.event.message_received_v1 \
+  --as user \
+  --param mailbox=me \
+  --param msg_format=full \
+  --output-dir ./mail-events
+
 # 查看各 --msg-format 的输出字段说明（解析前先运行）
 lark-cli mail +watch --print-output-schema
+lark-cli event schema mail.user_mailbox.event.message_received_v1
 ```
 
 ## 参数
@@ -52,11 +66,13 @@ lark-cli mail +watch --print-output-schema
 | `--folders <json-array>` | — | 文件夹名称过滤（与 `--folder-ids` 取并集） |
 | `--label-ids <json-array>` | — | 标签 ID 过滤，如 `["FLAGGED","IMPORTANT"]` |
 | `--labels <json-array>` | — | 标签名称过滤（与 `--label-ids` 取并集） |
-
-> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
-| `--output-dir <dir>` | — | 每条事件写入单独 JSON 文件 |
+| `--output-dir <dir>` | — | 每条事件写入单独 JSON 文件；文件名由事件框架生成 |
 | `--print-output-schema` | — | 打印各 `--msg-format` 的输出字段说明（解析输出前先运行此命令） |
 | `--dry-run` | — | 仅预览订阅请求，不实际连接 |
+
+> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
+
+`event consume` 使用 `--param` 传入同名参数：`mailbox`、`msg_format`、`folder_ids`、`folders`、`label_ids`、`labels`。其中 `mailbox` 参与订阅身份，两个不同邮箱并发 consume 会分别 subscribe/cleanup；folder/label 只做客户端过滤，不会造成重复订阅。
 
 ## --msg-format 输出结构（--format json）
 
@@ -77,7 +93,7 @@ lark-cli mail +watch --print-output-schema
 {"ok":true,"data":{"message":{"message_id":"...","subject":"...","head_from":{...},"folder_id":"INBOX","label_ids":[...],"body_preview":"...","body_plain_text":"<base64url>"}}}
 ```
 
-**`event`**（原始 WebSocket 事件，不发起 API 请求，适合调试）
+**`event`**（原始事件 envelope，不发起 API 请求，适合调试）
 ```json
 {"ok":true,"data":{"header":{"event_id":"abc123","event_type":"mail.user_mailbox.event.message_received_v1","create_time":"1742800000000"},"event":{"message_id":"...","mail_address":"user@example.com"}}}
 ```

@@ -52,7 +52,7 @@ func TestWatchStdinEOF_DiagnosticMessage(t *testing.T) {
 	select {
 	case <-ctx.Done():
 		got := buf.String()
-		for _, want := range []string{"stdin closed", "--max-events", "--timeout", "SIGTERM"} {
+		for _, want := range []string{"stdin closed", "--max-events", "--timeout", "SIGTERM", "keep stdin open"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("diagnostic missing %q; got:\n%s", want, got)
 			}
@@ -92,30 +92,30 @@ func TestShouldWatchStdinEOF(t *testing.T) {
 		{
 			name:      "non terminal max events bounded",
 			maxEvents: 1,
-			want:      false,
+			want:      true,
 		},
 		{
 			name:    "non terminal timeout bounded",
 			timeout: 10 * time.Minute,
-			want:    false,
+			want:    true,
 		},
 		{
 			name:      "non terminal both bounds positive",
 			maxEvents: 1,
 			timeout:   10 * time.Minute,
-			want:      false,
+			want:      true,
 		},
 		{
 			name:      "non terminal bounded max events with negative timeout",
 			maxEvents: 1,
 			timeout:   -1 * time.Second,
-			want:      false,
+			want:      true,
 		},
 		{
 			name:      "non terminal bounded timeout with negative max events",
 			maxEvents: -1,
 			timeout:   10 * time.Minute,
-			want:      false,
+			want:      true,
 		},
 	}
 

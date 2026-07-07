@@ -34,6 +34,11 @@ type Options struct {
 	MaxEvents int           // 0 = unlimited
 	Timeout   time.Duration // 0 = no timeout
 	IsTTY     bool
+
+	// StdinClosed requests graceful shutdown after setup/PreConsume completes.
+	// Keeping it separate from ctx avoids canceling NormalizeParams or
+	// PreConsume before there is subscriber state to clean up.
+	StdinClosed <-chan struct{}
 }
 
 // Run ensures bus is up, performs hello handshake, runs PreConsume for first subscriber,
@@ -172,7 +177,21 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 
 	writeReadyMarker(errOut, opts)
 
-	return consumeLoop(ctx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
+	loopCtx := ctx
+	var loopCancel context.CancelFunc
+	if opts.StdinClosed != nil {
+		loopCtx, loopCancel = context.WithCancel(ctx)
+		defer loopCancel()
+		go func() {
+			select {
+			case <-opts.StdinClosed:
+				loopCancel()
+			case <-loopCtx.Done():
+			}
+		}()
+	}
+
+	return consumeLoop(loopCtx, conn, br, keyDef, opts, subscriptionID, &lastForKey, &emitted)
 }
 
 // rejectionError converts a rejected hello_ack into a structured precondition
@@ -245,11 +264,11 @@ func listeningText(opts Options) string {
 	}
 	switch {
 	case opts.MaxEvents > 0 && opts.Timeout > 0:
-		return fmt.Sprintf("%s; will exit after %d event(s) or %s timeout", base, opts.MaxEvents, opts.Timeout)
+		return fmt.Sprintf("%s; will exit after stdin closes, %d event(s), or %s timeout", base, opts.MaxEvents, opts.Timeout)
 	case opts.MaxEvents > 0:
-		return fmt.Sprintf("%s; will exit after %d event(s)", base, opts.MaxEvents)
+		return fmt.Sprintf("%s; will exit after stdin closes or %d event(s)", base, opts.MaxEvents)
 	case opts.Timeout > 0:
-		return fmt.Sprintf("%s; will exit after %s timeout", base, opts.Timeout)
+		return fmt.Sprintf("%s; will exit after stdin closes or %s timeout", base, opts.Timeout)
 	default:
 		return base + "; send SIGTERM or close stdin to stop"
 	}
@@ -268,7 +287,7 @@ func exitReason(ctx context.Context, emitted int64, opts Options) string {
 
 func stopHintText(opts Options) string {
 	if opts.MaxEvents > 0 || opts.Timeout > 0 {
-		return "[event] to stop gracefully: send SIGTERM (kill <pid>). " +
+		return "[event] to stop gracefully: send SIGTERM (kill <pid>) or close stdin. " +
 			"Avoid kill -9 — it skips cleanup and may leak server-side subscriptions."
 	}
 	return "[event] to stop gracefully: send SIGTERM (kill <pid>) or close stdin. " +

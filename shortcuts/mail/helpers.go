@@ -726,82 +726,6 @@ func matchLabelSuffixID(input string, labels []labelInfo) string {
 	return ""
 }
 
-// resolveFolderNames resolves a list of folder IDs / names to their
-// human-readable names. Stops at the first error; partial results are not
-// returned.
-func resolveFolderNames(runtime *common.RuntimeContext, mailboxID string, values []string) ([]string, error) {
-	resolved := make([]string, 0, len(values))
-	seen := make(map[string]bool)
-	names := make([]string, 0, len(values))
-	for _, raw := range values {
-		value := strings.TrimSpace(raw)
-		if value == "" {
-			continue
-		}
-		if id, ok := resolveFolderSystemAliasOrID(value); ok {
-			addUniqueID(&resolved, seen, id)
-			continue
-		}
-		names = append(names, value)
-	}
-	if len(names) == 0 {
-		return resolved, nil
-	}
-
-	folders, err := listMailboxFolders(runtime, mailboxID)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range names {
-		id, err := resolveByName("folder", value, mailboxID, folders,
-			func(item folderInfo) string { return item.ID },
-			func(item folderInfo) string { return item.Name },
-		)
-		if err != nil {
-			return nil, err
-		}
-		addUniqueID(&resolved, seen, id)
-	}
-	return resolved, nil
-}
-
-// resolveLabelNames is the label-side counterpart of resolveFolderNames.
-func resolveLabelNames(runtime *common.RuntimeContext, mailboxID string, values []string) ([]string, error) {
-	resolved := make([]string, 0, len(values))
-	seen := make(map[string]bool)
-	names := make([]string, 0, len(values))
-	for _, raw := range values {
-		value := strings.TrimSpace(raw)
-		if value == "" {
-			continue
-		}
-		if id, ok := resolveLabelSystemID(value); ok {
-			addUniqueID(&resolved, seen, id)
-			continue
-		}
-		names = append(names, value)
-	}
-	if len(names) == 0 {
-		return resolved, nil
-	}
-
-	labels, err := listMailboxLabels(runtime, mailboxID)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range names {
-		id, err := resolveByName("label", value, mailboxID, labels,
-			func(item labelInfo) string { return item.ID },
-			func(item labelInfo) string { return item.Name },
-		)
-		if err != nil {
-			return nil, err
-		}
-		addUniqueID(&resolved, seen, id)
-	}
-	return resolved, nil
-}
-
 // resolveFolderSystemAliasOrID returns the canonical system folder ID for
 // the given input (an alias like "INBOX" or an ID). Returns (id, true) when
 // recognised; ("", false) for non-system inputs.
@@ -831,16 +755,6 @@ func normalizeSystemID(input string, systemIDs map[string]bool) (string, bool) {
 		return canonical, true
 	}
 	return "", false
-}
-
-// addUniqueID appends id to *dst when id is non-empty and not already in
-// the seen set. Both dst and seen are updated in place.
-func addUniqueID(dst *[]string, seen map[string]bool, id string) {
-	if id == "" || seen[id] {
-		return
-	}
-	seen[id] = true
-	*dst = append(*dst, id)
 }
 
 // listMailboxFolders fetches every custom folder for a mailbox via the

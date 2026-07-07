@@ -65,8 +65,8 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
-	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
-	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
+	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Non-TTY stdin EOF also stops the run.")
+	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Non-TTY stdin EOF exits earlier with reason: signal.")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot", "auto"}, cobra.ShellCompDirectiveNoFileComp
@@ -198,10 +198,16 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		errOut = io.Discard
 	}
 
-	// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess callers.
-	// Bounded runs already have --max-events/--timeout as their lifecycle control.
+	var stdinClosed chan struct{}
 	if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
-		watchStdinEOF(os.Stdin, cancel, errOut)
+		stdinClosed = make(chan struct{})
+		watchStdinEOF(os.Stdin, func() {
+			select {
+			case <-stdinClosed:
+			default:
+				close(stdinClosed)
+			}
+		}, errOut)
 	}
 
 	if err := consume.Run(ctx, transport.New(), cfg.AppID, cfg.ProfileName, domain, consume.Options{
@@ -217,6 +223,7 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		MaxEvents:       o.maxEvents,
 		Timeout:         o.timeout,
 		IsTTY:           f.IOStreams.IsTerminal,
+		StdinClosed:     stdinClosed,
 	}); err != nil {
 		return err
 	}
@@ -412,14 +419,14 @@ func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 		_, _ = io.Copy(io.Discard, r)
 		fmt.Fprintln(errOut, "[event] stdin closed — shutting down. "+
 			"consume treats stdin EOF as exit signal (wired for AI subprocess callers). "+
-			"To keep running: pass --max-events/--timeout for bounded run, "+
-			"or keep stdin open (e.g. `< /dev/tty` interactive, `< <(tail -f /dev/null)` script), "+
+			"To keep running until --max-events/--timeout/SIGTERM: keep stdin open "+
+			"(e.g. `< /dev/tty` interactive, `< <(tail -f /dev/null)` script), "+
 			"or stop via SIGTERM instead of closing stdin.")
 		cancel()
 	}()
 }
 
-// shouldWatchStdinEOF gates the stdin-EOF shutdown watcher: non-TTY unbounded runs only (<= 0 mirrors downstream's >0-is-bounded semantics, so negative bounds stay unbounded).
-func shouldWatchStdinEOF(isTerminal bool, maxEvents int, timeout time.Duration) bool {
-	return !isTerminal && maxEvents <= 0 && timeout <= 0
+// shouldWatchStdinEOF gates the stdin-EOF shutdown watcher for non-TTY callers.
+func shouldWatchStdinEOF(isTerminal bool, _ int, _ time.Duration) bool {
+	return !isTerminal
 }

@@ -252,6 +252,95 @@ func TestMailWatchOutputDirRejectsUnsafePathTyped(t *testing.T) {
 	}
 }
 
+func TestMailWatchBoundedConsumeOptions(t *testing.T) {
+	f, _, _, _ := mailShortcutTestFactory(t)
+	runtime := runtimeForMailWatchTest(t, map[string]string{
+		"max-events": "1",
+		"timeout":    "90s",
+	})
+	runtime.Factory = f
+	timeout, err := parseMailWatchTimeout(runtime.Str("timeout"))
+	if err != nil {
+		t.Fatalf("parseMailWatchTimeout failed: %v", err)
+	}
+
+	stdinClosed := make(chan struct{})
+	opts := mailWatchConsumeOptions(runtime, map[string]string{"mailbox": "me"}, "", io.Discard, timeout, stdinClosed)
+	if opts.MaxEvents != 1 {
+		t.Fatalf("MaxEvents = %d, want 1", opts.MaxEvents)
+	}
+	if opts.Timeout != 90*time.Second {
+		t.Fatalf("Timeout = %s, want 90s", opts.Timeout)
+	}
+	if opts.StdinClosed != stdinClosed {
+		t.Fatalf("StdinClosed was not propagated")
+	}
+}
+
+func TestMailWatchStdinClosedNonTTY(t *testing.T) {
+	f, _, stderr, _ := mailShortcutTestFactory(t)
+	f.IOStreams.In = strings.NewReader("")
+	f.IOStreams.IsTerminal = false
+	runtime := runtimeForMailWatchTest(t, map[string]string{})
+	runtime.Factory = f
+
+	stdinClosed := mailWatchStdinClosed(runtime)
+	if stdinClosed == nil {
+		t.Fatal("expected stdin watcher for non-TTY input")
+	}
+	select {
+	case <-stdinClosed:
+	case <-time.After(1 * time.Second):
+		t.Fatal("stdin watcher did not close after EOF")
+	}
+	if !strings.Contains(stderr.String(), "stdin closed") {
+		t.Fatalf("stderr missing stdin diagnostic: %q", stderr.String())
+	}
+}
+
+func TestMailWatchStdinClosedTTYDisabled(t *testing.T) {
+	f, _, _, _ := mailShortcutTestFactory(t)
+	f.IOStreams.In = strings.NewReader("")
+	f.IOStreams.IsTerminal = true
+	runtime := runtimeForMailWatchTest(t, map[string]string{})
+	runtime.Factory = f
+
+	if got := mailWatchStdinClosed(runtime); got != nil {
+		t.Fatalf("terminal stdin should not be watched, got %#v", got)
+	}
+}
+
+func TestMailWatchRejectsInvalidTimeout(t *testing.T) {
+	_, err := parseMailWatchTimeout("soon")
+	if err == nil {
+		t.Fatal("expected invalid timeout error")
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected validation error, got %T: %v", err, err)
+	}
+	if validationErr.Param != "--timeout" {
+		t.Fatalf("param = %q, want --timeout", validationErr.Param)
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T", err)
+	}
+	if p.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("subtype = %q, want %q", p.Subtype, errs.SubtypeInvalidArgument)
+	}
+	cause := errors.Unwrap(err)
+	if cause == nil {
+		t.Fatalf("expected parse duration cause, got nil")
+	}
+	if !strings.Contains(cause.Error(), "time: invalid duration") {
+		t.Fatalf("unexpected parse duration cause: %v", cause)
+	}
+	if !errors.Is(err, cause) {
+		t.Fatalf("parse duration cause not preserved: %v", err)
+	}
+}
+
 func TestMailWatchOutputDirMkdirFailureTyped(t *testing.T) {
 	chdirTemp(t)
 	mkdirErr := errors.New("mkdir denied")

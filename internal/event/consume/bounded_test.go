@@ -78,3 +78,14 @@ func TestExitReason_Signal(t *testing.T) {
 		t.Errorf("reason = %q, want \"signal\"", reason)
 	}
 }
+
+func TestExitReason_BoundedSignalBeforeLimitOrTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	opts := Options{MaxEvents: 5, Timeout: time.Minute}
+	reason := exitReason(ctx, 0, opts)
+	if reason != "signal" {
+		t.Errorf("reason = %q, want \"signal\"", reason)
+	}
+}

@@ -27,7 +27,7 @@ func TestListeningText_NonTTY_Default(t *testing.T) {
 
 func TestListeningText_NonTTY_MaxEvents(t *testing.T) {
 	got := listeningText(Options{EventKey: "im.message.receive_v1", IsTTY: false, MaxEvents: 1})
-	want := "[event] listening for events (key=im.message.receive_v1); will exit after 1 event(s)"
+	want := "[event] listening for events (key=im.message.receive_v1); will exit after stdin closes or 1 event(s)"
 	if got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
@@ -35,7 +35,7 @@ func TestListeningText_NonTTY_MaxEvents(t *testing.T) {
 
 func TestListeningText_NonTTY_Timeout(t *testing.T) {
 	got := listeningText(Options{EventKey: "im.message.receive_v1", IsTTY: false, Timeout: 30 * time.Second})
-	want := "[event] listening for events (key=im.message.receive_v1); will exit after 30s timeout"
+	want := "[event] listening for events (key=im.message.receive_v1); will exit after stdin closes or 30s timeout"
 	if got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
@@ -43,7 +43,7 @@ func TestListeningText_NonTTY_Timeout(t *testing.T) {
 
 func TestListeningText_NonTTY_MaxEventsAndTimeout(t *testing.T) {
 	got := listeningText(Options{EventKey: "im.message.receive_v1", IsTTY: false, MaxEvents: 1, Timeout: 30 * time.Second})
-	want := "[event] listening for events (key=im.message.receive_v1); will exit after 1 event(s) or 30s timeout"
+	want := "[event] listening for events (key=im.message.receive_v1); will exit after stdin closes, 1 event(s), or 30s timeout"
 	if got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
@@ -73,9 +73,6 @@ func TestStopHintText_Bounded(t *testing.T) {
 			if !bytes.Contains([]byte(got), []byte(s)) {
 				t.Errorf("stopHintText(bounded) missing %q; got %q", s, got)
 			}
-		}
-		if bytes.Contains([]byte(got), []byte("close stdin")) {
-			t.Errorf("stopHintText(bounded) must not contain \"close stdin\"; got %q", got)
 		}
 	}
 }

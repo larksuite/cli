@@ -69,10 +69,10 @@ wait
 
 ### stdin EOF = graceful exit
 
-`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). **Bounded runs are exempt: when `--max-events` or `--timeout` is set (> 0), stdin EOF is ignored and the run exits only via its own bound, timeout, or SIGTERM.** For unbounded runs, `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause an immediate graceful exit (stderr `reason: signal`). To keep an unbounded run alive:
+`event consume` treats stdin close as a shutdown signal (wired for AI subprocess callers). This applies to both unbounded runs and bounded runs with `--max-events` or `--timeout`; the bound remains a fallback upper limit, but stdin EOF exits earlier with stderr `reason: signal`. `< /dev/null` / `nohup` / systemd's default `StandardInput=null` will cause a graceful exit after setup and cleanup. To keep a run alive until its bound or SIGTERM:
 
 - Feed stdin a source that never EOFs: `< <(tail -f /dev/null)`
-- Or run bounded: `--max-events N` / `--timeout D`
+- Or keep the terminal/parent pipe open while using `--max-events N` / `--timeout D`
 
 ### Exit codes & reason
 
@@ -82,7 +82,7 @@ On exit, the last stderr line is `[event] exited — received N event(s) in Xs (
 |---|---|---|
 | 0 | `reason: limit` | `--max-events` reached |
 | 0 | `reason: timeout` | `--timeout` reached |
-| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF (stdin EOF applies to unbounded runs only) |
+| 0 | `reason: signal` | Ctrl+C / SIGTERM / stdin EOF |
 | 1 | JSON error envelope on stderr | Lark API business failure during pre-consume setup (for example subscription create/delete) |
 | 2 | JSON error envelope on stderr (no `exited` line) | Validation failure (unknown EventKey, bad `--param` / `--jq`, another bus already connected) |
 | 3 | JSON error envelope on stderr | Auth failure (missing token, missing scopes) |
