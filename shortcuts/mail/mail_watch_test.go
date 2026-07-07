@@ -20,6 +20,8 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/event/consume"
+	"github.com/larksuite/cli/internal/event/transport"
 	"github.com/larksuite/cli/internal/vfs"
 	"github.com/larksuite/cli/shortcuts/common"
 	"github.com/spf13/cobra"
@@ -112,6 +114,78 @@ func TestMailWatchDryRunDefaultMetadataFetchesMessage(t *testing.T) {
 	}
 	if got := apis[2].Params["format"]; got != "metadata" {
 		t.Fatalf("unexpected fetch format: %#v", got)
+	}
+}
+
+func TestMailWatchExecuteDelegatesToEventConsume(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	orig := mailWatchConsumeRun
+	t.Cleanup(func() { mailWatchConsumeRun = orig })
+
+	var got consume.Options
+	mailWatchConsumeRun = func(_ context.Context, _ transport.IPC, appID, profileName, domain string, opts consume.Options) error {
+		if appID != "test-app" {
+			t.Fatalf("appID = %q, want test-app", appID)
+		}
+		if profileName != "" {
+			t.Fatalf("profileName = %q, want empty", profileName)
+		}
+		if domain == "" {
+			t.Fatal("domain should be resolved")
+		}
+		got = opts
+		return nil
+	}
+
+	err := runMountedMailShortcut(t, MailWatch, []string{
+		"+watch",
+		"--mailbox", "alice@example.com",
+		"--format", "json",
+		"--msg-format", "minimal",
+		"--label-ids", `["FLAGGED"]`,
+		"--folders", `["project"]`,
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("MailWatch Execute error: %v", err)
+	}
+	if got.EventKey != mailEventType {
+		t.Fatalf("EventKey = %q, want %q", got.EventKey, mailEventType)
+	}
+	for key, want := range map[string]string{
+		"mailbox":    "alice@example.com",
+		"format":     "json",
+		"msg_format": "minimal",
+		"label_ids":  `["FLAGGED"]`,
+		"folders":    `["project"]`,
+	} {
+		if got.Params[key] != want {
+			t.Fatalf("param %s = %q, want %q", key, got.Params[key], want)
+		}
+	}
+	if got.Runtime == nil || got.Out == nil || got.ErrOut == nil {
+		t.Fatalf("consume options missing runtime/output streams: %#v", got)
+	}
+}
+
+func TestMailWatchPrintOutputSchemaSkipsEventConsume(t *testing.T) {
+	f, stdout, _, _ := mailShortcutTestFactory(t)
+	orig := mailWatchConsumeRun
+	t.Cleanup(func() { mailWatchConsumeRun = orig })
+
+	called := false
+	mailWatchConsumeRun = func(context.Context, transport.IPC, string, string, string, consume.Options) error {
+		called = true
+		return nil
+	}
+	err := runMountedMailShortcut(t, MailWatch, []string{"+watch", "--print-output-schema"}, f, stdout)
+	if err != nil {
+		t.Fatalf("MailWatch schema error: %v", err)
+	}
+	if called {
+		t.Fatal("--print-output-schema should not start event consume")
+	}
+	if !strings.Contains(stdout.String(), "metadata") {
+		t.Fatalf("schema output missing metadata: %s", stdout.String())
 	}
 }
 

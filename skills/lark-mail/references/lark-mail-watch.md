@@ -5,6 +5,15 @@
 
 实时监听新邮件事件（`mail.user_mailbox.event.message_received_v1`）。
 
+`mail +watch` 是兼容入口，内部委托通用事件消费框架。高级用户可使用等价入口：
+
+```bash
+lark-cli event consume mail.user_mailbox.event.message_received_v1 \
+  --param mailbox=me \
+  --param msg_format=metadata \
+  --param format=data
+```
+
 **权限要求：** 应用需要 `mail:event`、`mail:user_mailbox.message:readonly` 权限，以及字段权限 `mail:user_mailbox.message.address:read`、`mail:user_mailbox.message.subject:read`、`mail:user_mailbox.message.body:read`，且机器人需订阅事件 `mail.user_mailbox.event.message_received_v1`。按需权限（缺失时会提示申请）：使用 `--folders` / `--folder-ids` 筛选自定义文件夹时需要 `mail:user_mailbox.folder:read`；使用 `--labels` / `--label-ids` 筛选自定义标签时需要 `mail:user_mailbox.message:modify`。
 
 ## 命令
@@ -47,16 +56,16 @@ lark-cli mail +watch --print-output-schema
 |------|------|------|
 | `--mailbox <id>` | `me` | 订阅目标邮箱 |
 | `--msg-format <mode>` | `metadata` | 输出模式：`metadata` / `minimal` / `plain_text_full` / `full` / `event` |
-| `--format <mode>` | `table` | 输出样式：`table` / `json` / `data` |
+| `--format <mode>` | `data` | 输出样式：`data` 裸数据 / `json` ok/data envelope |
 | `--folder-ids <json-array>` | — | 文件夹 ID 过滤，如 `["INBOX","SENT"]` |
 | `--folders <json-array>` | — | 文件夹名称过滤（与 `--folder-ids` 取并集） |
 | `--label-ids <json-array>` | — | 标签 ID 过滤，如 `["FLAGGED","IMPORTANT"]` |
 | `--labels <json-array>` | — | 标签名称过滤（与 `--label-ids` 取并集） |
-
-> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
-| `--output-dir <dir>` | — | 每条事件写入单独 JSON 文件 |
+| `--output-dir <dir>` | — | 每条事件写入单独 JSON 文件；文件名使用事件框架通用时间戳格式，不再保证旧版 subject/sender/create_time 命名 |
 | `--print-output-schema` | — | 打印各 `--msg-format` 的输出字段说明（解析输出前先运行此命令） |
 | `--dry-run` | — | 仅预览订阅请求，不实际连接 |
+
+> **过滤逻辑：** `--folder-ids`/`--folders` 与 `--label-ids`/`--labels` 之间是 **AND** 关系，即邮件必须**同时**匹配指定的文件夹和标签才会输出。同类参数内部是 **OR** 关系（匹配其中任一即可）。新收到的邮件通常只有系统标签（如 `UNREAD`、`IMPORTANT`），不会自动带有自定义标签。
 
 ## --msg-format 输出结构（--format json）
 

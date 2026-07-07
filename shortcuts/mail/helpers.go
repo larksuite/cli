@@ -317,6 +317,10 @@ func mailboxPath(mailboxID string, segments ...string) string {
 	return "/open-apis/mail/v1/user_mailboxes/" + strings.Join(parts, "/")
 }
 
+func MailboxPath(mailboxID string, segments ...string) string {
+	return mailboxPath(mailboxID, segments...)
+}
+
 // fetchMailboxPrimaryEmail retrieves mailbox primary_email_address from
 // user_mailboxes.profile. Returns the email address or an error.
 func fetchMailboxPrimaryEmail(runtime *common.RuntimeContext, mailboxID string) (string, error) {
@@ -817,6 +821,14 @@ func resolveFolderSystemAliasOrID(input string) (string, bool) {
 // matches a known system label.
 func resolveLabelSystemID(input string) (string, bool) {
 	return resolveSystemLabel(input)
+}
+
+func ResolveFolderSystemAliasOrIDForWatch(input string) (string, bool) {
+	return resolveFolderSystemAliasOrID(input)
+}
+
+func ResolveLabelSystemIDForWatch(input string) (string, bool) {
+	return resolveLabelSystemID(input)
 }
 
 // normalizeSystemID checks whether input is a known system identifier
