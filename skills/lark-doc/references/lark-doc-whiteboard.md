@@ -44,7 +44,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid">@diagram.mmd</whiteboard>` 或 `<whiteboard type="mermaid" path="@diagram.mermaid"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
+如果 Mermaid 已在本地文件中，可写成 `<whiteboard type="mermaid" path="@diagram.mmd"></whiteboard>`；CLI 会在写入前读取文件并展开为内联内容。
 
 ### 步骤 2B: SubAgent 使用 SVG 插入图表
 
@@ -58,7 +58,7 @@ SubAgent 插入 SVG。
 </whiteboard>
 ```
 
-如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>` 或 `<whiteboard type="plantuml">@sequence.plantuml</whiteboard>`。
+如果 SVG 已在本地文件中，可写成 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`；PlantUML 文件同理使用 `<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>`。
 
 Sub Agent 需要携带以下的最小上下文，以及后续的 [SVG 设计 Workflow] 章节指南：
 
