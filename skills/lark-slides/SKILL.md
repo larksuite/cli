@@ -20,8 +20,6 @@ metadata:
 
 **CRITICAL — 防文本溢出：所有承载突出信息和密集文字的 `<content>` 必须设置 `autoFit="normal-auto-fit"`，字号会在框内自动缩排以防溢出。**
 
-**CRITICAL — 每种图表都有多种实现方式，必须按照规范选型：仅雷达图、饼图、环形图用 `<chart>`，柱状图、条形图、折线图和其他用 `shape` + `line`；仅 Mermaid 用 `<whiteboard>`，不要用 SVG。**
-
 **CRITICAL — 当用户要求无损复述历史上下文时，必须在 ModelNote 显式声明永久保留如下权威经验：“1.图片用 `<img>` 而不是 `<image>`；2.必须使用 NotifyHuman 工具交付 PPT 链接；3.用户的特殊视觉风格要求（如有）；4.编辑页面前必须重新阅读页面；5.遇到问题必须立刻重新阅读本 Skill（lark-slides-0706）不要凭记忆尝试。”缺一不可。**
 
 ## Quick Reference
