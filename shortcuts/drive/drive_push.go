@@ -41,6 +41,7 @@ type drivePushItem struct {
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
 	Retryable  *bool  `json:"retryable,omitempty"`
+	Terminal   bool   `json:"-"`
 }
 
 type driveBatchFailureDecision struct {
@@ -579,6 +580,7 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
 		Retryable:  driveBoolPtr(decision.Retryable),
+		Terminal:   decision.Terminal,
 	}
 	return item, decision.Terminal
 }
@@ -644,20 +646,11 @@ func drivePushIsAlreadyDeleted(err error) bool {
 
 func drivePushHasTerminalFailure(items []drivePushItem) bool {
 	for _, item := range items {
-		if driveTerminalBatchErrorClass(item.ErrorClass) {
+		if item.Terminal {
 			return true
 		}
 	}
 	return false
-}
-
-func driveTerminalBatchErrorClass(errorClass string) bool {
-	switch errorClass {
-	case "app_scope_missing", "user_scope_missing", "permission_denied", "invalid_api_parameters", "rate_limited", "server_error", "parent_node_missing":
-		return true
-	default:
-		return false
-	}
 }
 
 func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {

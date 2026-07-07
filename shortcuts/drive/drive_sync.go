@@ -40,6 +40,7 @@ type driveSyncItem struct {
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
 	Retryable  *bool  `json:"retryable,omitempty"`
+	Terminal   bool   `json:"-"`
 }
 
 // DriveSync performs a two-way sync between a local directory and a Drive
@@ -573,13 +574,14 @@ func driveSyncFailedItem(relPath, fileToken, action, direction, phase string, er
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
 		Retryable:  driveBoolPtr(decision.Retryable),
+		Terminal:   decision.Terminal,
 	}
 	return item, decision.Terminal
 }
 
 func driveSyncHasTerminalFailure(items []driveSyncItem) bool {
 	for _, item := range items {
-		if driveTerminalBatchErrorClass(item.ErrorClass) {
+		if item.Terminal {
 			return true
 		}
 	}

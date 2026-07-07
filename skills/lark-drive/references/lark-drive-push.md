@@ -15,6 +15,7 @@
 | `summary.skipped` | 因 `--if-exists=skip` 或 `--if-exists=smart` 命中“无需传输”而跳过的文件数 |
 | `summary.failed` | 上传 / 覆盖 / 建目录 / 删除失败的条目数；**只要不为 0，命令就以非零状态退出**（结构化 `items[]` 仍在 stdout 上） |
 | `summary.deleted_remote` | 启用 `--delete-remote --yes` 时删除的云端文件数 |
+| `summary.aborted` | 命中终止性错误并停止后续批处理时为 `true` |
 | `items[]` | 每个条目的明细（`rel_path` / `file_token` / `action` / 覆盖时的 `version` / `size_bytes` / 失败时的 `error` / `hint` / `phase` / `error_class` / `code` / `subtype` / `retryable`） |
 
 `items[].action` 取值：`uploaded` / `overwritten` / `skipped` / `folder_created` / `deleted_remote` / `already_deleted` / `failed` / `delete_failed`。
@@ -122,7 +123,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
     {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false},
     {"rel_path": "...", "file_token": "...", "action": "deleted_remote"},
     {"rel_path": "...", "file_token": "...", "action": "already_deleted"},
-    {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "..."}
+    {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "...", "hint": "...", "phase": "delete", "error_class": "...", "code": 0, "subtype": "...", "retryable": false}
   ]
 }
 ```

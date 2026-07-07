@@ -47,6 +47,7 @@ type drivePullItem struct {
 	Code       int    `json:"code,omitempty"`
 	Subtype    string `json:"subtype,omitempty"`
 	Retryable  *bool  `json:"retryable,omitempty"`
+	Terminal   bool   `json:"-"`
 }
 
 type drivePullTarget struct {
@@ -343,13 +344,14 @@ func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err
 		Code:       decision.Code,
 		Subtype:    decision.Subtype,
 		Retryable:  driveBoolPtr(decision.Retryable),
+		Terminal:   decision.Terminal,
 	}
 	return item, decision.Terminal
 }
 
 func drivePullHasTerminalFailure(items []drivePullItem) bool {
 	for _, item := range items {
-		if driveTerminalBatchErrorClass(item.ErrorClass) {
+		if item.Terminal {
 			return true
 		}
 	}
