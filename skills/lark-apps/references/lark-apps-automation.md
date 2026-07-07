@@ -17,6 +17,16 @@
 
 **边界（防误路由）**：`lark-event` 是**实时事件流消费**（agent 长连接订阅事件），不管妙搭应用触发器的**配置**；用户说「配 / 设置一个触发器」而不是「订阅事件流」时，本 skill 才是正确选择。「审批通过触发」在妙搭应用语境下属于本 skill 的 `feishu-approval` 类型，不是 lark-event。
 
+### 回应「怎么配」类问题的正确姿势
+
+用户问「怎么配 / 怎么设置一个 X 触发器」时，**先展示完整命令模板 + 你对核心参数的推断**（让用户能确认你理解对了），再追问缺失的必填项（`--name` 之类）或可选项。**不要跳过展示、直接连环追问**，那样用户没法确认你有没有理解意图。
+
+示范：用户说「报销审批一旦通过就自动触发处理，怎么配？」
+- ✅ 正确：先写出「这是 feishu-approval 类型，命令模板：`apps +automation-create --app-id <id> --name <name> --trigger-type feishu-approval --event-type approval_instance --instance-status APPROVED [--approval-code <code>]`。需要你确认：(1) 触发器名 `<name>`；(2) 是否限定特定审批流程——限定就传 `--approval-code`（从飞书审批管理后台拿），不传则匹配所有审批定义」。
+- ❌ 错误：直接问「叫什么名字？监听哪个审批？」——用户没法确认你有没有把「审批通过」映射到 `--event-type approval_instance --instance-status APPROVED`。
+
+同理，cron/record-change/webhook 三类的「怎么配」都遵循此模式：先给命令 + 参数推断，后追问缺项。
+
 ## 命令路由
 
 | 命令 | 用途 | Risk |
