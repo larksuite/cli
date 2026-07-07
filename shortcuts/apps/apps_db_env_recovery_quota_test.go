@@ -323,6 +323,31 @@ func TestAppsDBQuotaGet_WithQuotaPretty(t *testing.T) {
 }
 
 // 配额未对接（storage_quota_bytes=0）→ json 删 quota/usage_percent，仅留已用量与 tables/views。
+// TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset 验证不传 --environment 时 quota-get 的 dry-run
+// query 不带 env 键（交服务端按应用形态自动选分支）。
+func TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBQuotaGet,
+		[]string{"+db-quota-get", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		API []struct {
+			Method string                 `json:"method"`
+			URL    string                 `json:"url"`
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	a := env.API[0]
+	if a.Method != "GET" || a.URL != dbQuotaURL {
+		t.Fatalf("dry-run = %s %s", a.Method, a.URL)
+	}
+	if _, ok := a.Params["env"]; ok {
+		t.Fatalf("no --environment → env key must be omitted, got params=%v", a.Params)
+	}
+}
+
 func TestAppsDBQuotaGet_NoQuotaOmitsFields(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{

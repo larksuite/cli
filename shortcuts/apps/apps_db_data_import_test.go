@@ -121,6 +121,31 @@ func TestAppsDBDataImport_DryRunMultipartShape(t *testing.T) {
 	}
 }
 
+// TestAppsDBDataImport_DryRunOmitsEnvWhenUnset 验证不传 --environment 时 dry-run 的 query
+// 不带 env 键（交服务端按应用形态自动选分支），但仍携带 table。
+func TestAppsDBDataImport_DryRunOmitsEnvWhenUnset(t *testing.T) {
+	chdirTemp(t)
+	_ = os.WriteFile("orders.csv", []byte("id\n1\n"), 0o600)
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	if err := runAppsShortcut(t, AppsDBDataImport,
+		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
+		t.Fatalf("dry-run err=%v", err)
+	}
+	var env struct {
+		API []struct {
+			Params map[string]interface{} `json:"params"`
+		} `json:"api"`
+	}
+	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	p := env.API[0].Params
+	if _, ok := p["env"]; ok {
+		t.Fatalf("no --environment → env key must be omitted, got params=%v", p)
+	}
+	if p["table"] != "orders" {
+		t.Fatalf("table should still default to file basename, got params=%v", p)
+	}
+}
+
 // TestAppsDBDataImport_Success 验证成功导入后输出含 table、rows 与回显的 file 名。
 func TestAppsDBDataImport_Success(t *testing.T) {
 	chdirTemp(t)
