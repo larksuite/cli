@@ -1,0 +1,23 @@
+skills/lark-slides/SKILL.md
+  s_8a926e041b0a39::t_a07abf6695785c 32
+skills/lark-slides/references/lark-slides-pptx-template-workflows.md
+  s_8a926e041b0a39::t_6c7f226146e1ee 1-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1904d3873e684550f0838f21acb7b11b50529247",
+  "prompts": {},
+  "sessions": {
+    "s_8a926e041b0a39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3db5-e84b-70c1-a951-ed070a1a6a93",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
