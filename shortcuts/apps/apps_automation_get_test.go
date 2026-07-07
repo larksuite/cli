@@ -41,7 +41,6 @@ func TestAutomationGet_MissingName(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t,
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x"})
-	if err := AppsAutomationGet.Validate(context.Background(), rctx); err == nil {
-		t.Error("missing --name must fail validation")
-	}
+	err := AppsAutomationGet.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--name")
 }

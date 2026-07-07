@@ -42,25 +42,22 @@ func TestAutomationCreateCron_BuildsBody(t *testing.T) {
 func TestAutomationCreate_MissingType(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n"})
-	if err := AppsAutomationCreate.Validate(context.Background(), rctx); err == nil {
-		t.Error("missing --trigger-type must fail validation")
-	}
+	err := AppsAutomationCreate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--trigger-type")
 }
 
 func TestAutomationCreateCron_Sub30MinRejected(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "cron", "cron": "*/5 * * * *"})
-	if err := AppsAutomationCreate.Validate(context.Background(), rctx); err == nil {
-		t.Error("sub-30min cron must fail validation")
-	}
+	err := AppsAutomationCreate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--cron")
 }
 
 func TestAutomationCreateRecordChange_MissingEvent(t *testing.T) {
 	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "record-change", "table": "tbl"})
-	if err := AppsAutomationCreate.Validate(context.Background(), rctx); err == nil {
-		t.Error("record-change missing --event must fail validation")
-	}
+	err := AppsAutomationCreate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--event")
 }
 
 func TestAutomationCreateApproval_CodeOptional(t *testing.T) {

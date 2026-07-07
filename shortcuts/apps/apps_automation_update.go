@@ -21,6 +21,8 @@ var AppsAutomationUpdate = common.Shortcut{
 	Risk:        "high-risk-write",
 	Tips: []string{
 		"Example: lark-cli apps +automation-update --app-id <id> --name t1 --trigger-type cron --cron '0 10 * * *' --yes",
+		"Example: lark-cli apps +automation-update --app-id <id> --name rc1 --trigger-type record-change --table <tbl> --event UPDATE --fields '[\"fld1\"]' --yes",
+		"Example: lark-cli apps +automation-update --app-id <id> --name apv --trigger-type feishu-approval --event-type approval_instance --instance-status APPROVED --yes",
 		"Example: lark-cli apps +automation-update --app-id <id> --name wh1 --reset-url --app-env preview --yes",
 		"Example: lark-cli apps +automation-update --app-id <id> --name wh1 --enable-token --yes",
 		"Example: lark-cli apps +automation-update --app-id <id> --name wh1 --white-ip-list '[\"1.1.1.1\"]' --yes",
@@ -35,6 +37,13 @@ var AppsAutomationUpdate = common.Shortcut{
 		{Name: "description", Desc: "new description"},
 		{Name: "cron", Desc: "[cron] new 5-field cron expression"},
 		{Name: "timezone", Desc: "[cron] new timezone"},
+		{Name: "table", Desc: "[record-change] dataloom table id"},
+		{Name: "event", Desc: "[record-change] INSERT | UPDATE | UPSERT | DELETE"},
+		{Name: "fields", Desc: "[record-change] JSON array of field ids for UPDATE/UPSERT, [\"*\"] = all"},
+		{Name: "approval-code", Desc: "[feishu-approval] optional; omit to match all approval definitions"},
+		{Name: "event-type", Desc: "[feishu-approval] approval_instance | approval_task"},
+		{Name: "instance-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_instance"},
+		{Name: "task-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_task"},
 		{Name: "white-ip-list", Desc: "[webhook] full replacement JSON array of allowed IPs"},
 		{Name: "reset-url", Type: "bool", Desc: "[webhook] rotate callback URL for --app-env (old URL invalidated)"},
 		{Name: "app-env", Desc: "[webhook] preview | runtime (required with --reset-url)"},
@@ -47,15 +56,15 @@ var AppsAutomationUpdate = common.Shortcut{
 			return err
 		}
 		// webhook action flags are mutually exclusive; at most one per invocation.
-		n := 0
+		var setFlags []string
 		for _, f := range []string{"reset-url", "enable-token", "disable-token", "reset-token"} {
 			if rctx.Bool(f) {
-				n++
+				setFlags = append(setFlags, "--"+f)
 			}
 		}
-		if n > 1 {
-			return appsValidationParamError("--reset-url",
-				"only one webhook action flag allowed per update (reset-url/enable-token/disable-token/reset-token)")
+		if len(setFlags) > 1 {
+			return appsValidationParamError(setFlags[0],
+				"only one webhook action flag allowed per update, got: %s", strings.Join(setFlags, ", "))
 		}
 		if rctx.Bool("reset-url") && strings.TrimSpace(rctx.Str("app-env")) == "" {
 			return appsValidationParamError("--app-env", "--reset-url requires --app-env preview|runtime")
@@ -73,7 +82,8 @@ var AppsAutomationUpdate = common.Shortcut{
 		case rctx.Bool("reset-token"):
 			return common.NewDryRunAPI().POST(automationWebhookTokenResetPath(appID, name)).Desc("Reset webhook token")
 		default:
-			return common.NewDryRunAPI().PATCH(automationItemPath(appID, name)).Desc("Update trigger condition").Body(buildAutomationUpdateBody(rctx))
+			body, _ := buildAutomationUpdateBody(rctx)
+			return common.NewDryRunAPI().PATCH(automationItemPath(appID, name)).Desc("Update trigger condition").Body(body)
 		}
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -104,7 +114,7 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	// Validate --cron/--white-ip-list up-front so illegal values surface a
+	// Validate all condition-carrying flags up-front so illegal values surface a
 	// field-specific error instead of being silently dropped by
 	// buildAutomationUpdateBody (which would either report the generic
 	// no-fields error or PATCH without the intended field).
@@ -118,10 +128,18 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 			return err
 		}
 	}
-	body := buildAutomationUpdateBody(rctx)
+	if raw := strings.TrimSpace(rctx.Str("fields")); raw != "" {
+		if _, err := parseFieldsFlag(raw); err != nil {
+			return err
+		}
+	}
+	body, err := buildAutomationUpdateBody(rctx)
+	if err != nil {
+		return err
+	}
 	if len(body) == 0 {
 		return appsValidationParamError("--cron",
-			"no update fields provided; pass --cron/--timezone/--white-ip-list/--description or a webhook action flag")
+			"no update fields provided; pass --cron/--timezone/--table/--event/--fields/--white-ip-list/--event-type/--instance-status/--task-status/--approval-code/--description or a webhook action flag")
 	}
 	data, err := rctx.CallAPITyped("PATCH", automationItemPath(appID, name), nil, body)
 	if err != nil {
@@ -134,20 +152,56 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 }
 
 // buildAutomationUpdateBody assembles PATCH body with only provided fields.
-func buildAutomationUpdateBody(rctx *common.RuntimeContext) map[string]interface{} {
+// Condition-carrying flags dispatch by --trigger-type where semantics overlap
+// (e.g. --table belongs only to record-change), so callers must set
+// --trigger-type when updating the matching condition.
+func buildAutomationUpdateBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
 	if d := strings.TrimSpace(rctx.Str("description")); d != "" {
 		body["description"] = d
 	}
 	if c := strings.TrimSpace(rctx.Str("cron")); c != "" {
-		if cond, err := buildCronCondition(c, rctx.Str("timezone")); err == nil {
-			body["cron_condition"] = cond
+		cond, err := buildCronCondition(c, rctx.Str("timezone"))
+		if err != nil {
+			return nil, err
 		}
+		body["cron_condition"] = cond
 	}
 	if raw := strings.TrimSpace(rctx.Str("white-ip-list")); raw != "" {
-		if ipList, err := parseIPListFlag(raw); err == nil {
-			body["webhook_condition"] = buildWebhookCondition(ipList)
+		ipList, err := parseIPListFlag(raw)
+		if err != nil {
+			return nil, err
 		}
+		body["webhook_condition"] = buildWebhookCondition(ipList)
 	}
-	return body
+	// record-change dispatch: any of --table/--event/--fields triggers a rebuild.
+	// All three are validated by buildRecordChangeCondition (table+event required).
+	if strings.TrimSpace(rctx.Str("table")) != "" ||
+		strings.TrimSpace(rctx.Str("event")) != "" ||
+		strings.TrimSpace(rctx.Str("fields")) != "" {
+		fields, err := parseFieldsFlag(rctx.Str("fields"))
+		if err != nil {
+			return nil, err
+		}
+		cond, err := buildRecordChangeCondition(rctx.Str("table"), rctx.Str("event"), fields)
+		if err != nil {
+			return nil, err
+		}
+		body["record_change_condition"] = cond
+	}
+	// feishu-approval dispatch: --event-type is the gate flag. Statuses are picked
+	// from --instance-status or --task-status per event-type.
+	if eventType := strings.TrimSpace(rctx.Str("event-type")); eventType != "" {
+		raw := rctx.StrArray("instance-status")
+		if eventType == "approval_task" {
+			raw = rctx.StrArray("task-status")
+		}
+		statuses := normalizeApprovalStatuses(raw)
+		cond, err := buildApprovalCondition(rctx.Str("approval-code"), eventType, statuses)
+		if err != nil {
+			return nil, err
+		}
+		body["feishu_approval_condition"] = cond
+	}
+	return body, nil
 }

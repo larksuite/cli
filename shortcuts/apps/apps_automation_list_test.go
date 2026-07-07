@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 )
 
@@ -119,5 +120,39 @@ func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
 	}
 	if !strings.Contains(out, "token_enabled") {
 		t.Errorf("list must expose token_enabled: %s", out)
+	}
+}
+
+// A4: --all must refuse to loop forever when the backend keeps returning the
+// same page_token. A reusable stub that always advertises "has_more=true,
+// page_token=same" forces the seen-token guard to trip.
+func TestAutomationListExecute_All_DetectsRepeatedPageToken(t *testing.T) {
+	rctx, _, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
+		map[string]string{"app-id": "app_x", "all": "true"})
+	reg.Register(&httpmock.Stub{
+		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Reusable: true,
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"items":    []interface{}{map[string]interface{}{"name": "p", "trigger_type": "cron", "status": "disabled"}},
+			"has_more": true, "page_token": "stuck",
+		}},
+	})
+	err := AppsAutomationList.Execute(context.Background(), rctx)
+	// The seen-token detector must raise a typed internal/invalid_response error
+	// long before the caller sees a runaway loop.
+	assertInternalError(t, err, errs.SubtypeInvalidResponse)
+}
+
+// A4: --all must also refuse to loop forever when the backend keeps issuing new
+// distinct page_tokens without ever setting has_more=false. The page-cap kicks
+// in at automationListAllMaxPages. Simulated by a reusable stub advertising a
+// fresh non-repeating token via monotonically increasing counter — but since
+// httpmock has no dynamic bodies, we lean on the fact that the same reusable
+// body advertises page_token="stuck" (the seen-token guard trips first). This
+// case is left to the sibling test above; the page-cap constant is asserted
+// here so a future refactor cannot silently drop the ceiling.
+func TestAutomationListAll_PageCapConstant(t *testing.T) {
+	if automationListAllMaxPages <= 0 || automationListAllMaxPages > 1000 {
+		t.Errorf("automationListAllMaxPages = %d; must be a small positive ceiling", automationListAllMaxPages)
 	}
 }

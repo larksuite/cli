@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -87,10 +88,18 @@ func buildAutomationListParams(rctx *common.RuntimeContext) map[string]interface
 }
 
 // executeAutomationListAll 循环翻页聚合到 has_more=false（禁止静默漏项）。
+// 用页数上限 + 已见 token 检测防止后端非收敛响应导致无限循环。
+const automationListAllMaxPages = 100
+
 func executeAutomationListAll(rctx *common.RuntimeContext, path string, params map[string]interface{}) error {
 	all := make([]interface{}, 0, 16)
+	seen := map[string]struct{}{}
 	token := ""
-	for {
+	for pages := 0; ; pages++ {
+		if pages >= automationListAllMaxPages {
+			return errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"pagination did not converge after %d pages", automationListAllMaxPages)
+		}
 		p := make(map[string]interface{}, len(params)+1)
 		for k, v := range params {
 			p[k] = v
@@ -107,6 +116,11 @@ func executeAutomationListAll(rctx *common.RuntimeContext, path string, params m
 		if !hasMore || next == "" {
 			break
 		}
+		if _, ok := seen[next]; ok {
+			return errs.NewInternalError(errs.SubtypeInvalidResponse,
+				"pagination did not converge: page_token %q repeated", next)
+		}
+		seen[next] = struct{}{}
 		token = next
 	}
 	out := map[string]interface{}{"items": all, "has_more": false}
