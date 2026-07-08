@@ -1,0 +1,21 @@
+skills/lark-application/SKILL.md
+  s_b94115c2d695be::t_5d6b5ee26f74c0 19-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3a297df5b0155c924a23e9ddd3ae9be15b2de8f5",
+  "prompts": {},
+  "sessions": {
+    "s_b94115c2d695be": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae2378a18dfec38ec",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
