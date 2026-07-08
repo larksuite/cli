@@ -1,0 +1,25 @@
+shortcuts/application/shortcuts.go
+  s_eced077783f719::t_f434144c08d783 14
+shortcuts/application/slash_command_create.go
+  s_eced077783f719::t_8c037cb67d6a4b 1-109
+shortcuts/application/slash_command_create_test.go
+  s_eced077783f719::t_265a6b71276910 1-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "edeccaa41978539bc1b1e6792170ff3ecf118944",
+  "prompts": {},
+  "sessions": {
+    "s_eced077783f719": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae8d052240227a7ea",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
