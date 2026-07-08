@@ -1,0 +1,31 @@
+skill-template/domains/application.md
+  s_bd7fc01791b9ed::t_a163330e845217 1-20
+skills/lark-application/SKILL.md
+  s_bd7fc01791b9ed::t_57112afefc821b 1-46
+skills/lark-application/references/lark-application-slash-command-create.md
+  s_bd7fc01791b9ed::t_b66d84cf6b896c 1-64
+skills/lark-application/references/lark-application-slash-command-delete.md
+  s_bd7fc01791b9ed::t_522749dd80d787 1-65
+skills/lark-application/references/lark-application-slash-command-list.md
+  s_bd7fc01791b9ed::t_1532a256ba4ccb 1-62
+skills/lark-application/references/lark-application-slash-command-update.md
+  s_bd7fc01791b9ed::t_ca5fe536777301 1-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ba8368504d2c17520e689e313abeaccb86b5117f",
+  "prompts": {},
+  "sessions": {
+    "s_bd7fc01791b9ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0580ead3c7ef8079",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
