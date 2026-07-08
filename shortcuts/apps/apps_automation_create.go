@@ -78,9 +78,18 @@ var AppsAutomationCreate = common.Shortcut{
 		if err != nil {
 			return withAppsHint(err, appIDListHint)
 		}
-		rctx.OutFormat(data, nil, func(w io.Writer) {
+		// Bearer-token redaction reverse invariant: the CreateTrigger backend
+		// re-reads GetTriggerModel and returns TriggerInfo, sharing the
+		// decrypting webhook-condition converter with the get/list read path
+		// — theoretically capable of returning a plaintext bearerToken. On a
+		// fresh create the token is not yet enabled and this response should
+		// not carry plaintext, but redact for defense-in-depth and to keep
+		// every read-shaped output path (create / get / list / update-patch)
+		// consistently scrubbed.
+		redacted := redactWebhookToken(data)
+		rctx.OutFormat(redacted, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "created trigger: %v  [%v]  status: %v\n",
-				data["name"], data["trigger_type"], data["status"])
+				redacted["name"], redacted["trigger_type"], redacted["status"])
 		})
 		return nil
 	},

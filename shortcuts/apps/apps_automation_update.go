@@ -13,7 +13,13 @@ import (
 )
 
 // AppsAutomationUpdate is the unified trigger-modify entry. Webhook URL/Token
-// actions are dispatched to apps_automation_webhook.go; otherwise PATCH condition.
+// actions dispatch to apps_automation_webhook.go via bool action flags on the
+// same command (--reset-url / --enable-token / --disable-token / --reset-token)
+// rather than as separate +automation-* commands, because the automation spec
+// (docx/INixwF5apisF4kkNvOrcwLtInig §范围) fixes the 6 shared verbs to
+// list/get/create/update/enable/disable — the webhook credential lifecycle is
+// intentionally packed into --update via action flags, not a family of new
+// commands. Otherwise Execute PATCHes the trigger condition.
 var AppsAutomationUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-update",
@@ -65,6 +71,25 @@ var AppsAutomationUpdate = common.Shortcut{
 		if len(setFlags) > 1 {
 			return appsValidationParamError(setFlags[0],
 				"only one webhook action flag allowed per update, got: %s", strings.Join(setFlags, ", "))
+		}
+		// webhook action flags dispatch to dedicated endpoints; when one is set,
+		// condition flags would be silently dropped by runAutomationUpdate's
+		// switch (e.g. `--reset-token --cron '0 9 * * *'` used to only reset the
+		// token). Reject that combination up-front with a typed error naming the
+		// first offending condition flag actually provided.
+		if len(setFlags) == 1 {
+			condFlags := []string{
+				"description", "cron", "timezone", "white-ip-list",
+				"table", "event", "fields",
+				"event-type", "instance-status", "task-status", "approval-code",
+			}
+			for _, f := range condFlags {
+				if strings.TrimSpace(rctx.Str(f)) != "" || len(rctx.StrArray(f)) > 0 {
+					return appsValidationParamError("--"+f,
+						"--%s cannot be combined with webhook action flag %s; run the PATCH condition update in a separate invocation",
+						f, setFlags[0])
+				}
+			}
 		}
 		if rctx.Bool("reset-url") && strings.TrimSpace(rctx.Str("app-env")) == "" {
 			return appsValidationParamError("--app-env", "--reset-url requires --app-env preview|runtime")
@@ -163,8 +188,17 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
 	}
-	rctx.OutFormat(data, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "updated trigger: %v\n", data["name"])
+	// Bearer-token redaction reverse invariant: the plaintext webhook bearer
+	// token is only ever surfaced by the dedicated one-shot flags
+	// --enable-token / --reset-token. Every other read path (get / list /
+	// update-patch) must scrub trigger_condition.token_value. UpdateTrigger
+	// backend behaviour "re-reads GetTriggerModel and returns TriggerInfo"
+	// shares the decrypting webhook-condition converter with the get path,
+	// so the PATCH response may carry a plaintext bearer token; the CLI
+	// redacts here to enforce the invariant, matching get / list.
+	redacted := redactWebhookToken(data)
+	rctx.OutFormat(redacted, nil, func(w io.Writer) {
+		fmt.Fprintf(w, "updated trigger: %v\n", redacted["name"])
 	})
 	return nil
 }

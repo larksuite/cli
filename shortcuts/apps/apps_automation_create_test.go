@@ -100,3 +100,31 @@ func TestAutomationCreateApproval_StatusUppercased(t *testing.T) {
 		t.Errorf("lowercase status must be uppercased to APPROVED, got %v", statuses)
 	}
 }
+
+// TestAutomationCreate_RedactsWebhookToken covers the bearer-token redaction
+// reverse invariant on the create path: CreateTrigger backend re-reads
+// GetTriggerModel and returns TriggerInfo, sharing the decrypting
+// webhook-condition converter with get/list — theoretically capable of
+// returning plaintext bearerToken. Defense-in-depth: CLI create must also
+// redact so every read-shaped output path is consistently scrubbed.
+func TestAutomationCreate_RedactsWebhookToken(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook"})
+	reg.Register(&httpmock.Stub{
+		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"name": "wh1", "trigger_type": "webhook", "status": "disabled",
+			"trigger_condition": map[string]interface{}{
+				"preview_url": "https://p", "runtime_url": "https://r",
+				"token_enabled": true, "token_value": "PLAINTEXT_CREATE_TOKEN",
+			},
+		}},
+	})
+	if err := AppsAutomationCreate.Execute(context.Background(), rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	out := stdoutBuf.String()
+	if strings.Contains(out, "PLAINTEXT_CREATE_TOKEN") {
+		t.Errorf("create must never surface plaintext token: %s", out)
+	}
+}
