@@ -16,7 +16,7 @@ metadata:
 
 `AuthTypes: bot, user` 均可，**主推 `--as bot`**（应用自管理场景多数由应用自身发起）。
 
-user 授权可用交互式 `lark-cli auth login`（TUI 选择器中选 application，"常用权限"与"全部权限"均含本 skill 的两个 scope），或显式 `--domain application` / `--scope`（见下方示例）。
+user 授权可用交互式 `lark-cli auth login`（TUI 选择器中选 application；"常用权限"档仅含 `read`，需要创建/更新/删除时选"全部权限"），或显式 `--domain application` / `--scope`（见下方示例）。
 
 - **bot 身份**：只需在开发者后台开通 `application:app_slash_command:read`（列出）/ `application:app_slash_command:write`（创建/更新/删除），版本发布后无需 `auth login`。
 - **user 身份**：需在 bot 后台开通的基础上叠加个人授权，任选其一：

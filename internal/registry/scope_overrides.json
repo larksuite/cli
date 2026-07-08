@@ -13,8 +13,7 @@
   },
   "recommend": {
     "allow": [
-      "application:app_slash_command:read",
-      "application:app_slash_command:write"
+      "application:app_slash_command:read"
     ],
     "deny": [
       "im:chat",

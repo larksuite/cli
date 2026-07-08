@@ -250,17 +250,16 @@ func TestLoadOverrideAutoApproveAllow(t *testing.T) {
 	allowSet := LoadOverrideAutoApproveAllow()
 	// recommend.allow special-cases scopes absent from scope_priorities.json
 	// (application v7 is not in the platform catalog yet) so interactive
-	// login's "common scopes" tier still offers them.
-	for _, s := range []string{
-		"application:app_slash_command:read",
-		"application:app_slash_command:write",
-	} {
-		if !allowSet[s] {
-			t.Errorf("expected %s in override allow set", s)
-		}
+	// login's "common scopes" tier still offers them. Only the read scope is
+	// admitted: write stays out of the recommended tier by design.
+	if !allowSet["application:app_slash_command:read"] {
+		t.Error("expected application:app_slash_command:read in override allow set")
 	}
-	if len(allowSet) != 2 {
-		t.Errorf("expected exactly 2 override allow entries, got %d", len(allowSet))
+	if allowSet["application:app_slash_command:write"] {
+		t.Error("write scope must NOT be in the recommended tier")
+	}
+	if len(allowSet) != 1 {
+		t.Errorf("expected exactly 1 override allow entry, got %d", len(allowSet))
 	}
 }
 
