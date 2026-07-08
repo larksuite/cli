@@ -1,7 +1,7 @@
 ---
 name: lark-event
 version: 1.0.0
-description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM messages/reactions/chat changes, Task updates, VC meeting started/joined/ended, Minutes generated, Whiteboard updated, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
+description: "Lark/Feishu real-time event listening / subscribing / consuming: stream events as NDJSON via `lark-cli event consume <EventKey>` (covers IM messages/reactions/chat changes, Mail message received, Task updates, VC meeting started/joined/ended, Minutes generated, Whiteboard updated, etc.). Use for Lark bots, real-time message processing, long-running subscribers, streaming webhook/push handlers. Supports `--max-events` / `--timeout` bounded runs and a stderr ready-marker contract — designed for AI agents running as subprocesses."
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -47,6 +47,9 @@ lark-cli event consume im.message.receive_v1 --max-events 1 --timeout 30s --as b
 
 # Run for 10 minutes then auto-exit
 lark-cli event consume im.message.receive_v1 --timeout 10m --as bot
+
+# Consume one incoming mail message metadata payload
+lark-cli event consume mail.message_received_v1 --as user -p mailbox=me --max-events 1 --timeout 30s
 
 # Consume multiple EventKeys concurrently (one shape per process, no dispatcher)
 lark-cli event consume im.message.receive_v1          --as bot > receive.ndjson &
@@ -148,6 +151,7 @@ Lark-defined semantic tags (**not** JSON Schema's standard `format`). Common val
 | Topic      | Reference                                                                    | Coverage |
 |------------|------------------------------------------------------------------------------|---|
 | IM         | [`references/lark-event-im.md`](references/lark-event-im.md)                 | Catalog of 12 IM EventKeys + shape notes (flat vs V2 envelope) + `im.message.receive_v1` field gotchas (`sender_id` is open_id only; `.content` is plain text except for `interactive` cards) + common jq recipes (filter by chat_type / message_type / sender); for `card.action.trigger` see also [`../lark-im/references/lark-im-card-action-reply.md`](../lark-im/references/lark-im-card-action-reply.md) |
+| Mail       | [`../lark-mail/references/lark-mail-watch.md`](../lark-mail/references/lark-mail-watch.md) | Catalog of 1 Mail EventKey (`mail.message_received_v1`) + mailbox/folder/label filters + `msg_format` modes + `mail +watch` compatibility notes |
 | Task       | [`references/lark-event-task.md`](references/lark-event-task.md)             | Catalog of 1 Task EventKey (`task.task.update_user_access_v2`) + Native V2 envelope shape + task commit types + user/bot subscription notes |
 | VC         | [`references/lark-event-vc.md`](references/lark-event-vc.md)                 | Catalog of 4 VC EventKeys (`vc.meeting.participant_meeting_started_v1`, `vc.meeting.participant_meeting_joined_v1`, `vc.meeting.participant_meeting_ended_v1`, `vc.note.generated_v1`) + field reference + source type semantics (meeting only) |
 | Minutes    | [`references/lark-event-minutes.md`](references/lark-event-minutes.md)       | Catalog of 1 Minutes EventKey (`minutes.minute.generated_v1`) + field reference + source type semantics (meeting only) |

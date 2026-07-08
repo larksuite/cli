@@ -66,6 +66,11 @@ func handleMailWatchSignal(errOut io.Writer, sig os.Signal, eventCount int64, un
 
 const mailEventType = "mail.user_mailbox.event.message_received_v1"
 
+var (
+	mailWatchScopes    = []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"}
+	mailWatchAuthTypes = []string{"user"}
+)
+
 // promptInjectionPatterns lists known prompt injection trigger phrases.
 var promptInjectionPatterns = []string{
 	"ignore all previous",
@@ -94,19 +99,21 @@ func detectPromptInjection(content string) bool {
 var MailWatch = common.Shortcut{
 	Service:     "mail",
 	Command:     "+watch",
-	Description: "Watch for incoming mail events via WebSocket (requires scope mail:event and bot event mail.user_mailbox.event.message_received_v1 added). Run with --print-output-schema to see per-format field reference before parsing output.",
+	Description: "Watch for incoming mail events via the unified event consume framework. Run with --print-output-schema to see per-format field reference before parsing output.",
 	Risk:        "read",
-	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
-	AuthTypes:   []string{"user"},
+	Scopes:      mailWatchScopes,
+	AuthTypes:   mailWatchAuthTypes,
 	Flags: []common.Flag{
 		{Name: "format", Default: "data", Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
 		{Name: "msg-format", Default: "metadata", Desc: "message payload mode: metadata(headers + meta, for triage/notification) | minimal(IDs and state only, no headers, for tracking read/folder changes) | plain_text_full(all metadata fields + full plain-text body) | event(raw WebSocket event, no API call, for debug) | full(full message including HTML body and attachments)"},
-		{Name: "output-dir", Desc: "Write each message as a JSON file (always full payload, regardless of --msg-format)"},
+		{Name: "output-dir", Desc: "Write each emitted event payload as a JSON file using the unified event consume sink"},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},
 		{Name: "labels", Desc: "filter: label names JSON array, e.g. [\"important\",\"team-label\"]"},
 		{Name: "folders", Desc: "filter: folder names JSON array, e.g. [\"inbox\",\"news\"]"},
 		{Name: "label-ids", Desc: "filter: label IDs JSON array, e.g. [\"FLAGGED\",\"IMPORTANT\"]"},
 		{Name: "folder-ids", Desc: "filter: folder IDs JSON array, e.g. [\"INBOX\",\"SENT\"]"},
+		{Name: "max-events", Type: "int", Desc: "Exit after N emitted events (0 = unlimited); passed through to event consume"},
+		{Name: "timeout", Desc: "Exit after DURATION such as 30s or 2m; passed through to event consume"},
 		{Name: "print-output-schema", Type: "bool", Desc: "Print output field reference per --msg-format (run this first to learn field names before parsing output)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -134,7 +141,7 @@ var MailWatch = common.Shortcut{
 			effectiveLabelDisplay = "(none)"
 		}
 
-		dryRunDesc := "Step 1: subscribe mailbox events; Step 2: watch via WebSocket (long-running)"
+		dryRunDesc := "Step 1: subscribe mailbox events; Step 2: consume via event consume (long-running)"
 		if folderDeferred || labelDeferred {
 			dryRunDesc += "; non-system folder/label names are resolved to IDs during execution"
 		}
@@ -182,6 +189,8 @@ var MailWatch = common.Shortcut{
 			printWatchOutputSchema(runtime)
 			return nil
 		}
+		return runMailWatchViaEventConsume(ctx, runtime)
+
 		mailbox := resolveMailboxID(runtime)
 		hintIdentityFirst(runtime, mailbox)
 		outFormat := runtime.Str("format")

@@ -30,6 +30,7 @@ type Options struct {
 	Out             io.Writer // nil falls back to os.Stdout
 	ErrOut          io.Writer
 	RemoteAPIClient APIClient // nil disables remote-connection preflight
+	Preflight       func(context.Context, *event.KeyDefinition, map[string]string) error
 
 	MaxEvents int           // 0 = unlimited
 	Timeout   time.Duration // 0 = no timeout
@@ -72,6 +73,12 @@ func Run(ctx context.Context, tr transport.IPC, appID, profileName, domain strin
 			}
 			return errs.NewInternalError(errs.SubtypeUnknown,
 				"normalize params for %s: %s", opts.EventKey, err).WithCause(err)
+		}
+	}
+
+	if opts.Preflight != nil {
+		if err := opts.Preflight(ctx, keyDef, opts.Params); err != nil {
+			return err
 		}
 	}
 

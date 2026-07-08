@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 	"github.com/larksuite/cli/internal/event/transport"
@@ -55,6 +56,69 @@ func TestNormalizeParams_ErrorIsWrappedWithEventKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "simulated normalize failure") {
 		t.Errorf("underlying error not propagated: %v", err)
+	}
+}
+
+func TestRunPreflightRunsAfterNormalizeParams(t *testing.T) {
+	const key = "test.evt_preflight_after_normalize"
+	event.RegisterKey(event.KeyDefinition{
+		Key:       key,
+		EventType: key,
+		Schema:    event.SchemaDef{Custom: &event.SchemaSpec{Raw: json.RawMessage(`{"type":"object"}`)}},
+		Params: []event.ParamDef{
+			{Name: "labels", Type: event.ParamString},
+		},
+		NormalizeParams: func(_ context.Context, _ event.APIClient, params map[string]string) error {
+			if params["labels"] == "not-json-array" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument,
+					"invalid --labels: expected JSON array").WithParam("--param labels")
+			}
+			return nil
+		},
+	})
+	defer event.UnregisterKeyForTest(key)
+
+	var preflightCalls int
+	err := Run(context.Background(), transport.New(), "app", "", "", Options{
+		EventKey: key,
+		Params:   map[string]string{"labels": "not-json-array"},
+		Runtime:  &fakeRT{},
+		Quiet:    true,
+		Preflight: func(context.Context, *event.KeyDefinition, map[string]string) error {
+			preflightCalls++
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"EventKey %s requires event types not subscribed in console: mail.user_mailbox.event.message_received_v1", key)
+		},
+	})
+	if err == nil {
+		t.Fatal("expected NormalizeParams error")
+	}
+	if preflightCalls != 0 {
+		t.Fatalf("preflight calls = %d, want 0 when NormalizeParams fails", preflightCalls)
+	}
+	if got := err.Error(); !strings.Contains(got, "labels") || !strings.Contains(got, "JSON array") {
+		t.Fatalf("error = %q, want labels JSON array validation", got)
+	}
+
+	err = Run(context.Background(), transport.New(), "app", "", "", Options{
+		EventKey: key,
+		Params:   map[string]string{"labels": `["Team"]`},
+		Runtime:  &fakeRT{},
+		Quiet:    true,
+		Preflight: func(context.Context, *event.KeyDefinition, map[string]string) error {
+			preflightCalls++
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+				"EventKey %s requires event types not subscribed in console: mail.user_mailbox.event.message_received_v1", key)
+		},
+	})
+	if err == nil {
+		t.Fatal("expected preflight error")
+	}
+	if preflightCalls != 1 {
+		t.Fatalf("preflight calls = %d, want 1 for valid params", preflightCalls)
+	}
+	if !strings.Contains(err.Error(), "requires event types not subscribed in console") {
+		t.Fatalf("error = %q, want console preflight", err.Error())
 	}
 }
 

@@ -169,13 +169,6 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		appVer:              appVer,
 		subscribedCallbacks: subscribedCallbacks,
 	}
-	if err := preflightEventTypes(pf); err != nil {
-		return err
-	}
-	if err := preflightScopes(cmd.Context(), pf); err != nil {
-		return err
-	}
-
 	ctx, cancel := context.WithCancel(cmd.Context())
 	defer cancel()
 
@@ -214,9 +207,15 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		Out:             f.IOStreams.Out,
 		ErrOut:          errOut,
 		RemoteAPIClient: botRuntime,
-		MaxEvents:       o.maxEvents,
-		Timeout:         o.timeout,
-		IsTTY:           f.IOStreams.IsTerminal,
+		Preflight: func(ctx context.Context, _ *eventlib.KeyDefinition, _ map[string]string) error {
+			if err := preflightEventTypes(pf); err != nil {
+				return err
+			}
+			return preflightScopes(ctx, pf)
+		},
+		MaxEvents: o.maxEvents,
+		Timeout:   o.timeout,
+		IsTTY:     f.IOStreams.IsTerminal,
 	}); err != nil {
 		return err
 	}
