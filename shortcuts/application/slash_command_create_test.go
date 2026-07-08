@@ -5,6 +5,7 @@ package application
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -102,6 +103,13 @@ func TestSlashCommandCreate_ConflictNoForce(t *testing.T) {
 	p, _ := errs.ProblemOf(err)
 	if !strings.Contains(p.Hint, "--force") || !strings.Contains(p.Hint, "+slash-command-update") {
 		t.Fatalf("hint must offer --force and update, got %q", p.Hint)
+	}
+	var apiErr *errs.APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("rewrapped error must be *errs.APIError, got %T", err)
+	}
+	if errors.Unwrap(apiErr) == nil {
+		t.Fatal("rewrapped conflict error must preserve the original cause via WithCause")
 	}
 }
 
