@@ -17,7 +17,7 @@ import (
 )
 
 func appTestConfig() *core.CliConfig {
-	return &core.CliConfig{AppID: "test", AppSecret: "test", Brand: core.BrandFeishu}
+	return &core.CliConfig{AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu}
 }
 
 // mountAndRun mounts the shortcut under a parent cobra command and runs it.
