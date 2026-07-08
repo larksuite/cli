@@ -32,7 +32,7 @@ func TestAutomationListExecute_SinglePage(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "msg": "", "data": map[string]interface{}{
 			"items": []interface{}{
 				map[string]interface{}{"name": "t_cron", "trigger_type": "cron", "status": "disabled"},
@@ -59,7 +59,7 @@ func TestAutomationListExecute_AllAggregatesPages(t *testing.T) {
 		map[string]string{"app-id": "app_x", "all": "true"})
 	// page 1: has_more=true, page_token="2"
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"items":    []interface{}{map[string]interface{}{"name": "p1", "trigger_type": "cron", "status": "disabled"}},
 			"has_more": true, "page_token": "2",
@@ -67,7 +67,7 @@ func TestAutomationListExecute_AllAggregatesPages(t *testing.T) {
 	})
 	// page 2: has_more=false
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"items":    []interface{}{map[string]interface{}{"name": "p2", "trigger_type": "webhook", "status": "enabled"}},
 			"has_more": false, "page_token": "",
@@ -97,7 +97,7 @@ func TestAutomationListExecute_RedactsWebhookToken(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x"})
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "msg": "", "data": map[string]interface{}{
 			"items": []interface{}{
 				map[string]interface{}{
@@ -130,7 +130,7 @@ func TestAutomationListExecute_All_DetectsRepeatedPageToken(t *testing.T) {
 	rctx, _, reg := newOpenAPIKeyRCtx(t, automationListFlagDefs(),
 		map[string]string{"app-id": "app_x", "all": "true"})
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Reusable: true,
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"items":    []interface{}{map[string]interface{}{"name": "p", "trigger_type": "cron", "status": "disabled"}},

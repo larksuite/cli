@@ -9,22 +9,22 @@ import (
 )
 
 func TestAutomationPaths(t *testing.T) {
-	if got := automationListPath("app_x"); got != "/open-apis/apaas/v1/apps/app_x/triggers" {
+	if got := automationListPath("app_x"); got != "/open-apis/spark/v1/apps/app_x/triggers" {
 		t.Errorf("listPath = %q", got)
 	}
-	if got := automationItemPath("app_x", "t1"); got != "/open-apis/apaas/v1/apps/app_x/triggers/t1" {
+	if got := automationItemPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1" {
 		t.Errorf("itemPath = %q", got)
 	}
-	if got := automationStatusPath("app_x", "t1"); got != "/open-apis/apaas/v1/apps/app_x/triggers/t1/status" {
+	if got := automationStatusPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/status" {
 		t.Errorf("statusPath = %q", got)
 	}
-	if got := automationWebhookTokenStatusPath("app_x", "t1"); got != "/open-apis/apaas/v1/apps/app_x/triggers/t1/webhook/token/status" {
+	if got := automationWebhookTokenStatusPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/webhook/token/status" {
 		t.Errorf("tokenStatusPath = %q", got)
 	}
-	if got := automationWebhookTokenResetPath("app_x", "t1"); got != "/open-apis/apaas/v1/apps/app_x/triggers/t1/webhook/token/reset" {
+	if got := automationWebhookTokenResetPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/webhook/token/reset" {
 		t.Errorf("tokenResetPath = %q", got)
 	}
-	if got := automationWebhookURLResetPath("app_x", "t1"); got != "/open-apis/apaas/v1/apps/app_x/triggers/t1/webhook/url/reset" {
+	if got := automationWebhookURLResetPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/webhook/url/reset" {
 		t.Errorf("urlResetPath = %q", got)
 	}
 }
