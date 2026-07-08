@@ -207,11 +207,6 @@ func normalizeWikiNodeListParentToken(parentNodeToken string) (string, error) {
 			"--parent-node-token must be a raw wiki node token, not a partial URL or path",
 		).WithParam("--parent-node-token")
 	}
-	if !looksLikeWikiNodeToken(parentNodeToken) {
-		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"--parent-node-token must be a wiki node token; do not pass a docx/sheet/base/file token",
-		).WithParam("--parent-node-token").WithHint("Run `lark-cli wiki +node-get --node-token <url-or-token>` to resolve a document URL or obj_token to the wiki `node_token` first.")
-	}
 	if err := validateOptionalResourceName(parentNodeToken, "--parent-node-token"); err != nil {
 		return "", err
 	}

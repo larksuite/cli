@@ -199,6 +199,19 @@ func TestWikiNodeListNormalizesWikiURLParentNodeToken(t *testing.T) {
 	}
 }
 
+func TestWikiNodeListAcceptsOpaqueParentNodeToken(t *testing.T) {
+	t.Parallel()
+
+	const opaqueNodeToken = "Q6ZM_EXAMPLE_TOKEN"
+	token, err := normalizeWikiNodeListParentToken(opaqueNodeToken)
+	if err != nil {
+		t.Fatalf("normalizeWikiNodeListParentToken() error = %v", err)
+	}
+	if token != opaqueNodeToken {
+		t.Fatalf("token = %q, want %q", token, opaqueNodeToken)
+	}
+}
+
 func TestWikiNodeListRejectsAmbiguousSpaceAndParentTokens(t *testing.T) {
 	t.Parallel()
 
@@ -223,11 +236,6 @@ func TestWikiNodeListRejectsAmbiguousSpaceAndParentTokens(t *testing.T) {
 			name:    "partial wiki path",
 			input:   "wik_placeholder/child",
 			wantMsg: "raw wiki node token",
-		},
-		{
-			name:    "document token",
-			input:   "docx_placeholder_parent",
-			wantMsg: "must be a wiki node token",
 		},
 	}
 	for _, tt := range tests {
@@ -351,10 +359,11 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 
 	factory, stdout, _, reg := cmdutil.TestFactory(t, wikiTestConfig())
+	const parentNodeToken = "Q6ZM_EXAMPLE_TOKEN"
 
 	stub := &httpmock.Stub{
 		Method: "GET",
-		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes?page_size=50&parent_node_token=wik_parent",
+		URL:    "/open-apis/wiki/v2/spaces/7211568716812369922/nodes?page_size=50&parent_node_token=" + parentNodeToken,
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -365,7 +374,7 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 						"node_token":        "wik_child",
 						"obj_token":         "docx_child",
 						"obj_type":          "docx",
-						"parent_node_token": "wik_parent",
+						"parent_node_token": parentNodeToken,
 						"node_type":         "origin",
 						"title":             "Child Doc",
 						"has_child":         false,
@@ -378,7 +387,7 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 	reg.Register(stub)
 
 	err := mountAndRunWiki(t, WikiNodeList, []string{
-		"+node-list", "--space-id", "7211568716812369922", "--parent-node-token", "wik_parent", "--as", "bot",
+		"+node-list", "--space-id", "7211568716812369922", "--parent-node-token", parentNodeToken, "--as", "bot",
 	}, factory, stdout)
 	if err != nil {
 		t.Fatalf("mountAndRunWiki() error = %v", err)
@@ -400,8 +409,8 @@ func TestWikiNodeListPassesParentNodeToken(t *testing.T) {
 	if len(envelope.Data.Nodes) != 1 {
 		t.Fatalf("len(nodes) = %d, want 1", len(envelope.Data.Nodes))
 	}
-	if envelope.Data.Nodes[0]["parent_node_token"] != "wik_parent" {
-		t.Fatalf("nodes[0].parent_node_token = %v, want %q", envelope.Data.Nodes[0]["parent_node_token"], "wik_parent")
+	if envelope.Data.Nodes[0]["parent_node_token"] != parentNodeToken {
+		t.Fatalf("nodes[0].parent_node_token = %v, want %q", envelope.Data.Nodes[0]["parent_node_token"], parentNodeToken)
 	}
 }
 

@@ -19,7 +19,7 @@ lark-cli wiki +node-get \
 |------|------|----------|---------|-------------|
 | `--node-token` | string | **Yes** | — | `node_token`, cloud-doc `obj_token`, or a Lark URL embedding one (e.g. `https://feishu.cn/wiki/<token>` or `https://feishu.cn/docx/<token>`). Matches the `--node-token` naming used by sibling `+node-delete` / `+node-copy` / `+move`. |
 | `--token` | string | — (deprecated) | — | Deprecated original name; still accepted for backward compatibility but emits a `Flag --token has been deprecated, use --node-token instead` warning on stderr. New scripts should use `--node-token`. |
-| `--obj-type` | enum | No | — | Needed when `--node-token` is a raw `obj_token`; auto-inferred from the URL path. Not allowed when the token looks like a `node_token` (`wik...`) |
+| `--obj-type` | enum | No | — | Needed when `--node-token` is a raw `obj_token`; auto-inferred from typed Lark URLs. If omitted for a raw token, the shortcut treats it as a wiki `node_token`. |
 | `--space-id` | string | No | — | Optional cross-check: fail if the resolved node does not live in this space |
 | `--format` | enum | No | `json` | `json` / `pretty` / `table` / `csv` / `ndjson` |
 | `--as` | enum | No | `auto` | Identity `user`/`bot`; wiki is user-centric → pass `--as user` |
