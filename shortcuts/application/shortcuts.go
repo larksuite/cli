@@ -13,5 +13,6 @@ func Shortcuts() []common.Shortcut {
 		SlashCommandList,
 		SlashCommandCreate,
 		SlashCommandUpdate,
+		SlashCommandDelete,
 	}
 }
