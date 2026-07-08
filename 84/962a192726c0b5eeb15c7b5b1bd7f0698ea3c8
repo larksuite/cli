@@ -1,0 +1,23 @@
+shortcuts/application/slash_command_resolve.go
+  s_04d0dc7dea7a47::t_27f4fc6344351e 1-50
+shortcuts/application/slash_command_resolve_test.go
+  s_04d0dc7dea7a47::t_954ccf0a80a24b 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "84962a192726c0b5eeb15c7b5b1bd7f0698ea3c8",
+  "prompts": {},
+  "sessions": {
+    "s_04d0dc7dea7a47": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2d1bed0c081243c6",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

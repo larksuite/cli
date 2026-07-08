@@ -1,0 +1,27 @@
+shortcuts/application/slash_command_create.go
+  s_6b5dd9df867428::t_a58444b2672683 84,86-92
+shortcuts/application/slash_command_create_test.go
+  s_6b5dd9df867428::t_d690c35b19b226 129-159
+shortcuts/application/slash_command_delete.go
+  s_6b5dd9df867428::t_6c915e7b0a96fc 77
+shortcuts/application/slash_command_resolve.go
+  s_6b5dd9df867428::t_7ad9d35a7dd913 29-32,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "42c4b7d1550d968b7d124f06a83e507faf173b65",
+  "prompts": {},
+  "sessions": {
+    "s_6b5dd9df867428": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0e9307380bda1525",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
