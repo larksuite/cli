@@ -1,9 +1,27 @@
 ---
 {
   "schema_version": "authorship/3.0.0",
-  "git_ai_version": "1.3.4",
+  "git_ai_version": "1.6.5",
   "base_commit_sha": "b3ce19c444884d5c93c05a9f3c296c0678d14856",
   "prompts": {},
+  "sessions": {
+    "s_c8a6ffab7b23c8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3dc5-5659-73a3-af90-5d75e9ed0e3b",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    },
+    "s_d3c714b1a96a95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3dc5-eca9-7d52-8a2f-2d3665228510",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
   "attestation_metadata": {},
   "remote_transcripts": {}
 }
