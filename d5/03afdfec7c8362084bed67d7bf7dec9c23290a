@@ -1,0 +1,25 @@
+shortcuts/slides/slides_xml_get.go
+  s_edbae479a5d8d3::t_e3707f3545b8fa 18-19,23,31,45-49,67,80-83,116-123
+shortcuts/slides/slides_xml_get_test.go
+  s_edbae479a5d8d3::t_b9e4bf83232ae5 94-128
+skills/lark-slides/SKILL.md
+  s_edbae479a5d8d3::t_8486e61c8a5514 32,262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d503afdfec7c8362084bed67d7bf7dec9c23290a",
+  "prompts": {},
+  "sessions": {
+    "s_edbae479a5d8d3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4097-c182-7a43-8ce9-65993dee65b1",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
