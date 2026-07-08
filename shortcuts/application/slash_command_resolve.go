@@ -26,10 +26,13 @@ func matchCommandItem(items []interface{}, name string) (string, map[string]inte
 	return "", nil
 }
 
+// commandNotFoundError reports a resolution miss against the live list as an
+// API-category not-found error (the name is a valid argument shape; the
+// resource simply does not exist server-side - this is not a validation
+// failure of caller input).
 func commandNotFoundError(name string) error {
-	return errs.NewValidationError(errs.SubtypeInvalidArgument,
+	return errs.NewAPIError(errs.SubtypeNotFound,
 		"slash command %q not found in the current bound app", name).
-		WithParam("--command").
 		WithHint("run `lark-cli application +slash-command-list` to see registered commands")
 }
 

@@ -74,6 +74,7 @@ var SlashCommandDelete = common.Shortcut{
 			out["command"] = name
 		}
 		fmt.Fprintln(runtime.IO().ErrOut, clientCacheHint)
+		fmt.Fprintln(runtime.IO().ErrOut, "note: recreating the same command name will yield a NEW command_id.")
 		runtime.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "deleted command_id %s\n", id)
 		})

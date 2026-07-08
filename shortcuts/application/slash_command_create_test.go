@@ -126,6 +126,37 @@ func TestSlashCommandCreate_ForceConvertsToUpdate(t *testing.T) {
 	}
 }
 
+func createIconInvalidStub() *httpmock.Stub {
+	return &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/application/v7/app_slash_commands",
+		Body: map[string]interface{}{
+			"code": 40000031, "msg": "Invalid Param 'icon_key'. icon_key is invalid.",
+		},
+	}
+}
+
+// TestSlashCommandCreate_ForceDoesNotConvertNonConflict guards against --force
+// blindly treating ANY POST failure as a name collision: only the
+// "command already exists" (40000000) shape may fall through to the
+// GET+PATCH idempotent-update path. No PATCH stub is registered here, so if
+// the code mistakenly attempted a PATCH, the httpmock registry would fail
+// the unexpected request and surface a different (registry) error instead
+// of the original icon_key failure asserted below.
+func TestSlashCommandCreate_ForceDoesNotConvertNonConflict(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, appTestConfig())
+	reg.Register(createIconInvalidStub())
+
+	err := mountAndRun(t, SlashCommandCreate, []string{"+slash-command-create",
+		"--command", "greet", "--description", "hi", "--icon-key", "bogus", "--force", "--as", "bot"}, f, stdout)
+	if err == nil {
+		t.Fatal("expected the original icon_key error, got nil")
+	}
+	if !strings.Contains(err.Error(), "icon_key") {
+		t.Fatalf("expected original icon_key failure to surface unchanged, got %v", err)
+	}
+}
+
 func TestSlashCommandCreate_DryRun(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, appTestConfig())
 	if err := mountAndRun(t, SlashCommandCreate, []string{"+slash-command-create",
