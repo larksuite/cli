@@ -9,15 +9,15 @@
 | 信任发件人白名单 | `user_mailbox.allow_senders` | 加入后该发件人地址或域名被当前用户邮箱信任 |
 | 屏蔽发件人黑名单 | `user_mailbox.blocked_senders` | 加入后该发件人地址或域名被当前用户邮箱屏蔽 |
 
-这些是原生 Meta API 命令，不是 `+` shortcut。参数不确定时先运行 `-h` 和 schema，不要猜测字段名：
+这些是原生 OpenAPI 能力，不是 `+` shortcut。当前公开命令清单尚未包含对应 typed command 时，使用 `api` raw endpoint 调用；参数不确定时先查接口 schema，不要猜测字段名：
 
 ```bash
-lark-cli mail user_mailbox.allow_senders -h
-lark-cli mail user_mailbox.blocked_senders -h
+lark-cli api GET '/open-apis/mail/v1/user_mailboxes/me/allow_senders' --as user --params '{"page_size":20}'
+lark-cli api GET '/open-apis/mail/v1/user_mailboxes/me/blocked_senders' --as user --params '{"page_size":20}'
 lark-cli schema mail.user_mailbox.allow_senders.batch_create
 ```
 
-命令名以 `-h` 为准：使用 `allow_senders` / `blocked_senders` 和 `batch_create` / `batch_remove`，不要使用旧方案里的 `sender_lists`、`batch_set` 或 `batch_delete`。
+接口路径使用 `allow_senders` / `blocked_senders` 和 `batch_create` / `batch_remove`，不要使用旧方案里的 `sender_lists`、`batch_set` 或 `batch_delete`。
 
 ## 权限与确认
 
@@ -30,12 +30,12 @@ lark-cli schema mail.user_mailbox.allow_senders.batch_create
 
 ```bash
 # 列出白名单
-lark-cli mail user_mailbox.allow_senders list --as user \
-  --params '{"user_mailbox_id":"me","page_size":20}'
+lark-cli api GET '/open-apis/mail/v1/user_mailboxes/me/allow_senders' --as user \
+  --params '{"page_size":20}'
 
 # 搜索黑名单中的地址或域名前缀
-lark-cli mail user_mailbox.blocked_senders list --as user \
-  --params '{"user_mailbox_id":"me","keyword":"example.com","page_size":20}'
+lark-cli api GET '/open-apis/mail/v1/user_mailboxes/me/blocked_senders' --as user \
+  --params '{"keyword":"example.com","page_size":20}'
 ```
 
 返回字段包括 `items[].sender`、`items[].create_time`、`has_more`、`page_token`。需要继续翻页时把上一次返回的 `page_token` 放回 `--params`。
@@ -44,13 +44,11 @@ lark-cli mail user_mailbox.blocked_senders list --as user \
 
 ```bash
 # 加入白名单：sender_type=1 表示完整邮箱地址，sender_type=2 表示域名
-lark-cli mail user_mailbox.allow_senders batch_create --as user \
-  --params '{"user_mailbox_id":"me"}' \
+lark-cli api POST '/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_create' --as user \
   --data '{"items":[{"sender":"trusted@example.com","sender_type":1},{"sender":"example.org","sender_type":2}]}'
 
 # 加入黑名单
-lark-cli mail user_mailbox.blocked_senders batch_create --as user \
-  --params '{"user_mailbox_id":"me"}' \
+lark-cli api POST '/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_create' --as user \
   --data '{"items":[{"sender":"spam@example.com","sender_type":1}]}'
 ```
 
@@ -60,13 +58,11 @@ lark-cli mail user_mailbox.blocked_senders batch_create --as user \
 
 ```bash
 # 从白名单删除
-lark-cli mail user_mailbox.allow_senders batch_remove --as user \
-  --params '{"user_mailbox_id":"me"}' \
+lark-cli api POST '/open-apis/mail/v1/user_mailboxes/me/allow_senders/batch_remove' --as user \
   --data '{"senders":["trusted@example.com","example.org"]}'
 
 # 从黑名单删除
-lark-cli mail user_mailbox.blocked_senders batch_remove --as user \
-  --params '{"user_mailbox_id":"me"}' \
+lark-cli api POST '/open-apis/mail/v1/user_mailboxes/me/blocked_senders/batch_remove' --as user \
   --data '{"senders":["spam@example.com"]}'
 ```
 
