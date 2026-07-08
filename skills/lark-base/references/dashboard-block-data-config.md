@@ -92,7 +92,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 
 只要写 `sort` 对象，就需要明确排序方向。CLI 会把 `sort.type` 为 `group` 或 `view` 且缺少 `order` 的情况规范化为 `order:"asc"`；`sort.type:"value"` 必须显式写 `order:"asc"` 或 `order:"desc"`，因为指标值排序方向会改变业务含义。
 
-流程、阶段、漏斗这类先写 helper 汇总表再画图的场景，如果 helper 表行序就是业务顺序，首次创建 block 时就一次性设置 `sort:{"type":"view","order":"asc"}` 保留行序，避免创建后再二次更新排序条件。
+如果表中行序就是业务顺序，首次创建 block 时就一次性设置 `sort:{"type":"view","order":"asc"}` 保留行序，避免创建后再二次更新排序条件。
 
 示例 — 柱状图按销售额降序：
 
@@ -190,8 +190,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 - 看占比分布 → 饼图 / 环形图 / 词云
 - 多指标对比 → 组合图
 - 看两变量关系 → 散点图
-- 看当前状态数量 / 各环节当前数量 → 漏斗图可用 `count_all:true` + `group_by`
-- 看流程转化 / 从 A 到 B → 漏斗图需要各阶段累计数量；已有累计字段或汇总表可直接画，否则先计算并写入 helper 汇总表
+- 看流程转化 → 漏斗图
 - 看多维度评分 → 雷达图
 - 显示单个指标 → 指标卡（统计数字或记录数）
 
@@ -268,7 +267,7 @@ user / created_by / updated_by: is, isNot, isEmpty, isNotEmpty
 }
 ```
 
-漏斗图（当前数量 vs 累计数量）：
+漏斗图（流程转化）：
 
 先判断用户要看的数值语义：
 
