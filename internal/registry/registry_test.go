@@ -248,10 +248,19 @@ func TestLoadPlatformAutoApproveSet(t *testing.T) {
 
 func TestLoadOverrideAutoApproveAllow(t *testing.T) {
 	allowSet := LoadOverrideAutoApproveAllow()
-	// recommend.allow in scope_overrides.json is intentionally empty:
-	// no scopes are special-cased into the auto-approve set anymore.
-	if len(allowSet) != 0 {
-		t.Errorf("expected empty override allow set, got %d entries", len(allowSet))
+	// recommend.allow special-cases scopes absent from scope_priorities.json
+	// (application v7 is not in the platform catalog yet) so interactive
+	// login's "common scopes" tier still offers them.
+	for _, s := range []string{
+		"application:app_slash_command:read",
+		"application:app_slash_command:write",
+	} {
+		if !allowSet[s] {
+			t.Errorf("expected %s in override allow set", s)
+		}
+	}
+	if len(allowSet) != 2 {
+		t.Errorf("expected exactly 2 override allow entries, got %d", len(allowSet))
 	}
 }
 
