@@ -17,7 +17,7 @@ func TestAutomationUpdate_PatchCronOnly(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "t1", "trigger-type": "cron", "cron": "0 10 * * *"})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/t1",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/t1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "t1", "trigger_type": "cron"}},
 	})
 	if err := runAutomationUpdate(rctx); err != nil {
@@ -43,7 +43,7 @@ func TestAutomationUpdate_WhiteIPListPatch(t *testing.T) {
 	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook", "white-ip-list": `["1.1.1.1"]`})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "wh1"}},
 	})
 	if err := runAutomationUpdate(rctx); err != nil {
@@ -116,7 +116,7 @@ func TestAutomationUpdate_PatchRecordChange(t *testing.T) {
 			"table": "tbl_1", "event": "UPDATE", "fields": `["fld1"]`,
 		})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/rc1",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/rc1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "rc1", "trigger_type": "record_change"}},
 	})
 	if err := runAutomationUpdate(rctx); err != nil {
@@ -159,7 +159,7 @@ func TestAutomationUpdate_PatchApproval(t *testing.T) {
 			"event-type": "approval_instance", "instance-status": "approved",
 		})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/apv",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/apv",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "apv", "trigger_type": "feishu_approval"}},
 	})
 	if err := runAutomationUpdate(rctx); err != nil {
@@ -179,7 +179,7 @@ func TestAutomationUpdate_PatchApproval_TaskEventStatuses(t *testing.T) {
 			"event-type": "approval_task", "task-status": "DONE",
 		})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/apv",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/apv",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "apv"}},
 	})
 	if err := runAutomationUpdate(rctx); err != nil {
@@ -212,7 +212,7 @@ func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
 			"white-ip-list": `["1.1.1.1"]`,
 		})
 	reg.Register(&httpmock.Stub{
-		Method: "PATCH", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
+		Method: "PUT", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"name": "wh1", "trigger_type": "webhook", "status": "enabled",
 			"trigger_condition": map[string]interface{}{

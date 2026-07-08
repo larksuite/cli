@@ -19,7 +19,7 @@ import (
 // (docx/INixwF5apisF4kkNvOrcwLtInig §范围) fixes the 6 shared verbs to
 // list/get/create/update/enable/disable — the webhook credential lifecycle is
 // intentionally packed into --update via action flags, not a family of new
-// commands. Otherwise Execute PATCHes the trigger condition.
+// commands. Otherwise Execute sends a PUT to update the trigger condition.
 var AppsAutomationUpdate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+automation-update",
@@ -103,12 +103,12 @@ var AppsAutomationUpdate = common.Shortcut{
 		case rctx.Bool("reset-url"):
 			return common.NewDryRunAPI().POST(automationWebhookURLResetPath(appID, name)).Desc("Reset webhook URL")
 		case rctx.Bool("enable-token"), rctx.Bool("disable-token"):
-			return common.NewDryRunAPI().POST(automationWebhookTokenStatusPath(appID, name)).Desc("Set webhook token status")
+			return common.NewDryRunAPI().PATCH(automationWebhookTokenStatusPath(appID, name)).Desc("Set webhook token status")
 		case rctx.Bool("reset-token"):
 			return common.NewDryRunAPI().POST(automationWebhookTokenResetPath(appID, name)).Desc("Reset webhook token")
 		default:
 			body, _ := buildAutomationUpdateBody(rctx)
-			return common.NewDryRunAPI().PATCH(automationItemPath(appID, name)).Desc("Update trigger condition").Body(body)
+			return common.NewDryRunAPI().PUT(automationItemPath(appID, name)).Desc("Update trigger condition").Body(body)
 		}
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -116,7 +116,7 @@ var AppsAutomationUpdate = common.Shortcut{
 	},
 }
 
-// runAutomationUpdate dispatches by webhook action flag; default is PATCH condition.
+// runAutomationUpdate dispatches by webhook action flag; default is PUT condition.
 func runAutomationUpdate(rctx *common.RuntimeContext) error {
 	switch {
 	case rctx.Bool("reset-url"):
@@ -132,7 +132,7 @@ func runAutomationUpdate(rctx *common.RuntimeContext) error {
 	}
 }
 
-// runAutomationPatch PATCHes only the changed condition/description fields.
+// runAutomationPatch sends the trigger update PUT with only the changed fields.
 func runAutomationPatch(rctx *common.RuntimeContext) error {
 	appID, err := requireAppID(rctx.Str("app-id"))
 	if err != nil {
@@ -184,7 +184,7 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 				appsInvalidParam("--description", reason),
 			)
 	}
-	data, err := rctx.CallAPITyped("PATCH", automationItemPath(appID, name), nil, body)
+	data, err := rctx.CallAPITyped("PUT", automationItemPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
 	}
