@@ -1,0 +1,41 @@
+skills/lark-slides/SKILL.md
+  s_d3c714b1a96a95::t_4578e12084ede8 34,173,264,269
+skills/lark-slides/references/lark-slides-create.md
+  s_d3c714b1a96a95::t_40317cfeba420e 124
+skills/lark-slides/references/lark-slides-replace-pages.md
+  s_d3c714b1a96a95::t_52a2e903c7711e 92
+skills/lark-slides/references/lark-slides-replace-slide.md
+  s_d3c714b1a96a95::t_bb68566e24f4f9 48
+skills/lark-slides/references/lark-slides-xml-presentation-slide-create.md
+  s_d3c714b1a96a95::t_8b6a016d9f9ee6 191,217
+skills/lark-slides/references/lark-slides-xml-presentation-slide-delete.md
+  s_d3c714b1a96a95::t_dba8dfb8c17a4d 52-55,125
+skills/lark-slides/references/lark-slides-xml-presentation-slide-get.md
+  s_d3c714b1a96a95::t_c1fa10644f0bc0 109
+skills/lark-slides/references/lark-slides-xml-presentations-get.md
+  s_d3c714b1a96a95::t_8dacc9fc46eab8 7-19,50-53,56,59-63,66,69-73,112-116
+skills/lark-slides/references/planning-layer.md
+  s_d3c714b1a96a95::t_c35c8bc174caf6 15
+skills/lark-slides/references/troubleshooting.md
+  s_d3c714b1a96a95::t_9c5878a9728577 19,56
+skills/lark-slides/references/validation-checklist.md
+  s_d3c714b1a96a95::t_03bfa6c4cd55f1 10,22-25,30,137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d719d131f67dcb946ae283be9a5f4a8eb57c9328",
+  "prompts": {},
+  "sessions": {
+    "s_d3c714b1a96a95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3dc5-eca9-7d52-8a2f-2d3665228510",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

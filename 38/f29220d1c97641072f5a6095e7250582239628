@@ -1,0 +1,31 @@
+skills/lark-slides/SKILL.md
+  s_764538325850eb::t_a74bb3b305f5c3 13-24,35-36,91-92,99,137-139,155-156,159,190,279
+skills/lark-slides/references/asset-planning.md
+  s_764538325850eb::t_81eaea4650f770 10-11,47,122
+skills/lark-slides/references/iconpark.md
+  s_764538325850eb::t_9941df2d73ba9a 3,28
+skills/lark-slides/references/lark-slides-whiteboard.md
+  s_764538325850eb::t_c47585c41c8c51 3,15-19,21,34,36,40,42,46,58,60,62,66,228,258
+skills/lark-slides/references/planning-layer.md
+  s_764538325850eb::t_7931bf48772d99 17-18,187,195
+skills/lark-slides/references/visual-planning.md
+  s_764538325850eb::t_bd91ba83ee0517 5,134,172,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "38f29220d1c97641072f5a6095e7250582239628",
+  "prompts": {},
+  "sessions": {
+    "s_764538325850eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3d8e-91e9-7350-9655-1f8479c1a1ac",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
