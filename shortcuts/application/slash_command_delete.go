@@ -21,8 +21,8 @@ var SlashCommandDelete = common.Shortcut{
 	Command:     "+slash-command-delete",
 	Description: "Delete a slash command from the current bound app (high-risk: irreversible; recreating the same name yields a new command_id)",
 	Risk:        "high-risk-write",
-	BotScopes:   []string{"application:app_slash_command:write"},
-	ConditionalBotScopes: []string{
+	Scopes:      []string{"application:app_slash_command:write"},
+	ConditionalScopes: []string{
 		"application:app_slash_command:read", // only the --command by-name path
 	},
 	AuthTypes: []string{"bot", "user"},

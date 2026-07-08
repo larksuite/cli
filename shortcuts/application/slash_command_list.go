@@ -17,7 +17,7 @@ var SlashCommandList = common.Shortcut{
 	Command:     "+slash-command-list",
 	Description: "List all slash commands (/ commands) registered on the current bound Open Platform app; source of command_id for update/delete (NOT for Miaoda apps - use the apps domain for those)",
 	Risk:        "read",
-	BotScopes:   []string{"application:app_slash_command:read"},
+	Scopes:      []string{"application:app_slash_command:read"},
 	AuthTypes:   []string{"bot", "user"},
 	Tips: []string{
 		"lark-cli application +slash-command-list --as bot",

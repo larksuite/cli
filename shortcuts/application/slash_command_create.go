@@ -20,8 +20,8 @@ var SlashCommandCreate = common.Shortcut{
 	Command:     "+slash-command-create",
 	Description: "Register a slash command (/ command) on the current bound Open Platform app; --force converts a name collision into an update (idempotent re-run)",
 	Risk:        "write",
-	BotScopes:   []string{"application:app_slash_command:write"},
-	ConditionalBotScopes: []string{
+	Scopes:      []string{"application:app_slash_command:write"},
+	ConditionalScopes: []string{
 		"application:app_slash_command:read", // only the --force collision path lists to resolve the id
 	},
 	AuthTypes: []string{"bot", "user"},

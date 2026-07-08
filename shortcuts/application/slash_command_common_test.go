@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/shortcuts/common"
 )
 
 func TestParseDescriptionI18n_OK(t *testing.T) {
@@ -87,4 +88,68 @@ func TestBuildSlashCommandBody(t *testing.T) {
 	if _, has := partial["description"]; has {
 		t.Error("empty description must be omitted")
 	}
+}
+
+// TestSlashCommandShortcuts_SharedScopesAcrossIdentities locks in the
+// reversal of the OAuth-isolation design: all four slash-command shortcuts
+// declare identical scopes for the bot and user identities (plain Scopes /
+// ConditionalScopes, no per-identity overrides), so a user-identity
+// pre-flight sees the same scope set a bot identity would.
+func TestSlashCommandShortcuts_SharedScopesAcrossIdentities(t *testing.T) {
+	cases := []struct {
+		name            string
+		shortcut        common.Shortcut
+		wantScope       string
+		wantConditional string
+		hasConditional  bool
+	}{
+		{
+			name:      "list",
+			shortcut:  SlashCommandList,
+			wantScope: "application:app_slash_command:read",
+		},
+		{
+			name:            "create",
+			shortcut:        SlashCommandCreate,
+			wantScope:       "application:app_slash_command:write",
+			wantConditional: "application:app_slash_command:read",
+			hasConditional:  true,
+		},
+		{
+			name:            "update",
+			shortcut:        SlashCommandUpdate,
+			wantScope:       "application:app_slash_command:write",
+			wantConditional: "application:app_slash_command:read",
+			hasConditional:  true,
+		},
+		{
+			name:            "delete",
+			shortcut:        SlashCommandDelete,
+			wantScope:       "application:app_slash_command:write",
+			wantConditional: "application:app_slash_command:read",
+			hasConditional:  true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, identity := range []string{"user", "bot"} {
+				declared := tc.shortcut.DeclaredScopesForIdentity(identity)
+				if !containsStr(declared, tc.wantScope) {
+					t.Errorf("%s: DeclaredScopesForIdentity(%q) = %v, want to contain %q", tc.name, identity, declared, tc.wantScope)
+				}
+				if tc.hasConditional && !containsStr(declared, tc.wantConditional) {
+					t.Errorf("%s: DeclaredScopesForIdentity(%q) = %v, want to contain conditional %q", tc.name, identity, declared, tc.wantConditional)
+				}
+			}
+		})
+	}
+}
+
+func containsStr(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
+			return true
+		}
+	}
+	return false
 }

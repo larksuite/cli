@@ -16,12 +16,14 @@ metadata:
 
 `AuthTypes: bot, user` 均可，**主推 `--as bot`**（应用自管理场景多数由应用自身发起）。
 
-- **bot 身份**：只需在开发者后台开通 `application:app_slash_command:read`（列出）/ `application:app_slash_command:write`（创建/更新/删除），无需 `auth login`。
-- **user 身份**：这两个 scope **不包含在 `--domain all` 里**（有意的 OAuth 隔离，避免用户授权时被动放行应用自管理权限），必须显式授权：
+- **bot 身份**：只需在开发者后台开通 `application:app_slash_command:read`（列出）/ `application:app_slash_command:write`（创建/更新/删除），版本发布后无需 `auth login`。
+- **user 身份**：需在 bot 后台开通的基础上叠加个人授权，任选其一：
 
 ```bash
-lark-cli auth login --scope application:app_slash_command:read   # 仅需列出
-lark-cli auth login --scope application:app_slash_command:write  # 需要创建/更新/删除
+lark-cli auth login --domain application                          # 收齐 application 域下全部 scope（含本 skill）
+lark-cli auth login --domain all                                  # 收齐全量 scope，含本 skill
+lark-cli auth login --scope application:app_slash_command:read    # 最小化：仅需列出
+lark-cli auth login --scope application:app_slash_command:write   # 最小化：需要创建/更新/删除
 ```
 
 ## Shortcuts
