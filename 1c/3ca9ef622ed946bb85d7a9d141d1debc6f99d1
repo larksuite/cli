@@ -1,0 +1,18 @@
+shortcuts/calendar/calendar_create.go
+  h_240304df382660 310
+skills/lark-calendar/references/lark-calendar-update.md
+  h_240304df382660 73-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "1c3ca9ef622ed946bb85d7a9d141d1debc6f99d1",
+  "prompts": {},
+  "humans": {
+    "h_240304df382660": {
+      "author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
