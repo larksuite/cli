@@ -15,9 +15,6 @@ func TestAutomationPaths(t *testing.T) {
 	if got := automationItemPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1" {
 		t.Errorf("itemPath = %q", got)
 	}
-	if got := automationStatusPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/status" {
-		t.Errorf("statusPath = %q", got)
-	}
 	if got := automationWebhookTokenStatusPath("app_x", "t1"); got != "/open-apis/spark/v1/apps/app_x/triggers/t1/webhook/token/status" {
 		t.Errorf("tokenStatusPath = %q", got)
 	}
@@ -79,6 +76,19 @@ func TestBuildRecordChangeCondition(t *testing.T) {
 	assertValidationParamError(t, err, "--table")
 	_, err = buildRecordChangeCondition("tbl_1", "", nil)
 	assertValidationParamError(t, err, "--event")
+	// event 枚举白名单：PRD 定义 4 值枚举，CLI 本地拦截非法值。这道防线
+	// 存在是因为后端 record_change_condition.event 字段接受任意字符串
+	// (2026-07-08 BOE 实测)，创建后触发器永远不触发，用户不易察觉。
+	_, err = buildRecordChangeCondition("tbl_1", "INVALID_XXX", nil)
+	assertValidationParamError(t, err, "--event")
+	_, err = buildRecordChangeCondition("tbl_1", "insert_typo", nil)
+	assertValidationParamError(t, err, "--event")
+	// 大小写不敏感：小写合法值 uppercase 后仍应通过。
+	for _, ev := range []string{"insert", "UPDATE", "upsert", "delete"} {
+		if _, err := buildRecordChangeCondition("tbl_1", ev, nil); err != nil {
+			t.Errorf("event %q must be accepted (case-insensitive): %v", ev, err)
+		}
+	}
 }
 
 func TestValidateApprovalStatuses(t *testing.T) {

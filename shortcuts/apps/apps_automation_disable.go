@@ -28,7 +28,7 @@ var AppsAutomationDisable = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
-			PATCH(automationStatusPath(appID, strings.TrimSpace(rctx.Str("name")))).
+			PATCH(automationItemPath(appID, strings.TrimSpace(rctx.Str("name")))).
 			Desc("Disable automation trigger").
 			Body(statusBodyFromAction(false))
 	},

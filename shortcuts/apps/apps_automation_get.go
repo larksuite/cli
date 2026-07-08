@@ -46,9 +46,10 @@ var AppsAutomationGet = common.Shortcut{
 			return withAppsHint(err, automationNotFoundHint())
 		}
 		redacted := redactWebhookToken(data)
+		trigger, _ := redacted["trigger"].(map[string]interface{})
 		rctx.OutFormat(redacted, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "name: %v\ntype: %v\nstatus: %v\n",
-				redacted["name"], redacted["trigger_type"], redacted["status"])
+				trigger["name"], trigger["trigger_type"], trigger["status"])
 		})
 		return nil
 	},
