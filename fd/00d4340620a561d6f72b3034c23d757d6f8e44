@@ -1,0 +1,25 @@
+shortcuts/application/slash_command_delete.go
+  s_b5860dec357d5e::t_17f97abea16fe7 53-54
+shortcuts/application/slash_command_delete_test.go
+  s_b5860dec357d5e::t_a369596d41d25b 8,74-92
+skills/lark-application/references/lark-application-slash-command-create.md
+  s_b5860dec357d5e::t_5e7b051685db0d 21-22,49,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fd00d4340620a561d6f72b3034c23d757d6f8e44",
+  "prompts": {},
+  "sessions": {
+    "s_b5860dec357d5e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a563c70b3c16c8324",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
