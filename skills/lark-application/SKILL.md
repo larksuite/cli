@@ -1,32 +1,20 @@
 ---
 name: lark-application
 version: 1.0.0
-description: "飞书开放平台应用自管理：管理当前绑定应用的斜杠指令（Slash Command，即客户端指令面板里的 / 命令，也叫机器人命令）——列出、创建、更新、删除。当用户提到斜杠指令、指令面板、机器人命令、应用自管理时使用。注意区分：这不是妙搭应用（妙搭应用开发走 lark-apps）；也不负责指令触发后的回调消费（走 lark-event）。"
+description: "飞书开放平台应用自管理：目前仅实现管理当前绑定应用的斜杠指令（Slash Command 是一种允许用户在飞书聊天框中通过输入 / 快速触发机器人服务的交互方式）——列出、创建、更新、删除。当用户提到Slash Command、发消息斜杠指令面板、斜杠指令时使用。注意区分：这不是妙搭应用（lark-apps）；也不负责指令触发后的回调消费（lark-event）。"
 metadata:
   requires:
     bins: ["lark-cli"]
   cliHelp: "lark-cli application --help"
 ---
 
-# application (v7)
+# application
+
+## 身份权限和风险处理
 
 开始前先读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)（认证、权限处理、`--dry-run`、exit 10 高风险确认协议）。
-
-## 身份
-
-`AuthTypes: bot, user` 均可，**主推 `--as bot`**（应用自管理场景多数由应用自身发起）。
-
-user 授权可用交互式 `lark-cli auth login`（TUI 选择器中选 application；"常用权限"档仅含 `read`，需要创建/更新/删除时选"全部权限"），或显式 `--domain application` / `--scope`（见下方示例）。
-
-- **bot 身份**：只需在开发者后台开通 `application:app_slash_command:read`（列出）/ `application:app_slash_command:write`（创建/更新/删除），版本发布后无需 `auth login`。
-- **user 身份**：需在 bot 后台开通的基础上叠加个人授权，任选其一：
-
-```bash
-lark-cli auth login --domain application                          # 收齐 application 域下全部 scope（含本 skill）
-lark-cli auth login --domain all                                  # 收齐全量 scope，含本 skill
-lark-cli auth login --scope application:app_slash_command:read    # 最小化：仅需列出
-lark-cli auth login --scope application:app_slash_command:write   # 最小化：需要创建/更新/删除
-```
+`--as bot` 或 `--as user`均支持。
+两个权限：`application:app_slash_command:read`（列出）/ `application:app_slash_command:write`（创建/更新/删除）
 
 ## Shortcuts
 
@@ -47,4 +35,4 @@ lark-cli auth login --scope application:app_slash_command:write   # 最小化：
 
 - 妙搭应用的创建、发布、可见范围管理 → [lark-apps](../lark-apps/SKILL.md)
 - 指令触发后的消息以普通 IM 消息送达（`im.message.receive_v1` 事件），消费走 lark-event（`lark-cli event consume`） → [lark-event](../lark-event/SKILL.md)
-- bot 菜单、应用版本管理、应用统计（当前未实现，规划中）
+- bot 菜单、应用版本管理、应用统计（未实现）
