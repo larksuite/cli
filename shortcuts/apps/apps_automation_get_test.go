@@ -16,7 +16,7 @@ func TestAutomationGetExecute_RedactsWebhookToken(t *testing.T) {
 		map[string]string{"app-id": "string", "name": "string"},
 		map[string]string{"app-id": "app_x", "name": "wh1"})
 	reg.Register(&httpmock.Stub{
-		Method: "GET", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1",
+		Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"name": "wh1", "trigger_type": "webhook", "status": "enabled",
 			"trigger_condition": map[string]interface{}{

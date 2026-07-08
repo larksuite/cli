@@ -50,7 +50,7 @@ func TestWebhookResetURL_PostsAppEnv(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-url": "true", "app-env": "preview"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/url/reset",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1/webhook/url/reset",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"preview_url": "https://new-preview"}},
 	})
 	if err := runWebhookURLReset(rctx); err != nil {
@@ -65,7 +65,7 @@ func TestWebhookEnableToken_SurfacesTokenOnce(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "enable-token": "true"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/token/status",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1/webhook/token/status",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"token_value": "test-token"}},
 	})
 	if err := runWebhookTokenStatus(rctx, true); err != nil {
@@ -84,7 +84,7 @@ func TestWebhookDisableToken(t *testing.T) {
 	rctx, _, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "disable-token": "true"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/token/status",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1/webhook/token/status",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"token_enabled": false}},
 	})
 	if err := runWebhookTokenStatus(rctx, false); err != nil {
@@ -98,7 +98,7 @@ func TestWebhookResetToken(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "reset-token": "true"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1/webhook/token/reset",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers/wh1/webhook/token/reset",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"token_value": "test-token"}},
 	})
 	if err := runWebhookTokenReset(rctx); err != nil {

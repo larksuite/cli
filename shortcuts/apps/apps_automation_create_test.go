@@ -26,7 +26,7 @@ func TestAutomationCreateCron_BuildsBody(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "daily", "trigger-type": "cron", "cron": "0 9 * * *"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"name": "daily", "trigger_type": "cron", "status": "disabled",
 		}},
@@ -65,7 +65,7 @@ func TestAutomationCreateApproval_CodeOptional(t *testing.T) {
 		map[string]string{"app-id": "app_x", "name": "n", "trigger-type": "feishu-approval",
 			"event-type": "approval_instance", "instance-status": "APPROVED"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{"name": "n", "status": "disabled"}},
 	})
 	if err := AppsAutomationCreate.Validate(context.Background(), rctx); err != nil {
@@ -111,7 +111,7 @@ func TestAutomationCreate_RedactsWebhookToken(t *testing.T) {
 	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
 		map[string]string{"app-id": "app_x", "name": "wh1", "trigger-type": "webhook"})
 	reg.Register(&httpmock.Stub{
-		Method: "POST", URL: "/open-apis/apaas/v1/apps/app_x/triggers",
+		Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/triggers",
 		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
 			"name": "wh1", "trigger_type": "webhook", "status": "disabled",
 			"trigger_condition": map[string]interface{}{

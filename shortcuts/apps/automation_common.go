@@ -12,10 +12,11 @@ import (
 	"github.com/larksuite/cli/internal/validate"
 )
 
-// automationBasePath 是触发器公网 OpenAPI 前缀。注意：触发器归属独立的
-// apaas/triggers 服务，端点开在 apaas 域，不复用 apps 域的
-// apiBasePath = "/open-apis/spark/v1"）。
-const automationBasePath = "/open-apis/apaas/v1"
+// automationBasePath 是触发器公网 OpenAPI 前缀。后端把触发器公网端点统一
+// 到 apps 域 (spark/v1) 下，见后端方案 §接口行为——8 个端点全部位于
+// /open-apis/spark/v1/apps/:app_id/triggers* 下。这里直接复用同包的
+// apiBasePath 而不是自定义前缀，避免误用旧 apaas 域。
+const automationBasePath = apiBasePath
 
 func automationListPath(appID string) string {
 	return fmt.Sprintf(automationBasePath+"/apps/%s/triggers", validate.EncodePathSegment(appID))
