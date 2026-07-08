@@ -50,8 +50,8 @@ var SlashCommandDelete = common.Shortcut{
 		d := common.NewDryRunAPI().Desc("HIGH-RISK: delete a slash command (irreversible; same-name recreate gets a NEW command_id)")
 		target := runtime.Str("command-id")
 		if target == "" {
-			d.Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", runtime.Str("command"))).
-				GET(slashCommandBasePath)
+			d.GET(slashCommandBasePath).
+				Desc(fmt.Sprintf("resolve command_id by name %q via GET list first", runtime.Str("command")))
 			target = "<resolved_command_id>"
 		}
 		return d.DELETE(slashCommandBasePath + "/" + target)

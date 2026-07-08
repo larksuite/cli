@@ -18,6 +18,8 @@ lark-cli application +slash-command-create --command <name> --description <text>
 | `--icon-key` | string | 否 | 图标 key；不传时服务端默认 `skill_outlined`；非法 key 会被服务端拒绝（code `40000031`） |
 | `--force` | bool | 否 | 撞名时不报错，改为解析出已存在指令的 `command_id` 并对其执行 PATCH（等价于幂等重跑，类似 `gh label create --force`） |
 
+> **CAUTION**：`--force` 撞名转 PATCH 时，`description`（含 `i18n` map）按整体替换处理，不是增量合并。若重跑命令时不带上完整的 `--description-i18n`，指令已有的多语言翻译会被静默清空。要做真正幂等的重跑，必须把之前设置过的所有语言连同新值一起重新传入 `--description-i18n`。
+
 ## 返回值
 
 ```json
@@ -44,8 +46,9 @@ lark-cli application +slash-command-create \
   --command greet --description "say hi" --description-i18n zh_cn=问候 --as bot
 
 # 幂等重跑：如果 greet 已存在则直接更新它，而不是报错退出
+# 注意：若 greet 已有 --description-i18n（如 zh_cn=问候），这里不带上就会被清空
 lark-cli application +slash-command-create \
-  --command greet --description "say hi v2" --force --as bot
+  --command greet --description "say hi v2" --description-i18n zh_cn=问候 --force --as bot
 ```
 
 ## 错误与恢复

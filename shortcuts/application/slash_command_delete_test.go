@@ -5,6 +5,7 @@ package application
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
@@ -67,6 +68,25 @@ func TestSlashCommandDelete_ByNameWithYes(t *testing.T) {
 	data := got["data"].(map[string]interface{})
 	if data["command"] != "greet" || data["command_id"] != "id7" {
 		t.Fatalf("data = %v", data)
+	}
+}
+
+func TestSlashCommandDelete_ByNameDryRun(t *testing.T) {
+	f, stdout, _, _ := cmdutil.TestFactory(t, appTestConfig())
+
+	err := mountAndRun(t, SlashCommandDelete, []string{"+slash-command-delete",
+		"--command", "greet", "--dry-run", "--as", "bot"}, f, stdout)
+	if err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	out := stdout.String()
+	// 两条 Desc 都必须保留：top-level HIGH-RISK 说明和 GET 调用的 resolve 说明
+	// 不能被覆盖（DryRunAPI.Desc 在没有 call 时设置 top-level，append 后设置 per-call）。
+	if !strings.Contains(out, "HIGH-RISK") {
+		t.Fatalf("dry-run must keep top-level HIGH-RISK desc: %s", out)
+	}
+	if !strings.Contains(out, "resolve command_id") {
+		t.Fatalf("dry-run must keep per-call resolve desc: %s", out)
 	}
 }
 
