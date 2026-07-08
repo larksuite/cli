@@ -207,7 +207,19 @@ func executeTableUpdate(runtime *common.RuntimeContext) error {
 func executeTableDelete(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := runtime.Str("table-id")
-	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue), nil, nil)
+	stop, err := handleDeleteApproval(runtime, deleteApprovalSpec{
+		Action:       "table_delete",
+		BaseToken:    baseToken,
+		ResourceType: "table",
+		ResourceID:   tableIDValue,
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	_, err = baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue), nil, nil)
 	if err != nil {
 		return err
 	}

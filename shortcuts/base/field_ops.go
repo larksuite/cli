@@ -180,7 +180,19 @@ func executeFieldDelete(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	fieldRef := runtime.Str("field-id")
-	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
+	stop, err := handleDeleteApproval(runtime, deleteApprovalSpec{
+		Action:       "field_delete",
+		BaseToken:    baseToken,
+		ResourceType: "field",
+		ResourceID:   fieldRef,
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	_, err = baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "fields", fieldRef), nil, nil)
 	if err != nil {
 		return err
 	}

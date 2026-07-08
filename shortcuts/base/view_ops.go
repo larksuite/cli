@@ -190,7 +190,19 @@ func executeViewDelete(runtime *common.RuntimeContext) error {
 	baseToken := runtime.Str("base-token")
 	tableIDValue := baseTableID(runtime)
 	viewRef := runtime.Str("view-id")
-	_, err := baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef), nil, nil)
+	stop, err := handleDeleteApproval(runtime, deleteApprovalSpec{
+		Action:       "view_delete",
+		BaseToken:    baseToken,
+		ResourceType: "view",
+		ResourceID:   viewRef,
+	})
+	if err != nil {
+		return err
+	}
+	if stop {
+		return nil
+	}
+	_, err = baseV3Call(runtime, "DELETE", baseV3Path("bases", baseToken, "tables", tableIDValue, "views", viewRef), nil, nil)
 	if err != nil {
 		return err
 	}
