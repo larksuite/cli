@@ -25,6 +25,13 @@ Dashboard 是 Base 中的数据可视化看板，可以把表格数据变成**�
 
 ### 场景 1：从 0 到 1 创建仪表盘
 
+从 0 到 1 创建仪表盘时，按用户需求规划组件的类型和数量，并注意以下要点：
+
+- 聚合方式：创建指标卡或分布图时优先把聚合写进 `data_config`，只有 Top N、字段取值探索、复杂筛选校验或 helper 汇总表场景才先用 `+data-query`。
+- Dry-run 边界：已按模板构造的简单指标卡、分布图、趋势图不需要逐个 `--dry-run` 后再真实创建；只有在调试 JSON、检查请求体、复杂自造 `data_config` 或处理 API validation 错误时才 dry-run。
+- 验证方式：通过创建接口返回值确认创建成功与否,只在结果不确定时用 `+dashboard-get` 或 `+dashboard-block-list` 确认仪表盘和组件存在,或调用 `+dashboard-block-get-data`读取计算结果验证。
+- 布局方式：`+dashboard-arrange` 只在用户要求美化/重排，或你已经创建多个组件且需要快速整理布局时使用；不是创建成功的必要步骤。
+
 示例：搭建一个销售数据分析仪表盘
 
 ```bash
@@ -63,6 +70,7 @@ lark-cli base +dashboard-block-create \
 
 # 第 5 步：组件创建完成后，使用 arrange 命令智能重排布局（可选但推荐）
 # 默认布局可能不够美观，arrange 会根据组件数量和类型自动优化布局
+# 若用户没有要求美化/重排，可先跳过此步骤；这不影响仪表盘和组件是否已创建成功
 lark-cli base +dashboard-arrange \
   --base-token xxx \
   --dashboard-id blk_xxx
@@ -125,6 +133,7 @@ lark-cli base +dashboard-block-update \
   --dashboard-id blk_xxx \
   --block-id chtxxxxxxxx \
   --data-config '{...}'
+
 ```
 
 ### 场景 4：重排仪表盘布局

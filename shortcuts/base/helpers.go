@@ -1038,11 +1038,18 @@ func normalizeDataConfig(cfg map[string]interface{}) map[string]interface{} {
 					m["mode"] = strings.ToLower(strings.TrimSpace(md))
 				}
 				if sub, ok := m["sort"].(map[string]interface{}); ok {
+					sortType := ""
 					if t, ok := sub["type"].(string); ok {
-						sub["type"] = strings.ToLower(strings.TrimSpace(t))
+						sortType = strings.ToLower(strings.TrimSpace(t))
+						sub["type"] = sortType
 					}
+					sortOrder := ""
 					if o, ok := sub["order"].(string); ok {
-						sub["order"] = strings.ToLower(strings.TrimSpace(o))
+						sortOrder = strings.ToLower(strings.TrimSpace(o))
+						sub["order"] = sortOrder
+					}
+					if sortOrder == "" && (sortType == "group" || sortType == "view") {
+						sub["order"] = "asc"
 					}
 					m["sort"] = sub
 				}
@@ -1131,7 +1138,9 @@ func validateBlockDataConfig(blockType string, cfg map[string]interface{}) []str
 				if t != "group" && t != "value" && t != "view" {
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.type 仅支持 group|value|view", i))
 				}
-				if o != "asc" && o != "desc" {
+				if o == "" {
+					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 缺失；sort 存在时必须设置 order 为 asc 或 desc，例如 \"sort\":{\"type\":\"group\",\"order\":\"asc\"}", i))
+				} else if o != "asc" && o != "desc" {
 					errs = append(errs, fmt.Sprintf("group_by[%d].sort.order 仅支持 asc|desc", i))
 				}
 			}
@@ -1178,5 +1187,5 @@ func formatDataConfigErrors(problems []string) error {
 	if len(problems) == 0 {
 		return nil
 	}
-	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- "))
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "data_config 校验失败:\n- %s\n参考: skills/lark-base/references/dashboard-block-data-config.md", strings.Join(problems, "\n- ")).WithParam("--data-config")
 }

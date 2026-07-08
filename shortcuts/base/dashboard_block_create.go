@@ -35,6 +35,7 @@ var BaseDashboardBlockCreate = common.Shortcut{
 		"Before creating data-backed blocks, use +table-list and +field-list to confirm real table and field names.",
 		"data_config uses table and field names, not table_id or field_id.",
 		"Read dashboard-block-data-config.md as the SSOT for chart templates, filters, metric rules, and type-specific fields; do not invent data_config from natural language.",
+		"For funnel/stage charts backed by ordered helper data, set the intended group_by.sort in the initial create request; do not create first and then issue a second update just to fix sorting.",
 		"Record the returned block_id; block update/delete/get-data commands need it.",
 		"Create dashboard blocks sequentially; do not parallelize multiple block creates for the same dashboard.",
 	},

@@ -28,12 +28,23 @@ func newBaseTestRuntime(stringFlags map[string]string, boolFlags map[string]bool
 }
 
 func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
+	return newBaseTestRuntimeWithArraysAndSlices(stringFlags, stringArrayFlags, nil, boolFlags, intFlags)
+}
+
+func newBaseTestRuntimeWithSlices(stringFlags map[string]string, stringSliceFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
+	return newBaseTestRuntimeWithArraysAndSlices(stringFlags, nil, stringSliceFlags, boolFlags, intFlags)
+}
+
+func newBaseTestRuntimeWithArraysAndSlices(stringFlags map[string]string, stringArrayFlags map[string][]string, stringSliceFlags map[string][]string, boolFlags map[string]bool, intFlags map[string]int) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "test"}
 	for name := range stringFlags {
 		cmd.Flags().String(name, "", "")
 	}
 	for name := range stringArrayFlags {
 		cmd.Flags().StringArray(name, nil, "")
+	}
+	for name := range stringSliceFlags {
+		cmd.Flags().StringSlice(name, nil, "")
 	}
 	for name := range boolFlags {
 		cmd.Flags().Bool(name, false, "")
@@ -46,6 +57,11 @@ func newBaseTestRuntimeWithArrays(stringFlags map[string]string, stringArrayFlag
 		_ = cmd.Flags().Set(name, value)
 	}
 	for name, values := range stringArrayFlags {
+		for _, value := range values {
+			_ = cmd.Flags().Set(name, value)
+		}
+	}
+	for name, values := range stringSliceFlags {
 		for _, value := range values {
 			_ = cmd.Flags().Set(name, value)
 		}
@@ -461,6 +477,22 @@ func TestBaseLimitPageSizeAliasIsHidden(t *testing.T) {
 	}
 }
 
+func TestBaseRecordListJSONAliasIsHidden(t *testing.T) {
+	parent := &cobra.Command{Use: "base"}
+	BaseRecordList.Mount(parent, &cmdutil.Factory{})
+	cmd := parent.Commands()[0]
+	flag := cmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("flag --json missing")
+	}
+	if !flag.Hidden {
+		t.Fatal("flag --json must be hidden for +record-list")
+	}
+	if strings.Contains(cmd.Flags().FlagUsages(), "--json") {
+		t.Fatalf("help should not include hidden --json:\n%s", cmd.Flags().FlagUsages())
+	}
+}
+
 func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -523,6 +555,7 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
 				"metadata such as name, type, layout, and data_config",
+				"do not use this command to audit every existing or newly created block",
 				"computed chart result",
 			},
 		},
@@ -545,6 +578,8 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 				"not table_id or field_id",
 				"dashboard-block-data-config.md as the SSOT",
 				"do not invent data_config from natural language",
+				"set the intended group_by.sort in the initial create request",
+				"do not create first and then issue a second update",
 				"sequentially",
 			},
 		},
@@ -825,6 +860,7 @@ func TestBaseRecordWriteHelpGuidesAgents(t *testing.T) {
 				"may use null for empty cells",
 				"use +field-list to confirm real writable fields",
 				"Batch create supports max 200 rows per call",
+				"do not immediately +record-list the same table",
 				"CellValue happy path: text/phone/url",
 				`ID-based CellValue: user/group/link fields use arrays like [{"id":"ou_xxx"}]`,
 				"lark-base-cell-value.md",
