@@ -1,0 +1,25 @@
+internal/registry/registry_test.go
+  s_62ec5fec853ca0::t_d439a3a224f458 253-259,261-262
+internal/registry/scope_overrides.json
+  s_62ec5fec853ca0::t_ddd37c5d964f18 16
+skills/lark-application/SKILL.md
+  s_62ec5fec853ca0::t_2c7d4bd46030b9 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d4f62490d0a2e6cdac7c118d3df9142c2f1c643b",
+  "prompts": {},
+  "sessions": {
+    "s_62ec5fec853ca0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e94a384-b022-4e6d-bc25-3678626ab355",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
