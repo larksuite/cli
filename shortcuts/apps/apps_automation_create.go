@@ -35,11 +35,11 @@ var AppsAutomationCreate = common.Shortcut{
 		{Name: "description", Desc: "optional description (<=50 chars)"},
 		{Name: "cron", Desc: "[cron] 5-field cron expression, e.g. '0 9 * * *' (min interval 30m)"},
 		{Name: "timezone", Desc: "[cron] IANA timezone (default Asia/Shanghai)"},
-		{Name: "table", Desc: "[record-change] dataloom table id"},
+		{Name: "table", Desc: "[record-change] table name (from `+db-table-list`); dataloom tables key by name, not id"},
 		{Name: "event", Desc: "[record-change] INSERT | UPDATE | UPSERT | DELETE"},
 		{Name: "fields", Desc: "[record-change] JSON array of field ids for UPDATE/UPSERT, [\"*\"] = all"},
 		{Name: "white-ip-list", Desc: "[webhook] JSON array of allowed IPs"},
-		{Name: "approval-code", Desc: "[feishu-approval] optional; omit to match all approval definitions"},
+		{Name: "approval-code", Desc: "[feishu-approval] approval definition code; omit to match all approval definitions"},
 		{Name: "event-type", Desc: "[feishu-approval] approval_instance | approval_task"},
 		{Name: "instance-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_instance"},
 		{Name: "task-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_task"},
@@ -88,9 +88,10 @@ var AppsAutomationCreate = common.Shortcut{
 		// every read-shaped output path (create / get / list / update-patch)
 		// consistently scrubbed.
 		redacted := redactWebhookToken(data)
+		trigger, _ := redacted["trigger"].(map[string]interface{})
 		rctx.OutFormat(redacted, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "created trigger: %v  [%v]  status: %v\n",
-				redacted["name"], redacted["trigger_type"], redacted["status"])
+				trigger["name"], trigger["trigger_type"], trigger["status"])
 		})
 		return nil
 	},

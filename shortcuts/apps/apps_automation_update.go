@@ -43,10 +43,10 @@ var AppsAutomationUpdate = common.Shortcut{
 		{Name: "description", Desc: "new description"},
 		{Name: "cron", Desc: "[cron] new 5-field cron expression"},
 		{Name: "timezone", Desc: "[cron] new timezone"},
-		{Name: "table", Desc: "[record-change] dataloom table id"},
+		{Name: "table", Desc: "[record-change] table name (from `+db-table-list`); dataloom tables key by name, not id"},
 		{Name: "event", Desc: "[record-change] INSERT | UPDATE | UPSERT | DELETE"},
 		{Name: "fields", Desc: "[record-change] JSON array of field ids for UPDATE/UPSERT, [\"*\"] = all"},
-		{Name: "approval-code", Desc: "[feishu-approval] optional; omit to match all approval definitions"},
+		{Name: "approval-code", Desc: "[feishu-approval] approval definition code; omit to match all approval definitions"},
 		{Name: "event-type", Desc: "[feishu-approval] approval_instance | approval_task"},
 		{Name: "instance-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_instance"},
 		{Name: "task-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_task"},
@@ -54,7 +54,7 @@ var AppsAutomationUpdate = common.Shortcut{
 		{Name: "reset-url", Type: "bool", Desc: "[webhook] rotate callback URL for --app-env (old URL invalidated)"},
 		{Name: "app-env", Desc: "[webhook] preview | runtime (required with --reset-url)"},
 		{Name: "enable-token", Type: "bool", Desc: "[webhook] enable bearer token (shown once)"},
-		{Name: "disable-token", Type: "bool", Desc: "[webhook] disable bearer token (irreversible)"},
+		{Name: "disable-token", Type: "bool", Desc: "[webhook] disable bearer token; re-enable generates a new token"},
 		{Name: "reset-token", Type: "bool", Desc: "[webhook] rotate bearer token (old token invalidated, shown once)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -197,16 +197,19 @@ func runAutomationPatch(rctx *common.RuntimeContext) error {
 	// so the PATCH response may carry a plaintext bearer token; the CLI
 	// redacts here to enforce the invariant, matching get / list.
 	redacted := redactWebhookToken(data)
+	trigger, _ := redacted["trigger"].(map[string]interface{})
 	rctx.OutFormat(redacted, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "updated trigger: %v\n", redacted["name"])
+		fmt.Fprintf(w, "updated trigger: %v\n", trigger["name"])
 	})
 	return nil
 }
 
-// buildAutomationUpdateBody assembles PATCH body with only provided fields.
-// Condition-carrying flags dispatch by --trigger-type where semantics overlap
-// (e.g. --table belongs only to record-change), so callers must set
-// --trigger-type when updating the matching condition.
+// buildAutomationUpdateBody assembles PUT body with only provided fields.
+// Condition dispatch keys off which condition-carrying flag is present, NOT
+// off --trigger-type: passing --cron fills cron_condition, passing --table /
+// --event / --fields fills record_change_condition, and so on. --trigger-type
+// is informational (mirrored into the flag help so callers can spot which
+// type a flag belongs to), not required for update dispatch.
 func buildAutomationUpdateBody(rctx *common.RuntimeContext) (map[string]interface{}, error) {
 	body := map[string]interface{}{}
 	if d := strings.TrimSpace(rctx.Str("description")); d != "" {

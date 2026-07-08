@@ -59,11 +59,11 @@
 
 ```bash
 +automation-create --app-id <id> --name onUpd --trigger-type record-change \
-  --table <table_id> --event UPDATE [--fields '["status"]']
+  --table <table_name> --event UPDATE [--fields '["status"]']
 ```
 
 - `--event` 是**大写枚举**：`INSERT` / `UPDATE` / `UPSERT` / `DELETE`（CLI 会 uppercase，但请按枚举传）。
-- `--table` 为 dataloom 表 id，必填。
+- `--table` 是应用数据库里的**表名**（对应 `+db-table-list` / `+db-table-get` 输出里 `.name` 字段的值），必填。妙搭应用的 dataloom 表以名称作为稳定标识符，没有独立的 `table_id`。
 - `--fields` 是 JSON 字符串数组，仅对 `UPDATE`/`UPSERT` 有意义；`'["*"]'` 表示监听所有字段；不传表示不限定字段。
 
 ### webhook（外部回调）
@@ -91,7 +91,7 @@
 
 ## approval-code 获取路径
 
-`--approval-code` **可选**。不传表示匹配所有审批定义；如需限定某个审批流程，`--approval-code` 从**飞书审批管理后台**获取（触发器 OpenAPI 不提供审批定义查询能力）。
+`--approval-code` **可选**。不传时匹配所有审批定义；要限定某个审批流程时，从**飞书审批管理后台**获取具体的 code 传给它。触发器 OpenAPI 不提供审批定义查询能力，具体 code 需去审批管理后台查。
 
 ## 凭证脱敏与一次性回显（安全关键）
 
@@ -138,6 +138,13 @@
 ## 默认 disabled
 
 `+automation-create` 创建后触发器**默认 disabled**，不会自动触发。需 `+automation-enable` 才开始按条件自动运行（且触发器执行的是**线上已发布**的应用代码——应用未发布时即便 enable 也不会有实际效果）。
+
+**Agent 行为约束**：用户只说"创建/配一个触发器"时，**不要**主动在同一个 turn 里 `+automation-enable`。让用户自己在下一轮决定是否启用；主动启用会：
+- 让 webhook 类型立即可被外部调用（原本用户可能只是想"备好 URL 稍后用"）
+- 让 cron 到点真实触发（原本用户可能想"先建好观察配置"）
+- 让 record-change 立即响应表变更
+
+创建成功后的推荐话术：`已创建 <name>，当前 disabled；需要真正开始自动运行时告诉我，我用 +automation-enable 启用它。` **不要**在创建成功后立即启用，即使 skill 里说"需 enable 才自动触发"——这条是给用户的说明，不是给 agent 的行动指令。
 
 ## 常见错误与决策场景
 

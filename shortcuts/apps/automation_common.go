@@ -27,10 +27,6 @@ func automationItemPath(appID, name string) string {
 		validate.EncodePathSegment(appID), validate.EncodePathSegment(name))
 }
 
-func automationStatusPath(appID, name string) string {
-	return automationItemPath(appID, name) + "/status"
-}
-
 func automationWebhookTokenStatusPath(appID, name string) string {
 	return automationItemPath(appID, name) + "/webhook/token/status"
 }
@@ -69,7 +65,6 @@ func validateCronExpr(expr string) error {
 		return appsValidationParamError("--cron",
 			"cron must have 5 fields (minute hour day month weekday), got %d in %q", len(fields), expr)
 	}
-	// 兜底 30 分钟下限：仅拦截可本地判定的高频分钟字段（"*" 或 "*/n" n<30）。
 	minute := fields[0]
 	if minute == "*" {
 		return appsValidationParamError("--cron",
@@ -80,6 +75,32 @@ func validateCronExpr(expr string) error {
 		if err == nil && n < 30 {
 			return appsValidationParamError("--cron",
 				"cron interval */%d minutes is below the 30-minute minimum", n)
+		}
+	}
+	if strings.Contains(minute, ",") {
+		parts := strings.Split(minute, ",")
+		vals := make([]int, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if n, err := strconv.Atoi(p); err == nil {
+				vals = append(vals, n)
+			}
+		}
+		if len(vals) >= 2 {
+			sort.Ints(vals)
+			minGap := 60
+			for i := 1; i < len(vals); i++ {
+				if gap := vals[i] - vals[i-1]; gap < minGap {
+					minGap = gap
+				}
+			}
+			if wrapGap := vals[0] + 60 - vals[len(vals)-1]; wrapGap < minGap {
+				minGap = wrapGap
+			}
+			if minGap < 30 {
+				return appsValidationParamError("--cron",
+					"cron minute list %q has %d-min interval; minimum interval is 30 minutes", minute, minGap)
+			}
 		}
 	}
 	return nil
@@ -113,6 +134,11 @@ func buildCronCondition(expr, tz string) (map[string]interface{}, error) {
 	return map[string]interface{}{"cron": strings.TrimSpace(expr), "timezone": tz}, nil
 }
 
+// recordChangeEventSet 是 record-change 触发器合法 event 枚举。
+// 定义来自 PRD 和后端 IDL 一致规定的 4 个值。CLI 本地做白名单校验，
+// 避免后端 event 字段校验缺失导致的"接受任意字符串→触发器永不触发"问题。
+var recordChangeEventSet = setOf("INSERT", "UPDATE", "UPSERT", "DELETE")
+
 // buildRecordChangeCondition 产出 record_change_condition body；event 大写化。
 func buildRecordChangeCondition(table, event string, fields []string) (map[string]interface{}, error) {
 	if strings.TrimSpace(table) == "" {
@@ -121,6 +147,10 @@ func buildRecordChangeCondition(table, event string, fields []string) (map[strin
 	ev := strings.ToUpper(strings.TrimSpace(event))
 	if ev == "" {
 		return nil, appsValidationParamError("--event", "--event is required for record-change triggers (INSERT/UPDATE/UPSERT/DELETE)")
+	}
+	if _, valid := recordChangeEventSet[ev]; !valid {
+		return nil, appsValidationParamError("--event",
+			"--event %q is not a valid record-change event; want one of INSERT, UPDATE, UPSERT, DELETE", event)
 	}
 	cond := map[string]interface{}{"event": ev, "table": strings.TrimSpace(table)}
 	if len(fields) > 0 {

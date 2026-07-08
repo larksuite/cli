@@ -30,7 +30,7 @@ var AppsAutomationEnable = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
-			PATCH(automationStatusPath(appID, strings.TrimSpace(rctx.Str("name")))).
+			PATCH(automationItemPath(appID, strings.TrimSpace(rctx.Str("name")))).
 			Desc("Enable automation trigger").
 			Body(statusBodyFromAction(true))
 	},
@@ -39,19 +39,32 @@ var AppsAutomationEnable = common.Shortcut{
 	},
 }
 
-// runAutomationStatus is shared by enable/disable: PATCH .../status with {status}.
+// runAutomationStatus is shared by enable/disable: PATCH .../triggers/{name}
+// with {"status": ...}. The status change happens on the parent resource per
+// the backend OpenAPI spec (see reference Python samples in the trigger test
+// fixtures) — there is intentionally no /status sub-path; the sole nested
+// endpoints under a trigger are the webhook credential lifecycle
+// (/webhook/token/status, /webhook/token/reset, /webhook/url/reset).
+//
+// The status endpoint returns {"success": true} on success. Pretty output is
+// synthesized from rctx.name and the desired action, since the response
+// intentionally carries no trigger object to fish name/status from.
 func runAutomationStatus(rctx *common.RuntimeContext, enable bool) error {
 	appID, err := requireAppID(rctx.Str("app-id"))
 	if err != nil {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	data, err := rctx.CallAPITyped("PATCH", automationStatusPath(appID, name), nil, statusBodyFromAction(enable))
+	data, err := rctx.CallAPITyped("PATCH", automationItemPath(appID, name), nil, statusBodyFromAction(enable))
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
 	}
+	desiredStatus := "disabled"
+	if enable {
+		desiredStatus = "enabled"
+	}
 	rctx.OutFormat(data, nil, func(w io.Writer) {
-		fmt.Fprintf(w, "trigger %v status: %v\n", data["name"], data["status"])
+		fmt.Fprintf(w, "trigger %s status: %s\n", name, desiredStatus)
 	})
 	return nil
 }
