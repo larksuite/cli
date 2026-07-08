@@ -19,6 +19,7 @@ func automationCreateFlagDefs() map[string]string {
 		"white-ip-list": "string",
 		"approval-code": "string", "event-type": "string",
 		"instance-status": "string_array", "task-status": "string_array",
+		"status": "string",
 	}
 }
 
@@ -126,5 +127,51 @@ func TestAutomationCreate_RedactsWebhookToken(t *testing.T) {
 	out := stdoutBuf.String()
 	if strings.Contains(out, "PLAINTEXT_CREATE_TOKEN") {
 		t.Errorf("create must never surface plaintext token: %s", out)
+	}
+}
+
+// TestAutomationCreate_StatusPassthrough verifies --status is included in the
+// POST body when set. Backend supports create+enable in one call via the
+// optional status field; CLI passes it through unchanged.
+func TestAutomationCreate_StatusPassthrough(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "n", "trigger-type": "cron",
+			"cron": "0 9 * * *", "status": "enabled",
+		})
+	body, err := buildAutomationCreateBody(rctx)
+	if err != nil {
+		t.Fatalf("buildBody: %v", err)
+	}
+	if body["status"] != "enabled" {
+		t.Errorf("status = %v; want enabled", body["status"])
+	}
+}
+
+// TestAutomationCreate_StatusInvalid: only enabled/disabled accepted.
+func TestAutomationCreate_StatusInvalid(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "n", "trigger-type": "cron",
+			"cron": "0 9 * * *", "status": "bogus",
+		})
+	_, err := buildAutomationCreateBody(rctx)
+	assertValidationParamError(t, err, "--status")
+}
+
+// TestAutomationCreate_StatusOmitted: when --status is not set, body must not
+// carry a status field — backend applies its default (disabled).
+func TestAutomationCreate_StatusOmitted(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationCreateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "n", "trigger-type": "cron",
+			"cron": "0 9 * * *",
+		})
+	body, err := buildAutomationCreateBody(rctx)
+	if err != nil {
+		t.Fatalf("buildBody: %v", err)
+	}
+	if _, present := body["status"]; present {
+		t.Errorf("status must be omitted when --status not set, got %v", body["status"])
 	}
 }

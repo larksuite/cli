@@ -129,13 +129,14 @@ func buildRecordChangeCondition(table, event string, fields []string) (map[strin
 	return cond, nil
 }
 
-// buildWebhookCondition 产出 webhook_condition body（IP 白名单，可空）。
+// buildWebhookCondition 产出 webhook_condition body。white_ip_list 在后端 IDL
+// 里是 required，因此当 CLI 侧未传 --white-ip-list 时也发一个空数组，避免后端
+// 拒收；显式空数组 `[]` 与"不限来源 IP"语义一致（呼应无鉴权公网回调告警）。
 func buildWebhookCondition(ipList []string) map[string]interface{} {
-	cond := map[string]interface{}{}
-	if ipList != nil {
-		cond["white_ip_list"] = ipList
+	if ipList == nil {
+		ipList = []string{}
 	}
-	return cond
+	return map[string]interface{}{"white_ip_list": ipList}
 }
 
 // validateApprovalStatuses 按 event-type 分桶校验状态枚举合法性。

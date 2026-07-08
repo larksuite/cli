@@ -43,6 +43,7 @@ var AppsAutomationCreate = common.Shortcut{
 		{Name: "event-type", Desc: "[feishu-approval] approval_instance | approval_task"},
 		{Name: "instance-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_instance"},
 		{Name: "task-status", Type: "string_array", Desc: "[feishu-approval] statuses for approval_task"},
+		{Name: "status", Desc: "optional initial status: enabled | disabled (default disabled; backend supports create+enable in one call)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
@@ -108,6 +109,16 @@ func buildAutomationCreateBody(rctx *common.RuntimeContext) (map[string]interfac
 	}
 	if d := strings.TrimSpace(rctx.Str("description")); d != "" {
 		body["description"] = d
+	}
+	// --status is an optional passthrough: when set, backend creates + enables
+	// (or leaves disabled) in one call. Omitting the field lets the backend
+	// default (disabled) apply, matching the spec's default-disabled invariant.
+	if s := strings.TrimSpace(rctx.Str("status")); s != "" {
+		if s != "enabled" && s != "disabled" {
+			return nil, appsValidationParamError("--status",
+				"--status must be enabled or disabled, got %q", s)
+		}
+		body["status"] = s
 	}
 	switch cliType {
 	case "cron":

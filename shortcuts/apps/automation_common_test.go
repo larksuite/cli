@@ -173,3 +173,22 @@ func TestRedactWebhookToken(t *testing.T) {
 		t.Error("redactWebhookToken must not mutate the input")
 	}
 }
+
+// TestBuildWebhookCondition_AlwaysEmitsWhiteIPList: backend IDL marks
+// WhiteIPList required; CLI must send an empty array when the user omits
+// --white-ip-list rather than an empty condition object.
+func TestBuildWebhookCondition_AlwaysEmitsWhiteIPList(t *testing.T) {
+	cond := buildWebhookCondition(nil)
+	arr, ok := cond["white_ip_list"].([]string)
+	if !ok {
+		t.Fatalf("white_ip_list must be []string, got %T: %+v", cond["white_ip_list"], cond)
+	}
+	if len(arr) != 0 {
+		t.Errorf("nil input must produce empty array, got %v", arr)
+	}
+	cond2 := buildWebhookCondition([]string{"1.1.1.1"})
+	arr2, _ := cond2["white_ip_list"].([]string)
+	if len(arr2) != 1 || arr2[0] != "1.1.1.1" {
+		t.Errorf("explicit list not passed through: %v", arr2)
+	}
+}

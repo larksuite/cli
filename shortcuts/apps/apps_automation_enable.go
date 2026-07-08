@@ -30,7 +30,7 @@ var AppsAutomationEnable = common.Shortcut{
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
-			POST(automationStatusPath(appID, strings.TrimSpace(rctx.Str("name")))).
+			PATCH(automationStatusPath(appID, strings.TrimSpace(rctx.Str("name")))).
 			Desc("Enable automation trigger").
 			Body(statusBodyFromAction(true))
 	},
@@ -39,14 +39,14 @@ var AppsAutomationEnable = common.Shortcut{
 	},
 }
 
-// runAutomationStatus is shared by enable/disable: POST .../status with {status}.
+// runAutomationStatus is shared by enable/disable: PATCH .../status with {status}.
 func runAutomationStatus(rctx *common.RuntimeContext, enable bool) error {
 	appID, err := requireAppID(rctx.Str("app-id"))
 	if err != nil {
 		return err
 	}
 	name := strings.TrimSpace(rctx.Str("name"))
-	data, err := rctx.CallAPITyped("POST", automationStatusPath(appID, name), nil, statusBodyFromAction(enable))
+	data, err := rctx.CallAPITyped("PATCH", automationStatusPath(appID, name), nil, statusBodyFromAction(enable))
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
 	}

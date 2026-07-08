@@ -70,7 +70,7 @@ func runWebhookTokenStatus(rctx *common.RuntimeContext, enable bool) error {
 		status = "enabled"
 	}
 	body := map[string]interface{}{"status": status, "token_type": webhookAuthKind()}
-	data, err := rctx.CallAPITyped("POST", automationWebhookTokenStatusPath(appID, name), nil, body)
+	data, err := rctx.CallAPITyped("PATCH", automationWebhookTokenStatusPath(appID, name), nil, body)
 	if err != nil {
 		return withAppsHint(err, automationNotFoundHint())
 	}
