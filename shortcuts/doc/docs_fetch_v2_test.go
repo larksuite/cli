@@ -180,6 +180,63 @@ func TestBuildFetchBodyIncludesReadOption(t *testing.T) {
 	}
 }
 
+func TestBuildFetchBodyUsesSelectionAnchorFragmentAsRangeStart(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+
+	body := buildFetchBody(runtime)
+	want := map[string]interface{}{
+		"read_mode":      "range",
+		"start_block_id": "share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+	}
+	if got := body["read_option"]; !reflect.DeepEqual(got, want) {
+		t.Fatalf("read_option = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildFetchBodyExplicitFullIgnoresSelectionAnchorFragment(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+	mustSetFetchFlag(t, runtime, "scope", "full")
+
+	body := buildFetchBody(runtime)
+	if _, ok := body["read_option"]; ok {
+		t.Fatalf("did not expect read_option for explicit full scope: %#v", body["read_option"])
+	}
+}
+
+func TestBuildFetchBodyDoesNotAutoReadOrdinaryFragment(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "doc", "https://example.larksuite.com/wiki/wikcnToken#blk_plain")
+
+	body := buildFetchBody(runtime)
+	if _, ok := body["read_option"]; ok {
+		t.Fatalf("did not expect read_option for ordinary URL fragment: %#v", body["read_option"])
+	}
+}
+
+func TestBuildReadOptionNormalizesExplicitSelectionAnchorStart(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+	mustSetFetchFlag(t, runtime, "scope", "range")
+	mustSetFetchFlag(t, runtime, "start-block-id", "#part-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+
+	want := map[string]interface{}{
+		"read_mode":      "range",
+		"start_block_id": "part-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+	}
+	if got := buildReadOption(runtime); !reflect.DeepEqual(got, want) {
+		t.Fatalf("buildReadOption() = %#v, want %#v", got, want)
+	}
+}
+
 func TestBuildReadOptionModes(t *testing.T) {
 	t.Parallel()
 
@@ -322,6 +379,31 @@ func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
 			wantParam: "--keyword",
 		},
 		{
+			name: "selection anchor cannot be end block",
+			setFlags: map[string]string{
+				"scope":        "range",
+				"end-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+			},
+			wantParam: "--end-block-id",
+		},
+		{
+			name: "selection anchor start cannot combine with end block",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+				"end-block-id":   "blk_end",
+			},
+			wantParams: []string{"--start-block-id", "--end-block-id"},
+		},
+		{
+			name: "selection anchor start requires range",
+			setFlags: map[string]string{
+				"scope":          "section",
+				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+			},
+			wantParam: "--start-block-id",
+		},
+		{
 			name: "section needs start block",
 			setFlags: map[string]string{
 				"scope": "section",
@@ -373,6 +455,19 @@ func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
 			setFlags: map[string]string{
 				"scope":        "range",
 				"end-block-id": "blk_end",
+			},
+		},
+		{
+			name: "range with selection anchor start",
+			setFlags: map[string]string{
+				"scope":          "range",
+				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+			},
+		},
+		{
+			name: "default scope with selection anchor fragment",
+			setFlags: map[string]string{
+				"doc": "https://example.larksuite.com/wiki/wikcnToken#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
 			},
 		},
 		{
@@ -884,6 +979,7 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
+	cmd.Flags().String("doc", "doxcnFetchDryRun", "")
 	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
 	cmd.Flags().String("detail", fetchDefault("detail"), "")
 	cmd.Flags().String("lang", fetchDefault("lang"), "")
