@@ -200,6 +200,54 @@ func TestAutomationUpdate_PatchApproval_MissingStatuses(t *testing.T) {
 	assertValidationParamError(t, err, "--instance-status")
 }
 
+// TestAutomationUpdate_PatchRedactsWebhookToken covers the bearer-token
+// redaction reverse invariant on the update-patch path: PATCH response is a
+// re-read of GetTriggerModel and may carry a decrypted bearer token; the CLI
+// must redact it before stdout, mirroring get/list behaviour. Without this
+// test a regression could leak plaintext.
+func TestAutomationUpdate_PatchRedactsWebhookToken(t *testing.T) {
+	rctx, stdoutBuf, reg := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "wh1", "trigger-type": "webhook",
+			"white-ip-list": `["1.1.1.1"]`,
+		})
+	reg.Register(&httpmock.Stub{
+		Method: "PATCH", URL: "/open-apis/apaas/v1/apps/app_x/triggers/wh1",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"name": "wh1", "trigger_type": "webhook", "status": "enabled",
+			"trigger_condition": map[string]interface{}{
+				"preview_url": "https://p", "runtime_url": "https://r",
+				"token_enabled": true, "token_value": "PLAINTEXT_PATCH_TOKEN",
+			},
+		}},
+	})
+	if err := runAutomationUpdate(rctx); err != nil {
+		t.Fatalf("Execute() = %v", err)
+	}
+	out := stdoutBuf.String()
+	if strings.Contains(out, "PLAINTEXT_PATCH_TOKEN") {
+		t.Errorf("update PATCH must never surface plaintext token: %s", out)
+	}
+	if !strings.Contains(out, "token_enabled") {
+		t.Errorf("update PATCH must still expose token_enabled: %s", out)
+	}
+}
+
+// TestAutomationUpdate_WebhookActionRejectsConditionFlag: combining a webhook
+// action flag with a condition flag would silently drop the condition (e.g.
+// `--reset-token --cron '0 9 * * *'` used to just rotate the token). Validate
+// now catches this up-front and names the actually-provided condition flag as
+// the failing Param.
+func TestAutomationUpdate_WebhookActionRejectsConditionFlag(t *testing.T) {
+	rctx, _, _ := newOpenAPIKeyRCtx(t, automationUpdateFlagDefs(),
+		map[string]string{
+			"app-id": "app_x", "name": "wh1",
+			"reset-token": "true", "cron": "0 9 * * *",
+		})
+	err := AppsAutomationUpdate.Validate(context.Background(), rctx)
+	assertValidationParamError(t, err, "--cron")
+}
+
 func TestAutomationUpdateMeta_HighRisk(t *testing.T) {
 	if AppsAutomationUpdate.Risk != "high-risk-write" {
 		t.Errorf("update must be high-risk-write, got %q", AppsAutomationUpdate.Risk)

@@ -85,9 +85,9 @@
 ```
 
 - `--event-type` 必填，取 `approval_instance` 或 `approval_task`，决定状态用哪套 flag：
-  - `approval_instance` → `--instance-status`（可重复），合法枚举：`PENDING` `APPROVED` `REJECTED` `CANCELED` `DELETED` `REVERTED` `OVERTIME_CLOSE` `OVERTIME_RECOVER`
-  - `approval_task` → `--task-status`（可重复），合法枚举：`REVERTED` `PENDING` `APPROVED` `REJECTED` `TRANSFERRED` `ROLLBACK` `DONE` `OVERTIME_CLOSE` `OVERTIME_RECOVER`
-- 状态按 event-type 分桶校验；传错桶的状态会被 CLI 本地拦截。
+  - `approval_instance` → `--instance-status`（可重复）
+  - `approval_task` → `--task-status`（可重复）
+- **领域规则**：状态按 `event-type` 分桶校验，两桶枚举**不重合**（例如 `TRANSFERRED`/`ROLLBACK`/`DONE` 仅 task 有；`CANCELED`/`DELETED` 仅 instance 有）；传错桶的状态会被 CLI 本地拦截，错误信息会打印该桶的合法值列表。具体枚举见命令 `--help`。
 
 ## approval-code 获取路径
 
