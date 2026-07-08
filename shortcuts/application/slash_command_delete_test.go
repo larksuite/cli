@@ -16,7 +16,7 @@ import (
 func deleteOKStub(id string) *httpmock.Stub {
 	return &httpmock.Stub{
 		Method: "DELETE",
-		URL:    "/open-apis/application/v7/app_slash_commands/" + id,
+		URL:    slashCommandBasePath + "/" + id,
 		Body:   map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{}},
 	}
 }
