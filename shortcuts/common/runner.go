@@ -889,6 +889,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		}
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)

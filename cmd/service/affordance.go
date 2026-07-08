@@ -71,11 +71,18 @@ func PrepareDomainHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 }
 
 // domainHelpBase returns the description to seed domain help with — the
-// hand-authored Long when present, else the Short — captured once into an
-// annotation so re-rendering reuses the pristine text instead of the
-// already-augmented Long.
+// hand-authored Long when present, else the Short.
 func domainHelpBase(cmd *cobra.Command) string {
-	if base, ok := cmd.Annotations[domainBaseAnnotation]; ok {
+	return captureHelpBase(cmd, domainBaseAnnotation)
+}
+
+// captureHelpBase records a command's pristine lead text once — its
+// hand-authored Long, or Short when Long is empty — into the given annotation,
+// so lazy re-renders compose onto the original text instead of onto an
+// already-augmented Long. This is what lets a shortcut's PostMount-authored
+// Long survive: it becomes the base the affordance block is appended below.
+func captureHelpBase(cmd *cobra.Command, key string) string {
+	if base, ok := cmd.Annotations[key]; ok {
 		return base
 	}
 	base := cmd.Long
@@ -85,7 +92,7 @@ func domainHelpBase(cmd *cobra.Command) string {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
-	cmd.Annotations[domainBaseAnnotation] = base
+	cmd.Annotations[key] = base
 	return base
 }
 
@@ -101,12 +108,12 @@ func methodLong(description, schemaPath, paramsOnly string) string {
 }
 
 // Annotation keys PrepareMethodHelp reads to rebuild a method command's Long.
+// The affordance overlay coordinates live in cmdmeta (shared with shortcuts).
 const (
-	affordanceServiceAnnotation = "affordance-service"
-	affordanceMethodAnnotation  = "affordance-method"
-	schemaPathAnnotation        = "method-schema-path"
-	paramsOnlyAnnotation        = "method-params-only"
-	domainBaseAnnotation        = "affordance-domain-base"
+	schemaPathAnnotation   = "method-schema-path"
+	paramsOnlyAnnotation   = "method-params-only"
+	domainBaseAnnotation   = "affordance-domain-base"
+	shortcutBaseAnnotation = "affordance-shortcut-base"
 )
 
 // setMethodHelpData records the coordinates PrepareMethodHelp needs (storing a
@@ -115,10 +122,7 @@ func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, params
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
-	if service != "" && methodID != "" {
-		cmd.Annotations[affordanceServiceAnnotation] = service
-		cmd.Annotations[affordanceMethodAnnotation] = methodID
-	}
+	cmdmeta.SetAffordanceRef(cmd, service, methodID)
 	cmd.Annotations[schemaPathAnnotation] = schemaPath
 	if paramsOnly != "" {
 		cmd.Annotations[paramsOnlyAnnotation] = paramsOnly
@@ -128,8 +132,11 @@ func setMethodHelpData(cmd *cobra.Command, service, methodID, schemaPath, params
 // PrepareMethodHelp rebuilds a generated method command's Long with the agent
 // guidance at the TOP (Risk, then the affordance block, then the schema
 // pointer), returning false for non-method commands. The overlay is parsed
-// here — only when help is rendered.
-func PrepareMethodHelp(cmd *cobra.Command) bool {
+// here — only when help is rendered. skillFS (nil-safe) gates the related-skill
+// pointers: each is emitted only when it resolves in the skill tree (see
+// affordance.SkillStatPath), so a typo or a build without embedded skills never
+// prints a `skills read` that cannot be opened.
+func PrepareMethodHelp(cmd *cobra.Command, skillFS fs.FS) bool {
 	ann := cmd.Annotations
 	if ann == nil {
 		return false
@@ -141,22 +148,15 @@ func PrepareMethodHelp(cmd *cobra.Command) bool {
 
 	var b strings.Builder
 	b.WriteString(cmd.Short)
-	if level, ok := cmdutil.GetRisk(cmd); ok {
-		// --yes asserts the USER confirmed; the agent must not self-approve.
-		if level == cmdutil.RiskHighRiskWrite {
-			fmt.Fprintf(&b, "\n\nRisk: %s (requires explicit user confirmation to execute; the agent must NOT add --yes on its own — only pass --yes after the user has confirmed)", level)
-		} else {
-			fmt.Fprintf(&b, "\n\nRisk: %s", level)
-		}
-	}
+	writeRisk(&b, cmd)
 
 	var skills []string
 	if raw, ok := affordanceRaw(cmd); ok {
-		if block := renderAffordance(meta.Method{Affordance: raw}); block != "" {
-			b.WriteString("\n\n")
-			b.WriteString(block)
-		}
 		if a, ok := (meta.Method{Affordance: raw}).ParsedAffordance(); ok {
+			if block := renderAffordanceValue(a); block != "" {
+				b.WriteString("\n\n")
+				b.WriteString(block)
+			}
 			skills = a.Skills
 		}
 	}
@@ -164,15 +164,93 @@ func PrepareMethodHelp(cmd *cobra.Command) bool {
 	fmt.Fprintf(&b, "\n\nFull parameter schema:\n  lark-cli schema %s", schemaPath)
 	b.WriteString(ann[paramsOnlyAnnotation])
 
-	if len(skills) > 0 {
-		b.WriteString("\n\nWorkflow skill (end-to-end usage):")
-		for _, s := range skills {
-			fmt.Fprintf(&b, "\n  lark-cli skills read %s", s)
-		}
-	}
+	writeRelatedSkills(&b, skills, skillFS)
 
 	cmd.Long = b.String()
 	return true
+}
+
+// PrepareShortcutHelp composes a +-prefixed shortcut's Long from its affordance
+// overlay — the same top layout as method help (description, Risk, guidance
+// block, related skills) minus the schema pointer, which shortcuts have none
+// of. Returns false when the command is not a shortcut or carries no overlay
+// entry, so shortcuts without guidance keep the default help plus the bottom
+// risk/tips append.
+//
+// The lead is the command's pristine base (captureHelpBase): a shortcut that
+// set a hand-authored Long in PostMount (e.g. the docs shortcuts' "agents MUST
+// read the skill" directive) keeps it — the affordance block is appended below,
+// never clobbering it.
+//
+// Tips precedence (intentional, not a bug): the overlay's ### Tips win. The
+// shortcut's declarative Tips (the Go Tips field) are only a fallback used when
+// the overlay declares none; when the overlay has tips, the Go tips are dropped
+// (replaced, not merged) so tips never render twice. Authoring a ### Tips block
+// therefore silently retires that shortcut's Go Tips — consolidate into one.
+func PrepareShortcutHelp(cmd *cobra.Command, skillFS fs.FS) bool {
+	if src, _ := cmdmeta.SourceOf(cmd); src != cmdmeta.SourceShortcut {
+		return false
+	}
+	raw, ok := affordanceRaw(cmd)
+	if !ok {
+		return false
+	}
+	a, ok := (meta.Method{Affordance: raw}).ParsedAffordance()
+	if !ok {
+		return false
+	}
+	if len(a.Tips) == 0 {
+		a.Tips = cmdutil.GetTips(cmd)
+	}
+
+	var b strings.Builder
+	b.WriteString(captureHelpBase(cmd, shortcutBaseAnnotation))
+	writeRisk(&b, cmd)
+	if block := renderAffordanceValue(a); block != "" {
+		b.WriteString("\n\n")
+		b.WriteString(block)
+	}
+	writeRelatedSkills(&b, a.Skills, skillFS)
+
+	cmd.Long = b.String()
+	return true
+}
+
+// writeRisk appends the "Risk: <level>" line, warning agents not to self-approve
+// high-risk-write commands. A no-op when the command has no risk annotation.
+func writeRisk(b *strings.Builder, cmd *cobra.Command) {
+	level, ok := cmdutil.GetRisk(cmd)
+	if !ok {
+		return
+	}
+	// --yes asserts the USER confirmed; the agent must not self-approve.
+	if level == cmdutil.RiskHighRiskWrite {
+		fmt.Fprintf(b, "\n\nRisk: %s (requires explicit user confirmation to execute; the agent must NOT add --yes on its own — only pass --yes after the user has confirmed)", level)
+	} else {
+		fmt.Fprintf(b, "\n\nRisk: %s", level)
+	}
+}
+
+// writeRelatedSkills appends the "Related skills" block for the entries that
+// exist in skillFS. Nothing is written when skillFS is nil or no entry resolves,
+// so help never prints a `skills read` pointer that cannot be opened.
+func writeRelatedSkills(b *strings.Builder, skills []string, skillFS fs.FS) {
+	if skillFS == nil || len(skills) == 0 {
+		return
+	}
+	var avail []string
+	for _, s := range skills {
+		if _, err := fs.Stat(skillFS, affordance.SkillStatPath(s)); err == nil {
+			avail = append(avail, s)
+		}
+	}
+	if len(avail) == 0 {
+		return
+	}
+	b.WriteString("\n\nRelated skills (read for end-to-end usage):")
+	for _, s := range avail {
+		fmt.Fprintf(b, "\n  lark-cli skills read %s", s)
+	}
 }
 
 // affordanceLookup is the overlay source; a package var so tests can inject.
@@ -189,12 +267,8 @@ func RenderAffordanceForCmd(cmd *cobra.Command) string {
 }
 
 func affordanceRaw(cmd *cobra.Command) (json.RawMessage, bool) {
-	if cmd.Annotations == nil {
-		return nil, false
-	}
-	service := cmd.Annotations[affordanceServiceAnnotation]
-	methodID := cmd.Annotations[affordanceMethodAnnotation]
-	if service == "" || methodID == "" {
+	service, methodID, ok := cmdmeta.AffordanceRef(cmd)
+	if !ok {
 		return nil, false
 	}
 	return affordanceLookup(service, methodID)
@@ -207,7 +281,13 @@ func renderAffordance(m meta.Method) string {
 	if !ok {
 		return ""
 	}
+	return renderAffordanceValue(a)
+}
 
+// renderAffordanceValue renders an already-parsed affordance. Split from
+// renderAffordance so callers can render a value they have adjusted first (e.g.
+// a shortcut folding its declarative tips into an overlay that has none).
+func renderAffordanceValue(a meta.Affordance) string {
 	var sections []string
 	bullets := func(title string, items []string) {
 		var nonEmpty []string
