@@ -42,5 +42,5 @@ lark-cli auth login --scope application:app_slash_command:write  # 需要创建/
 ## 不在本 skill 范围
 
 - 妙搭应用的创建、发布、可见范围管理 → [lark-apps](../lark-apps/SKILL.md)
-- 斜杠指令被用户触发后的事件消费（`application.bot.menu_v6` 等回调） → [lark-event](../lark-event/SKILL.md)
+- 指令触发后的消息以普通 IM 消息送达（`im.message.receive_v1` 事件），消费走 lark-event（`lark-cli event consume`） → [lark-event](../lark-event/SKILL.md)
 - bot 菜单、应用版本管理、应用统计（当前未实现，规划中）
