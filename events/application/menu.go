@@ -53,7 +53,7 @@ func processBotMenu(_ context.Context, _ event.APIClient, raw *event.RawEvent, _
 		return raw.Payload, nil //nolint:nilerr // passthrough on malformed payload so consumers still see the event
 	}
 
-	menuTimestamp := rawScalarString(envelope.Event.Timestamp)
+	menuTimestamp := timestampMillisString(envelope.Event.Timestamp)
 	timestamp := envelope.Header.CreateTime
 	if timestamp == "" {
 		timestamp = menuTimestamp
@@ -87,4 +87,21 @@ func rawScalarString(raw json.RawMessage) string {
 		return text
 	}
 	return s
+}
+
+func timestampMillisString(raw json.RawMessage) string {
+	s := rawScalarString(raw)
+	if len(s) == 10 && allDigits(s) {
+		return s + "000"
+	}
+	return s
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return s != ""
 }

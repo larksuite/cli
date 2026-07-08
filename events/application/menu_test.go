@@ -144,6 +144,31 @@ func TestProcessBotMenuStringTimestampFallback(t *testing.T) {
 	}
 }
 
+func TestProcessBotMenuSecondsTimestampFallback(t *testing.T) {
+	payload := `{
+		"schema": "2.0",
+		"header": {
+			"event_id": "ev_menu_seconds",
+			"event_type": "application.bot.menu_v6"
+		},
+		"event": {
+			"event_key": "start_eval",
+			"timestamp": 1694592375,
+			"operator": {
+				"operator_id": {"open_id": "ou_operator"}
+			}
+		}
+	}`
+	out := runBotMenu(t, payload)
+
+	if out.Timestamp != "1694592375000" {
+		t.Errorf("Timestamp fallback = %q, want seconds normalized to milliseconds", out.Timestamp)
+	}
+	if out.MenuTimestamp != "1694592375000" {
+		t.Errorf("MenuTimestamp = %q, want seconds normalized to milliseconds", out.MenuTimestamp)
+	}
+}
+
 func TestProcessBotMenuTypeUsesLocalConstant(t *testing.T) {
 	payload := `{
 		"schema": "2.0",
