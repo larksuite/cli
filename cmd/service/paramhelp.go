@@ -30,6 +30,11 @@ func fieldFacts(f meta.Field) []string {
 	if d := sanitizeFieldDesc(f.Description); d != "" {
 		facts = append(facts, d)
 	}
+	if f.CanonicalType() == "boolean" {
+		// cobra shows no type word for bools and swallows a separate value as a
+		// positional, so spell out the presence-only contract.
+		facts = append(facts, "bool flag (presence = true; omit for false; takes no value)")
+	}
 	if opts := f.EnumOptions(); len(opts) > 0 {
 		facts = append(facts, "enum: "+formatEnumInline(opts))
 	}
@@ -42,20 +47,15 @@ func fieldFacts(f meta.Field) []string {
 	return facts
 }
 
-// paramFlagUsage renders the typed param flag's help line:
-//
-//	<param_name>, required|optional[. <fact>]...
-//
-// It leads with the canonical underscore param name (the key this flag
-// overrides in --params) and required/optional, then joins the field's facts
-// inline.
+// paramFlagUsage renders the typed param flag's help line: the field's facts
+// joined inline. Required/optional is not repeated here — the grouped help's
+// Required:/Optional: subheadings already partition the flags — and the
+// snake-case --params key is carried by the schema envelope (each param's
+// property + "flag") and the params-only addendum, so it isn't echoed on every
+// line either. Returns "" when the field has no facts (cobra then shows the bare
+// flag with its type).
 func paramFlagUsage(f meta.Field) string {
-	req := "optional"
-	if f.Required {
-		req = "required"
-	}
-	parts := append([]string{fmt.Sprintf("%s, %s", f.Name, req)}, fieldFacts(f)...)
-	return strings.Join(parts, ". ") + "."
+	return strings.Join(fieldFacts(f), ". ")
 }
 
 // paramExample picks a concrete sample for a params-only field's --help snippet:
@@ -103,8 +103,23 @@ func sanitizeOptionDesc(s string) string { return inlineClause(s, "。；;\n\r",
 // sanitizeFieldDesc is the field-description policy: one line per field, so
 // keep full sentences and cut only at note separators (meta_data appends
 // bullet notes after ;/；) — the later sentence often carries the key
-// affordance, e.g. user_mailbox_id's `可以输入"me"`.
-func sanitizeFieldDesc(s string) string { return inlineClause(s, "；;\n\r", 60) }
+// affordance, e.g. user_mailbox_id's `可以输入"me"`. The trailing doc
+// cross-reference is dropped first (see cutDocRef).
+func sanitizeFieldDesc(s string) string { return inlineClause(cutDocRef(s), "；;\n\r", 60) }
+
+// docRefRe matches a "see the docs" breadcrumb (更多信息参见…/获取方式见…/详见…).
+// On the compact flag line the markdown link's URL is stripped, so the
+// breadcrumb is a dead pointer — drop it. Anchored on a leading clause separator
+// so a subject that runs straight into the phrase isn't orphaned.
+var docRefRe = regexp.MustCompile(`[。；;，,、]\s*(更多信息|获取方式|获取方法|详见|[请可]?参[见考阅])`)
+
+// cutDocRef truncates s at the first doc-reference breadcrumb.
+func cutDocRef(s string) string {
+	if loc := docRefRe.FindStringIndex(s); loc != nil {
+		return s[:loc[0]]
+	}
+	return s
+}
 
 // formatEnumInline renders allowed values for the help line: "v=meaning" when
 // the value carries a (sanitized, truncated) description — so opaque numeric

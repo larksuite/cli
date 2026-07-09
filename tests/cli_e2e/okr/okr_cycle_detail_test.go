@@ -35,6 +35,48 @@ func TestOKR_CycleDetailDryRun(t *testing.T) {
 	assert.True(t, strings.Contains(output, "123456"), "dry-run should contain cycle-id, got: %s", output)
 }
 
+// TestOKR_CycleDetailDryRun_SimpleStyle validates +cycle-detail dry-run with --style simple.
+func TestOKR_CycleDetailDryRun_SimpleStyle(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+cycle-detail",
+			"--cycle-id", "123456",
+			"--style", "simple",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles/123456/objectives"), "dry-run should contain API path, got: %s", output)
+}
+
+// TestOKR_CycleDetailDryRun_RichTextStyle validates +cycle-detail dry-run with --style richtext.
+func TestOKR_CycleDetailDryRun_RichTextStyle(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+cycle-detail",
+			"--cycle-id", "123456",
+			"--style", "richtext",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/cycles/123456/objectives"), "dry-run should contain API path, got: %s", output)
+}
+
 func setDryRunConfigEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("LARKSUITE_CLI_APP_ID", "cli_dryrun_test")

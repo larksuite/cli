@@ -129,7 +129,10 @@ func doctorRun(opts *DoctorOptions) error {
 	if diagnostics.Bot.Available || diagnostics.User.Available {
 		checks = append(checks, pass("identity_ready", "at least one identity is available"))
 	} else {
-		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", "run: lark-cli auth status --verify"))
+		// No hint: this only summarizes the two checks above, which already carry
+		// the source-appropriate remediation. A command here would be redundant,
+		// or wrong (`auth status` is blocked under an external provider).
+		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", ""))
 	}
 
 	// ── 4 & 5. Endpoint reachability ──

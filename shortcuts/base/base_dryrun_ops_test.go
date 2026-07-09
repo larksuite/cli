@@ -89,6 +89,18 @@ func TestDryRunFieldOps(t *testing.T) {
 	)
 	assertDryRunContains(t, dryRunFieldGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/fields")
+
+	arrayRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"json":       `[{"name":"A","type":"text"},{"name":"B","type":"text"}]`,
+		},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunFieldCreate(ctx, arrayRT), `"name":"A"`, `"name":"B"`)
+
 	assertDryRunContains(t, dryRunFieldUpdate(ctx, rt), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldSearchOptions(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1/options", "offset=3", "limit=30", "query=open")

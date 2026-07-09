@@ -557,7 +557,7 @@ func TestParseBatchCreateInput_Valid(t *testing.T) {
 
 func TestBuildContentBlock(t *testing.T) {
 	t.Parallel()
-	cb := buildContentBlock("Test text", []string{"ou_123", "ou_456"})
+	cb := BuildContentBlock("Test text", []string{"ou_123", "ou_456"})
 	if cb == nil {
 		t.Fatal("expected non-nil ContentBlock")
 	}

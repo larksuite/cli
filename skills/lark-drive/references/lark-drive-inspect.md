@@ -47,4 +47,6 @@ JSON 输出包含以下字段：
 - `--url` 为必填参数
 - 当 `--url` 是 bare token（非完整 URL）时，`--type` 也是必填的
 - wiki URL 会自动调用 `get_node` API 解包，输出中 `type` 和 `token` 是底层文档的类型和 token
+- `+inspect` 只用于识别/消歧；如果任务已能通过 URL 路径形态完成路由判断，不必把它作为所有 Drive 操作的通用前置步骤
+- `+inspect` 失败后不要自动切到写接口继续尝试，先按错误提示处理权限、scope 或链接问题
 - 支持 `--dry-run` 查看将调用的 API 步骤

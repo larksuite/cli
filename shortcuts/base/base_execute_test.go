@@ -831,11 +831,6 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 		args     []string
 	}{
 		{
-			name:     "field create",
-			shortcut: BaseFieldCreate,
-			args:     []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[]`, "--dry-run"},
-		},
-		{
 			name:     "field update",
 			shortcut: BaseFieldUpdate,
 			args:     []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `[]`, "--dry-run"},
@@ -1099,6 +1094,54 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"fld_new"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("create array sequentially", func(t *testing.T) {
+		oldDelay := fieldCreateBatchDelay
+		fieldCreateBatchDelay = 0
+		t.Cleanup(func() { fieldCreateBatchDelay = oldDelay })
+
+		factory, stdout, reg := newExecuteFactory(t)
+		firstStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"A"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_a", "name": "A", "type": "text"},
+			},
+		}
+		secondStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"B"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_b", "name": "B", "type": "text"},
+			},
+		}
+		reg.Register(firstStub)
+		reg.Register(secondStub)
+
+		err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[{"name":"A","type":"text"},{"name":"B","type":"text"}]`}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["created"] != true || data["total"] != float64(2) {
+			t.Fatalf("unexpected output: %#v", data)
+		}
+		fields, _ := data["fields"].([]interface{})
+		if len(fields) != 2 {
+			t.Fatalf("fields len=%d output=%#v", len(fields), data)
+		}
+		if !strings.Contains(string(firstStub.CapturedBody), `"name":"A"`) || !strings.Contains(string(secondStub.CapturedBody), `"name":"B"`) {
+			t.Fatalf("unexpected request bodies: %s / %s", firstStub.CapturedBody, secondStub.CapturedBody)
 		}
 	})
 

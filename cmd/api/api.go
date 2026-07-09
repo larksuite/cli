@@ -67,8 +67,21 @@ func NewCmdApiWithContext(ctx context.Context, f *cmdutil.Factory, runF func(*AP
 
 	cmd := &cobra.Command{
 		Use:   "api <method> <path>",
-		Short: "Generic Lark API requests",
-		Args:  cobra.ExactArgs(2),
+		Short: "Raw HTTP escape hatch — call any endpoint by path (fallback when no typed command exists)",
+		Long: `Raw HTTP escape hatch: send any Lark API request by HTTP method + path.
+
+Prefer the typed domain command when one exists — it validates parameters,
+shows the Risk level, gates destructive calls behind --yes, and carries usage
+guidance that this raw command does not. If a domain command covers your task
+(browse with ` + "`lark-cli <domain> --help`" + `), use it instead of this.
+
+Reach for ` + "`api`" + ` only for endpoints that have no typed command yet (e.g.
+newer/preview APIs), where you already have the HTTP path from the Lark docs.
+
+Examples:
+  lark-cli api GET /open-apis/calendar/v4/calendars
+  lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"open_id"}' --data @body.json`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.Method = strings.ToUpper(args[0])
 			opts.Path = args[1]

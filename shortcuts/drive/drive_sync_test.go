@@ -311,6 +311,71 @@ func TestDriveSyncRemoteWinsPullsNewRemoteAndPushesNewLocal(t *testing.T) {
 	}
 }
 
+func TestDriveSyncAbortsAfterNewRemoteDownloadForbidden(t *testing.T) {
+	syncTestConfig := &core.CliConfig{
+		AppID: "drive-sync-forbidden", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	}
+	f, stdout, _, reg := cmdutil.TestFactory(t, syncTestConfig)
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file", "modified_time": "100"},
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file", "modified_time": "100"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  http.StatusForbidden,
+		RawBody: []byte("forbidden"),
+	})
+
+	err := mountAndRunDrive(t, DriveSync, []string{
+		"+sync",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--quick",
+		"--as", "bot",
+	}, f, stdout)
+	assertDriveSyncPartialFailure(t, err)
+
+	summary := driveSyncStdoutSummary(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	items := driveSyncStdoutItems(t, stdout.Bytes())
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item.RelPath != "a.txt" || item.Direction != "pull" || item.Phase != "download" || item.ErrorClass != "permission_denied" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item.Code != http.StatusForbidden || item.Retryable == nil || *item.Retryable {
+		t.Fatalf("unexpected failure classification: %#v", item)
+	}
+	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("b.txt should not be downloaded after terminal permission failure; stat err=%v", statErr)
+	}
+}
+
 // TestDriveSyncLocalWinsPushesOverRemote verifies that --on-conflict=local-wins
 // pushes the local version over the remote file.
 func TestDriveSyncLocalWinsPushesOverRemote(t *testing.T) {
@@ -1552,11 +1617,11 @@ func TestDriveSyncDryRunQuickAcceptsMetadataOnlyScope(t *testing.T) {
 	}
 }
 
-func TestDriveSyncExactRemoteWinsAcceptsDownloadOnlyScope(t *testing.T) {
+func TestDriveSyncPreflightsActionScopesBeforeListing(t *testing.T) {
 	syncTestConfig := &core.CliConfig{
 		AppID: "drive-sync-download-scope-only", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	}
-	f, stdout, _, reg := cmdutil.TestFactory(t, syncTestConfig)
+	f, stdout, _, _ := cmdutil.TestFactory(t, syncTestConfig)
 	f.Credential = credential.NewCredentialProvider(nil, nil, &driveStatusScopedTokenResolver{scopes: "drive:drive.metadata:readonly drive:file:download"}, nil)
 
 	tmpDir := t.TempDir()
@@ -1568,34 +1633,6 @@ func TestDriveSyncExactRemoteWinsAcceptsDownloadOnlyScope(t *testing.T) {
 		t.Fatalf("WriteFile a.txt: %v", err)
 	}
 
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "folder_token=folder_root",
-		Body: map[string]interface{}{
-			"code": 0, "msg": "ok",
-			"data": map[string]interface{}{
-				"files": []interface{}{
-					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file"},
-				},
-				"has_more": false,
-			},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/tok_a/download",
-		Status:  200,
-		Body:    []byte("remote-a"),
-		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
-	})
-	reg.Register(&httpmock.Stub{
-		Method:  "GET",
-		URL:     "/open-apis/drive/v1/files/tok_a/download",
-		Status:  200,
-		Body:    []byte("remote-a"),
-		Headers: http.Header{"Content-Type": []string{"application/octet-stream"}},
-	})
-
 	err := mountAndRunDrive(t, DriveSync, []string{
 		"+sync",
 		"--local-dir", "local",
@@ -1603,11 +1640,30 @@ func TestDriveSyncExactRemoteWinsAcceptsDownloadOnlyScope(t *testing.T) {
 		"--on-conflict", "remote-wins",
 		"--as", "bot",
 	}, f, stdout)
-	if err != nil {
-		t.Fatalf("expected exact remote-wins to succeed with download-only scope, got: %v\nstdout: %s", err, stdout.String())
+	if err == nil {
+		t.Fatalf("expected action-scope preflight to reject download-only scope\nstdout: %s", stdout.String())
 	}
-	if strings.Contains(strings.ToLower(stdout.String()), "missing_scope") {
-		t.Fatalf("should not surface missing_scope, got: %s", stdout.String())
+	var permErr *errs.PermissionError
+	if !errors.As(err, &permErr) {
+		t.Fatalf("expected *errs.PermissionError, got %T: %v", err, err)
+	}
+	if permErr.Subtype != errs.SubtypeMissingScope {
+		t.Fatalf("Subtype = %q, want %q", permErr.Subtype, errs.SubtypeMissingScope)
+	}
+	for _, scope := range []string{"drive:file:upload", "space:folder:create"} {
+		found := false
+		for _, missing := range permErr.MissingScopes {
+			if missing == scope {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("MissingScopes = %v, want %s", permErr.MissingScopes, scope)
+		}
+	}
+	if strings.Contains(stdout.String(), "folder_root") {
+		t.Fatalf("preflight should fail before remote listing, got stdout: %s", stdout.String())
 	}
 }
 
@@ -2552,30 +2608,6 @@ func TestDriveSyncAskConflictRemoteShortForms(t *testing.T) {
 	}
 }
 
-// TestDriveSyncNeedsDownloadScopeReturnsFalseForLocalWinsOnly verifies
-// that driveSyncNeedsDownloadScope returns false when there are no
-// new_remote entries and all modified entries resolve to local-wins.
-func TestDriveSyncNeedsDownloadScopeReturnsFalseForLocalWinsOnly(t *testing.T) {
-	modified := []driveStatusEntry{{RelPath: "a.txt"}, {RelPath: "b.txt"}}
-	resolutions := map[string]string{"a.txt": driveSyncOnConflictLocalWins, "b.txt": driveSyncOnConflictLocalWins}
-
-	if driveSyncNeedsDownloadScope(nil, modified, resolutions) {
-		t.Fatal("expected false when no new_remote and all conflicts are local-wins")
-	}
-}
-
-// TestDriveSyncNeedsDownloadScopeReturnsTrueForKeepBoth verifies that
-// driveSyncNeedsDownloadScope returns true when a modified entry resolves
-// to keep-both (which requires pulling the remote version).
-func TestDriveSyncNeedsDownloadScopeReturnsTrueForKeepBoth(t *testing.T) {
-	modified := []driveStatusEntry{{RelPath: "a.txt"}}
-	resolutions := map[string]string{"a.txt": driveSyncOnConflictKeepBoth}
-
-	if !driveSyncNeedsDownloadScope(nil, modified, resolutions) {
-		t.Fatal("expected true when a conflict resolves to keep-both")
-	}
-}
-
 // TestDriveSyncRemoteWinsReportsMissingPullView verifies that when a
 // modified file's rel_path is not in pullRemoteFiles during the
 // remote-wins branch, a failed item is reported instead of a panic.
@@ -3082,4 +3114,20 @@ func driveSyncStdoutItems(t *testing.T, stdout []byte) []driveSyncItem {
 		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
 	}
 	return envelope.Data.Items
+}
+
+func driveSyncStdoutSummary(t *testing.T, stdout []byte) map[string]interface{} {
+	t.Helper()
+	var envelope struct {
+		Data struct {
+			Summary map[string]interface{} `json:"summary"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout, &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v\nraw=%s", err, string(stdout))
+	}
+	if envelope.Data.Summary == nil {
+		t.Fatalf("stdout missing data.summary; raw=%s", string(stdout))
+	}
+	return envelope.Data.Summary
 }

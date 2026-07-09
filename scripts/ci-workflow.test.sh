@@ -5,26 +5,42 @@
 set -euo pipefail
 
 workflow=".github/workflows/ci.yml"
+job_section() {
+  local job="$1"
+  awk -v job="$job" '
+    $0 == "  " job ":" { in_job = 1; print; next }
+    in_job && /^  [A-Za-z0-9_-]+:/ { exit }
+    in_job { print }
+  ' "$workflow"
+}
 workflow_permissions="$(awk '
   /^permissions:/ { in_permissions = 1; print; next }
   in_permissions && /^[^[:space:]]/ { exit }
   in_permissions { print }
 ' "$workflow")"
+fast_gate_section="$(job_section fast-gate)"
+unit_test_section="$(job_section unit-test)"
 lint_section="$(awk '
   /^  lint:/ { in_job = 1 }
   in_job { print }
-  /^  deterministic-gate:/ { exit }
+  /^  script-test:/ { exit }
 ' "$workflow")"
+script_test_section="$(job_section script-test)"
 deterministic_section="$(awk '
   /^  deterministic-gate:/ { in_job = 1 }
   in_job { print }
   /^  coverage:/ { exit }
 ' "$workflow")"
+coverage_job_section="$(job_section coverage)"
+deadcode_section="$(job_section deadcode)"
+dry_run_section="$(job_section e2e-dry-run)"
 section="$(awk '
   /^  e2e-live:/ { in_job = 1 }
   in_job { print }
   /^  security:/ { exit }
 ' "$workflow")"
+security_section="$(job_section security)"
+license_header_section="$(job_section license-header)"
 results_section="$(awk '
   /^  results:/ { in_job = 1 }
   in_job { print }
@@ -98,13 +114,94 @@ if ! grep -Fq "make quality-gate" <<<"$deterministic_section"; then
   exit 1
 fi
 
+if ! grep -Fq "Write public content metadata" <<<"$deterministic_section"; then
+  echo "deterministic-gate should write PR title/body metadata before quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "types: [opened, synchronize, reopened, edited]" "$workflow"; then
+  echo "CI pull_request trigger should include edited so PR title/body changes are rescanned"
+  exit 1
+fi
+
+if ! grep -Fq "script-test:" <<<"$script_test_section"; then
+  echo "CI should run make script-test so workflow and publisher contract tests are not local-only"
+  exit 1
+fi
+
+if ! grep -Fq "make script-test" <<<"$script_test_section"; then
+  echo "script-test job should invoke make script-test"
+  exit 1
+fi
+
+if ! grep -Fq "actions/setup-node" <<<"$script_test_section"; then
+  echo "script-test job should install Node for JavaScript workflow tests"
+  exit 1
+fi
+
+if grep -Fq '${{ secrets.' <<<"$script_test_section"; then
+  echo "script-test must not reference secrets"
+  exit 1
+fi
+
+if grep -Fq "metadata-gate:" "$workflow"; then
+  echo "metadata-gate should not run alongside deterministic-gate because both would upload the same facts artifact"
+  exit 1
+fi
+
+if grep -Fq "github.event.action != 'edited'" <<<"$fast_gate_section"; then
+  echo "fast-gate must run on pull_request edited events so title/body edits cannot replace failed CI with a light success"
+  exit 1
+fi
+
+for full_job in \
+  "$unit_test_section" \
+  "$lint_section" \
+  "$script_test_section" \
+  "$deterministic_section" \
+  "$coverage_job_section" \
+  "$dry_run_section" \
+  "$security_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$full_job"; then
+    echo "full CI jobs must run on pull_request edited events; do not skip title/body-only edits"
+    exit 1
+  fi
+done
+
+for pull_request_job in "$deadcode_section" "$license_header_section"; do
+  if grep -Fq "github.event.action != 'edited'" <<<"$pull_request_job"; then
+    echo "pull_request-only CI jobs must run on edited events"
+    exit 1
+  fi
+done
+
+if grep -Fq '${{ secrets.' <<<"$deterministic_section"; then
+  echo "deterministic-gate must not reference secrets"
+  exit 1
+fi
+
+if ! grep -Fq "PUBLIC_CONTENT_METADATA=" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass public content metadata into make quality-gate"
+  exit 1
+fi
+
+if ! grep -Fq "PR_BRANCH:" <<<"$deterministic_section"; then
+  echo "deterministic-gate should pass the pull request branch into public content metadata"
+  exit 1
+fi
+
 if ! grep -Fq "name: quality-gate-facts-\${{ github.event.pull_request.base.sha }}-\${{ github.event.pull_request.head.sha }}" <<<"$deterministic_section"; then
   echo "deterministic-gate should upload base/head-bound quality-gate-facts for semantic review"
   exit 1
 fi
 
-if ! grep -Fq "needs: [unit-test, lint, deterministic-gate]" "$workflow"; then
-  echo "E2E jobs should wait for deterministic-gate"
+if ! grep -Fq "needs: [unit-test, lint, script-test, deterministic-gate]" "$workflow"; then
+  echo "E2E jobs should wait for script-test and deterministic-gate"
+  exit 1
+fi
+
+if ! grep -Fq "script-test" <<<"$results_section"; then
+  echo "results job should include script-test"
   exit 1
 fi
 
@@ -115,6 +212,73 @@ fi
 
 if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
   echo "e2e-live should run on push and same-repository pull_request, but skip fork pull_request"
+  exit 1
+fi
+
+if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$dry_run_section" ||
+   ! grep -Fq "id: e2e_domains" <<<"$dry_run_section" ||
+   ! grep -Fq "run: node scripts/e2e_domains.js" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should resolve changed-file CLI E2E domains before running tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_domains.outputs.dry_packages" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should use resolved dry_packages instead of always running the full suite"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_REASON: \${{ steps.e2e_domains.outputs.reason }}" <<<"$dry_run_section" ||
+   ! grep -Fq 'echo "Dry-run CLI E2E domains: $E2E_MODE ($E2E_REASON)"' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should pass dynamic domain output through env before shell use"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_DRY_ROOT_PACKAGE: \${{ steps.e2e_domains.outputs.dry_root_package }}" <<<"$dry_run_section" ||
+   ! grep -Fq 'go test -v -count=1 -timeout=5m "$E2E_DRY_ROOT_PACKAGE"' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should run the root CLI E2E harness package without the DryRun/Regression filter"
+  exit 1
+fi
+
+if ! grep -Fq "No dry-run CLI E2E needed" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should explicitly skip when domain mode is skip"
+  exit 1
+fi
+
+if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$section" ||
+   ! grep -Fq "id: e2e_domains" <<<"$section" ||
+   ! grep -Fq "run: node scripts/e2e_domains.js" <<<"$section"; then
+  echo "e2e-live should resolve changed-file CLI E2E domains before credentials and tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_domains.outputs.live_packages" <<<"$section"; then
+  echo "e2e-live should use resolved live_packages instead of always running the full suite"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_REASON: \${{ steps.e2e_domains.outputs.reason }}" <<<"$section" ||
+   ! grep -Fq 'echo "Live CLI E2E domains: $E2E_MODE ($E2E_REASON)"' <<<"$section"; then
+  echo "e2e-live should pass dynamic domain output through env before shell use"
+  exit 1
+fi
+
+if ! awk '
+  /^      - name: Build lark-cli/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Build lark-cli/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should skip building lark-cli when domain mode is skip"
+  exit 1
+fi
+
+if ! awk '
+  /^      - name: Build lark-cli/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Build lark-cli/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$section"; then
+  echo "e2e-live should skip building lark-cli when domain mode is skip"
   exit 1
 fi
 
@@ -140,13 +304,23 @@ if ! grep -Fq "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_A
   exit 1
 fi
 
+if ! awk '
+  /^      - name: Configure bot credentials/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Configure bot credentials/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$section"; then
+  echo "e2e-live should only configure bot credentials when domain mode is not skip"
+  exit 1
+fi
+
 if grep -Fq "steps.live_e2e_credentials.outputs.configured" <<<"$section"; then
   echo "e2e-live build, configure, test, and report steps should not be gated by a skip-state output"
   exit 1
 fi
 
-if ! grep -Fq "if: \${{ !cancelled() }}" <<<"$section"; then
-  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled"
+if ! grep -Fq "if: \${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}" <<<"$section"; then
+  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled or domain mode is skip"
   exit 1
 fi
 
@@ -207,6 +381,11 @@ fi
 
 if ! grep -Fq "go run ./internal/qualitygate/cmd/manifest-export" <<<"$make_output"; then
   echo "quality-gate should generate command manifests through manifest-export"
+  exit 1
+fi
+
+if ! grep -Fq -- "--public-content-metadata .tmp/quality-gate/public-content-metadata.json" <<<"$make_output"; then
+  echo "quality-gate check should consume public content metadata"
   exit 1
 fi
 

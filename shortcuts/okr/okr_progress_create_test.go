@@ -5,11 +5,13 @@ package okr
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -38,6 +40,7 @@ func runProgressCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.B
 }
 
 const validContentBlockJSON = `{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"test content"}}]}}]}`
+const validSemiPlainJSON = `{"text":"test content","mention":["ou_123"]}`
 
 // --- Validate tests ---
 
@@ -60,6 +63,7 @@ func TestProgressCreateValidate_InvalidContentJSON(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", "not-json",
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 	})
@@ -77,6 +81,7 @@ func TestProgressCreateValidate_MissingTargetID(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-type", "objective",
 	})
 	if err == nil {
@@ -90,6 +95,7 @@ func TestProgressCreateValidate_InvalidTargetID_NonNumeric(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "abc",
 		"--target-type", "objective",
 	})
@@ -107,6 +113,7 @@ func TestProgressCreateValidate_InvalidTargetType(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "invalid",
 	})
@@ -124,6 +131,7 @@ func TestProgressCreateValidate_ControlCharsInContent(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", "{\"blocks\":[{\"block_element_type\":\"para\tgraph\"}]}",
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 	})
@@ -138,6 +146,7 @@ func TestProgressCreateValidate_InvalidUserIDType(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--user-id-type", "invalid",
@@ -153,6 +162,7 @@ func TestProgressCreateValidate_InvalidProgressPercent_OutOfRange(t *testing.T) 
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--progress-percent", "999999999999",
@@ -171,6 +181,7 @@ func TestProgressCreateValidate_InvalidProgressPercent_NonNumeric(t *testing.T) 
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--progress-percent", "abc",
@@ -189,6 +200,7 @@ func TestProgressCreateValidate_InvalidProgressStatus(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--progress-status", "invalid_status",
@@ -219,6 +231,7 @@ func TestProgressCreateValidate_Valid(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 	})
@@ -235,6 +248,7 @@ func TestProgressCreateDryRun(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--dry-run",
@@ -264,6 +278,7 @@ func TestProgressCreateDryRun_WithProgressRate(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "123",
 		"--target-type", "objective",
 		"--progress-percent", "75",
@@ -299,6 +314,7 @@ func TestProgressCreateExecute_Success(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "456",
 		"--target-type", "key_result",
 	})
@@ -330,10 +346,208 @@ func TestProgressCreateExecute_APIError(t *testing.T) {
 	err := runProgressCreateShortcut(t, f, stdout, []string{
 		"+progress-create",
 		"--content", validContentBlockJSON,
+		"--style", "richtext",
 		"--target-id", "789",
 		"--target-type", "objective",
 	})
 	if err == nil {
 		t.Fatal("expected error for API failure")
+	}
+}
+
+// --- Simple mode tests ---
+
+func TestProgressCreateExecute_SimpleMode_DefaultStyle(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/okr/v1/progress_records/",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"progress_id": "300",
+				"modify_time": "1735776000000",
+			},
+		},
+	})
+	// Use default style (simple) without specifying --style
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", validSemiPlainJSON,
+		"--target-id", "123",
+		"--target-type", "objective",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeEnvelope(t, stdout)
+	pr, _ := data["progress"].(map[string]interface{})
+	if pr == nil {
+		t.Fatal("expected progress in output")
+	}
+	if pr["progress_id"] != "300" {
+		t.Fatalf("progress_id = %v, want 300", pr["progress_id"])
+	}
+}
+
+func TestProgressCreateExecute_SimpleMode_ExplicitStyle(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, reg := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/okr/v1/progress_records/",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"progress_id": "400",
+				"modify_time": "1735776000000",
+			},
+		},
+	})
+	// Explicitly specify --style simple with mentions
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", `{"text":"simple progress with mention","mention":["ou_abc","ou_def"]}`,
+		"--style", "simple",
+		"--target-id", "456",
+		"--target-type", "key_result",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	data := decodeEnvelope(t, stdout)
+	pr, _ := data["progress"].(map[string]interface{})
+	if pr == nil {
+		t.Fatal("expected progress in output")
+	}
+	if pr["progress_id"] != "400" {
+		t.Fatalf("progress_id = %v, want 400", pr["progress_id"])
+	}
+}
+
+func TestProgressCreateValidate_SimpleMode_InvalidSemiPlainJSON(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", `{"text":"missing closing brace`,
+		"--target-id", "123",
+		"--target-type", "objective",
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid semi-plain JSON")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("expected category %q, got %q", errs.CategoryValidation, problem.Category)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected subtype %q, got %q", errs.SubtypeInvalidArgument, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got: %T", err)
+	}
+	if validationErr.Param != "--content" {
+		t.Fatalf("expected param %q, got %q", "--content", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "--content must be valid semi-plain JSON") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProgressCreateValidate_SimpleMode_EmptyText(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", `{"text":"   ","mention":[]}`,
+		"--target-id", "123",
+		"--target-type", "objective",
+	})
+	if err == nil {
+		t.Fatal("expected error for empty text in simple mode")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("expected category %q, got %q", errs.CategoryValidation, problem.Category)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected subtype %q, got %q", errs.SubtypeInvalidArgument, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got: %T", err)
+	}
+	if validationErr.Param != "--content" {
+		t.Fatalf("expected param %q, got %q", "--content", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "--content text is required and cannot be empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProgressCreateValidate_SimpleMode_DocsImagesNotSupported(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", `{"text":"has docs","mention":[],"docs":[{"title":"doc","url":"https://example.com"}]}`,
+		"--target-id", "123",
+		"--target-type", "objective",
+	})
+	if err == nil {
+		t.Fatal("expected error for docs in simple mode")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got: %v", err)
+	}
+	if problem.Category != errs.CategoryValidation {
+		t.Fatalf("expected category %q, got %q", errs.CategoryValidation, problem.Category)
+	}
+	if problem.Subtype != errs.SubtypeInvalidArgument {
+		t.Fatalf("expected subtype %q, got %q", errs.SubtypeInvalidArgument, problem.Subtype)
+	}
+	var validationErr *errs.ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected *errs.ValidationError, got: %T", err)
+	}
+	if validationErr.Param != "--content" {
+		t.Fatalf("expected param %q, got %q", "--content", validationErr.Param)
+	}
+	if !strings.Contains(err.Error(), "docs and images are not supported in simple style input") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProgressCreateDryRun_SimpleMode(t *testing.T) {
+	t.Parallel()
+	f, stdout, _, _ := cmdutil.TestFactory(t, progressCreateTestConfig(t))
+	err := runProgressCreateShortcut(t, f, stdout, []string{
+		"+progress-create",
+		"--content", validSemiPlainJSON,
+		"--target-id", "123",
+		"--target-type", "objective",
+		"--dry-run",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "/open-apis/okr/v1/progress_records/") {
+		t.Fatalf("dry-run output should contain API path, got: %s", output)
+	}
+	if !strings.Contains(output, "POST") {
+		t.Fatalf("dry-run output should contain POST method, got: %s", output)
 	}
 }

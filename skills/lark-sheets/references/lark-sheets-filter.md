@@ -102,6 +102,17 @@ lark-cli sheets +filter-create --url "..." --sheet-id "$SID" \
   --properties '{"rules":[{"column_index":"B","conditions":[{"type":"multiValue","compare_type":"equal","values":["北京","上海"]}]}]}'
 ```
 
+**`conditions[].type` × `compare_type` 取值**（`type` 决定可用的 `compare_type`；两者均必填）：
+
+| `type` | 可用 `compare_type` | `values` |
+|---|---|---|
+| `text` | `contains` / `doesNotContain` / `beginsWith` / `doesNotBeginWith` / `endsWith` / `doesNotEndWith` / `equals` / `notEquals` | 字符串数组 |
+| `number` | `equal` / `notEqual` / `greaterThan` / `greaterThanOrEqual` / `lessThan` / `lessThanOrEqual` / `between` / `notBetween` | 数值（或数值字符串）数组；`between` / `notBetween` 传两个边界 |
+| `multiValue` | `equal` / `notEqual` | 字符串数组（精确匹配其中任一值） |
+| `color` | `backgroundColor` / `foregroundColor` | 不传 `values`（按单元格颜色筛选） |
+
+> ⚠️ `text` 用 `equals` / `notEquals`（**带 s**），`number` / `multiValue` 用 `equal` / `notEqual`（**不带 s**）——别混。完整 schema 跑 `+filter-create --print-schema --flag-name properties`。
+
 ### `+filter-update`
 
 > ⚠️ update 是覆盖式：`--properties` 中传新 `rules` 会替换旧组。如只想加一条，要带上已有的全部条件再追加。必填 `--range`。

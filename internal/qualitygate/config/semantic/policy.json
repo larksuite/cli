@@ -5,7 +5,8 @@
     "error_hint",
     "default_output",
     "naming",
-    "skill_quality"
+    "skill_quality",
+    "public_content_leakage"
   ],
   "rollout_groups": [
     {
@@ -16,7 +17,8 @@
       },
       "categories": [
         "error_hint",
-        "skill_quality"
+        "skill_quality",
+        "public_content_leakage"
       ],
       "owner": "cli-owner",
       "reason": "first semantic blocking rollout only affects changed facts"

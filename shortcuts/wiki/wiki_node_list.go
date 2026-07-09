@@ -48,27 +48,19 @@ var WikiNodeList = common.Shortcut{
 		"--space-id my_library is a per-user alias and is only valid with --as user.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		spaceID := strings.TrimSpace(runtime.Str("space-id"))
-		// my_library is a per-user personal-library alias; it has no meaning
-		// for a tenant_access_token (--as bot), so reject early with a clear
-		// hint instead of deferring to API-time errors. Matches the contract
-		// used by +node-create and +move.
-		if runtime.As().IsBot() && spaceID == wikiMyLibrarySpaceID {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity does not support --space-id my_library; use an explicit --space-id").WithParam("--space-id")
-		}
-		if err := validateOptionalResourceName(spaceID, "--space-id"); err != nil {
-			return err
-		}
-		if err := validateOptionalResourceName(strings.TrimSpace(runtime.Str("parent-node-token")), "--parent-node-token"); err != nil {
+		if _, err := readWikiNodeListSpec(runtime); err != nil {
 			return err
 		}
 		return validateWikiListPagination(runtime, wikiNodeListMaxPageSize)
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
-		spaceID := strings.TrimSpace(runtime.Str("space-id"))
+		spec, err := readWikiNodeListSpec(runtime)
+		if err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
+		}
 		params := map[string]interface{}{"page_size": runtime.Int("page-size")}
-		if pt := strings.TrimSpace(runtime.Str("parent-node-token")); pt != "" {
-			params["parent_node_token"] = pt
+		if spec.ParentNodeToken != "" {
+			params["parent_node_token"] = spec.ParentNodeToken
 		}
 		if pt := strings.TrimSpace(runtime.Str("page-token")); pt != "" {
 			params["page_token"] = pt
@@ -80,7 +72,7 @@ var WikiNodeList = common.Shortcut{
 		// When the caller passes my_library, +node-list must first resolve it
 		// to the real per-user space_id before listing nodes, mirroring the
 		// two-step orchestration used by +node-create.
-		if spaceID == wikiMyLibrarySpaceID {
+		if spec.SpaceID == wikiMyLibrarySpaceID {
 			return d.
 				Desc("2-step orchestration: resolve my_library -> list nodes").
 				GET("/open-apis/wiki/v2/spaces/my_library").
@@ -91,13 +83,17 @@ var WikiNodeList = common.Shortcut{
 				Set("space_id", "<resolved_space_id>")
 		}
 		return d.
-			GET(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", validate.EncodePathSegment(spaceID))).
+			GET(fmt.Sprintf("/open-apis/wiki/v2/spaces/%s/nodes", validate.EncodePathSegment(spec.SpaceID))).
 			Params(params).
-			Set("space_id", spaceID)
+			Set("space_id", spec.SpaceID)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		warnIfConflictingPagingFlags(runtime)
-		spaceID := strings.TrimSpace(runtime.Str("space-id"))
+		spec, err := readWikiNodeListSpec(runtime)
+		if err != nil {
+			return err
+		}
+		spaceID := spec.SpaceID
 
 		// Resolve the my_library alias to the per-user real space_id before
 		// listing, so the subsequent request hits a concrete space endpoint.
@@ -110,7 +106,7 @@ var WikiNodeList = common.Shortcut{
 			spaceID = resolved
 		}
 
-		nodes, hasMore, nextToken, err := fetchWikiNodes(runtime, spaceID)
+		nodes, hasMore, nextToken, err := fetchWikiNodes(runtime, spaceID, spec.ParentNodeToken)
 		if err != nil {
 			return err
 		}
@@ -127,10 +123,99 @@ var WikiNodeList = common.Shortcut{
 	},
 }
 
-func fetchWikiNodes(runtime *common.RuntimeContext, spaceID string) ([]map[string]interface{}, bool, string, error) {
+type wikiNodeListSpec struct {
+	SpaceID         string
+	ParentNodeToken string
+}
+
+func readWikiNodeListSpec(runtime *common.RuntimeContext) (wikiNodeListSpec, error) {
+	spaceID := strings.TrimSpace(runtime.Str("space-id"))
+	// my_library is a per-user personal-library alias; it has no meaning
+	// for a tenant_access_token (--as bot), so reject early with a clear
+	// hint instead of deferring to API-time errors. Matches the contract
+	// used by +node-create and +move.
+	if runtime.As().IsBot() && spaceID == wikiMyLibrarySpaceID {
+		return wikiNodeListSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "bot identity does not support --space-id my_library; use an explicit numeric --space-id").WithParam("--space-id")
+	}
+	if err := validateWikiNodeListSpaceID(spaceID); err != nil {
+		return wikiNodeListSpec{}, err
+	}
+
+	parentNodeToken, err := normalizeWikiNodeListParentToken(strings.TrimSpace(runtime.Str("parent-node-token")))
+	if err != nil {
+		return wikiNodeListSpec{}, err
+	}
+	return wikiNodeListSpec{SpaceID: spaceID, ParentNodeToken: parentNodeToken}, nil
+}
+
+func validateWikiNodeListSpaceID(spaceID string) error {
+	if spaceID == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--space-id is required").WithParam("--space-id")
+	}
+	if spaceID == wikiMyLibrarySpaceID {
+		return nil
+	}
+	if strings.Contains(spaceID, "://") || strings.ContainsAny(spaceID, "/?#") {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--space-id must be a numeric wiki space_id, not a URL or path",
+		).WithParam("--space-id").WithHint("Run `lark-cli wiki +space-list --as user` to discover space IDs.")
+	}
+	if !isDecimalWikiSpaceID(spaceID) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--space-id must be a numeric wiki space_id; do not pass a wiki node token, document token, or title",
+		).WithParam("--space-id").WithHint("Run `lark-cli wiki +space-list --as user` to list accessible wiki spaces, then pass the numeric `space_id`.")
+	}
+	if err := validateOptionalResourceName(spaceID, "--space-id"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isDecimalWikiSpaceID(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeWikiNodeListParentToken(parentNodeToken string) (string, error) {
+	if parentNodeToken == "" {
+		return "", nil
+	}
+	if strings.Contains(parentNodeToken, "://") {
+		ref, ok := common.ParseResourceURL(parentNodeToken)
+		if !ok {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--parent-node-token URL is unsupported",
+			).WithParam("--parent-node-token").WithHint("Pass a raw wiki node token from `wiki +node-get` or `wiki +node-list`.")
+		}
+		if ref.Type != "wiki" {
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"--parent-node-token must identify a wiki node; got a %s URL",
+				ref.Type,
+			).WithParam("--parent-node-token").WithHint("Resolve the document URL with `lark-cli wiki +node-get --node-token <url>` and use its `node_token`.")
+		}
+		parentNodeToken = ref.Token
+	}
+	if strings.ContainsAny(parentNodeToken, "/?#") {
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"--parent-node-token must be a raw wiki node token, not a partial URL or path",
+		).WithParam("--parent-node-token")
+	}
+	if err := validateOptionalResourceName(parentNodeToken, "--parent-node-token"); err != nil {
+		return "", err
+	}
+	return parentNodeToken, nil
+}
+
+func fetchWikiNodes(runtime *common.RuntimeContext, spaceID, parentNodeToken string) ([]map[string]interface{}, bool, string, error) {
 	pageSize := runtime.Int("page-size")
 	startToken := strings.TrimSpace(runtime.Str("page-token"))
-	parentNodeToken := strings.TrimSpace(runtime.Str("parent-node-token"))
 	auto := wikiListShouldAutoPaginate(runtime)
 	pageLimit := runtime.Int("page-limit")
 
@@ -153,7 +238,7 @@ func fetchWikiNodes(runtime *common.RuntimeContext, spaceID string) ([]map[strin
 		}
 		data, err := runtime.CallAPITyped("GET", apiPath, params, nil)
 		if err != nil {
-			return nil, false, "", err
+			return nil, false, "", wikiNodeListProblem(err, runtime)
 		}
 		items, _ := data["items"].([]interface{})
 		for _, item := range items {
@@ -175,6 +260,36 @@ func fetchWikiNodes(runtime *common.RuntimeContext, spaceID string) ([]map[strin
 		pageToken = lastPageToken
 	}
 	return nodes, lastHasMore, lastPageToken, nil
+}
+
+func wikiNodeListProblem(err error, runtime *common.RuntimeContext) error {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		return err
+	}
+	switch p.Code {
+	case 131002:
+		msg := strings.ToLower(p.Message)
+		switch {
+		case strings.Contains(msg, "page_token"):
+			appendWikiProblemHint(err, "The page token is invalid or stale. Use only the `page_token` returned by the immediately preceding `wiki +node-list` response, or omit --page-token and start over.")
+		case strings.Contains(msg, "space_id"):
+			appendWikiProblemHint(err, "The --space-id value must be the numeric wiki space_id from `wiki +space-list`; do not pass a wiki URL, node token, document token, or title.")
+		default:
+			appendWikiProblemHint(err, "Check the wiki +node-list flags. Fix the parameter before retrying; this is not a transient error.")
+		}
+	case 131005:
+		appendWikiProblemHint(err, "The target wiki space or parent node was not found. Re-discover the space with `wiki +space-list` and the parent with `wiki +node-list`/`wiki +node-get`; do not retry the same stale token.")
+	case 131006:
+		if runtime != nil && runtime.As().IsBot() {
+			appendWikiProblemHint(err, "The bot/app identity cannot read this wiki space or node. Grant the app the required wiki scope and ensure the app or bot has access to the target knowledge space.")
+		} else {
+			appendWikiProblemHint(err, "The current user cannot read this wiki space or node. Switch to a user with access or ask the space owner to grant read permission.")
+		}
+	case 99991400:
+		appendWikiProblemHint(err, "Rate limited by the wiki API. Stop immediate retries and retry later with exponential backoff or a smaller --page-limit.")
+	}
+	return err
 }
 
 func wikiNodeListItem(m map[string]interface{}) map[string]interface{} {

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
 
 permissions:
@@ -70,6 +71,7 @@ jobs:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
@@ -86,6 +88,23 @@ jobs:
         run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6 run --new-from-rev="$QUALITY_GATE_CHANGED_FROM"
       - name: Run errs/ lint guards (lintcheck)
         run: go run -C lint . --changed-from "$QUALITY_GATE_CHANGED_FROM" ..
+
+  script-test:
+    needs: fast-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Run script tests
+        run: make script-test
 
   deterministic-gate:
     needs: fast-gate
@@ -109,8 +128,28 @@ jobs:
         env:
           QUALITY_GATE_CHANGED_FROM: ${{ github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
         run: echo "QUALITY_GATE_CHANGED_FROM=$(bash scripts/resolve-changed-from.sh)" >> "$GITHUB_ENV"
+      - name: Write public content metadata
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.head_ref }}
+        run: |
+          mkdir -p .tmp/quality-gate
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open(".tmp/quality-gate/public-content-metadata.json", "w", encoding="utf-8") as f:
+              json.dump({
+                  "title": os.environ.get("PR_TITLE", ""),
+                  "body": os.environ.get("PR_BODY", ""),
+                  "branch": os.environ.get("PR_BRANCH", ""),
+              }, f)
+              f.write("\n")
+          PY
       - name: Run CLI deterministic gate
-        run: make quality-gate
+        run: PUBLIC_CONTENT_METADATA=.tmp/quality-gate/public-content-metadata.json make quality-gate
       - name: Upload quality gate facts
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -220,17 +259,23 @@ jobs:
 
   # ── Layer 3: E2E Gate ──────────────────────────────────────────────
   e2e-dry-run:
-    needs: [unit-test, lint, deterministic-gate]
+    needs: [unit-test, lint, script-test, deterministic-gate]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E domains
+        id: e2e_domains
+        run: node scripts/e2e_domains.js
       - name: Build lark-cli
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Run dry-run E2E tests
         env:
@@ -238,10 +283,31 @@ jobs:
           LARKSUITE_CLI_APP_ID: dry-run
           LARKSUITE_CLI_APP_SECRET: dry-run
           LARKSUITE_CLI_BRAND: feishu
-        run: go test -v -count=1 -timeout=5m ./tests/cli_e2e/... -run 'DryRun|Regression'
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
+          E2E_DRY_ROOT_PACKAGE: ${{ steps.e2e_domains.outputs.dry_root_package }}
+          E2E_DRY_PACKAGES: ${{ steps.e2e_domains.outputs.dry_packages }}
+        run: |
+          if [ "$E2E_MODE" = "skip" ]; then
+            echo "No dry-run CLI E2E needed: $E2E_REASON"
+            exit 0
+          fi
+          if [ -z "$E2E_DRY_ROOT_PACKAGE" ] && [ -z "$E2E_DRY_PACKAGES" ]; then
+            echo "::error::No dry-run CLI E2E packages resolved for mode $E2E_MODE"
+            exit 1
+          fi
+          echo "Dry-run CLI E2E domains: $E2E_MODE ($E2E_REASON)"
+          if [ -n "$E2E_DRY_ROOT_PACKAGE" ]; then
+            echo "Dry-run CLI E2E root package: $E2E_DRY_ROOT_PACKAGE"
+            go test -v -count=1 -timeout=5m "$E2E_DRY_ROOT_PACKAGE"
+          fi
+          if [ -n "$E2E_DRY_PACKAGES" ]; then
+            echo "Dry-run CLI E2E packages: $E2E_DRY_PACKAGES"
+            go test -v -count=1 -timeout=5m $E2E_DRY_PACKAGES -run 'DryRun|Regression'
+          fi
 
   e2e-live:
-    needs: [unit-test, lint, deterministic-gate]
+    needs: [unit-test, lint, script-test, deterministic-gate]
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
     runs-on: ubuntu-latest
     permissions:
@@ -253,15 +319,22 @@ jobs:
       TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E domains
+        id: e2e_domains
+        run: node scripts/e2e_domains.js
       - name: Build lark-cli
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Configure bot credentials
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: |
           if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
             echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
@@ -271,16 +344,24 @@ jobs:
       - name: Run CLI E2E tests
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
+          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
         run: |
-          packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
+          if [ "$E2E_MODE" = "skip" ]; then
+            echo "No live CLI E2E needed: $E2E_REASON"
+            exit 0
+          fi
+          packages="$E2E_LIVE_PACKAGES"
           if [ -z "$packages" ]; then
-            echo "No CLI E2E packages to test after exclusions."
+            echo "::error::No live CLI E2E packages resolved for mode $E2E_MODE"
             exit 1
           fi
-          packages_arg=$(printf '%s\n' "$packages" | paste -sd' ' -)
-          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages_arg" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
+          echo "Live CLI E2E domains: $E2E_MODE ($E2E_REASON)"
+          echo "Live CLI E2E packages: $packages"
+          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
       - name: Publish CLI E2E test report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: CLI E2E Tests
@@ -333,7 +414,7 @@ jobs:
   # ── Results Gate (single required check for branch protection) ─────
   results:
     if: ${{ always() }}
-    needs: [fast-gate, unit-test, lint, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
+    needs: [fast-gate, unit-test, lint, script-test, deterministic-gate, coverage, deadcode, e2e-dry-run, e2e-live, security, license-header]
     runs-on: ubuntu-latest
     steps:
       - name: Evaluate results
@@ -345,6 +426,7 @@ jobs:
           echo "| L1 | fast-gate | ${{ needs.fast-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | unit-test | ${{ needs.unit-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | lint | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| L2 | script-test | ${{ needs.script-test.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deterministic-gate | ${{ needs.deterministic-gate.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | coverage | ${{ needs.coverage.result }} |" >> $GITHUB_STEP_SUMMARY
           echo "| L2 | deadcode | ${{ needs.deadcode.result }} |" >> $GITHUB_STEP_SUMMARY
@@ -361,6 +443,7 @@ jobs:
             "${{ needs.fast-gate.result }}" \
             "${{ needs.unit-test.result }}" \
             "${{ needs.lint.result }}" \
+            "${{ needs.script-test.result }}" \
             "${{ needs.deterministic-gate.result }}" \
             "${{ needs.coverage.result }}" \
             "${{ needs.deadcode.result }}" \

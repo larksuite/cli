@@ -1,6 +1,6 @@
 ---
 name: lark-markdown
-version: 1.2.1
+version: 1.2.2
 description: "飞书 Markdown：查看、创建、上传、编辑和比较 Markdown 文件。当用户需要创建或编辑 Markdown 文件、读取、修改、局部 patch 或比较差异时使用。不负责将 Markdown 导入为飞书在线文档，也不负责文件搜索、权限、评论、移动、删除等云空间管理操作。"
 metadata:
   requires:
@@ -25,7 +25,8 @@ metadata:
 - 用户要先拿 Markdown 文件的历史版本号，再做比较/下载/回滚，先用 [`lark-drive`](../lark-drive/SKILL.md) 的 `lark-cli drive +version-history`
 - 用户要把本地 Markdown **导入成在线新版文档（docx）**，不要用本 skill，改用 [`lark-drive`](../lark-drive/SKILL.md) 的 `lark-cli drive +import --type docx`
 - 用户要对 Markdown 文件做**rename / move / delete / 搜索 / 权限 / 评论**等云空间（云盘/云存储）操作，不要留在本 skill，切到 [`lark-drive`](../lark-drive/SKILL.md)
-- `markdown +create` / `+overwrite` 命中 `missing scope`、`permission denied`、`not found`、`version limit` 时，默认停止重试并按报错 hint 处理；只有 `rate limit` 或临时网络错误才做有限重试。
+- `markdown +create` / `+overwrite` 命中 `missing scope`、`permission denied`、`not found`、`quota_exceeded`、`version limit` 时，默认停止重试并按报错 hint 处理；只有 `rate_limit`、`server_error` 或临时网络错误才做有限退避重试。
+- `markdown +create` 的目标参数不要猜：Drive 文件夹用 `--folder-token`，Wiki 节点用 `--wiki-token`。如果用户给的是 URL，可以直接传完整 URL；CLI 会归一成 token。不要把 doc/sheet/wiki URL 放进 `--folder-token` 试错。
 
 ## 核心边界
 

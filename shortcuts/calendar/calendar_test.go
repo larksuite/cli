@@ -673,6 +673,76 @@ func TestCreate_WithAttendees_InvalidParamsWithDetail_RollsBack(t *testing.T) {
 	}
 }
 
+func TestCreate_ApprovalRoomMissingReason_GuidesRawAttendeesAPI(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_approval_room",
+					"summary":    "Approval Room",
+					"start_time": map[string]interface{}{"timestamp": "1742515200"},
+					"end_time":   map[string]interface{}{"timestamp": "1742518800"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/events/evt_approval_room/attendees",
+		Body: map[string]interface{}{
+			"code": codeInvalidParamsWithDetail,
+			"msg":  "invalid params",
+			"error": map[string]interface{}{
+				"details": []interface{}{
+					map[string]interface{}{"value": "attendees[0].approval_reason is required for approval meeting rooms"},
+				},
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/events/evt_approval_room",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := mountAndRun(t, CalendarCreate, []string{
+		"+create",
+		"--summary", "Approval Room",
+		"--start", "2025-03-21T00:00:00+08:00",
+		"--end", "2025-03-21T01:00:00+08:00",
+		"--calendar-id", "cal_test123",
+		"--attendee-ids", "omm_room1",
+		"--as", "user",
+	}, f, nil)
+
+	if err == nil {
+		t.Fatal("expected error for approval room missing approval_reason, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("ProblemOf returned !ok for %T", err)
+	}
+	if p.Category != errs.CategoryAPI {
+		t.Errorf("category=%q, want %q", p.Category, errs.CategoryAPI)
+	}
+	if p.Subtype != errs.SubtypeInvalidParameters {
+		t.Errorf("subtype=%q, want %q", p.Subtype, errs.SubtypeInvalidParameters)
+	}
+	if p.Code != codeInvalidParamsWithDetail {
+		t.Errorf("code=%d, want %d", p.Code, codeInvalidParamsWithDetail)
+	}
+	for _, want := range []string{"approval_reason", "calendar event.attendees create", "--as user", "rolled back successfully"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Errorf("hint should contain %q, got: %q", want, p.Hint)
+		}
+	}
+}
+
 // When the add-attendees call fails AND the rollback DELETE also fails, the
 // primary error stays the add failure (classification preserved) and the Hint
 // must surface BOTH the rollback failure reason and the orphan event_id so the
@@ -2234,17 +2304,17 @@ func TestResolveStartEnd_ExplicitValues(t *testing.T) {
 // Shortcuts() registration test
 // ---------------------------------------------------------------------------
 
-func TestShortcuts_Returns7(t *testing.T) {
+func TestShortcuts_Returns10(t *testing.T) {
 	shortcuts := Shortcuts()
-	if len(shortcuts) != 7 {
-		t.Fatalf("expected 7 shortcuts, got %d", len(shortcuts))
+	if len(shortcuts) != 10 {
+		t.Fatalf("expected 10 shortcuts, got %d", len(shortcuts))
 	}
 
 	names := map[string]bool{}
 	for _, s := range shortcuts {
 		names[s.Command] = true
 	}
-	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion"} {
+	for _, want := range []string{"+agenda", "+create", "+update", "+freebusy", "+room-find", "+rsvp", "+suggestion", "+get"} {
 		if !names[want] {
 			t.Errorf("missing shortcut %s", want)
 		}
@@ -3106,5 +3176,195 @@ func TestSuggestion_RejectsDangerousTimezone_Typed(t *testing.T) {
 	}
 	if ve.Param != "--timezone" {
 		t.Errorf("param=%q, want --timezone", ve.Param)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CalendarGet tests
+// ---------------------------------------------------------------------------
+
+func TestGet_Success_FlattensAndConvertsTimes(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_001",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":    "evt_001",
+					"summary":     "Daily Sync",
+					"create_time": "1602504000",
+					"start_time": map[string]interface{}{
+						"timestamp": "1742515200",
+						"timezone":  "Asia/Shanghai",
+					},
+					"end_time": map[string]interface{}{
+						"timestamp": "1742518800",
+						"timezone":  "Asia/Shanghai",
+					},
+					"status": "confirmed",
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--calendar-id", "cal_test123",
+		"--event-id", "evt_001",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	// Expect flattened — fields appear directly under "data", not under "data.event"
+	if strings.Contains(out, "\"event\": {") {
+		t.Errorf("payload should be flattened (no event wrapper), got: %s", out)
+	}
+	if !strings.Contains(out, "\"event_id\": \"evt_001\"") {
+		t.Errorf("expected event_id in output, got: %s", out)
+	}
+	// status=confirmed should be dropped
+	if strings.Contains(out, "\"status\": \"confirmed\"") {
+		t.Errorf("status should be dropped when not cancelled, got: %s", out)
+	}
+	// timestamp must be replaced with datetime
+	if strings.Contains(out, "\"timestamp\":") {
+		t.Errorf("timestamp should be replaced with datetime, got: %s", out)
+	}
+	if !strings.Contains(out, "\"datetime\":") {
+		t.Errorf("expected datetime in output, got: %s", out)
+	}
+	// create_time must be RFC3339 (contain 'T' and timezone)
+	if !strings.Contains(out, "\"create_time\": \"2020-10-12T") {
+		t.Errorf("expected RFC3339 create_time, got: %s", out)
+	}
+}
+
+func TestGet_CancelledStatus_PreservesStatus(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_002",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":    "evt_002",
+					"summary":     "Cancelled Meeting",
+					"create_time": "1602504000",
+					"start_time":  map[string]interface{}{"timestamp": "1742515200"},
+					"end_time":    map[string]interface{}{"timestamp": "1742518800"},
+					"status":      "cancelled",
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--calendar-id", "cal_test123",
+		"--event-id", "evt_002",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "\"status\": \"cancelled\"") {
+		t.Errorf("status should be preserved when cancelled, got: %s", out)
+	}
+}
+
+func TestGet_AllDayEvent_AdjustsEndDate(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	// All-day event: start 2025-03-21, end 2025-03-22 (exclusive in API).
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_003",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{
+				"event": map[string]interface{}{
+					"event_id":   "evt_003",
+					"summary":    "All-day",
+					"start_time": map[string]interface{}{"date": "2025-03-21"},
+					"end_time":   map[string]interface{}{"date": "2025-03-22"},
+					"status":     "confirmed",
+				},
+			},
+		},
+	})
+
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--calendar-id", "cal_test123",
+		"--event-id", "evt_003",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	// end date 2025-03-22 should rewind by 1s -> 2025-03-21
+	if !strings.Contains(out, "\"date\": \"2025-03-21\"") {
+		t.Errorf("expected end date adjusted to 2025-03-21, got: %s", out)
+	}
+}
+
+func TestGet_EmptyEventID_Typed(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--event-id", "   ",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error for empty event-id")
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("want *errs.ValidationError, got %T", err)
+	}
+	if ve.Param != "--event-id" {
+		t.Errorf("param=%q, want --event-id", ve.Param)
+	}
+}
+
+func TestGet_MissingEventField_TypedInternal(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, defaultConfig())
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/calendar/v4/calendars/cal_test123/events/evt_404",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "success",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	err := mountAndRun(t, CalendarGet, []string{
+		"+get",
+		"--calendar-id", "cal_test123",
+		"--event-id", "evt_404",
+		"--as", "bot",
+	}, f, nil)
+	if err == nil {
+		t.Fatal("want error when event field is missing")
+	}
+	var ie *errs.InternalError
+	if !errors.As(err, &ie) {
+		t.Fatalf("want *errs.InternalError, got %T", err)
+	}
+	if ie.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype=%q, want invalid_response", ie.Subtype)
 	}
 }

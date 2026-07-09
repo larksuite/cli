@@ -164,6 +164,7 @@ func TestViewSetVisibleFieldsValidateHook(t *testing.T) {
 func TestShortcutsCatalog(t *testing.T) {
 	shortcuts := Shortcuts()
 	want := []string{
+		"+url-resolve", "+title-resolve",
 		"+base-block-list", "+base-block-create", "+base-block-move", "+base-block-rename", "+base-block-delete",
 		"+table-list", "+table-get", "+table-create", "+table-update", "+table-delete",
 		"+field-list", "+field-get", "+field-create", "+field-update", "+field-delete", "+field-search-options",
@@ -1066,6 +1067,15 @@ func assertHelpOrder(t *testing.T, help string, before string, after string) {
 func TestBaseFieldValidate(t *testing.T) {
 	ctx := context.Background()
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": "{"}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json invalid JSON object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"text"},{"name":"b","type":"text"}]`}, nil, nil)); err != nil {
+		t.Fatalf("array create validate err=%v", err)
+	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"text"},1]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--json item 2 must be an object") {
+		t.Fatalf("err=%v", err)
+	}
+	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `[{"name":"a","type":"formula"}]`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--i-have-read-guide is required") {
 		t.Fatalf("err=%v", err)
 	}
 	if err := BaseFieldCreate.Validate(ctx, newBaseTestRuntime(map[string]string{"base-token": "b", "table-id": "t", "json": `{"name":"f1","type":"formula"}`}, nil, nil)); err == nil || !strings.Contains(err.Error(), "--i-have-read-guide is required") {

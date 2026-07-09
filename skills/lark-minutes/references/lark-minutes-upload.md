@@ -1,6 +1,5 @@
 # minutes +upload
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 上传音视频文件到飞书妙记并生成妙记（Minute）。
 
@@ -31,13 +30,13 @@
      ```
    - 命令执行成功后，将返回生成的妙记链接 `minute_url`。
 
-3. **如需纪要 / 逐字稿 / 文字稿 / 撰写文字，继续提取 `minute_token` 调用 `vc +notes`**
-   - 从返回的 `minute_url` 中提取路径最后一段，得到 `minute_token`。
-   - 如果用户要的是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，继续调用：
+3. **如需纪要 / 逐字稿 / 文字稿 / 撰写文字，使用返回的 `minute_token` 调用 `minutes +detail`**
+   - 如果用户要的是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，使用上一步返回的 `minute_token` 继续调用：
      ```bash
-     lark-cli vc +notes --minute-tokens <minute_token>
+     lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready --summary --todo --chapter --keyword --transcript
      ```
-   - `vc +notes --minute-tokens` 会返回纪要文档、逐字稿文档，以及 AI 内置产物（总结、待办、章节）；必要时还会把逐字稿落地到本地文件。
+   - `--wait-ready` 参数表示等待妙记生成完毕后再获取产物，上传后立即读取详情时必须加上此参数。
+   - `minutes +detail --minute-tokens` 会返回妙记产物（总结、待办、章节、关键词、逐字稿）；必要时还会把逐字稿落地到本地文件。
 
 > **异步生成提示**：API 会立即返回 `minute_url`，但妙记可能仍在异步生成中，您可以直接通过该妙记链接查看当前的处理状态和转写结果。
 
@@ -47,8 +46,8 @@
 # 通过已上传到云空间（云盘/云存储）的 file_token 生成妙记
 lark-cli minutes +upload --file-token boxcnxxxxxxxxxxxxxxxx
 
-# 通过 minute_token 继续获取纪要 / 逐字稿 / 文字稿 / AI 产物
-lark-cli vc +notes --minute-tokens obcnxxxxxxxxxxxxxxxx
+# 上传后立即获取妙记产物，需加 --wait-ready 等待生成完毕（--summary --todo --chapter --keyword --transcript 按需传入）
+lark-cli minutes +detail --minute-tokens obcnxxxxxxxxxxxxxxxx --wait-ready --summary
 ```
 
 ## 参数
@@ -81,24 +80,25 @@ lark-cli vc +notes --minute-tokens obcnxxxxxxxxxxxxxxxx
 1. 使用 `lark-cli drive +upload --file <path>` 上传本地音视频文件到云空间（云盘/云存储）
 2. 从返回结果中取出 `file_token`
 3. 调用 `lark-cli minutes +upload --file-token <file_token>` 生成妙记
-4. 如果目标是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，再从 `minute_url` 提取 `minute_token`，继续调用 `lark-cli vc +notes --minute-tokens <minute_token>`
+4. 如果目标是纪要、逐字稿、文字稿、撰写文字、总结、待办或章节，使用返回的 `minute_token`，继续调用 `lark-cli minutes +detail --minute-tokens <minute_token> --wait-ready`
 
-> **边界说明**：`minutes +upload` 本身只负责把文件转成妙记并返回 `minute_url`。纪要内容、逐字稿、文字稿、撰写文字、总结、待办、章节属于后续产物获取，应由 [vc +notes](../../lark-vc/references/lark-vc-notes.md) 承接。
+> **边界说明**：`minutes +upload` 本身只负责把文件转成妙记并返回 `minute_url`。纪要内容、逐字稿、文字稿、撰写文字、总结、待办、章节属于后续产物获取，应由 [minutes +detail](lark-minutes-detail.md) 承接。
 
 ## 输出结果示例
 
 ```json
 {
-  "minute_url": "http(s)://<host>/minutes/<minute-token>"
+  "minute_url": "http(s)://<host>/minutes/<minute-token>",
+  "minute_token": "<minute-token>"
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
 | `minute_url` | 生成的妙记访问链接 |
+| `minute_token` | 从 `minute_url` 提取出的妙记 Token，可直接传给 `minutes +detail --minute-tokens` |
 
 ## 参考
 
 - [lark-minutes](../SKILL.md) -- 妙记相关功能说明
 - [drive +upload](../../lark-drive/references/lark-drive-upload.md) -- 上传文件到云空间（云盘/云存储）
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

@@ -159,6 +159,113 @@ func TestOKR_WeightDryRun_KR(t *testing.T) {
 	assert.True(t, strings.Contains(output, "789"), "dry-run should contain objective-id, got: %s", output)
 }
 
+// --- Dry-run E2E tests for +patch ---
+
+// TestOKR_PatchDryRun_Objective validates +patch dry-run for objective with content.
+func TestOKR_PatchDryRun_Objective(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+patch",
+			"--level", "objective",
+			"--target-id", "123",
+			"--content", `{"text":"updated content","mention":["ou_123"]}`,
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "PATCH"), "dry-run should contain PATCH method, got: %s", output)
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/objectives/123"), "dry-run should contain objective API path, got: %s", output)
+	assert.True(t, strings.Contains(output, "content=true"), "dry-run should show content patch, got: %s", output)
+}
+
+// TestOKR_PatchDryRun_Objective_AllFields validates +patch dry-run for objective with all fields.
+func TestOKR_PatchDryRun_Objective_AllFields(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+patch",
+			"--level", "objective",
+			"--target-id", "456",
+			"--style", "simple",
+			"--content", `{"text":"new content"}`,
+			"--notes", `{"text":"new notes"}`,
+			"--score", "0.7",
+			"--deadline", "1735776000000",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/objectives/456"), "dry-run should contain objective API path, got: %s", output)
+	assert.True(t, strings.Contains(output, "content=true"), "dry-run should show content patch, got: %s", output)
+	assert.True(t, strings.Contains(output, "notes=true"), "dry-run should show notes patch, got: %s", output)
+	assert.True(t, strings.Contains(output, "score=true"), "dry-run should show score patch, got: %s", output)
+	assert.True(t, strings.Contains(output, "deadline=true"), "dry-run should show deadline patch, got: %s", output)
+	assert.True(t, strings.Contains(output, `"user_id_type": "open_id"`), "dry-run should contain user_id_type param, got: %s", output)
+}
+
+// TestOKR_PatchDryRun_KeyResult validates +patch dry-run for key result.
+func TestOKR_PatchDryRun_KeyResult(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+patch",
+			"--level", "key-result",
+			"--target-id", "789",
+			"--score", "0.5",
+			"--user-id-type", "user_id",
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "PATCH"), "dry-run should contain PATCH method, got: %s", output)
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/key_results/789"), "dry-run should contain key_result API path, got: %s", output)
+	assert.True(t, strings.Contains(output, "score=true"), "dry-run should show score patch, got: %s", output)
+	assert.True(t, strings.Contains(output, `"user_id_type": "user_id"`), "dry-run should contain user_id_type param, got: %s", output)
+}
+
+// TestOKR_PatchDryRun_KeyResult_RichText validates +patch dry-run for key result with richtext style.
+func TestOKR_PatchDryRun_KeyResult_RichText(t *testing.T) {
+	setDryRunConfigEnv(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"okr", "+patch",
+			"--level", "key-result",
+			"--target-id", "101",
+			"--style", "richtext",
+			"--content", `{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"updated"}}]}}]}`,
+			"--dry-run",
+		},
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+
+	output := result.Stdout
+	assert.True(t, strings.Contains(output, "/open-apis/okr/v2/key_results/101"), "dry-run should contain key_result API path, got: %s", output)
+	assert.True(t, strings.Contains(output, "content=true"), "dry-run should show content patch, got: %s", output)
+}
+
 // --- Live E2E tests (require user token, skip otherwise) ---
 
 // getTestCycleID returns the test cycle ID from env var, or skips the test.

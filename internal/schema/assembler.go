@@ -4,8 +4,11 @@
 package schema
 
 import (
+	"regexp"
 	"sort"
+	"strings"
 
+	"github.com/larksuite/cli/internal/affordance"
 	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/meta"
@@ -22,7 +25,7 @@ func Convert(f meta.Field) Property {
 	if f.Type == "file" {
 		p.Format = "binary"
 	}
-	p.Description = f.Description
+	p.Description = normalizeDesc(f.Description)
 	p.Default = f.CoercedDefault()
 	p.Example = f.CoercedExample()
 	p.Minimum = f.MinBound()
@@ -50,6 +53,24 @@ func Convert(f meta.Field) Property {
 	}
 
 	return p
+}
+
+var (
+	sepRunRe   = regexp.MustCompile(`[;；]{2,}`)
+	spaceRunRe = regexp.MustCompile(`[ \t]{2,}`)
+)
+
+// normalizeDesc de-crufts a meta_data description for the envelope — strips
+// markdown emphasis and collapses doubled separators/spaces — but keeps content
+// (links, newlines, sentences); the compact flag-help has its own stricter pass.
+func normalizeDesc(s string) string {
+	if s == "" {
+		return ""
+	}
+	s = strings.ReplaceAll(s, "**", "")
+	s = sepRunRe.ReplaceAllString(s, "; ")
+	s = spaceRunRe.ReplaceAllString(s, " ")
+	return strings.TrimRight(s, " ;；。.，,、\n")
 }
 
 // enumSchema splits coerced enum options into the parallel enum / enumDescriptions
@@ -86,6 +107,18 @@ func propsOf(fields []meta.Field) *OrderedProps {
 	return op
 }
 
+// paramPropsOf is propsOf for the params section: each property also carries
+// its CLI flag (--kebab-name).
+func paramPropsOf(fields []meta.Field) *OrderedProps {
+	op := &OrderedProps{}
+	for _, f := range fields {
+		p := Convert(f)
+		p.Flag = "--" + f.FlagName()
+		op.Set(f.Name, p)
+	}
+	return op
+}
+
 // requiredOf returns the alphabetized names of the required fields.
 func requiredOf(fields []meta.Field) []string {
 	var required []string
@@ -108,16 +141,17 @@ func buildInputSchema(m meta.Method) *InputSchema {
 		Properties: &OrderedProps{},
 	}
 
-	addInputObject(is, "params", "", m.Params())
-	addInputObject(is, "data", "", m.Data())
-	addInputObject(is, "file", "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.", m.Files())
+	addInputObject(is, "params", "", m.Params(), true, "")
+	addInputObject(is, "data", "", m.Data(), false, "--data")
+	addInputObject(is, "file", "Binary file uploads. Each property is a file field with format:binary; CLI maps each to --file <key>=<path>.", m.Files(), false, "--file")
 
 	if m.Risk == core.RiskHighRiskWrite {
 		falseVal := false
 		is.Properties.Set("yes", Property{
 			Type:        "boolean",
+			Flag:        "--yes",
 			Default:     falseVal,
-			Description: "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false. Not sent to the backend.",
+			Description: "CLI confirmation gate. Must be true to execute; lark-cli rejects with confirmation_required if absent or false. Pass --yes only after the user has explicitly confirmed; not sent to the backend.",
 		})
 	}
 
@@ -125,20 +159,24 @@ func buildInputSchema(m meta.Method) *InputSchema {
 	return is
 }
 
-// addInputObject adds one named sub-object section (params/data/file) to the
-// input schema when it has fields: its Properties come from the fields, its
-// Required lists the mandatory keys, and the section itself is required at top
-// level when any field is required. Empty sections are skipped.
-func addInputObject(is *InputSchema, name, description string, fields []meta.Field) {
+// addInputObject adds one section (params/data/file) when it has fields, marking
+// the section required at top level when any field is. asFlags tags each property
+// with its --flag (params only); carrier names the section's flag (--data/--file).
+func addInputObject(is *InputSchema, name, description string, fields []meta.Field, asFlags bool, carrier string) {
 	if len(fields) == 0 {
 		return
+	}
+	props := propsOf(fields)
+	if asFlags {
+		props = paramPropsOf(fields)
 	}
 	req := requiredOf(fields)
 	is.Properties.Set(name, Property{
 		Type:        "object",
 		Description: description,
+		Carrier:     carrier,
 		Required:    req,
-		Properties:  propsOf(fields),
+		Properties:  props,
 	})
 	if len(req) > 0 {
 		is.Required = append(is.Required, name)
@@ -179,7 +217,13 @@ func buildMeta(m meta.Method) *Meta {
 // EnvelopeOf renders the MCP envelope for one method ref — the ref-based entry
 // callers use, since apicatalog.MethodRef is the metadata navigation currency.
 func EnvelopeOf(ref apicatalog.MethodRef) Envelope {
-	return assemble(ref.Service.Name, ref.ResourcePath, ref.Method)
+	m := ref.Method
+	// The affordance overlay lives in the CLI, not the metadata; look it up
+	// lazily here (it takes precedence over any affordance the metadata carries).
+	if raw, ok := affordance.For(ref.Service.Name, m.ID); ok {
+		m.Affordance = raw
+	}
+	return assemble(ref.Service.Name, ref.ResourcePath, m)
 }
 
 // Envelopes renders the given method refs into envelopes, sorted by name. The
@@ -205,7 +249,7 @@ func assemble(serviceName string, resourcePath []string, m meta.Method) Envelope
 
 	return Envelope{
 		Name:         name,
-		Description:  m.Description,
+		Description:  normalizeDesc(m.Description),
 		InputSchema:  buildInputSchema(m),
 		OutputSchema: buildOutputSchema(m),
 		Meta:         buildMeta(m),

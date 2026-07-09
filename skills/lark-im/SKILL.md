@@ -1,7 +1,7 @@
 ---
 name: lark-im
 version: 1.0.0
-description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复、发送应用内/短信/电话加急。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据时使用。"
+description: "飞书即时通讯：收发消息和管理群聊。发送和回复消息、搜索聊天记录、管理群聊成员、上传下载图片和文件（支持大文件分片下载）、管理表情回复、发送应用内/短信/电话加急、发送和处理交互卡片（Interactive Card）、监听卡片按钮回调（card.action.trigger）。当用户需要发消息、查看或搜索聊天记录、下载聊天中的文件、查看群成员、搜索群、创建群聊或话题群、管理标记数据、管理 Feed 置顶（添加/移除/查询置顶会话）、管理标签数据、处理卡片回调时使用。"
 metadata:
   requires:
     bins: ["lark-cli"]
@@ -59,11 +59,19 @@ The four message-pulling shortcuts (`+messages-mget`, `+chat-messages-list`, `+m
 
 ### Card Messages (Interactive)
 
+**Before sending or replying with any `interactive` card (`+messages-send` / `+messages-reply`), you MUST read [`references/card/lark-im-card-create.md`](references/card/lark-im-card-create.md) and follow its workflow.** The card JSON passed to `--msg-type interactive --content` must be the output of that workflow — never hand-write or copy a card payload.
+
 Card messages (`interactive` type) are not yet supported for compact conversion in event subscriptions. The raw event data will be returned instead, with a hint printed to stderr.
+
+`interactive` cards support callback events (`card.action.trigger`) — see [`references/lark-im-card-action-reply.md`](references/lark-im-card-action-reply.md).
 
 ### Audio Messages
 
 `--audio` sends a voice message and supports only Opus audio files, for example `.opus` files or Ogg Opus (`.ogg`) files. For `mp3`, `wav`, or other non-Opus audio, either convert to `.opus` first and keep using `--audio`, or send the original file as an attachment with `--file`.
+
+### Sending Doc Content as a Message
+
+When sending content fetched from a Lark doc as a message, fetch the doc with --doc-format im-markdown, then send it as a message using the --markdown format. The fetched content is already in markdown; in any content-forwarding scenario, keep the fetched original text and send it in the --markdown format. Note: if the doc contains a cite tag with type="user", keep it as-is and do not strip the tag.
 
 ### Flag Types
 
@@ -96,6 +104,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli im +<verb> [flags]`）。
 |----------|------|
 | [`+chat-create`](references/lark-im-chat-create.md) | Create a group chat or topic chat; user/bot; --chat-mode group|topic; private/public; invites users/bots; optionally sets bot manager |
 | [`+chat-list`](references/lark-im-chat-list.md) | List chats the current user/bot is a member of; defaults to groups; pass --types=p2p,group to include p2p single chats (user-only); user/bot; supports sorting, pagination, --exclude-muted (user-only) |
+| [`+chat-members-list`](references/lark-im-chat-members-list.md) | List members of a chat; returns separate users[] / bots[] buckets; callable as user or bot; --member-types filters which kinds to return; --page-all pagination; surfaces truncations[] when the server caps a bucket |
 | [`+chat-messages-list`](references/lark-im-chat-messages-list.md) | List messages in a chat or P2P conversation; user/bot; accepts --chat-id or --user-id, resolves P2P chat_id, supports time range/sort/pagination |
 | [`+chat-search`](references/lark-im-chat-search.md) | Search visible group chats by --query keyword and/or --member-ids; user/bot; e.g. look up chat_id by group name; supports type filters, sorting, pagination, and --exclude-muted (user identity only) |
 | [`+chat-update`](references/lark-im-chat-update.md) | Update group chat name or description; user/bot; updates a chat's name or description |
@@ -133,15 +142,19 @@ lark-cli im <resource> <method> [flags] # 调用 API
 
 ### chat.members
 
-  - `bots` — 获取群内机器人列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
   - `create` — 将用户或机器人拉入群聊。Identity: supports `user` and `bot`; the caller must be in the target chat; for `bot` calls, added users must be within the app's availability; for internal chats the operator must belong to the same tenant; if only owners/admins can add members, the caller must be an owner/admin, or a chat-creator bot with `im:chat:operate_as_owner`.
   - `delete` — 将用户或机器人移出群聊。Identity: supports `user` and `bot`; only group owner, admin, or creator bot can remove others; max 50 users or 5 bots per request.
-  - `get` — 获取群成员列表。Identity: supports `user` and `bot`; the caller must be in the target chat and must belong to the same tenant for internal chats.
 
 ### chat.user_setting
 
   - `batch_query` — 批量查询当前用户在群内的个人偏好设置 (e.g. `is_muted` mutes normal messages, `is_mute_at_all` mutes @all messages); up to 10 chats per request. Identity: `user` only (`user_access_token`); the caller must be in each target chat.
   - `batch_update` — 批量更新当前用户在群内的个人偏好设置 (e.g. `is_muted` mutes normal messages, `is_mute_at_all` mutes @all messages); up to 10 chats per request. Identity: `user` only (`user_access_token`); the caller must be in each target chat.
+
+### chat.nickname
+
+  - `get` — 获取自己的群昵称。Get your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`); returns an empty string when no nickname is set.
+  - `update` — 设置自己的群昵称。Set or update your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`); `nickname` must be a non-empty string (max 300 bytes). Use DELETE to clear it.
+  - `delete` — 清空自己的群昵称。Clear your own nickname in the chat (self-only). Identity: `user` only (`user_access_token`).
 
 ### chat.managers
 
@@ -201,10 +214,10 @@ lark-cli im <resource> <method> [flags] # 调用 API
 | `chats.get` | `im:chat:read` |
 | `chats.link` | `im:chat:read` |
 | `chats.update` | `im:chat:update` |
-| `chat.members.bots` | `im:chat.members:read` |
 | `chat.members.create` | `im:chat.members:write_only` |
 | `chat.members.delete` | `im:chat.members:write_only` |
 | `chat.members.get` | `im:chat.members:read` |
+| `+chat-members-list` | `im:chat.members:read` |
 | `chat.user_setting.batch_query` | `im:chat.user_setting:read` |
 | `chat.user_setting.batch_update` | `im:chat.user_setting:write` |
 | `chat.managers.add_managers` | `im:chat.managers:write_only` |

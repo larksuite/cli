@@ -90,7 +90,6 @@ func TestDocsCreateV2BotAutoGrantSkippedWithoutCurrentUser(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
@@ -125,7 +124,6 @@ func TestDocsCreateV2UserSkipsPermissionGrantAugmentation(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "user",
 	})
@@ -163,7 +161,6 @@ func TestDocsCreateV2BotAutoGrantFailureDoesNotFailCreate(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "bot",
 	})
@@ -201,7 +198,6 @@ func TestDocsCreateV2FallbackURLWhenBackendOmitsIt(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "user",
 	})
@@ -233,7 +229,6 @@ func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v2",
 		"--content", "<title>内容</title><p>正文</p>",
 		"--as", "user",
 	})
@@ -248,7 +243,7 @@ func TestDocsCreateV2PreservesBackendURL(t *testing.T) {
 	}
 }
 
-func TestDocsCreateAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
+func TestDocsCreateAPIVersionCompatFlagIsIgnored(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
@@ -262,7 +257,7 @@ func TestDocsCreateAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
 
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--api-version", "v1",
+		"--api-version", "legacy",
 		"--content", "<title>项目计划</title>",
 		"--as", "user",
 	})
@@ -282,7 +277,6 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, docsCreateTestConfig(t, ""))
 	err := runDocsCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--title", "项目计划",
 		"--markdown", "## 目标",
 		"--as", "user",
 	})
@@ -292,8 +286,7 @@ func TestDocsCreateRejectsLegacyV1Flags(t *testing.T) {
 	for _, want := range []string{
 		"docs +create is v2-only",
 		"the old v1 interface has been shut down",
-		"legacy v1 flag(s) --title, --markdown are no longer supported",
-		"--title -> put the title in --content",
+		"legacy v1 flag(s) --markdown are no longer supported",
 		"--markdown -> use --content with --doc-format markdown",
 		"lark-cli skills read lark-doc references/lark-doc-create.md",
 		"lark-cli skills read lark-doc references/lark-doc-xml.md",

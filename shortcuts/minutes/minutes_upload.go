@@ -5,6 +5,8 @@ package minutes
 
 import (
 	"context"
+	"net/url"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
@@ -65,8 +67,25 @@ var MinutesUpload = common.Shortcut{
 		outData := map[string]interface{}{
 			"minute_url": minuteURL,
 		}
+		if minuteToken := extractUploadedMinuteToken(minuteURL); minuteToken != "" {
+			outData["minute_token"] = minuteToken
+		}
 
 		runtime.OutFormat(outData, nil, nil)
 		return nil
 	},
+}
+
+func extractUploadedMinuteToken(minuteURL string) string {
+	u, err := url.Parse(minuteURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(u.Path, "/"), "/")
+	for i, part := range parts {
+		if part == "minutes" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
 }

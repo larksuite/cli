@@ -72,9 +72,11 @@ func hasEmbeddedServices() bool {
 }
 
 // testRegistry returns a minimal MergedRegistry with one service.
+// The version is a real semver newer than the embedded stub baseline ("0.0.0")
+// so cache overlay passes the version gate in InitWithBrand.
 func testRegistry(name string) MergedRegistry {
 	return MergedRegistry{
-		Version: "test-1.0",
+		Version: "1.0.0",
 		Services: []meta.Service{
 			{
 				Name:        name,
@@ -160,7 +162,7 @@ func TestRemoteOff_SkipsRemoteLogic(t *testing.T) {
 }
 
 func TestCacheHit_WithinTTL(t *testing.T) {
-	resetInit()
+	swapEmbeddedMeta(t, nil) // overlay must depend only on the cache version, not the ambient embedded meta
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
@@ -197,7 +199,7 @@ func TestCacheHit_WithinTTL(t *testing.T) {
 }
 
 func TestNetworkError_SilentDegradation(t *testing.T) {
-	resetInit()
+	swapEmbeddedMeta(t, nil) // overlay must depend only on the cache version, not the ambient embedded meta
 	tmp := t.TempDir()
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", tmp)
 	t.Setenv("LARKSUITE_CLI_REMOTE_META", "on")
@@ -371,8 +373,8 @@ func TestFetchRemoteMerged_200(t *testing.T) {
 	if data == nil {
 		t.Fatal("expected non-nil data")
 	}
-	if reg.Version != "test-1.0" {
-		t.Errorf("expected version test-1.0, got %s", reg.Version)
+	if reg.Version != "1.0.0" {
+		t.Errorf("expected version 1.0.0, got %s", reg.Version)
 	}
 }
 

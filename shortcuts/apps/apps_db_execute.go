@@ -12,12 +12,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsDBExecute executes SQL against an app database.
+// AppsDBExecute executes SQL against a Miaoda app database.
 //
 // POST /apps/{app_id}/sql_commands，CLI 永远带 ?transactional=false 进入 DBA 模式
 // （不默认包事务、支持 DDL、result 字符串内嵌结构化 JSON）。
@@ -31,12 +31,18 @@ import (
 //   - 多语句部分失败：`Statement K: ✗ <message> [<code>]` + 末尾「前序语句已落地」提示
 //
 // 失败语义：server 多语句失败仍返 code:0，把失败语句标成 ERROR 哨兵塞进 result。Execute 检测到哨兵
-// 后按 partial failure 上报（exit 非 0）：stdout 输出 ok:false 数据，带 results /
-// statement_index / error_code / error_message / rolled_back / note，避免 agent 误判
-// ok:true 假成功。CLI 永远 DBA 模式（transactional=false），失败前的语句已 auto-commit
-// 落地，故 rolled_back=false（真机 boe 实证）。
+// 后升级成 typed errs.APIError（CategoryAPI → exit 1），避免 agent 误判 ok:true 假成功。诊断信息
+// （第几条失败 / 共几条 / 是否整批回滚 / 前序是否落地）写进 message+hint 文案（errs.* 信封扁平、无
+// detail 容器）：失败在用户显式 BEGIN…COMMIT 事务内 → 整批回滚、前序未落库；否则前序语句已逐条
+// commit、未回滚。rolled_back 语义由 inferRolledBack 按 BEGIN/COMMIT 计数推断。
 //
-// JSON envelope（成功路径）：CLI 把 server 返的 result 字符串解出来放进 `data.results` 数组。
+// JSON（成功路径）按 SQL 类型归一化 `data`（不透传后端 result 字符串）：
+//   - 单 SELECT → data 是行数组 `[{...}]`（空 → `[]`）
+//   - 单 DML    → data = `{command, rows_affected}`
+//   - 单 DDL    → data = `{command}`
+//   - 多语句    → data = `[{command:"SELECT",rows:[...]} | {command,rows_affected} | {command}]`
+//
+// 字段裁剪用框架原生 --jq/-q。
 //
 // Risk: high-risk-write —— SQL 可含 DML/DDL，框架对所有执行强制 --yes 确认关卡（--dry-run 预览豁免）。
 //
@@ -45,51 +51,45 @@ import (
 var AppsDBExecute = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-execute",
-	Description: "Execute SQL (SELECT / DML / DDL) against an app database",
+	Description: "Execute SQL (SELECT / DML / DDL) against a Miaoda app database",
 	Risk:        "high-risk-write",
 	Tips: []string{
 		`Example: lark-cli apps +db-execute --app-id <app_id> --sql "SELECT * FROM orders LIMIT 10" --yes`,
-		`Example: lark-cli apps +db-execute --app-id <app_id> --env dev --file ./migration.sql --yes`,
-		"Tip: filter fields with --jq, e.g. -q '.data.results[].sql_type'",
+		`Example: lark-cli apps +db-execute --app-id <app_id> --environment dev --file ./migration.sql --yes`,
+		"Tip: single SELECT returns data as a row array — filter with --jq, e.g. -q '.data[].id'",
 	},
 	Scopes:    []string{"spark:app:write"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
-		{Name: "app-id", Desc: "app id", Required: true},
+	Flags: append([]common.Flag{
+		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "sql", Desc: "SQL text; use - to read stdin. Mutually exclusive with --file",
 			Input: []string{common.Stdin}},
 		{Name: "file", Desc: "path to a .sql file (relative to cwd). Mutually exclusive with --sql"},
-		{Name: "env", Default: "dev", Enum: []string{"dev", "online"}, Desc: "target db environment (default dev; use --env online for the online environment)"},
-	},
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
 			return err
 		}
 		sql := strings.TrimSpace(rctx.Str("sql"))
 		file := strings.TrimSpace(rctx.Str("file"))
 		if sql != "" && file != "" {
-			return appsValidationError("--sql and --file are mutually exclusive").
-				WithParams(
-					appsInvalidParam("--sql", "mutually exclusive with --file"),
-					appsInvalidParam("--file", "mutually exclusive with --sql"),
-				)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--sql and --file are mutually exclusive")
 		}
 		if file != "" {
 			data, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
 			if err != nil {
-				return appsValidationParamError("--file", "--file: %v", err).WithCause(err)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file: %v", err)
 			}
-			// 归一化：把文件内容写回 --sql，下游（DryRun/Execute）统一从 sql 取。
-			rctx.Cmd.Flags().Set("sql", string(data))
+			// 仅本地校验非空；不把文件内容写回公开的 --sql flag（避免 SQL 内容进入
+			// flag dump / 结构化日志）。下游 DryRun/Execute 由 resolveExecuteSQL 在用时重新读取。
 			sql = strings.TrimSpace(string(data))
 		}
 		if sql == "" {
-			return appsValidationError("one of --sql or --file is required (use --sql - to read stdin)").
-				WithParams(
-					appsInvalidParam("--sql", "one of --sql or --file is required"),
-					appsInvalidParam("--file", "one of --sql or --file is required"),
-				)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "one of --sql or --file is required (use --sql - to read stdin)")
 		}
 		return nil
 	},
@@ -97,7 +97,7 @@ var AppsDBExecute = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			POST(appSQLPath(appID)).
-			Desc("Execute SQL on app database").
+			Desc("Execute SQL on Miaoda app database").
 			Params(buildDBSQLParams(rctx)).
 			Body(buildDBSQLBody(rctx))
 	},
@@ -110,27 +110,30 @@ var AppsDBExecute = common.Shortcut{
 			buildDBSQLParams(rctx),
 			buildDBSQLBody(rctx))
 		if err != nil {
-			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--env dev`")
+			return withAppsHint(err, "verify table/column names with `lark-cli apps +db-table-get --app-id "+appID+" --table <table>`; for day-to-day debugging target the dev database with `--environment dev`")
 		}
 
-		// server `result: string` 内嵌结构化数组 —— CLI 解出来放进 envelope 的 data.results，
+		// server `result: string` 内嵌结构化数组 —— CLI 解出来后按 SQL 类型归一化成 PRD 形态，
 		// 让 json/pretty 路径都基于同一份反序列化产物渲染。
 		stmts := parseSQLResult(common.GetString(raw, "result"))
-		// 注意：data.results 在 json（默认）路径下原样透出全部行，CLI 侧不再二次截断。
-		// 这不是无界 token 黑洞 —— server 对单条 SELECT 结果集有 1000 行硬上限，超出会直接
-		// 返报错（而非静默截断）。需要更大结果集时请在 SQL 里显式 LIMIT/分页，由调用方控制规模。
-		data := map[string]interface{}{"results": stmts}
+		// JSON data 形态（不再透传后端 result 字符串）：
+		//   - 单 SELECT → data 是行数组 [{...}]（空 → []）
+		//   - 单 DML    → data = {command, rows_affected}
+		//   - 单 DDL    → data = {command}
+		//   - 多语句    → data = [{command:"SELECT",rows:[...]} | {command,rows_affected} | {command}]
+		// 字段裁剪走框架原生 --jq/-q（不引入 miaoda 的 --json <fields>）。
+		// 这不是无界 token 黑洞 —— server 对单条 SELECT 结果集有 1000 行硬上限，超出直接报错
+		// （而非静默截断）。需要更大结果集时请在 SQL 里显式 LIMIT/分页，由调用方控制规模。
+		data := shapeSQLData(stmts)
 
 		// 多语句 / 单语句失败：server 仍返 code:0，把失败语句标成 ERROR 哨兵塞进 result。
-		// 已落地的前序语句 + 失败语句构成 partial failure：逐条结果作为 ok:false 数据
-		// 留在 stdout（机器可读）+ 非零退出信号，别让 agent 误判 ok:true 假成功。
-		// pretty 模式 stdout 只打逐条 ✓/✗ 摘要（不再叠一份 JSON envelope），仅返回退出信号。
+		// 升级成 typed api_error（exit 非 0），别让 agent 误判 ok:true 假成功。
+		// pretty 模式仍把逐条 ✓/✗ 摘要打到 stdout（人看），再返回 error（envelope→stderr）。
 		if errIdx, errStmt, failed := findErrorSentinel(stmts); failed {
 			if rctx.Format == "pretty" {
 				renderSQLPretty(rctx.IO().Out, stmts)
-				return output.PartialFailure(output.ExitAPI)
 			}
-			return rctx.OutPartialFailure(sqlStatementFailurePayload(stmts, errIdx, errStmt), nil)
+			return sqlStatementError(stmts, errIdx, errStmt)
 		}
 
 		rctx.OutFormat(data, nil, func(w io.Writer) {
@@ -138,6 +141,70 @@ var AppsDBExecute = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// shapeSQLData 把解析出的 statements 归一化成 PRD 约定的 JSON `data` 形态：
+//   - 无语句       → []（空数组）
+//   - 单条语句     → singleStatementJSON（SELECT 是行数组、DML/DDL 是对象）
+//   - 多条语句     → []multiStatementElement（每条统一成 {command,...} 对象，SELECT 行放 rows）
+//
+// 不再透传后端 result 字符串（旧形态 data.results[].data 是 JSON 字符串，对 agent 不友好）。
+func shapeSQLData(stmts []map[string]interface{}) interface{} {
+	if len(stmts) == 0 {
+		return []interface{}{}
+	}
+	if len(stmts) == 1 {
+		return singleStatementJSON(stmts[0])
+	}
+	out := make([]interface{}, 0, len(stmts))
+	for _, s := range stmts {
+		out = append(out, multiStatementElement(s))
+	}
+	return out
+}
+
+// singleStatementJSON 单条语句的 PRD JSON 形态：
+//   - SELECT → 行数组（空 → []）
+//   - DML    → {command, rows_affected}
+//   - DDL / OK / 其它 → {command}
+func singleStatementJSON(s map[string]interface{}) interface{} {
+	sqlType := common.GetString(s, "sql_type")
+	switch {
+	case sqlType == "SELECT":
+		return selectRows(s)
+	case isDMLType(sqlType):
+		return map[string]interface{}{"command": sqlType, "rows_affected": intOrZero(s["affected_rows"])}
+	default:
+		return map[string]interface{}{"command": sqlType}
+	}
+}
+
+// multiStatementElement 多语句里单条的 PRD JSON 形态：与单条一致，但 SELECT 包成
+// {command:"SELECT", rows:[...]}（避免数组里直接嵌套数组造成歧义）。
+func multiStatementElement(s map[string]interface{}) map[string]interface{} {
+	sqlType := common.GetString(s, "sql_type")
+	switch {
+	case sqlType == "SELECT":
+		return map[string]interface{}{"command": "SELECT", "rows": selectRows(s)}
+	case isDMLType(sqlType):
+		return map[string]interface{}{"command": sqlType, "rows_affected": intOrZero(s["affected_rows"])}
+	default:
+		return map[string]interface{}{"command": sqlType}
+	}
+}
+
+// selectRows 把 SELECT statement 的 data 字段（行 JSON 数组字符串）解析成行数组；
+// 空 / 非法一律返回非 nil 的空数组（保证 JSON 序列化成 [] 而非 null）。
+func selectRows(s map[string]interface{}) []map[string]interface{} {
+	dataJSON := strings.TrimSpace(common.GetString(s, "data"))
+	if dataJSON == "" || dataJSON == "null" {
+		return []map[string]interface{}{}
+	}
+	var rows []map[string]interface{}
+	if err := json.Unmarshal([]byte(dataJSON), &rows); err != nil || rows == nil {
+		return []map[string]interface{}{}
+	}
+	return rows
 }
 
 // findErrorSentinel 在 statements 里找 ERROR 哨兵（server 失败时追加在失败语句位置）。
@@ -151,28 +218,48 @@ func findErrorSentinel(stmts []map[string]interface{}) (int, map[string]interfac
 	return 0, nil, false
 }
 
-// sqlStatementFailurePayload 把 ERROR 哨兵整理成 partial-failure 的 stdout 数据。
+// sqlStatementError 把 ERROR 哨兵升级成 typed errs.APIError（CategoryAPI → exit 1）。
 //
-// CLI 永远 DBA 模式（transactional=false），真机 boe 实证：失败语句之前的语句已逐条 auto-commit
-// 落地，不存在外层事务回滚。因此 rolled_back=false、results 含全部逐条结果（ERROR 哨兵在
-// 失败位置），note 提示用户别整批重跑（否则会重复写入）。
-func sqlStatementFailurePayload(stmts []map[string]interface{}, errIdx int, errStmt map[string]interface{}) map[string]interface{} {
+// 多语句失败的诊断信息——第几条失败 / 共几条 / 是否整批回滚 / 前序是否落地——都写进
+// message + hint 的人类可读文案（errs.* 信封是扁平字段、不带结构化 detail 容器）。文案对齐
+// miaoda-cli（src/cli/handlers/db/sql.ts、src/api/db/api.ts）：
+//   - message 末尾 "(at statement N of M)" 给出失败位置；
+//   - hint 由 inferRolledBack 推断（实测后端把 BEGIN/COMMIT 也作为 statement 返回）：
+//     失败仍在用户显式事务内 → 服务端整批回滚，用 miaoda 原句 "Transaction rolled back; no changes persisted."；
+//     否则前序语句已逐条 commit、未回滚（flat 信封无逐句 breakdown，故 hint 简述前序已落地 + 从失败处续跑）。
+func sqlStatementError(stmts []map[string]interface{}, errIdx int, errStmt map[string]interface{}) error {
 	code, msg := parseErrorSentinel(common.GetString(errStmt, "data"))
 	stmtNo := errIdx + 1 // 1-based 给人看
-	note := "no statements were applied; fix the SQL and re-run."
-	if errIdx > 0 {
-		note = fmt.Sprintf(
-			"statements 1-%d were already applied (DBA mode auto-commits each statement); fix statement %d and re-run only the remaining statements.",
-			errIdx, stmtNo)
+	fullMsg := fmt.Sprintf("%s (at statement %d of %d)", msg, stmtNo, len(stmts))
+
+	var hint string
+	switch {
+	case inferRolledBack(stmts[:errIdx]):
+		hint = "Transaction rolled back; no changes persisted."
+	case errIdx > 0:
+		hint = fmt.Sprintf("Earlier statements were committed and not rolled back; fix statement %d and re-run the remaining statements.", stmtNo)
+	default:
+		hint = "No statements were applied; fix the SQL and re-run."
 	}
-	return map[string]interface{}{
-		"results":         stmts,
-		"statement_index": errIdx,
-		"error_code":      code,
-		"error_message":   fmt.Sprintf("%s (at statement %d of %d)", msg, stmtNo, len(stmts)),
-		"rolled_back":     false,
-		"note":            note,
+	return errs.NewAPIError(errs.SubtypeServerError, "%s", fullMsg).WithCode(code).WithHint("%s", hint)
+}
+
+// inferRolledBack 推断失败时是否处于用户显式事务内（→ 服务端整批回滚）。
+// 遍历已完成语句的 sql_type：BEGIN/START TRANSACTION +1，COMMIT/ROLLBACK/END -1；
+// 结束 depth>0 说明事务还开着、已被服务端回滚。对齐 miaoda-cli inferRolledBack。
+func inferRolledBack(completed []map[string]interface{}) bool {
+	depth := 0
+	for _, s := range completed {
+		switch strings.ToUpper(strings.TrimSpace(common.GetString(s, "sql_type"))) {
+		case "BEGIN", "START TRANSACTION", "START_TRANSACTION":
+			depth++
+		case "COMMIT", "ROLLBACK", "END":
+			if depth > 0 {
+				depth--
+			}
+		}
 	}
+	return depth > 0
 }
 
 // parseErrorSentinel 解析 ERROR 哨兵的 data（`{code,message}` JSON），返回数值 code 与 message。
@@ -204,16 +291,34 @@ func parseErrorSentinel(data string) (int, string) {
 //
 // CLI 永远走 DBA 模式，原子性由用户在 SQL 内显式 BEGIN/COMMIT 控制；不暴露 transactional flag 给用户。
 func buildDBSQLParams(rctx *common.RuntimeContext) map[string]interface{} {
-	return map[string]interface{}{
-		"env":           rctx.Str("env"),
+	return dbEnvParams(rctx, map[string]interface{}{
 		"transactional": false,
-	}
+	})
 }
 
-// buildDBSQLBody 构造 sql 接口的 body：仅 sql（来源由 Validate 归一化到 --sql）。
+// resolveExecuteSQL 返回要执行的 SQL，在用时（DryRun/Execute）现读，使 --file 的内容
+// 不被写回公开的 --sql flag（避免泄露进 flag dump / 结构化日志）。优先 --sql（内联或 stdin，
+// 已由输入框架解析到 flag 值）；否则现读 --file。Validate 已先行校验可读且非空。
+func resolveExecuteSQL(rctx *common.RuntimeContext) (string, error) {
+	if strings.TrimSpace(rctx.Str("sql")) != "" {
+		return rctx.Str("sql"), nil
+	}
+	file := strings.TrimSpace(rctx.Str("file"))
+	if file == "" {
+		return "", nil
+	}
+	data, err := cmdutil.ReadInputFile(rctx.FileIO(), file)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// buildDBSQLBody 构造 sql 接口的 body：仅 sql（由 resolveExecuteSQL 在用时解析，--file 不入 flag）。
 func buildDBSQLBody(rctx *common.RuntimeContext) map[string]interface{} {
+	sql, _ := resolveExecuteSQL(rctx)
 	return map[string]interface{}{
-		"sql": rctx.Str("sql"),
+		"sql": sql,
 	}
 }
 
@@ -354,10 +459,10 @@ func renderMultiStatementPretty(w io.Writer, stmts []map[string]interface{}) {
 	}
 	fmt.Fprintln(w)
 	if failedIdx >= 0 {
-		// CLI 永远 DBA 模式（transactional=false），失败语句之前的语句已 auto-commit 落地，
-		// 不存在整批回滚 —— 如实告诉用户，避免整批重跑导致重复写入。
+		// CLI 永远传 transactional=false，失败语句之前的语句已逐条 commit 落地、不会整批回滚——
+		// 如实告诉用户，避免整批重跑导致重复写入。
 		if successCount > 0 {
-			fmt.Fprintf(w, "(statement %d failed; %d statement%s before it already applied — DBA mode auto-commits each)\n",
+			fmt.Fprintf(w, "(statement %d failed; %d statement%s before it committed and not rolled back)\n",
 				failedIdx+1, successCount, plural(int64(successCount)))
 		} else {
 			fmt.Fprintf(w, "(statement %d failed; no statements applied)\n", failedIdx+1)
@@ -461,6 +566,7 @@ func isDMLType(sqlType string) bool {
 	return false
 }
 
+// dmlVerb 把 DML sql_type 映射成过去分词动词：INSERT→inserted / UPDATE→updated / DELETE→deleted / MERGE→merged，未知 → affected。
 func dmlVerb(sqlType string) string {
 	switch strings.ToUpper(sqlType) {
 	case "INSERT":
@@ -475,6 +581,7 @@ func dmlVerb(sqlType string) string {
 	return "affected"
 }
 
+// plural 返回英文复数后缀：n==1 时空串，否则 "s"。
 func plural(n int64) string {
 	if n == 1 {
 		return ""

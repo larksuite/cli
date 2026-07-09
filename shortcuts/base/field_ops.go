@@ -6,9 +6,12 @@ package base
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+var fieldCreateBatchDelay = time.Second
 
 func dryRunFieldList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	offset := runtime.Int("offset")
@@ -33,12 +36,14 @@ func dryRunFieldGet(_ context.Context, runtime *common.RuntimeContext) *common.D
 
 func dryRunFieldCreate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	pc := newParseCtx(runtime)
-	body, _ := parseJSONObject(pc, runtime.Str("json"), "json")
-	return common.NewDryRunAPI().
-		POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").
-		Body(body).
+	bodies, _ := parseFieldCreateBodies(pc, runtime.Str("json"))
+	dr := common.NewDryRunAPI().
 		Set("base_token", runtime.Str("base-token")).
 		Set("table_id", baseTableID(runtime))
+	for _, body := range bodies {
+		dr.POST("/open-apis/base/v3/bases/:base_token/tables/:table_id/fields").Body(body)
+	}
+	return dr
 }
 
 func dryRunFieldUpdate(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -95,11 +100,16 @@ func validateFormulaLookupGuideAck(runtime *common.RuntimeContext, command strin
 }
 
 func validateFieldCreate(runtime *common.RuntimeContext) error {
-	body, err := validateFieldJSON(runtime)
+	bodies, err := parseFieldCreateBodies(newParseCtx(runtime), runtime.Str("json"))
 	if err != nil {
 		return err
 	}
-	return validateFormulaLookupGuideAck(runtime, "+field-create", body)
+	for _, body := range bodies {
+		if err := validateFormulaLookupGuideAck(runtime, "+field-create", body); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func validateFieldUpdate(runtime *common.RuntimeContext) error {
@@ -140,17 +150,38 @@ func executeFieldGet(runtime *common.RuntimeContext) error {
 }
 
 func executeFieldCreate(runtime *common.RuntimeContext) error {
-	pc := newParseCtx(runtime)
-	body, err := parseJSONObject(pc, runtime.Str("json"), "json")
+	bodies, err := parseFieldCreateBodies(newParseCtx(runtime), runtime.Str("json"))
 	if err != nil {
 		return err
 	}
-	data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields"), nil, body)
-	if err != nil {
-		return err
+	fields := make([]interface{}, 0, len(bodies))
+	for idx, body := range bodies {
+		if idx > 0 && fieldCreateBatchDelay > 0 {
+			time.Sleep(fieldCreateBatchDelay)
+		}
+		data, err := baseV3Call(runtime, "POST", baseV3Path("bases", runtime.Str("base-token"), "tables", baseTableID(runtime), "fields"), nil, body)
+		if err != nil {
+			return err
+		}
+		fields = append(fields, data)
 	}
-	runtime.Out(map[string]interface{}{"field": data, "created": true}, nil)
+	if len(fields) == 1 {
+		runtime.Out(map[string]interface{}{"field": fields[0], "created": true}, nil)
+		return nil
+	}
+	runtime.Out(map[string]interface{}{"fields": fields, "created": true, "total": len(fields)}, nil)
 	return nil
+}
+
+func parseFieldCreateBodies(pc *parseCtx, raw string) ([]map[string]interface{}, error) {
+	bodies, err := parseObjectList(pc, raw, "json")
+	if err != nil {
+		return nil, err
+	}
+	if len(bodies) == 0 {
+		return nil, baseFlagErrorf("--json must contain at least one field JSON object")
+	}
+	return bodies, nil
 }
 
 func executeFieldUpdate(runtime *common.RuntimeContext) error {

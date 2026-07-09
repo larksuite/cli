@@ -22,6 +22,7 @@ func TestRejectPositionalArgs_WithArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for positional arg, got nil")
 	}
+	// rejectPositionalArgs returns a raw fmt.Errorf via cobra's PositionalArgs contract — not a typed envelope, message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "positional arguments are not supported") {
 		t.Errorf("expected positional args rejection message, got: %v", err)
 	}
@@ -39,6 +40,7 @@ func TestRejectPositionalArgs_MultipleArgs(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for multiple positional args, got nil")
 	}
+	// rejectPositionalArgs returns a raw fmt.Errorf via cobra's PositionalArgs contract — not a typed envelope, message-substring assertion is intentional.
 	if !strings.Contains(err.Error(), "positional arguments are not supported") {
 		t.Errorf("unexpected error message: %v", err)
 	}

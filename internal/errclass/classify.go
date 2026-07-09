@@ -10,12 +10,14 @@ import (
 	"strings"
 
 	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/core"
 )
 
 // ClassifyContext is the contextual data BuildAPIError uses to populate
 // identity-aware fields on typed errors (PermissionError.Identity / ConsoleURL).
-// Identity is a plain string ("user" / "bot" / "") so this package does not
-// depend on internal/core (which would create an import cycle).
+// Brand and Identity are plain strings at this boundary; ConsoleURL normalizes
+// Brand through core.ParseBrand, so callers can pass a raw brand string without
+// coupling this contract to core's brand enum.
 type ClassifyContext struct {
 	Brand    string // "feishu" | "lark" — drives console_url host
 	AppID    string // placed in console_url
@@ -444,28 +446,27 @@ func extractMissingScopes(resp map[string]any) []string {
 	return out
 }
 
-// ConsoleURL composes the Feishu/Lark open-platform scope-grant console URL,
-// suitable for PermissionError.ConsoleURL. Empty appID → empty string. Empty
-// scopes list returns the bare /auth landing page; scopes are joined with
-// commas in the `q` query parameter so the console can pre-select them.
+// ConsoleURL composes the Feishu/Lark open-platform application-scope apply
+// page URL (the official open-pages `/page/scope-apply` entry), suitable for
+// PermissionError.ConsoleURL. Empty appID → empty string. Empty scopes list
+// returns the page carrying only clientID; otherwise scopes are joined with
+// commas in the `scopes` query parameter so the console can pre-select them.
 //
 // brand is "feishu" or "lark"; unknown values default to feishu.
 func ConsoleURL(brand, appID string, scopes []string) string {
 	if appID == "" {
 		return ""
 	}
-	host := "open.feishu.cn"
-	if brand == "lark" {
-		host = "open.larksuite.com"
-	}
-	// PathEscape on appID — it sits in the URL path. QueryEscape on the
-	// comma-joined scopes — they sit in the `?q=` value, and untrusted scope
-	// content must not be able to inject extra query parameters via `&`/`#`.
-	pathID := url.PathEscape(appID)
+	// QueryEscape both values — clientID and scopes both sit in the query
+	// string, and untrusted content must not be able to inject extra query
+	// parameters via `&`/`#`. The brand→host mapping is owned by core so the
+	// open-platform base URL stays a single source of truth.
+	base := fmt.Sprintf("%s/page/scope-apply?clientID=%s",
+		core.ResolveOpenBaseURL(core.ParseBrand(brand)), url.QueryEscape(appID))
 	if len(scopes) == 0 {
-		return fmt.Sprintf("https://%s/app/%s/auth", host, pathID)
+		return base
 	}
-	return fmt.Sprintf("https://%s/app/%s/auth?q=%s", host, pathID, url.QueryEscape(strings.Join(scopes, ",")))
+	return base + "&scopes=" + url.QueryEscape(strings.Join(scopes, ","))
 }
 
 func intFromAny(v any) int {

@@ -143,14 +143,14 @@ func TestSheets_CRUDE2EWorkflow(t *testing.T) {
 		assert.True(t, len(matchedCells.Array()) > 0, "should find at least one cell containing 'Alice'")
 	})
 
-	t.Run("export spreadsheet with +export as bot", func(t *testing.T) {
+	t.Run("export spreadsheet with +workbook-export as bot", func(t *testing.T) {
 		require.NotEmpty(t, spreadsheetToken, "spreadsheet token is required")
 		outputDir := t.TempDir()
 		outputPath := filepath.Join(outputDir, "export.xlsx")
 
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
-				"sheets", "+export",
+				"sheets", "+workbook-export",
 				"--spreadsheet-token", spreadsheetToken,
 				"--file-extension", "xlsx",
 				"--output-path", "./export.xlsx",

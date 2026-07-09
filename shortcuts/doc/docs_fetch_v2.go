@@ -14,10 +14,12 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const docsFetchExtraParam = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
+
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export, im-markdown downgrades residual DocxXML fragments for IM messages", Default: "xml", Enum: []string{"xml", "markdown", "im-markdown"}},
 		{Name: "detail", Desc: "detail level; simple for reading, with-ids for block references, full for styles and edit metadata", Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
 		{Name: "lang", Desc: "user cite display language, e.g. en-US, zh-CN, ja-JP"},
 		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
@@ -69,8 +71,14 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := processHTML5BlockReferenceMapForFetch(runtime, effectiveFetchFormat(runtime), ref.Token, data); err != nil {
+		return err
+	}
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+	}
+	if isIMMarkdownFetch(runtime) {
+		applyFetchIMMarkdown(data, runtime.Str("doc"))
 	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {
@@ -85,7 +93,8 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format": runtime.Str("doc-format"),
+		"format":      effectiveFetchFormat(runtime),
+		"extra_param": docsFetchExtraParam,
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
@@ -120,6 +129,14 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	injectDocsScene(runtime, body)
 
 	return body
+}
+
+func effectiveFetchFormat(runtime *common.RuntimeContext) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	if format == "im-markdown" {
+		return "markdown"
+	}
+	return format
 }
 
 func resolveFetchLang(runtime *common.RuntimeContext) string {

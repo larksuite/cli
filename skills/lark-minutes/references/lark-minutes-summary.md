@@ -1,6 +1,5 @@
 # minutes +summary
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 替换妙记的 AI 总结内容。写操作，会覆盖当前总结。
 
@@ -40,7 +39,7 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 
 ### 1. 先读后写
 
-替换前建议先用 `lark-cli vc +notes --minute-tokens <token>` 读取当前总结，确认 `minute_token` 与待替换内容无误。
+替换前建议先用 `lark-cli minutes +detail --minute-tokens <token> --summary` 读取当前总结，确认 `minute_token` 与待替换内容无误。
 
 ### 2. Markdown 展示说明
 
@@ -104,7 +103,7 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 |------|---------|
 | 妙记 URL | 从 URL 末尾提取，如 `https://sample.feishu.cn/minutes/obcnxxxxxxxxxxxxxxxxxxxx` |
 | 妙记搜索 | `lark-cli minutes +search --query "关键词"` |
-| 会议产物查询 | `lark-cli vc +notes --minute-tokens <token>` |
+| 会议产物查询 | `lark-cli vc +detail --meeting-ids <id>` 或 `vc +recording`, 拿到 `minute_token`, 然后走 `minutes +detail` |
 
 ## 常见错误与排查
 
@@ -118,5 +117,4 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 
 - [lark-minutes](../SKILL.md) — 妙记全部命令
 - [minutes +todo](lark-minutes-todo.md) — 替换待办项
-- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 读取总结、待办等 AI 产物
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+- [minutes +detail](lark-minutes-detail.md) — 读取总结、待办等 AI 产物

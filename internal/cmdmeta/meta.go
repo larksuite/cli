@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package cmdmeta is the single source of truth for command metadata that the
-// policy engine and the hook selector both consume. It wraps the existing
-// cmdutil annotations (risk_level, supportedIdentities) and adds the
-// "domain" axis that the hook selector and Rule path globs need.
+// policy engine, the hook selector, and help rendering consume. It wraps the
+// existing cmdutil annotations (risk_level, supportedIdentities) and adds the
+// "domain" axis that the hook selector and Rule path globs need, plus the
+// affordance ref (service, method id) that lets service-method and shortcut
+// help share one usage-guidance lookup path.
 //
 // Three axes:
 //
@@ -51,6 +53,12 @@ const (
 
 	sourceAnnotationKey    = "cmdmeta.source"
 	generatedAnnotationKey = "cmdmeta.generated"
+
+	// affordance{Service,Method}Key locate the command's usage-guidance overlay
+	// entry (see internal/affordance). Both service-method commands and
+	// +-prefixed shortcuts set these so help rendering shares one lookup path.
+	affordanceServiceKey = "cmdmeta.affordance.service"
+	affordanceMethodKey  = "cmdmeta.affordance.method"
 )
 
 // Meta groups the three command-level metadata axes consumed by the policy
@@ -123,6 +131,35 @@ func SetSource(cmd *cobra.Command, source Source, generated bool) {
 	} else {
 		cmd.Annotations[generatedAnnotationKey] = "false"
 	}
+}
+
+// SetAffordanceRef records which affordance overlay entry (service, method id)
+// a command maps to, so help rendering can look up its usage guidance. Stored
+// on the command itself (no inheritance): each method / shortcut owns its ref.
+// A no-op if either coordinate is empty.
+func SetAffordanceRef(cmd *cobra.Command, service, method string) {
+	if service == "" || method == "" {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[affordanceServiceKey] = service
+	cmd.Annotations[affordanceMethodKey] = method
+}
+
+// AffordanceRef returns the command's own affordance overlay coordinates.
+// ok is false when the command carries no ref.
+func AffordanceRef(cmd *cobra.Command) (service, method string, ok bool) {
+	if cmd.Annotations == nil {
+		return "", "", false
+	}
+	service = cmd.Annotations[affordanceServiceKey]
+	method = cmd.Annotations[affordanceMethodKey]
+	if service == "" || method == "" {
+		return "", "", false
+	}
+	return service, method, true
 }
 
 // Domain returns the nearest-ancestor domain for the command. Empty string
