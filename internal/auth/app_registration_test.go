@@ -32,10 +32,14 @@ func jsonResponse(body string) *http.Response {
 func Test_BuildVerificationURL(t *testing.T) {
 	t.Run("URL不含问号则添加?分隔符", func(t *testing.T) {
 		result := BuildVerificationURL("https://example.com/verify", "1.0.0")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
 		convey.Convey("should add ? separator", t, func() {
-			convey.So(result, convey.ShouldContainSubstring, "?lpv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&ocv=1.0.0")
-			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("ocv"), convey.ShouldEqual, "1.0.0")
+			convey.So(got.Query().Get("from"), convey.ShouldEqual, "cli")
 			convey.So(result, convey.ShouldStartWith, "https://example.com/verify?")
 		})
 	})
@@ -47,6 +51,30 @@ func Test_BuildVerificationURL(t *testing.T) {
 			convey.So(result, convey.ShouldContainSubstring, "&ocv=2.0.0")
 			convey.So(result, convey.ShouldContainSubstring, "&from=cli")
 			convey.So(result, convey.ShouldNotContainSubstring, "?lpv=")
+		})
+	})
+
+	t.Run("指定已有应用时添加app_id", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should include target app_id", t, func() {
+			convey.So(got.Query().Get("app_id"), convey.ShouldEqual, "cli_existing")
+			convey.So(got.Query().Get("client_id"), convey.ShouldEqual, "")
+			convey.So(got.Query().Get("lpv"), convey.ShouldEqual, "2.0.0")
+		})
+	})
+
+	t.Run("服务端已返回app_id时不覆盖", func(t *testing.T) {
+		result := BuildVerificationURL("https://example.com/verify?app_id=cli_server&user_code=abc", "2.0.0", "cli_existing")
+		got, err := url.Parse(result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		convey.Convey("should keep server app_id", t, func() {
+			convey.So(got.Query().Get("app_id"), convey.ShouldEqual, "cli_server")
 		})
 	})
 }
@@ -533,8 +561,8 @@ func TestRequestAppRegistration_VerificationURICompleteFallback(t *testing.T) {
 		},
 		{
 			name: "verification_uri with existing query",
-			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?client_id=cli_x","expires_in":300,"interval":5}`,
-			want: "https://example/verify?client_id=cli_x&user_code=uc",
+			resp: `{"device_code":"dc","user_code":"uc","verification_uri":"https://example/verify?app_id=cli_x","expires_in":300,"interval":5}`,
+			want: "https://example/verify?app_id=cli_x&user_code=uc",
 		},
 	}
 	for _, tc := range cases {
@@ -580,5 +608,28 @@ func TestRequestAppRegistration_BeginPrivateKeyJWT(t *testing.T) {
 	}
 	if body.Get("auth_attestation") != "header.claims.sig" {
 		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
+	}
+}
+
+func TestRequestAppRegistration_BeginPrivateKeyJWTExistingAppID(t *testing.T) {
+	var body url.Values
+	hc := captureClient(&body, beginRespJSON)
+
+	opts := AppRegistrationBeginOptions{
+		AuthMethod:      core.AuthMethodPrivateKeyJWT,
+		AuthAttestation: "header.claims.sig",
+		RestoreAppID:    "cli_existing",
+	}
+	if _, err := RequestAppRegistration(context.Background(), hc, core.BrandFeishu, opts, nil); err != nil {
+		t.Fatal(err)
+	}
+	if body.Get("auth_method") != "private_key_jwt" {
+		t.Errorf("auth_method = %q, want private_key_jwt", body.Get("auth_method"))
+	}
+	if body.Get("auth_attestation") != "header.claims.sig" {
+		t.Errorf("auth_attestation = %q", body.Get("auth_attestation"))
+	}
+	if body.Get("app_id") != "cli_existing" {
+		t.Errorf("app_id = %q, want cli_existing", body.Get("app_id"))
 	}
 }
