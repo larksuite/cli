@@ -339,7 +339,7 @@ func jsonSchemaResponseFormat() map[string]any {
 							"properties": map[string]any{
 								"category": map[string]any{
 									"type": "string",
-									"enum": []string{"error_hint", "default_output", "naming", "skill_quality"},
+									"enum": []string{"error_hint", "default_output", "naming", "skill_quality", "public_content_leakage"},
 								},
 								"severity": map[string]any{
 									"type": "string",

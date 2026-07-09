@@ -34,7 +34,9 @@ var SlidesScreenshot = common.Shortcut{
 	Command:     "+screenshot",
 	Description: "Save slide screenshots to local files without printing Base64 image data",
 	Risk:        "read",
-	Scopes:      []string{"slides:presentation:screenshot"},
+	Scopes:      []string{},
+	// The screenshot API is allowlist-gated for only a few apps, so do not
+	// advertise/preflight its scope. Let the API fail and let callers degrade.
 	// wiki:node:read is required only when --presentation is a wiki URL.
 	ConditionalScopes: []string{"wiki:node:read"},
 	AuthTypes:         []string{"user", "bot"},

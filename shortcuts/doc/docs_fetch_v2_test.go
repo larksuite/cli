@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -40,6 +41,23 @@ func TestBuildCreateBodyIncludesSceneFromContext(t *testing.T) {
 	body := buildCreateBody(runtime)
 	if got := body["scene"]; got != "DoubaoCLI" {
 		t.Fatalf("scene = %#v, want %q", got, "DoubaoCLI")
+	}
+}
+
+func TestBuildCreateBodyPrependsTitleToContent(t *testing.T) {
+	t.Parallel()
+
+	runtime := newCreateBodyTestRuntime(context.Background())
+	if err := runtime.Cmd.Flags().Set("title", "A & B <C>"); err != nil {
+		t.Fatalf("set title: %v", err)
+	}
+	if err := runtime.Cmd.Flags().Set("content", "## Body"); err != nil {
+		t.Fatalf("set content: %v", err)
+	}
+
+	body := buildCreateBody(runtime)
+	if got, want := body["content"], "<title>A &amp; B &lt;C&gt;</title>\n## Body"; got != want {
+		t.Fatalf("content = %#v, want %q", got, want)
 	}
 }
 
@@ -470,6 +488,44 @@ func TestAddFetchDetailDowngradeWarningNoops(t *testing.T) {
 	}
 }
 
+func TestBuildFetchBodyIncludesFetchExtraParamByDefault(t *testing.T) {
+	t.Parallel()
+
+	runtime := newFetchBodyTestRuntime(context.Background())
+
+	body := buildFetchBody(runtime)
+	extraParam, ok := body["extra_param"].(string)
+	if !ok || extraParam == "" {
+		t.Fatalf("extra_param = %#v, want JSON string", body["extra_param"])
+	}
+	var got map[string]bool
+	if err := json.Unmarshal([]byte(extraParam), &got); err != nil {
+		t.Fatalf("decode extra_param %q: %v", extraParam, err)
+	}
+	if got["enable_user_cite_reference_map"] != true {
+		t.Fatalf("enable_user_cite_reference_map = %#v, want true in %#v", got["enable_user_cite_reference_map"], got)
+	}
+	if got["return_html5_block_data"] != true {
+		t.Fatalf("return_html5_block_data = %#v, want true in %#v", got["return_html5_block_data"], got)
+	}
+	if _, ok := got["reference_map_mode"]; ok {
+		t.Fatalf("extra_param should not use legacy reference_map_mode: %#v", got)
+	}
+	if len(got) != 2 {
+		t.Fatalf("extra_param should only contain fetch reference_map and html5 data toggles: %#v", got)
+	}
+}
+
+func TestDocsFetchV2ReferenceMapFlagIsNotAvailable(t *testing.T) {
+	t.Parallel()
+
+	for _, flag := range v2FetchFlags() {
+		if flag.Name == "reference-map" {
+			t.Fatal("fetch should not expose reference-map flag")
+		}
+	}
+}
+
 func TestDocsFetchDryRunDefaultsToV2Endpoint(t *testing.T) {
 	t.Parallel()
 
@@ -490,10 +546,10 @@ func TestDocsFetchDryRunDefaultsToV2Endpoint(t *testing.T) {
 	}
 }
 
-func TestDocsFetchAPIVersionV1StillUsesV2Endpoint(t *testing.T) {
+func TestDocsFetchAPIVersionCompatFlagIsIgnored(t *testing.T) {
 	t.Parallel()
 
-	runtime := newFetchShortcutTestRuntime(t, "v1", nil)
+	runtime := newFetchShortcutTestRuntime(t, "legacy", nil)
 	if err := validateFetchV2(context.Background(), runtime); err != nil {
 		t.Fatalf("validateFetchV2() error = %v", err)
 	}
@@ -520,6 +576,46 @@ func TestDocsFetchIMMarkdownRequestsMarkdownFromAPI(t *testing.T) {
 	dry := decodeDocDryRun(t, DocsFetch.DryRun(context.Background(), runtime))
 	if got, want := dry.API[0].Body["format"], "markdown"; got != want {
 		t.Fatalf("dry-run format = %#v, want %q", got, want)
+	}
+}
+
+func TestDocsFetchIMMarkdownIgnoresHTML5BlockInsideCodeFence(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-im-markdown-code-fence"))
+	registerDocsAIStub(reg, "POST", "/open-apis/docs_ai/v1/documents/doxcnFetchIMMarkdownFence/fetch", map[string]interface{}{
+		"document": map[string]interface{}{
+			"document_id": "doxcnFetchIMMarkdownFence",
+			"revision_id": float64(1),
+			"content":     "```xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n```\n",
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "doxcnFetchIMMarkdownFence",
+		"--doc-format", "im-markdown",
+		"--format", "json",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v\nraw=%s", err, stdout.String())
+	}
+	if errField, ok := envelope["error"]; ok {
+		t.Fatalf("fetch output should not contain error: %#v", errField)
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	doc, _ := data["document"].(map[string]interface{})
+	content, _ := doc["content"].(string)
+	if !strings.Contains(content, "```xml\n<html5-block data-ref=\"html5_1\"></html5-block>\n```") {
+		t.Fatalf("fenced html5-block should stay in content, got:\n%s", content)
+	}
+	if _, ok := doc["reference_map"]; ok {
+		t.Fatalf("fenced html5-block should not create reference_map side effects: %#v", doc["reference_map"])
 	}
 }
 
@@ -788,18 +884,46 @@ func TestDocsFetchRejectsLegacyFlags(t *testing.T) {
 
 func newFetchBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+fetch"}
-	cmd.Flags().String("doc-format", "xml", "")
-	cmd.Flags().String("detail", "simple", "")
-	cmd.Flags().String("lang", "", "")
-	cmd.Flags().Int("revision-id", -1, "")
-	cmd.Flags().String("scope", "full", "")
-	cmd.Flags().String("start-block-id", "", "")
-	cmd.Flags().String("end-block-id", "", "")
-	cmd.Flags().String("keyword", "", "")
-	cmd.Flags().Int("context-before", 0, "")
-	cmd.Flags().Int("context-after", 0, "")
-	cmd.Flags().Int("max-depth", -1, "")
+	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
+	cmd.Flags().String("detail", fetchDefault("detail"), "")
+	cmd.Flags().String("lang", fetchDefault("lang"), "")
+	cmd.Flags().Int("revision-id", fetchDefaultInt("revision-id"), "")
+	cmd.Flags().String("scope", fetchDefault("scope"), "")
+	cmd.Flags().String("start-block-id", fetchDefault("start-block-id"), "")
+	cmd.Flags().String("end-block-id", fetchDefault("end-block-id"), "")
+	cmd.Flags().String("keyword", fetchDefault("keyword"), "")
+	cmd.Flags().Int("context-before", fetchDefaultInt("context-before"), "")
+	cmd.Flags().Int("context-after", fetchDefaultInt("context-after"), "")
+	cmd.Flags().Int("max-depth", fetchDefaultInt("max-depth"), "")
 	return common.TestNewRuntimeContextWithCtx(ctx, cmd, nil)
+}
+
+// fetchDefault returns the declared default for a flag from the real
+// v2FetchFlags definition so tests don't hardcode a stale default.
+// It panics if the flag is not found, since a missing flag indicates
+// a test setup error rather than a runtime condition.
+func fetchDefault(name string) string {
+	for _, fl := range v2FetchFlags() {
+		if fl.Name == name {
+			return fl.Default
+		}
+	}
+	panic(fmt.Sprintf("fetchDefault: flag %q not found in v2FetchFlags", name))
+}
+
+// fetchDefaultInt returns the declared default for an int flag from
+// v2FetchFlags, parsed as an int. It panics if the flag is not found
+// or its default cannot be parsed as an int.
+func fetchDefaultInt(name string) int {
+	s := fetchDefault(name)
+	if s == "" {
+		return 0
+	}
+	var d int
+	if _, err := fmt.Sscanf(s, "%d", &d); err != nil {
+		panic(fmt.Sprintf("fetchDefaultInt: flag %q default %q is not an int", name, s))
+	}
+	return d
 }
 
 func mustSetFetchFlag(t *testing.T, runtime *common.RuntimeContext, name, value string) {
@@ -816,17 +940,17 @@ func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[s
 	cmd := &cobra.Command{Use: "+fetch"}
 	cmd.Flags().String("api-version", "", "")
 	cmd.Flags().String("doc", "doxcnFetchDryRun", "")
-	cmd.Flags().String("doc-format", "xml", "")
-	cmd.Flags().String("detail", "simple", "")
-	cmd.Flags().String("lang", "", "")
-	cmd.Flags().Int("revision-id", -1, "")
-	cmd.Flags().String("scope", "full", "")
-	cmd.Flags().String("start-block-id", "", "")
-	cmd.Flags().String("end-block-id", "", "")
-	cmd.Flags().String("keyword", "", "")
-	cmd.Flags().Int("context-before", 0, "")
-	cmd.Flags().Int("context-after", 0, "")
-	cmd.Flags().Int("max-depth", -1, "")
+	cmd.Flags().String("doc-format", fetchDefault("doc-format"), "")
+	cmd.Flags().String("detail", fetchDefault("detail"), "")
+	cmd.Flags().String("lang", fetchDefault("lang"), "")
+	cmd.Flags().Int("revision-id", fetchDefaultInt("revision-id"), "")
+	cmd.Flags().String("scope", fetchDefault("scope"), "")
+	cmd.Flags().String("start-block-id", fetchDefault("start-block-id"), "")
+	cmd.Flags().String("end-block-id", fetchDefault("end-block-id"), "")
+	cmd.Flags().String("keyword", fetchDefault("keyword"), "")
+	cmd.Flags().Int("context-before", fetchDefaultInt("context-before"), "")
+	cmd.Flags().Int("context-after", fetchDefaultInt("context-after"), "")
+	cmd.Flags().Int("max-depth", fetchDefaultInt("max-depth"), "")
 	cmd.Flags().String("offset", "", "")
 	cmd.Flags().String("limit", "", "")
 	if apiVersion != "" {
@@ -845,6 +969,7 @@ func newFetchShortcutTestRuntime(t *testing.T, apiVersion string, setFlags map[s
 func newCreateBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd := &cobra.Command{Use: "+create"}
 	cmd.Flags().String("doc-format", "xml", "")
+	cmd.Flags().String("title", "", "")
 	cmd.Flags().String("content", "<title>hello</title>", "")
 	cmd.Flags().String("parent-token", "", "")
 	cmd.Flags().String("parent-position", "", "")
@@ -857,6 +982,7 @@ func newUpdateBodyTestRuntime(ctx context.Context) *common.RuntimeContext {
 	cmd.Flags().String("command", "append", "")
 	cmd.Flags().Int("revision-id", 0, "")
 	cmd.Flags().String("content", "<p>hello</p>", "")
+	cmd.Flags().String("reference-map", "", "")
 	cmd.Flags().String("pattern", "", "")
 	cmd.Flags().String("block-id", "", "")
 	cmd.Flags().String("src-block-ids", "", "")

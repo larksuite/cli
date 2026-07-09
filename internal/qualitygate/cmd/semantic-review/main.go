@@ -56,6 +56,14 @@ func run(args []string) int {
 		_ = semantic.WriteMarkdown(markdownOut, decision)
 		return 0
 	}
+	if reviewPath == "" && !semantic.BuildInputView(f).HasReviewableFacts() {
+		decision := finalizeDecision(block, waiverDiags, semantic.Decision{})
+		if err := writeSemanticOutputs(decisionOut, markdownOut, decision); err != nil {
+			fmt.Fprintf(os.Stderr, "semantic-review: %v\n", err)
+			return 2
+		}
+		return decisionExitCode(decision)
+	}
 	review, err := semantic.LoadOrReviewWithConfig(context.Background(), f, reviewPath, modelConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "semantic-review: %v\n", err)
@@ -72,6 +80,15 @@ func run(args []string) int {
 		return 0
 	}
 	decision := semantic.DecideWithWaivers(f, review, policy, waivers)
+	decision = finalizeDecision(block, waiverDiags, decision)
+	if err := writeSemanticOutputs(decisionOut, markdownOut, decision); err != nil {
+		fmt.Fprintf(os.Stderr, "semantic-review: %v\n", err)
+		return 2
+	}
+	return decisionExitCode(decision)
+}
+
+func finalizeDecision(block bool, waiverDiags []report.Diagnostic, decision semantic.Decision) semantic.Decision {
 	decision.BlockMode = block
 	if !block && len(decision.Blockers) > 0 {
 		for i := range decision.Blockers {
@@ -81,15 +98,21 @@ func run(args []string) int {
 		decision.Blockers = nil
 	}
 	decision.SystemWarnings = append(diagnosticSystemWarnings(waiverDiags), decision.SystemWarnings...)
+	return decision
+}
+
+func writeSemanticOutputs(decisionOut, markdownOut string, decision semantic.Decision) error {
 	if err := semantic.WriteDecision(decisionOut, decision); err != nil {
-		fmt.Fprintf(os.Stderr, "semantic-review: write decision: %v\n", err)
-		return 2
+		return fmt.Errorf("write decision: %w", err)
 	}
 	if err := semantic.WriteMarkdown(markdownOut, decision); err != nil {
-		fmt.Fprintf(os.Stderr, "semantic-review: write markdown: %v\n", err)
-		return 2
+		return fmt.Errorf("write markdown: %w", err)
 	}
-	if block && len(decision.Blockers) > 0 {
+	return nil
+}
+
+func decisionExitCode(decision semantic.Decision) int {
+	if decision.BlockMode && len(decision.Blockers) > 0 {
 		return 1
 	}
 	return 0

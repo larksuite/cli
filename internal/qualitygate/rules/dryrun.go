@@ -174,8 +174,9 @@ type materializedExample struct {
 }
 
 type placeholderContext struct {
-	FlagName  string
-	FlagUsage string
+	FlagName    string
+	FlagUsage   string
+	FlagDefault string
 }
 
 func materializePlaceholderExample(raw string, cmd manifest.Command) (materializedExample, bool) {
@@ -247,6 +248,7 @@ func placeholderContextForFlag(name string, flag *manifest.Flag) placeholderCont
 	ctx := placeholderContext{FlagName: name}
 	if flag != nil {
 		ctx.FlagUsage = flag.Usage
+		ctx.FlagDefault = flag.DefValue
 	}
 	return ctx
 }
@@ -309,11 +311,17 @@ func fakeValueForPlaceholder(raw string, ctx placeholderContext) (string, bool) 
 	if name == "" {
 		return "", false
 	}
+	if value, ok := fakeNumericValueForPlaceholder(name, ctx); ok {
+		return value, true
+	}
+	if value, ok := fakeContextualURLValueForPlaceholder(name, ctx); ok {
+		return value, true
+	}
 	if value, ok := fakeValueFromPlaceholderName(name); ok {
 		return value, true
 	}
 	if isGenericPlaceholderName(name) {
-		return fakeValueFromUsageHint(ctx.FlagUsage)
+		return fakeValueFromContextHint(ctx)
 	}
 	return "", false
 }
@@ -336,16 +344,26 @@ func fakeValueFromPlaceholderName(name string) (string, bool) {
 		return "file_test123", true
 	case hasPlaceholderToken(tokens, "file") && hasPlaceholderToken(tokens, "token"):
 		return "file_test123", true
+	case hasPlaceholderToken(tokens, "folder") && hasPlaceholderToken(tokens, "token"):
+		return "fld_test123", true
 	case hasPlaceholderToken(tokens, "image", "img"):
 		return "img_test123", true
 	case hasPlaceholderToken(tokens, "app"):
 		return "app_test123", true
+	case hasPlaceholderToken(tokens, "draft"):
+		return "draft_test123", true
+	case hasPlaceholderToken(tokens, "label"):
+		return "label_test123", true
+	case hasPlaceholderToken(tokens, "share"):
+		return "share_test123", true
 	case hasPlaceholderToken(tokens, "doc", "document"):
 		return "doc_test123", true
 	case hasPlaceholderToken(tokens, "sheet", "spreadsheet"):
 		return "shtcn_test123", true
 	case hasPlaceholderToken(tokens, "base"):
 		return "base_test123", true
+	case hasPlaceholderToken(tokens, "space"):
+		return "space_test123", true
 	case hasPlaceholderToken(tokens, "table"):
 		return "tbl_test123", true
 	case hasPlaceholderToken(tokens, "view"):
@@ -377,17 +395,98 @@ func fakeValueFromPlaceholderName(name string) (string, bool) {
 	}
 }
 
-func fakeValueFromUsageHint(usage string) (string, bool) {
-	match := placeholderValuePattern.FindStringSubmatch(strings.ToLower(usage))
+func fakeValueFromContextHint(ctx placeholderContext) (string, bool) {
+	if value, ok := fakeNumericValueForPlaceholder("", ctx); ok {
+		return value, true
+	}
+	if value, ok := fakeContextualURLValueForPlaceholder("", ctx); ok {
+		return value, true
+	}
+	match := placeholderValuePattern.FindStringSubmatch(strings.ToLower(ctx.FlagUsage))
 	if len(match) != 2 || !knownTokenPrefix(match[1]) {
 		return "", false
 	}
 	return match[1] + "_test123", true
 }
 
+func fakeContextualURLValueForPlaceholder(name string, ctx placeholderContext) (string, bool) {
+	nameTokens := placeholderTokenSet(name)
+	flagName := strings.ReplaceAll(strings.ToLower(ctx.FlagName), "-", "_")
+	flagTokens := placeholderTokenSet(flagName)
+	if !hasPlaceholderToken(nameTokens, "url", "link") && !hasPlaceholderToken(flagTokens, "url", "link") {
+		return "", false
+	}
+	usage := strings.ToLower(ctx.FlagUsage)
+	if strings.Contains(usage, "lark") || strings.Contains(usage, "feishu") || strings.Contains(usage, "document url") {
+		return "https://example.feishu.cn/docx/doc_test123", true
+	}
+	return "", false
+}
+
+func fakeNumericValueForPlaceholder(name string, ctx placeholderContext) (string, bool) {
+	nameTokens := placeholderTokenSet(name)
+	flagName := strings.ReplaceAll(strings.ToLower(ctx.FlagName), "-", "_")
+	flagTokens := placeholderTokenSet(flagName)
+	usage := strings.ToLower(ctx.FlagUsage)
+
+	switch {
+	case placeholderTokenPair(nameTokens, "meeting", "id") || placeholderTokenPair(flagTokens, "meeting", "id"):
+		return "400000000001", true
+	case placeholderTokenPair(nameTokens, "meeting", "ids") || placeholderTokenPair(flagTokens, "meeting", "ids"):
+		return "400000000001", true
+	case placeholderTokenPair(nameTokens, "meeting", "no") || placeholderTokenPair(flagTokens, "meeting", "no"):
+		return "123456789", true
+	case placeholderTokenPair(nameTokens, "meeting", "number") || placeholderTokenPair(flagTokens, "meeting", "number"):
+		return "123456789", true
+	case hasPlaceholderToken(nameTokens, "timestamp") || hasPlaceholderToken(flagTokens, "timestamp") || strings.Contains(usage, "unix timestamp"):
+		return defaultPositiveInteger(ctx.FlagDefault, "1893456000"), true
+	case placeholderTokenPair(nameTokens, "page", "size") || placeholderTokenPair(flagTokens, "page", "size"):
+		return defaultPositiveInteger(ctx.FlagDefault, "20"), true
+	case placeholderTokenPair(nameTokens, "page", "limit") || placeholderTokenPair(flagTokens, "page", "limit"):
+		return defaultPositiveInteger(ctx.FlagDefault, "10"), true
+	case numericPlaceholderName(nameTokens) || numericPlaceholderName(flagTokens) || numericUsageHint(usage):
+		return defaultPositiveInteger(ctx.FlagDefault, "20"), true
+	default:
+		return "", false
+	}
+}
+
+func numericPlaceholderName(tokens map[string]bool) bool {
+	if len(tokens) == 0 || hasPlaceholderToken(tokens, "token", "format", "type", "status", "mode") {
+		return false
+	}
+	return hasPlaceholderToken(tokens,
+		"amount", "count", "depth", "height", "index", "length", "limit", "max",
+		"number", "revision", "size", "width",
+	)
+}
+
+func numericUsageHint(usage string) bool {
+	if usage == "" {
+		return false
+	}
+	return strings.Contains(usage, "positive integer") ||
+		strings.Contains(usage, "decimal integer") ||
+		strings.Contains(usage, "number of ") ||
+		strings.Contains(usage, "(number)")
+}
+
+func defaultPositiveInteger(raw, fallback string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || strings.HasPrefix(raw, "-") || raw == "0" {
+		return fallback
+	}
+	for _, r := range raw {
+		if r < '0' || r > '9' {
+			return fallback
+		}
+	}
+	return raw
+}
+
 func knownTokenPrefix(prefix string) bool {
 	switch prefix {
-	case "app", "base", "doc", "file", "fld", "img", "item", "meeting", "obcn", "oc", "od", "om", "ou", "page", "rec", "shtcn", "task", "tbl", "token", "viw", "wiki":
+	case "app", "base", "doc", "draft", "file", "fld", "img", "item", "label", "meeting", "obcn", "oc", "od", "om", "ou", "page", "rec", "share", "shtcn", "space", "task", "tbl", "token", "viw", "wiki":
 		return true
 	default:
 		return false
@@ -429,6 +528,10 @@ func hasPlaceholderToken(tokens map[string]bool, wants ...string) bool {
 		}
 	}
 	return false
+}
+
+func placeholderTokenPair(tokens map[string]bool, first, second string) bool {
+	return tokens[first] && tokens[second]
 }
 
 func hasUnresolvedDryRunPlaceholder(value string) bool {
@@ -623,6 +726,7 @@ func appendDryRunArg(raw string) ([]string, error) {
 		return nil, fmt.Errorf("not a lark-cli command")
 	}
 	argv = truncateShellTail(argv)
+	argv = forceDryRunJSONFormat(argv)
 	hasDryRunArg := false
 	dryRunEnabled := false
 	for _, arg := range argv[1:] {
@@ -640,6 +744,23 @@ func appendDryRunArg(raw string) ([]string, error) {
 		return argv[1:], nil
 	}
 	return append(argv[1:], "--dry-run"), nil
+}
+
+func forceDryRunJSONFormat(argv []string) []string {
+	for i := 1; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--format" {
+			if i+1 < len(argv) && argv[i+1] == "pretty" {
+				argv[i+1] = "json"
+			}
+			return argv
+		}
+		if arg == "--format=pretty" {
+			argv[i] = "--format=json"
+			return argv
+		}
+	}
+	return argv
 }
 
 func truncateShellTail(argv []string) []string {

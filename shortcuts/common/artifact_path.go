@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // This file defines artifact-path conventions shared between
-// `minutes +download` and `vc +notes`. Callers outside those two shortcuts
+// `minutes +download` and `minutes +detail`. Callers outside those two shortcuts
 // should not take a dependency on these symbols.
 
 package common

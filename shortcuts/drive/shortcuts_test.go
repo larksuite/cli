@@ -3,7 +3,10 @@
 
 package drive
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // TestShortcutsIncludesExpectedCommands verifies the drive shortcut registry contains the expected commands.
 func TestShortcutsIncludesExpectedCommands(t *testing.T) {
@@ -33,6 +36,7 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		"+sync",
 		"+task_result",
 		"+apply-permission",
+		"+member-add",
 		"+secure-label-list",
 		"+secure-label-update",
 		"+search",
@@ -55,5 +59,14 @@ func TestShortcutsIncludesExpectedCommands(t *testing.T) {
 		if !seen[command] {
 			t.Fatalf("missing shortcut command %q in Shortcuts()", command)
 		}
+	}
+}
+
+func TestDriveSearchSupportsUserAndBotIdentity(t *testing.T) {
+	t.Parallel()
+
+	want := []string{"user", "bot"}
+	if !reflect.DeepEqual(DriveSearch.AuthTypes, want) {
+		t.Fatalf("DriveSearch.AuthTypes = %v, want %v", DriveSearch.AuthTypes, want)
 	}
 }

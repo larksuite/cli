@@ -155,6 +155,15 @@ lark-cli im +messages-reply --message-id om_xxx --text "Received" --idempotency-
 
 # Preview the request without executing it
 lark-cli im +messages-reply --message-id om_xxx --markdown $'## Test\n\nhello' --dry-run
+
+# ===== Interactive Card =====
+# 🚫 STOP — before constructing ANY interactive card JSON, you MUST read
+#    card/lark-im-card-create.md and follow its workflow. Do NOT
+#    hand-write or copy a card payload. The JSON passed to --content must be
+#    the OUTPUT of that workflow. This is non-negotiable.
+
+# Once the workflow has produced the card JSON, reply with it:
+lark-cli im +messages-reply --message-id om_xxx --msg-type interactive --content '<card_json_from_workflow>'
 ```
 
 ## Media Input Rules
@@ -265,3 +274,4 @@ Card content is **not** normalized — use the card-native `<at>` syntax inside 
 - `--as user` uses a user access token (UAT) and requires the `im:message.send_as_user` and `im:message` scopes; the reply is sent as the authorized end user
 - `--as bot` uses a tenant access token (TAT), and requires the `im:message:send_as_bot` scope
 - When using `--markdown` with images, pre-uploading via `images.create` to obtain an `image_key` is recommended for reliability; remote URLs may be auto-resolved at runtime, but if download/upload fails the image is removed with a warning; local paths are not supported
+- **Interactive cards are gated:** you MUST read and follow the [`card/lark-im-card-create.md`](card/lark-im-card-create.md) workflow to produce the card JSON *before* replying. Do not hand-write or copy a card payload — the JSON given to `--msg-type interactive --content` must be the workflow's output. This applies every time, with no exception

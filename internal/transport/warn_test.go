@@ -93,6 +93,47 @@ func TestWarnIfProxied_SilentWhenDisabled(t *testing.T) {
 	}
 }
 
+// TestWarnIfProxied_SilentWhenWarnOptOut verifies that LARK_CLI_NO_PROXY_WARN
+// suppresses the warning while the proxy stays configured (unlike
+// LARK_CLI_NO_PROXY, which also disables the proxy).
+func TestWarnIfProxied_SilentWhenWarnOptOut(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	resetProxyPluginState()
+	proxyWarningOnce = sync.Once{}
+
+	t.Setenv("HTTPS_PROXY", "http://proxy:8080")
+	t.Setenv(EnvNoProxyWarn, "1")
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+
+	if buf.Len() != 0 {
+		t.Errorf("expected no warning when %s is set, got: %s", EnvNoProxyWarn, buf.String())
+	}
+}
+
+// TestWarnIfProxied_WarnOptOutSuppressesPluginWarning verifies that
+// LARK_CLI_NO_PROXY_WARN also suppresses the proxy-plugin warning.
+func TestWarnIfProxied_WarnOptOutSuppressesPluginWarning(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	unsetProxyPluginEnv(t)
+	proxyWarningOnce = sync.Once{}
+
+	old := proxyPluginStatus
+	proxyPluginStatus = func() (string, string, bool) { return "http://127.0.0.1:3128", "", true }
+	t.Cleanup(func() { proxyPluginStatus = old })
+
+	t.Setenv(EnvNoProxyWarn, "1")
+
+	var buf bytes.Buffer
+	WarnIfProxied(&buf)
+
+	if buf.Len() != 0 {
+		t.Errorf("expected no plugin warning when %s is set, got: %s", EnvNoProxyWarn, buf.String())
+	}
+}
+
 // TestWarnIfProxied_OnlyOnce verifies that proxy warnings are emitted only once.
 func TestWarnIfProxied_OnlyOnce(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())

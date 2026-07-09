@@ -164,6 +164,45 @@ func TestDriveSearchDryRun_RequestShape(t *testing.T) {
 	}
 }
 
+func TestDriveSearchDryRun_BotIdentity(t *testing.T) {
+	setDriveSearchE2EEnv(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"drive", "+search",
+			"--query", "season report",
+			"--page-size", "5",
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 0)
+	require.Contains(t, result.Args, "--as")
+	require.Contains(t, result.Args, "bot")
+
+	out := result.Stdout
+	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+		t.Fatalf("method=%q, want POST\nstdout:\n%s\nstderr:\n%s", got, out, result.Stderr)
+	}
+	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/search/v2/doc_wiki/search" {
+		t.Fatalf("url=%q, want Search v2 doc_wiki/search\nstdout:\n%s\nstderr:\n%s", got, out, result.Stderr)
+	}
+	if got := gjson.Get(out, "api.0.body.query").String(); got != "season report" {
+		t.Fatalf("body.query=%q, want season report\nstdout:\n%s", got, out)
+	}
+
+	helpResult, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{"drive", "+search", "--help"},
+	})
+	require.NoError(t, err)
+	helpResult.AssertExitCode(t, 0)
+	require.Contains(t, helpResult.Stdout, "identity type: user | bot")
+}
+
 // TestDriveSearchDryRun_OpenedClamping locks in the agent-facing slice
 // notice for --opened-* spans over 90 days: the request body must carry
 // the most recent 90-day window, and stderr must list slice N's flag

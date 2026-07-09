@@ -34,6 +34,7 @@ func TestFactsSchemaCarriesGatekeeperFields(t *testing.T) {
 		Errors:        []ErrorFact{{Code: "invalid_input", Message: "bad path", Hint: "pass --file", Retryable: false, HintActionCount: 1, RequiredHint: true}},
 		Outputs:       []OutputFact{{Command: "im messages list", Fields: []string{"message_id", "sender", "create_time"}, IsList: true, HasDefaultLimit: true, HasDecisionField: true}},
 		Skills:        []SkillFact{{SourceFile: "skills/lark-doc/SKILL.md", Line: 1, DestructiveWithoutGuard: true, ScopeConflict: true}},
+		PublicContent: []PublicContentFact{{Rule: "public_content_generic_credential", Action: report.ActionReject, File: "docs/public.md", Line: 4, Excerpt: "api_key = <redacted>"}},
 	}
 	data, err := json.Marshal(f)
 	if err != nil {
@@ -43,7 +44,10 @@ func TestFactsSchemaCarriesGatekeeperFields(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatalf("unmarshal facts: %v", err)
 	}
-	if !got.Errors[0].RequiredHint || got.Outputs[0].Fields[0] != "message_id" || !got.Skills[0].ScopeConflict {
+	if !got.Errors[0].RequiredHint ||
+		got.Outputs[0].Fields[0] != "message_id" ||
+		!got.Skills[0].ScopeConflict ||
+		got.PublicContent[0].Rule != "public_content_generic_credential" {
 		t.Fatalf("facts lost gatekeeper fields: %#v", got)
 	}
 }

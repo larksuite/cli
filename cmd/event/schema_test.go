@@ -124,6 +124,45 @@ func TestRunSchema_TaskUpdateUserAccessJSON(t *testing.T) {
 	}
 }
 
+func TestRunSchema_JSONOutput_VCMeetingLifecycleKeys(t *testing.T) {
+	for _, key := range []string{
+		"vc.meeting.participant_meeting_started_v1",
+		"vc.meeting.participant_meeting_joined_v1",
+	} {
+		t.Run(key, func(t *testing.T) {
+			f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{AppID: "test"})
+
+			if err := runSchema(f, key, true); err != nil {
+				t.Fatalf("runSchema json: %v", err)
+			}
+
+			var payload map[string]interface{}
+			if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+				t.Fatalf("output is not valid JSON: %v\n%s", err, stdout.String())
+			}
+			if payload["key"] != key {
+				t.Errorf("key = %v, want %s", payload["key"], key)
+			}
+			resolved, ok := payload["resolved_output_schema"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("resolved_output_schema missing or wrong type: %+v", payload)
+			}
+			properties, ok := resolved["properties"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("resolved_output_schema.properties missing or wrong type: %+v", resolved)
+			}
+			for _, field := range []string{"type", "event_id", "timestamp", "meeting_id", "topic", "meeting_no", "start_time", "calendar_event_id"} {
+				if _, ok := properties[field]; !ok {
+					t.Errorf("resolved output schema missing field %q: %+v", field, properties)
+				}
+			}
+			if _, ok := properties["end_time"]; ok {
+				t.Errorf("resolved output schema should not include end_time for %s: %+v", key, properties)
+			}
+		})
+	}
+}
+
 func TestSchema_RendersSubscriptionKeyMarker(t *testing.T) {
 	const syntheticKey = "test.evt_sub"
 	t.Cleanup(func() { eventlib.UnregisterKeyForTest(syntheticKey) })

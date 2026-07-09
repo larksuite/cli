@@ -99,7 +99,7 @@ var MailWatch = common.Shortcut{
 	Scopes:      []string{"mail:event", "mail:user_mailbox.event.mail_address:read", "mail:user_mailbox:readonly", "mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user"},
 	Flags: []common.Flag{
-		{Name: "format", Default: "data", Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
+		{Name: "format", Default: "data", Enum: []string{"json", "data"}, Desc: "json: NDJSON stream with ok/data envelope; data: bare NDJSON stream"},
 		{Name: "msg-format", Default: "metadata", Desc: "message payload mode: metadata(headers + meta, for triage/notification) | minimal(IDs and state only, no headers, for tracking read/folder changes) | plain_text_full(all metadata fields + full plain-text body) | event(raw WebSocket event, no API call, for debug) | full(full message including HTML body and attachments)"},
 		{Name: "output-dir", Desc: "Write each message as a JSON file (always full payload, regardless of --msg-format)"},
 		{Name: "mailbox", Default: "me", Desc: "email address (default: me)"},

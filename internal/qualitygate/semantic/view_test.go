@@ -77,6 +77,122 @@ func TestInputViewKeepsChangedReviewCandidatesWithOriginalRefs(t *testing.T) {
 	}
 }
 
+func TestInputViewIncludesPublicContentLeakage(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:    "public_content_generic_credential",
+			Action:  report.ActionReject,
+			File:    "docs/public.md",
+			Line:    4,
+			Excerpt: "api_key = <redacted>",
+			Message: "generic credential assignment",
+		}},
+		Diagnostics: []facts.DiagnosticFact{{
+			Rule:    "public_content_generic_credential",
+			Action:  report.ActionReject,
+			File:    "docs/public.md",
+			Line:    4,
+			Message: "generic credential assignment",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if len(view.PublicContentLeakage) != 1 {
+		t.Fatalf("public content leakage len = %d, want 1", len(view.PublicContentLeakage))
+	}
+	if got := view.PublicContentLeakage[0].FactRef; got != "facts.public_content[0]" {
+		t.Fatalf("public content fact ref = %q", got)
+	}
+	if len(view.Diagnostics) != 1 {
+		t.Fatalf("diagnostics len = %d, want 1", len(view.Diagnostics))
+	}
+}
+
+func TestInputViewIncludesPublicContentSemanticCandidatesWithoutDiagnostics(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:    "public_content_semantic_candidate",
+			Action:  report.ActionWarning,
+			File:    "docs/public.md",
+			Line:    1,
+			Source:  "file",
+			Excerpt: "public prose that needs semantic review",
+			Message: "public contribution contains text for semantic public content review",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if len(view.PublicContentLeakage) != 1 {
+		t.Fatalf("semantic candidate len = %d, want 1", len(view.PublicContentLeakage))
+	}
+	if got := view.PublicContentLeakage[0].FactRef; got != "facts.public_content[0]" {
+		t.Fatalf("semantic candidate fact ref = %q", got)
+	}
+	if len(view.Diagnostics) != 0 {
+		t.Fatalf("semantic candidate should not require diagnostics, got %#v", view.Diagnostics)
+	}
+}
+
+func TestPromptIncludesSanitizedPublicContentExcerpt(t *testing.T) {
+	scopeText := "pri" + "vate rollout"
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:    "public_content_semantic_candidate",
+			Action:  report.ActionWarning,
+			File:    "docs/public.md",
+			Line:    1,
+			Source:  "file",
+			Excerpt: `semantic signals: pri` + `vate_scope,roadmap_detail; excerpt: "` + scopeText + ` token=<redacted>"`,
+			Message: "public contribution contains text for semantic public content review",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if len(view.PublicContentLeakage) != 1 {
+		t.Fatalf("semantic candidate len = %d, want 1", len(view.PublicContentLeakage))
+	}
+	if got := view.PublicContentLeakage[0].Excerpt; !strings.Contains(got, scopeText) || !strings.Contains(got, "token=<redacted>") {
+		t.Fatalf("semantic candidate excerpt missing from view: %q", got)
+	}
+
+	messages := BuildPrompt(f)
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(messages))
+	}
+	if !strings.Contains(messages[1].Content, scopeText) || !strings.Contains(messages[1].Content, "redacted") {
+		t.Fatalf("prompt missing sanitized public content excerpt: %s", messages[1].Content)
+	}
+	if strings.Contains(messages[1].Content, "real-"+"secret-value") {
+		t.Fatalf("prompt leaked raw sensitive value %q", messages[1].Content)
+	}
+}
+
+func TestInputViewExcludesPublicContentWarningsWithoutSemanticCandidate(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:    "public_content_" + "pri" + "vate_ipv4",
+			Action:  report.ActionWarning,
+			File:    "docs/network.md",
+			Line:    1,
+			Source:  "file",
+			Excerpt: "192.168." + "0.10",
+			Message: "public contribution contains a pri" + "vate-network IP address",
+		}},
+	}
+
+	view := BuildInputView(f)
+	if len(view.PublicContentLeakage) != 0 {
+		t.Fatalf("warning-only public content should not enter semantic view: %#v", view.PublicContentLeakage)
+	}
+	if len(view.Diagnostics) != 0 {
+		t.Fatalf("warning-only public content should not add diagnostics: %#v", view.Diagnostics)
+	}
+}
+
 func TestInputViewSummarizesBroadChangedCommandSurface(t *testing.T) {
 	f := broadChangedFacts(434, 44)
 

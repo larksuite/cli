@@ -791,10 +791,10 @@ var CellsSetImage = common.Shortcut{
 		})
 		return common.NewDryRunAPI().
 			POST("/open-apis/drive/v1/medias/upload_all").
-			Desc("upload local image to drive (parent_type=sheet_image)").
+			Desc("upload local image to drive (parent_type=" + sheetMediaParentType(token) + ")").
 			Body(map[string]interface{}{
 				"file_name":   fileName,
-				"parent_type": "sheet_image",
+				"parent_type": sheetMediaParentType(token),
 				"parent_node": token,
 				"size":        "<file_size>",
 				"file":        "@" + imgPath,
@@ -832,13 +832,7 @@ var CellsSetImage = common.Shortcut{
 				WithParam("--image").
 				WithCause(err)
 		}
-		fileToken, err := common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
-			FilePath:   imgPath,
-			FileName:   fileName,
-			FileSize:   info.Size(),
-			ParentType: "sheet_image",
-			ParentNode: &token,
-		})
+		fileToken, err := uploadSheetImage(runtime, token, imgPath, fileName, info.Size())
 		if err != nil {
 			return err
 		}

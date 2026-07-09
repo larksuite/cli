@@ -5,17 +5,18 @@ package apps
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/output"
 )
 
-func TestAppsDBExecute_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
+// TestAppsDBExecute_SingleSELECTJSONIsRowArray 断言单条 SELECT 的 JSON data 直接是行数组（不再透传 result 字符串）。
+func TestAppsDBExecute_SingleSELECTJSONIsRowArray(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -33,27 +34,134 @@ func TestAppsDBExecute_SingleSELECTJSONEnvelopeWrapsResults(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
-	// JSON envelope 应该把 result 字符串 parse 之后放进 data.results
+	// PRD 单 SELECT：data 直接是行数组（不再是 data.results[].data 字符串）
 	var env struct {
-		Data struct {
-			Results []map[string]interface{} `json:"results"`
-		} `json:"data"`
+		Data []map[string]interface{} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode envelope: %v\n%s", err, stdout.String())
 	}
-	if len(env.Data.Results) != 1 {
-		t.Fatalf("data.results = %d items (want 1)", len(env.Data.Results))
+	if len(env.Data) != 1 {
+		t.Fatalf("data = %d rows (want 1)\n%s", len(env.Data), stdout.String())
 	}
-	if env.Data.Results[0]["sql_type"] != "SELECT" {
-		t.Fatalf("results[0].sql_type = %v", env.Data.Results[0]["sql_type"])
+	if env.Data[0]["id"] != float64(101) || env.Data[0]["total_cents"] != float64(2500) {
+		t.Fatalf("data[0] = %v, want {id:101,total_cents:2500}", env.Data[0])
 	}
 }
 
+// TestAppsDBExecute_SingleDMLJSONShape 断言单条 DML 的 JSON data 形如 {command, rows_affected}。
+func TestAppsDBExecute_SingleDMLJSONShape(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"INSERT","data":"","affected_rows":3}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "insert", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	// PRD 单 DML：data = {command, rows_affected}
+	var env struct {
+		Data struct {
+			Command      string `json:"command"`
+			RowsAffected int    `json:"rows_affected"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if env.Data.Command != "INSERT" || env.Data.RowsAffected != 3 {
+		t.Fatalf("data = %+v, want {command:INSERT, rows_affected:3}", env.Data)
+	}
+}
+
+// TestAppsDBExecute_SingleDDLJSONShape 断言单条 DDL 的 JSON data 形如 {command}。
+func TestAppsDBExecute_SingleDDLJSONShape(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[{"sql_type":"CREATE_TABLE","data":"[]"}]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "create", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	// PRD 单 DDL：data = {command}
+	var env struct {
+		Data struct {
+			Command string `json:"command"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if env.Data.Command != "CREATE_TABLE" {
+		t.Fatalf("data.command = %q, want CREATE_TABLE", env.Data.Command)
+	}
+}
+
+// TestAppsDBExecute_MultiStatementJSONShape 断言多语句的 JSON data 是元素数组，且 SELECT 包成 {command:"SELECT", rows:[...]}。
+func TestAppsDBExecute_MultiStatementJSONShape(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				"result": `[` +
+					`{"sql_type":"INSERT","data":"","affected_rows":1},` +
+					`{"sql_type":"SELECT","data":"[{\"id\":999}]","record_count":1}` +
+					`]`,
+			},
+		},
+	})
+	if err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
+		factory, stdout); err != nil {
+		t.Fatalf("execute err=%v", err)
+	}
+	// PRD 多语句：data 是元素数组；SELECT 包成 {command:"SELECT", rows:[...]}
+	var env struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("decode: %v\n%s", err, stdout.String())
+	}
+	if len(env.Data) != 2 {
+		t.Fatalf("data = %d elements (want 2)\n%s", len(env.Data), stdout.String())
+	}
+	if env.Data[0]["command"] != "INSERT" || env.Data[0]["rows_affected"] != float64(1) {
+		t.Fatalf("data[0] = %v, want {command:INSERT, rows_affected:1}", env.Data[0])
+	}
+	if env.Data[1]["command"] != "SELECT" {
+		t.Fatalf("data[1].command = %v, want SELECT", env.Data[1]["command"])
+	}
+	rows, ok := env.Data[1]["rows"].([]interface{})
+	if !ok || len(rows) != 1 {
+		t.Fatalf("data[1].rows = %v, want 1 row", env.Data[1]["rows"])
+	}
+}
+
+// TestAppsDBExecute_DryRunSendsTransactionalFalse 断言 dry-run 发出的请求是 POST、params 带 transactional=false（DBA 模式）且 transactional 不在 body 里。
 func TestAppsDBExecute_DryRunSendsTransactionalFalse(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBExecute,
-		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--env", "dev", "--dry-run", "--as", "user"},
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--environment", "dev", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -85,12 +193,30 @@ func TestAppsDBExecute_DryRunSendsTransactionalFalse(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_RejectsEmptySQL 断言 --sql 全空白时校验报错（提示需要 --sql 或 --file）。
 func TestAppsDBExecute_RejectsEmptySQL(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDBExecute,
 		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "   ", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "--sql or --file") {
 		t.Fatalf("expected empty-sql error, got %v", err)
+	}
+}
+
+// TestAppsDBExecute_LegacyEnvFlagRejected 钉死：旧名 --env 已移除，显式传入报 validation 错并指向 --environment。
+func TestAppsDBExecute_LegacyEnvFlagRejected(t *testing.T) {
+	factory, stdout, _ := newAppsExecuteFactory(t)
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "select 1", "--env", "dev", "--as", "user"}, factory, stdout)
+	if err == nil {
+		t.Fatalf("--env should be rejected; stdout:\n%s", stdout.String())
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation {
+		t.Fatalf("want a typed validation error, got %T: %v", err, err)
+	}
+	if !strings.Contains(p.Message, "--environment") {
+		t.Errorf("message should point to --environment: %q", p.Message)
 	}
 }
 
@@ -124,7 +250,7 @@ func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
 
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBExecute,
-		[]string{"+db-execute", "--app-id", "app_x", "--env", "dev", "--file", "m.sql", "--dry-run", "--as", "user"},
+		[]string{"+db-execute", "--app-id", "app_x", "--environment", "dev", "--file", "m.sql", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -147,6 +273,7 @@ func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
 // 输入用 BOE 真实抓包数据（test_scripts/boe_e2e/run.log）。
 // ============================================================================
 
+// TestAppsDBExecute_LegacyWireSingleSelect 断言 legacy 字符串数组 wire 的单 SELECT 能正常渲染表格、不回退到 RAW。
 func TestAppsDBExecute_LegacyWireSingleSelect(t *testing.T) {
 	// BOE 实测：SELECT 1 AS x  →  result: "[\"[{\\\"x\\\":1}]\"]"
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -178,8 +305,9 @@ func TestAppsDBExecute_LegacyWireSingleSelect(t *testing.T) {
 	}
 }
 
-func TestAppsDBExecute_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
-	// 验证 JSON envelope 也把 legacy result 正确归一化进 data.results
+// TestAppsDBExecute_LegacyWireSingleSelectJSONIsRowArray 断言 legacy wire 的 SELECT 同样归一化成 PRD 行数组形态。
+func TestAppsDBExecute_LegacyWireSingleSelectJSONIsRowArray(t *testing.T) {
+	// 验证 legacy wire 的 SELECT 也归一化成 PRD 行数组形态（data 直接是行）
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -197,24 +325,20 @@ func TestAppsDBExecute_LegacyWireSingleSelectJSONEnvelope(t *testing.T) {
 		t.Fatalf("execute err=%v", err)
 	}
 	var env struct {
-		Data struct {
-			Results []map[string]interface{} `json:"results"`
-		} `json:"data"`
+		Data []map[string]interface{} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
 		t.Fatalf("decode: %v\n%s", err, stdout.String())
 	}
-	if len(env.Data.Results) != 1 {
-		t.Fatalf("results length = %d, want 1; got: %v", len(env.Data.Results), env.Data.Results)
+	if len(env.Data) != 1 {
+		t.Fatalf("data length = %d, want 1; got: %v", len(env.Data), env.Data)
 	}
-	if env.Data.Results[0]["sql_type"] != "SELECT" {
-		t.Fatalf("results[0].sql_type = %v, want SELECT", env.Data.Results[0]["sql_type"])
-	}
-	if env.Data.Results[0]["record_count"] != float64(1) {
-		t.Fatalf("results[0].record_count = %v, want 1", env.Data.Results[0]["record_count"])
+	if env.Data[0]["x"] != float64(1) {
+		t.Fatalf("data[0].x = %v, want 1", env.Data[0]["x"])
 	}
 }
 
+// TestAppsDBExecute_LegacyWireMultiSelect 断言 legacy wire 多 SELECT 输出带 Statement N header 与末尾 "✓ N statements executed" 汇总。
 func TestAppsDBExecute_LegacyWireMultiSelect(t *testing.T) {
 	// BOE 实测：SELECT 1; SELECT 2  →  result: "[\"[{\\\"?column?\\\":1}]\",\"[{\\\"?column?\\\":2}]\"]"
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -244,6 +368,7 @@ func TestAppsDBExecute_LegacyWireMultiSelect(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_LegacyWireDDLEmptyResult 断言 result 为空字符串时（legacy DDL）pretty 输出 "(empty result)"。
 func TestAppsDBExecute_LegacyWireDDLEmptyResult(t *testing.T) {
 	// BOE 实测：CREATE TABLE  →  result: "" （空字符串，无 rows）
 	// 老 wire 不区分 DDL/DML/无返回，统一标 "ok"
@@ -270,6 +395,7 @@ func TestAppsDBExecute_LegacyWireDDLEmptyResult(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_LegacyWireMultiSelectWithRealTable 断言含 CJK / uuid / int 字段的真实表行能正确显示在 pretty 表格里。
 func TestAppsDBExecute_LegacyWireMultiSelectWithRealTable(t *testing.T) {
 	// BOE 实测真实表抓包（course 表第一行）：复杂 JSON 含 CJK / timestamp / uuid 字段
 	factory, stdout, reg := newAppsExecuteFactory(t)
@@ -328,6 +454,7 @@ func TestAppsDBExecute_PrettySingleSelectTable(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_PrettyEmptySelect 断言空 SELECT 的 pretty 输出为 "(0 rows)"。
 func TestAppsDBExecute_PrettyEmptySelect(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -350,6 +477,7 @@ func TestAppsDBExecute_PrettyEmptySelect(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_PrettySingleDMLAndDDL 断言单条 DML 渲染 "✓ N row(s) <verb>"、各类 DDL（含细粒度动词）渲染 "✓ DDL executed"。
 func TestAppsDBExecute_PrettySingleDMLAndDDL(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -386,6 +514,7 @@ func TestAppsDBExecute_PrettySingleDMLAndDDL(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_PrettyMultiStatementsAllSuccess 断言多语句全成功时逐条 Statement 摘要 + 末尾 "✓ N statements executed"。
 func TestAppsDBExecute_PrettyMultiStatementsAllSuccess(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -455,6 +584,7 @@ func TestAppsDBExecute_PrettyMultiStatementsDDL(t *testing.T) {
 	}
 }
 
+// TestAppsDBExecute_PrettyMultiStatementsPartialFailureWithErrorSentinel 断言多语句部分失败时 pretty 仍打逐条 ✓/✗ 摘要、声明前序已 commit 未回滚，且返回 typed error、不打成功汇总。
 func TestAppsDBExecute_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -486,19 +616,20 @@ func TestAppsDBExecute_PrettyMultiStatementsPartialFailureWithErrorSentinel(t *t
 			t.Errorf("missing %q in pretty output\nfull:\n%s", line, got)
 		}
 	}
-	// DBA 模式（transactional=false）前序语句已 auto-commit 落地，绝不能误报「rolled back」。
-	if strings.Contains(got, "rolled back") {
-		t.Errorf("DBA mode must NOT claim rollback (prior statements persisted); got:\n%s", got)
+	// 非事务（transactional=false）前序语句已逐条 commit 落地，须如实说明「committed and not rolled back」，
+	// 绝不能误报整批回滚。
+	if !strings.Contains(got, "committed and not rolled back") {
+		t.Errorf("non-tx failure must state prior statements committed & not rolled back; got:\n%s", got)
 	}
 	if strings.Contains(got, "statements executed") {
 		t.Errorf("failed run should NOT print success summary; got:\n%s", got)
 	}
 }
 
-// TestAppsDBExecute_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → partial failure」：
-// 逐条结果 + statement_index / error_code / rolled_back / note 作为 ok:false 数据落 stdout，
-// 退出信号是 PartialFailureError（非零 exit）。rolled_back=false 因 CLI 永远 DBA 模式
-// （真机 boe 实证：失败前的语句已落地）。
+// TestAppsDBExecute_MultiStatementFailureReturnsTypedError 钉死「多语句失败 → typed errs.APIError」：
+// json 默认不再打 ok:true 假成功，而是返回 typed errs.* 错误（type=api / subtype=server_error、
+// exit=1）。失败位置在 message 的 "(at statement N of M)"，前序是否落地/是否回滚写在 hint。
+// 本例无 BEGIN → 前序逐条 commit、未回滚（hint 含 "committed and not rolled back"）。
 func TestAppsDBExecute_MultiStatementFailureReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -518,64 +649,36 @@ func TestAppsDBExecute_MultiStatementFailureReturnsTypedError(t *testing.T) {
 		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
-		t.Fatalf("multi-statement failure must return a partial-failure error; stdout:\n%s", stdout.String())
+		t.Fatalf("multi-statement failure must return a typed error; stdout:\n%s", stdout.String())
 	}
 	// json 失败路径不得打成功 envelope。
 	if strings.Contains(stdout.String(), `"ok": true`) {
 		t.Errorf("must not emit ok:true success envelope on failure; stdout:\n%s", stdout.String())
 	}
-	var pfErr *output.PartialFailureError
-	if !errors.As(err, &pfErr) {
-		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want a typed errs.* error, got %T: %v", err, err)
 	}
-	if pfErr.Code != output.ExitAPI {
-		t.Errorf("exit = %d, want %d (ExitAPI)", pfErr.Code, output.ExitAPI)
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeServerError {
+		t.Errorf("category/subtype = %s/%s, want api/server_error", p.Category, p.Subtype)
 	}
-	payload := decodePartialFailureData(t, stdout.String())
-	if got := payload["statement_index"]; got != float64(1) {
-		t.Errorf("statement_index = %v, want 1", got)
+	if p.Code != 1300002 {
+		t.Errorf("code = %d, want 1300002", p.Code)
 	}
-	if got := payload["error_code"]; got != float64(1300002) {
-		t.Errorf("error_code = %v, want 1300002", got)
+	if !strings.Contains(p.Message, "(at statement 2 of 2)") {
+		t.Errorf("message missing statement locator: %q", p.Message)
 	}
-	msg, _ := payload["error_message"].(string)
-	if !strings.Contains(msg, "(at statement 2 of 2)") {
-		t.Errorf("error_message missing statement locator: %q", msg)
+	// 无 BEGIN → 前序逐条 commit、未回滚，语义写在 hint。
+	if !strings.Contains(p.Hint, "committed and not rolled back") {
+		t.Errorf("hint should state prior statements committed & not rolled back: %q", p.Hint)
 	}
-	if got := payload["rolled_back"]; got != false {
-		t.Errorf("rolled_back = %v, want false (DBA mode persists prior statements)", got)
+	if output.ExitCodeOf(err) != output.ExitAPI {
+		t.Errorf("exit = %d, want %d (ExitAPI)", output.ExitCodeOf(err), output.ExitAPI)
 	}
-	results, _ := payload["results"].([]interface{})
-	if len(results) != 2 {
-		t.Errorf("results length = %d, want 2 (persisted statement + ERROR sentinel)", len(results))
-	}
-	note, _ := payload["note"].(string)
-	if !strings.Contains(note, "already applied") {
-		t.Errorf("note should warn prior statements persisted, got %q", note)
-	}
-}
-
-// decodePartialFailureData 解析 stdout 上 ok:false 的 partial-failure envelope，返回 data 块。
-func decodePartialFailureData(t *testing.T, stdoutStr string) map[string]interface{} {
-	t.Helper()
-	var envelope struct {
-		OK   bool                   `json:"ok"`
-		Data map[string]interface{} `json:"data"`
-	}
-	if err := json.Unmarshal([]byte(stdoutStr), &envelope); err != nil {
-		t.Fatalf("stdout is not a JSON envelope: %v\n%s", err, stdoutStr)
-	}
-	if envelope.OK {
-		t.Fatalf("envelope.ok = true, want false on partial failure")
-	}
-	if envelope.Data == nil {
-		t.Fatalf("envelope.data missing; stdout:\n%s", stdoutStr)
-	}
-	return envelope.Data
 }
 
 // TestAppsDBExecute_SingleErrorReturnsTypedError 单条语句失败（server 也返 code:0 + ERROR 哨兵）
-// 同样走 partial failure：statement_index=0、note 说明无语句落地、message 标注 (at statement 1 of 1)。
+// 同样升级成 typed error：statement_index=0、completed 空、message 标注 (at statement 1 of 1)。
 func TestAppsDBExecute_SingleErrorReturnsTypedError(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -592,26 +695,92 @@ func TestAppsDBExecute_SingleErrorReturnsTypedError(t *testing.T) {
 		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
 		factory, stdout)
 	if err == nil {
-		t.Fatalf("single ERROR sentinel must return a partial-failure error; stdout:\n%s", stdout.String())
+		t.Fatalf("single ERROR sentinel must return a typed error; stdout:\n%s", stdout.String())
 	}
-	var pfErr *output.PartialFailureError
-	if !errors.As(err, &pfErr) {
-		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want a typed errs.* error, got %T: %v", err, err)
 	}
-	payload := decodePartialFailureData(t, stdout.String())
-	msg, _ := payload["error_message"].(string)
-	if !strings.Contains(msg, "(at statement 1 of 1)") {
-		t.Errorf("error_message missing locator: %q", msg)
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeServerError {
+		t.Errorf("category/subtype = %s/%s, want api/server_error", p.Category, p.Subtype)
 	}
-	if got := payload["statement_index"]; got != float64(0) {
-		t.Errorf("statement_index = %v, want 0", got)
+	if !strings.Contains(p.Message, "(at statement 1 of 1)") {
+		t.Errorf("message missing locator: %q", p.Message)
 	}
-	note, _ := payload["note"].(string)
-	if !strings.Contains(note, "no statements were applied") {
-		t.Errorf("note should say nothing was applied, got %q", note)
+	// 第一条就失败、无落地 的语义写在 hint。
+	if !strings.Contains(p.Hint, "No statements were applied") {
+		t.Errorf("hint should state nothing applied: %q", p.Hint)
 	}
 }
 
+// TestAppsDBExecute_TransactionFailureRolledBack 钉死「显式事务内失败 → 整批回滚」：
+// 实测后端把 BEGIN 也作为 statement 返回；completed 含未配对 BEGIN → inferRolledBack 判定回滚。
+// 回滚语义现写在 hint（miaoda 原句 "Transaction rolled back; no changes persisted."），失败位置在 message。
+func TestAppsDBExecute_TransactionFailureRolledBack(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{
+				// BOE 实测 wire：BEGIN; CREATE; INSERT(ok); INSERT(dup→ERROR)
+				"result": `[` +
+					`{"sql_type":"BEGIN","data":"[]"},` +
+					`{"sql_type":"CREATE_TABLE","data":"[]"},` +
+					`{"sql_type":"INSERT","data":"[{\"rowCount\":1}]","affected_rows":1},` +
+					`{"sql_type":"ERROR","data":"{\"code\":\"k_dl_1300002\",\"message\":\"duplicate key value violates unique constraint\"}"}` +
+					`]`,
+			},
+		},
+	})
+	err := runAppsShortcut(t, AppsDBExecute,
+		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--as", "user"},
+		factory, stdout)
+	if err == nil {
+		t.Fatalf("transaction failure must return a typed error; stdout:\n%s", stdout.String())
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("want a typed errs.* error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAPI || p.Subtype != errs.SubtypeServerError {
+		t.Errorf("category/subtype = %s/%s, want api/server_error", p.Category, p.Subtype)
+	}
+	if !strings.Contains(p.Message, "(at statement 4 of 4)") {
+		t.Errorf("message missing statement locator: %q", p.Message)
+	}
+	// 事务整批回滚 / 前序未落库 的语义写在 hint（miaoda 原句）。
+	if !strings.Contains(p.Hint, "Transaction rolled back; no changes persisted.") {
+		t.Errorf("hint should state transaction rolled back & nothing persisted: %q", p.Hint)
+	}
+}
+
+// TestInferRolledBack_Cases 断言 inferRolledBack 按 BEGIN/COMMIT/ROLLBACK 计数判定失败时事务是否仍开着（即整批回滚）。
+func TestInferRolledBack_Cases(t *testing.T) {
+	stmt := func(t string) map[string]interface{} { return map[string]interface{}{"sql_type": t} }
+	cases := []struct {
+		name      string
+		completed []map[string]interface{}
+		want      bool
+	}{
+		{"empty", nil, false},
+		{"autocommit single", []map[string]interface{}{stmt("INSERT")}, false},
+		{"open tx (unmatched BEGIN)", []map[string]interface{}{stmt("BEGIN"), stmt("CREATE_TABLE"), stmt("INSERT")}, true},
+		{"closed tx (BEGIN+COMMIT)", []map[string]interface{}{stmt("BEGIN"), stmt("INSERT"), stmt("COMMIT")}, false},
+		{"reopened tx", []map[string]interface{}{stmt("BEGIN"), stmt("COMMIT"), stmt("BEGIN"), stmt("INSERT")}, true},
+		{"rollback closes tx", []map[string]interface{}{stmt("BEGIN"), stmt("INSERT"), stmt("ROLLBACK")}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := inferRolledBack(c.completed); got != c.want {
+				t.Errorf("inferRolledBack(%s) = %v, want %v", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+// TestCellString_AllKinds 断言 cellString 对 nil/string/bool/整数/小数/对象各类型的字符串化结果。
 func TestCellString_AllKinds(t *testing.T) {
 	cases := []struct {
 		name string
@@ -635,6 +804,7 @@ func TestCellString_AllKinds(t *testing.T) {
 	}
 }
 
+// TestCodeString_Forms 断言 codeString 处理 nil / "k_dl_xxx" / 纯数字串 / float64 / 不支持类型各形态。
 func TestCodeString_Forms(t *testing.T) {
 	cases := []struct {
 		name string
@@ -656,6 +826,7 @@ func TestCodeString_Forms(t *testing.T) {
 	}
 }
 
+// TestDmlVerb_AllVerbs 断言 dmlVerb 对 INSERT/UPDATE/DELETE/MERGE 的动词映射（大小写不敏感），非 DML 返回 affected。
 func TestDmlVerb_AllVerbs(t *testing.T) {
 	cases := map[string]string{
 		"INSERT":       "inserted",
@@ -671,6 +842,7 @@ func TestDmlVerb_AllVerbs(t *testing.T) {
 	}
 }
 
+// TestIntOrZero_Cases 断言 intOrZero 对 JSON number 取整、对非数字 / nil 返回 0。
 func TestIntOrZero_Cases(t *testing.T) {
 	if got := intOrZero(float64(5)); got != 5 {
 		t.Errorf("intOrZero(5)=%d want 5", got)
@@ -683,6 +855,7 @@ func TestIntOrZero_Cases(t *testing.T) {
 	}
 }
 
+// TestErrorSummary_Cases 断言 errorSummary 对空 / 非法 JSON / 带 code / 无 code 各情形生成 "message [code]" 文案。
 func TestErrorSummary_Cases(t *testing.T) {
 	cases := []struct {
 		name, in, want string
@@ -701,6 +874,7 @@ func TestErrorSummary_Cases(t *testing.T) {
 	}
 }
 
+// TestParseErrorSentinel_Cases 断言 parseErrorSentinel 解析 ERROR 哨兵 data 得到数值 code 与 message（含空 / 非法 / 空 message 回退）。
 func TestParseErrorSentinel_Cases(t *testing.T) {
 	cases := []struct {
 		name, in string
@@ -722,6 +896,7 @@ func TestParseErrorSentinel_Cases(t *testing.T) {
 	}
 }
 
+// TestIsStructuredResult_Cases 断言 isStructuredResult 仅在首元素含 sql_type 时判为新结构化形态。
 func TestIsStructuredResult_Cases(t *testing.T) {
 	if !isStructuredResult([]map[string]interface{}{{"sql_type": "SELECT"}}) {
 		t.Error("expected structured=true when sql_type present")
@@ -734,6 +909,7 @@ func TestIsStructuredResult_Cases(t *testing.T) {
 	}
 }
 
+// TestNormalizeLegacyStatement_Cases 断言 normalizeLegacyStatement 把空 / null / 非 JSON 标为 OK、把 rows 数组标为 SELECT 并带 record_count。
 func TestNormalizeLegacyStatement_Cases(t *testing.T) {
 	t.Run("empty -> OK", func(t *testing.T) {
 		got := normalizeLegacyStatement("")
@@ -764,6 +940,7 @@ func TestNormalizeLegacyStatement_Cases(t *testing.T) {
 	})
 }
 
+// TestCellString_MarshalFallback 断言 cellString 对 json.Marshal 拒绝的类型（如 complex）回退到 fmt %v。
 func TestCellString_MarshalFallback(t *testing.T) {
 	// complex128 is not switch-handled and json.Marshal rejects it →
 	// falls back to fmt.Sprintf("%v", v), which is deterministic for complex.
@@ -772,6 +949,7 @@ func TestCellString_MarshalFallback(t *testing.T) {
 	}
 }
 
+// TestRenderSingleStatementPretty_Branches 断言 renderSingleStatementPretty 对 SELECT/ERROR/DML/legacy OK/DDL 各分支的输出。
 func TestRenderSingleStatementPretty_Branches(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -795,6 +973,7 @@ func TestRenderSingleStatementPretty_Branches(t *testing.T) {
 	}
 }
 
+// TestRenderSelectRowsAsTable_Branches 断言 renderSelectRowsAsTable 对空串 / 空数组 / 非法 JSON 回退 / 正常 rows 各分支的输出。
 func TestRenderSelectRowsAsTable_Branches(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -814,37 +993,5 @@ func TestRenderSelectRowsAsTable_Branches(t *testing.T) {
 				t.Errorf("output %q does not contain %q", b.String(), c.substr)
 			}
 		})
-	}
-}
-
-// TestAppsDBExecute_PrettyPartialFailureKeepsStdoutHumanOnly pins the pretty
-// contract on a statement failure: stdout carries only the per-statement
-// human summary (no JSON envelope stacked after it), and the command still
-// exits non-zero via the partial-failure signal.
-func TestAppsDBExecute_PrettyPartialFailureKeepsStdoutHumanOnly(t *testing.T) {
-	factory, stdout, reg := newAppsExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/spark/v1/apps/app_x/sql_commands",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"result": `[{"sql_type":"ERROR","data":"{\"code\":\"k_dl_000002\",\"message\":\"syntax error\"}"}]`,
-			},
-		},
-	})
-	err := runAppsShortcut(t, AppsDBExecute,
-		[]string{"+db-execute", "--yes", "--app-id", "app_x", "--sql", "x", "--format", "pretty", "--as", "user"},
-		factory, stdout)
-	var pfErr *output.PartialFailureError
-	if !errors.As(err, &pfErr) {
-		t.Fatalf("want *output.PartialFailureError, got %T: %v", err, err)
-	}
-	out := stdout.String()
-	if !strings.Contains(out, "✗") {
-		t.Fatalf("pretty summary missing failure marker; stdout:\n%s", out)
-	}
-	if strings.Contains(out, `"ok"`) {
-		t.Fatalf("pretty stdout must not stack a JSON envelope after the summary; stdout:\n%s", out)
 	}
 }

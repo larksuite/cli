@@ -17,10 +17,22 @@ import (
 )
 
 func TestSlidesScreenshotDeclaredScopes(t *testing.T) {
+	if got := SlidesScreenshot.ScopesForIdentity("user"); len(got) != 0 {
+		t.Fatalf("user preflight scopes = %#v, want empty", got)
+	}
+	if got := SlidesScreenshot.ScopesForIdentity("bot"); len(got) != 0 {
+		t.Fatalf("bot preflight scopes = %#v, want empty", got)
+	}
+
 	got := SlidesScreenshot.DeclaredScopesForIdentity("user")
-	want := []string{"slides:presentation:screenshot", "wiki:node:read"}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	want := []string{"wiki:node:read"}
+	if len(got) != len(want) || got[0] != want[0] {
 		t.Fatalf("declared scopes = %#v, want %#v", got, want)
+	}
+	for _, scope := range got {
+		if scope == "slides:presentation:screenshot" {
+			t.Fatalf("declared scopes must not advertise screenshot scope: %#v", got)
+		}
 	}
 }
 

@@ -35,7 +35,7 @@ lark-cli drive +add-comment \
   --doc "<FILE_TOKEN>" --type file \
   --content '[{"type":"text","text":"请补充目录说明"}]'
 
-# 给 docx 文档的指定 block 添加局部评论（block_id 可通过 docs +fetch --api-version v2 --detail with-ids 获取）
+# 给 docx 文档的指定 block 添加局部评论（block_id 可通过 docs +fetch --detail with-ids 获取）
 lark-cli drive +add-comment \
   --doc "https://example.larksuite.com/docx/<DOC_ID>" \
   --block-id "<BLOCK_ID>" \
@@ -155,11 +155,11 @@ lark-cli drive +add-comment \
 | `--type` | 裸 token 时必填 | 文档类型：`doc`、`docx`、`file`、`sheet`、`slides`、`bitable`、`base`；评论 Base 文档推荐传 `bitable`，`base` 仅作为兼容别名兜底。URL 输入时自动识别，无需传 |
 | `--content` | 是 | `reply_elements` JSON 数组字符串。示例：`'[{"type":"text","text":"文本"},{"type":"mention_user","text":"ou_xxx"},{"type":"link","text":"https://example.com"}]'` |
 | `--full-comment` | 否 | 显式指定创建全文评论；未传 `--block-id` 时也会默认走全文评论（仅适用于 doc/docx、白名单 Drive file，以及解析为这些类型的 wiki；不适用于 sheet、slides、Base / bitable） |
-| `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --api-version v2 --detail with-ids` 获取；sheet 用 `<sheetId>!<cell>`，slides 用 `<slide-block-type>!<xml-id>`，Base 用 `<table-id>!<record-id>!<view-id>` |
+| `--block-id` | 局部评论时必填 | 目标块 ID，可通过 `docs +fetch --detail with-ids` 获取；sheet 用 `<sheetId>!<cell>`，slides 用 `<slide-block-type>!<xml-id>`，Base 用 `<table-id>!<record-id>!<view-id>` |
 
 ## 行为说明
 
-- **局部评论需要先获取 block ID**：先调用 `docs +fetch --api-version v2 --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
+- **局部评论需要先获取 block ID**：先调用 `docs +fetch --doc <TOKEN> --detail with-ids` 获取带有 block ID 的文档内容，然后使用 `--block-id` 指定目标块。
 - **Review 场景优先局部评论**：审阅、校对、逐条指出问题时，必须先尝试定位到具体 block / 单元格 / slide 元素，并逐问题创建局部评论；不要把所有问题合并成一条全文评论。
 - 未传 `--block-id` 时，shortcut 默认创建**全文评论**；也可以显式传 `--full-comment`。全文评论支持 `docx`、旧版 `doc` URL、白名单扩展名的 Drive file，以及最终可解析为 `doc`/`docx`/`file` 的 wiki URL。
 - **Drive file 评论**：仅支持白名单扩展名的普通文件。当前支持：`.md`、`.txt`、`.json`、`.csv`、`.go`、`.js`、`.py`、`.pptx`、`.png`、`.jpg`、`.jpeg`、`.zip`、`.mp3`、`.mp4`。

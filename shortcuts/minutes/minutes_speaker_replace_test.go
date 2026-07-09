@@ -34,7 +34,7 @@ func TestMinutesSpeakerReplace_Validate(t *testing.T) {
 		{
 			name:    "missing from",
 			args:    []string{"+speaker-replace", "--minute-token", minutesSpeakerReplaceTestToken, "--to-user-id", "ou_b", "--as", "user"},
-			wantErr: "required flag(s) \"from-user-id\" not set",
+			wantErr: "--from-speaker-id is required",
 		},
 		{
 			name:    "missing to",
@@ -153,6 +153,86 @@ func TestMinutesSpeakerReplace_DryRun(t *testing.T) {
 	}
 }
 
+func TestMinutesSpeakerReplace_Execute_OpaqueSpeakerIDNoPrefetch(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	// Only the PUT is registered on purpose: an opaque speaker_id must be passed
+	// straight through without a second speakerlist call. If the code still
+	// prefetched speakerlist, the unregistered GET would fail the request.
+	reg.Register(&httpmock.Stub{
+		Method: http.MethodPut,
+		URL:    "/open-apis/minutes/v1/minutes/" + minutesSpeakerReplaceTestToken + "/transcript/speaker",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{},
+		},
+	})
+
+	err := mountAndRun(t, MinutesSpeakerReplace, []string{
+		"+speaker-replace",
+		"--minute-token", minutesSpeakerReplaceTestToken,
+		"--from-speaker-id", "ENCRYPTED_TOKEN_ABC",
+		"--to-user-id", "ou_new_speaker",
+		"--format", "json", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope struct {
+		Data struct {
+			FromSpeakerID string `json:"from_speaker_id"`
+			ToUserID      string `json:"to_user_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal stdout: %v", err)
+	}
+	if envelope.Data.FromSpeakerID != "ENCRYPTED_TOKEN_ABC" {
+		t.Errorf("data.from_speaker_id = %q, want ENCRYPTED_TOKEN_ABC", envelope.Data.FromSpeakerID)
+	}
+	if envelope.Data.ToUserID != "ou_new_speaker" {
+		t.Errorf("data.to_user_id = %q, want ou_new_speaker", envelope.Data.ToUserID)
+	}
+}
+
+func TestMinutesSpeakerReplace_DryRun_FromSpeakerID(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
+	warmTokenCache(t)
+
+	err := mountAndRun(t, MinutesSpeakerReplace, []string{
+		"+speaker-replace",
+		"--minute-token", minutesSpeakerReplaceTestToken,
+		"--from-speaker-id", "ENCRYPTED_TOKEN_ABC",
+		"--to-user-id", "ou_new_speaker",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := stdout.String()
+	if strings.Contains(out, "/transcript/speakerlist") {
+		t.Errorf("opaque speaker_id should not prefetch speakerlist, got:\n%s", out)
+	}
+	if !strings.Contains(out, "PUT") {
+		t.Errorf("expected PUT for speaker replace, got:\n%s", out)
+	}
+	if !strings.Contains(out, "from_speaker_id") || !strings.Contains(out, "ENCRYPTED_TOKEN_ABC") {
+		t.Errorf("expected from_speaker_id in body, got:\n%s", out)
+	}
+	if strings.Contains(out, "from_user_id") {
+		t.Errorf("from_speaker_id path should not send from_user_id, got:\n%s", out)
+	}
+	if !strings.Contains(out, "ou_new_speaker") {
+		t.Errorf("expected to_user_id in body, got:\n%s", out)
+	}
+}
+
 func TestMinutesSpeakerReplace_Execute(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
@@ -238,8 +318,8 @@ func TestMinutesSpeakerReplace_SpeakerNotFound(t *testing.T) {
 	if !strings.Contains(p.Message, "ou_missing_speaker") {
 		t.Errorf("message should include missing speaker id, got: %s", p.Message)
 	}
-	if !strings.Contains(p.Hint, "--from-user-id") {
-		t.Errorf("hint should mention --from-user-id, got: %s", p.Hint)
+	if !strings.Contains(p.Hint, "--from-speaker-id") {
+		t.Errorf("hint should mention --from-speaker-id, got: %s", p.Hint)
 	}
 }
 

@@ -138,6 +138,10 @@ func parseWaiver(parts []string, lineNo int) (Waiver, error) {
 		if item.SourceFile == "" || item.Line == 0 {
 			return Waiver{}, fmt.Errorf("%s:%d: %s waiver requires source_file and line", waiverPath, lineNo, item.FactKind)
 		}
+	case "public_content":
+		if item.SourceFile == "" || item.Line == 0 || item.CommandPath != "" {
+			return Waiver{}, fmt.Errorf("%s:%d: public_content waiver requires source_file and line only", waiverPath, lineNo)
+		}
 	case "command", "output":
 		if item.CommandPath == "" {
 			return Waiver{}, fmt.Errorf("%s:%d: %s waiver requires command_path", waiverPath, lineNo, item.FactKind)

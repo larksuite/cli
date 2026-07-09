@@ -159,7 +159,7 @@ func TestHandleTaskApiResultWithContext_PermissionConsoleURL(t *testing.T) {
 	if pe.Subtype != errs.SubtypeAppScopeNotApplied {
 		t.Errorf("subtype = %q, want %q", pe.Subtype, errs.SubtypeAppScopeNotApplied)
 	}
-	if pe.ConsoleURL == "" || !strings.Contains(pe.ConsoleURL, "open.larksuite.com/app/cli_a123/auth") {
+	if pe.ConsoleURL == "" || !strings.Contains(pe.ConsoleURL, "open.larksuite.com/page/scope-apply?clientID=cli_a123") {
 		t.Errorf("ConsoleURL = %q, want Lark developer console URL", pe.ConsoleURL)
 	}
 	if len(pe.MissingScopes) != 1 || pe.MissingScopes[0] != "task:attachment:write" {

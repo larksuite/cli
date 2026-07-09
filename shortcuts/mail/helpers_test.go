@@ -465,14 +465,19 @@ func TestPrintWatchOutputSchema(t *testing.T) {
 // TestHintMarkAsRead verifies hint mark as read.
 func TestHintMarkAsRead(t *testing.T) {
 	rt, _, stderr := newOutputRuntime(t)
-	// Inject ANSI escape + message ID to verify sanitization
-	hintMarkAsRead(rt, "me", "msg-\x1b[31m123")
+	hintMarkAsRead(rt, "mail box;$(whoami)", "msg-\x1b[31m123 'quoted'\nnext")
 	out := stderr.String()
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("hintMarkAsRead should sanitize ANSI escapes, got: %q", out)
 	}
-	if !strings.Contains(out, "msg-123") {
-		t.Errorf("hintMarkAsRead should contain sanitized message ID, got: %q", out)
+	if strings.Contains(out, "\nnext") {
+		t.Errorf("hintMarkAsRead should strip embedded newlines, got: %q", out)
+	}
+	if !strings.Contains(out, "--mailbox 'mail box;$(whoami)'") {
+		t.Errorf("hintMarkAsRead should quote mailbox for shell copy/paste, got: %q", out)
+	}
+	if !strings.Contains(out, "--message-ids 'msg-123 '\\''quoted'\\''next'") {
+		t.Errorf("hintMarkAsRead should quote message ID for shell copy/paste, got: %q", out)
 	}
 }
 

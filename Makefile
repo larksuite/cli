@@ -12,6 +12,7 @@ QUALITY_GATE_DIR ?= .tmp/quality-gate
 QUALITY_GATE_MANIFEST_OUT ?= $(QUALITY_GATE_DIR)/command-manifest.json
 QUALITY_GATE_COMMAND_INDEX_OUT ?= $(QUALITY_GATE_DIR)/command-index.json
 QUALITY_GATE_FACTS_OUT ?= $(QUALITY_GATE_DIR)/facts.json
+PUBLIC_CONTENT_METADATA ?= $(QUALITY_GATE_DIR)/public-content-metadata.json
 LDFLAGS  := -s -w -X $(MODULE)/internal/build.Version=$(VERSION) -X $(MODULE)/internal/build.Date=$(DATE)
 PREFIX   ?= /usr/local
 
@@ -50,7 +51,7 @@ script-test:
 	bash scripts/resolve-changed-from.test.sh
 	bash scripts/ci-workflow.test.sh
 	bash scripts/semantic-review-workflow.test.sh
-	$(NODE) --test scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
+	$(NODE) --test scripts/e2e_domains.test.js scripts/semantic-review-verify-artifact.test.js scripts/pr-quality-summary.test.js scripts/semantic-review-publish.test.js scripts/ci-quality-summary-publish.test.js
 
 # ./extension/... keeps the public plugin SDK in the default test matrix.
 unit-test: fetch_meta
@@ -69,7 +70,8 @@ integration-test: build
 test: vet fmt-check script-test unit-test examples-build integration-test
 
 quality-gate: build
-	mkdir -p $(QUALITY_GATE_DIR) $(dir $(QUALITY_GATE_FACTS_OUT))
+	mkdir -p $(QUALITY_GATE_DIR) $(dir $(QUALITY_GATE_FACTS_OUT)) $(dir $(PUBLIC_CONTENT_METADATA))
+	test -f $(PUBLIC_CONTENT_METADATA) || printf '{}\n' > $(PUBLIC_CONTENT_METADATA)
 	LARKSUITE_CLI_REMOTE_META=off \
 	LARKSUITE_CLI_NO_UPDATE_NOTIFIER=1 \
 	LARKSUITE_CLI_NO_SKILLS_NOTIFIER=1 \
@@ -89,6 +91,7 @@ quality-gate: build
 		--changed-from $(QUALITY_GATE_CHANGED_FROM_RESOLVED) \
 		--manifest $(QUALITY_GATE_MANIFEST_OUT) \
 		--command-index $(QUALITY_GATE_COMMAND_INDEX_OUT) \
+		--public-content-metadata $(PUBLIC_CONTENT_METADATA) \
 		--facts-out $(QUALITY_GATE_FACTS_OUT)
 
 install: build

@@ -10,9 +10,11 @@ import (
 	"testing"
 	"time"
 
+	extcred "github.com/larksuite/cli/extension/credential"
 	larkauth "github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/credential"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/zalando/go-keyring"
 )
@@ -347,4 +349,137 @@ func TestDiagnose_UserIdentityNeedsRefresh(t *testing.T) {
 	if got.User.TokenStatus != "needs_refresh" {
 		t.Fatalf("token status = %q, want needs_refresh", got.User.TokenStatus)
 	}
+}
+
+// fakeExtProvider is a minimal credential.extcred.Provider for exercising the
+// external-credential diagnosis path. account makes the provider "active";
+// token (when set) satisfies ResolveToken during verify.
+type fakeExtProvider struct {
+	name    string
+	account *extcred.Account
+	token   *extcred.Token
+}
+
+func (p *fakeExtProvider) Name() string { return p.name }
+func (p *fakeExtProvider) ResolveAccount(context.Context) (*extcred.Account, error) {
+	return p.account, nil
+}
+func (p *fakeExtProvider) ResolveToken(context.Context, extcred.TokenSpec) (*extcred.Token, error) {
+	return p.token, nil
+}
+
+func externalFactory(prov *fakeExtProvider, cfg *core.CliConfig) *cmdutil.Factory {
+	cred := credential.NewCredentialProvider(
+		[]extcred.Provider{prov}, nil, nil,
+		func() (*http.Client, error) { return nil, nil },
+	)
+	return &cmdutil.Factory{
+		Config:     func() (*core.CliConfig, error) { return cfg, nil },
+		Credential: cred,
+		IOStreams:  &cmdutil.IOStreams{},
+	}
+}
+
+// assertExternalHint locks the contract that an external-provider hint never
+// points at interactive commands blocked under an external provider.
+func assertExternalHint(t *testing.T, hint string) {
+	t.Helper()
+	if hint == "" {
+		t.Fatalf("hint empty, want external guidance")
+	}
+	for _, blocked := range []string{"auth login", "config --help"} {
+		if strings.Contains(hint, blocked) {
+			t.Fatalf("hint %q must not point at %q (blocked under external provider)", hint, blocked)
+		}
+	}
+	if !strings.Contains(hint, "external") {
+		t.Fatalf("hint %q should explain credentials are external", hint)
+	}
+}
+
+func TestDiagnose_External_UserReady(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll), UserOpenId: "ou_x", UserName: "Alice"}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	// The bug this guards: the built-in path read the keychain (empty under an
+	// external provider) and reported the user as missing. Now availability
+	// follows the resolved account, so a signed-in user reads as ready.
+	if !got.User.Available || got.User.Status != StatusReady || got.User.TokenStatus != StatusReady {
+		t.Fatalf("user = %#v, want ready/available", got.User)
+	}
+	if got.User.OpenID != "ou_x" || got.User.UserName != "Alice" {
+		t.Fatalf("user identity = %#v", got.User)
+	}
+	if got.User.Hint != "" {
+		t.Fatalf("hint = %q, want empty when available", got.User.Hint)
+	}
+	if !got.Bot.Available || got.Bot.Status != StatusReady {
+		t.Fatalf("bot = %#v, want ready/available", got.Bot)
+	}
+}
+
+func TestDiagnose_External_UserNotSignedIn(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsAll)}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if got.User.Available || got.User.Status != StatusMissing {
+		t.Fatalf("user = %#v, want missing/unavailable", got.User)
+	}
+	assertExternalHint(t, got.User.Hint)
+}
+
+func TestDiagnose_External_BotOnly(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsBot), UserOpenId: "ou_x"}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if !got.Bot.Available || got.Bot.Status != StatusReady {
+		t.Fatalf("bot = %#v, want ready/available", got.Bot)
+	}
+	// Provider declares bot-only: user is unavailable even though an open id is
+	// present, and the hint is external (not "auth login").
+	if got.User.Available || got.User.Status != StatusNotConfigured {
+		t.Fatalf("user = %#v, want not_configured/unavailable", got.User)
+	}
+	assertExternalHint(t, got.User.Hint)
+}
+
+func TestDiagnose_External_UserOnly(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandLark, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Bob"}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, false)
+	if !got.User.Available || got.User.Status != StatusReady {
+		t.Fatalf("user = %#v, want ready/available", got.User)
+	}
+	if got.Bot.Available || got.Bot.Status != StatusNotConfigured {
+		t.Fatalf("bot = %#v, want not_configured/unavailable", got.Bot)
+	}
+	assertExternalHint(t, got.Bot.Hint)
+}
+
+func TestDiagnose_External_VerifyUserResolvesToken(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x", UserName: "Alice"}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}, token: &extcred.Token{Value: "ext-uat"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if !got.User.Available || got.User.Verified == nil || !*got.User.Verified {
+		t.Fatalf("user = %#v, want available and verified", got.User)
+	}
+}
+
+func TestDiagnose_External_VerifyUserTokenUnavailable(t *testing.T) {
+	cfg := &core.CliConfig{AppID: "cli_x", Brand: core.BrandFeishu, SupportedIdentities: uint8(extcred.SupportsUser), UserOpenId: "ou_x"}
+	f := externalFactory(&fakeExtProvider{name: "corp-sso", account: &extcred.Account{AppID: "cli_x"}}, cfg)
+
+	got := Diagnose(context.Background(), f, cfg, true)
+	if got.User.Available || got.User.Status != StatusVerifyFailed {
+		t.Fatalf("user = %#v, want verify_failed/unavailable", got.User)
+	}
+	if got.User.Verified == nil || *got.User.Verified {
+		t.Fatalf("verified = %v, want false", got.User.Verified)
+	}
+	assertExternalHint(t, got.User.Hint)
 }

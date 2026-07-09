@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/internal/qualitygate/manifest"
 	"github.com/larksuite/cli/internal/qualitygate/report"
 	"github.com/larksuite/cli/internal/qualitygate/rules"
+	"github.com/larksuite/cli/internal/validate"
 )
 
 func main() {
@@ -41,11 +42,21 @@ func runCheck(args []string) int {
 	fs.StringVar(&opts.FactsOut, "facts-out", "", "write facts JSON to this path")
 	fs.StringVar(&opts.ManifestPath, "manifest", "", "hand-authored command manifest JSON")
 	fs.StringVar(&opts.CommandIndexPath, "command-index", "", "full command index JSON")
+	fs.StringVar(&opts.PublicContentMetadataPath, "public-content-metadata", "", "PR title/body metadata JSON for public content checks")
 	fs.BoolVar(&printLegacyCommandCandidates, "print-legacy-command-candidates", false, "print current non-kebab-case hand-authored command candidates")
 	fs.BoolVar(&printLegacyFlagCandidates, "print-legacy-flag-candidates", false, "print current non-kebab-case flag candidates")
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "quality-gate check: %v\n", err)
 		return 2
+	}
+
+	if opts.PublicContentMetadataPath != "" {
+		safePath, err := validate.SafeInputPath(opts.PublicContentMetadataPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "quality-gate check: --public-content-metadata: %v\n", err)
+			return 2
+		}
+		opts.PublicContentMetadataPath = safePath
 	}
 
 	if opts.ManifestPath == "" || opts.CommandIndexPath == "" {

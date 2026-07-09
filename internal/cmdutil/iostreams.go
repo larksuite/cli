@@ -18,6 +18,9 @@ type IOStreams struct {
 	Out        io.Writer
 	ErrOut     io.Writer
 	IsTerminal bool
+	// OutIsTerminal reports whether Out is an interactive terminal. Mirrors
+	// IsTerminal; computed once in NewIOStreams and assignable directly in tests.
+	OutIsTerminal bool
 	// StderrIsTerminal reports whether ErrOut is an interactive terminal.
 	// Advisory warnings written to stderr (e.g. the proxy notice) gate on this
 	// so they stay out of non-interactive output (pipes, CI, agent runs).
@@ -27,19 +30,24 @@ type IOStreams struct {
 }
 
 // NewIOStreams builds an IOStreams from arbitrary readers/writers.
-// IsTerminal / StderrIsTerminal are derived from in's / errOut's underlying
-// *os.File, if any; non-file streams (bytes.Buffer, strings.Reader, …) yield
-// false.
+// IsTerminal / OutIsTerminal / StderrIsTerminal are each derived from the
+// underlying *os.File of in / out / errOut respectively; non-file
+// readers/writers (bytes.Buffer, strings.Reader, …) yield false.
 func NewIOStreams(in io.Reader, out, errOut io.Writer) *IOStreams {
-	isTerminal := false
-	if f, ok := in.(*os.File); ok {
-		isTerminal = term.IsTerminal(int(f.Fd()))
+	fileIsTerminal := func(v any) bool {
+		if f, ok := v.(*os.File); ok {
+			return term.IsTerminal(int(f.Fd()))
+		}
+		return false
 	}
-	stderrIsTerminal := false
-	if f, ok := errOut.(*os.File); ok {
-		stderrIsTerminal = term.IsTerminal(int(f.Fd()))
+	return &IOStreams{
+		In:               in,
+		Out:              out,
+		ErrOut:           errOut,
+		IsTerminal:       fileIsTerminal(in),
+		OutIsTerminal:    fileIsTerminal(out),
+		StderrIsTerminal: fileIsTerminal(errOut),
 	}
-	return &IOStreams{In: in, Out: out, ErrOut: errOut, IsTerminal: isTerminal, StderrIsTerminal: stderrIsTerminal}
 }
 
 // SystemIO creates an IOStreams wired to the process's standard file descriptors.

@@ -3,7 +3,7 @@
 
 > **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
-基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，以**用户身份**统一搜索云空间（云盘/云存储）对象。
+基于 Search v2 接口 `POST /open-apis/search/v2/doc_wiki/search`，支持以**用户身份或应用身份**统一搜索云空间（云盘/云存储）对象。
 
 核心特性：
 
@@ -14,12 +14,16 @@
 
 > **资源发现入口统一**：`drive +search` 同样返回 `SHEET` / `Base` / `FOLDER` 等全部云空间（云盘/云存储）对象，不只是文档 / Wiki。用户说"找一个表格"、"找报表"、"最近打开的表格"时，也从这里开始；定位后再切到对应业务 skill（如 `lark-sheets`）做对象内部操作。
 
+> **身份边界**：普通关键词、类型、文件夹、Wiki 空间、owner/open_id 等显式过滤支持 `--as user` 或 `--as bot`。`--mine` / `--created-by-me` 依赖当前登录用户 open_id 自动填充过滤条件；应用身份下如果没有配置用户 open_id，请改用显式 `--creator-ids` / `--original-creator-ids`。
+
 ## 命令
 
 > **关键约束：搜索关键词必须通过 `--query` 传递。**
 > 正确：`lark-cli drive +search --query "方案"`
 > 错误：`lark-cli drive +search 方案`
 > `+search` 不接受位置参数；空 `--query` 或省略 `--query` 表示纯靠 filter 浏览（合法）。
+>
+> **`--query` 最长 30 个字符**：按字符数（Unicode 码点）算，中文每字算 1 个，与 ASCII 同口径；超过 30 会被服务端拒绝（`99992402 field validation failed`，**是报错不是截断**）。长关键词必须先压缩成核心实体 + 主题词（如把整句问题压成「项目名 + 主题」再搜），不要把整句原问塞进 `--query`。
 >
 > **列表型请求不要硬塞关键词**：如果用户只是要求"我这月创建的所有文档"、"最近半年我编辑过的文档"、"按类型分类统计"这类范围浏览 / 汇总请求，且没有给出标题片段或业务关键词，应使用 `--query ""` 搭配 `--created-by-me`、`--mine`、`--created-*`、`--edited-*`、`--doc-types` 等过滤条件。不要把"查找"、"所有文档"、"最近更新过"、"按类型分类统计"这类动作词或统计意图放进 `--query`，否则会把本来应靠 filter 命中的结果过度收窄。
 
@@ -99,7 +103,7 @@ lark-cli drive +search --query 方案 --page-token '<PAGE_TOKEN>'
 
 | 参数 | 必填 | 说明 |
 |---|---|---|
-| `--query <text>` | 否 | 搜索关键词；支持服务端高级语法（`intitle:`、`""`、`OR`、`-`）。空字符串或省略表示纯 filter 浏览 |
+| `--query <text>` | 否 | 搜索关键词；支持服务端高级语法（`intitle:`、`""`、`OR`、`-`）。空字符串或省略表示纯 filter 浏览。**长度上限 30 个字符（按 Unicode 码点算，中文每字算 1 个，与 ASCII 同口径）；超过 30 服务端直接报 `99992402 field validation failed`，不会截断** |
 | `--page-size <n>` | 否 | 每页数量，默认 15，最大 20。超过 20 自动 clamp；非正数（≤0）回落 15；**非数字值直接返回 validation 错误** |
 | `--page-token <token>` | 否 | 上一次响应里的 `page_token`，用于翻页 |
 | `--format` | 否 | `json`（默认）/ `pretty` |

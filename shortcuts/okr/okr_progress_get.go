@@ -26,6 +26,7 @@ var OKRGetProgressRecord = common.Shortcut{
 	Flags: []common.Flag{
 		{Name: "progress-id", Desc: "progress ID (int64)", Required: true},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
+		{Name: "style", Default: "simple", Desc: "output style: simple (semi-plain text JSON) | richtext (ContentBlock JSON)", Enum: []string{"simple", "richtext"}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		progressID := runtime.Str("progress-id")
@@ -38,6 +39,10 @@ var OKRGetProgressRecord = common.Shortcut{
 		idType := runtime.Str("user-id-type")
 		if idType != "open_id" && idType != "union_id" && idType != "user_id" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--user-id-type must be one of: open_id | union_id | user_id").WithParam("--user-id-type")
+		}
+		style := runtime.Str("style")
+		if style != "simple" && style != "richtext" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be one of: simple | richtext").WithParam("--style")
 		}
 		return nil
 	},
@@ -55,6 +60,7 @@ var OKRGetProgressRecord = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		progressID := runtime.Str("progress-id")
 		userIDType := runtime.Str("user-id-type")
+		style := runtime.Str("style")
 
 		queryParams := map[string]interface{}{"user_id_type": userIDType}
 
@@ -69,21 +75,45 @@ var OKRGetProgressRecord = common.Shortcut{
 			return err
 		}
 
-		resp := record.ToResp()
-		result := map[string]interface{}{
-			"progress": resp,
-		}
+		var result map[string]interface{}
+		if style == "simple" {
+			resp := record.ToSimple()
+			result = map[string]interface{}{
+				"progress": resp,
+				"style":    style,
+			}
 
-		runtime.OutFormat(result, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "Progress [%s]\n", resp.ID)
-			fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
-			if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
-				fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Progress [%s] (style: %s)\n", resp.ID, style)
+				fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
+				if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
+					fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+				}
+				if resp.Content != nil {
+					fmt.Fprintf(w, "  Content: %s\n", resp.Content.Text)
+					if len(resp.Content.Mention) > 0 {
+						fmt.Fprintf(w, "  Mentions: %v\n", resp.Content.Mention)
+					}
+				}
+			})
+		} else {
+			resp := record.ToResp()
+			result = map[string]interface{}{
+				"progress": resp,
+				"style":    style,
 			}
-			if resp.Content != nil {
-				fmt.Fprintf(w, "  Content: %s\n", *resp.Content)
-			}
-		})
+
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Progress [%s] (style: %s)\n", resp.ID, style)
+				fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
+				if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
+					fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+				}
+				if resp.Content != nil {
+					fmt.Fprintf(w, "  Content: %s\n", *resp.Content)
+				}
+			})
+		}
 		return nil
 	},
 }

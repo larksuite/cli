@@ -31,6 +31,8 @@ func docsSkillReadCommandForShortcut(shortcut string) string {
 		return docsSkillReadCommand + " references/lark-doc-fetch.md"
 	case "update":
 		return docsSkillReadCommand + " references/lark-doc-update.md"
+	case "history-list", "history-revert", "history-revert-status":
+		return docsSkillReadCommand + " references/lark-doc-history.md"
 	default:
 		return docsSkillReadCommand
 	}
@@ -44,6 +46,12 @@ func docsHelpCommandForShortcut(shortcut string) string {
 		return "lark-cli docs +fetch --help"
 	case "update":
 		return "lark-cli docs +update --help"
+	case "history-list":
+		return "lark-cli docs +history-list --help"
+	case "history-revert":
+		return "lark-cli docs +history-revert --help"
+	case "history-revert-status":
+		return "lark-cli docs +history-revert-status --help"
 	default:
 		return "lark-cli docs --help"
 	}
@@ -56,6 +64,9 @@ func Shortcuts() []common.Shortcut {
 		DocsCreate,
 		DocsFetch,
 		DocsUpdate,
+		DocsHistoryList,
+		DocsHistoryRevert,
+		DocsHistoryRevertStatus,
 		DocMediaInsert,
 		DocMediaUpload,
 		DocMediaPreview,

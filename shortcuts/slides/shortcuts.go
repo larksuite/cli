@@ -11,6 +11,8 @@ func Shortcuts() []common.Shortcut {
 		SlidesCreate,
 		SlidesMediaUpload,
 		SlidesReplaceSlide,
+		SlidesReplacePages,
 		SlidesScreenshot,
+		SlidesXMLGet,
 	}
 }

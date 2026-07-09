@@ -152,6 +152,25 @@ describe("ci-quality-summary-publish", () => {
     });
   });
 
+  it("does not publish a summary when the PR closes before comment creation", async () => {
+    await withPublishTempDir(async ({ calls }) => {
+      await publish({
+        github: fakeGithub(calls, {
+          jobs: [{ name: "unit-test", conclusion: "failure", html_url: "https://github.example/jobs/1" }],
+          pullResponses: [
+            currentPullResponse(),
+            currentPullResponse({ state: "closed" }),
+          ],
+        }),
+        context: workflowRunContext({ conclusion: "failure" }),
+        core: silentCore(calls),
+      });
+
+      assert.equal(calls.comments.length, 0);
+      assert.match(calls.notices.join("\n"), /PR is no longer open/);
+    });
+  });
+
   it("does not delete an existing summary when the PR base changes before cleanup", async () => {
     await withPublishTempDir(async ({ calls }) => {
       await publish({
@@ -338,6 +357,7 @@ function fakeGithub(calls, options = {}) {
 function currentPullResponse(overrides = {}) {
   return {
     data: {
+      state: overrides.state || "open",
       head: { sha: overrides.headSha || process.env.CI_QUALITY_SUMMARY_HEAD_SHA },
       base: {
         sha: overrides.baseSha || process.env.CI_QUALITY_SUMMARY_BASE_SHA,

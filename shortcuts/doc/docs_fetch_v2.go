@@ -14,6 +14,8 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
+const docsFetchExtraParam = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
+
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
@@ -69,6 +71,9 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := processHTML5BlockReferenceMapForFetch(runtime, effectiveFetchFormat(runtime), ref.Token, data); err != nil {
+		return err
+	}
 	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
 		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
 	}
@@ -88,7 +93,8 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format": effectiveFetchFormat(runtime),
+		"format":      effectiveFetchFormat(runtime),
+		"extra_param": docsFetchExtraParam,
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
