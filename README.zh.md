@@ -96,11 +96,21 @@ lark-cli calendar +agenda
 
 > 以下步骤面向 AI Agent，部分步骤需要用户在浏览器中配合完成。
 
-**第 1 步 — 安装**
+**第 1 步 — 检测或安装**
+
+先检查当前 shell 是否已经能直接使用 `lark-cli`。AI Agent 应优先复用已有安装，不要每个会话都要求用户重新安装：
+
+```bash
+command -v lark-cli && lark-cli --version
+```
+
+如果命令不存在或无法运行，再执行安装：
 
 ```bash
 npx @larksuite/cli@latest install
 ```
+
+正常使用 `lark-cli` 不需要额外配置 MCP。CLI 是普通终端命令；随包安装的 Skills 会告诉 Agent 何时以及如何调用它。
 
 **第 2 步 — 配置应用凭证**
 

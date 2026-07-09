@@ -96,11 +96,21 @@ lark-cli calendar +agenda
 
 > The following steps are for AI Agents. Some steps require the user to complete actions in a browser.
 
-**Step 1 — Install**
+**Step 1 — Detect or install**
+
+First check whether `lark-cli` is already available in the current shell. AI Agents should reuse an existing installation instead of asking the user to reinstall every session:
+
+```bash
+command -v lark-cli && lark-cli --version
+```
+
+If the command is missing or cannot run, install it:
 
 ```bash
 npx @larksuite/cli@latest install
 ```
+
+An MCP server is not required for normal `lark-cli` usage. The CLI is a regular terminal command; the bundled Skills teach the Agent when and how to call it.
 
 **Step 2 — Configure app credentials**
 
