@@ -259,6 +259,16 @@ To check whether a command succeeded, test `ok == true` (or the exit code) — *
 --page-delay 500            # 500ms between page requests
 ```
 
+### OpenAPI Quota
+
+Commands that execute real Lark/Feishu Open Platform requests consume the same tenant/app OpenAPI quota as SDK or direct HTTP calls. This includes shortcut commands, generated API commands, and raw `lark-cli api` calls.
+
+Local-only inspection commands do not consume business OpenAPI quota because they do not send platform requests. Examples include `--help`, `schema`, `config`, `profile`, and shortcut `--dry-run` previews. A dry run validates and prints the planned request shape; the real command may still fail on server-side checks such as membership, scope, rate limit, or resource permission.
+
+Pagination consumes quota per actual request. For example, `--page-all` walks multiple pages, so quota usage is proportional to the number of pages fetched; use `--page-limit` and `--page-delay` to bound agent-driven workflows.
+
+Quota visibility is tenant/admin oriented. Enterprise admins can usually inspect usage in Feishu/Lark Admin Console billing or entitlement pages; ordinary personal users may not have access. When quota or rate-limit errors occur, inspect the JSON error envelope (`error.code`, `error.subtype`, `error.hint`, and `error.log_id` when present) before retrying.
+
 ### Dry Run
 
 For commands that may have side effects, preview the request with --dry-run first:

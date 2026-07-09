@@ -260,6 +260,16 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --page-delay 500            # 每页请求间隔 500ms
 ```
 
+### OpenAPI 配额
+
+会实际请求飞书/Lark 开放平台的命令，会和 SDK 或直接 HTTP 调用一样消耗对应租户/应用的 OpenAPI 配额。这包括快捷命令、自动生成的 API 命令，以及 `lark-cli api` 原始调用。
+
+只做本地检查或自省的命令不消耗业务 OpenAPI 配额，因为它们不会发送平台请求。例如 `--help`、`schema`、`config`、`profile` 和快捷命令的 `--dry-run` 预览。dry run 只校验并打印计划请求结构；真正执行时仍可能因为成员关系、scope、限流或资源权限等服务端检查失败。
+
+分页会按实际请求次数消耗配额。例如 `--page-all` 会连续拉取多页，因此配额消耗与实际获取的页数成正比；在 Agent 自动化流程里建议用 `--page-limit` 和 `--page-delay` 控制上限和节奏。
+
+配额可见性通常面向租户/管理员。企业管理员一般可在飞书/Lark 管理后台的费用中心或权益数据页面查看用量；普通个人用户可能没有查看权限。遇到配额或限流错误时，请先查看 JSON 错误信封里的 `error.code`、`error.subtype`、`error.hint`，以及存在时的 `error.log_id`，再决定是否重试。
+
 ### Dry Run
 
 对可能产生副作用的命令，建议先用 --dry-run 预览请求：
