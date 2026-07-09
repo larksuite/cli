@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.68] - 2026-07-09
+
+### Features
+
+- **drive**: Strengthen lark-drive high-risk write operations and read-only recognition boundaries. (#1801)
+- **slides**: add slides chart demo reference
+
+### Bug Fixes
+
+- register and consume --json shorthand for custom-format shortcuts (#1737)
+- **drive**: abort push on parent sibling limit (#1813)
+
+### Documentation
+
+- require native charts in slide planning
+- register knowledge organize workflow (#1828)
+
 ## [v1.0.67] - 2026-07-08
 
 ### Features
@@ -1421,6 +1438,7 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.68]: https://github.com/larksuite/cli/releases/tag/v1.0.68
 [v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67
 [v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66
 [v1.0.65]: https://github.com/larksuite/cli/releases/tag/v1.0.65
