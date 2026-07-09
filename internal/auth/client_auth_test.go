@@ -10,11 +10,14 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/json"
 	"net/url"
+	"os"
 	"testing"
 
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -94,6 +97,59 @@ func TestClientAuth_applyClientAssertion_NilSigner(t *testing.T) {
 	if _, err := ca.applyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
 		t.Fatal("expected error when private_key_jwt has no signer")
 	}
+}
+
+func TestClientAuth_applyClientAssertion_KeylessHelper(t *testing.T) {
+	t.Setenv(envvars.CliKeylessSignerCmd, keylessHelperTestCommand(t))
+	t.Setenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT", `{"op":"sign-assertion","keyRef":"agent-key","clientId":"cli_a","aud":"aud"}`)
+
+	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWT, KeyLabel: "agent-key"}
+	form := url.Values{}
+	used, err := ca.applyClientAssertion(context.Background(), form, "aud")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !used {
+		t.Fatal("expected assertion auth")
+	}
+	if form.Get("client_assertion") != "helper.jwt" {
+		t.Fatalf("client_assertion = %q", form.Get("client_assertion"))
+	}
+}
+
+func keylessHelperTestCommand(t *testing.T) string {
+	t.Helper()
+	argv, err := json.Marshal([]string{os.Args[0], "-test.run=TestKeylessHelperProcess", "--"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(argv)
+}
+
+func TestKeylessHelperProcess(t *testing.T) {
+	want := os.Getenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT")
+	if want == "" {
+		return
+	}
+	var got map[string]any
+	if err := json.NewDecoder(os.Stdin).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	var expected map[string]any
+	if err := json.Unmarshal([]byte(want), &expected); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range expected {
+		if got[k] != v {
+			t.Fatalf("%s = %v, want %v; request=%v", k, got[k], v, got)
+		}
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"ok":                    true,
+		"client_assertion_type": jwt.ClientAssertionType,
+		"client_assertion":      "helper.jwt",
+	})
+	os.Exit(0)
 }
 
 func TestClientAuthFromConfig(t *testing.T) {
