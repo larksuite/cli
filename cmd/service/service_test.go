@@ -1258,22 +1258,28 @@ func TestCompleteMailRuleOrder_AppendsMissingRulesInOriginalOrder(t *testing.T) 
 
 func TestCompleteMailRuleOrder_RejectsDuplicateAndUnknownIDs(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   []string
-		all     []string
-		wantErr string
+		name       string
+		input      []string
+		all        []string
+		wantErr    string
+		wantParam  string
+		wantSubtype errs.Subtype
 	}{
 		{
-			name:    "duplicate",
-			input:   []string{"rule_1", "rule_1"},
-			all:     []string{"rule_1", "rule_2"},
-			wantErr: "duplicate rule ID",
+			name:        "duplicate",
+			input:       []string{"rule_1", "rule_1"},
+			all:         []string{"rule_1", "rule_2"},
+			wantErr:     "duplicate rule ID",
+			wantParam:   "rule_ids",
+			wantSubtype: errs.SubtypeInvalidArgument,
 		},
 		{
-			name:    "unknown",
-			input:   []string{"rule_9"},
-			all:     []string{"rule_1", "rule_2"},
-			wantErr: "unknown rule ID",
+			name:        "unknown",
+			input:       []string{"rule_9"},
+			all:         []string{"rule_1", "rule_2"},
+			wantErr:     "unknown rule ID",
+			wantParam:   "rule_ids",
+			wantSubtype: errs.SubtypeInvalidArgument,
 		},
 	}
 	for _, tt := range tests {
@@ -1281,6 +1287,14 @@ func TestCompleteMailRuleOrder_RejectsDuplicateAndUnknownIDs(t *testing.T) {
 			_, err := completeMailRuleOrder(tt.input, tt.all)
 			if err == nil {
 				t.Fatal("expected validation error")
+			}
+			requireProblem(t, err, errs.CategoryValidation, tt.wantSubtype, 0)
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected ValidationError, got %T: %v", err, err)
+			}
+			if ve.Param != tt.wantParam {
+				t.Fatalf("ValidationError.Param = %q, want %q", ve.Param, tt.wantParam)
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
@@ -1353,6 +1367,14 @@ func TestServiceMethod_MailRuleReorder_RejectsUnknownRuleID(t *testing.T) {
 	err := cmd.Execute()
 	if err == nil {
 		t.Fatal("expected validation error")
+	}
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, 0)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected ValidationError, got %T: %v", err, err)
+	}
+	if ve.Param != "rule_ids" {
+		t.Fatalf("ValidationError.Param = %q, want %q", ve.Param, "rule_ids")
 	}
 	if !strings.Contains(err.Error(), "unknown rule ID") {
 		t.Fatalf("unexpected error: %v", err)
