@@ -31,7 +31,7 @@ func TestDocsFetchDryRunIgnoresAPIVersionCompatFlag(t *testing.T) {
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 
-	out := result.Stdout
+	out := clie2e.DryRunData(result.Stdout)
 	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
 		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
 	}

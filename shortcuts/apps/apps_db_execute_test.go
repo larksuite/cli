@@ -165,14 +165,7 @@ func TestAppsDBExecute_DryRunSendsTransactionalFalse(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Body   map[string]interface{} `json:"body"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode: %v\n%s", err, stdout.String())
 	}
@@ -254,11 +247,7 @@ func TestAppsDBExecute_FileReadsSQLIntoBody(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Body map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode: %v\n%s", err, stdout.String())
 	}

@@ -35,28 +35,28 @@ func TestDriveExportDryRun_FileNameMetadata(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
 		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/export_tasks" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/export_tasks" {
 		t.Fatalf("url=%q, want export_tasks\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.token").String(); got != "docxDryRunExport" {
+	if got := clie2e.DryRunGet(out, "api.0.body.token").String(); got != "docxDryRunExport" {
 		t.Fatalf("body.token=%q, want docxDryRunExport\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.type").String(); got != "docx" {
+	if got := clie2e.DryRunGet(out, "api.0.body.type").String(); got != "docx" {
 		t.Fatalf("body.type=%q, want docx\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.file_extension").String(); got != "pdf" {
+	if got := clie2e.DryRunGet(out, "api.0.body.file_extension").String(); got != "pdf" {
 		t.Fatalf("body.file_extension=%q, want pdf\nstdout:\n%s", got, out)
 	}
-	if gjson.Get(out, "api.0.body.file_name").Exists() {
+	if clie2e.DryRunGet(out, "api.0.body.file_name").Exists() {
 		t.Fatalf("file_name should stay local metadata, not export_tasks body\nstdout:\n%s", out)
 	}
-	if got := gjson.Get(out, "file_name").String(); got != "custom-report.pdf" {
+	if got := clie2e.DryRunGet(out, "file_name").String(); got != "custom-report.pdf" {
 		t.Fatalf("file_name=%q, want custom-report.pdf\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "output_dir").String(); got != "./exports" {
+	if got := clie2e.DryRunGet(out, "output_dir").String(); got != "./exports" {
 		t.Fatalf("output_dir=%q, want ./exports\nstdout:\n%s", got, out)
 	}
 }
@@ -80,6 +80,7 @@ func TestDriveExportDryRun_MarkdownFetchAPI(t *testing.T) {
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
+	result.Stdout = clie2e.DryRunData(result.Stdout)
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
@@ -124,22 +125,22 @@ func TestDriveExportDryRun_BitableBaseOnlySchema(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
 		t.Fatalf("method=%q, want POST\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/drive/v1/export_tasks" {
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/drive/v1/export_tasks" {
 		t.Fatalf("url=%q, want export_tasks\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.token").String(); got != "bitableDryRunExport" {
+	if got := clie2e.DryRunGet(out, "api.0.body.token").String(); got != "bitableDryRunExport" {
 		t.Fatalf("body.token=%q, want bitableDryRunExport\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.type").String(); got != "bitable" {
+	if got := clie2e.DryRunGet(out, "api.0.body.type").String(); got != "bitable" {
 		t.Fatalf("body.type=%q, want bitable\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.file_extension").String(); got != "base" {
+	if got := clie2e.DryRunGet(out, "api.0.body.file_extension").String(); got != "base" {
 		t.Fatalf("body.file_extension=%q, want base\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.body.only_schema").Bool(); !got {
+	if got := clie2e.DryRunGet(out, "api.0.body.only_schema").Bool(); !got {
 		t.Fatalf("body.only_schema=%v, want true\nstdout:\n%s", got, out)
 	}
 }

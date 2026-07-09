@@ -97,14 +97,7 @@ func TestAppsDBDataImport_DryRunMultipartShape(t *testing.T) {
 		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--environment", "dev", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-			Body   map[string]interface{} `json:"body"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	a := env.API[0]
 	if a.Method != "POST" || a.URL != dbDataImportURL {
@@ -149,11 +142,7 @@ func TestAppsDBDataImport_TableDefaultsToFileBasename(t *testing.T) {
 		[]string{"+db-data-import", "--app-id", "app_x", "--file", "customers.json", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	if env.API[0].Params["table"] != "customers" {
 		t.Fatalf("expected table=customers (from file basename) in params, got %v", env.API[0].Params)

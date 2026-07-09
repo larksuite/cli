@@ -12,7 +12,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestAppsEnvPullDryRun(t *testing.T) {
@@ -33,14 +32,14 @@ func TestAppsEnvPullDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/env_vars", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "dev", gjson.Get(result.Stdout, "api.0.body.env").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.include_values").Exists())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.params").Exists())
-		assert.True(t, gjson.Get(result.Stdout, "project_path").Exists())
-		assert.Contains(t, gjson.Get(result.Stdout, "env_file").String(), ".env.local")
-		assert.False(t, gjson.Get(result.Stdout, "env_keys").Exists())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x/env_vars", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "dev", clie2e.DryRunGet(result.Stdout, "api.0.body.env").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.include_values").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.params").Exists())
+		assert.True(t, clie2e.DryRunGet(result.Stdout, "project_path").Exists())
+		assert.Contains(t, clie2e.DryRunGet(result.Stdout, "env_file").String(), ".env.local")
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "env_keys").Exists())
 	})
 
 	t.Run("CustomProjectPath", func(t *testing.T) {
@@ -60,8 +59,8 @@ func TestAppsEnvPullDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, projectDir, gjson.Get(result.Stdout, "project_path").String())
-		assert.Equal(t, filepath.Join(projectDir, ".env.local"), gjson.Get(result.Stdout, "env_file").String())
+		assert.Equal(t, projectDir, clie2e.DryRunGet(result.Stdout, "project_path").String())
+		assert.Equal(t, filepath.Join(projectDir, ".env.local"), clie2e.DryRunGet(result.Stdout, "env_file").String())
 	})
 
 	t.Run("MissingAppID", func(t *testing.T) {

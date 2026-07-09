@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
@@ -40,19 +39,19 @@ func TestDriveImportDryRunFolderTokenWikiProbe(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	if got := gjson.Get(out, "api.0.method").String(); got != "GET" {
-		t.Fatalf("api.0.method = %q, want GET\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "GET" {
+		t.Fatalf("data.api.0.method = %q, want GET\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
-		t.Fatalf("api.0.url = %q, want wiki get_node\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.url").String(); got != "/open-apis/wiki/v2/spaces/get_node" {
+		t.Fatalf("data.api.0.url = %q, want wiki get_node\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.0.params.token").String(); got != "fldcnImportDryRunTarget" {
-		t.Fatalf("api.0.params.token = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.0.params.token").String(); got != "fldcnImportDryRunTarget" {
+		t.Fatalf("data.api.0.params.token = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/upload_all" {
-		t.Fatalf("api.1.url = %q, want upload_all\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.1.url").String(); got != "/open-apis/drive/v1/medias/upload_all" {
+		t.Fatalf("data.api.1.url = %q, want upload_all\nstdout:\n%s", got, out)
 	}
-	if got := gjson.Get(out, "api.2.body.point.mount_key").String(); got != "fldcnImportDryRunTarget" {
-		t.Fatalf("api.2.body.point.mount_key = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)
+	if got := clie2e.DryRunGet(out, "api.2.body.point.mount_key").String(); got != "fldcnImportDryRunTarget" {
+		t.Fatalf("data.api.2.body.point.mount_key = %q, want fldcnImportDryRunTarget\nstdout:\n%s", got, out)
 	}
 }

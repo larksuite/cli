@@ -55,6 +55,17 @@ func TestMethod_SupportsToken(t *testing.T) {
 	if m.SupportsToken("user") {
 		t.Error("tenant-only method must NOT support user")
 	}
+
+	m = Method{
+		Description:  "Uploads an image. Identity: `bot` only (`tenant_access_token`).",
+		AccessTokens: []Token{"tenant", "user"},
+	}
+	if !m.SupportsToken("tenant") {
+		t.Error("description bot-only method should support tenant")
+	}
+	if m.SupportsToken("user") {
+		t.Error("description bot-only method must NOT support user")
+	}
 }
 
 func TestMethod_Identities(t *testing.T) {
@@ -74,10 +85,15 @@ func TestMethod_Identities(t *testing.T) {
 		{"empty", []Token{}, []string{}},
 		{"nil", nil, []string{}},
 		{"unknown skipped", []Token{"user", "admin"}, []string{"user"}},
+		{"description bot only overrides mixed tokens", []Token{"tenant", "user"}, []string{"bot"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := (Method{AccessTokens: tt.tokens}).Identities(); !reflect.DeepEqual(got, tt.want) {
+			method := Method{AccessTokens: tt.tokens}
+			if tt.name == "description bot only overrides mixed tokens" {
+				method.Description = "Uploads an image. Identity: `bot` only (`tenant_access_token`)."
+			}
+			if got := method.Identities(); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Identities(%v) = %#v, want %#v", tt.tokens, got, tt.want)
 			}
 		})

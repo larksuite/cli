@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsUpdateDryRun pins partial-update semantics: PATCH with only the
@@ -35,10 +34,10 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "PATCH", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "v2", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.description").Exists(),
+		assert.Equal(t, "PATCH", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps/app_x", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "v2", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.description").Exists(),
 			"description must be omitted when not provided")
 	})
 
@@ -59,8 +58,8 @@ func TestAppsUpdateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "v2", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "updated", gjson.Get(result.Stdout, "api.0.body.description").String())
+		assert.Equal(t, "v2", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.Equal(t, "updated", clie2e.DryRunGet(result.Stdout, "api.0.body.description").String())
 	})
 
 	t.Run("RejectsMissingAppID", func(t *testing.T) {

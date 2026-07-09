@@ -11,7 +11,6 @@ import (
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestAppsCreateDryRun pins the request shape and Validate behavior for
@@ -36,13 +35,13 @@ func TestAppsCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/spark/v1/apps", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "Demo", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.body.app_type").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/spark/v1/apps", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "Demo", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.Equal(t, "html", clie2e.DryRunGet(result.Stdout, "api.0.body.app_type").String())
 		// Optional fields stay omitted when not provided.
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.description").Exists())
-		assert.False(t, gjson.Get(result.Stdout, "api.0.body.icon_url").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.description").Exists())
+		assert.False(t, clie2e.DryRunGet(result.Stdout, "api.0.body.icon_url").Exists())
 	})
 
 	t.Run("AllFields", func(t *testing.T) {
@@ -63,10 +62,10 @@ func TestAppsCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "Demo", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.body.app_type").String())
-		assert.Equal(t, "survey app", gjson.Get(result.Stdout, "api.0.body.description").String())
-		assert.Equal(t, "https://example.com/icon.svg", gjson.Get(result.Stdout, "api.0.body.icon_url").String())
+		assert.Equal(t, "Demo", clie2e.DryRunGet(result.Stdout, "api.0.body.name").String())
+		assert.Equal(t, "html", clie2e.DryRunGet(result.Stdout, "api.0.body.app_type").String())
+		assert.Equal(t, "survey app", clie2e.DryRunGet(result.Stdout, "api.0.body.description").String())
+		assert.Equal(t, "https://example.com/icon.svg", clie2e.DryRunGet(result.Stdout, "api.0.body.icon_url").String())
 	})
 
 	t.Run("RejectsMissingName", func(t *testing.T) {
