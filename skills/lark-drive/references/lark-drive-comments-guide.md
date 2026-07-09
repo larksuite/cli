@@ -1,6 +1,6 @@
 # Drive 评论查询、统计与回复指南
 
-> 前置条件：先阅读 [`../SKILL.md`](../SKILL.md) 的“评论能力入口”，添加评论参数细节见 [`lark-drive-add-comment.md`](lark-drive-add-comment.md)，reaction 见 [`lark-drive-reactions.md`](lark-drive-reactions.md)。
+> 前置条件：先阅读 [`../SKILL.md`](../SKILL.md) 的“评论能力入口”，添加评论参数细节见 [`lark-drive-add-comment.md`](lark-drive-add-comment.md)，获取评论列表优先使用 [`lark-drive-list-comments.md`](lark-drive-list-comments.md)，reaction 见 [`lark-drive-reactions.md`](lark-drive-reactions.md)。
 
 ## 评论模式
 
@@ -16,14 +16,21 @@
 
 ## 查询默认口径
 
-`drive file.comments list` 默认必须传 `is_solved:false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到要包含已解决评论，仍然按默认口径查询未解决评论。仅当用户明确要求包含已解决评论时，才可省略 `is_solved` 参数。
+优先使用 `drive +list-comments`，不要优先手写 `drive file.comments list`。shortcut 默认 `--solved-status false`，即仅查询未解决评论。即使用户说“所有评论”“全部评论”“把评论都列出来”，只要没有明确提到包含已解决评论，仍然按默认口径查询未解决评论；仅当用户明确要求包含已解决评论时，才传 `--solved-status all`。只查已解决评论时传 `--solved-status true`。
 
 ```bash
 # 默认查询：仅未解决评论
-lark-cli drive file.comments list --params '{"file_token":"xxx","file_type":"docx","is_solved":false}'
+lark-cli drive +list-comments --url '<DOC_URL>'
 
-# 包含已解决评论：仅当用户明确要求时使用
-lark-cli drive file.comments list --params '{"file_token":"xxx","file_type":"docx"}'
+# 全部评论：包含已解决和未解决
+lark-cli drive +list-comments --url '<DOC_URL>' --solved-status all
+
+# 已解决评论
+lark-cli drive +list-comments --url '<DOC_URL>' --solved-status true
+
+# 裸 wiki token
+lark-cli drive +list-comments --token '<WIKI_TOKEN>' --type wiki
+
 ```
 
 ## 评论卡片与统计
@@ -53,12 +60,13 @@ lark-cli drive file.comments list --params '{"file_token":"xxx","file_type":"doc
 ## batch_query 与 list
 
 - `drive file.comments batch_query` 用于已知评论 ID 后的批量查询，需要传入具体评论 ID 列表。
-- `drive file.comments list` 用于分页获取评论列表，适合统计评论总数、遍历所有评论、获取最新或最后 N 条评论等场景。
+- `drive +list-comments` 用于分页获取评论列表；如果要统计全量评论数、遍历包含已解决评论在内的所有评论、获取全量最新评论或最后 N 条评论，请先传 `--solved-status all` 并拉完所有分页。它会处理 URL、wiki token 和 token/type 匹配问题。
+- `drive file.comments list` 是原生命令。需要 shortcut 未暴露的字段时才使用。
 
 ## 评论定位字段
 
-- 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `docs +fetch` 的 block），先确认目标是 `file_type=docx`，再阅读 [`lark-drive-comment-location.md`](lark-drive-comment-location.md)。
-- 其他文档类型暂不支持返回定位字段。
+- 需要根据评论定位到文档正文位置时（例如根据评论 review 文档、区分多处相同引用文本、把评论落点映射到 `docs +fetch` 的 block），先确认目标是 `file_type=docx`，再阅读 [`lark-drive-comment-location.md`](lark-drive-comment-location.md)，并使用 `drive +list-comments --need-relation`。
+- `--need-relation` 仅 docx 生效；其他文档类型会静默忽略。
 
 ## 原生 API
 

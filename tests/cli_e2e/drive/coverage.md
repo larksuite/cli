@@ -1,9 +1,9 @@
 # Drive CLI E2E Coverage
 
 ## Metrics
-- Denominator: 31 leaf commands
-- Covered: 10
-- Coverage: 32.3%
+- Denominator: 32 leaf commands
+- Covered: 11
+- Coverage: 34.4%
 
 ## Summary
 - TestDrive_FilesCreateFolderWorkflow: proves `drive files create_folder` in `create_folder as bot`; helper asserts the returned folder token and registers best-effort cleanup via `drive files delete`.
@@ -12,7 +12,8 @@
 - TestDrive_DuplicateRemoteWorkflow: proves the duplicate-remote workflows against the real backend. One subtest uploads two same-name files into the same Drive folder and asserts `drive +status` and default `drive +pull` both fail with `duplicate_remote_path`, while `drive +pull --on-duplicate-remote=rename` succeeds, downloads both files, and writes a hashed renamed sibling locally. The other subtest uploads duplicate remote files, runs `drive +push --on-duplicate-remote=newest --if-exists=overwrite --delete-remote --yes`, and then re-runs `drive +status` to prove the mirror converged to a single unchanged `dup.txt`.
 - TestDrive_ApplyPermissionDryRun / TestDrive_ApplyPermissionDryRunRejectsFullAccess: dry-run coverage for `drive +apply-permission`; asserts URL→type inference for docx/sheet/slides, explicit `--type` overriding URL inference when both a recognized URL and `--type` are supplied, bare-token + explicit `--type` path, request method/URL/type-query/perm/remark body shape, optional `remark` omission when unset, and client-side rejection of `--perm full_access`. Runs without hitting the live API.
 - TestDriveAddCommentDryRun_File / TestDriveAddCommentDryRun_Base: dry-run coverage for `drive +add-comment` on supported Drive file and Base targets; pins the `metas.batch_query -> files/:token/new_comments` file chain, Base `file_type=bitable`, and Base anchor fields.
-- TestDriveAddCommentMarkdownFileWorkflow: opt-in live workflow skeleton for the same path, gated by `LARK_DRIVE_MD_COMMENT_E2E=1`.
+- TestDriveListCommentsDryRun_DocxDefaults / TestDriveListCommentsDryRun_WikiToken: dry-run coverage for `drive +list-comments`; asserts URL parsing to `files/:token/comments`, default `is_solved=false`, default omitted `is_whole` and `user_id_type`, and Wiki token orchestration (`get_node -> comments.list`) without live API calls.
+- TestDriveAddCommentMarkdownFileWorkflow: opt-in live workflow skeleton for comment write/read, gated by `LARK_DRIVE_MD_COMMENT_E2E=1`; creates a Markdown file, adds a file comment, lists it back through `drive +list-comments`, and cleans up.
 - TestDrive_SecureLabelDryRun: dry-run coverage for `drive +secure-label-list` and `drive +secure-label-update`; asserts label-list query params and update URL→type inference, request method/URL/type query, and `label-id` body shape. Runs without hitting live APIs because update can trigger document-level security approval flows.
 - TestDriveExportDryRun_FileNameMetadata / TestDriveExportDryRun_MarkdownFetchAPI / TestDriveExportDryRun_BitableBaseOnlySchema: dry-run coverage for `drive +export`; asserts export task request shape, markdown fetch request shape without docs fetch `extra_param`, local `--file-name` / `--output-dir` metadata, and `bitable` `.base` `only_schema` request body without calling live APIs.
 - TestDrive_PullDryRun / TestDrive_PullDryRunAcceptsDuplicateRemoteStrategies: dry-run coverage for `drive +pull`; asserts the list-files request shape, Validate-stage safety guards, and acceptance of `--on-duplicate-remote=rename|newest|oldest` by the real CLI binary.
@@ -26,6 +27,7 @@
 | Status | Cmd | Type | Testcase | Key parameter shapes | Notes / uncovered reason |
 | --- | --- | --- | --- | --- | --- |
 | ✓ | drive +add-comment | shortcut | drive_add_comment_dryrun_test.go::TestDriveAddCommentDryRun_File; drive_add_comment_dryrun_test.go::TestDriveAddCommentDryRun_Base | `--doc` file URL vs bare token + `--type file`; supported-extension metadata gate; placeholder `anchor.block_id`; Base URL with `--block-id <table-id>!<record-id>!<view-id>` | dry-run coverage in place; opt-in live file workflow exists behind `LARK_DRIVE_MD_COMMENT_E2E=1` |
+| ✓ | drive +list-comments | shortcut | drive_list_comments_dryrun_test.go::TestDriveListCommentsDryRun_DocxDefaults; drive_list_comments_dryrun_test.go::TestDriveListCommentsDryRun_WikiToken; drive_add_comment_workflow_test.go::TestDriveAddCommentMarkdownFileWorkflow | `--url`; `--token + --type wiki`; `--solved-status=false\|all`; `--comment-scope=all\|partial`; `--need-relation`; `--page-size` | dry-run locks URL/token parsing, default unresolved filter, omitted all-scope filter, omitted `user_id_type`, and Wiki unwrap request shape; opt-in live workflow verifies a created file comment can be listed back |
 | ✓ | drive +apply-permission | shortcut | drive_apply_permission_dryrun_test.go::TestDrive_ApplyPermissionDryRun | `--token` URL vs bare; `--type` (enum) with URL inference; `--perm view\|edit`; `--remark` optional | dry-run only; no live-apply E2E because a real request pushes a card to the owner |
 | ✕ | drive +delete | shortcut |  | none | no primary delete workflow yet |
 | ✕ | drive +download | shortcut |  | none | no file fixture workflow yet |
