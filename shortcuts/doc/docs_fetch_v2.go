@@ -180,7 +180,7 @@ func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
 func effectiveFetchReadMode(runtime *common.RuntimeContext) string {
 	mode := rawFetchReadMode(runtime)
 	if shouldUseDocSelectionAnchor(runtime, mode) {
-		if anchor, _ := docSelectionAnchorStartBlockID(runtime); anchor != "" {
+		if anchor := docSelectionAnchorStartBlockID(runtime); anchor != "" {
 			return "range"
 		}
 	}
@@ -197,13 +197,10 @@ func rawFetchReadMode(runtime *common.RuntimeContext) string {
 
 func effectiveFetchStartBlockID(runtime *common.RuntimeContext, mode string) string {
 	if v := strings.TrimSpace(runtime.Str("start-block-id")); v != "" {
-		if anchor, ok, _ := parseFetchSelectionAnchor(v, "--start-block-id"); ok {
-			return anchor
-		}
 		return v
 	}
 	if mode == "range" && shouldUseDocSelectionAnchor(runtime, rawFetchReadMode(runtime)) {
-		if anchor, _ := docSelectionAnchorStartBlockID(runtime); anchor != "" {
+		if anchor := docSelectionAnchorStartBlockID(runtime); anchor != "" {
 			return anchor
 		}
 	}
@@ -220,32 +217,30 @@ func shouldUseDocSelectionAnchor(runtime *common.RuntimeContext, mode string) bo
 	return mode == "" || mode == "full"
 }
 
-func docSelectionAnchorStartBlockID(runtime *common.RuntimeContext) (string, error) {
+func docSelectionAnchorStartBlockID(runtime *common.RuntimeContext) string {
 	ref, err := parseDocumentRef(runtime.Str("doc"))
 	if err != nil {
-		return "", nil
+		return ""
 	}
-	anchor, ok, err := parseFetchSelectionAnchor(ref.Fragment, "--doc")
-	if err != nil || !ok {
-		return "", err
+	anchor, ok := parseDocShareSelectionAnchor(ref.Fragment)
+	if !ok {
+		return ""
 	}
-	return anchor, nil
+	return anchor
 }
 
-func parseFetchSelectionAnchor(raw, param string) (string, bool, error) {
+func parseDocShareSelectionAnchor(raw string) (string, bool) {
 	value := strings.TrimSpace(raw)
 	value = strings.TrimPrefix(value, "#")
-	for _, prefix := range []string{"share-", "part-"} {
-		if !strings.HasPrefix(value, prefix) {
-			continue
-		}
-		anchorID := strings.TrimSpace(strings.TrimPrefix(value, prefix))
-		if anchorID == "" {
-			return "", false, errs.NewValidationError(errs.SubtypeInvalidArgument, "selection anchor id is required after %s", prefix).WithParam(param)
-		}
-		return prefix + anchorID, true, nil
+	const prefix = "share-"
+	if !strings.HasPrefix(value, prefix) {
+		return "", false
 	}
-	return "", false, nil
+	anchorID := strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	if anchorID == "" {
+		return "", false
+	}
+	return prefix + anchorID, true
 }
 
 // effectiveFetchDetail degrades detail options that cannot be represented by
@@ -280,9 +275,6 @@ func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[str
 // validateReadModeFlags 客户端前置校验，服务端也会再校验一次。
 func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	mode := effectiveFetchReadMode(runtime)
-	if err := validateFetchSelectionAnchorUsage(runtime, mode); err != nil {
-		return err
-	}
 	if mode == "" || mode == "full" {
 		return nil
 	}
@@ -322,43 +314,4 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	default:
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --scope %q", mode).WithParam("--scope")
 	}
-}
-
-func validateFetchSelectionAnchorUsage(runtime *common.RuntimeContext, mode string) error {
-	startBlockID := strings.TrimSpace(runtime.Str("start-block-id"))
-	endBlockID := strings.TrimSpace(runtime.Str("end-block-id"))
-
-	startAnchor, startIsAnchor, err := parseFetchSelectionAnchor(startBlockID, "--start-block-id")
-	if err != nil {
-		return err
-	}
-	_, endIsAnchor, err := parseFetchSelectionAnchor(endBlockID, "--end-block-id")
-	if err != nil {
-		return err
-	}
-	if endIsAnchor {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-block-id does not support selection anchors; pass the #share anchor in --doc URL").WithParam("--end-block-id")
-	}
-	if !startIsAnchor {
-		_, _, err := parseFetchSelectionAnchorFromDoc(runtime)
-		return err
-	}
-	if mode != "range" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-block-id selection anchor %q requires --scope range", startAnchor).WithParam("--start-block-id")
-	}
-	if endBlockID != "" {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-block-id selection anchor %q cannot be combined with --end-block-id", startAnchor).WithParams(
-			errs.InvalidParam{Name: "--start-block-id", Reason: "selection anchors define the complete selected range"},
-			errs.InvalidParam{Name: "--end-block-id", Reason: "remove --end-block-id when --start-block-id is a selection anchor"},
-		)
-	}
-	return nil
-}
-
-func parseFetchSelectionAnchorFromDoc(runtime *common.RuntimeContext) (string, bool, error) {
-	ref, err := parseDocumentRef(runtime.Str("doc"))
-	if err != nil {
-		return "", false, nil
-	}
-	return parseFetchSelectionAnchor(ref.Fragment, "--doc")
 }

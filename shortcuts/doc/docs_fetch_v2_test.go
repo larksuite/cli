@@ -221,19 +221,20 @@ func TestBuildFetchBodyDoesNotAutoReadOrdinaryFragment(t *testing.T) {
 	}
 }
 
-func TestBuildReadOptionNormalizesExplicitSelectionAnchorStart(t *testing.T) {
+func TestBuildFetchBodyDoesNotAutoReadUnsupportedSelectionAnchorFragments(t *testing.T) {
 	t.Parallel()
 
-	runtime := newFetchBodyTestRuntime(context.Background())
-	mustSetFetchFlag(t, runtime, "scope", "range")
-	mustSetFetchFlag(t, runtime, "start-block-id", "#part-CUE3d6Ykno2fkexEvt8cGF8Wnse")
+	for _, doc := range []string{
+		"https://example.larksuite.com/wiki/wikcnToken#part-CUE3d6Ykno2fkexEvt8cGF8Wnse",
+		"https://example.larksuite.com/wiki/wikcnToken#share-",
+	} {
+		runtime := newFetchBodyTestRuntime(context.Background())
+		mustSetFetchFlag(t, runtime, "doc", doc)
 
-	want := map[string]interface{}{
-		"read_mode":      "range",
-		"start_block_id": "part-CUE3d6Ykno2fkexEvt8cGF8Wnse",
-	}
-	if got := buildReadOption(runtime); !reflect.DeepEqual(got, want) {
-		t.Fatalf("buildReadOption() = %#v, want %#v", got, want)
+		body := buildFetchBody(runtime)
+		if _, ok := body["read_option"]; ok {
+			t.Fatalf("did not expect read_option for unsupported URL fragment %q: %#v", doc, body["read_option"])
+		}
 	}
 }
 
@@ -379,31 +380,6 @@ func TestValidateReadModeFlagsRejectsInvalidScopeOptions(t *testing.T) {
 			wantParam: "--keyword",
 		},
 		{
-			name: "selection anchor cannot be end block",
-			setFlags: map[string]string{
-				"scope":        "range",
-				"end-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
-			},
-			wantParam: "--end-block-id",
-		},
-		{
-			name: "selection anchor start cannot combine with end block",
-			setFlags: map[string]string{
-				"scope":          "range",
-				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
-				"end-block-id":   "blk_end",
-			},
-			wantParams: []string{"--start-block-id", "--end-block-id"},
-		},
-		{
-			name: "selection anchor start requires range",
-			setFlags: map[string]string{
-				"scope":          "section",
-				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
-			},
-			wantParam: "--start-block-id",
-		},
-		{
 			name: "section needs start block",
 			setFlags: map[string]string{
 				"scope": "section",
@@ -455,13 +431,6 @@ func TestValidateReadModeFlagsAcceptsValidScopeOptions(t *testing.T) {
 			setFlags: map[string]string{
 				"scope":        "range",
 				"end-block-id": "blk_end",
-			},
-		},
-		{
-			name: "range with selection anchor start",
-			setFlags: map[string]string{
-				"scope":          "range",
-				"start-block-id": "#share-CUE3d6Ykno2fkexEvt8cGF8Wnse",
 			},
 		},
 		{
