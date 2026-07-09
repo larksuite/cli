@@ -315,14 +315,11 @@ func TestAppsDBQuotaGet_DryRunOmitsEnvWhenUnset(t *testing.T) {
 		[]string{"+db-quota-get", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	if len(env.API) != 1 {
+		t.Fatalf("dry-run API calls = %d, want 1; stdout=%s", len(env.API), stdout.String())
+	}
 	a := env.API[0]
 	if a.Method != "GET" || a.URL != dbQuotaURL {
 		t.Fatalf("dry-run = %s %s", a.Method, a.URL)

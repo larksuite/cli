@@ -47,11 +47,15 @@ func TokenForIdentity(identity string) Token {
 }
 
 // RestrictsIdentity reports whether the method limits which identities may call
-// it: true exactly when it declares one or more accessTokens. nil OR an empty
-// slice means unrestricted (any identity). This is the single rule that both
-// the strict-mode predicate (SupportsToken) and command identity gates use, so
-// nil and [] never diverge across schema/scope and execution.
+// it: either via accessTokens or a description-only identity marker. Without
+// either signal, nil OR an empty accessTokens slice means unrestricted (any
+// identity). This is the single rule that both the strict-mode predicate
+// (SupportsToken) and command identity gates use, so nil and [] never diverge
+// across schema/scope and execution.
 func (m Method) RestrictsIdentity() bool {
+	if _, ok := m.descriptionOnlyIdentity(); ok {
+		return true
+	}
 	return len(m.AccessTokens) > 0
 }
 
