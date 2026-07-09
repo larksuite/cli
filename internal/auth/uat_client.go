@@ -6,6 +6,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -353,7 +354,8 @@ func buildRefreshFailureError(data map[string]interface{}, opts UATCallOptions) 
 			Brand: string(opts.Domain),
 			AppID: opts.AppId,
 		}); err != nil {
-			if authErr, ok := err.(*errs.AuthenticationError); ok {
+			var authErr *errs.AuthenticationError
+			if errors.As(err, &authErr) {
 				authErr.UserOpenID = opts.UserOpenId
 				if authErr.Hint == "" {
 					authErr.Hint = "refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked"
