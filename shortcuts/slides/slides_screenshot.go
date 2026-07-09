@@ -22,7 +22,10 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const defaultSlidesScreenshotDir = ".lark-slides/screenshots"
+const (
+	defaultSlidesScreenshotDir = ".lark-slides/screenshots"
+	maxSlidesPerScreenshot     = 10
+)
 
 var unsafeScreenshotFileCharRegex = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
@@ -32,7 +35,7 @@ var unsafeScreenshotFileCharRegex = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 var SlidesScreenshot = common.Shortcut{
 	Service:     "slides",
 	Command:     "+screenshot",
-	Description: "Save slide screenshots to local files without printing Base64 image data",
+	Description: "Save up to 10 slide screenshots to local files without printing Base64 image data",
 	Risk:        "read",
 	Scopes:      []string{},
 	// The screenshot API is allowlist-gated for only a few apps, so do not
@@ -42,8 +45,8 @@ var SlidesScreenshot = common.Shortcut{
 	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides; list mode only"},
-		{Name: "slide-id", Type: "string_array", Desc: "slide page identifier (repeat for multiple slides)"},
-		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides)"},
+		{Name: "slide-id", Type: "string_array", Desc: "slide page identifier (repeat for multiple slides; max 10 pages per request)"},
+		{Name: "slide-number", Type: "int_array", Desc: "slide page number (repeat for multiple slides; max 10 pages per request)"},
 		{Name: "content", Desc: "slide XML content to render directly instead of fetching existing slides", Input: []string{common.File, common.Stdin}},
 		{Name: "output-dir", Default: defaultSlidesScreenshotDir, Desc: "relative directory for saved screenshots"},
 		{Name: "output-name", Desc: "file name stem for --content render output"},
@@ -70,11 +73,16 @@ var SlidesScreenshot = common.Shortcut{
 					return err
 				}
 			}
-			if _, err := normalizeSlideNumbers(runtime.IntArray("slide-number")); err != nil {
+			slideIDs := normalizeSlideIDs(runtime.StrArray("slide-id"))
+			slideNumbers, err := normalizeSlideNumbers(runtime.IntArray("slide-number"))
+			if err != nil {
 				return err
 			}
-			if !hasSlideScreenshotSelector(runtime) {
+			if len(slideIDs) == 0 && len(slideNumbers) == 0 {
 				return slidesScreenshotFlagErrorf("--slide-id or --slide-number is required")
+			}
+			if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
+				return err
 			}
 		}
 		if _, err := validateScreenshotOutputDir(runtime, runtime.Str("output-dir")); err != nil {
@@ -97,6 +105,9 @@ var SlidesScreenshot = common.Shortcut{
 		}
 		if len(slideIDs) == 0 && len(slideNumbers) == 0 {
 			return common.NewDryRunAPI().Set("error", "--slide-id or --slide-number is required")
+		}
+		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
+			return common.NewDryRunAPI().Set("error", err.Error())
 		}
 
 		presentationID := ref.Token
@@ -144,6 +155,9 @@ var SlidesScreenshot = common.Shortcut{
 		}
 		if len(slideIDs) == 0 && len(slideNumbers) == 0 {
 			return slidesScreenshotFlagErrorf("--slide-id or --slide-number is required")
+		}
+		if err := validateSlidesScreenshotSelectorLimit(len(slideIDs) + len(slideNumbers)); err != nil {
+			return err
 		}
 		outputDir := runtime.Str("output-dir")
 		safeOutputDir, err := ensureScreenshotOutputDir(runtime, outputDir)
@@ -267,8 +281,11 @@ func normalizeSlideNumbers(values []int) ([]int, error) {
 	return out, nil
 }
 
-func hasSlideScreenshotSelector(runtime *common.RuntimeContext) bool {
-	return len(normalizeSlideIDs(runtime.StrArray("slide-id"))) > 0 || len(runtime.IntArray("slide-number")) > 0
+func validateSlidesScreenshotSelectorLimit(count int) error {
+	if count > maxSlidesPerScreenshot {
+		return slidesScreenshotFlagErrorf("too many slide selectors: got %d, maximum is %d; request at most 10 pages at a time", count, maxSlidesPerScreenshot)
+	}
+	return nil
 }
 
 func slidesScreenshotFlagErrorf(format string, args ...interface{}) error {

@@ -1,8 +1,6 @@
 
 # slides +media-upload（上传本地图片到飞书幻灯片）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 把本地图片上传到指定演示文稿的 drive 媒体库，返回 `file_token`。**返回的 token 作为 `<img src="...">` 的值塞进 slide XML 即可显示图片。**
 
 ## 命令
@@ -117,7 +115,7 @@ lark-cli slides +replace-slide --as user \
 | 错误码 | 含义 | 解决方案 |
 |--------|------|----------|
 | 1061002 | params error / 不支持的 parent_type | 不要用原生 API 自己拼 parent_type；用 `+media-upload` 即可 |
-| 1061004 | forbidden：当前身份对该演示文稿无编辑权限 | 确认当前身份（user 或 bot）对目标 PPT 有编辑权限。bot 模式常见原因：PPT 不是该 bot 创建的——可用 `+create --as bot` 新建，或以 user 身份给 bot 授权 `lark-cli drive permission.members create --as user ...` |
+| 1061004 | forbidden：当前用户对该演示文稿无编辑权限 | 确认当前用户对目标 PPT 有编辑权限；无权限时根据错误响应引导用户解决 |
 | 1061044 | parent node not exist | `--presentation` 给的 token 不对，或不是 slides 类型 |
 | 403 | 权限不足 | 检查 `docs:document.media:upload` scope；wiki URL 还需要 `wiki:node:read` |
 

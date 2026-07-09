@@ -1,8 +1,6 @@
 
 # slides +create（创建飞书幻灯片）
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
 创建一个新的飞书幻灯片演示文稿，可选一步添加页面内容。
 
 ## 命令
@@ -16,9 +14,6 @@ lark-cli slides +create --title "项目汇报" --slides '[
   "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>封面</p></content></shape></data></slide>",
   "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><shape type=\"text\" topLeftX=\"80\" topLeftY=\"80\" width=\"800\" height=\"120\"><content textType=\"title\"><p>第二页</p></content></shape></data></slide>"
 ]'
-
-# 以应用身份创建（自动授权当前用户）
-lark-cli slides +create --title "项目汇报" --as bot
 
 # 预览（不执行）
 lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
@@ -35,19 +30,11 @@ lark-cli slides +create --title "项目汇报" --slides '[...]' --dry-run
 - **`slide_ids`**（string[]，可选）：仅传 `--slides` 时返回，成功添加的页面 ID 列表
 - **`slides_added`**（integer，可选）：仅传 `--slides` 时返回，成功添加的页面数量
 - **`images_uploaded`**（integer，可选）：仅 `--slides` 中含 `@<本地路径>` 占位符时返回，已上传的去重后图片数量
-- **`permission_grant`**（object，可选）：仅 `--as bot` 时返回，说明是否已自动为当前 CLI 用户授予可管理权限
 
 > [!IMPORTANT]
 > 不传 `--slides` 时，`slides +create` 只创建空白演示文稿。创建后需要使用 `xml_presentation.slide create` 逐页添加 slide 内容。
 >
 > 传了 `--slides` 时，CLI 先创建空白演示文稿，再逐页调用 `xml_presentation.slide create` 添加页面。如果某一页添加失败，CLI 会停止并报错，已创建的演示文稿和已添加的页面会保留。
->
-> 如果演示文稿是**以应用身份（bot）创建**的，如 `lark-cli slides +create --as bot`，CLI 会**尝试为当前 CLI 用户自动授予该演示文稿的 `full_access`（可管理权限）**。
->
-> 以应用身份创建时，结果里会额外返回 `permission_grant` 字段，明确说明授权结果：
-> - `status = granted`：当前 CLI 用户已获得该演示文稿的可管理权限
-> - `status = skipped`：本地没有可用的当前用户 `open_id`，因此不会自动授权
-> - `status = failed`：演示文稿已创建成功，但自动授权用户失败
 >
 > **不要擅自执行 owner 转移。** 如果用户需要把 owner 转给自己，必须单独确认。
 
@@ -134,4 +121,4 @@ lark-cli slides xml_presentation.slide create --as user \
 ## 相关命令
 
 - [xml_presentation.slide create](lark-slides-xml-presentation-slide-create.md) — 添加幻灯片页面
-- [xml_presentations get](lark-slides-xml-presentations-get.md) — 读取 PPT 内容
+- [slides +xml-get](lark-slides-xml-get.md) — 读取 PPT 内容并保存到本地文件
