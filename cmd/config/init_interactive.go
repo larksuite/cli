@@ -5,6 +5,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -59,14 +60,18 @@ func runInteractiveConfigInit(ctx context.Context, f *cmdutil.Factory, authMetho
 	}
 
 	if mode == "existing" {
-		return runExistingAppForm(f, msg)
+		return runExistingAppForm(ctx, f, authMethodFlag, msg)
 	}
 
 	return runCreateAppFlow(ctx, f, "", authMethodFlag, msg, "")
 }
 
+func existingAppRequiresSecret(requestedAuthMethod string) bool {
+	return requestedAuthMethod != core.AuthMethodPrivateKeyJWT
+}
+
 // runExistingAppForm shows a huh form for manually entering App ID / App Secret / Brand.
-func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, error) {
+func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMethod string, msg *initMsg) (*configInitResult, error) {
 	// Load existing config for defaults
 	existing, _ := core.LoadMultiAppConfig()
 	var firstApp *core.AppConfig
@@ -100,19 +105,31 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 		brand = string(firstApp.Brand)
 	}
 
-	form := huh.NewForm(
-		huh.NewGroup(
-			appIDInput,
-			appSecretInput,
-			huh.NewSelect[string]().
-				Title(msg.Platform).
-				Options(
-					huh.NewOption(msg.Feishu, "feishu"),
-					huh.NewOption("Lark", "lark"),
-				).
-				Value(&brand),
-		),
-	).WithTheme(cmdutil.ThemeFeishu())
+	brandSelect := huh.NewSelect[string]().
+		Title(msg.Platform).
+		Options(
+			huh.NewOption(msg.Feishu, "feishu"),
+			huh.NewOption("Lark", "lark"),
+		).
+		Value(&brand)
+
+	var form *huh.Form
+	if existingAppRequiresSecret(requestedAuthMethod) {
+		form = huh.NewForm(
+			huh.NewGroup(
+				appIDInput,
+				appSecretInput,
+				brandSelect,
+			),
+		).WithTheme(cmdutil.ThemeFeishu())
+	} else {
+		form = huh.NewForm(
+			huh.NewGroup(
+				appIDInput,
+				brandSelect,
+			),
+		).WithTheme(cmdutil.ThemeFeishu())
+	}
 
 	if err := form.Run(); err != nil {
 		if err == huh.ErrUserAborted {
@@ -124,6 +141,13 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 	// Resolve defaults
 	if appID == "" && firstApp != nil {
 		appID = firstApp.AppId
+	}
+	if !existingAppRequiresSecret(requestedAuthMethod) {
+		if appID == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "App ID cannot be empty").
+				WithParam("--app-id")
+		}
+		return runCreateAppFlow(ctx, f, parseBrand(brand), core.AuthMethodPrivateKeyJWT, msg, appID)
 	}
 	if appSecret == "" && firstApp != nil && !firstApp.AppSecret.IsZero() {
 		// Keep existing secret - caller will handle
@@ -261,7 +285,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	}
 
 	// Step 2: Build and display verification URL + QR code
-	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version)
+	verificationURL := larkauth.BuildVerificationURL(authResp.VerificationUriComplete, build.Version, restoreAppID)
 
 	// Branch on TTY: human-friendly copy in interactive terminals,
 	// preserve original copy for AI / non-interactive callers.
@@ -297,7 +321,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	finalMethod := resolveFinalAuthMethod(result.AuthMethods, authMethod)
 
 	if result.ClientID == "" {
-		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_id")
+		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing app_id")
 	}
 	if finalMethod != core.AuthMethodPrivateKeyJWT && result.ClientSecret == "" {
 		return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration succeeded but missing client_secret")
