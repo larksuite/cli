@@ -1,0 +1,21 @@
+shortcuts/application/slash_command_list_test.go
+  s_62ec5fec853ca0::t_a135ba000e2d3d 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cb8d09d802a882a4f9a6c2002e3c13d7a1baca7a",
+  "prompts": {},
+  "sessions": {
+    "s_62ec5fec853ca0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e94a384-b022-4e6d-bc25-3678626ab355",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

@@ -1,8 +1,16 @@
+shortcuts/slides/slides_screenshot.go
+  s_c8a6ffab7b23c8::t_343e4216b309be 25-28,38,48-49,76-78,81,84-86,109-111,159-161,284-288
+shortcuts/slides/slides_screenshot_test.go
+  s_c8a6ffab7b23c8::t_9592ca024b3802 274-300
+skills/lark-slides/SKILL.md
+  s_d3c714b1a96a95::t_69fbe980f5f012 35
+skills/lark-slides/references/lark-slides-screenshot.md
+  s_c8a6ffab7b23c8::t_7b474dd45e7403 29-30,47-48,95-97
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.6.5",
-  "base_commit_sha": "b3ce19c444884d5c93c05a9f3c296c0678d14856",
+  "base_commit_sha": "da7e954dc958e7b813fa94932e21eeb72e28ff56",
   "prompts": {},
   "sessions": {
     "s_c8a6ffab7b23c8": {

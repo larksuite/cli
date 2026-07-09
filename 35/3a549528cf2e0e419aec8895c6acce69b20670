@@ -1,8 +1,12 @@
+skills/lark-slides/references/planning-layer.md
+  s_817e1d2fe731cd::t_51ec1f39594ff2 122-149,214,222,233
+skills/lark-slides/references/asset-planning.md
+  s_817e1d2fe731cd::t_d66369271e5ba1 10,46,67-77,82-83,133
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.6.5",
-  "base_commit_sha": "cbd754cda52a678223c8fee7af2fb6c1e812ca76",
+  "base_commit_sha": "353a549528cf2e0e419aec8895c6acce69b20670",
   "prompts": {},
   "sessions": {
     "s_817e1d2fe731cd": {
