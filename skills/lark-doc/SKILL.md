@@ -46,7 +46,7 @@ lark-cli docs +update --doc "文档URL或token" --command append --content '<p>�
 - 用户明确说"下载/更新/删除文档封面图" → 用 `lark-cli docs +resource-download/+resource-update/+resource-delete --type cover`
 - `resource-*` 目前仅支持 Docx 封面资源；其他图片、附件或素材请走 `+media-*`
 - 如果目标是画板/whiteboard/画板缩略图 → 只能用 `lark-cli docs +media-download --type whiteboard`（不要用 `+media-preview`）
-- 用户明确要操作思维笔记时；已有**思维笔记**，走 [思维笔记链路](references/lark-doc-mindnote.md)；新建**思维笔记**，走 [lark-doc-whiteboard](references/lark-doc-whiteboard.md)
+- 用户明确要操作思维笔记时；已有**思维笔记**，走 [思维笔记链路](references/lark-doc-mindnote.md)，未给 URL/token 时先用 `lark-cli drive +search --doc-types mindnote` 定位 Mindnote 文档 token；新建**思维笔记**，走 [lark-doc-whiteboard](references/lark-doc-whiteboard.md)
 - 拿到 spreadsheet URL/token 后 → 切到 `lark-sheets` 做对象内部操作
 - 用户需要统计文档的**总字数 / 总字符数**（word count / character count）时，先读取 [`lark-doc-word-stat.md`](references/lark-doc-word-stat.md)，并按其中流程调用 [`scripts/doc_word_stat.py`](scripts/doc_word_stat.py)；统计口径以该脚本为准，不要改用其他方式自行计算。
 - 用户说"给文档加评论""查看评论""回复评论""给评论加/删除表情 reaction" → 切到 `lark-drive` 处理
