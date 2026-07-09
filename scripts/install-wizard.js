@@ -5,7 +5,12 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync, execFile } = require("child_process");
-const p = require("@clack/prompts");
+
+// @clack/prompts is ESM-only since v1; load it via dynamic import() so this
+// CommonJS script works on all supported Node versions (require() of an ESM
+// package throws ERR_REQUIRE_ESM before Node 22.12). Assigned in the entry
+// point below before main() runs.
+let p;
 
 const PKG = "@larksuite/cli";
 const SKILLS_REPO = "https://open.feishu.cn";
@@ -374,7 +379,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  p.cancel("Unexpected error: " + (err.message || err));
+(async () => {
+  p = await import("@clack/prompts");
+  await main();
+})().catch((err) => {
+  const msg = "Unexpected error: " + (err.message || err);
+  if (p) p.cancel(msg);
+  else console.error(msg);
   process.exit(1);
 });

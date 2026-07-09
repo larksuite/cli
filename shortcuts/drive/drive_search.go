@@ -72,10 +72,10 @@ var DriveSearch = common.Shortcut{
 	Description: "Search Lark docs, Wiki, and spreadsheet files with flat filters (Search v2: doc_wiki/search)",
 	Risk:        "read",
 	Scopes:      []string{"search:docs:read"},
-	AuthTypes:   []string{"user"},
+	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "query", Desc: "search keyword (may be empty to browse by filter only)"},
+		{Name: "query", Desc: "search keyword (may be empty to browse by filter only); max 30 characters by Unicode code point (CJK counts 1 each), over 30 the server rejects with 99992402 field validation failed"},
 
 		{Name: "mine", Type: "bool", Desc: "restrict to docs I own (server-side owner semantic, NOT original creator; uses current user's open_id)"},
 		{Name: "creator-ids", Desc: "comma-separated owner open_ids (API field is creator_ids but matched by owner); mutually exclusive with --mine"},

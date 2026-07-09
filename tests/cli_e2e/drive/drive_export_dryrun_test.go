@@ -92,6 +92,9 @@ func TestDriveExportDryRun_MarkdownFetchAPI(t *testing.T) {
 	if got := gjson.Get(out, "api.0.body.format").String(); got != "markdown" {
 		t.Fatalf("body.format=%q, want markdown\nstdout:\n%s", got, out)
 	}
+	if gjson.Get(out, "api.0.body.extra_param").Exists() {
+		t.Fatalf("markdown drive export must not enable docs fetch extra_param\nstdout:\n%s", out)
+	}
 	if got := gjson.Get(out, "file_name").String(); got != "my-notes.md" {
 		t.Fatalf("file_name=%q, want my-notes.md\nstdout:\n%s", got, out)
 	}

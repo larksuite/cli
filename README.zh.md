@@ -234,6 +234,24 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --format csv       # 逗号分隔值
 ```
 
+### JSON 输出契约
+
+`--format json`（默认）下，成功与错误的信封结构不同。
+
+成功信封写入 **stdout**，退出码 0：
+
+```json
+{ "ok": true, "identity": "user", "data": { "guid": "..." }, "meta": { "count": 1 } }
+```
+
+错误信封写入 **stderr**，退出码非 0：
+
+```json
+{ "ok": false, "identity": "user", "error": { "type": "api", "subtype": "...", "code": 99991679, "message": "...", "hint": "..." } }
+```
+
+判断命令是否成功，请检查 `ok == true`（或进程退出码），**不要用 `code == 0`**。与原始 OpenAPI 响应（`{"code": 0, "msg": "ok", ...}`）不同，成功信封没有 `code` 和 `msg` 字段；`code` 只出现在错误信封的 `error` 内，含义是上游 OpenAPI 的 numeric code。完整错误分类见 [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md)。
+
 ### 分页
 
 ```bash

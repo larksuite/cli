@@ -1,13 +1,12 @@
 # +search-user
 
-仅 user 身份。需要 scope `contact:user:search`。
+仅支持 user 身份。
 
 ## 适用范围
 
 - ✅ 已知姓名 / 邮箱 / 「聊过的人」想找出 open_id
 - ✅ 已知一组 open_id 想批量校验或回填字段(`--user-ids`,最多 100,支持 `me`)
 - ✅ 按聊天关系 / 在职状态 / 租户边界 / 企业邮箱等维度筛选员工
-- ❌ 已知 open_id 想拿完整 profile → 用 `+get-user --as bot`
 - ❌ 已知 open_id 想发消息 → 直接走 `lark-im`,不经过本命令
 
 ## 关键 flag

@@ -27,7 +27,7 @@ func TestAppsDBEnvCreate_WithYesPostsSyncData(t *testing.T) {
 	}
 	reg.Register(stub)
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "--yes", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "dev", "--sync-data", "--yes", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -54,7 +54,7 @@ func TestAppsDBEnvCreate_SyncDataFalseByDefault(t *testing.T) {
 	}
 	reg.Register(stub)
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--yes", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "dev", "--yes", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -82,7 +82,7 @@ func TestAppsDBEnvCreate_PrettyEmitsAllFourLines(t *testing.T) {
 		},
 	})
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--sync-data", "--yes", "--format", "pretty", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "dev", "--sync-data", "--yes", "--format", "pretty", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("execute err=%v", err)
 	}
@@ -103,7 +103,7 @@ func TestAppsDBEnvCreate_PrettyEmitsAllFourLines(t *testing.T) {
 func TestAppsDBEnvCreate_DryRunNoConfirm(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--dry-run", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "dev", "--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
@@ -116,7 +116,7 @@ func TestAppsDBEnvCreate_DryRunNoConfirm(t *testing.T) {
 func TestAppsDBEnvCreate_RejectsNonDevEnv(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "online", "--yes", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "online", "--yes", "--as", "user"},
 		factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "env") {
 		t.Fatalf("expected env enum rejection, got %v", err)

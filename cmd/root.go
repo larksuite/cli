@@ -11,9 +11,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/larksuite/cli/cmd/service"
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/build"
+	"github.com/larksuite/cli/internal/cmdmeta"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/deprecation"
@@ -28,43 +30,60 @@ import (
 
 const rootLong = `lark-cli — Lark/Feishu CLI tool.
 
-USAGE:
-    lark-cli <command> [subcommand] [method] [options]
-    lark-cli api <method> <path> [--params <json>] [--data <json>]
-    lark-cli schema <service.resource.method>
+AGENT QUICKSTART (driving this as an agent? start here):
+    Browse commands:  lark-cli <domain> --help            # +shortcuts (preferred) and raw API resources
+    Inspect a call:   lark-cli schema <service>.<resource>.<method>   # params, types, scopes, examples
+    Prefer a +shortcut over the raw API resource when one matches the task.
+    Risk: each command's --help shows read | write | high-risk-write;
+          high-risk-write needs --yes, only after the user confirms.
+    On any API call: --jq <expr> filters JSON output, --dry-run previews the request (runs nothing).
 
-EXAMPLES:
-    # View upcoming events
-    lark-cli calendar +agenda
+EXAMPLES (one per command style, in order of preference):
+    lark-cli calendar +agenda                                       # +shortcut — a high-level task, prefer these
+    lark-cli mail user_mailbox.messages list --user-mailbox-id me   # typed command for one API method
+    lark-cli schema mail.user_mailbox.messages.list                 # inspect a method's params before calling
+    lark-cli api GET /open-apis/calendar/v4/calendars               # raw escape hatch — any endpoint by HTTP path`
 
-    # List calendar events
-    lark-cli calendar events instance_view --params '{"calendar_id":"primary","start_time":"1700000000","end_time":"1700086400"}'
+// rootUsageTemplate is cobra's default usage template with two root-only
+// additions gated on {{if not .HasParent}}: a curated multi-form Usage synopsis
+// (replacing cobra's generic "[flags] / [command]") and a human skills-setup
+// footer. Subcommands render the stock template unchanged. The rest is verbatim
+// cobra so the command groups and flags are untouched.
+const rootUsageTemplate = `{{if .HasParent}}Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{else}}Usage:
+  lark-cli <command> [subcommand] [method] [flags]
+  lark-cli api <method> <path> [--params <json>] [--data <json>]
+  lark-cli schema <service.resource.method>{{end}}{{if gt (len .Aliases) 0}}
 
-    # Search users
-    lark-cli contact +search-user --query "John"
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
 
-    # Generic API call
-    lark-cli api GET /open-apis/calendar/v4/calendars
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
 
-AI AGENT SKILLS:
-    lark-cli pairs with AI agent skills (Claude Code, etc.) that
-    teach the agent Lark API patterns, best practices, and workflows.
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
 
-    Install all skills:
-        npx skills add larksuite/cli -g -y
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
 
-    Or pick specific domains:
-        npx skills add larksuite/cli -s lark-calendar -y
-        npx skills add larksuite/cli -s lark-im -y
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
-    Learn more: https://github.com/larksuite/cli#agent-skills
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
-COMMUNITY:
-    GitHub:     https://github.com/larksuite/cli
-    Issues:     https://github.com/larksuite/cli/issues
-    Docs:       https://open.feishu.cn/document/
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
 
-More help: lark-cli <command> --help`
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}{{if not .HasParent}}
+
+Skills setup (one-time, humans): npx skills add larksuite/cli -g -y — https://github.com/larksuite/cli#agent-skills{{end}}
+`
 
 // Execute runs the root command and returns the process exit code.
 // rawInvocationArgs holds os.Args[1:] captured at Execute() entry. cobra's
@@ -529,6 +548,49 @@ func availableSubcommandNames(cmd *cobra.Command) (available, deprecated []strin
 	return available, deprecated
 }
 
+// Root command help groups, so an agent sees content domains, agent tooling, and
+// CLI management as distinct blocks instead of one flat alphabetical dump.
+const (
+	groupDomains    = "lark-domains"
+	groupTooling    = "agent-tooling"
+	groupManagement = "cli-management"
+)
+
+// groupRootCommands classifies root's direct children into the help groups,
+// called once after all commands are registered. Unclassified commands fall to
+// cobra's "Additional Commands" section.
+func groupRootCommands(root *cobra.Command) {
+	root.AddGroup(
+		&cobra.Group{ID: groupDomains, Title: "Lark domains:"},
+		&cobra.Group{ID: groupTooling, Title: "Agent tooling:"},
+		&cobra.Group{ID: groupManagement, Title: "CLI management:"},
+	)
+	tooling := map[string]bool{"api": true, "schema": true, "skills": true}
+	management := map[string]bool{"auth": true, "config": true, "profile": true, "doctor": true, "update": true}
+	for _, c := range root.Commands() {
+		if c.GroupID != "" {
+			continue
+		}
+		switch {
+		case tooling[c.Name()]:
+			c.GroupID = groupTooling
+		case management[c.Name()]:
+			c.GroupID = groupManagement
+		case isLarkDomain(c):
+			c.GroupID = groupDomains
+		}
+	}
+}
+
+// isLarkDomain reports whether a root child is a Lark domain (service-sourced or
+// shortcut-tagged), not CLI tooling. Mirrors service.PrepareDomainHelp.
+func isLarkDomain(c *cobra.Command) bool {
+	if src, _ := cmdmeta.SourceOf(c); src == cmdmeta.SourceService {
+		return true
+	}
+	return cmdmeta.Domain(c) != ""
+}
+
 // flagDidYouMean is the root FlagErrorFunc (inherited by all subcommands). It
 // converts cobra's flag-parse errors into a typed validation envelope: an
 // unknown flag gets a focused "did you mean" hint (so agents recover even when
@@ -609,6 +671,21 @@ func installTipsHelpFunc(root *cobra.Command) {
 				f.Hidden = false
 				defer func() { f.Hidden = true }()
 			}
+		}
+		// Domain and method commands compose their agent guidance into Long lazily
+		// here (shortcuts attach after service registration); both skip the generic
+		// bottom-of-help append below.
+		if service.PrepareDomainHelp(cmd, embeddedSkillContent) {
+			defaultHelp(cmd, args)
+			return
+		}
+		if service.PrepareMethodHelp(cmd, embeddedSkillContent) {
+			defaultHelp(cmd, args)
+			return
+		}
+		if service.PrepareShortcutHelp(cmd, embeddedSkillContent) {
+			defaultHelp(cmd, args)
+			return
 		}
 		defaultHelp(cmd, args)
 		out := cmd.OutOrStdout()

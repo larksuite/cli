@@ -1,7 +1,6 @@
 
 # minutes +download
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 下载妙记的音视频媒体文件到本地，或获取有效期 1 天的下载链接。只读操作。
 
@@ -134,4 +133,3 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 
 - [lark-minutes](../SKILL.md) — 妙记全部命令
 - [lark-minutes-detail](lark-minutes-detail.md) — 妙记详情与 AI 产物查询
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

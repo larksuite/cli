@@ -5,30 +5,42 @@ package meta
 
 import "encoding/json"
 
-// Affordance is the hand-authored usage guidance overlaid on a method: when to
-// use it, when not to, prerequisites, few-shot examples, and related methods.
-// It is the single typed model of the affordance shape; the envelope renderer
-// and the command help both parse through ParsedAffordance so the vocabulary
-// is defined once. The JSON tags double as the envelope's wire shape.
+// Affordance is the typed usage guidance overlaid on a method. It is the single
+// model the envelope renderer and the command help both parse, so the
+// vocabulary is defined once; the JSON tags double as the envelope wire shape.
+// Skills entries are either a bare skill name (e.g. "lark-doc") or a
+// name/relative-path reference (e.g. "lark-contact/references/x.md"); both
+// render as runnable `lark-cli skills read <entry>` pointers. Help validates
+// each against the embedded skill tree (a name → its SKILL.md, a reference →
+// that path) and drops any that do not resolve.
 type Affordance struct {
-	UseWhen       []string         `json:"use_when,omitempty"`
-	DoNotUseWhen  []string         `json:"do_not_use_when,omitempty"`
-	Prerequisites []string         `json:"prerequisites,omitempty"`
-	Examples      []AffordanceCase `json:"examples,omitempty"`
-	Related       []string         `json:"related,omitempty"`
+	UseWhen       []string            `json:"use_when,omitempty"`
+	AvoidWhen     []string            `json:"avoid_when,omitempty"`
+	Prerequisites []string            `json:"prerequisites,omitempty"`
+	Tips          []string            `json:"tips,omitempty"`
+	Examples      []AffordanceCase    `json:"examples,omitempty"`
+	Extensions    []AffordanceSection `json:"extensions,omitempty"`
+	Related       []string            `json:"related,omitempty"`
+	Skills        []string            `json:"skills,omitempty"`
 }
 
-// AffordanceCase is one few-shot example: a one-line description and a
-// ready-to-run command.
+// AffordanceCase is one few-shot example: a description and a ready-to-run command.
 type AffordanceCase struct {
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 	Command     string `json:"command"`
 }
 
-// ParsedAffordance decodes the method's raw affordance overlay into the typed
-// Affordance. ok is false when the method carries no affordance, the JSON is
-// malformed, or every section is empty — so callers can treat "no guidance"
-// uniformly.
+// AffordanceSection is a custom guidance section: any heading beyond the
+// standard four (Avoid when / Prerequisites / Tips / Examples) flows through
+// here with its label preserved, so authors can add sections without code
+// changes.
+type AffordanceSection struct {
+	Label string   `json:"label"`
+	Items []string `json:"items,omitempty"`
+}
+
+// ParsedAffordance decodes the method's overlay. ok is false when it is absent,
+// malformed, or wholly empty — callers treat all three as "no guidance".
 func (m Method) ParsedAffordance() (Affordance, bool) {
 	if len(m.Affordance) == 0 {
 		return Affordance{}, false
@@ -37,7 +49,7 @@ func (m Method) ParsedAffordance() (Affordance, bool) {
 	if json.Unmarshal(m.Affordance, &a) != nil {
 		return Affordance{}, false
 	}
-	if len(a.UseWhen) == 0 && len(a.DoNotUseWhen) == 0 && len(a.Prerequisites) == 0 && len(a.Examples) == 0 && len(a.Related) == 0 {
+	if len(a.UseWhen) == 0 && len(a.AvoidWhen) == 0 && len(a.Prerequisites) == 0 && len(a.Tips) == 0 && len(a.Examples) == 0 && len(a.Extensions) == 0 && len(a.Related) == 0 && len(a.Skills) == 0 {
 		return Affordance{}, false
 	}
 	return a, true

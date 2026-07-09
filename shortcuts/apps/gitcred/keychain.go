@@ -42,7 +42,15 @@ func (s *SecretStore) Set(ref, pat string) error {
 			Message:  "keychain PAT reference is empty",
 		}}
 	}
-	return s.kc.Set(KeychainService, ref, pat)
+	if err := s.kc.Set(KeychainService, ref, pat); err != nil {
+		return &errs.ConfigError{Problem: errs.Problem{
+			Category: errs.CategoryConfig,
+			Subtype:  errs.SubtypeInvalidConfig,
+			Message:  "save local Git credential PAT to keychain failed",
+			Hint:     "make sure the system credential store is available, then retry lark-cli apps +git-credential-init",
+		}, Cause: err}
+	}
+	return nil
 }
 
 func (s *SecretStore) Remove(ref string) error {
@@ -64,7 +72,7 @@ func (s *SecretStore) Remove(ref string) error {
 		return &errs.ConfigError{Problem: errs.Problem{
 			Category: errs.CategoryConfig,
 			Subtype:  errs.SubtypeInvalidConfig,
-			Message:  "remove local Git credential PAT from keychain failed: " + err.Error(),
+			Message:  "remove local Git credential PAT from keychain failed",
 			Hint:     "make sure the system credential store is available, then retry lark-cli apps +git-credential-remove",
 		}, Cause: err}
 	}

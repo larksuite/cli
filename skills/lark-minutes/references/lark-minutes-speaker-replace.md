@@ -1,6 +1,5 @@
 # minutes +speaker-replace
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 替换妙记逐字稿中的说话人身份：把妙记逐字稿里"原说话人"对应的所有发言段，重新归属到"新说话人"。常用于解决妙记自动识别错说话人，或需要把外部/非飞书说话人改绑到正确飞书用户的场景。
 
@@ -81,6 +80,8 @@ lark-cli minutes +speaker-replace \
 
 Agent 必须先 `lark-cli api GET .../speakerlist`，再 `+speaker-replace`；`--from-speaker-id` 只接受 `speaker_id`。
 
+`+speaker-replace` **不会**自己请求 speakerlist：`--from-speaker-id` 的值会原样发给替换接口。整条链路只在 Agent 一开始查一次 speakerlist，务必传入上一步拿到的 `speaker_id`（不要传展示名，否则替换接口会返回 speaker-not-found）。
+
 ### 2. 新说话人必须是 open_id
 
 `--to-user-id` 仅支持 `ou_` 开头的 open_id，**不支持直接传姓名**；如果用户只给了姓名，请先用 [lark-contact](../../lark-contact/SKILL.md) 把姓名解析成 `open_id`。
@@ -104,4 +105,3 @@ Agent 必须先 `lark-cli api GET .../speakerlist`，再 `+speaker-replace`；`-
 ## 参考
 
 - [lark-minutes](../SKILL.md) -- 妙记相关功能说明
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

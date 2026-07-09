@@ -60,8 +60,11 @@ func TestServiceFlagGroups_AgentContract(t *testing.T) {
 	if i := idx("--chat-id"); i < iParams || i > iBody {
 		t.Errorf("--chat-id not under API Parameters:\n%s", out)
 	}
-	if !strings.Contains(out, "chat_id, required") {
-		t.Errorf("typed flag help format wrong:\n%s", out)
+	// The redundant "<name>, required|optional." prefix is gone: required-ness is
+	// carried by the Required:/Optional: subheadings, and the snake-case --params
+	// key by the schema envelope — so it isn't echoed on every flag line.
+	if strings.Contains(out, "chat_id, required") || strings.Contains(out, "member_id_type, optional") {
+		t.Errorf("redundant <name>, required/optional prefix should not appear:\n%s", out)
 	}
 	if !strings.Contains(out, "enum: open_id=以 open_id 标识用户|user_id=以 user_id 标识用户") {
 		t.Errorf("expected compact enum value=meaning inline:\n%s", out)

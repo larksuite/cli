@@ -4,10 +4,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime"
+	"mime/multipart"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -20,13 +24,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func newTestApiCmd(f *cmdutil.Factory, runF func(*APIOptions) error) *cobra.Command {
+	cmd := NewCmdApi(f, runF)
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	return cmd
+}
+
+func newTestRootCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:           "lark-cli",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+	}
+}
+
 func TestApiCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -54,7 +73,7 @@ func TestApiCmd_DryRun(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--dry-run"})
 	err := cmd.Execute()
 	if err != nil {
@@ -77,7 +96,7 @@ func TestApiCmd_NullParamsWithPageSize(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--params", "null", "--page-size", "50", "--as", "bot", "--dry-run"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("--params null with --page-size should not error, got: %v", err)
@@ -98,7 +117,7 @@ func TestApiCmd_BotMode(t *testing.T) {
 		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"result": "success"}},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -125,7 +144,7 @@ func TestApiCmd_MissingArgs(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET"}) // missing path
 	err := cmd.Execute()
 	if err == nil {
@@ -138,7 +157,7 @@ func TestApiCmd_InvalidParamsJSON(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--params", "{bad"})
 	err := cmd.Execute()
 	if err == nil {
@@ -151,7 +170,7 @@ func TestApiValidArgsFunction(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	fn := cmd.ValidArgsFunction
 
 	tests := []struct {
@@ -217,7 +236,7 @@ func TestNewCmdApi_StrictModeHidesAsFlag(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu, SupportedIdentities: 2,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	flag := cmd.Flags().Lookup("as")
 	if flag == nil {
 		t.Fatal("expected --as flag to be registered")
@@ -236,7 +255,7 @@ func TestApiCmd_PageLimitDefault(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -255,7 +274,7 @@ func TestApiCmd_ParamsAndDataBothStdinConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--params", "-", "--data", "-"})
 	err := cmd.Execute()
 	if err == nil {
@@ -272,7 +291,7 @@ func TestApiCmd_OutputAndPageAllConflict(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return apiRun(opts)
 	})
@@ -297,7 +316,7 @@ func TestApiCmd_BinaryResponse_AutoSave(t *testing.T) {
 		ContentType: "application/octet-stream",
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/drive/v1/files/xxx/download", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -328,7 +347,7 @@ func TestApiCmd_PageAll_NonBatchAPI_FallbackToJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users/u123", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err != nil {
@@ -368,7 +387,7 @@ func TestApiCmd_PageAll_NonBatchAPI_ErrorStillOutputsJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/im/v1/chats/oc_xxx/announcement", "--as", "bot", "--page-all"})
 	err := cmd.Execute()
 	// Should return an error
@@ -409,7 +428,7 @@ func TestApiCmd_PageAll_BatchAPI_StreamsItems(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err != nil {
@@ -448,7 +467,7 @@ func TestApiCmd_PageAll_StreamBusinessErrorDoesNotDumpJSON(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := cmd.Execute()
 	if err == nil {
@@ -483,7 +502,7 @@ func TestApiCmd_PageAll_BatchAPI_DefaultJSONEnvelope(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -549,8 +568,8 @@ func TestApiCmd_PageAll_DefaultJSONRunsContentSafety(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -600,8 +619,8 @@ func TestApiCmd_PageAll_StreamFormatRunsContentSafety(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -656,8 +675,8 @@ func TestApiCmd_PageAll_StreamFormatBlockSkipsBlockedPage(t *testing.T) {
 		},
 	})
 
-	root := &cobra.Command{Use: "lark-cli"}
-	root.AddCommand(NewCmdApi(f, nil))
+	root := newTestRootCmd()
+	root.AddCommand(newTestApiCmd(f, nil))
 	root.SetArgs([]string{"api", "GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--format", "ndjson"})
 	err := root.Execute()
 	if err == nil {
@@ -721,7 +740,7 @@ func TestApiCmd_JqFlag_Parsing(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -741,7 +760,7 @@ func TestApiCmd_JqFlag_ShortForm(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -760,7 +779,7 @@ func TestApiCmd_JqAndOutputConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--output", "file.bin"})
@@ -791,7 +810,7 @@ func TestApiCmd_JqFilter_AppliesExpression(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/test/jq", "--as", "bot", "--jq", ".data.items[].name"})
 	err := cmd.Execute()
 	if err != nil {
@@ -812,7 +831,7 @@ func TestApiCmd_JqAndFormatConflict(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", ".data", "--format", "ndjson"})
@@ -830,7 +849,7 @@ func TestApiCmd_JqInvalidExpression(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--jq", "invalid["})
@@ -859,7 +878,7 @@ func TestApiCmd_PageAll_WithJq(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/contact/v3/users", "--as", "bot", "--page-all", "--jq", ".data.items[].id"})
 	err := cmd.Execute()
 	if err != nil {
@@ -880,7 +899,7 @@ func TestApiCmd_MethodUppercase(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -899,7 +918,7 @@ func TestApiCmd_FileFlagParsing(t *testing.T) {
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -917,7 +936,7 @@ func TestApiCmd_FileAndOutputConflict(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "photo.jpg", "--output", "out.json"})
@@ -934,7 +953,7 @@ func TestApiCmd_FileWithGET(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"GET", "/open-apis/test", "--as", "bot", "--file", "photo.jpg"})
@@ -951,7 +970,7 @@ func TestApiCmd_FileStdinConflictWithData(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		return apiRun(opts)
 	})
 	cmd.SetArgs([]string{"POST", "/open-apis/test", "--as", "bot", "--file", "-", "--data", "-"})
@@ -974,7 +993,7 @@ func TestApiCmd_DryRunWithFile(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
 	})
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"POST", "/open-apis/im/v1/images", "--file", "image=" + tmpFile, "--data", `{"image_type":"message"}`, "--dry-run", "--as", "bot"})
 	err := cmd.Execute()
 	if err != nil {
@@ -1015,7 +1034,7 @@ func TestApiCmd_PermissionError_DerivesFirstClassFields(t *testing.T) {
 		},
 	})
 
-	cmd := NewCmdApi(f, nil)
+	cmd := newTestApiCmd(f, nil)
 	cmd.SetArgs([]string{"GET", "/open-apis/docx/v1/documents/test", "--as", "bot"})
 	err := cmd.Execute()
 	if err == nil {
@@ -1041,7 +1060,7 @@ func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
 	})
 
 	var gotOpts *APIOptions
-	cmd := NewCmdApi(f, func(opts *APIOptions) error {
+	cmd := newTestApiCmd(f, func(opts *APIOptions) error {
 		gotOpts = opts
 		return nil
 	})
@@ -1052,5 +1071,159 @@ func TestApiCmd_JsonFlag_Accepted(t *testing.T) {
 	}
 	if gotOpts.Method != "GET" {
 		t.Errorf("expected method GET, got %s", gotOpts.Method)
+	}
+}
+
+// parseMultipartFilenames drives one api --file upload through the mock
+// transport and returns a map of field name -> part filename parsed from the
+// captured multipart body, plus the map of text form fields. It fails the test
+// if the captured request is not multipart/form-data.
+func parseMultipartFilenames(t *testing.T, stub *httpmock.Stub) (map[string]string, map[string]string) {
+	t.Helper()
+	ct := stub.CapturedHeaders.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(ct)
+	if err != nil {
+		t.Fatalf("parse Content-Type %q: %v", ct, err)
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		t.Fatalf("Content-Type = %q, want multipart/*", mediaType)
+	}
+	filenames := map[string]string{}
+	fields := map[string]string{}
+	mr := multipart.NewReader(bytes.NewReader(stub.CapturedBody), params["boundary"])
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		if fn := part.FileName(); fn != "" {
+			filenames[part.FormName()] = fn
+		} else {
+			buf := &bytes.Buffer{}
+			_, _ = buf.ReadFrom(part)
+			fields[part.FormName()] = buf.String()
+		}
+	}
+	return filenames, fields
+}
+
+func TestApiCmd_FileUpload_PreservesFilename(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "invoice.pdf"), []byte("%PDF-1.4 fake"), 0600); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/approval/v4/files/upload",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{"code": "file_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/approval/v4/files/upload", "--as", "bot", "--file", "invoice.pdf"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames, _ := parseMultipartFilenames(t, stub)
+	if got := filenames["file"]; got != "invoice.pdf" {
+		t.Fatalf("part filename for field %q = %q, want %q", "file", got, "invoice.pdf")
+	}
+}
+
+func TestApiCmd_FileUpload_FieldPrefixKeepsBasename(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.MkdirAll(filepath.Join(dir, "sub"), 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "sub", "invoice.pdf"), []byte("%PDF-1.4 fake"), 0600); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/approval/v4/files/upload",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{"code": "file_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/approval/v4/files/upload", "--as", "bot", "--file", "upload=sub/invoice.pdf"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames, _ := parseMultipartFilenames(t, stub)
+	if _, ok := filenames["upload"]; !ok {
+		t.Fatalf("expected field name %q from field=path form, got fields %v", "upload", filenames)
+	}
+	if got := filenames["upload"]; got != "invoice.pdf" {
+		t.Fatalf("part filename for field %q = %q, want %q (basename only)", "upload", got, "invoice.pdf")
+	}
+}
+
+func TestApiCmd_FileUpload_WithDataFields(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "invoice.pdf"), []byte("%PDF-1.4 fake"), 0600); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/approval/v4/files/upload",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{"code": "file_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/approval/v4/files/upload", "--as", "bot",
+		"--file", "invoice.pdf", "--data", `{"type":"attachment"}`})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames, fields := parseMultipartFilenames(t, stub)
+	if got := filenames["file"]; got != "invoice.pdf" {
+		t.Fatalf("part filename = %q, want %q", got, "invoice.pdf")
+	}
+	if got := fields["type"]; got != "attachment" {
+		t.Fatalf("text field type = %q, want %q", got, "attachment")
+	}
+}
+
+func TestApiCmd_FileUpload_StdinFallsBackToUnknown(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+	f.IOStreams.In = bytes.NewReader([]byte("stdin-bytes"))
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/approval/v4/files/upload",
+		Body: map[string]interface{}{"code": 0, "msg": "success", "data": map[string]interface{}{"code": "file_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdApi(f, nil)
+	cmd.SetArgs([]string{"POST", "/open-apis/approval/v4/files/upload", "--as", "bot", "--file", "-"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames, _ := parseMultipartFilenames(t, stub)
+	if got := filenames["file"]; got != "unknown-file" {
+		t.Fatalf("stdin part filename = %q, want %q (no stable local name, fallback)", got, "unknown-file")
 	}
 }

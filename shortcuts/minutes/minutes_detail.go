@@ -28,7 +28,12 @@ import (
 const minutesDetailLogPrefix = "[minutes +detail]"
 
 // Error codes from the minutes API.
-const minutesDetailNoReadPermissionCode = 2091005
+const (
+	minutesDetailProcessingCode       = 2091003
+	minutesDetailNoReadPermissionCode = 2091005
+	minutesDetailWaitTimeoutDefault   = 300
+	minutesDetailWaitIntervalDefault  = 15
+)
 
 var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)
 
@@ -40,19 +45,31 @@ var scopesDetailMinuteTokens = []string{
 // minuteDetailItem represents a single minute detail result.
 type minuteDetailItem struct {
 	MinuteToken string         `json:"minute_token"`
+	Status      string         `json:"status,omitempty"`
 	Title       string         `json:"title"`
 	NoteID      string         `json:"note_id"`
 	Artifacts   map[string]any `json:"artifacts,omitempty"`
+	Retryable   bool           `json:"retryable,omitempty"`
 	Error       string         `json:"error,omitempty"`
+	Hint        string         `json:"hint,omitempty"`
+	NextCommand string         `json:"next_command,omitempty"`
 }
 
 // fetchMinuteDetail queries a single minute's metadata and selected artifacts.
 func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minuteToken string) *minuteDetailItem {
-	data, err := runtime.CallAPITyped(http.MethodGet,
-		fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
+	artifactFlags := requestedMinutesDetailArtifactFlags(runtime)
+	waitReady := runtime.Bool("wait-ready")
+	waitTimeout, waitInterval := minutesDetailWaitConfig(runtime)
+
+	data, err := callMinutesDetailAPIUntilReady(ctx, runtime, waitReady, waitTimeout, waitInterval, func() (map[string]interface{}, error) {
+		return runtime.CallAPITyped(http.MethodGet,
+			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s", validate.EncodePathSegment(minuteToken)), nil, nil)
+	})
 	if err != nil {
 		result := &minuteDetailItem{MinuteToken: minuteToken}
-		if p, ok := errs.ProblemOf(err); ok && p.Code == minutesDetailNoReadPermissionCode {
+		if isMinutesDetailProcessingError(err) {
+			markMinutesDetailProcessing(result, minuteToken, artifactFlags, "minute metadata is still being generated")
+		} else if p, ok := errs.ProblemOf(err); ok && p.Code == minutesDetailNoReadPermissionCode {
 			result.Error = fmt.Sprintf("No read permission for minute %s. Ask the minute owner for minute file read permission", minuteToken)
 		} else {
 			result.Error = fmt.Sprintf("failed to query minute: %v", err)
@@ -81,10 +98,16 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	needKeyword := runtime.Bool("keyword")
 
 	if needSummary || needTodo || needChapter || needTranscript || needKeyword {
-		artData, err := runtime.CallAPITyped(http.MethodGet,
-			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
+		artData, err := callMinutesDetailAPIUntilReady(ctx, runtime, waitReady, waitTimeout, waitInterval, func() (map[string]interface{}, error) {
+			return runtime.CallAPITyped(http.MethodGet,
+				fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/artifacts", validate.EncodePathSegment(minuteToken)), nil, nil)
+		})
 		if err != nil {
-			fmt.Fprintf(runtime.IO().ErrOut, "%s failed to fetch artifacts for %s: %v\n", minutesDetailLogPrefix, minuteToken, err)
+			if isMinutesDetailProcessingError(err) {
+				markMinutesDetailProcessing(result, minuteToken, artifactFlags, "minute artifacts are still being generated")
+			} else {
+				result.Error = fmt.Sprintf("failed to query minute artifacts: %v", err)
+			}
 		} else {
 			artifacts := make(map[string]any)
 			if needSummary {
@@ -131,6 +154,78 @@ func fetchMinuteDetail(ctx context.Context, runtime *common.RuntimeContext, minu
 	}
 
 	return result
+}
+
+func isMinutesDetailProcessingError(err error) bool {
+	if p, ok := errs.ProblemOf(err); ok && p.Code == minutesDetailProcessingCode {
+		return true
+	}
+	return false
+}
+
+func minutesDetailWaitConfig(runtime *common.RuntimeContext) (time.Duration, time.Duration) {
+	timeoutSeconds, intervalSeconds := normalizeMinutesDetailWaitSeconds(runtime.Int("wait-timeout-seconds"), runtime.Int("wait-interval-seconds"))
+	return time.Duration(timeoutSeconds) * time.Second, time.Duration(intervalSeconds) * time.Second
+}
+
+func normalizeMinutesDetailWaitSeconds(timeoutSeconds, intervalSeconds int) (int, int) {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = minutesDetailWaitTimeoutDefault
+	}
+	if intervalSeconds <= 0 {
+		intervalSeconds = minutesDetailWaitIntervalDefault
+	}
+	return timeoutSeconds, intervalSeconds
+}
+
+func callMinutesDetailAPIUntilReady(ctx context.Context, runtime *common.RuntimeContext, waitReady bool, timeout, interval time.Duration, call func() (map[string]interface{}, error)) (map[string]interface{}, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		data, err := call()
+		if err == nil || !waitReady || !isMinutesDetailProcessingError(err) {
+			return data, err
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || interval > remaining {
+			return nil, err
+		}
+		fmt.Fprintf(runtime.IO().ErrOut, "%s minute is still processing; retrying in %s\n", minutesDetailLogPrefix, interval)
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func requestedMinutesDetailArtifactFlags(runtime *common.RuntimeContext) []string {
+	var flags []string
+	for _, flag := range []string{"summary", "todo", "chapter", "keyword", "transcript"} {
+		if runtime.Bool(flag) {
+			flags = append(flags, "--"+flag)
+		}
+	}
+	return flags
+}
+
+func markMinutesDetailProcessing(result *minuteDetailItem, minuteToken string, artifactFlags []string, reason string) {
+	result.Status = "processing"
+	result.Retryable = true
+	result.Error = reason
+	result.Hint = "The minute is still being generated. Retry later, or rerun the next_command to wait until it is ready."
+	result.NextCommand = minutesDetailNextCommand(minuteToken, artifactFlags)
+}
+
+func minutesDetailNextCommand(minuteToken string, artifactFlags []string) string {
+	parts := []string{"lark-cli", "minutes", "+detail", "--minute-tokens", minuteToken}
+	parts = append(parts, artifactFlags...)
+	parts = append(parts, "--wait-ready")
+	return strings.Join(parts, " ")
 }
 
 // saveDetailTranscript persists transcript bytes to the canonical artifact path.
@@ -201,6 +296,9 @@ var MinutesDetail = common.Shortcut{
 		{Name: "keyword", Type: "bool", Desc: "include keywords"},
 		{Name: "output-dir", Desc: "output directory for transcript files (default: ./minutes/{minute_token}/)"},
 		{Name: "overwrite", Type: "bool", Desc: "overwrite existing transcript files"},
+		{Name: "wait-ready", Type: "bool", Desc: "wait until minute metadata/artifacts are ready", Hidden: true},
+		{Name: "wait-timeout-seconds", Type: "int", Default: "300", Desc: "maximum seconds to wait for readiness", Hidden: true},
+		{Name: "wait-interval-seconds", Type: "int", Default: "15", Desc: "seconds between readiness checks", Hidden: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		tokens := common.SplitCSV(runtime.Str("minute-tokens"))
@@ -282,8 +380,15 @@ var MinutesDetail = common.Shortcut{
 			for _, r := range results {
 				row := map[string]interface{}{"minute_token": r.MinuteToken}
 				if r.Error != "" {
-					row["status"] = "FAIL"
+					if r.Status == "processing" {
+						row["status"] = "PROCESSING"
+					} else {
+						row["status"] = "FAIL"
+					}
 					row["error"] = r.Error
+					if r.NextCommand != "" {
+						row["next_command"] = r.NextCommand
+					}
 				} else {
 					row["status"] = "OK"
 					row["title"] = r.Title

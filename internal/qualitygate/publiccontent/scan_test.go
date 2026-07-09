@@ -61,6 +61,19 @@ func TestScanFileWarnsForPrivateIPv4Examples(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsPrivateIPv4SourceFixtures(t *testing.T) {
+	got := ScanFile("internal/transport/warn_test.go", []byte(strings.Join([]string{
+		`proxy := "http://user:pass@10.0.0.1:3128"`,
+		`target := "socks5://admin:secret@172.16.0.1:1080"`,
+		`host := "192.168.0.10"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_private_ipv4" {
+			t.Fatalf("private IPv4 source fixtures should not be public content findings: %#v", got)
+		}
+	}
+}
+
 func TestSemanticCandidateRequiresSpecificRiskSignals(t *testing.T) {
 	benign := semanticCandidate("docs/network.md", "file", "For a local lab, use RFC1918 example host 192.168."+"0.10 only.", 1)
 	if len(benign) != 0 {
@@ -211,7 +224,7 @@ func TestSemanticCandidateCoversRealE2ESemanticCases(t *testing.T) {
 }
 
 func TestScanFileDetectsDetectorFingerprintOnlyInPublicRuleFiles(t *testing.T) {
-	got := ScanFile(".gitleaks.toml", []byte("[[rules]]\nid = \"public"+"-content-leakage\"\n"))
+	got := ScanFile("testdata/publiccontent/.gitleaks.toml", []byte("[[rules]]\nid = \"public"+"-content-leakage\"\n"))
 	if !findingRules(got)["public_content_detector_fingerprint"] {
 		t.Fatalf("expected detector fingerprint finding, got %#v", got)
 	}
@@ -549,7 +562,7 @@ func TestScanFileDetectsCredentialURLWithEmptyUsername(t *testing.T) {
 }
 
 func TestScanFileAllowsPrivateKeyStateBooleans(t *testing.T) {
-	got := ScanFile("internal/qualitygate/publiccontent/collect.go", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/scanner_state.go", []byte(strings.Join([]string{
 		"inPrivateKey = true",
 		"inPrivateKey = false",
 		"hasPrivateKey: false",
@@ -632,6 +645,45 @@ func TestScanFileAllowsCredentialURLPlaceholders(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsCredentialURLFixtures(t *testing.T) {
+	got := ScanFile("fixtures/network_test.go", []byte(strings.Join([]string{
+		`proxy := "http://user:pass@proxy:8080"`,
+		`repo := "https://u:t@h/r.git"`,
+		`target := "https://attacker:pw@open.feishu.cn"`,
+		`proxy := "http://admin:s3cret@127.0.0.1:3128"`,
+		`repo := "http://x-token:PAT_abc@git.host/app_x.git"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_credential_url" {
+			t.Fatalf("credential URL fixtures should not be credential URL findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsRootCredentialURLFixtures(t *testing.T) {
+	got := ScanFile("fixtures/network.md", []byte(strings.Join([]string{
+		`proxy: http://user:pass@proxy:8080`,
+		`repo: https://u:t@h/r.git`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_credential_url" {
+			t.Fatalf("root credential URL fixtures should not be credential URL findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsRootPrivateIPv4Fixtures(t *testing.T) {
+	got := ScanFile("testdata/network.md", []byte(strings.Join([]string{
+		`endpoint: http://10.0.0.1:8080`,
+		`redis: 192.168.1.10:6379`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_private_ipv4" {
+			t.Fatalf("root private IPv4 fixtures should not be private IPv4 findings: %#v", got)
+		}
+	}
+}
+
 func TestScanFileDetectsCredentialURLsWithRedactedSubstringPasswords(t *testing.T) {
 	got := ScanFile("docs/config.yaml", []byte("DATABASE_URL=postgres://user:notredactedreal@example.invalid/db\n"))
 	for _, item := range got {
@@ -648,6 +700,7 @@ func TestScanFileDetectsCredentialURLsWithPlaceholderUserAndRealPassword(t *test
 		"DATABASE_URL=postgres://<user>:real-secret@example.invalid/db",
 		"DATABASE_URL=postgres://<user>:" + stripeLike + "@example.invalid/db",
 		"URL=https://<user>:real-secret@example.invalid/path",
+		"REPO=https://x-token:" + stripeLike + "@git.host/app.git",
 	}, "\n")+"\n"))
 	var count int
 	for _, item := range got {
@@ -661,8 +714,8 @@ func TestScanFileDetectsCredentialURLsWithPlaceholderUserAndRealPassword(t *test
 			}
 		}
 	}
-	if count != 3 {
-		t.Fatalf("placeholder-user credential URL findings = %d, want 3: %#v", count, got)
+	if count != 4 {
+		t.Fatalf("placeholder-user credential URL findings = %d, want 4: %#v", count, got)
 	}
 }
 
@@ -724,8 +777,70 @@ func TestScanFileAllowsBenignJSONTokenFields(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsWeakTokenFieldsWithoutCredentialEvidence(t *testing.T) {
+	got := ScanFile("docs/resource-tokens.md", []byte(strings.Join([]string{
+		`{"token":"img_abc123"}`,
+		`{"token":"img_live_secret"}`,
+		`{"token":"img_prod_key"}`,
+		`token=ab********cd`,
+		`{"image_token":"img_live_secret"}`,
+		`{"data_mail_token":"mail_abc123"}`,
+		`{"whiteboard_token":"board_v3_example"}`,
+		`{"want_token":"token from callback"}`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("weak token fields without credential evidence should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsWeakTokenFieldsWithHighConfidenceCredentialValues(t *testing.T) {
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	stripeToken := "sk_" + "live_1234567890abcdef"
+	randomToken := strings.Join([]string{
+		"a1b2c3d4",
+		"e5f6g7h8",
+		"i9j0k1l2",
+		"m3n4p5q6",
+	}, "")
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		`{"token":"` + githubToken + `"}`,
+		`token=` + stripeToken,
+		`{"image_token":"` + githubToken + `"}`,
+		`{"token":"` + randomToken + `"}`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("high-confidence weak token credential findings = %d, want 4: %#v", count, got)
+	}
+}
+
+func TestScanFileDetectsStrongAuthTokenKeysWithFixtureLikeValues(t *testing.T) {
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		`{"access_token":"img_abc123"}`,
+		`{"api_token":"img_live_secret"}`,
+		`{"service_token":"ab********cd"}`,
+		`{"bot_token":"board_v3_example"}`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("strong auth token key findings = %d, want 4: %#v", count, got)
+	}
+}
+
 func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
-	got := ScanFile("shortcuts/calendar/calendar_meeting_test.go", []byte(`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`+"\n"))
+	got := ScanFile("fixtures/calendar_meeting_test.go", []byte(`AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,`+"\n"))
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("test fixture secret should not be credential finding: %#v", got)
@@ -734,7 +849,7 @@ func TestScanFileAllowsTestFixtureSecretValues(t *testing.T) {
 }
 
 func TestScanFileAllowsRegexpTokenValidators(t *testing.T) {
-	got := ScanFile("shortcuts/minutes/minutes_detail.go", []byte("var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)\n"))
+	got := ScanFile("fixtures/minutes_detail.go", []byte("var validMinuteTokenDetail = regexp.MustCompile(`^[a-z0-9]+$`)\n"))
 	for _, item := range got {
 		if item.Rule == "public_content_generic_credential" {
 			t.Fatalf("regexp token validator should not be credential finding: %#v", got)
@@ -743,7 +858,7 @@ func TestScanFileAllowsRegexpTokenValidators(t *testing.T) {
 }
 
 func TestScanFileAllowsBenignSourceCodeCredentialExpressions(t *testing.T) {
-	got := ScanFile("cmd/config/binder.go", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/config_binder.go", []byte(strings.Join([]string{
 		"AppSecret: stored,",
 		"AccessToken: result.Token.AccessToken,",
 		`token := runtime.Str("token")`,
@@ -756,7 +871,7 @@ func TestScanFileAllowsBenignSourceCodeCredentialExpressions(t *testing.T) {
 }
 
 func TestScanFileAllowsPythonArgumentTokens(t *testing.T) {
-	got := ScanFile("skills/lark-slides/scripts/iconpark_tool.py", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/iconpark_tool.py", []byte(strings.Join([]string{
 		"def normalize_token(value: str) -> str:",
 		"    token = rest[index]",
 		"    next_token = rest[index + 1] if index + 1 < len(rest) else None",
@@ -770,8 +885,174 @@ func TestScanFileAllowsPythonArgumentTokens(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsPythonCredentialTypeAnnotations(t *testing.T) {
+	got := ScanFile("fixtures/doc_word_stat.py", []byte(strings.Join([]string{
+		"class Counter:",
+		"    def __init__(self) -> None:",
+		"        self._token_kind: TokenKind | None = None",
+		"        self.access_token: AccessToken | None = None",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("python credential-shaped type annotations should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsSourceCodeCredentialNonSecretLiterals(t *testing.T) {
+	got := ScanFile("fixtures/auth_paths.go", []byte(strings.Join([]string{
+		`const PathOAuthTokenV2 = "/open-apis/authen/v2/oauth/token"`,
+		`return fmt.Errorf("failed to remove token: %v", err)`,
+		`const LarkErrTokenMissing = "token_missing"`,
+		`const LarkErrTokenExpired = 99991677`,
+		`const CliAppSecret = "LARKSUITE_CLI_APP_SECRET"`,
+		`const LargeAttachmentTokenAttr = "data-mail-token"`,
+		`const fakeOfficeTokenPrefix = "fake_office_"`,
+		`fmt.Fprintf(w, "  - token=%s  filename=%s\n", att.Token, att.FileName)`,
+		`tokenTypeHint := "access_token"`,
+		`const TokenTenant Token = "tenant"`,
+		`const secretKeyPrefix = "appsecret:"`,
+		`output.PrintJson(out, map[string]interface{}{"appSecret": "****"})`,
+		`return &credential.TokenResult{Token: "test-token"}, nil`,
+		`fmt.Fprintf(w, "password=%s\n", pat)`,
+		`text += "(img_token:" + imgToken + ")"`,
+		`map[string]interface{}{"token": "string(optional, from inspect)"}`,
+		`this.token = token;`,
+		`// AppSecret: "appsecret:<appId>"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("source code non-secret literals should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsCredentialLikePublicPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
+		`app_secret=***`,
+		`{"token":"&lt;wiki_token&gt;"}`,
+		`{"token":"Pgrrwvr***********UnRb"}`,
+		`"scope_name": "auth:user_access_token:read"`,
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("public placeholders and scope identifiers should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsPartiallyMaskedCredentialValues(t *testing.T) {
+	got := ScanFile("fixtures/config.md", []byte(strings.Join([]string{
+		"client_secret=realprefix***realsuffix",
+		"client_secret=ab********cd",
+		"access_token=ab********cd",
+		"refresh_token=realprefix********realsuffix",
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 4 {
+		t.Fatalf("partially masked credential findings = %d, want 4: %#v", count, got)
+	}
+}
+
+func TestScanFileAllowsDryRunCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/ci.yml", []byte(strings.Join([]string{
+		"LARKSUITE_CLI_APP_SECRET=dry-run",
+		"client_secret: dry_run",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("dry-run credential placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsTypedCredentialAssignmentsWithSecretRHS(t *testing.T) {
+	cases := []struct {
+		name string
+		file string
+		text string
+	}{
+		{
+			name: "typescript simple secret",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string = "real-client-secret-value"`,
+		},
+		{
+			name: "typescript numeric password",
+			file: "fixtures/source_secret.ts",
+			text: `const password: string = "12345678901234567890"`,
+		},
+		{
+			name: "typescript union secret",
+			file: "fixtures/source_secret.ts",
+			text: `const clientSecret: string | undefined = "real-client-secret-value"`,
+		},
+		{
+			name: "python simple secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: str = "real-client-secret-value"`,
+		},
+		{
+			name: "python union secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: str | None = "real-client-secret-value"`,
+		},
+		{
+			name: "python optional secret",
+			file: "fixtures/source_secret.py",
+			text: `self.client_secret: Optional[str] = "real-client-secret-value"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ScanFile(tc.file, []byte(tc.text+"\n"))
+			if !findingRules(got)["public_content_generic_credential"] {
+				t.Fatalf("typed credential assignment should be reported: %#v", got)
+			}
+		})
+	}
+}
+
+func TestScanFileDetectsCredentialShapedSourceCodeLiterals(t *testing.T) {
+	githubToken := "ghp_" + "1234567890abcdef1234567890abcdef1234"
+	got := ScanFile("fixtures/source_secret.go", []byte(strings.Join([]string{
+		`const ClientSecret = "real-client-secret-value"`,
+		`const GithubToken = "` + githubToken + `"`,
+		`const Password = "12345678901234567890"`,
+		`const ClientSecretNumber = "12345678901234567890"`,
+		`const ClientSecretFormat = "abc%sdefreal"`,
+		`fmt.Println("done"); const ClientSecret = "abc%sdefreal"`,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 6 {
+		t.Fatalf("source code credential-shaped literal findings = %d, want 6: %#v", count, got)
+	}
+}
+
+func TestScanFileAllowsPrintfCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
+		"client_secret=%s",
+		"access_token=%v",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("printf placeholders should not be credential findings: %#v", got)
+		}
+	}
+}
+
 func TestScanFileAllowsEllipsisCredentialPlaceholders(t *testing.T) {
-	got := ScanFile("skills/lark-doc/references/lark-doc-fetch.md", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/lark-doc-fetch.md", []byte(strings.Join([]string{
 		`<img token="..." url="https://..." width="..." height="..."/>`,
 		`<sheet token="..." sheet-id="...">`,
 	}, "\n")+"\n"))
@@ -783,7 +1064,7 @@ func TestScanFileAllowsEllipsisCredentialPlaceholders(t *testing.T) {
 }
 
 func TestScanFileAllowsSchemaDottedIdentifiers(t *testing.T) {
-	got := ScanFile("skills/lark-mail/references/lark-mail-recall.md", []byte("lark-cli schema mail.user_mailbox.sent_messages.get_recall_detail\n"))
+	got := ScanFile("fixtures/lark-mail-recall.md", []byte("lark-cli schema mail.user_mailbox.sent_messages.get_recall_detail\n"))
 	for _, item := range got {
 		if item.Rule == "public_content_jwt_like_token" {
 			t.Fatalf("schema dotted identifier should not be jwt finding: %#v", got)
@@ -791,8 +1072,38 @@ func TestScanFileAllowsSchemaDottedIdentifiers(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsMarkdownDottedAPIIdentifiers(t *testing.T) {
+	got := ScanFile("fixtures/mail_api_table.md", []byte(strings.Join([]string{
+		"| Method | Permission |",
+		"| --- | --- |",
+		"| `user_mailbox.sent_messages.get_recall_detail` | `mail:user_mailbox.message:readonly` |",
+		"| `user_mailbox.allow_sender.batch_create` | `mail:user_mailbox.message:modify` |",
+		"| `user_mailbox.allow_sender.batch_remove` | `mail:user_mailbox.message:modify` |",
+		"| `user_mailbox.blocked_sender.batch_create` | `mail:user_mailbox.message:modify` |",
+		"| `user_mailbox.blocked_sender.batch_remove` | `mail:user_mailbox.message:modify` |",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_jwt_like_token" {
+			t.Fatalf("markdown dotted API identifier should not be jwt finding: %#v", got)
+		}
+	}
+}
+
+func TestScanFileAllowsNonJWTDottedTaxonomy(t *testing.T) {
+	got := ScanFile("docs/api.md", []byte(strings.Join([]string{
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"corehr:employment.international_assignment.custom_field.apaas_id__c:read",
+		"user_mailbox.sent_messages.get_recall_detail queries recall detail.",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_jwt_like_token" {
+			t.Fatalf("non-JWT dotted taxonomy should not be jwt finding: %#v", got)
+		}
+	}
+}
+
 func TestScanFileAllowsClientTokenIdempotencyExamples(t *testing.T) {
-	got := ScanFile("skills/idempotency.md", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/idempotency.md", []byte(strings.Join([]string{
 		`{"client_token":"1704067200"}`,
 		`{"client_token":"fe599b60-450f-46ff-b2ef-9f6675625b97"}`,
 	}, "\n")+"\n"))
@@ -805,7 +1116,7 @@ func TestScanFileAllowsClientTokenIdempotencyExamples(t *testing.T) {
 
 func TestScanFileDetectsCredentialShapedClientTokenValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
-	got := ScanFile("skills/idempotency.md", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/idempotency.md", []byte(strings.Join([]string{
 		`{"client_token":"` + stripeLike + `"}`,
 		`{"client_token":"real-client-secret-value"}`,
 	}, "\n")+"\n"))
@@ -821,7 +1132,7 @@ func TestScanFileDetectsCredentialShapedClientTokenValues(t *testing.T) {
 }
 
 func TestScanFileAllowsTokenLikePlaceholderExamples(t *testing.T) {
-	got := ScanFile("skills/placeholders.md", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
 		`{ "block_token": "boardXXXX" }`,
 		`{ "resource_token": "doc_token_or_url" }`,
 		`{ "token": "canonical_token" }`,
@@ -841,7 +1152,7 @@ func TestScanFileAllowsTokenLikePlaceholderExamples(t *testing.T) {
 
 func TestScanFileDetectsCredentialShapedTokenLikePlaceholderValues(t *testing.T) {
 	stripeLike := "sk_" + "live_1234567890abcdef"
-	got := ScanFile("skills/placeholders.md", []byte(strings.Join([]string{
+	got := ScanFile("fixtures/placeholders.md", []byte(strings.Join([]string{
 		`{ "resource_token": "` + stripeLike + `" }`,
 		`{ "block_token": "real-client-secret-value" }`,
 	}, "\n")+"\n"))
@@ -856,10 +1167,12 @@ func TestScanFileDetectsCredentialShapedTokenLikePlaceholderValues(t *testing.T)
 	}
 }
 
-func TestScanFileDetectsNonFixtureMinuteTokenValues(t *testing.T) {
-	got := ScanFile("shortcuts/minutes/minutes_search_test.go", []byte(`{"token":"minute_real_secret"}`+"\n"))
-	if !findingRules(got)["public_content_generic_credential"] {
-		t.Fatalf("non-fixture minute token should be credential finding: %#v", got)
+func TestScanFileAllowsNonFixtureResourceTokenValues(t *testing.T) {
+	got := ScanFile("fixtures/minutes_search_test.go", []byte(`{"token":"minute_real_secret"}`+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("resource-like bare token value should not be credential finding: %#v", got)
+		}
 	}
 }
 
@@ -958,6 +1271,19 @@ func TestScanFileDetectsJSONBearerHeaders(t *testing.T) {
 	}
 }
 
+func TestScanFileAllowsBearerHeaderPlaceholders(t *testing.T) {
+	got := ScanFile("docs/auth.md", []byte(strings.Join([]string{
+		"Authorization: Bearer YOUR_ACCESS_TOKEN",
+		`{"Authorization":"Bearer ACCESS_TOKEN_HERE"}`,
+		"Authorization: Bearer <access-token>",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_bearer_header" {
+			t.Fatalf("bearer placeholder should not be bearer finding: %#v", got)
+		}
+	}
+}
+
 func TestSemanticCandidateRedactsJSONBearerHeaders(t *testing.T) {
 	token := "abcdefghijklmnopqrstuvwxyz"
 	text := "private launch plan for internal rollout on Friday\n" +
@@ -972,6 +1298,22 @@ func TestSemanticCandidateRedactsJSONBearerHeaders(t *testing.T) {
 	}
 	if !strings.Contains(got[0].Excerpt, "Authorization: Bearer <redacted>") {
 		t.Fatalf("semantic candidate should redact JSON bearer header, got %#v", got[0])
+	}
+}
+
+func TestSemanticCandidateKeepsNonJWTDottedTaxonomy(t *testing.T) {
+	text := "private launch plan for internal rollout on Friday\n" +
+		"Supported MIME type: application/vnd.openxmlformats-officedocument.presentationml.presentation\n"
+
+	got := semanticCandidate("docs/public.md", "file", text, 1)
+	if len(got) != 1 {
+		t.Fatalf("semantic candidate len = %d, want 1: %#v", len(got), got)
+	}
+	if strings.Contains(got[0].Excerpt, "<jwt-like-token>") {
+		t.Fatalf("semantic candidate should not redact non-JWT dotted taxonomy: %#v", got[0])
+	}
+	if !strings.Contains(got[0].Excerpt, "application/vnd.openxmlformats-officedocument.presentationml.presentation") {
+		t.Fatalf("semantic candidate should keep non-JWT dotted taxonomy, got %#v", got[0])
 	}
 }
 
@@ -1009,6 +1351,37 @@ func TestScanFileAllowsPercentWrappedPlaceholder(t *testing.T) {
 	got := ScanFile("docs/config.md", []byte("client_secret=%CLIENT_SECRET%\n"))
 	if len(got) != 0 {
 		t.Fatalf("percent-wrapped placeholder produced findings: %#v", got)
+	}
+}
+
+func TestScanFileAllowsConventionalCredentialPlaceholders(t *testing.T) {
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		"client_secret: YOUR_CLIENT_SECRET",
+		"api_key: YOUR_API_KEY",
+		"password: YOUR_PASSWORD",
+		"access_token: ACCESS_TOKEN_HERE",
+	}, "\n")+"\n"))
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			t.Fatalf("conventional credential placeholder should not be credential finding: %#v", got)
+		}
+	}
+}
+
+func TestScanFileDetectsCredentialShapedPlaceholderLookalikes(t *testing.T) {
+	stripeLike := "sk_" + "live_1234567890abcdef"
+	got := ScanFile("docs/config.md", []byte(strings.Join([]string{
+		"client_secret: " + stripeLike + "_HERE",
+		"api_key: YOUR_" + stripeLike,
+	}, "\n")+"\n"))
+	var count int
+	for _, item := range got {
+		if item.Rule == "public_content_generic_credential" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("credential-shaped placeholder lookalike findings = %d, want 2: %#v", count, got)
 	}
 }
 

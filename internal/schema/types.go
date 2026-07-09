@@ -13,6 +13,10 @@ import (
 )
 
 // Envelope is the MCP Tool spec contract for a single API method command.
+//
+// The REST route (httpMethod/path) is deliberately NOT exposed: every
+// schema-resolvable method already has a typed command, so the raw path would
+// only tempt an agent toward the `api` escape hatch.
 type Envelope struct {
 	Name         string        `json:"name"`
 	Description  string        `json:"description"`
@@ -44,9 +48,15 @@ type OutputSchema struct {
 // "params" / "data" sub-objects inside inputSchema): it lists which keys
 // inside that object's Properties are mandatory. Leaf fields ignore it.
 type Property struct {
-	Type        string        `json:"type,omitempty"`
-	Description string        `json:"description,omitempty"`
-	Enum        []interface{} `json:"enum,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Description string `json:"description,omitempty"`
+	// Flag is the typed CLI flag a params property maps to (e.g. "--folder-id");
+	// absent on body/file fields, which travel via the section's Carrier.
+	Flag string `json:"flag,omitempty"`
+	// Carrier names the flag a whole inputSchema section travels on ("--data" /
+	// "--file"); empty on the params section, whose properties carry their Flag.
+	Carrier string        `json:"carrier,omitempty"`
+	Enum    []interface{} `json:"enum,omitempty"`
 	// EnumDescriptions, when present, is parallel to Enum: the human meaning of
 	// each allowed value, in the same order. Omitted when no value carries a
 	// description. This is the widely-recognized JSON-Schema extension (VS Code,
