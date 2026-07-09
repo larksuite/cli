@@ -63,13 +63,13 @@ func NewEventPipeline(
 func (p *EventPipeline) EnsureDirs() error {
 	if p.config.OutputDir != "" {
 		if err := vfs.MkdirAll(p.config.OutputDir, 0700); err != nil {
-			return fmt.Errorf("create output dir: %w", err)
+			return eventFileIOError(err, "create output dir")
 		}
 	}
 	if p.config.Router != nil {
 		for _, route := range p.config.Router.routes {
 			if err := vfs.MkdirAll(route.dir, 0700); err != nil {
-				return fmt.Errorf("create route dir %s: %w", route.dir, err)
+				return eventFileIOError(err, "create route dir %s", route.dir)
 			}
 		}
 	}

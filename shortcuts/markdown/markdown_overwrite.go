@@ -8,7 +8,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -30,7 +29,7 @@ var MarkdownOverwrite = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		fileToken := strings.TrimSpace(runtime.Str("file-token"))
 		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return markdownValidationParamError("--file-token", "%s", err).WithCause(err)
 		}
 		return validateMarkdownSpec(runtime, markdownUploadSpec{
 			FileToken:  fileToken,

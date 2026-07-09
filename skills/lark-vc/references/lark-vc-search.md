@@ -1,17 +1,13 @@
 
 # vc +search
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
-
-搜索已结束的历史会议记录，支持关键词、时间范围、组织者、参与者以及会议室等多条件过滤。只读操作，不修改任何会议数据。
-
-本 skill 对应 shortcut：`lark-cli vc +search`（调用 `POST /open-apis/vc/v1/meetings/search`）。
+搜索已结束的历史会议记录，支持关键词、时间范围、组织者、参与者、会议室多条件过滤。只读，仅 `--as user`。
 
 ## 关键词使用边界
 
 `--query` 只用于真实会议关键词，例如会议主题、项目名、评审名、客户名。用户只是说"我这月参加的所有视频会议"、"最近两周我组织的所有视频会议"、"总结主要议题 / 看看参会情况"时，本质是历史会议列表和后续总结，不要把"回顾"、"所有视频会议"、"总结主要议题"等动作词放进 `--query`。这类请求应先用时间范围 + `--participant-ids` / `--organizer-ids` 搜全量候选，再按结果继续取纪要或录制信息。
 
-列表阶段只负责找会议记录；总结阶段必须继续取证。若用户要求"主要议题"、"主要决策"、"参会情况"，先确认搜索结果的 `meeting_id`、时间、组织者/参与者符合过滤条件，然后用 `vc +notes` 或 `vc +recording` / `minutes` 读取纪要、妙记或录制信息。没有纪要或妙记时，如实说明只能基于会议标题/参会数据汇总，不要编造议题。
+列表阶段只负责找会议记录；总结阶段必须继续取证。若用户要求"主要议题"、"主要决策"、"参会情况"，先确认搜索结果的 `meeting_id`、时间、组织者/参与者符合过滤条件，然后用 `vc +detail` 或 `minutes` 读取纪要、妙记或录制信息。没有纪要或妙记时，如实说明只能基于会议标题/参会数据汇总，不要编造议题。
 
 ## 典型触发表达
 
@@ -35,37 +31,17 @@ lark-cli vc +search --start 2026-03-10 --end 2026-03-10
 
 # 按时间范围搜索
 lark-cli vc +search --start "2026-03-10T00:00+08:00" --end "2026-03-17T00:00+08:00"
-lark-cli vc +search --start 2026-03-10 --end 2026-03-17
 
-# 关键词 + 时间范围
-lark-cli vc +search --query "周会" --start "2026-03-10T00:00+08:00" --end "2026-03-17T00:00+08:00"
-lark-cli vc +search --query "周会" --start "2026-03-10T00:00+08:00"
-lark-cli vc +search --query "周会" --end "2026-03-17T00:00+08:00"
-
-# 按组织者过滤（open_id，逗号分隔）
-lark-cli vc +search --organizer-ids "ou_a,ou_b"
-
-# 按参与者过滤（open_id，逗号分隔）
-lark-cli vc +search --participant-ids "ou_x,ou_y"
-
-# 查询我这个月参加过的历史会议，不带关键词
-lark-cli vc +search --start "<YYYY-MM-DD>" --end "<YYYY-MM-DD>" --participant-ids "ou_me"
-
-# 查询最近两周我组织的历史会议，不带关键词
-lark-cli vc +search --start "<YYYY-MM-DD>" --end "<YYYY-MM-DD>" --organizer-ids "ou_me"
-
-# 按会议室过滤
+# 按组织者 / 参与者 / 会议室（逗号分隔）
+lark-cli vc +search --organizer-ids "ou_user1,ou_user2"
+lark-cli vc +search --participant-ids "ou_user1,ou_user2"
 lark-cli vc +search --room-ids "123,456"
 
-# 多条件组合查询
-lark-cli vc +search --organizer-ids "ou_a" --room-ids "123" --start "2026-03-10T00:00+08:00"
+# 多条件组合
+lark-cli vc +search --organizer-ids "ou_user1" --room-ids "123" --start "2026-03-10T00:00+08:00"
 
-# 分页查询
-lark-cli vc +search --query "周会" --page-size 15
-lark-cli vc +search --query "周会" --page-token "next_page_token"
-
-# 输出为表格/可读格式
-lark-cli vc +search --query "周会" --format json
+# 翻页
+lark-cli vc +search --query "周会" --page-token "<PAGE_TOKEN>"
 ```
 
 ## 参数
@@ -137,15 +113,15 @@ lark-cli vc +search --query "周会" --format json
 
 ## 输出结果
 
-- 默认输出 JSON，包含 `items`、`total`、`has_more` 和 `page_token`。
+- 默认输出 JSON，包含 `items`、`has_more` 和 `page_token`。
 
 ## Pagination (`has_more` / `page_token`)
 
 - 当结果中返回 `has_more=true` 时，说明还有更多页可继续获取。
 - 继续翻页时，使用响应中的 `page_token` 搭配 `--page-token` 发起下一次查询。
 - 不要假设调大 `--page-size` 就能拿全结果；分页遍历时应以 `has_more` 和 `page_token` 为准。
-- 未明确要求全量时，`total` 数量小于 50 可自动分页获取所有结果；`total` 数量大于 50 时，先向用户确认是否继续获取全部结果。
-- 用户明确说"所有 / 全部 / 统计 / 按时间排序"时，该全量意图优先于 `total > 50` 的确认门槛；直接完成分页和去重，再排序或统计，不要只用第一页回答。
+- 未明确要求全量时，逐页累计已读取的 `items` 数：累计不到 50 条之前可自动继续翻页（`has_more=true` 即继续）；超过 50 条且仍 `has_more=true` 时，先向用户确认是否继续获取全部结果。
+- 用户明确说"所有 / 全部 / 统计 / 按时间排序"时，该全量意图优先于 50 条的确认门槛；直接按 `has_more` 翻完所有页并去重，再排序或统计，不要只用第一页回答。
 
 ```bash
 # First page
@@ -161,7 +137,7 @@ lark-cli vc +search --query "周会" --page-size 15 --page-token "<PAGE_TOKEN>"
 
 ```bash
 # 如果要会议纪要 / 逐字稿 / AI 总结 / 待办 / 章节
-lark-cli vc +notes --meeting-ids <MEETING_ID>
+lark-cli vc +detail --meeting-ids <MEETING_ID>
 
 # 如果要会议对应的妙记信息 / minute_token / 妙记链接
 lark-cli vc +recording --meeting-ids <MEETING_ID>
@@ -183,11 +159,5 @@ lark-cli minutes minutes get --params '{"minute_token":"<MINUTE_TOKEN>"}'
 - 排查参数与请求结构时优先使用 `--dry-run`。
 - 搜索的时间范围最大为 1 个月，如果需要搜索更长时间范围的会议，需要拆分为多次时间范围为一个月查询。
 - 不要使用 `yesterday`、`today` 这类相对时间字面量；请先转换成明确日期，例如 `2026-03-10`。
-- 用户如果明确问的是“妙记信息”而不是“纪要内容”，不要默认走 `vc +notes`；应先用 `vc +recording`。
+- 用户如果明确问的是“妙记信息”而不是“纪要内容”，不要默认走 `vc +detail`；应先用 `vc +recording`。
 
-## 参考
-
-- [lark-vc](../SKILL.md) -- 视频会议全部命令
-- [lark-vc-recording](lark-vc-recording.md) -- 查询会议对应的 minute_token
-- [lark-vc-notes](lark-vc-notes.md) -- 获取会议纪要
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数

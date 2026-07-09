@@ -102,3 +102,10 @@ func TestIsHTMLNonTextTag(t *testing.T) {
 		})
 	}
 }
+
+func TestPlainTextFromHTMLExported(t *testing.T) {
+	got := PlainTextFromHTML("<p>Hello world</p>")
+	if !strings.Contains(got, "Hello world") {
+		t.Fatalf("PlainTextFromHTML: expected to contain \"Hello world\", got %q", got)
+	}
+}

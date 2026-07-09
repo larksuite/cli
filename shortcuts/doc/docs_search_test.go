@@ -7,8 +7,48 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/httpmock"
 )
 
+// TestDocsSearchExecutePassesThroughNotice verifies docs +search preserves notices.
+func TestDocsSearchExecutePassesThroughNotice(t *testing.T) {
+	const notice = "The query is too long and has been truncated to the first 50 characters for search."
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-search-notice"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/search/v2/doc_wiki/search",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"notice":     notice,
+				"res_units":  []interface{}{},
+				"total":      0,
+				"has_more":   false,
+				"page_token": "",
+			},
+		},
+	})
+
+	if err := mountAndRunDocs(t, DocsSearch, []string{"+search", "--query", "incident", "--format", "json", "--as", "user"}, f, stdout); err != nil {
+		t.Fatalf("DocsSearch.Execute() error = %v", err)
+	}
+	reg.Verify(t)
+
+	var env map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+		t.Fatalf("json.Unmarshal(stdout) error = %v\nstdout=%s", err, stdout.String())
+	}
+	data, _ := env["data"].(map[string]interface{})
+	if got, _ := data["notice"].(string); got != notice {
+		t.Fatalf("data.notice = %q, want %q; data=%#v", got, notice, data)
+	}
+}
+
+// TestAddIsoTimeFieldsSupportsJSONNumber verifies JSON numbers get ISO fields.
 func TestAddIsoTimeFieldsSupportsJSONNumber(t *testing.T) {
 	t.Parallel()
 

@@ -41,7 +41,7 @@ The official [Lark/Feishu](https://www.larksuite.com/) CLI tool, maintained by t
 | ✍️ Approval   | Query approval tasks, approve/reject/transfer tasks, cancel and CC instances                                                      |
 | 🎯 OKR        | Query, create, update OKRs; manage objective & key results, alignments, indicators and progress.                                  |
 | 📋 Project    | Meegle — manage work items, schedules, and data via the standalone [meegle-cli](https://github.com/larksuite/meegle-cli) (install separately) |
-| 🔗 Apps       | Develop, deploy HTML, web pages and applications                                                                                  |
+| 🔗 Apps       | Create Spark/Miaoda apps, publish HTML/static sites, run cloud generation, and manage access scope                                 |
 
 ## Installation & Quick Start
 
@@ -198,7 +198,7 @@ Prefixed with `+`, designed to be friendly for both humans and AI, with smart de
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
+lark-cli docs +create --doc-format markdown --content $'<title>Weekly Report</title>\n# Progress\n- Completed feature X'
 ```
 
 Run `lark-cli <service> --help` to see all shortcut commands.
@@ -232,6 +232,24 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --format ndjson    # Newline-delimited JSON (for piping)
 --format csv       # Comma-separated values
 ```
+
+### JSON Output Contract
+
+With `--format json` (the default), success and error envelopes are distinct.
+
+Success goes to **stdout**, exit code `0`:
+
+```json
+{ "ok": true, "identity": "user", "data": { "guid": "..." }, "meta": { "count": 1 } }
+```
+
+Errors go to **stderr**, non-zero exit code:
+
+```json
+{ "ok": false, "identity": "user", "error": { "type": "api", "subtype": "...", "code": 99991679, "message": "...", "hint": "..." } }
+```
+
+To check whether a command succeeded, test `ok == true` (or the exit code) — **not** `code == 0`. Unlike raw OpenAPI responses (`{"code": 0, "msg": "ok", ...}`), the success envelope carries no `code` or `msg` field; `code` appears only inside `error` as the upstream OpenAPI code. See [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md) for the full error taxonomy.
 
 ### Pagination
 

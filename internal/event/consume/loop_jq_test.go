@@ -5,10 +5,13 @@ package consume
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
 )
 
 func TestCompileJQReportsErrorEarly(t *testing.T) {
@@ -19,6 +22,16 @@ func TestCompileJQReportsErrorEarly(t *testing.T) {
 	msg := err.Error()
 	if !strings.Contains(msg, "compile") && !strings.Contains(msg, "parse") && !strings.Contains(msg, "invalid") {
 		t.Errorf("error should mention compile/parse/invalid, got: %v", err)
+	}
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument || ve.Param != "--jq" {
+		t.Errorf("subtype/param = %s/%q, want %s/%q", ve.Subtype, ve.Param, errs.SubtypeInvalidArgument, "--jq")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Error("compile error should preserve its cause")
 	}
 }
 

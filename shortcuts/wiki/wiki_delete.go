@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -89,7 +89,7 @@ type wikiDeleteSpaceAPI struct {
 }
 
 func (api wikiDeleteSpaceAPI) DeleteSpace(ctx context.Context, spaceID string) (*wikiDeleteSpaceResponse, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"DELETE",
 		fmt.Sprintf("/open-apis/wiki/v2/spaces/%s", validate.EncodePathSegment(spaceID)),
 		nil,
@@ -104,7 +104,7 @@ func (api wikiDeleteSpaceAPI) DeleteSpace(ctx context.Context, spaceID string) (
 }
 
 func (api wikiDeleteSpaceAPI) GetDeleteSpaceTask(ctx context.Context, taskID string) (wikiDeleteSpaceTaskStatus, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": "delete_space"},
@@ -124,7 +124,7 @@ func readWikiDeleteSpaceSpec(runtime *common.RuntimeContext) wikiDeleteSpaceSpec
 
 func validateWikiDeleteSpaceSpec(spec wikiDeleteSpaceSpec) error {
 	if spec.SpaceID == "" {
-		return output.ErrValidation("--space-id is required")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--space-id is required").WithParam("--space-id")
 	}
 	return validateOptionalResourceName(spec.SpaceID, "--space-id")
 }

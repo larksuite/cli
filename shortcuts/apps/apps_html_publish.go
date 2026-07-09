@@ -7,10 +7,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/internal/client"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -19,23 +20,27 @@ import (
 var AppsHTMLPublish = common.Shortcut{
 	Service:     appsService,
 	Command:     "+html-publish",
-	Description: "Publish HTML to a Miaoda app (single multipart POST returns the access URL)",
+	Description: "Publish HTML to an app (single multipart POST returns the access URL)",
 	Risk:        "write",
-	Scopes:      []string{"spark:app:write"},
-	AuthTypes:   []string{"user"},
-	HasFormat:   true,
+	Tips: []string{
+		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./dist",
+		"Example: lark-cli apps +html-publish --app-id <app_id> --path ./site --dry-run",
+	},
+	Scopes:    []string{"spark:app:write"},
+	AuthTypes: []string{"user"},
+	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "path", Desc: "path to HTML file or directory", Required: true},
 		{Name: "allow-sensitive", Type: "bool", Desc: "skip the credential-file scan (allow .env / .npmrc / .aws/credentials / etc. in the publish payload)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		path := strings.TrimSpace(rctx.Str("path"))
 		if path == "" {
-			return output.ErrValidation("--path is required")
+			return appsValidationParamError("--path", "--path is required")
 		}
 		// Block well-known credential files in the publish payload unless the
 		// caller explicitly opts in. Lives in Validate (not DryRun) so that
@@ -79,6 +84,9 @@ var AppsHTMLPublish = common.Shortcut{
 			// envelope field so dry-run still exits 0 (matches repo convention
 			// for dry-run "advisory preview" semantics).
 			dry.Set("validation_error", err.Error())
+		}
+		if hits := oversizeHTMLFiles(candidates); len(hits) > 0 {
+			dry.Set("oversize_html", hits)
 		}
 		dry.Set("file_count", len(candidates))
 		var totalSize int64
@@ -136,19 +144,23 @@ type appsHTMLPublishSpec struct {
 // per-environment .env.* files for every stage).
 const maxSensitiveListInError = 5
 
+// truncatedJoin joins items with ", ", capping at max entries and appending
+// "(and N more)" for the remainder, so an inline error list stays readable when
+// a payload has many hits.
+func truncatedJoin(items []string, max int) string {
+	if len(items) <= max {
+		return strings.Join(items, ", ")
+	}
+	return strings.Join(items[:max], ", ") + fmt.Sprintf(" (and %d more)", len(items)-max)
+}
+
 // sensitiveCandidatesError builds the Validate-time rejection when --path
 // contains credential files and --allow-sensitive was not set.
 func sensitiveCandidatesError(hits []string) error {
-	var sample string
-	if len(hits) <= maxSensitiveListInError {
-		sample = strings.Join(hits, ", ")
-	} else {
-		sample = strings.Join(hits[:maxSensitiveListInError], ", ") +
-			fmt.Sprintf(" (and %d more)", len(hits)-maxSensitiveListInError)
-	}
-	return output.ErrWithHint(output.ExitValidation, "validation",
-		fmt.Sprintf("--path contains %d credential file(s) that should not be published: %s", len(hits), sample),
-		"remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
+	return appsValidationParamError("--path",
+		"--path contains %d credential file(s) that should not be published: %s",
+		len(hits), truncatedJoin(hits, maxSensitiveListInError)).
+		WithHint("remove these files from the publish payload, OR pass --allow-sensitive if shipping them is intentional (e.g. a docs site demoing credential-file formats)")
 }
 
 // maxHTMLPublishTarballBytes 是 client 端 tar.gz 包体上限，对齐 OAPI 设计 20MB 约束。
@@ -164,6 +176,30 @@ var maxHTMLPublishTarballBytes int64 = 20 * 1024 * 1024
 // Mutable for tests.
 var maxHTMLPublishRawBytes int64 = 200 * 1024 * 1024
 
+// maxHTMLPublishSingleHTMLFileBytes 单个 .html 文件上限，对齐妙搭服务端 10MB 约束。
+// 用 var 而非 const，便于单测调小覆盖拦截路径。
+var maxHTMLPublishSingleHTMLFileBytes int64 = 10 * 1024 * 1024
+
+// oversizeHTMLFiles 返回 candidates 中扩展名为 .html（大小写不敏感）且单个 Size 超过
+// maxHTMLPublishSingleHTMLFileBytes 的 RelPath 列表。只针对 .html 文件，不波及图片/字体/JS。
+func oversizeHTMLFiles(candidates []htmlPublishCandidate) []string {
+	var hits []string
+	for _, c := range candidates {
+		if strings.EqualFold(filepath.Ext(c.RelPath), ".html") && c.Size > maxHTMLPublishSingleHTMLFileBytes {
+			hits = append(hits, c.RelPath)
+		}
+	}
+	return hits
+}
+
+// oversizeHTMLFilesError 构造单文件超限的 Validate 风格拒绝。
+func oversizeHTMLFilesError(hits []string) error {
+	return appsValidationParamError("--path",
+		"--path contains %d HTML file(s) exceeding the %d bytes (10MB) per-file limit: %s",
+		len(hits), maxHTMLPublishSingleHTMLFileBytes, truncatedJoin(hits, maxSensitiveListInError)).
+		WithHint("split or trim oversized HTML file(s); the 10MB cap applies to each single .html file")
+}
+
 // ensureIndexHTML 要求 walker 抓到的 candidates 里必须含 index.html。
 // 目录形态：根目录下必须有 index.html。
 // 单文件形态：文件名必须就是 index.html。
@@ -174,42 +210,44 @@ func ensureIndexHTML(candidates []htmlPublishCandidate) error {
 			return nil
 		}
 	}
-	return output.ErrWithHint(output.ExitAPI, "validation",
-		"--path 中缺少 index.html",
-		"妙搭以 index.html 作为应用入口；目录形态把首页放在根目录命名 index.html，单文件形态把文件命名为 index.html")
+	return appsFailedPreconditionParamError("--path", "--path is missing index.html").
+		WithHint("index.html is the app entrypoint; for a directory put index.html at the root, or pass a single file named index.html")
 }
 
-func runHTMLPublish(ctx context.Context, fio fileio.FileIO, client appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
+func runHTMLPublish(ctx context.Context, fio fileio.FileIO, publisher appsHTMLPublishClient, spec appsHTMLPublishSpec) (map[string]interface{}, error) {
 	candidates, err := walkHTMLPublishCandidates(fio, spec.Path)
 	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "io", "scan --path %s: %v", spec.Path, err)
+		return nil, err
 	}
 	if err := ensureIndexHTML(candidates); err != nil {
 		return nil, err
+	}
+	if hits := oversizeHTMLFiles(candidates); len(hits) > 0 {
+		return nil, oversizeHTMLFilesError(hits)
 	}
 	var rawTotal int64
 	for _, c := range candidates {
 		rawTotal += c.Size
 	}
 	if rawTotal > maxHTMLPublishRawBytes {
-		return nil, output.ErrWithHint(output.ExitAPI, "validation",
-			fmt.Sprintf("--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes),
-			"在 tar+gzip 进入内存前拦截，避免 OOM；精简 --path 内容或选择更小的子目录")
+		return nil, appsValidationParamError("--path",
+			"--path total raw bytes %d exceeds %d bytes limit (uncompressed pre-pack cap)", rawTotal, maxHTMLPublishRawBytes).
+			WithHint("reduce --path contents or choose a smaller subdirectory before packaging")
 	}
 	tarball, err := buildHTMLPublishTarball(fio, candidates)
 	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "io", "pack: %v", err)
+		return nil, err
 	}
 
 	if tarball.Size > maxHTMLPublishTarballBytes {
-		return nil, output.ErrWithHint(output.ExitAPI, "validation",
-			fmt.Sprintf("packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes),
-			"请精简 --path 目录（去掉无关大文件 / 压缩资源）后重试；本期接口上限 20MB")
+		return nil, appsValidationParamError("--path",
+			"packed tar.gz size %d bytes exceeds %d bytes limit", tarball.Size, maxHTMLPublishTarballBytes).
+			WithHint("reduce --path contents, remove unrelated large files, then retry")
 	}
 
-	resp, err := client.HTMLPublish(ctx, spec.AppID, tarball)
+	resp, err := publisher.HTMLPublish(ctx, spec.AppID, tarball)
 	if err != nil {
-		return nil, err
+		return nil, client.WrapDoAPIError(err)
 	}
 
 	out := map[string]interface{}{}

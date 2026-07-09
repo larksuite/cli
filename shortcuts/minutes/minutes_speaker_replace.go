@@ -25,12 +25,13 @@ var MinutesSpeakerReplace = common.Shortcut{
 	Command:     "+speaker-replace",
 	Description: "Replace a speaker in a minute's transcript (rebind from one user to another)",
 	Risk:        "write",
-	Scopes:      []string{"minutes:minutes:update"},
+	Scopes:      []string{"minutes:minutes:readonly", "minutes:minutes:update"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "minute-token", Desc: "minute token", Required: true},
-		{Name: "from-user-id", Desc: "speaker to replace, must be an open_id starting with 'ou_'", Required: true},
+		{Name: "from-speaker-id", Desc: "speaker to replace: opaque speaker_id from transcript speakerlist API (do not pass display names)"},
+		{Name: "from-user-id", Desc: "deprecated: open_id of the speaker to replace; prefer --from-speaker-id", Hidden: true},
 		{Name: "to-user-id", Desc: "new speaker, must be an open_id starting with 'ou_'", Required: true},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -41,12 +42,10 @@ var MinutesSpeakerReplace = common.Shortcut{
 		if err := validate.ResourceName(minuteToken, "--minute-token"); err != nil {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).WithParam("--minute-token")
 		}
+		fromSpeakerID := strings.TrimSpace(runtime.Str("from-speaker-id"))
 		fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
-		if fromUserID == "" {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-user-id is required").WithParam("--from-user-id")
-		}
-		if _, err := common.ValidateUserIDTyped("--from-user-id", fromUserID); err != nil {
-			return err
+		if fromSpeakerID == "" && fromUserID == "" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-speaker-id is required").WithParam("--from-speaker-id")
 		}
 		toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
 		if toUserID == "" {
@@ -55,53 +54,80 @@ var MinutesSpeakerReplace = common.Shortcut{
 		if _, err := common.ValidateUserIDTyped("--to-user-id", toUserID); err != nil {
 			return err
 		}
-		if fromUserID == toUserID {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-user-id and --to-user-id must be different").WithParam("--to-user-id")
+		if fromSpeakerID == "" {
+			if _, err := common.ValidateUserIDTyped("--from-user-id", fromUserID); err != nil {
+				return err
+			}
+			if fromUserID == toUserID {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--from-user-id and --to-user-id must be different").WithParam("--to-user-id")
+			}
 		}
 		return nil
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
-		fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
-		toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
 		return common.NewDryRunAPI().
 			PUT(fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken))).
-			Body(map[string]interface{}{
-				"minute_token": minuteToken,
-				"from_user_id": fromUserID,
-				"to_user_id":   toUserID,
-			})
+			Body(buildSpeakerReplaceRequestBody(runtime))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		minuteToken := strings.TrimSpace(runtime.Str("minute-token"))
+		fromSpeakerID := strings.TrimSpace(runtime.Str("from-speaker-id"))
 		fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
 		toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
 
-		body := map[string]interface{}{
-			"minute_token": minuteToken,
-			"from_user_id": fromUserID,
-			"to_user_id":   toUserID,
-		}
-
 		_, err := runtime.CallAPITyped(http.MethodPut,
 			fmt.Sprintf("/open-apis/minutes/v1/minutes/%s/transcript/speaker", validate.EncodePathSegment(minuteToken)),
-			nil, body)
+			map[string]interface{}{"user_id_type": "open_id"}, buildSpeakerReplaceRequestBodyResolved(fromSpeakerID, fromUserID, toUserID))
 		if err != nil {
-			return minutesSpeakerReplaceError(err, minuteToken, fromUserID)
+			return minutesSpeakerReplaceError(err, minuteToken, speakerReplaceSourceLabel(fromSpeakerID, fromUserID))
 		}
 
-		outData := map[string]interface{}{
-			"minute_token": minuteToken,
-			"from_user_id": fromUserID,
-			"to_user_id":   toUserID,
-		}
-
-		runtime.OutFormat(outData, nil, nil)
+		runtime.OutFormat(buildSpeakerReplaceOutputData(minuteToken, fromSpeakerID, fromUserID, toUserID), nil, nil)
 		return nil
 	},
 }
 
-func minutesSpeakerReplaceError(err error, minuteToken, fromUserID string) error {
+func buildSpeakerReplaceRequestBody(runtime *common.RuntimeContext) map[string]interface{} {
+	fromSpeakerID := strings.TrimSpace(runtime.Str("from-speaker-id"))
+	fromUserID := strings.TrimSpace(runtime.Str("from-user-id"))
+	toUserID := strings.TrimSpace(runtime.Str("to-user-id"))
+	return buildSpeakerReplaceRequestBodyResolved(fromSpeakerID, fromUserID, toUserID)
+}
+
+func buildSpeakerReplaceRequestBodyResolved(fromSpeakerID, fromUserID, toUserID string) map[string]interface{} {
+	body := map[string]interface{}{
+		"to_user_id": toUserID,
+	}
+	if fromSpeakerID != "" {
+		body["from_speaker_id"] = fromSpeakerID
+	} else {
+		body["from_user_id"] = fromUserID
+	}
+	return body
+}
+
+func buildSpeakerReplaceOutputData(minuteToken, fromSpeakerID, fromUserID, toUserID string) map[string]interface{} {
+	out := map[string]interface{}{
+		"minute_token": minuteToken,
+		"to_user_id":   toUserID,
+	}
+	if fromSpeakerID != "" {
+		out["from_speaker_id"] = fromSpeakerID
+	} else {
+		out["from_user_id"] = fromUserID
+	}
+	return out
+}
+
+func speakerReplaceSourceLabel(fromSpeakerID, fromUserID string) string {
+	if fromSpeakerID != "" {
+		return fromSpeakerID
+	}
+	return fromUserID
+}
+
+func minutesSpeakerReplaceError(err error, minuteToken, sourceSpeaker string) error {
 	p, ok := errs.ProblemOf(err)
 	if !ok {
 		return err
@@ -112,8 +138,8 @@ func minutesSpeakerReplaceError(err error, minuteToken, fromUserID string) error
 		p.Hint = "Ask the minute owner for minute edit permission"
 	case minutesSpeakerReplaceSpeakerNotFoundCode:
 		p.Subtype = errs.SubtypeNotFound
-		p.Message = fmt.Sprintf("Speaker not found in minute %q: --from-user-id %q does not match an existing speaker in the transcript.", minuteToken, fromUserID)
-		p.Hint = "Check --minute-token and --from-user-id. Use an open_id for a speaker that appears in the minute transcript, then retry."
+		p.Message = fmt.Sprintf("Speaker not found in minute %q: source speaker %q does not match an existing speaker in the transcript.", minuteToken, sourceSpeaker)
+		p.Hint = "Verify --from-speaker-id is a valid speaker_id or display name from the transcript; if multiple speakers share the same name, pass the exact speaker_id after reviewing their utterances."
 	}
 	return err
 }

@@ -6,12 +6,11 @@ package vc
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 )
 
@@ -148,9 +147,8 @@ func fillVCNoteGeneratedDetails(ctx context.Context, rt event.APIClient, out *VC
 }
 
 func isLarkCode(err error, code int) bool {
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		return exitErr.Detail.Code == code
+	if p, ok := errs.ProblemOf(err); ok {
+		return p.Code == code
 	}
 	return false
 }

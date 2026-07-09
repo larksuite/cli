@@ -10,14 +10,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
+
+const docsFetchExtraParam = `{"enable_user_cite_reference_map":true,"return_html5_block_data":true}`
 
 // v2FetchFlags returns the flag definitions for the v2 (OpenAPI) fetch path.
 func v2FetchFlags() []common.Flag {
 	return []common.Flag{
-		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export", Default: "xml", Enum: []string{"xml", "markdown"}},
+		{Name: "doc-format", Desc: "output content format; xml keeps DocxXML structure and optional block ids, markdown is plain export, im-markdown downgrades residual DocxXML fragments for IM messages", Default: "xml", Enum: []string{"xml", "markdown", "im-markdown"}},
 		{Name: "detail", Desc: "detail level; simple for reading, with-ids for block references, full for styles and edit metadata", Default: "simple", Enum: []string{"simple", "with-ids", "full"}},
+		{Name: "lang", Desc: "user cite display language, e.g. en-US, zh-CN, ja-JP"},
 		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
 		{Name: "scope", Desc: "read scope; full reads whole doc, outline lists headings, section expands from heading anchor, range uses block ids, keyword searches text", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
 		{Name: "start-block-id", Desc: "range/section anchor block id; required for section and optional start for range"},
@@ -37,9 +41,6 @@ func validateFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 	if _, err := parseDocumentRef(runtime.Str("doc")); err != nil {
-		return common.FlagErrorf("invalid --doc: %v", err)
-	}
-	if err := validateFetchDetail(runtime); err != nil {
 		return err
 	}
 	if err := validateReadModeFlags(runtime); err != nil {
@@ -70,6 +71,15 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err != nil {
 		return err
 	}
+	if err := processHTML5BlockReferenceMapForFetch(runtime, effectiveFetchFormat(runtime), ref.Token, data); err != nil {
+		return err
+	}
+	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
+		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+	}
+	if isIMMarkdownFetch(runtime) {
+		applyFetchIMMarkdown(data, runtime.Str("doc"))
+	}
 
 	runtime.OutFormatRaw(data, nil, func(w io.Writer) {
 		if doc, ok := data["document"].(map[string]interface{}); ok {
@@ -83,13 +93,17 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 
 func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	body := map[string]interface{}{
-		"format": runtime.Str("doc-format"),
+		"format":      effectiveFetchFormat(runtime),
+		"extra_param": docsFetchExtraParam,
 	}
 	if v := runtime.Int("revision-id"); v > 0 {
 		body["revision_id"] = v
 	}
+	if lang := resolveFetchLang(runtime); lang != "" {
+		body["lang"] = lang
+	}
 
-	detail := runtime.Str("detail")
+	detail := effectiveFetchDetail(runtime)
 	switch detail {
 	case "", "simple":
 		body["export_option"] = map[string]interface{}{
@@ -115,6 +129,24 @@ func buildFetchBody(runtime *common.RuntimeContext) map[string]interface{} {
 	injectDocsScene(runtime, body)
 
 	return body
+}
+
+func effectiveFetchFormat(runtime *common.RuntimeContext) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	if format == "im-markdown" {
+		return "markdown"
+	}
+	return format
+}
+
+func resolveFetchLang(runtime *common.RuntimeContext) string {
+	if runtime.Changed("lang") {
+		return strings.TrimSpace(runtime.Str("lang"))
+	}
+	if runtime.Config == nil {
+		return ""
+	}
+	return strings.TrimSpace(string(runtime.Config.Lang))
 }
 
 // buildReadOption 拼装 read_option JSON；full/空模式返回 nil，让服务端走默认全文路径。
@@ -145,17 +177,33 @@ func buildReadOption(runtime *common.RuntimeContext) map[string]interface{} {
 	return ro
 }
 
-// validateFetchDetail 非 xml 格式（markdown）不承载 block_id 与样式属性，拒绝 with-ids/full。
-func validateFetchDetail(runtime *common.RuntimeContext) error {
+// effectiveFetchDetail degrades detail options that cannot be represented by
+// non-XML exports. The original flag value is left intact so callers can still
+// surface an explicit warning in execute output.
+func effectiveFetchDetail(runtime *common.RuntimeContext) string {
 	format := strings.TrimSpace(runtime.Str("doc-format"))
 	detail := strings.TrimSpace(runtime.Str("detail"))
 	if format == "" || format == "xml" {
-		return nil
+		return detail
 	}
 	if detail == "with-ids" || detail == "full" {
-		return common.FlagErrorf("--detail %s is only supported with --doc-format xml; %s output has no block ids, use --detail simple or switch to --doc-format xml", detail, format)
+		return "simple"
 	}
-	return nil
+	return detail
+}
+
+func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[string]interface{}) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	detail := strings.TrimSpace(runtime.Str("detail"))
+	if format == "" || format == "xml" {
+		return ""
+	}
+	if detail != "with-ids" && detail != "full" {
+		return ""
+	}
+	warning := fmt.Sprintf("--detail %s is only supported with --doc-format xml; returning %s output and ignoring the unsupported detail option", detail, format)
+	appendDocWarning(data, warning)
+	return warning
 }
 
 // validateReadModeFlags 客户端前置校验，服务端也会再校验一次。
@@ -166,13 +214,13 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	}
 
 	if v := runtime.Int("context-before"); v < 0 {
-		return common.FlagErrorf("--context-before must be >= 0, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--context-before must be >= 0, got %d", v).WithParam("--context-before")
 	}
 	if v := runtime.Int("context-after"); v < 0 {
-		return common.FlagErrorf("--context-after must be >= 0, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--context-after must be >= 0, got %d", v).WithParam("--context-after")
 	}
 	if v := runtime.Int("max-depth"); v < -1 {
-		return common.FlagErrorf("--max-depth must be >= -1, got %d", v)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--max-depth must be >= -1, got %d", v).WithParam("--max-depth")
 	}
 
 	switch mode {
@@ -181,20 +229,23 @@ func validateReadModeFlags(runtime *common.RuntimeContext) error {
 	case "range":
 		if strings.TrimSpace(runtime.Str("start-block-id")) == "" &&
 			strings.TrimSpace(runtime.Str("end-block-id")) == "" {
-			return common.FlagErrorf("range mode requires --start-block-id or --end-block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "range mode requires --start-block-id or --end-block-id").WithParams(
+				errs.InvalidParam{Name: "--start-block-id", Reason: "provide --start-block-id or --end-block-id for range mode"},
+				errs.InvalidParam{Name: "--end-block-id", Reason: "provide --start-block-id or --end-block-id for range mode"},
+			)
 		}
 		return nil
 	case "keyword":
 		if strings.TrimSpace(runtime.Str("keyword")) == "" {
-			return common.FlagErrorf("keyword mode requires --keyword")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "keyword mode requires --keyword").WithParam("--keyword")
 		}
 		return nil
 	case "section":
 		if strings.TrimSpace(runtime.Str("start-block-id")) == "" {
-			return common.FlagErrorf("section mode requires --start-block-id")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "section mode requires --start-block-id").WithParam("--start-block-id")
 		}
 		return nil
 	default:
-		return common.FlagErrorf("invalid --scope %q", mode)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --scope %q", mode).WithParam("--scope")
 	}
 }

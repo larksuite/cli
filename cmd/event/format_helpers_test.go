@@ -143,6 +143,79 @@ func TestWriteStatusText_CoversAllStates(t *testing.T) {
 	}
 }
 
+func TestWriteStatusText_ShowsSubColumn(t *testing.T) {
+	var buf bytes.Buffer
+	writeStatusText(&buf, []appStatus{
+		{
+			AppID:     "cli_RUNNINGXXXXXXXXX",
+			State:     stateRunning,
+			PID:       1234,
+			UptimeSec: 60,
+			Active:    2,
+			Consumers: []protocol.ConsumerInfo{
+				{PID: 1001, EventKey: "mail.x", SubscriptionID: "mail.x:alice", Received: 5, Dropped: 0},
+				{PID: 1002, EventKey: "mail.x", SubscriptionID: "mail.x:bob", Received: 3, Dropped: 0},
+			},
+		},
+	})
+	out := buf.String()
+	if !strings.Contains(out, "SUB") {
+		t.Errorf("missing SUB column header: %s", out)
+	}
+	if !strings.Contains(out, "alice") {
+		t.Errorf("missing alice suffix in SUB column: %s", out)
+	}
+	if !strings.Contains(out, "bob") {
+		t.Errorf("missing bob suffix in SUB column: %s", out)
+	}
+}
+
+func TestWriteStatusText_LegacySubscriptionID_RendersDash(t *testing.T) {
+	var buf bytes.Buffer
+	writeStatusText(&buf, []appStatus{
+		{
+			AppID:     "cli_RUNNINGXXXXXXXXX",
+			State:     stateRunning,
+			PID:       1234,
+			UptimeSec: 60,
+			Active:    1,
+			Consumers: []protocol.ConsumerInfo{
+				{PID: 1001, EventKey: "im.x", SubscriptionID: "", Received: 5},
+			},
+		},
+	})
+	out := buf.String()
+	if !strings.Contains(out, "SUB") {
+		t.Errorf("missing SUB header: %s", out)
+	}
+	if !strings.Contains(out, "-") {
+		t.Errorf("missing dash placeholder for empty SubscriptionID: %s", out)
+	}
+}
+
+func TestWriteStatusText_EventKeyEqualSubscriptionID_RendersDash(t *testing.T) {
+	var buf bytes.Buffer
+	writeStatusText(&buf, []appStatus{
+		{
+			AppID:     "cli_RUNNINGXXXXXXXXX",
+			State:     stateRunning,
+			PID:       1234,
+			UptimeSec: 60,
+			Active:    1,
+			Consumers: []protocol.ConsumerInfo{
+				{PID: 1001, EventKey: "im.x", SubscriptionID: "im.x", Received: 5},
+			},
+		},
+	})
+	out := buf.String()
+	if !strings.Contains(out, "SUB") {
+		t.Errorf("missing SUB header: %s", out)
+	}
+	if !strings.Contains(out, "-") {
+		t.Errorf("missing dash placeholder when SubscriptionID==EventKey: %s", out)
+	}
+}
+
 func TestWriteStatusJSON_OrphanHint(t *testing.T) {
 	var buf bytes.Buffer
 	if err := writeStatusJSON(&buf, []appStatus{
@@ -197,15 +270,15 @@ func TestExitForOrphan(t *testing.T) {
 	if err == nil {
 		t.Fatal("flag on + orphan → expected error, got nil")
 	}
-	var exit *output.ExitError
+	var exit *output.BareError
 	if !errorAs(err, &exit) || exit.Code != output.ExitValidation {
 		t.Errorf("exit code = %v, want ExitValidation", err)
 	}
 }
 
 func errorAs(err error, target interface{}) bool {
-	if e, ok := err.(*output.ExitError); ok {
-		if t, ok := target.(**output.ExitError); ok {
+	if e, ok := err.(*output.BareError); ok {
+		if t, ok := target.(**output.BareError); ok {
 			*t = e
 			return true
 		}

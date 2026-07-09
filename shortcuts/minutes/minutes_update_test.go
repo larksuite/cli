@@ -32,7 +32,7 @@ func TestMinutesUpdate_Validate(t *testing.T) {
 		},
 		{
 			name:    "missing topic",
-			args:    []string{"+update", "--minute-token", "obcn123456", "--as", "user"},
+			args:    []string{"+update", "--minute-token", minutesUpdateTestToken, "--as", "user"},
 			wantErr: "required flag(s) \"topic\" not set",
 		},
 	}

@@ -41,7 +41,7 @@
 | ✍️ 审批     | 查询审批任务、同意/拒绝/转交审批任务、撤回与抄送审批实例              |
 | 🎯 OKR  | 查询、创建、更新 OKR，管理目标、关键结果、对齐、指标和进展记录        |
 | 📋 飞书项目 | 管理工作项、排期与数据 — 由独立的 [meegle-cli](https://github.com/larksuite/meegle-cli) 提供（需单独安装） |
-| 🔗 应用     | 开发、部署 HTML、Web 页面和应用                                                                                                          |
+| 🔗 应用     | 创建妙搭（Spark/Miaoda）应用、发布 HTML/静态站点、云端生成迭代、管理可用范围                                                                                                   |
 
 ## 安装与快速开始
 
@@ -199,7 +199,7 @@ CLI 提供三种粒度的调用方式，覆盖从快速操作到完全自定义�
 ```bash
 lark-cli calendar +agenda
 lark-cli im +messages-send --chat-id "oc_xxx" --text "Hello"
-lark-cli docs +create --api-version v2 --doc-format markdown --content $'<title>周报</title>\n# 本周进展\n- 完成了 X 功能'
+lark-cli docs +create --doc-format markdown --content $'<title>周报</title>\n# 本周进展\n- 完成了 X 功能'
 ```
 
 运行 `lark-cli <service> --help` 查看所有快捷命令。
@@ -233,6 +233,24 @@ lark-cli api POST /open-apis/im/v1/messages --params '{"receive_id_type":"chat_i
 --format ndjson    # 换行分隔 JSON（适合管道处理）
 --format csv       # 逗号分隔值
 ```
+
+### JSON 输出契约
+
+`--format json`（默认）下，成功与错误的信封结构不同。
+
+成功信封写入 **stdout**，退出码 0：
+
+```json
+{ "ok": true, "identity": "user", "data": { "guid": "..." }, "meta": { "count": 1 } }
+```
+
+错误信封写入 **stderr**，退出码非 0：
+
+```json
+{ "ok": false, "identity": "user", "error": { "type": "api", "subtype": "...", "code": 99991679, "message": "...", "hint": "..." } }
+```
+
+判断命令是否成功，请检查 `ok == true`（或进程退出码），**不要用 `code == 0`**。与原始 OpenAPI 响应（`{"code": 0, "msg": "ok", ...}`）不同，成功信封没有 `code` 和 `msg` 字段；`code` 只出现在错误信封的 `error` 内，含义是上游 OpenAPI 的 numeric code。完整错误分类见 [errs/ERROR_CONTRACT.md](errs/ERROR_CONTRACT.md)。
 
 ### 分页
 

@@ -132,6 +132,221 @@ func TestBaseWorkspaceExecuteCreate(t *testing.T) {
 	}
 }
 
+func TestBaseWorkspaceExecuteCreateWithFields(t *testing.T) {
+	oldDelay := baseCreateDefaultTableDeleteDelay
+	baseCreateDefaultTableDeleteDelay = 0
+	t.Cleanup(func() { baseCreateDefaultTableDeleteDelay = oldDelay })
+
+	factory, stdout, reg := newExecuteFactory(t)
+	stderr, _ := factory.IOStreams.ErrOut.(*bytes.Buffer)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"tables": []interface{}{
+				map[string]interface{}{"id": "tbl_default", "name": "Table 1"},
+			}},
+		},
+	})
+	createTableStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "tbl_custom", "name": "Tasks", "fields": []interface{}{
+				map[string]interface{}{"id": "fld_title", "name": "Title", "type": "text"},
+				map[string]interface{}{"id": "fld_status", "name": "Status", "type": "text"},
+			}},
+		},
+	}
+	reg.Register(createTableStub)
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_default",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := runShortcut(
+		t,
+		BaseBaseCreate,
+		[]string{"+base-create", "--name", "Demo Base", "--table-name", "Tasks", "--fields", `[{"name":"Title","type":"text"},{"name":"Status","type":"text"}]`},
+		factory,
+		stdout,
+	)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true || data["default_table_deleted"] != true || data["deleted_default_table_id"] != "tbl_default" {
+		t.Fatalf("unexpected create output: %#v", data)
+	}
+	table, _ := data["table"].(map[string]interface{})
+	if got := common.GetString(table, "id"); got != "tbl_custom" {
+		t.Fatalf("table.id = %q, want tbl_custom", got)
+	}
+	fields, _ := data["fields"].([]interface{})
+	if len(fields) != 2 {
+		t.Fatalf("fields len = %d, want 2; output=%#v", len(fields), data["fields"])
+	}
+	if strings.Contains(stderr.String(), baseCreateHint) {
+		t.Fatalf("stderr should not contain default-table cleanup hint when --fields handled cleanup: %q", stderr.String())
+	}
+
+	if body := decodeCapturedJSONBody(t, createTableStub); body["name"] != "Tasks" {
+		t.Fatalf("create table body = %#v", body)
+	}
+	body := decodeCapturedJSONBody(t, createTableStub)
+	fieldsBody, _ := body["fields"].([]interface{})
+	if len(fieldsBody) != 2 {
+		t.Fatalf("create table fields body = %#v", body["fields"])
+	}
+}
+
+func TestBaseWorkspaceExecuteCreateWithFieldsDefaultTableName(t *testing.T) {
+	oldDelay := baseCreateDefaultTableDeleteDelay
+	baseCreateDefaultTableDeleteDelay = 0
+	t.Cleanup(func() { baseCreateDefaultTableDeleteDelay = oldDelay })
+
+	factory, stdout, reg := newExecuteFactory(t)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"tables": []interface{}{
+				map[string]interface{}{"id": "tbl_default", "name": "Table 1"},
+			}},
+		},
+	})
+	createTableStub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases/app_x/tables",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "tbl_custom", "name": "Table 1", "fields": []interface{}{
+				map[string]interface{}{"id": "fld_title", "name": "Title", "type": "text"},
+			}},
+		},
+	}
+	reg.Register(createTableStub)
+	reg.Register(&httpmock.Stub{
+		Method: "DELETE",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_default",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := runShortcut(
+		t,
+		BaseBaseCreate,
+		[]string{"+base-create", "--name", "Demo Base", "--fields", `[{"name":"Title","type":"text"}]`},
+		factory,
+		stdout,
+	)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	body := decodeCapturedJSONBody(t, createTableStub)
+	if body["name"] != "Table 1" {
+		t.Fatalf("create table body = %#v, want name Table 1", body)
+	}
+}
+
+func TestBaseWorkspaceExecuteCreateWithTableNameOnly(t *testing.T) {
+	factory, stdout, reg := newExecuteFactory(t)
+	stderr, _ := factory.IOStreams.ErrOut.(*bytes.Buffer)
+
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/base/v3/bases",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"app_token": "app_x", "name": "Demo Base"},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/base/v3/bases/app_x/tables",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"tables": []interface{}{
+				map[string]interface{}{"id": "tbl_default", "name": "Table 1"},
+			}},
+		},
+	})
+	renameStub := &httpmock.Stub{
+		Method: "PATCH",
+		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_default",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"id": "tbl_default", "name": "Tasks"},
+		},
+	}
+	reg.Register(renameStub)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/permissions/app_x/members?need_notification=false&type=bitable",
+		Body:   map[string]interface{}{"code": 0, "msg": "ok"},
+	})
+
+	err := runShortcut(
+		t,
+		BaseBaseCreate,
+		[]string{"+base-create", "--name", "Demo Base", "--table-name", "Tasks"},
+		factory,
+		stdout,
+	)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	data := decodeBaseEnvelope(t, stdout)
+	if data["created"] != true || data["default_table_renamed"] != true || data["renamed_default_table_id"] != "tbl_default" {
+		t.Fatalf("unexpected create output: %#v", data)
+	}
+	if data["default_table_deleted"] == true {
+		t.Fatalf("table-name-only should not delete the default table: %#v", data)
+	}
+	table, _ := data["table"].(map[string]interface{})
+	if got := common.GetString(table, "name"); got != "Tasks" {
+		t.Fatalf("table.name = %q, want Tasks", got)
+	}
+	if strings.Contains(stderr.String(), baseCreateHint) {
+		t.Fatalf("stderr should not contain default schema hint when --table-name handled rename: %q", stderr.String())
+	}
+	body := decodeCapturedJSONBody(t, renameStub)
+	if body["name"] != "Tasks" {
+		t.Fatalf("rename table body = %#v", body)
+	}
+}
+
 func TestBaseWorkspaceExecuteGetAndCopy(t *testing.T) {
 	t.Run("get", func(t *testing.T) {
 		factory, stdout, reg := newExecuteFactory(t)
@@ -616,11 +831,6 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 		args     []string
 	}{
 		{
-			name:     "field create",
-			shortcut: BaseFieldCreate,
-			args:     []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[]`, "--dry-run"},
-		},
-		{
 			name:     "field update",
 			shortcut: BaseFieldUpdate,
 			args:     []string{"+field-update", "--base-token", "app_x", "--table-id", "tbl_x", "--field-id", "fld_x", "--json", `[]`, "--dry-run"},
@@ -692,30 +902,21 @@ func TestBaseObjectJSONShortcutsRejectArrayInDryRun(t *testing.T) {
 
 func TestBaseTableExecuteCreate(t *testing.T) {
 	factory, stdout, reg := newExecuteFactory(t)
-	reg.Register(&httpmock.Stub{
+	createTableStub := &httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/tables",
 		Body: map[string]interface{}{
 			"code": 0,
-			"data": map[string]interface{}{"id": "tbl_new", "name": "Orders"},
+			"data": map[string]interface{}{
+				"id":   "tbl_new",
+				"name": "Orders",
+				"fields": []interface{}{
+					map[string]interface{}{"id": "fld_primary", "name": "OrderNo", "type": "text"},
+				},
+			},
 		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "GET",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_new/fields",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"fields": []interface{}{map[string]interface{}{"id": "fld_primary", "name": "Primary"}}},
-		},
-	})
-	reg.Register(&httpmock.Stub{
-		Method: "PUT",
-		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_new/fields/fld_primary",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{"id": "fld_primary", "name": "OrderNo", "type": "text"},
-		},
-	})
+	}
+	reg.Register(createTableStub)
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_new/views",
@@ -730,6 +931,11 @@ func TestBaseTableExecuteCreate(t *testing.T) {
 	}
 	if got := stdout.String(); !strings.Contains(got, `"table"`) || !strings.Contains(got, `"vew_main"`) {
 		t.Fatalf("stdout=%s", got)
+	}
+	body := decodeCapturedJSONBody(t, createTableStub)
+	fieldsBody, _ := body["fields"].([]interface{})
+	if body["name"] != "Orders" || len(fieldsBody) != 1 {
+		t.Fatalf("create table body = %#v", body)
 	}
 }
 
@@ -888,6 +1094,54 @@ func TestBaseFieldExecuteCRUD(t *testing.T) {
 		}
 		if got := stdout.String(); !strings.Contains(got, `"created": true`) || !strings.Contains(got, `"fld_new"`) {
 			t.Fatalf("stdout=%s", got)
+		}
+	})
+
+	t.Run("create array sequentially", func(t *testing.T) {
+		oldDelay := fieldCreateBatchDelay
+		fieldCreateBatchDelay = 0
+		t.Cleanup(func() { fieldCreateBatchDelay = oldDelay })
+
+		factory, stdout, reg := newExecuteFactory(t)
+		firstStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"A"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_a", "name": "A", "type": "text"},
+			},
+		}
+		secondStub := &httpmock.Stub{
+			Method: "POST",
+			URL:    "/open-apis/base/v3/bases/app_x/tables/tbl_x/fields",
+			BodyFilter: func(body []byte) bool {
+				return strings.Contains(string(body), `"name":"B"`)
+			},
+			Body: map[string]interface{}{
+				"code": 0,
+				"data": map[string]interface{}{"id": "fld_b", "name": "B", "type": "text"},
+			},
+		}
+		reg.Register(firstStub)
+		reg.Register(secondStub)
+
+		err := runShortcut(t, BaseFieldCreate, []string{"+field-create", "--base-token", "app_x", "--table-id", "tbl_x", "--json", `[{"name":"A","type":"text"},{"name":"B","type":"text"}]`}, factory, stdout)
+		if err != nil {
+			t.Fatalf("err=%v", err)
+		}
+		data := decodeBaseEnvelope(t, stdout)
+		if data["created"] != true || data["total"] != float64(2) {
+			t.Fatalf("unexpected output: %#v", data)
+		}
+		fields, _ := data["fields"].([]interface{})
+		if len(fields) != 2 {
+			t.Fatalf("fields len=%d output=%#v", len(fields), data)
+		}
+		if !strings.Contains(string(firstStub.CapturedBody), `"name":"A"`) || !strings.Contains(string(secondStub.CapturedBody), `"name":"B"`) {
+			t.Fatalf("unexpected request bodies: %s / %s", firstStub.CapturedBody, secondStub.CapturedBody)
 		}
 	})
 

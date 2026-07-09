@@ -5,7 +5,6 @@ package sheets
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 )
 
@@ -166,18 +165,16 @@ func TestCellsBatchClear_Guards(t *testing.T) {
 	t.Parallel()
 
 	// sheetless range → prefix guard (shared with the dropdown fan-outs).
-	stdout, stderr, err := runShortcutCapturingErr(t, CellsBatchClear, []string{
+	_, _, err := runShortcutCapturingErr(t, CellsBatchClear, []string{
 		"--url", testURL,
 		"--ranges", `["A1:A10"]`,
 		"--yes",
 		"--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must include a sheet prefix") {
-		t.Errorf("expected sheet-prefix guard; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, "must include a sheet prefix")
 
 	// missing --yes → confirmation_required (high-risk-write).
-	stdout, stderr, err = runShortcutCapturingErr(t, CellsBatchClear, []string{
+	stdout, stderr, err := runShortcutCapturingErr(t, CellsBatchClear, []string{
 		"--url", testURL,
 		"--ranges", `["sheet1!A1:A10"]`,
 	})
@@ -268,38 +265,32 @@ func TestBatchUpdate_ValidationGuards(t *testing.T) {
 	t.Parallel()
 
 	// dropdown-update with sheetless range
-	stdout, stderr, err := runShortcutCapturingErr(t, DropdownUpdate, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownUpdate, []string{
 		"--url", testURL,
 		"--ranges", `["A2:A5"]`,
 		"--options", `["a"]`,
 		"--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must include a sheet prefix") {
-		t.Errorf("expected sheet-prefix guard for +dropdown-update; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, "must include a sheet prefix")
 
 	// batch-update with empty operations
-	stdout, stderr, err = runShortcutCapturingErr(t, BatchUpdate, []string{
+	_, _, err = runShortcutCapturingErr(t, BatchUpdate, []string{
 		"--url", testURL,
 		"--operations", `[]`,
 		"--yes",
 		"--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "non-empty JSON array") {
-		t.Errorf("expected empty-operations guard; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, "non-empty JSON array")
 
 	// dropdown-update with non-array --options (object instead) → array guard
 	// (now via schema validator at parseJSONFlag time)
-	stdout, stderr, err = runShortcutCapturingErr(t, DropdownUpdate, []string{
+	_, _, err = runShortcutCapturingErr(t, DropdownUpdate, []string{
 		"--url", testURL,
 		"--ranges", `["sheet1!A1:A2"]`,
 		"--options", `{"not":"array"}`,
 		"--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), `expected type "array"`) {
-		t.Errorf("expected JSON array guard; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, `expected type "array"`)
 }
 
 // TestValidateDropdownRanges_RejectsMalformedRange locks the up-front sheet!range
@@ -322,15 +313,13 @@ func TestValidateDropdownRanges_RejectsMalformedRange(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, DropdownUpdate, []string{
+			_, _, err := runShortcutCapturingErr(t, DropdownUpdate, []string{
 				"--url", testURL,
 				"--ranges", tc.ranges,
 				"--options", `["a"]`,
 				"--dry-run",
 			})
-			if err == nil || !strings.Contains(stdout+stderr+err.Error(), tc.want) {
-				t.Errorf("ranges=%s: expected error containing %q; got=%s|%s|%v", tc.ranges, tc.want, stdout, stderr, err)
-			}
+			requireValidation(t, err, tc.want)
 		})
 	}
 }
@@ -419,18 +408,13 @@ func TestBatchUpdate_TranslatorRejects(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, BatchUpdate, []string{
+			_, _, err := runShortcutCapturingErr(t, BatchUpdate, []string{
 				"--url", testURL,
 				"--operations", tc.opsJSON,
 				"--yes",
 				"--dry-run",
 			})
-			if err == nil {
-				t.Fatalf("expected error containing %q; got stdout=%s stderr=%s", tc.wantMatch, stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), tc.wantMatch) {
-				t.Errorf("expected error containing %q; got: %s | %s | %v", tc.wantMatch, stdout, stderr, err)
-			}
+			requireValidation(t, err, tc.wantMatch)
 		})
 	}
 }

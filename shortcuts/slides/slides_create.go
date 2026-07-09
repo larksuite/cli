@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -33,6 +33,9 @@ var SlidesCreate = common.Shortcut{
 	// like wiki_move) so the pre-flight check fails fast and lark-cli's
 	// auth login --scope hint guides the user, instead of leaving an orphaned
 	// empty presentation when the in-flight upload 403s.
+	// NB: no drive scope here on purpose — slides creation never touches drive;
+	// the presentation URL is built locally (see Execute), so we don't gate a
+	// drive-free operation behind a drive scope.
 	Scopes: []string{"slides:presentation:create", "slides:presentation:write_only", "docs:document.media:upload"},
 	Flags: []common.Flag{
 		{Name: "title", Desc: "presentation title"},
@@ -42,24 +45,24 @@ var SlidesCreate = common.Shortcut{
 		if slidesStr := runtime.Str("slides"); slidesStr != "" {
 			var slides []string
 			if err := json.Unmarshal([]byte(slidesStr), &slides); err != nil {
-				return common.FlagErrorf("--slides invalid JSON, must be an array of XML strings")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides invalid JSON, must be an array of XML strings").WithParam("--slides")
 			}
 			if len(slides) > maxSlidesPerCreate {
-				return common.FlagErrorf("--slides array exceeds maximum of %d slides; create the presentation first, then add slides via xml_presentation.slide.create", maxSlidesPerCreate)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides array exceeds maximum of %d slides; create the presentation first, then add slides via xml_presentation.slide.create", maxSlidesPerCreate).WithParam("--slides")
 			}
 			// Validate placeholder paths up front so we don't create a presentation
 			// only to fail mid-way on a missing local file.
 			for _, path := range extractImagePlaceholderPaths(slides) {
 				stat, err := runtime.FileIO().Stat(path)
 				if err != nil {
-					return common.WrapInputStatError(err, fmt.Sprintf("--slides @%s: file not found", path))
+					return slidesInputStatError(err, "--slides", fmt.Sprintf("--slides @%s: file not found", path))
 				}
 				if !stat.Mode().IsRegular() {
-					return common.FlagErrorf("--slides @%s: must be a regular file", path)
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides @%s: must be a regular file", path).WithParam("--slides")
 				}
 				if stat.Size() > common.MaxDriveMediaUploadSinglePartSize {
-					return common.FlagErrorf("--slides @%s: file size %s exceeds 20 MB limit for slides image upload",
-						path, common.FormatSize(stat.Size()))
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slides @%s: file size %s exceeds 20 MB limit for slides image upload",
+						path, common.FormatSize(stat.Size())).WithParam("--slides")
 				}
 			}
 		}
@@ -125,7 +128,7 @@ var SlidesCreate = common.Shortcut{
 		slidesStr := runtime.Str("slides")
 
 		// Step 1: Create presentation
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"POST",
 			"/open-apis/slides_ai/v1/xml_presentations",
 			nil,
@@ -141,7 +144,7 @@ var SlidesCreate = common.Shortcut{
 
 		presentationID := common.GetString(data, "xml_presentation_id")
 		if presentationID == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "slides create returned no xml_presentation_id")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "slides create returned no xml_presentation_id")
 		}
 
 		result := map[string]interface{}{
@@ -165,9 +168,7 @@ var SlidesCreate = common.Shortcut{
 				if len(placeholders) > 0 {
 					tokens, uploaded, err := uploadSlidesPlaceholders(runtime, presentationID, placeholders)
 					if err != nil {
-						return output.Errorf(output.ExitAPI, "api_error",
-							"image upload failed: %v (presentation %s was created; %d image(s) uploaded before failure)",
-							err, presentationID, uploaded)
+						return appendSlidesProgressHint(err, fmt.Sprintf("presentation %s was created; %d image(s) uploaded before failure", presentationID, uploaded))
 					}
 					for i := range slides {
 						slides[i] = replaceImagePlaceholders(slides[i], tokens)
@@ -182,7 +183,7 @@ var SlidesCreate = common.Shortcut{
 
 				var slideIDs []string
 				for i, slideXML := range slides {
-					slideData, err := runtime.CallAPI(
+					slideData, err := runtime.CallAPITyped(
 						"POST",
 						slideURL,
 						map[string]interface{}{"revision_id": -1},
@@ -191,9 +192,7 @@ var SlidesCreate = common.Shortcut{
 						},
 					)
 					if err != nil {
-						return output.Errorf(output.ExitAPI, "api_error",
-							"slide %d/%d failed: %v (presentation %s was created; %d slide(s) added before failure)",
-							i+1, len(slides), err, presentationID, i)
+						return appendSlidesProgressHint(err, fmt.Sprintf("adding slide %d/%d failed; presentation %s was created, %d slide(s) added before failure", i+1, len(slides), presentationID, i))
 					}
 					if sid := common.GetString(slideData, "slide_id"); sid != "" {
 						slideIDs = append(slideIDs, sid)
@@ -205,29 +204,12 @@ var SlidesCreate = common.Shortcut{
 			}
 		}
 
-		// Fetch presentation URL via drive meta (best-effort)
-		if metaData, err := runtime.CallAPI(
-			"POST",
-			"/open-apis/drive/v1/metas/batch_query",
-			nil,
-			map[string]interface{}{
-				"request_docs": []map[string]interface{}{
-					{
-						"doc_token": presentationID,
-						"doc_type":  "slides",
-					},
-				},
-				"with_url": true,
-			},
-		); err == nil {
-			metas := common.GetSlice(metaData, "metas")
-			if len(metas) > 0 {
-				if meta, ok := metas[0].(map[string]interface{}); ok {
-					if url := common.GetString(meta, "url"); url != "" {
-						result["url"] = url
-					}
-				}
-			}
+		// Prefer the URL returned by presentation.create. Fall back to a local
+		// brand-standard URL only when the API omits it.
+		if url := common.GetString(data, "url"); url != "" {
+			result["url"] = url
+		} else if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
+			result["url"] = url
 		}
 
 		if grant := common.AutoGrantCurrentUserDrivePermission(runtime, presentationID, "slides"); grant != nil {
@@ -268,10 +250,10 @@ func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID str
 	for i, path := range paths {
 		stat, err := runtime.FileIO().Stat(path)
 		if err != nil {
-			return tokens, i, common.WrapInputStatError(err, fmt.Sprintf("@%s: file not found", path))
+			return tokens, i, slidesInputStatError(err, "--slides", fmt.Sprintf("@%s: file not found", path))
 		}
 		if !stat.Mode().IsRegular() {
-			return tokens, i, output.ErrValidation("@%s: must be a regular file", path)
+			return tokens, i, errs.NewValidationError(errs.SubtypeInvalidArgument, "@%s: must be a regular file", path).WithParam("--slides")
 		}
 		fileName := filepath.Base(path)
 		fmt.Fprintf(runtime.IO().ErrOut, "Uploading image %d/%d: %s (%s)\n",
@@ -279,7 +261,7 @@ func uploadSlidesPlaceholders(runtime *common.RuntimeContext, presentationID str
 
 		token, err := uploadSlidesMedia(runtime, path, fileName, stat.Size(), presentationID)
 		if err != nil {
-			return tokens, i, fmt.Errorf("@%s: %w", path, err)
+			return tokens, i, fmt.Errorf("@%s: %w", path, err) //nolint:forbidigo // intermediate; preserves typed cause via %w, reclassified by appendSlidesProgressHint at the call site
 		}
 		tokens[path] = token
 	}

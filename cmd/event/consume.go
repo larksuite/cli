@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/appmeta"
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -64,8 +65,8 @@ Use 'event schema <EventKey>' for parameter details.`,
 	cmd.Flags().StringVar(&o.jqExpr, "jq", "", "JQ expression to filter output")
 	cmd.Flags().BoolVar(&o.quiet, "quiet", false, "Suppress informational messages on stderr")
 	cmd.Flags().StringVar(&o.outputDir, "output-dir", "", "Write each event as a file in this directory (relative paths only; absolute paths and ~ are rejected to prevent path traversal)")
-	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop.")
-	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout').")
+	cmd.Flags().IntVar(&o.maxEvents, "max-events", 0, "Exit after N successful emits (0 = unlimited). Multi-worker EventKeys may emit up to workers-1 past N before all workers stop. Bounded runs ignore stdin EOF.")
+	cmd.Flags().DurationVar(&o.timeout, "timeout", 0, "Exit after DURATION (e.g. 30s, 2m). 0 = no timeout. Timeout is a normal exit (code 0; stderr 'reason: timeout'). Bounded runs ignore stdin EOF.")
 	cmd.Flags().String("as", "auto", "identity type: user | bot | auto (must match EventKey's declared AuthTypes)")
 	_ = cmd.RegisterFlagCompletionFunc("as", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"user", "bot", "auto"}, cobra.ShellCompDirectiveNoFileComp
@@ -101,11 +102,10 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 
 	if o.jqExpr != "" {
 		if err := output.ValidateJqExpression(o.jqExpr); err != nil {
-			return output.ErrWithHint(
-				output.ExitValidation, "validation",
-				err.Error(),
-				fmt.Sprintf("see `lark-cli event consume --help` EXAMPLES for common patterns, or `lark-cli event schema %s` for valid field paths", eventKey),
-			)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", err).
+				WithParam("--jq").
+				WithCause(err).
+				WithHint("see `lark-cli event consume --help` EXAMPLES for common patterns, or `lark-cli event schema %s` for valid field paths", eventKey)
 		}
 	}
 
@@ -146,14 +146,28 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		fmt.Fprintln(preflightErrOut, "[event] skipped console precheck: app has no published version")
 	}
 
+	// Callback subscriptions live in application/get, not app_versions; fetch the
+	// callback 底账 only for callback-type EventKeys. Weak dependency: on error,
+	// leave subscribedCallbacks nil so the callback precheck skips.
+	var subscribedCallbacks []string
+	if keyDef.SubscriptionType == eventlib.SubTypeCallback {
+		cbs, cbErr := appmeta.FetchSubscribedCallbacks(cmd.Context(), botRuntime, cfg.AppID)
+		if cbErr != nil {
+			fmt.Fprintf(preflightErrOut, "[event] skipped console precheck: %s\n", describeAppMetaErr(cbErr))
+		} else {
+			subscribedCallbacks = cbs
+		}
+	}
+
 	pf := &preflightCtx{
-		factory:  f,
-		appID:    cfg.AppID,
-		brand:    cfg.Brand,
-		eventKey: eventKey,
-		identity: identity,
-		keyDef:   keyDef,
-		appVer:   appVer,
+		factory:             f,
+		appID:               cfg.AppID,
+		brand:               cfg.Brand,
+		eventKey:            eventKey,
+		identity:            identity,
+		keyDef:              keyDef,
+		appVer:              appVer,
+		subscribedCallbacks: subscribedCallbacks,
 	}
 	if err := preflightEventTypes(pf); err != nil {
 		return err
@@ -184,8 +198,9 @@ func runConsume(cmd *cobra.Command, f *cmdutil.Factory, eventKey string, o consu
 		errOut = io.Discard
 	}
 
-	// Non-TTY only: stdin EOF is shutdown for subprocess callers; in TTY Ctrl-D must not exit.
-	if !f.IOStreams.IsTerminal {
+	// Non-TTY unbounded consumers use stdin EOF as shutdown for subprocess callers.
+	// Bounded runs already have --max-events/--timeout as their lifecycle control.
+	if shouldWatchStdinEOF(f.IOStreams.IsTerminal, o.maxEvents, o.timeout) {
 		watchStdinEOF(os.Stdin, cancel, errOut)
 	}
 
@@ -228,6 +243,9 @@ type preflightCtx struct {
 	identity core.Identity
 	keyDef   *eventlib.KeyDefinition
 	appVer   *appmeta.AppVersion
+	// subscribedCallbacks is the application/get 底账 for callback-type EventKeys;
+	// nil means "not fetched / unavailable" → callback precheck skips (weak dependency).
+	subscribedCallbacks []string
 }
 
 // preflightScopes compares required scopes against session-available scopes (user: UAT stored; bot: appVer.TenantScopes).
@@ -260,63 +278,87 @@ func preflightScopes(ctx context.Context, pf *preflightCtx) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	return output.ErrWithHint(
-		output.ExitAuth, "auth",
-		fmt.Sprintf("missing required scopes for EventKey %s (as %s): %s",
-			pf.eventKey, pf.identity, strings.Join(missing, ", ")),
-		scopeRemediationHint(pf.identity, missing, pf.appID, pf.brand),
-	)
+	return errs.NewPermissionError(errs.SubtypeMissingScope,
+		"missing required scopes for EventKey %s (as %s): %s",
+		pf.eventKey, pf.identity, strings.Join(missing, ", ")).
+		WithIdentity(string(pf.identity)).
+		WithMissingScopes(missing...).
+		WithHint("%s", scopeRemediationHint(pf.brand, pf.appID, pf.identity, missing))
 }
 
 // scopeRemediationHint returns an identity-appropriate fix for missing scopes.
-func scopeRemediationHint(identity core.Identity, missing []string, appID string, brand core.LarkBrand) string {
+// Bot: the scan-to-enable link adds the scopes to the app manifest, after which
+// the tenant token carries them. User: the scan link only updates the app
+// manifest — the user's own token still lacks the scopes until it is
+// re-authorized — so direct the user to re-login instead.
+func scopeRemediationHint(brand core.LarkBrand, appID string, identity core.Identity, missing []string) string {
 	if identity.IsBot() {
-		return fmt.Sprintf(
-			"grant these scopes and publish a new app version at: %s",
-			consoleScopeGrantURL(brand, appID, missing),
-		)
+		return fmt.Sprintf("grant these scopes by scanning: %s",
+			addonsHintURL(brand, appID, missingScopeAddons(identity, missing)))
 	}
 	return fmt.Sprintf(
 		"run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.",
-		strings.Join(missing, " "),
-	)
+		strings.Join(missing, " "))
 }
 
-// preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed in the app's current published version.
+// preflightEventTypes verifies every RequiredConsoleEvents entry is subscribed
+// in the app's console 底账 — published app_versions for event subscriptions,
+// application/get subscribed_callbacks for callback subscriptions.
 func preflightEventTypes(pf *preflightCtx) error {
-	if pf.appVer == nil || len(pf.keyDef.RequiredConsoleEvents) == 0 {
+	if len(pf.keyDef.RequiredConsoleEvents) == 0 {
 		return nil
 	}
-	subscribed := make(map[string]bool, len(pf.appVer.EventTypes))
-	for _, t := range pf.appVer.EventTypes {
-		subscribed[t] = true
+
+	var subscribed []string
+	noun := "event types"
+	if pf.keyDef.SubscriptionType == eventlib.SubTypeCallback {
+		if pf.subscribedCallbacks == nil {
+			return nil
+		}
+		subscribed = pf.subscribedCallbacks
+		noun = "callbacks"
+	} else {
+		if pf.appVer == nil {
+			return nil
+		}
+		subscribed = pf.appVer.EventTypes
+	}
+
+	have := make(map[string]bool, len(subscribed))
+	for _, t := range subscribed {
+		have[t] = true
 	}
 	var missing []string
 	for _, t := range pf.keyDef.RequiredConsoleEvents {
-		if !subscribed[t] {
+		if !have[t] {
 			missing = append(missing, t)
 		}
 	}
 	if len(missing) == 0 {
 		return nil
 	}
-	return output.ErrWithHint(
-		output.ExitValidation, "validation",
-		fmt.Sprintf("EventKey %s requires event types not subscribed in console: %s",
-			pf.keyDef.Key, strings.Join(missing, ", ")),
-		fmt.Sprintf("subscribe these events and publish a new app version at: %s",
-			consoleEventSubscriptionURL(pf.brand, pf.appID)),
-	)
+
+	url := addonsHintURL(pf.brand, pf.appID, missingSubscriptionAddons(pf.keyDef.SubscriptionType, pf.identity, missing))
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"EventKey %s requires %s not subscribed in console: %s",
+		pf.keyDef.Key, noun, strings.Join(missing, ", ")).
+		WithHint("subscribe these %s by scanning: %s", noun, url)
 }
 
 // sanitizeOutputDir rejects absolute/parent-escaping paths and ~ (SafeOutputPath treats it as a literal dir name).
 func sanitizeOutputDir(dir string) (string, error) {
 	if strings.HasPrefix(dir, "~") {
-		return "", output.ErrValidation("%s; use a relative path like ./output instead", errOutputDirTilde)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s; use a relative path like ./output instead", errOutputDirTilde).
+			WithParam("--output-dir").
+			WithCause(errOutputDirTilde)
 	}
 	safe, err := validate.SafeOutputPath(dir)
 	if err != nil {
-		return "", output.ErrValidation("%s %q: %s", errOutputDirUnsafe, dir, err)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"%s %q: %s", errOutputDirUnsafe, dir, err).
+			WithParam("--output-dir").
+			WithCause(errOutputDirUnsafe)
 	}
 	return safe, nil
 }
@@ -328,22 +370,25 @@ func resolveTenantToken(ctx context.Context, f *cmdutil.Factory, appID string) (
 	}
 	result, err := f.Credential.ResolveToken(ctx, credential.NewTokenSpec(core.AsBot, appID))
 	if err != nil {
-		return "", output.ErrAuth("resolve tenant access token: %s", err)
+		if _, ok := errs.ProblemOf(err); ok {
+			return "", err
+		}
+		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+			"resolve tenant access token: %s", err).WithCause(err)
 	}
 	if result == nil || result.Token == "" {
-		return "", output.ErrWithHint(
-			output.ExitAuth, "auth",
-			fmt.Sprintf("no tenant access token available for app %s", appID),
-			"Check that app_secret is configured (lark-cli config show) and try 'lark-cli auth login'.",
-		)
+		return "", errs.NewAuthenticationError(errs.SubtypeTokenMissing,
+			"no tenant access token available for app %s", appID).
+			WithHint("Check that app_secret is configured (lark-cli config show) and try 'lark-cli auth login'.")
 	}
 	return result.Token, nil
 }
 
+// Sentinels for errors.Is checks; call sites wrap them as typed ValidationError causes.
 var (
-	errInvalidParamFormat = errors.New("invalid --param format")
-	errOutputDirTilde     = errors.New("--output-dir does not support ~ expansion")
-	errOutputDirUnsafe    = errors.New("unsafe --output-dir")
+	errInvalidParamFormat = errors.New("invalid --param format")                    //nolint:forbidigo // sentinel, typed at call sites
+	errOutputDirTilde     = errors.New("--output-dir does not support ~ expansion") //nolint:forbidigo // sentinel, typed at call sites
+	errOutputDirUnsafe    = errors.New("unsafe --output-dir")                       //nolint:forbidigo // sentinel, typed at call sites
 )
 
 func parseParams(raw []string) (map[string]string, error) {
@@ -351,7 +396,10 @@ func parseParams(raw []string) (map[string]string, error) {
 	for _, kv := range raw {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k == "" {
-			return nil, output.ErrValidation("%s %q: expected key=value", errInvalidParamFormat, kv)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+				"%s %q: expected key=value", errInvalidParamFormat, kv).
+				WithParam("--param").
+				WithCause(errInvalidParamFormat)
 		}
 		m[k] = v
 	}
@@ -369,4 +417,9 @@ func watchStdinEOF(r io.Reader, cancel context.CancelFunc, errOut io.Writer) {
 			"or stop via SIGTERM instead of closing stdin.")
 		cancel()
 	}()
+}
+
+// shouldWatchStdinEOF gates the stdin-EOF shutdown watcher: non-TTY unbounded runs only (<= 0 mirrors downstream's >0-is-bounded semantics, so negative bounds stay unbounded).
+func shouldWatchStdinEOF(isTerminal bool, maxEvents int, timeout time.Duration) bool {
+	return !isTerminal && maxEvents <= 0 && timeout <= 0
 }

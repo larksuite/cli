@@ -88,8 +88,8 @@ func isServiceScope(path string) bool {
 	case strings.HasPrefix(p, "internal/errclass/") || strings.Contains(p, "/internal/errclass/"):
 		return false
 	case strings.HasPrefix(p, "internal/output/") || strings.Contains(p, "/internal/output/"):
-		// CheckNoRegistrar carves out internal/output: it is the typed-envelope writer
-		// and legacy ExitError producer, not a service. Without this guard
+		// CheckNoRegistrar carves out internal/output: it is the typed-envelope
+		// writer, not a service. Without this guard
 		// any legitimate registrar-shaped symbol there would trigger a
 		// false-positive REJECT.
 		return false

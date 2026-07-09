@@ -620,6 +620,7 @@ func boom() error {
 
 func TestCheckNoLegacyEnvelopeLiteral_RejectsExitErrorLiteralOnMigratedShortcutPaths(t *testing.T) {
 	for _, path := range []string{
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_image_upload.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_update.go",
@@ -681,9 +682,17 @@ func boom() error {
 	}
 }
 
-func TestCheckNoLegacyEnvelopeLiteral_IgnoresNonMigratedPath(t *testing.T) {
-	// Same offending literal, but outside the migrated path set → not flagged.
-	src := `package other
+func TestCheckNoLegacyEnvelopeLiteral_FiresOnAnyPath(t *testing.T) {
+	// The guard is now repo-wide: any .go path that re-introduces the legacy
+	// literal is flagged, regardless of domain.
+	for _, path := range []string{
+		"shortcuts/im/im_send.go",
+		"shortcuts/some_new_domain/foo.go",
+		"internal/auth/login.go",
+		"cmd/config/bind.go",
+	} {
+		t.Run(path, func(t *testing.T) {
+			src := `package other
 
 import "github.com/larksuite/cli/internal/output"
 
@@ -691,9 +700,14 @@ func boom() error {
 	return &output.ExitError{Code: 1}
 }
 `
-	v := CheckNoLegacyEnvelopeLiteral("shortcuts/contact/foo.go", src)
-	if len(v) != 0 {
-		t.Errorf("non-migrated path should pass, got: %+v", v)
+			v := CheckNoLegacyEnvelopeLiteral(path, src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation on %s, got %d: %+v", path, len(v), v)
+			}
+			if v[0].Action != ActionReject {
+				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+		})
 	}
 }
 
@@ -813,6 +827,8 @@ func boom() error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnDrivePath(t *testing.T) {
 	src := `package drive
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -833,6 +849,8 @@ func boom(runtime *common.RuntimeContext) error {
 func TestCheckNoLegacyRuntimeAPICall_RejectsCallAPIOnTaskPath(t *testing.T) {
 	src := `package task
 
+import "github.com/larksuite/cli/shortcuts/common"
+
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.CallAPI("POST", "/x", nil, nil)
 	return err
@@ -852,6 +870,8 @@ func boom(runtime *common.RuntimeContext) error {
 
 func TestCheckNoLegacyRuntimeAPICall_RejectsDoAPIJSONWithLogIDOnDrivePath(t *testing.T) {
 	src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
 
 func boom(runtime *common.RuntimeContext) error {
 	_, err := runtime.DoAPIJSONWithLogID("POST", "/x", nil, nil)
@@ -899,7 +919,38 @@ func boom(runtime *common.RuntimeContext) error {
 	}
 }
 
-func TestCheckNoLegacyRuntimeAPICall_IgnoresNonMigratedPath(t *testing.T) {
+func TestCheckNoLegacyRuntimeAPICall_FiresOnAnyCommonImportingPath(t *testing.T) {
+	// The guard is now repo-wide: any path importing shortcuts/common that
+	// re-introduces a legacy runtime call is flagged, regardless of domain.
+	for _, path := range []string{
+		"shortcuts/im/im_send.go",
+		"shortcuts/some_new_domain/sample.go",
+		"internal/cmdutil/helper.go",
+	} {
+		t.Run(path, func(t *testing.T) {
+			src := `package contact
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom(runtime *common.RuntimeContext) error {
+	_, err := runtime.CallAPI("POST", "/x", nil, nil)
+	return err
+}
+`
+			v := CheckNoLegacyRuntimeAPICall(path, src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation on %s, got %d: %+v", path, len(v), v)
+			}
+			if v[0].Action != ActionReject {
+				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+		})
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_SkipsFilesWithoutCommonImport(t *testing.T) {
+	// The import gate stays: without a shortcuts/common import, a same-named
+	// CallAPI method on another receiver is not the legacy RuntimeContext helper.
 	src := `package contact
 
 func boom(runtime *common.RuntimeContext) error {
@@ -907,9 +958,9 @@ func boom(runtime *common.RuntimeContext) error {
 	return err
 }
 `
-	v := CheckNoLegacyRuntimeAPICall("shortcuts/contact/contact_get.go", src)
+	v := CheckNoLegacyRuntimeAPICall("shortcuts/some_new_domain/sample.go", src)
 	if len(v) != 0 {
-		t.Errorf("non-migrated path must not fire, got: %+v", v)
+		t.Errorf("file without shortcuts/common import must not fire, got: %+v", v)
 	}
 }
 
@@ -944,11 +995,17 @@ func TestCheckNoLegacyCommonHelperCall_RejectsLegacyHelpersOnMigratedPath(t *tes
 		"HandleApiResult",
 	}
 	paths := []string{
+		"shortcuts/doc/docs_fetch_v2.go",
 		"shortcuts/drive/drive_search.go",
+		"shortcuts/im/im_messages_send.go",
 		"shortcuts/mail/mail_send.go",
+		"shortcuts/markdown/markdown_fetch.go",
 		"shortcuts/okr/okr_progress_create.go",
+		"shortcuts/sheets/helpers.go",
+		"shortcuts/slides/slides_create.go",
 		"shortcuts/task/task_update.go",
 		"shortcuts/whiteboard/whiteboard_query.go",
+		"shortcuts/wiki/wiki_node_get.go",
 	}
 	for _, path := range paths {
 		for _, helper := range helpers {
@@ -997,18 +1054,148 @@ func boom() {
 	}
 }
 
-func TestCheckNoLegacyCommonHelperCall_AllowsNonMigratedPath(t *testing.T) {
-	src := `package contact
+func TestCheckNoLegacyCommonHelperCall_CoversDocPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/doc/docs_fetch_v2.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on doc path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSheetsPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/sheets/helpers.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on sheets path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversSlidesPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/slides/slides_create.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on slides path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversMarkdownPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/markdown/markdown_fetch.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on markdown path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_CoversWikiPathWithAliasAndFunctionValue(t *testing.T) {
+	src := `package migrated
+
+import c "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	f := c.FlagErrorf
+	_ = f
+	c.WrapInputStatError(nil)
+}
+`
+	v := CheckNoLegacyCommonHelperCall("shortcuts/wiki/wiki_node_get.go", src)
+	if len(v) != 2 {
+		t.Fatalf("expected 2 violations for aliased/function-value legacy helpers on wiki path, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_FiresOnAnyPath(t *testing.T) {
+	// The guard is now repo-wide: re-introducing a legacy common helper is
+	// flagged regardless of domain.
+	for _, path := range []string{
+		"shortcuts/im/im_send.go",
+		"shortcuts/some_new_domain/sample.go",
+		"internal/cmdutil/helper.go",
+	} {
+		t.Run(path, func(t *testing.T) {
+			src := `package contact
 
 import "github.com/larksuite/cli/shortcuts/common"
 
 func boom() {
-	common.FlagErrorf("legacy allowed until domain migrates")
+	common.FlagErrorf("relapse")
 }
 `
-	v := CheckNoLegacyCommonHelperCall("shortcuts/contact/contact_get.go", src)
-	if len(v) != 0 {
-		t.Errorf("non-migrated path must pass, got: %+v", v)
+			v := CheckNoLegacyCommonHelperCall(path, src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation on %s, got %d: %+v", path, len(v), v)
+			}
+			if v[0].Action != ActionReject {
+				t.Errorf("action = %q, want REJECT", v[0].Action)
+			}
+		})
+	}
+}
+
+func TestCheckNoLegacyCommonHelperCall_RejectsReintroducedUploadAndCallAPIHelpers(t *testing.T) {
+	// The three relapse-guard entries added when the legacy bodies were deleted:
+	// re-introducing a same-named helper must be rejected with a typed pointer.
+	cases := []struct {
+		helper     string
+		wantInSugg string
+	}{
+		{"UploadDriveMediaAll", "common.UploadDriveMediaAllTyped"},
+		{"UploadDriveMediaMultipart", "common.UploadDriveMediaMultipartTyped"},
+		{"CallAPI", "runtime.CallAPITyped"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.helper, func(t *testing.T) {
+			src := `package drive
+
+import "github.com/larksuite/cli/shortcuts/common"
+
+func boom() {
+	common.` + tc.helper + `()
+}
+`
+			v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_upload.go", src)
+			if len(v) != 1 {
+				t.Fatalf("expected 1 violation for %s, got %d: %+v", tc.helper, len(v), v)
+			}
+			if !strings.Contains(v[0].Suggestion, tc.wantInSugg) {
+				t.Errorf("suggestion should name typed replacement %q, got: %s", tc.wantInSugg, v[0].Suggestion)
+			}
+		})
 	}
 }
 
@@ -1074,5 +1261,25 @@ func boom() error {
 	v := CheckNoLegacyCommonHelperCall("shortcuts/drive/drive_search.go", src)
 	if len(v) != 1 {
 		t.Fatalf("expected 1 violation for function-value reference, got %d: %+v", len(v), v)
+	}
+}
+
+func TestCheckNoLegacyRuntimeAPICall_SkipsNonCommonReceiver(t *testing.T) {
+	// The event domain's APIClient interface has a same-named CallAPI method
+	// whose implementation classifies into typed errs.* errors; without the
+	// shortcuts/common import the call cannot be the legacy RuntimeContext
+	// helper and must not fire.
+	src := `package vc
+
+import "github.com/larksuite/cli/internal/event"
+
+func boom(rt event.APIClient) error {
+	_, err := rt.CallAPI(nil, "POST", "/x", nil)
+	return err
+}
+`
+	v := CheckNoLegacyRuntimeAPICall("events/vc/preconsume.go", src)
+	if len(v) != 0 {
+		t.Errorf("non-common CallAPI receiver must not fire, got: %+v", v)
 	}
 }

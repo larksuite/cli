@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 var (
@@ -28,8 +28,9 @@ const (
 	LarkCliService = "lark-cli"
 )
 
-// wrapError is a helper to wrap underlying errors into output.ExitError.
-// It formats the error message and provides a hint for troubleshooting keychain access issues.
+// wrapError wraps underlying keychain failures into a typed *errs.APIError
+// (exit code 1) carrying a hint for troubleshooting keychain access issues.
+// nil and ErrNotFound pass through unchanged.
 func wrapError(op string, err error) error {
 	if err == nil || errors.Is(err, ErrNotFound) {
 		return err
@@ -48,7 +49,9 @@ func wrapError(op string, err error) error {
 		LogAuthError("keychain", op, fmt.Errorf("keychain %s error: %w", op, err))
 	}()
 
-	return output.ErrWithHint(output.ExitAPI, "config", msg, hint)
+	return errs.NewAPIError(errs.SubtypeUnknown, "%s", msg).
+		WithHint("%s", hint).
+		WithCause(err)
 }
 
 // KeychainAccess abstracts keychain Get/Set/Remove for dependency injection.

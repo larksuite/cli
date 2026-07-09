@@ -23,7 +23,7 @@ type ImMessageReceiveOutput struct {
 	ChatType    string `json:"chat_type,omitempty"    desc:"Conversation type"                                                                                                                                                                   enum:"p2p,group"`
 	MessageType string `json:"message_type,omitempty" desc:"Message type"`
 	SenderID    string `json:"sender_id,omitempty"    desc:"Sender open_id; prefixed with ou_"                                                                                                                                                   kind:"open_id"`
-	Content     string `json:"content,omitempty"      desc:"Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text. For interactive (cards) it stays as the raw JSON string and callers must fromjson to parse it."`
+	Content     string `json:"content,omitempty"      desc:"Message content. For most types (text/post/image/file/audio, etc.) this is pre-rendered human-readable text."`
 }
 
 func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.RawEvent, _ map[string]string) (json.RawMessage, error) {
@@ -55,8 +55,10 @@ func processImMessageReceive(_ context.Context, _ event.APIClient, raw *event.Ra
 	}
 
 	msg := envelope.Event.Message
-	content := msg.Content
-	if msg.MessageType != "interactive" {
+	var content string
+	if msg.MessageType == "interactive" {
+		content = convertlib.ConvertInteractiveEventContent(msg.Content, msg.Mentions)
+	} else {
 		content = convertlib.ConvertBodyContent(msg.MessageType, &convertlib.ConvertContext{
 			RawContent: msg.Content,
 			MentionMap: convertlib.BuildMentionKeyMap(msg.Mentions),

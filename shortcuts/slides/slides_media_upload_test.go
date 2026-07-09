@@ -6,6 +6,7 @@ package slides
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"mime"
 	"mime/multipart"
 	"os"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -214,6 +216,14 @@ func TestSlidesMediaUploadFileNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "file not found") && !strings.Contains(err.Error(), "no such file") {
 		t.Fatalf("err = %v, want file-not-found error", err)
+	}
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %v, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--file" {
+		t.Fatalf("Param = %q, want --file", ve.Param)
 	}
 }
 

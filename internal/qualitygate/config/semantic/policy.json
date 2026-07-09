@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "default_enforcement": "observe",
+  "block_categories": [
+    "error_hint",
+    "default_output",
+    "naming",
+    "skill_quality",
+    "public_content_leakage"
+  ],
+  "rollout_groups": [
+    {
+      "id": "changed-only",
+      "enforcement": "blocking",
+      "scope": {
+        "changed_only": true
+      },
+      "categories": [
+        "error_hint",
+        "skill_quality",
+        "public_content_leakage"
+      ],
+      "owner": "cli-owner",
+      "reason": "first semantic blocking rollout only affects changed facts"
+    }
+  ]
+}

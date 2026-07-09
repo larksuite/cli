@@ -4,7 +4,7 @@
 
 Fetch the reply message list inside a thread. When `im +chat-messages-list` returns messages that include a `thread_id` field, use this command to inspect all replies in that thread.
 
-By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+By default each reply also carries a `reactions` block (counts + details from `im.reactions.batch_query`) when the server has reactions for it, and `update_time` for messages that were actually edited. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default, no extra requests when omitted. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
 This skill maps to the shortcut: `lark-cli im +threads-messages-list` (internally calls `GET /open-apis/im/v1/messages` with `container_id_type=thread` to fetch thread messages).
 
@@ -15,7 +15,7 @@ This skill maps to the shortcut: `lark-cli im +threads-messages-list` (internall
 lark-cli im +threads-messages-list --thread omt_xxx
 
 # Reverse chronological order (latest first)
-lark-cli im +threads-messages-list --thread omt_xxx --sort desc
+lark-cli im +threads-messages-list --thread omt_xxx --order desc
 
 # Control page size
 lark-cli im +threads-messages-list --thread omt_xxx --page-size 20
@@ -40,7 +40,9 @@ lark-cli im +threads-messages-list --thread omt_xxx --dry-run
 | Parameter | Required | Description |
 |------|------|------|
 | `--thread <id>` | Yes | Thread ID (`om_xxx` or `omt_xxx` format) |
-| `--sort <order>` | No | Sort order: `asc` (default) / `desc` |
+| `--no-reactions` | No | Skip auto-fetching the `reactions` block |
+| `--download-resources` | No | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default |
+| `--order <order>` | No | Sort order: `asc` (default) / `desc` |
 | `--page-size <n>` | No | Number of items per page (default 50, range 1-500) |
 | `--page-token <token>` | No | Pagination token for the next page |
 | `--format <fmt>` | No | Output format: `json` (default) / `pretty` / `table` / `ndjson` / `csv` |
@@ -66,9 +68,9 @@ Thread messages do not support `start_time` / `end_time` filtering because of Fe
 
 | Scenario | Recommended Parameters |
 |------|---------|
-| Quickly inspect recent replies | `--sort desc --page-size 10` |
-| Read the full thread in chronological order | `--sort asc --page-size 50`, then paginate as needed |
-| Just confirm whether replies exist | `--sort desc --page-size 1` |
+| Quickly inspect recent replies | `--order desc --page-size 10` |
+| Read the full thread in chronological order | `--order asc --page-size 50`, then paginate as needed |
+| Just confirm whether replies exist | `--order desc --page-size 1` |
 
 ## Usage Scenarios
 
@@ -94,9 +96,9 @@ lark-cli im +threads-messages-list --thread omt_xxx --page-token <PAGE_TOKEN>
 
 ## Resource Rendering
 
-Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `[Image: img_xxx]`; resource binaries are **not** downloaded automatically.
+Thread replies are rendered into human-readable text. Image messages appear as placeholders such as `![Image](img_xxx)`; by default resource binaries are **not** downloaded.
 
-Other resource types (files, audio, video) still need to be downloaded manually through `im +messages-resources-download`. See [lark-im-messages-resources-download](lark-im-messages-resources-download.md).
+Pass `--download-resources` to download every eligible resource (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` in one pass and attach a `resources` block to each reply (see [message enrichment](lark-im-message-enrichment.md#resource-auto-download---download-resources-opt-in)). Otherwise download individual resources manually through `im +messages-resources-download` (see [lark-im-messages-resources-download](lark-im-messages-resources-download.md)).
 
 ## Common Errors and Troubleshooting
 

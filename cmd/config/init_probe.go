@@ -33,15 +33,16 @@ const probeTimeout = 3 * time.Second
 //
 //  1. A TAT request using the just-saved credentials. credential.FetchTAT
 //     returns a typed errs.* error (via the shared classifyTATResponseCode)
-//     only when the server deterministically rejected the credentials — a
-//     non-zero TAT body code, classified as CategoryConfig / SubtypeInvalidClient
-//     (10003 / 10014) or whatever codemeta maps. That typed error is propagated
-//     so the root dispatcher renders the canonical envelope and `config init`
-//     exits non-zero — identical to how every other token-resolving command
-//     reports the same bad credentials. Ambiguous failures (transport errors,
-//     HTTP non-200, JSON parse errors, timeouts) come back as raw untyped
-//     errors and are swallowed (return nil), so valid configurations are never
-//     disturbed by upstream noise. errs.IsTyped is the discriminator.
+//     only when the unified Token Endpoint deterministically rejected the
+//     credentials — an OAuth2 invalid_client / unauthorized_client classified as
+//     CategoryConfig / SubtypeInvalidClient, or whatever codemeta maps. That
+//     typed error is propagated so the root dispatcher renders the canonical
+//     envelope and `config init` exits non-zero — identical to how every other
+//     token-resolving command reports the same bad credentials. Ambiguous
+//     failures (transport errors, transient 5xx/server_error, JSON parse errors,
+//     timeouts) come back as raw untyped errors and are swallowed (return nil),
+//     so valid configurations are never disturbed by upstream noise.
+//     errs.IsTyped is the discriminator.
 //
 //  2. If TAT succeeded, a POST to the probe endpoint is fired. The outcome of
 //     that call (success, server error, timeout, parse failure) is always

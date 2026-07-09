@@ -14,7 +14,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -35,14 +34,14 @@ var MarkdownFetch = common.Shortcut{
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		fileToken := strings.TrimSpace(runtime.Str("file-token"))
 		if err := validate.ResourceName(fileToken, "--file-token"); err != nil {
-			return output.ErrValidation("%s", err)
+			return markdownValidationParamError("--file-token", "%s", err).WithCause(err)
 		}
 		outputPath := strings.TrimSpace(runtime.Str("output"))
 		if outputPath == "" {
 			return nil
 		}
 		if _, err := validate.SafeOutputPath(outputPath); err != nil {
-			return output.ErrValidation("unsafe output path: %s", err)
+			return markdownValidationParamError("--output", "unsafe output path: %s", err).WithCause(err)
 		}
 		return nil
 	},
@@ -67,7 +66,7 @@ var MarkdownFetch = common.Shortcut{
 			ApiPath:    fmt.Sprintf("/open-apis/drive/v1/files/%s/download", validate.EncodePathSegment(fileToken)),
 		})
 		if err != nil {
-			return output.ErrNetwork("download failed: %s", err)
+			return wrapMarkdownDownloadError(err)
 		}
 		defer resp.Body.Close()
 
@@ -75,7 +74,7 @@ var MarkdownFetch = common.Shortcut{
 		if outputPath == "" {
 			payload, err := io.ReadAll(resp.Body)
 			if err != nil {
-				return output.ErrNetwork("download failed: %s", err)
+				return wrapMarkdownDownloadError(err)
 			}
 			out := map[string]interface{}{
 				"file_token": fileToken,
@@ -93,7 +92,7 @@ var MarkdownFetch = common.Shortcut{
 			outputPath = filepath.Join(outputPath, fileName)
 		}
 		if _, statErr := runtime.FileIO().Stat(outputPath); statErr == nil && !runtime.Bool("overwrite") {
-			return output.ErrValidation("output file already exists: %s (use --overwrite to replace)", outputPath)
+			return markdownValidationParamError("--output", "output file already exists: %s (use --overwrite to replace)", outputPath)
 		}
 
 		result, err := runtime.FileIO().Save(outputPath, fileio.SaveOptions{
@@ -101,7 +100,7 @@ var MarkdownFetch = common.Shortcut{
 			ContentLength: resp.ContentLength,
 		}, resp.Body)
 		if err != nil {
-			return common.WrapSaveErrorByCategory(err, "io")
+			return common.WrapSaveErrorTyped(err)
 		}
 
 		savedPath, _ := runtime.ResolveSavePath(outputPath)

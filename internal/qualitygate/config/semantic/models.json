@@ -1,0 +1,14 @@
+{
+  "allowed": [
+    "ark-code-latest",
+    "deepseek-v4-pro",
+    "doubao-seed-2.0-code",
+    "glm-5.1",
+    "kimi-k2.6",
+    "minimax-m3"
+  ],
+  "allowed_base_urls": [
+    "https://ark.ap-southeast.bytepluses.com/api/v3",
+    "https://ark.cn-beijing.volces.com/api/plan/v3"
+  ]
+}

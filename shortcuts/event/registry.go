@@ -3,7 +3,7 @@
 
 package event
 
-import "fmt"
+import "github.com/larksuite/cli/errs"
 
 // ProcessorRegistry manages event_type → EventProcessor mappings.
 type ProcessorRegistry struct {
@@ -23,7 +23,7 @@ func NewProcessorRegistry(fallback EventProcessor) *ProcessorRegistry {
 func (r *ProcessorRegistry) Register(p EventProcessor) error {
 	et := p.EventType()
 	if _, exists := r.processors[et]; exists {
-		return fmt.Errorf("duplicate event processor for: %s", et)
+		return errs.NewInternalError(errs.SubtypeUnknown, "duplicate event processor for: %s", et)
 	}
 	r.processors[et] = p
 	return nil

@@ -5,10 +5,9 @@ package sheets
 
 import (
 	"context"
-	"errors"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -46,7 +45,7 @@ var CellsClear = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "clear_cell_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -76,7 +75,7 @@ func cellsClearInput(runtime flagView, token, sheetID, sheetName string) (map[st
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	input := map[string]interface{}{
 		"excel_id":   token,
@@ -108,22 +107,22 @@ func normalizeClearType(scope string) string {
 // pivot-occupied A1 with cells-clear; point the agent at the object's own
 // delete command instead. Non-matching errors pass through untouched.
 func annotateEmbeddedBlockClearErr(err error) error {
-	var ee *output.ExitError
-	if !errors.As(err, &ee) || ee.Detail == nil {
+	p, ok := errs.ProblemOf(err)
+	if !ok {
 		return err
 	}
-	if !strings.Contains(strings.ToLower(ee.Detail.Message), "embedded block") {
+	if !strings.Contains(strings.ToLower(p.Message), "embedded block") {
 		return err
 	}
 	const hint = "the range overlaps an embedded object (pivot table / chart); " +
 		"cells-clear only clears cell values/formats and cannot delete it — " +
 		"delete the object with its own command (+pivot-delete / +chart-delete; find the id via +pivot-list / +chart-list)"
-	if ee.Detail.Hint == "" {
-		ee.Detail.Hint = hint
+	if p.Hint == "" {
+		p.Hint = hint
 	} else {
-		ee.Detail.Hint += "; " + hint
+		p.Hint += "; " + hint
 	}
-	return ee
+	return err
 }
 
 // CellsMerge / CellsUnmerge share the merge_cells tool, dispatched by the
@@ -164,7 +163,7 @@ func newMergeShortcut(command, desc, op string, withMergeType bool) common.Short
 			return invokeToolDryRun(token, ToolKindWrite, "merge_cells", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -191,7 +190,7 @@ func mergeInput(runtime flagView, token, sheetID, sheetName, op string, withMerg
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -240,7 +239,7 @@ var RowsResize = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -280,7 +279,7 @@ var ColsResize = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "resize_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -345,36 +344,36 @@ func resizeInput(runtime flagView, token, sheetID, sheetName, dimension string) 
 		return nil, err
 	}
 	if !runtime.Changed("range") {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	parsedDim, _, _, err := parseA1Range(rangeStr)
 	if err != nil {
-		return nil, common.FlagErrorf("invalid --range %q: %v", rangeStr, err)
+		return nil, sheetsValidationForFlag("range", "invalid --range %q: %v", rangeStr, err)
 	}
 	if parsedDim != dimension {
 		want := "row numbers (e.g. \"2:10\")"
 		if dimension == "column" {
 			want = "column letters (e.g. \"A:E\")"
 		}
-		return nil, common.FlagErrorf("--range %q is a %s range; %s expects %s", rangeStr, parsedDim, commandForDimension(dimension), want)
+		return nil, sheetsValidationForFlag("range", "--range %q is a %s range; %s expects %s", rangeStr, parsedDim, commandForDimension(dimension), want)
 	}
 	if !strings.Contains(rangeStr, ":") {
 		rangeStr = rangeStr + ":" + rangeStr
 	}
 	typ := strings.TrimSpace(runtime.Str("type"))
 	if typ == "" {
-		return nil, common.FlagErrorf("--type is required (pixel / standard%s)", autoSuffix(dimension))
+		return nil, sheetsValidationForFlag("type", "--type is required (pixel / standard%s)", autoSuffix(dimension))
 	}
 	if dimension == "column" && typ == "auto" {
-		return nil, common.FlagErrorf("--type auto is rows-only (column widths do not support auto-fit); use +rows-resize")
+		return nil, sheetsValidationForFlag("type", "--type auto is rows-only (column widths do not support auto-fit); use +rows-resize")
 	}
 	hasSize := runtime.Changed("size") && runtime.Int("size") > 0
 	if typ == "pixel" && !hasSize {
-		return nil, common.FlagErrorf("--type pixel requires --size <px>")
+		return nil, common.ValidationErrorf("--type pixel requires --size <px>").WithParams(sheetsInvalidParam("type", "required"), sheetsInvalidParam("size", "required"))
 	}
 	if typ != "pixel" && hasSize {
-		return nil, common.FlagErrorf("--size is only valid with --type pixel")
+		return nil, common.ValidationErrorf("--size is only valid with --type pixel").WithParams(sheetsInvalidParam("size", "mutually exclusive"), sheetsInvalidParam("type", "mutually exclusive"))
 	}
 	input := map[string]interface{}{
 		"excel_id": token,
@@ -452,7 +451,7 @@ var RangeFill = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -491,7 +490,7 @@ var RangeSort = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "transform_range", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -541,7 +540,7 @@ func transformDryRunFn(op string, withPasteType, _ bool) func(context.Context, *
 
 func transformExecuteFn(op string, withPasteType, _ bool) func(context.Context, *common.RuntimeContext) error {
 	return func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -567,10 +566,10 @@ func transformMoveCopyInput(runtime flagView, token, sheetID, sheetName, op stri
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("source-range")) == "" {
-		return nil, common.FlagErrorf("--source-range is required")
+		return nil, sheetsValidationForFlag("source-range", "--source-range is required")
 	}
 	if strings.TrimSpace(runtime.Str("target-range")) == "" {
-		return nil, common.FlagErrorf("--target-range is required")
+		return nil, sheetsValidationForFlag("target-range", "--target-range is required")
 	}
 	input := map[string]interface{}{
 		"excel_id":          token,
@@ -609,10 +608,10 @@ func rangeFillInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("source-range")) == "" {
-		return nil, common.FlagErrorf("--source-range is required")
+		return nil, sheetsValidationForFlag("source-range", "--source-range is required")
 	}
 	if strings.TrimSpace(runtime.Str("target-range")) == "" {
-		return nil, common.FlagErrorf("--target-range is required")
+		return nil, sheetsValidationForFlag("target-range", "--target-range is required")
 	}
 	input := map[string]interface{}{
 		"excel_id":          token,
@@ -641,7 +640,7 @@ func rangeSortInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("range")) == "" {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	// requireJSONArray runs the embedded JSON Schema for --sort-keys
 	// via parseJSONFlag → validateParsedJSONFlag, so each item is

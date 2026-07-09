@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -16,34 +16,35 @@ func TestAnnotateEmbeddedBlockClearErr(t *testing.T) {
 	t.Parallel()
 
 	t.Run("adds pivot-delete hint on embedded-block error", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{
-			Type:    "api",
-			Message: `tool "clear_cell_range" failed: [500] can not find embedded block`,
-		}}
-		var ee *output.ExitError
-		if !errors.As(annotateEmbeddedBlockClearErr(in), &ee) || ee.Detail == nil {
-			t.Fatal("expected ExitError with detail")
+		in := errs.NewAPIError(errs.SubtypeServerError, `tool "clear_cell_range" failed: [500] can not find embedded block`)
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
 		}
-		if !strings.Contains(ee.Detail.Hint, "+pivot-delete") {
-			t.Errorf("hint should point at +pivot-delete, got %q", ee.Detail.Hint)
+		if !strings.Contains(p.Hint, "+pivot-delete") {
+			t.Errorf("hint should point at +pivot-delete, got %q", p.Hint)
 		}
 	})
 
 	t.Run("appends to existing hint", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{
-			Message: "embedded block missing", Hint: "preexisting",
-		}}
-		out := annotateEmbeddedBlockClearErr(in).(*output.ExitError)
-		if !strings.HasPrefix(out.Detail.Hint, "preexisting; ") {
-			t.Errorf("existing hint should be preserved and appended, got %q", out.Detail.Hint)
+		in := errs.NewAPIError(errs.SubtypeServerError, "embedded block missing").WithHint("preexisting")
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
+		}
+		if !strings.HasPrefix(p.Hint, "preexisting; ") {
+			t.Errorf("existing hint should be preserved and appended, got %q", p.Hint)
 		}
 	})
 
-	t.Run("passes through unrelated ExitError untouched", func(t *testing.T) {
-		in := &output.ExitError{Code: output.ExitAPI, Detail: &output.ErrDetail{Message: "some other failure"}}
-		out := annotateEmbeddedBlockClearErr(in).(*output.ExitError)
-		if out.Detail.Hint != "" {
-			t.Errorf("unrelated error should not gain a hint, got %q", out.Detail.Hint)
+	t.Run("passes through unrelated typed error untouched", func(t *testing.T) {
+		in := errs.NewAPIError(errs.SubtypeServerError, "some other failure")
+		p, ok := errs.ProblemOf(annotateEmbeddedBlockClearErr(in))
+		if !ok {
+			t.Fatal("expected typed problem")
+		}
+		if p.Hint != "" {
+			t.Errorf("unrelated error should not gain a hint, got %q", p.Hint)
 		}
 	})
 
@@ -286,16 +287,11 @@ func TestRangeSort_RejectsMalformedKeys(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, RangeSort, []string{
+			_, _, err := runShortcutCapturingErr(t, RangeSort, []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1:E10", "--sort-keys", c.keys, "--dry-run",
 			})
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), c.want) {
-				t.Errorf("want substring %q in error; got stdout=%s stderr=%s err=%v", c.want, stdout, stderr, err)
-			}
+			requireValidation(t, err, c.want)
 		})
 	}
 }
@@ -348,13 +344,8 @@ func TestResize_TypeAndSizeGuards(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), tt.want) {
-				t.Errorf("expected %q; got=%s|%s|%v", tt.want, stdout, stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
+			requireValidation(t, err, tt.want)
 		})
 	}
 }

@@ -73,11 +73,15 @@ var SearchTask = common.Shortcut{
 		var rawItems []interface{}
 		var lastPageToken string
 		var lastHasMore bool
+		var notice string
 		currentBody := body
 		for page := 0; page < pageLimit; page++ {
 			data, err := callTaskAPITyped(runtime, http.MethodPost, "/open-apis/task/v2/tasks/search", nil, currentBody)
 			if err != nil {
 				return err
+			}
+			if notice == "" {
+				notice, _ = data["notice"].(string)
 			}
 			items, _ := data["items"].([]interface{})
 			rawItems = append(rawItems, items...)
@@ -114,6 +118,9 @@ var SearchTask = common.Shortcut{
 			"items":      enriched,
 			"page_token": lastPageToken,
 			"has_more":   lastHasMore,
+		}
+		if notice != "" {
+			outData["notice"] = notice
 		}
 		runtime.OutFormat(outData, &output.Meta{Count: len(enriched)}, func(w io.Writer) {
 			if len(enriched) == 0 {

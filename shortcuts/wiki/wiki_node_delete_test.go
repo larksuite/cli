@@ -9,17 +9,17 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/httpmock"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -357,63 +357,55 @@ func TestRunWikiNodeDeleteAsyncFailureSurfacesReason(t *testing.T) {
 func TestWrapWikiNodeDeleteAPIErrorAddsApprovalHint(t *testing.T) {
 	t.Parallel()
 
-	in := &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "api_error",
-			Code:    wikiDeleteNodeErrCodeApprovalRequired,
-			Message: "node requires delete approval",
-		},
-	}
+	in := errclass.BuildAPIError(
+		map[string]any{"code": float64(wikiDeleteNodeErrCodeApprovalRequired), "msg": "node requires delete approval"},
+		errclass.ClassifyContext{},
+	)
 	got := wrapWikiNodeDeleteAPIError(in)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError, got %T %v", got, got)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T %v", got, got)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "delete-approval enabled") || !strings.Contains(exitErr.Detail.Hint, "Wiki UI") {
-		t.Fatalf("hint = %q, want approval guidance", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "delete-approval enabled") || !strings.Contains(p.Hint, "Wiki UI") {
+		t.Fatalf("hint = %q, want approval guidance", p.Hint)
 	}
 	// Original code/message must be preserved so logs and dashboards still
 	// pivot on the upstream error code.
-	if exitErr.Detail.Code != wikiDeleteNodeErrCodeApprovalRequired {
-		t.Fatalf("hint wrapper lost the original code: %d", exitErr.Detail.Code)
+	if p.Code != wikiDeleteNodeErrCodeApprovalRequired {
+		t.Fatalf("hint wrapper lost the original code: %d", p.Code)
 	}
-	if exitErr.Detail.Message != "node requires delete approval" {
-		t.Fatalf("message changed unexpectedly: %q", exitErr.Detail.Message)
+	if p.Message != "node requires delete approval" {
+		t.Fatalf("message changed unexpectedly: %q", p.Message)
 	}
 }
 
 func TestWrapWikiNodeDeleteAPIErrorAddsSubtreeHint(t *testing.T) {
 	t.Parallel()
 
-	in := &output.ExitError{
-		Code: output.ExitAPI,
-		Detail: &output.ErrDetail{
-			Type:    "api_error",
-			Code:    wikiDeleteNodeErrCodeSubtreeTooLarge,
-			Message: "subtree too large",
-		},
-	}
+	in := errclass.BuildAPIError(
+		map[string]any{"code": float64(wikiDeleteNodeErrCodeSubtreeTooLarge), "msg": "subtree too large"},
+		errclass.ClassifyContext{},
+	)
 	got := wrapWikiNodeDeleteAPIError(in)
-	var exitErr *output.ExitError
-	if !errors.As(got, &exitErr) {
-		t.Fatalf("expected ExitError, got %T %v", got, got)
+	p, ok := errs.ProblemOf(got)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %T %v", got, got)
 	}
-	if !strings.Contains(exitErr.Detail.Hint, "--include-children=false") {
-		t.Fatalf("hint = %q, want subtree-too-large guidance", exitErr.Detail.Hint)
+	if !strings.Contains(p.Hint, "--include-children=false") {
+		t.Fatalf("hint = %q, want subtree-too-large guidance", p.Hint)
 	}
 }
 
 func TestWrapWikiNodeDeleteAPIErrorPassesThroughUnknownCodes(t *testing.T) {
 	t.Parallel()
 
-	in := &output.ExitError{
-		Code:   output.ExitAPI,
-		Detail: &output.ErrDetail{Type: "api_error", Code: 131005, Message: "node not found"},
-	}
+	in := errclass.BuildAPIError(
+		map[string]any{"code": float64(131005), "msg": "node not found"},
+		errclass.ClassifyContext{},
+	)
 	got := wrapWikiNodeDeleteAPIError(in)
-	if !reflect.DeepEqual(got, in) {
-		t.Fatalf("unknown code should pass through; got %#v", got)
+	if got != in {
+		t.Fatalf("unknown code should pass through unchanged; got %#v", got)
 	}
 }
 

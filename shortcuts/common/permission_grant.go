@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/registry"
 	"github.com/larksuite/cli/internal/validate"
 )
@@ -67,7 +67,7 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 		body["perm_type"] = permType
 	}
 
-	_, err := runtime.CallAPI(
+	_, err := runtime.CallAPITyped(
 		"POST",
 		fmt.Sprintf("/open-apis/drive/v1/permissions/%s/members", validate.EncodePathSegment(token)),
 		map[string]interface{}{
@@ -84,11 +84,11 @@ func autoGrantCurrentUserDrivePermission(runtime *RuntimeContext, token, resourc
 			fmt.Sprintf("Resource was created, but granting current user %s failed: %s. You can retry later or continue using bot identity.", permissionGrantPermMessage(), errMsg),
 			fmt.Sprintf("Auto-grant failed: %s. The app may lack the required scope or the resource restricts permission changes.", errMsg),
 		)
-		// Best-effort: when the underlying error is a structured permission
-		// ExitError (lark code 99991672/99991679), surface lark_code,
-		// required_scope and console_url so agents can guide users straight
-		// to the dev console. Overrides the generic hint with a more
-		// actionable one when console_url is available.
+		// Best-effort: when the underlying error is permission-class
+		// (lark code 99991672/99991679), surface lark_code, required_scope
+		// and console_url so agents can guide users straight to the dev
+		// console. Overrides the generic hint with a more actionable one
+		// when console_url is available.
 		annotateGrantPermissionError(runtime, result, err)
 		fmt.Fprintf(runtime.IO().ErrOut, "Warning: resource was created, but auto-grant failed: %s. Retry later or grant permission manually.\n", errMsg)
 		return result
@@ -163,10 +163,10 @@ func compactPermissionGrantError(err error) string {
 
 // annotateGrantPermissionError enriches a failed permission_grant result with
 // structured fields (lark_code / required_scope / console_url) when the
-// underlying error is a permission-class *output.ExitError. The CLI's main
-// permission-error path (cmd/root.go::enrichPermissionError) handles the same
-// case for top-level failures; this helper covers best-effort sub-calls whose
-// error is folded into a result map instead of propagated as ExitError.
+// underlying error is a typed *errs.PermissionError. The typed error produced
+// by errclass.BuildAPIError already carries MissingScopes + ConsoleURL for
+// top-level failures; this helper covers best-effort sub-calls whose error is
+// folded into a result map instead of propagated.
 //
 // When console_url is available, the existing generic hint is overridden with
 // a more actionable one pointing at the developer console — that's the
@@ -175,18 +175,14 @@ func annotateGrantPermissionError(runtime *RuntimeContext, result map[string]int
 	if runtime == nil || result == nil || err == nil {
 		return
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
+	code, scopes, ok := permissionGrantErrorFacts(err)
+	if !ok {
 		return
 	}
-	if exitErr.Detail.Type != "permission" {
-		return
-	}
-	if exitErr.Detail.Code != 0 {
-		result["lark_code"] = exitErr.Detail.Code
+	if code != 0 {
+		result["lark_code"] = code
 	}
 
-	scopes := registry.ExtractRequiredScopes(exitErr.Detail.Detail)
 	if len(scopes) == 0 {
 		return
 	}
@@ -210,4 +206,15 @@ func annotateGrantPermissionError(runtime *RuntimeContext, result map[string]int
 		"App is missing the %q scope; enable it in the developer console (see console_url), then retry.",
 		recommended,
 	)
+}
+
+// permissionGrantErrorFacts extracts the Lark code and missing scopes from a
+// permission-class error. A typed *errs.PermissionError carries both directly.
+// Non-permission errors report ok=false.
+func permissionGrantErrorFacts(err error) (code int, scopes []string, ok bool) {
+	var permErr *errs.PermissionError
+	if errors.As(err, &permErr) {
+		return permErr.Code, permErr.MissingScopes, true
+	}
+	return 0, nil, false
 }

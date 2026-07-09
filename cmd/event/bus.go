@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/event"
@@ -38,7 +39,8 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 
 			logger, err := bus.SetupBusLogger(eventsDir)
 			if err != nil {
-				return err
+				return errs.NewInternalError(errs.SubtypeFileIO,
+					"set up bus logger: %s", err).WithCause(err)
 			}
 
 			tr := transport.New()
@@ -58,7 +60,14 @@ func NewCmdBus(f *cmdutil.Factory) *cobra.Command {
 				}
 			}()
 
-			return b.Run(ctx)
+			if err := b.Run(ctx); err != nil {
+				if _, ok := errs.ProblemOf(err); ok {
+					return err
+				}
+				return errs.NewInternalError(errs.SubtypeUnknown,
+					"event bus daemon exited: %s", err).WithCause(err)
+			}
+			return nil
 		},
 	}
 

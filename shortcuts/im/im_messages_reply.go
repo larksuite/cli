@@ -33,7 +33,7 @@ var ImMessagesReply = common.Shortcut{
 		{Name: "file", Desc: "file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
 		{Name: "video", Desc: "video file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); must be used together with --video-cover"},
 		{Name: "video-cover", Desc: "video cover image key (img_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected); required when using --video"},
-		{Name: "audio", Desc: "audio file key (file_xxx), URL, or cwd-relative local path (absolute paths and .. are rejected)"},
+		{Name: "audio", Desc: audioMessageInputDesc},
 		{Name: "reply-in-thread", Type: "bool", Desc: "reply in thread (message appears in thread stream instead of main chat)"},
 		{Name: "idempotency-key", Desc: "idempotency key (prevents duplicate sends)"},
 	},
@@ -99,6 +99,9 @@ var ImMessagesReply = common.Shortcut{
 			if err := validateMediaFlagPath(fio, mf.flag, mf.val); err != nil {
 				return err
 			}
+		}
+		if err := validateAudioMessageInput("--audio", audioKey); err != nil {
+			return err
 		}
 
 		if messageId == "" {

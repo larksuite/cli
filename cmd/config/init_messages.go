@@ -4,10 +4,14 @@
 package config
 
 import (
+	"errors"
+
 	"github.com/charmbracelet/huh"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/i18n"
+	"github.com/larksuite/cli/internal/output"
 )
 
 type initMsg struct {
@@ -96,4 +100,13 @@ func promptLangSelection() (i18n.Lang, error) {
 		return "", err
 	}
 	return lang, nil
+}
+
+// langSelectionError maps a promptLangSelection failure to its exit surface:
+// user abort exits bare with code 1; any other failure is internal.
+func langSelectionError(err error) error {
+	if errors.Is(err, huh.ErrUserAborted) {
+		return output.ErrBare(1)
+	}
+	return errs.NewInternalError(errs.SubtypeUnknown, "language selection failed: %v", err).WithCause(err)
 }

@@ -163,26 +163,6 @@ func CheckApiError(w io.Writer, result interface{}, action string) bool {
 	return false
 }
 
-// HandleApiResult checks for network/API errors and returns the "data" field.
-//
-// Deprecated: use RuntimeContext.CallAPITyped (or ClassifyAPIResponse for
-// self-driven requests) for typed error envelopes.
-func HandleApiResult(result interface{}, err error, action string) (map[string]interface{}, error) {
-	if err != nil {
-		return nil, output.Errorf(output.ExitAPI, "api_error", "%s: %s", action, err)
-	}
-	resultMap, _ := result.(map[string]interface{})
-	code, _ := util.ToFloat64(resultMap["code"])
-	if code != 0 {
-		msg, _ := resultMap["msg"].(string)
-		larkCode := int(code)
-		fullMsg := fmt.Sprintf("%s: [%d] %s", action, larkCode, msg)
-		return nil, output.ErrAPI(larkCode, fullMsg, resultMap["error"])
-	}
-	data, _ := resultMap["data"].(map[string]interface{})
-	return data, nil
-}
-
 // TruncateStr truncates s to at most n runes.
 func TruncateStr(s string, n int) string {
 	r := []rune(s)

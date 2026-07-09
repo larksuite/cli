@@ -91,6 +91,29 @@ func TestAuthCheckCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+func TestAuthCheckCmd_AcceptsJSONFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *CheckOptions
+	cmd := NewCmdAuthCheck(f, func(opts *CheckOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--scope", "calendar:calendar:read", "--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil {
+		t.Fatal("expected opts to be set")
+	}
+	if !gotOpts.JSON {
+		t.Error("expected JSON=true")
+	}
+}
+
 func TestAuthLogoutCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, nil)
 
@@ -106,6 +129,27 @@ func TestAuthLogoutCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts == nil {
 		t.Error("expected opts to be set")
+	}
+}
+
+func TestAuthLogoutCmd_AcceptsJSONFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	var gotOpts *LogoutOptions
+	cmd := NewCmdAuthLogout(f, func(opts *LogoutOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil {
+		t.Fatal("expected opts to be set")
+	}
+	if !gotOpts.JSON {
+		t.Error("expected JSON=true")
 	}
 }
 
@@ -126,6 +170,27 @@ func TestAuthListCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+func TestAuthListCmd_AcceptsJSONFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	var gotOpts *ListOptions
+	cmd := NewCmdAuthList(f, func(opts *ListOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil {
+		t.Error("expected opts to be set")
+	}
+	if !gotOpts.JSON {
+		t.Error("expected JSON=true")
+	}
+}
+
 func TestAuthStatusCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -142,6 +207,29 @@ func TestAuthStatusCmd_FlagParsing(t *testing.T) {
 	}
 	if gotOpts == nil {
 		t.Error("expected opts to be set")
+	}
+}
+
+func TestAuthStatusCmd_AcceptsJSONFlag(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *StatusOptions
+	cmd := NewCmdAuthStatus(f, func(opts *StatusOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil {
+		t.Error("expected opts to be set")
+	}
+	if !gotOpts.JSON {
+		t.Error("expected JSON=true")
 	}
 }
 
@@ -261,6 +349,32 @@ func TestAuthScopesCmd_FlagParsing(t *testing.T) {
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts.Format != "json" {
+		t.Errorf("expected format json, got %s", gotOpts.Format)
+	}
+}
+
+func TestAuthScopesCmd_JSONFlagForcesJSONFormat(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
+
+	var gotOpts *ScopesOptions
+	cmd := NewCmdAuthScopes(f, func(opts *ScopesOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--format", "pretty", "--json"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotOpts == nil {
+		t.Fatal("expected opts to be set")
+	}
+	if !gotOpts.JSON {
+		t.Error("expected JSON=true")
 	}
 	if gotOpts.Format != "json" {
 		t.Errorf("expected format json, got %s", gotOpts.Format)

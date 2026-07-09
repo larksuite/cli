@@ -296,10 +296,11 @@ func authLoginRun(opts *LoginOptions) error {
 	}
 
 	// Step 2: Show user code and verification URL.
-	// Both branches surface AgentTimeoutHint, but on different channels:
-	// JSON mode embeds it as a structured field (so an agent that captures
-	// stdout into a JSON parser sees it without stream-mixing surprises),
-	// text mode prints to stderr (alongside the URL prompt).
+	// JSON mode embeds AgentTimeoutHint as a structured field so agents that
+	// capture stdout into a JSON parser see it without stream-mixing surprises.
+	// Text mode prints the hint to stderr only when running under a non-TTY
+	// (i.e. piped / agent harness), since humans reading a terminal don't need
+	// the agent-oriented instructions.
 	if opts.JSON {
 		data := map[string]interface{}{
 			"event":                     "device_authorization",
@@ -317,7 +318,9 @@ func authLoginRun(opts *LoginOptions) error {
 	} else {
 		fmt.Fprintf(f.IOStreams.ErrOut, msg.OpenURL)
 		fmt.Fprintf(f.IOStreams.ErrOut, "  %s\n\n", authResp.VerificationUriComplete)
-		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+		if f.IOStreams != nil && !f.IOStreams.IsTerminal {
+			fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
+		}
 	}
 
 	// Step 3: Poll for token
@@ -404,10 +407,11 @@ func authLoginPollDeviceCode(opts *LoginOptions, config *core.CliConfig, msg *lo
 			fmt.Fprintf(f.IOStreams.ErrOut, "[lark-cli] [WARN] auth login: failed to remove cached requested scopes: %v\n", err)
 		}
 	}
-	// Skip the stderr hint in JSON mode — the --no-wait call that issued the
-	// device_code already returned the hint as a JSON field, and writing
-	// text to stderr would pollute consumers that combine streams via 2>&1.
-	if !opts.JSON {
+	// Skip the stderr hint in JSON mode (the --no-wait call that issued
+	// the device_code already surfaced it as a JSON field), and also skip it
+	// when running on an interactive terminal — the agent-oriented
+	// instructions only matter for piped / harness environments.
+	if !opts.JSON && f.IOStreams != nil && !f.IOStreams.IsTerminal {
 		fmt.Fprintln(f.IOStreams.ErrOut, msg.AgentTimeoutHint)
 	}
 	log(msg.WaitingAuth)

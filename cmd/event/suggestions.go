@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	eventlib "github.com/larksuite/cli/internal/event"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/suggest"
 )
 
@@ -64,9 +64,6 @@ func unknownEventKeyErr(key string) error {
 	if guesses := suggestEventKeys(key); len(guesses) > 0 {
 		msg += " — did you mean " + formatSuggestions(guesses) + "?"
 	}
-	return output.ErrWithHint(
-		output.ExitValidation, "validation",
-		msg,
-		"Run 'lark-cli event list' to see available keys.",
-	)
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "%s", msg).
+		WithHint("Run 'lark-cli event list' to see available keys.")
 }

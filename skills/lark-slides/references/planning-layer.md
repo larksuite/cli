@@ -7,15 +7,12 @@
 ## Required Flow
 
 1. 理解用户需求，必要时澄清主题、受众、页数、风格。
-2. 如果适合模板，先用 `template_tool.py search` 检索，锁定模板后用 `summarize` 获取主题和页型信息。
-3. 选择唯一 plan 目录：`.lark-slides/plan/<deck-or-task-id>/`。
-4. 先创建目录：`mkdir -p .lark-slides/plan/<deck-or-task-id>`。
-5. 写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`。
-6. 读取 `xml-schema-quick-ref.md`、`visual-planning.md` 和 `asset-planning.md`。
-7. 按 plan、visual planning 和 asset planning 规则逐页生成 XML，把 `layout_type`、`visual_focus`、`text_density` 转成具体页面几何和文本量约束，并把缺失素材转成可执行兜底视觉。
-8. 创建 PPT 后用 `xml_presentations.get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系。
-
-模板不能代替 plan。模板搜索和摘要只能影响 `theme_style`、页面流、布局选择和局部布局骨架；最终仍必须有 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`。
+2. 选择唯一 plan 目录：`.lark-slides/plan/<deck-or-task-id>/`。
+3. 先创建目录：`mkdir -p .lark-slides/plan/<deck-or-task-id>`。
+4. 写入 `.lark-slides/plan/<deck-or-task-id>/slide_plan.json`。
+5. 读取 `xml-schema-quick-ref.md`、`visual-planning.md` 和 `asset-planning.md`。
+6. 按 plan、visual planning 和 asset planning 规则逐页生成 XML，把 `layout_type`、`visual_focus`、`text_density` 转成具体页面几何和文本量约束，并把缺失素材转成可执行兜底视觉。
+7. 创建 PPT 后用 `xml_presentations.get` 回读，核对页面数量、关键元素和 plan 到 XML 的对应关系。
 
 ## Plan Path
 

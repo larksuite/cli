@@ -1,88 +1,30 @@
 # apps +update
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md)。
+部分更新妙搭应用元信息。运行时命令事实以 `lark-cli apps +update --help` 为准。
 
-部分更新一个妙搭应用的元信息（名字 / 描述）。**只把传入的字段发给服务端，未传字段保持不变**。
+## 何时用
 
-## 命令
+只更新应用展示元信息。用户要改代码、发布内容、可见范围或数据库时，不走 `+update`。
 
-```bash
-lark-cli apps +update --app-id app_xxx --name "调研问卷 v2"
-lark-cli apps +update --app-id app_xxx --description "新描述"
-lark-cli apps +update --app-id app_xxx --name "v2" --description "新描述"
-```
+## 命令骨架
 
-## 参数
+- 必填：`--app-id`。
+- 至少提供一个：`--name` 或 `--description`。
+- 只发送用户提供的字段，不会清空未提供字段。
 
-| 参数 | 必填 | 说明 |
-|---|---|---|
-| `--app-id <id>` | ✅ | 应用 ID |
-| `--name <str>` | ❌ | 新名字 |
-| `--description <str>` | ❌ | 新描述 |
-
-`--name` 和 `--description` 至少传一个，否则 Validate 阶段报错。
-
-## 返回值
-
-**成功：**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "app": {
-      "app_id": "app_4k5jepcbjmv6m",
-      "name": "调研问卷 v2",
-      "description": "...",
-      "icon_url": "https://lf3-static.bytednsdoc.com/.../feisuda/avatar/5.svg",
-      "created_at": "2026-05-18T10:00:00Z",
-      "updated_at": "2026-05-18T10:05:00Z"
-    }
-  }
-}
-```
-
-**失败：**
-
-```json
-{
-  "ok": false,
-  "error": { "type": "api", "message": "...", "hint": "..." }
-}
-```
-
-## 字段语义
-
-- 响应 `data.app` 含完整应用对象（所有字段），不只是被改的
-- `created_at` / `updated_at` 都是 ISO 8601 UTC 时间字符串
-- 失败时优先转述 `error.hint`
-
-## 典型场景
-
-### 场景 1：用户说"把应用 X 改名叫 Y"
+## 示例
 
 ```bash
-lark-cli apps +update --app-id app_xxx --name "Y"
+lark-cli apps +update --app-id app_xxx --name "审批系统"
+lark-cli apps +update --app-id app_xxx --description "用于部门审批流转"
+lark-cli apps +update --app-id app_xxx --name "审批系统" --description "用于部门审批流转" --dry-run
 ```
 
-> 应用 `{app_id}` 已更新，新名字「{name}」。
+## 输出契约
 
-### 场景 2：缺 `--app-id` 或没传可更新字段
+- 成功读取 `data.app`；响应是完整应用对象，不只是被修改字段。
+- 缺 `--app-id` 或没有提供 `--name` / `--description` 会在本地 validation 失败。
 
-Validate 直接拦截，提示用户加 flag。
+## Agent 规则
 
-### 场景 3：失败处理
-
-转述 `error.hint` / `error.message`。
-
-## 协同命令
-
-| 场景 | 命令 |
-|---|---|
-| 找 app_id | 从用户提供的妙搭应用链接 `https://miaoda.feishu.cn/app/app_xxx` 的 `/app/` 后面提取，或让用户直接给 `app_xxx` 字符串（详见 `../SKILL.md`） |
-| 创建新应用 | `apps +create` |
-
-## 参考
-
-- [lark-apps](../SKILL.md)
-- [lark-shared](../../lark-shared/SKILL.md)
+更新前复述要变更的字段；用户没有提到的字段不要补默认值。执行后只转述新的名称/描述和 app_id，不需要展开原始响应。

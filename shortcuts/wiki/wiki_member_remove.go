@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -68,7 +68,7 @@ var WikiMemberRemove = common.Shortcut{
 			validate.EncodePathSegment(spaceID),
 			validate.EncodePathSegment(spec.MemberID),
 		)
-		data, err := runtime.CallAPI("DELETE", path, nil, spec.RequestBody())
+		data, err := runtime.CallAPITyped("DELETE", path, nil, spec.RequestBody())
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ func readWikiMemberRemoveSpec(runtime *common.RuntimeContext) (wikiMemberRemoveS
 		return wikiMemberRemoveSpec{}, err
 	}
 	if spec.MemberID == "" {
-		return wikiMemberRemoveSpec{}, output.ErrValidation("--member-id is required and cannot be blank")
+		return wikiMemberRemoveSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--member-id is required and cannot be blank").WithParam("--member-id")
 	}
 	// Enum membership for --member-type / --member-role is enforced by the
 	// framework's validateEnumFlags (runner.go) before Validate runs.

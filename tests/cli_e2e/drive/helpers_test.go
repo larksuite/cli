@@ -5,8 +5,13 @@ package drive
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
+	clie2e "github.com/larksuite/cli/tests/cli_e2e"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,4 +20,60 @@ func createDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, na
 	folderToken := CreateDriveFolder(t, parentT, ctx, name, "bot", parentFolderToken)
 	require.NotEmpty(t, folderToken)
 	return folderToken
+}
+
+func TestDeleteDriveResourceAndVerify(t *testing.T) {
+	t.Run("successful delete with stale meta returns cleanup warning", func(t *testing.T) {
+		fake := mustWriteDriveCleanupFakeCLI(t)
+		t.Setenv(clie2e.EnvBinaryPath, fake)
+
+		result, err := deleteDriveResourceAndVerify(context.Background(), "fld_stale", "folder", "bot", clie2e.WaitOptions{
+			Timeout:  10 * time.Millisecond,
+			Interval: time.Millisecond,
+		})
+		require.NotNil(t, result)
+		assert.Equal(t, 0, result.ExitCode)
+		require.Error(t, err)
+		assert.True(t, clie2e.IsCleanupWarning(err), "err: %v", err)
+	})
+
+	t.Run("failed delete with existing meta remains fatal", func(t *testing.T) {
+		fake := mustWriteDriveCleanupFakeCLI(t)
+		t.Setenv(clie2e.EnvBinaryPath, fake)
+		t.Setenv("FAKE_DRIVE_DELETE_EXIT", "1")
+
+		result, err := DeleteDriveResourceAndVerify(context.Background(), "fld_existing", "folder", "bot")
+		require.NotNil(t, result)
+		assert.Equal(t, 1, result.ExitCode)
+		require.Error(t, err)
+		assert.False(t, clie2e.IsCleanupWarning(err), "err: %v", err)
+		assert.Contains(t, err.Error(), "still exists after delete failed")
+	})
+}
+
+func mustWriteDriveCleanupFakeCLI(t *testing.T) string {
+	t.Helper()
+
+	script := `#!/bin/sh
+if [ "$1" = "drive" ] && [ "$2" = "+delete" ]; then
+  if [ "${FAKE_DRIVE_DELETE_EXIT:-0}" != "0" ]; then
+    echo '{"ok":false,"error":{"type":"api","message":"delete failed"}}' >&2
+    exit "$FAKE_DRIVE_DELETE_EXIT"
+  fi
+  echo '{"ok":true}'
+  exit 0
+fi
+
+if [ "$1" = "api" ] && [ "$2" = "post" ] && [ "$3" = "/open-apis/drive/v1/metas/batch_query" ]; then
+  echo '{"ok":true,"data":{"metas":[{"url":"https://example.com/still-visible"}]}}'
+  exit 0
+fi
+
+echo "unexpected fake CLI args: $*" >&2
+exit 2
+`
+
+	binaryPath := filepath.Join(t.TempDir(), "fake-lark-cli")
+	require.NoError(t, os.WriteFile(binaryPath, []byte(script), 0o755))
+	return binaryPath
 }

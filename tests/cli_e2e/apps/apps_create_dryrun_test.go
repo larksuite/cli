@@ -5,7 +5,6 @@ package apps
 
 import (
 	"context"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +28,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+create",
 				"--name", "Demo",
-				"--app-type", "HTML",
+				"--app-type", "html",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -40,7 +39,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
 		assert.Equal(t, "/open-apis/spark/v1/apps", gjson.Get(result.Stdout, "api.0.url").String())
 		assert.Equal(t, "Demo", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "HTML", gjson.Get(result.Stdout, "api.0.body.app_type").String())
+		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.body.app_type").String())
 		// Optional fields stay omitted when not provided.
 		assert.False(t, gjson.Get(result.Stdout, "api.0.body.description").Exists())
 		assert.False(t, gjson.Get(result.Stdout, "api.0.body.icon_url").Exists())
@@ -54,7 +53,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+create",
 				"--name", "Demo",
-				"--app-type", "HTML",
+				"--app-type", "html",
 				"--description", "survey app",
 				"--icon-url", "https://example.com/icon.svg",
 				"--dry-run",
@@ -65,7 +64,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 
 		assert.Equal(t, "Demo", gjson.Get(result.Stdout, "api.0.body.name").String())
-		assert.Equal(t, "HTML", gjson.Get(result.Stdout, "api.0.body.app_type").String())
+		assert.Equal(t, "html", gjson.Get(result.Stdout, "api.0.body.app_type").String())
 		assert.Equal(t, "survey app", gjson.Get(result.Stdout, "api.0.body.description").String())
 		assert.Equal(t, "https://example.com/icon.svg", gjson.Get(result.Stdout, "api.0.body.icon_url").String())
 	})
@@ -77,17 +76,14 @@ func TestAppsCreateDryRun(t *testing.T) {
 		result, err := clie2e.RunCmd(ctx, clie2e.Request{
 			Args: []string{
 				"apps", "+create",
-				"--app-type", "HTML",
+				"--app-type", "html",
 				"--dry-run",
 			},
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		// cobra Required failures exit with code 1 (distinct from output.ErrValidation
-		// at code 2). Message goes to stderr as plain text, but we read combined output
-		// to stay robust to future runner changes.
-		result.AssertExitCode(t, 1)
-		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "name" not set`)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), `required flag(s) "name" not set`)
 	})
 
 	t.Run("RejectsBlankName", func(t *testing.T) {
@@ -98,7 +94,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+create",
 				"--name", "  ",
-				"--app-type", "HTML",
+				"--app-type", "html",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -122,8 +118,8 @@ func TestAppsCreateDryRun(t *testing.T) {
 			DefaultAs: "user",
 		})
 		require.NoError(t, err)
-		result.AssertExitCode(t, 1)
-		assert.Contains(t, result.Stdout+result.Stderr, `required flag(s) "app-type" not set`)
+		result.AssertExitCode(t, 2)
+		assert.Contains(t, validateErrorMessage(result), `required flag(s) "app-type" not set`)
 	})
 
 	t.Run("RejectsInvalidAppType", func(t *testing.T) {
@@ -142,13 +138,15 @@ func TestAppsCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 2)
 		msg := validateErrorMessage(result)
-		assert.Contains(t, msg, "not supported")
-		assert.Contains(t, msg, "HTML")
+		assert.Contains(t, msg, "invalid value")
+		assert.Contains(t, msg, "full_stack")
 	})
 
-	t.Run("RejectsLowercaseAppType", func(t *testing.T) {
-		// app-type is case-sensitive; lowercase "html" must be rejected even though
-		// it differs from the allowed "HTML" by case alone.
+	t.Run("RejectsLegacyUppercaseAppType", func(t *testing.T) {
+		// --app-type is a strict lowercase enum (html / full_stack); the CLI does
+		// not normalize case. Legacy uppercase "HTML" is rejected — backend
+		// compatibility for legacy values is a server concern the client does not
+		// surface.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		t.Cleanup(cancel)
 
@@ -156,7 +154,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 			Args: []string{
 				"apps", "+create",
 				"--name", "Demo",
-				"--app-type", "html",
+				"--app-type", "HTML",
 				"--dry-run",
 			},
 			DefaultAs: "user",
@@ -164,7 +162,7 @@ func TestAppsCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 2)
 		msg := validateErrorMessage(result)
-		assert.True(t, strings.Contains(msg, `"html"`) && strings.Contains(msg, "not supported"),
-			"expected case-sensitive rejection, got: %s", msg)
+		assert.Contains(t, msg, "invalid value")
+		assert.Contains(t, msg, "HTML")
 	})
 }

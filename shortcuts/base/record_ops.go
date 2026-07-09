@@ -207,7 +207,7 @@ func dryRunRecordList(_ context.Context, runtime *common.RuntimeContext) *common
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	params := url.Values{}
 	params.Set("offset", strconv.Itoa(offset))
 	params.Set("limit", strconv.Itoa(limit))
@@ -304,10 +304,11 @@ func dryRunRecordDelete(_ context.Context, runtime *common.RuntimeContext) *comm
 }
 
 func dryRunRecordHistoryList(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
+	pageSize := runtime.Int("page-size")
 	params := map[string]interface{}{
 		"table_id":  baseTableID(runtime),
 		"record_id": runtime.Str("record-id"),
-		"page_size": runtime.Int("page-size"),
+		"page_size": pageSize,
 	}
 	if value := runtime.Int("max-version"); value > 0 {
 		params["max_version"] = value
@@ -386,7 +387,7 @@ func executeRecordList(runtime *common.RuntimeContext) error {
 	if offset < 0 {
 		offset = 0
 	}
-	limit := common.ParseIntBounded(runtime, "limit", 1, 200)
+	limit := getPaginationLimit(runtime)
 	params := map[string]interface{}{"offset": offset, "limit": limit}
 	fields := recordListFields(runtime)
 	if len(fields) > 0 {

@@ -11,54 +11,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 )
 
-func TestAccessTokensToIdentities(t *testing.T) {
-	tests := []struct {
-		name   string
-		tokens []interface{}
-		want   []string
-	}{
-		{
-			name:   "tenant becomes bot",
-			tokens: []interface{}{"tenant"},
-			want:   []string{"bot"},
-		},
-		{
-			name:   "user stays user",
-			tokens: []interface{}{"user"},
-			want:   []string{"user"},
-		},
-		{
-			name:   "tenant and user",
-			tokens: []interface{}{"tenant", "user"},
-			want:   []string{"bot", "user"},
-		},
-		{
-			name:   "empty list",
-			tokens: []interface{}{},
-			want:   nil,
-		},
-		{
-			name:   "non-string values skipped",
-			tokens: []interface{}{"tenant", 42, "user"},
-			want:   []string{"bot", "user"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := AccessTokensToIdentities(tt.tokens)
-			if len(got) != len(tt.want) {
-				t.Fatalf("len: want %d, got %d (%v)", len(tt.want), len(got), got)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("[%d] want %s, got %s", i, tt.want[i], got[i])
-				}
-			}
-		})
-	}
-}
-
 func TestPrintIdentity_BotExplicit(t *testing.T) {
 	var buf bytes.Buffer
 	PrintIdentity(&buf, core.AsBot, nil, false)

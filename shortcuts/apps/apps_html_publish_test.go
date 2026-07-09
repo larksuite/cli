@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/larksuite/cli/internal/output"
 )
 
 type fakeAppsHTMLPublishClient struct {
@@ -105,17 +103,11 @@ func TestRunHTMLPublish_DirRequiresIndexHTML(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for missing index.html")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "index.html") {
+		t.Fatalf("message missing 'index.html': %v", problem.Message)
 	}
-	if exitErr.Detail.Type != "validation" {
-		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "index.html") {
-		t.Fatalf("message missing 'index.html': %v", exitErr.Detail.Message)
-	}
-	if exitErr.Detail.Hint == "" {
+	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
 	if len(fake.calls) != 0 {
@@ -153,10 +145,7 @@ func TestRunHTMLPublish_SingleFileRejectedIfNotNamedIndex(t *testing.T) {
 	if err == nil {
 		t.Fatalf("single-file path 'foo.html' should be rejected (not named index.html)")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil || exitErr.Detail.Type != "validation" {
-		t.Fatalf("expected ExitError type=validation, got %v", err)
-	}
+	requireAppsValidationProblem(t, err)
 	if len(fake.calls) != 0 {
 		t.Fatalf("client must not be called when index.html missing")
 	}
@@ -199,17 +188,11 @@ func TestRunHTMLPublish_RejectsOversizeTarball(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected oversize error")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "exceeds") {
+		t.Fatalf("message missing 'exceeds': %v", problem.Message)
 	}
-	if exitErr.Detail.Type != "validation" {
-		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "exceeds") {
-		t.Fatalf("message missing 'exceeds': %v", exitErr.Detail.Message)
-	}
-	if exitErr.Detail.Hint == "" {
+	if problem.Hint == "" {
 		t.Fatalf("expected non-empty hint")
 	}
 	if len(fake.calls) != 0 {
@@ -337,18 +320,12 @@ func TestAppsHTMLPublish_SensitiveBlocksValidate(t *testing.T) {
 	if err == nil {
 		t.Fatalf("dry-run with sensitive file should fail")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, ".env") {
+		t.Fatalf("error message should list the offending file, got %q", problem.Message)
 	}
-	if exitErr.Detail.Type != "validation" {
-		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, ".env") {
-		t.Fatalf("error message should list the offending file, got %q", exitErr.Detail.Message)
-	}
-	if !strings.Contains(exitErr.Detail.Hint, "--allow-sensitive") {
-		t.Fatalf("error hint should mention --allow-sensitive escape hatch, got %q", exitErr.Detail.Hint)
+	if !strings.Contains(problem.Hint, "--allow-sensitive") {
+		t.Fatalf("error hint should mention --allow-sensitive escape hatch, got %q", problem.Hint)
 	}
 }
 
@@ -438,15 +415,9 @@ func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialParentDir(t *testing
 			if err == nil {
 				t.Fatalf("expected rejection when --path is %s/ (would leak %s), got success", tc.parent, tc.fileName)
 			}
-			var exitErr *output.ExitError
-			if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-				t.Fatalf("expected ExitError with detail, got %v", err)
-			}
-			if exitErr.Detail.Type != "validation" {
-				t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-			}
-			if !strings.Contains(exitErr.Detail.Message, tc.wantSubstr) {
-				t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+			problem := requireAppsValidationProblem(t, err)
+			if !strings.Contains(problem.Message, tc.wantSubstr) {
+				t.Fatalf("error message should name the leaked file, got %q", problem.Message)
 			}
 		})
 	}
@@ -480,15 +451,9 @@ func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself(t *testin
 	if err == nil {
 		t.Fatalf("expected rejection when --path points directly at .aws/credentials, got success")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
-	}
-	if exitErr.Detail.Type != "validation" {
-		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "credentials") {
-		t.Fatalf("error message should name the leaked file, got %q", exitErr.Detail.Message)
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "credentials") {
+		t.Fatalf("error message should name the leaked file, got %q", problem.Message)
 	}
 }
 
@@ -498,11 +463,7 @@ func TestAppsHTMLPublish_SensitiveBlocksWhenPathIsCredentialFileItself(t *testin
 func TestSensitiveCandidatesError_Truncation(t *testing.T) {
 	hits := []string{"a.env", "b.env", "c.env", "d.env", "e.env", "f.env", "g.env"}
 	err := sensitiveCandidatesError(hits)
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
-	}
-	msg := exitErr.Detail.Message
+	msg := requireAppsValidationProblem(t, err).Message
 	if !strings.Contains(msg, "7 credential file(s)") {
 		t.Fatalf("message should report the full count, got %q", msg)
 	}
@@ -534,17 +495,90 @@ func TestRunHTMLPublish_RejectsOversizeRawCandidates(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected raw-size cap to fire")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) || exitErr.Detail == nil {
-		t.Fatalf("expected ExitError with detail, got %v", err)
-	}
-	if exitErr.Detail.Type != "validation" {
-		t.Fatalf("error.type = %q, want validation", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, "raw") || !strings.Contains(exitErr.Detail.Message, "bytes") {
-		t.Fatalf("expected message to explain raw-byte cap, got %q", exitErr.Detail.Message)
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "raw") || !strings.Contains(problem.Message, "bytes") {
+		t.Fatalf("expected message to explain raw-byte cap, got %q", problem.Message)
 	}
 	if len(fake.calls) != 0 {
 		t.Fatalf("client must not be called when raw cap hit")
+	}
+}
+
+func TestOversizeHTMLFiles(t *testing.T) {
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	cands := []htmlPublishCandidate{
+		{RelPath: "index.html", Size: 50},
+		{RelPath: "big.html", Size: 4096},
+		{RelPath: "BIG.HTML", Size: 4096}, // 大小写不敏感
+		{RelPath: "huge.png", Size: 9000}, // 非 .html，忽略
+	}
+	hits := oversizeHTMLFiles(cands)
+	if len(hits) != 2 {
+		t.Fatalf("hits=%v, want [big.html BIG.HTML]", hits)
+	}
+	for _, h := range hits {
+		if h == "huge.png" || h == "index.html" {
+			t.Fatalf("unexpected hit %q", h)
+		}
+	}
+}
+
+func TestMaxHTMLPublishSingleHTMLFileBytes_Default(t *testing.T) {
+	if maxHTMLPublishSingleHTMLFileBytes != 10*1024*1024 {
+		t.Fatalf("default=%d, want %d (10MiB)", maxHTMLPublishSingleHTMLFileBytes, 10*1024*1024)
+	}
+}
+
+func TestRunHTMLPublish_RejectsOversizeHTMLFile(t *testing.T) {
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "big.html"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fake := &fakeAppsHTMLPublishClient{}
+	_, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir})
+	if err == nil {
+		t.Fatalf("expected per-file oversize error")
+	}
+	problem := requireAppsValidationProblem(t, err)
+	if !strings.Contains(problem.Message, "big.html") || !strings.Contains(problem.Message, "10MB") {
+		t.Fatalf("message=%q, want contains 'big.html' and '10MB'", problem.Message)
+	}
+	if problem.Hint == "" {
+		t.Fatalf("expected non-empty hint")
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("client must not be called when an HTML file is oversize")
+	}
+}
+
+func TestRunHTMLPublish_IgnoresOversizeNonHTML(t *testing.T) {
+	// 单 .html 上限调小，但超限文件是 .png → 不被本护栏拦截，正常发布。
+	orig := maxHTMLPublishSingleHTMLFileBytes
+	maxHTMLPublishSingleHTMLFileBytes = 100
+	defer func() { maxHTMLPublishSingleHTMLFileBytes = orig }()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "big.png"), []byte(strings.Repeat("x", 4096)), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	fake := &fakeAppsHTMLPublishClient{resp: &htmlPublishResponse{URL: "https://miaoda/app_x"}}
+	if _, err := runHTMLPublish(context.Background(), newTestFIO(), fake, appsHTMLPublishSpec{AppID: "app_x", Path: dir}); err != nil {
+		t.Fatalf("non-html oversize must not be blocked by the .html cap: %v", err)
+	}
+	if len(fake.calls) != 1 {
+		t.Fatalf("client should be called; calls=%v", fake.calls)
 	}
 }

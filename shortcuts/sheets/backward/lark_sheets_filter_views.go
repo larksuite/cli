@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -59,7 +59,7 @@ var SheetCreateFilterView = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("range")) == "" {
-			return common.FlagErrorf("--range must not be empty")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range must not be empty").WithParam("--range")
 		}
 		return nil
 	},
@@ -85,7 +85,7 @@ var SheetCreateFilterView = common.Shortcut{
 		if s := runtime.Str("filter-view-id"); s != "" {
 			body["filter_view_id"] = s
 		}
-		data, err := runtime.CallAPI("POST", filterViewBasePath(token, runtime.Str("sheet-id")), nil, body)
+		data, err := runtime.CallAPITyped("POST", filterViewBasePath(token, runtime.Str("sheet-id")), nil, body)
 		if err != nil {
 			return err
 		}
@@ -115,7 +115,7 @@ var SheetUpdateFilterView = common.Shortcut{
 		}
 		if !hasNonEmptyStringFlag(runtime, "range") &&
 			!hasNonEmptyStringFlag(runtime, "filter-view-name") {
-			return common.FlagErrorf("specify at least one of --range or --filter-view-name")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --range or --filter-view-name").WithParams(errs.InvalidParam{Name: "--range", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--filter-view-name", Reason: "required; specify at least one"})
 		}
 		return nil
 	},
@@ -141,7 +141,7 @@ var SheetUpdateFilterView = common.Shortcut{
 		if s := runtime.Str("filter-view-name"); s != "" {
 			body["filter_view_name"] = s
 		}
-		data, err := runtime.CallAPI("PATCH", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, body)
+		data, err := runtime.CallAPITyped("PATCH", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, body)
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ var SheetListFilterViews = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("GET", filterViewBasePath(token, runtime.Str("sheet-id"))+"/query", nil, nil)
+		data, err := runtime.CallAPITyped("GET", filterViewBasePath(token, runtime.Str("sheet-id"))+"/query", nil, nil)
 		if err != nil {
 			return err
 		}
@@ -208,7 +208,7 @@ var SheetGetFilterView = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("GET", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, nil)
+		data, err := runtime.CallAPITyped("GET", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -242,7 +242,7 @@ var SheetDeleteFilterView = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("DELETE", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, nil)
+		data, err := runtime.CallAPITyped("DELETE", filterViewItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -284,7 +284,7 @@ var SheetCreateFilterViewCondition = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
 		body := buildConditionBody(runtime, true)
-		data, err := runtime.CallAPI("POST", filterViewConditionBasePath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, body)
+		data, err := runtime.CallAPITyped("POST", filterViewConditionBasePath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id")), nil, body)
 		if err != nil {
 			return err
 		}
@@ -317,7 +317,7 @@ var SheetUpdateFilterViewCondition = common.Shortcut{
 		if !hasNonEmptyStringFlag(runtime, "filter-type") &&
 			!hasNonEmptyStringFlag(runtime, "compare-type") &&
 			!hasNonEmptyStringFlag(runtime, "expected") {
-			return common.FlagErrorf("specify at least one of --filter-type, --compare-type, or --expected")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --filter-type, --compare-type, or --expected").WithParams(errs.InvalidParam{Name: "--filter-type", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--compare-type", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--expected", Reason: "required; specify at least one"})
 		}
 		if s := runtime.Str("expected"); s != "" {
 			return validateExpectedFlag(s)
@@ -335,7 +335,7 @@ var SheetUpdateFilterViewCondition = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
 		body := buildConditionBody(runtime, false)
-		data, err := runtime.CallAPI("PUT",
+		data, err := runtime.CallAPITyped("PUT",
 			filterViewConditionItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id"), runtime.Str("condition-id")),
 			nil, body)
 		if err != nil {
@@ -371,7 +371,7 @@ var SheetListFilterViewConditions = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("GET",
+		data, err := runtime.CallAPITyped("GET",
 			filterViewConditionBasePath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id"))+"/query",
 			nil, nil)
 		if err != nil {
@@ -409,7 +409,7 @@ var SheetGetFilterViewCondition = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("GET",
+		data, err := runtime.CallAPITyped("GET",
 			filterViewConditionItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id"), runtime.Str("condition-id")),
 			nil, nil)
 		if err != nil {
@@ -447,7 +447,7 @@ var SheetDeleteFilterViewCondition = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFilterViewToken(runtime)
-		data, err := runtime.CallAPI("DELETE",
+		data, err := runtime.CallAPITyped("DELETE",
 			filterViewConditionItemPath(token, runtime.Str("sheet-id"), runtime.Str("filter-view-id"), runtime.Str("condition-id")),
 			nil, nil)
 		if err != nil {
@@ -464,7 +464,7 @@ func validateExpectedFlag(s string) error {
 	}
 	var arr []interface{}
 	if err := json.Unmarshal([]byte(s), &arr); err != nil {
-		return output.ErrValidation("--expected must be a JSON array (e.g. [\"6\"]), got: %s", s)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--expected must be a JSON array (e.g. [\"6\"]), got: %s", s).WithParam("--expected")
 	}
 	return nil
 }

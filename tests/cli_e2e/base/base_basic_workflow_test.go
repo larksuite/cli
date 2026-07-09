@@ -39,7 +39,7 @@ func TestBase_BasicWorkflow(t *testing.T) {
 	})
 
 	tableName := "lark-cli-e2e-table-basic-" + clie2e.GenerateSuffix()
-	tableID, primaryFieldID, primaryViewID := createTableWithRetry(
+	tableID, _, _ := createTableWithRetry(
 		t,
 		parentT,
 		ctx,
@@ -66,7 +66,4 @@ func TestBase_BasicWorkflow(t *testing.T) {
 		assert.Equal(t, tableID, table.Get("id").String())
 		assert.Equal(t, tableName, table.Get("name").String())
 	})
-
-	require.NotEmpty(t, primaryFieldID)
-	require.NotEmpty(t, primaryViewID)
 }

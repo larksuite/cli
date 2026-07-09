@@ -10,6 +10,8 @@ func Shortcuts() []common.Shortcut {
 	return []common.Shortcut{
 		MailMessage,
 		MailMessages,
+		MailMessageModify,
+		MailMessageTrash,
 		MailThread,
 		MailTriage,
 		MailWatch,

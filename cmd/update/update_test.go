@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -56,6 +57,27 @@ func mockDetectAndNpm(t *testing.T, result selfupdate.DetectResult, npmFn func(s
 	t.Cleanup(func() { newUpdater = origNew })
 }
 
+// mockDetectAndPnpm mirrors mockDetectAndNpm but wires the pnpm install path
+// and fails the test if the npm install path is invoked.
+func mockDetectAndPnpm(t *testing.T, result selfupdate.DetectResult, pnpmFn func(string) *selfupdate.NpmResult) {
+	t.Helper()
+	origNew := newUpdater
+	newUpdater = func() *selfupdate.Updater {
+		u := selfupdate.New()
+		u.DetectOverride = func() selfupdate.DetectResult { return result }
+		u.PnpmInstallOverride = pnpmFn
+		u.NpmInstallOverride = func(string) *selfupdate.NpmResult {
+			t.Errorf("npm install must not be called for a pnpm install")
+			return &selfupdate.NpmResult{}
+		}
+		u.VerifyOverride = func(string) error { return nil }
+		u.SkillsIndexFetchOverride = successfulSkillsIndexFetch()
+		u.SkillsCommandOverride = successfulSkillsCommand()
+		return u
+	}
+	t.Cleanup(func() { newUpdater = origNew })
+}
+
 func successfulSkillsIndexFetch() func() *selfupdate.NpmResult {
 	return func() *selfupdate.NpmResult {
 		r := &selfupdate.NpmResult{}
@@ -77,6 +99,110 @@ func successfulSkillsCommand() func(args ...string) *selfupdate.NpmResult {
 		default:
 		}
 		return r
+	}
+}
+
+func TestUpdatePnpm_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out := stdout.String(); !strings.Contains(out, `"action": "updated"`) {
+		t.Errorf("expected updated in output, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_Human(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{} },
+	)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "via pnpm") {
+		t.Errorf("expected 'via pnpm' in stderr, got: %s", out)
+	}
+	if !strings.Contains(out, "Updating skills via pnpm dlx ...") {
+		t.Errorf("expected skills sync to report pnpm dlx launcher, got: %s", out)
+	}
+	if !strings.Contains(out, "Successfully updated") {
+		t.Errorf("expected success message, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_InstallError_JSON(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, stdout, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{"--json"})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetectAndPnpm(t,
+		selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: true},
+		func(string) *selfupdate.NpmResult { return &selfupdate.NpmResult{Err: errors.New("pnpm boom")} },
+	)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error exit")
+	}
+	if out := stdout.String(); !strings.Contains(out, `"ok": false`) || !strings.Contains(out, "update_error") {
+		t.Errorf("expected failure envelope, got: %s", out)
+	}
+	if out := stdout.String(); !strings.Contains(out, "pnpm install failed") {
+		t.Errorf("expected message to report pnpm as the package manager, got: %s", out)
+	}
+}
+
+func TestUpdatePnpm_Unavailable_ManualFallback(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	f, _, stderr := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "2.0.0", nil }
+	defer func() { fetchLatest = origFetch }()
+	origVersion := currentVersion
+	currentVersion = func() string { return "1.0.0" }
+	defer func() { currentVersion = origVersion }()
+	mockDetect(t, selfupdate.DetectResult{Method: selfupdate.InstallPnpm, ResolvedPath: "/x/node_modules/.pnpm/@larksuite+cli@1.0.0/node_modules/@larksuite/cli/bin/lark-cli", PnpmAvailable: false})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "installed via pnpm, but pnpm is not available in PATH") {
+		t.Errorf("expected pnpm manual reason, got: %s", out)
+	}
+	if !strings.Contains(out, "pnpm add -g") {
+		t.Errorf("expected pnpm add -g hint, got: %s", out)
 	}
 }
 
@@ -265,6 +391,9 @@ func TestUpdateNpm_Human(t *testing.T) {
 	if !strings.Contains(out, "Successfully updated") {
 		t.Errorf("expected success message in stderr, got: %s", out)
 	}
+	if !strings.Contains(out, "Updating skills via npx ...") {
+		t.Errorf("expected skills sync to report npx launcher for npm install, got: %s", out)
+	}
 }
 
 func TestUpdateForce_JSON(t *testing.T) {
@@ -334,13 +463,88 @@ func TestUpdateFetchError_Human(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-nil error, got nil")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var netErr *errs.NetworkError
+	if !errors.As(err, &netErr) {
+		t.Fatalf("expected *errs.NetworkError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitNetwork {
-		t.Errorf("expected ExitNetwork (%d), got %d", output.ExitNetwork, exitErr.Code)
+	if netErr.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("subtype = %q, want %q", netErr.Subtype, errs.SubtypeNetworkTransport)
 	}
+	if got := output.ExitCodeOf(err); got != output.ExitNetwork {
+		t.Errorf("expected ExitNetwork (%d), got %d", output.ExitNetwork, got)
+	}
+}
+
+// TestUpdateInvalidVersion_Human verifies a malformed registry version surfaces
+// as a typed internal error in human mode, keeping the legacy exit code 5.
+func TestUpdateInvalidVersion_Human(t *testing.T) {
+	f, _, _ := newTestFactory(t)
+	cmd := NewCmdUpdate(f)
+	cmd.SetArgs([]string{})
+
+	origFetch := fetchLatest
+	fetchLatest = func() (string, error) { return "not-a-version", nil }
+	defer func() { fetchLatest = origFetch }()
+
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected non-nil error, got nil")
+	}
+	var intErr *errs.InternalError
+	if !errors.As(err, &intErr) {
+		t.Fatalf("expected *errs.InternalError, got %T: %v", err, err)
+	}
+	if intErr.Subtype != errs.SubtypeInvalidResponse {
+		t.Errorf("subtype = %q, want %q", intErr.Subtype, errs.SubtypeInvalidResponse)
+	}
+	if got := output.ExitCodeOf(err); got != output.ExitInternal {
+		t.Errorf("expected ExitInternal (%d), got %d", output.ExitInternal, got)
+	}
+}
+
+// TestReportError pins reportError's two surfaces after the typed migration:
+// human mode returns the typed error unchanged; JSON mode prints the legacy
+// {ok:false, error:{type, message}} envelope and exits bare with the typed
+// error's exit code (parity with the legacy explicit exit-code argument).
+func TestReportError(t *testing.T) {
+	t.Run("human mode returns the typed error", func(t *testing.T) {
+		f, _, _ := newTestFactory(t)
+		typed := errs.NewAPIError(errs.SubtypeUnknown, "failed to prepare update: disk full")
+		err := reportError(&UpdateOptions{JSON: false}, f.IOStreams, "update_error", typed)
+		var apiErr *errs.APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("expected *errs.APIError, got %T: %v", err, err)
+		}
+		if apiErr != typed {
+			t.Errorf("reportError must return the typed error unchanged")
+		}
+		if got := output.ExitCodeOf(err); got != output.ExitAPI {
+			t.Errorf("exit code = %d, want %d (ExitAPI, legacy parity)", got, output.ExitAPI)
+		}
+	})
+
+	t.Run("json mode prints envelope and exits bare with typed code", func(t *testing.T) {
+		f, stdout, _ := newTestFactory(t)
+		typed := errs.NewNetworkError(errs.SubtypeNetworkTransport, "failed to check latest version: timeout")
+		err := reportError(&UpdateOptions{JSON: true}, f.IOStreams, "network", typed)
+		var bareErr *output.BareError
+		if !errors.As(err, &bareErr) {
+			t.Fatalf("expected bare *output.BareError, got %T: %v", err, err)
+		}
+		if bareErr.Code != output.ExitNetwork {
+			t.Errorf("bare exit code = %d, want %d", bareErr.Code, output.ExitNetwork)
+		}
+		out := stdout.String()
+		if !strings.Contains(out, `"type": "network"`) && !strings.Contains(out, `"type":"network"`) {
+			t.Errorf("JSON envelope missing type, got: %s", out)
+		}
+		if !strings.Contains(out, "failed to check latest version: timeout") {
+			t.Errorf("JSON envelope missing message, got: %s", out)
+		}
+	})
 }
 
 func TestUpdateInvalidVersion_JSON(t *testing.T) {
@@ -503,12 +707,12 @@ func TestUpdateNpmVerifyFail_JSON_NoRestoreHintWhenBackupUnavailable(t *testing.
 	if err == nil {
 		t.Fatal("expected verification failure")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+	var bareErr *output.BareError
+	if !errors.As(err, &bareErr) {
+		t.Fatalf("expected *output.BareError, got %T: %v", err, err)
 	}
-	if exitErr.Code != output.ExitAPI {
-		t.Fatalf("expected ExitAPI (%d), got %d", output.ExitAPI, exitErr.Code)
+	if bareErr.Code != output.ExitAPI {
+		t.Fatalf("expected ExitAPI (%d), got %d", output.ExitAPI, bareErr.Code)
 	}
 
 	out := stdout.String()
@@ -663,9 +867,9 @@ func TestPermissionHint(t *testing.T) {
 	origOS := currentOS
 	defer func() { currentOS = origOS }()
 
-	// Linux: EACCES should produce a hint with npm prefix guidance.
+	// Linux + npm: EACCES should produce a hint with npm prefix guidance.
 	currentOS = "linux"
-	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'")
+	hint := permissionHint("EACCES: permission denied, access '/usr/local/lib'", "npm")
 	if !strings.Contains(hint, "npm global prefix") {
 		t.Errorf("expected npm prefix hint on linux, got: %s", hint)
 	}
@@ -673,16 +877,25 @@ func TestPermissionHint(t *testing.T) {
 		t.Errorf("should not suggest raw sudo npm install, got: %s", hint)
 	}
 
+	// Linux + pnpm: EACCES should point at pnpm setup, not npm prefix/sudo.
+	pnpmHint := permissionHint("EACCES: permission denied, access '/Users/x/Library/pnpm'", "pnpm")
+	if !strings.Contains(pnpmHint, "pnpm setup") {
+		t.Errorf("expected pnpm setup hint, got: %s", pnpmHint)
+	}
+	if strings.Contains(pnpmHint, "npm global prefix") || strings.Contains(pnpmHint, "sudo") {
+		t.Errorf("pnpm hint must not reference npm prefix or sudo, got: %s", pnpmHint)
+	}
+
 	// Windows: EACCES hint is suppressed (no EACCES on Windows).
 	currentOS = "windows"
-	hint = permissionHint("EACCES: permission denied")
+	hint = permissionHint("EACCES: permission denied", "npm")
 	if hint != "" {
 		t.Errorf("expected empty hint on Windows, got: %s", hint)
 	}
 
 	// Non-EACCES error: always empty.
 	currentOS = "linux"
-	if got := permissionHint("some other error"); got != "" {
+	if got := permissionHint("some other error", "npm"); got != "" {
 		t.Errorf("expected empty hint for non-EACCES, got: %s", got)
 	}
 }

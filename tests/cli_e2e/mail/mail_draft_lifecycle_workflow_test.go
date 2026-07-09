@@ -59,7 +59,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		require.NotEmpty(t, gjson.Get(result.Stdout, "data.primary_email_address").String(), "stdout:\n%s", result.Stdout)
 	})
@@ -95,7 +95,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		require.True(t, gjson.Get(result.Stdout, `data.items.#(id=="`+draftID+`")`).Exists(), "stdout:\n%s", result.Stdout)
 	})
@@ -113,7 +113,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		assert.Equal(t, draftID, gjson.Get(result.Stdout, "data.draft.id").String())
 		assert.Equal(t, originalSubject, gjson.Get(result.Stdout, "data.draft.message.subject").String())
@@ -192,7 +192,7 @@ func TestMail_DraftLifecycleWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		draftDeleted = true
 	})

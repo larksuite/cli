@@ -10,14 +10,20 @@ import (
 	"os"
 	"strings"
 	"sync"
-
-	"github.com/larksuite/cli/internal/envvars"
 )
 
 // Proxy environment constants control shared transport proxy behavior.
 const (
 	// EnvNoProxy disables automatic proxy support when set to any non-empty value.
 	EnvNoProxy = "LARK_CLI_NO_PROXY"
+
+	// EnvNoProxyWarn suppresses the proxy-detected warning when set to any
+	// non-empty value, while leaving proxy behavior unchanged. Unlike
+	// EnvNoProxy (which both silences the warning AND disables the proxy), this
+	// keeps proxy egress active. It exists so agents consuming --format json can
+	// keep using the proxy without the human-oriented warning line landing in
+	// the output stream and breaking JSON parsing.
+	EnvNoProxyWarn = "LARK_CLI_NO_PROXY_WARN"
 )
 
 // proxyEnvKeys lists environment variables that Go's ProxyFromEnvironment reads.
@@ -75,20 +81,17 @@ func redactProxyURL(raw string) string {
 // are redacted. Safe to call multiple times; only the first call prints.
 func WarnIfProxied(w io.Writer) {
 	proxyWarningOnce.Do(func() {
+		// Explicit opt-out: silence the warning without touching proxy behavior.
+		// Checked before the plugin and env-proxy branches so it suppresses both.
+		if os.Getenv(EnvNoProxyWarn) != "" {
+			return
+		}
 		// Proxy plugin mode overrides env proxies and LARK_CLI_NO_PROXY (see
 		// Shared), so its warning and disable instructions take precedence.
 		// Emitting the env-proxy warning here would be misleading: it tells the
 		// user to set LARK_CLI_NO_PROXY=1, which does NOT disable the plugin proxy.
-		if addr, caPath, enabled := proxyPluginStatus(); enabled {
-			fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin enabled: all requests (including credentials) are forced through %s. To disable, set %s=false or remove %s.\n",
-				redactProxyURL(addr), envvars.CliProxyEnable, Path())
-			if strings.TrimSpace(caPath) != "" {
-				// A custom CA means upstream TLS can be intercepted/inspected by
-				// the proxy (MITM). Surface it so the operator is aware traffic
-				// (including Bearer tokens) is decryptable on this host.
-				fmt.Fprintf(w, "[lark-cli] [WARN] proxy plugin trusts a custom CA (%s); TLS to upstreams can be intercepted/inspected by this proxy.\n",
-					caPath)
-			}
+		if _, _, enabled := proxyPluginStatus(); enabled {
+			fmt.Fprintln(w, "[lark-cli] [WARN] proxy plugin enabled: all requests are forced through proxy.")
 			return
 		}
 		if os.Getenv(EnvNoProxy) != "" {
@@ -98,7 +101,7 @@ func WarnIfProxied(w io.Writer) {
 		if key == "" {
 			return
 		}
-		fmt.Fprintf(w, "[lark-cli] [WARN] proxy detected: %s=%s — requests (including credentials) will transit through this proxy. Set %s=1 to disable proxy.\n",
-			key, redactProxyURL(val), EnvNoProxy)
+		fmt.Fprintf(w, "[lark-cli] [WARN] proxy detected: %s=%s — requests (including credentials) will transit through this proxy. Set %s=1 to disable proxy, or %s=1 to keep the proxy and silence this warning.\n",
+			key, redactProxyURL(val), EnvNoProxy, EnvNoProxyWarn)
 	})
 }

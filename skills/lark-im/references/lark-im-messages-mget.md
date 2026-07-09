@@ -4,7 +4,7 @@
 
 Fetch message details in batch. Given a list of message IDs, this returns the full content for multiple messages in one call and automatically resolves sender names.
 
-By default the response also carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Replies inside `thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
+By default the response also carries a `reactions` block (counts + details from `im.reactions.batch_query`) on every message that has reactions, and `update_time` on messages that were actually edited. Replies inside `thread_replies` participate in the same batched enrichment. Pass `--no-reactions` to skip the extra round-trip. Pass `--download-resources` to additionally download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block — off by default, no extra requests when omitted. See [message enrichment](lark-im-message-enrichment.md) for the full contract.
 
 > **Supports both `--as user` (default) and `--as bot`.**
 
@@ -31,6 +31,8 @@ lark-cli im +messages-mget --message-ids "om_aaa" --dry-run
 | Parameter | Required | Limits | Description |
 |------|------|------|------|
 | `--message-ids <ids>` | Yes | At least one, max 50, `om_xxx` format, comma-separated | Message ID list |
+| `--no-reactions` | No | — | Skip auto-fetching the `reactions` block |
+| `--download-resources` | No | — | Download message resources (image/file/audio/video/media + post-embedded, excluding stickers) into `./lark-im-resources/` and attach a `resources` block. Off by default |
 
 ## Output Fields
 
@@ -88,7 +90,7 @@ lark-cli im +messages-mget --message-ids "om_aaa,om_bbb"
 
 1. **Use JSON for full content:** table output truncates content. Use `--format json` when the full body matters.
 2. **Sender names are already enriched:** the command resolves sender names automatically, so no extra lookup is required.
-3. **Images are rendered as placeholders:** image messages appear as placeholders such as `[Image: img_xxx]`. Use `+messages-resources-download` when you need the binary resource.
+3. **Images are rendered as placeholders:** image messages appear as placeholders such as `![Image](img_xxx)`. Use `+messages-resources-download` when you need the binary resource.
 4. **Batching is more efficient:** fetching multiple IDs in one request is better than calling the API repeatedly.
 
 ## References

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -27,7 +28,7 @@ func validateDropdownToken(runtime *common.RuntimeContext) (string, error) {
 		token = extractSpreadsheetToken(runtime.Str("url"))
 	}
 	if token == "" {
-		return "", common.FlagErrorf("specify --url or --spreadsheet-token")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 	}
 	return token, nil
 }
@@ -35,10 +36,10 @@ func validateDropdownToken(runtime *common.RuntimeContext) (string, error) {
 func parseJSONStringArray(flagName, value string) ([]interface{}, error) {
 	var typed []string
 	if err := json.Unmarshal([]byte(value), &typed); err != nil {
-		return nil, common.FlagErrorf("--%s must be a JSON array of strings: %v", flagName, err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must be a JSON array of strings: %v", flagName, err).WithParam("--" + flagName)
 	}
 	if typed == nil {
-		return nil, common.FlagErrorf("--%s must be a JSON array, got null", flagName)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--%s must be a JSON array, got null", flagName).WithParam("--" + flagName)
 	}
 	arr := make([]interface{}, len(typed))
 	for i, s := range typed {
@@ -53,12 +54,12 @@ func validateRangesFlag(runtime *common.RuntimeContext) ([]interface{}, error) {
 		return nil, err
 	}
 	if len(ranges) == 0 {
-		return nil, common.FlagErrorf("--ranges must not be empty")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--ranges must not be empty").WithParam("--ranges")
 	}
 	for i, r := range ranges {
 		s, _ := r.(string)
 		if _, _, ok := splitSheetRange(s); !ok {
-			return nil, common.FlagErrorf("--ranges[%d] %q must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)", i, s)
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--ranges[%d] %q must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)", i, s).WithParam("--ranges")
 		}
 	}
 	return ranges, nil
@@ -70,7 +71,7 @@ func buildDropdownBody(runtime *common.RuntimeContext) (map[string]interface{}, 
 		return nil, err
 	}
 	if len(condValues) == 0 {
-		return nil, common.FlagErrorf("--condition-values must not be empty")
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--condition-values must not be empty").WithParam("--condition-values")
 	}
 
 	dv := map[string]interface{}{
@@ -90,7 +91,7 @@ func buildDropdownBody(runtime *common.RuntimeContext) (map[string]interface{}, 
 			return nil, err
 		}
 		if len(colors) != len(condValues) {
-			return nil, common.FlagErrorf("--colors length (%d) must match --condition-values length (%d)", len(colors), len(condValues))
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--colors length (%d) must match --condition-values length (%d)", len(colors), len(condValues)).WithParam("--colors")
 		}
 		opts["colors"] = colors
 	}
@@ -123,7 +124,7 @@ var SheetSetDropdown = common.Shortcut{
 			return err
 		}
 		if _, _, ok := splitSheetRange(runtime.Str("range")); !ok {
-			return common.FlagErrorf("--range must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)").WithParam("--range")
 		}
 		_, err := buildDropdownBody(runtime)
 		return err
@@ -147,7 +148,7 @@ var SheetSetDropdown = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.CallAPI("POST", dataValidationBasePath(token), nil,
+		data, err := runtime.CallAPITyped("POST", dataValidationBasePath(token), nil,
 			map[string]interface{}{
 				"range":              runtime.Str("range"),
 				"dataValidationType": "list",
@@ -214,7 +215,7 @@ var SheetUpdateDropdown = common.Shortcut{
 			return err
 		}
 
-		data, err := runtime.CallAPI("PUT", dataValidationSheetPath(token, runtime.Str("sheet-id")), nil,
+		data, err := runtime.CallAPITyped("PUT", dataValidationSheetPath(token, runtime.Str("sheet-id")), nil,
 			map[string]interface{}{
 				"ranges":             ranges,
 				"dataValidationType": "list",
@@ -247,7 +248,7 @@ var SheetGetDropdown = common.Shortcut{
 			return err
 		}
 		if _, _, ok := splitSheetRange(runtime.Str("range")); !ok {
-			return common.FlagErrorf("--range must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range must be a fully qualified range with sheet ID prefix (e.g. <sheetId>!A2:A100)").WithParam("--range")
 		}
 		return nil
 	},
@@ -259,7 +260,7 @@ var SheetGetDropdown = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateDropdownToken(runtime)
-		data, err := runtime.CallAPI("GET", dataValidationBasePath(token),
+		data, err := runtime.CallAPITyped("GET", dataValidationBasePath(token),
 			map[string]interface{}{
 				"range":              runtime.Str("range"),
 				"dataValidationType": "list",
@@ -319,7 +320,7 @@ var SheetDeleteDropdown = common.Shortcut{
 			dvRanges = append(dvRanges, map[string]interface{}{"range": r})
 		}
 
-		data, err := runtime.CallAPI("DELETE", dataValidationBasePath(token), nil,
+		data, err := runtime.CallAPITyped("DELETE", dataValidationBasePath(token), nil,
 			map[string]interface{}{
 				"dataValidationRanges": dvRanges,
 			},

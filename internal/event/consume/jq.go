@@ -8,17 +8,21 @@ import (
 	"fmt"
 
 	"github.com/itchyny/gojq"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // CompileJQ compiles once for hot-path reuse; exported so callers can preflight before side effects.
 func CompileJQ(expr string) (*gojq.Code, error) {
 	query, err := gojq.Parse(expr)
 	if err != nil {
-		return nil, fmt.Errorf("invalid jq expression: %w", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"invalid jq expression: %s", err).WithParam("--jq").WithCause(err)
 	}
 	code, err := gojq.Compile(query)
 	if err != nil {
-		return nil, fmt.Errorf("jq compile error: %w", err)
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"jq compile error: %s", err).WithParam("--jq").WithCause(err)
 	}
 	return code, nil
 }

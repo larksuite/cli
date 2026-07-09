@@ -4,9 +4,14 @@
 package event
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/larksuite/cli/errs"
+	"github.com/larksuite/cli/internal/cmdutil"
+	"github.com/larksuite/cli/internal/credential"
 )
 
 func TestParseParams(t *testing.T) {
@@ -73,6 +78,7 @@ func TestParseParams(t *testing.T) {
 				if tc.wantEcho != "" && !strings.Contains(err.Error(), tc.wantEcho) {
 					t.Errorf("err %q should echo %q so user sees the bad input", err.Error(), tc.wantEcho)
 				}
+				assertInvalidArgumentParam(t, err, "--param")
 				return
 			}
 			if err != nil {
@@ -87,6 +93,77 @@ func TestParseParams(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// emptyTokenResolver resolves to a result that carries no token.
+type emptyTokenResolver struct{}
+
+func (emptyTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return &credential.TokenResult{}, nil
+}
+
+// failingTokenResolver fails outright with an untyped error.
+type failingTokenResolver struct{}
+
+func (failingTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
+	return nil, errors.New("backend unavailable")
+}
+
+func factoryWithResolver(r credential.DefaultTokenResolver) *cmdutil.Factory {
+	return &cmdutil.Factory{Credential: credential.NewCredentialProvider(nil, nil, r, nil)}
+}
+
+func TestResolveTenantToken_EmptyTokenResult(t *testing.T) {
+	_, err := resolveTenantToken(context.Background(), factoryWithResolver(emptyTokenResolver{}), "cli_x")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAuthentication || p.Subtype != errs.SubtypeTokenMissing {
+		t.Errorf("problem = %s/%s, want %s/%s", p.Category, p.Subtype,
+			errs.CategoryAuthentication, errs.SubtypeTokenMissing)
+	}
+	var malformed *credential.MalformedTokenResultError
+	if !errors.As(err, &malformed) {
+		t.Error("empty-token failure should preserve the credential-layer cause")
+	}
+}
+
+func TestResolveTenantToken_ResolverFailure(t *testing.T) {
+	_, err := resolveTenantToken(context.Background(), factoryWithResolver(failingTokenResolver{}), "cli_x")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed errs error, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryAuthentication || p.Subtype != errs.SubtypeTokenMissing {
+		t.Errorf("problem = %s/%s, want %s/%s", p.Category, p.Subtype,
+			errs.CategoryAuthentication, errs.SubtypeTokenMissing)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Error("resolver failure should preserve its cause")
+	}
+}
+
+// assertInvalidArgumentParam verifies err is a typed validation error with
+// subtype invalid_argument naming the given flag in its param field.
+func assertInvalidArgumentParam(t *testing.T, err error, param string) {
+	t.Helper()
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %s, want %s", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if ve.Param != param {
+		t.Errorf("param = %q, want %q", ve.Param, param)
 	}
 }
 
@@ -130,6 +207,7 @@ func TestSanitizeOutputDir(t *testing.T) {
 				if !errors.Is(err, tc.wantSentry) {
 					t.Fatalf("want errors.Is(err, %v), got %q", tc.wantSentry, err.Error())
 				}
+				assertInvalidArgumentParam(t, err, "--output-dir")
 				return
 			}
 			if err != nil {

@@ -131,7 +131,7 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	if len(senderNames) > 0 {
 		nameCache = senderNames[0]
 	}
-	return formatMessageItem(m, runtime, nameCache, nil)
+	return formatMessageItem(m, runtime, nameCache, nil, false)
 }
 
 // FormatMessageItemWithMergePrefetch is like FormatMessageItem but threads a
@@ -141,10 +141,20 @@ func FormatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 // items should pre-fetch once and call this variant in the loop to avoid the
 // N × ~1s serial-merge_forward stall in the original code path.
 func FormatMessageItemWithMergePrefetch(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}) map[string]interface{} {
-	return formatMessageItem(m, runtime, nameCache, mergePrefetch)
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, false)
 }
 
-func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}) map[string]interface{} {
+// FormatMessageItemWithMergePrefetchOpts is FormatMessageItemWithMergePrefetch
+// with an explicit extractResources gate. When extractResources is true and
+// the message carries downloadable resources, a "resources" block (ref list
+// without local_path/size_bytes) is attached for the download enrichment stage
+// to fill. The other entry points are thin extractResources=false wrappers, so
+// default output is unchanged.
+func FormatMessageItemWithMergePrefetchOpts(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
+	return formatMessageItem(m, runtime, nameCache, mergePrefetch, extractResources)
+}
+
+func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext, nameCache map[string]string, mergePrefetch map[string][]map[string]interface{}, extractResources bool) map[string]interface{} {
 	msgType, _ := m["msg_type"].(string)
 	messageId, _ := m["message_id"].(string)
 	mentions, _ := m["mentions"].([]interface{})
@@ -152,8 +162,9 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 	updated, _ := m["updated"].(bool)
 
 	content := ""
+	rawContent := ""
 	if body, ok := m["body"].(map[string]interface{}); ok {
-		rawContent, _ := body["content"].(string)
+		rawContent, _ = body["content"].(string)
 		content = ConvertBodyContent(msgType, &ConvertContext{
 			RawContent:           rawContent,
 			MentionMap:           BuildMentionKeyMap(mentions),
@@ -230,6 +241,20 @@ func formatMessageItem(m map[string]interface{}, runtime *common.RuntimeContext,
 			})
 		}
 		msg["mentions"] = simplified
+	}
+
+	if extractResources {
+		if refs := ExtractResourceRefs(msgType, rawContent, messageId, mergePrefetch); len(refs) > 0 {
+			resources := make([]map[string]interface{}, 0, len(refs))
+			for _, r := range refs {
+				resources = append(resources, map[string]interface{}{
+					"message_id": r.MessageID,
+					"key":        r.Key,
+					"type":       r.Type,
+				})
+			}
+			msg["resources"] = resources
+		}
 	}
 
 	return msg

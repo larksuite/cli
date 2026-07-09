@@ -51,7 +51,7 @@ var SheetInfo = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindRead, "get_sheet_structure", sheetInfoInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -136,7 +136,7 @@ var DimInsert = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -164,18 +164,18 @@ func dimInsertInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		return nil, err
 	}
 	if !runtime.Changed("position") {
-		return nil, common.FlagErrorf("--position is required")
+		return nil, sheetsValidationForFlag("position", "--position is required")
 	}
 	if !runtime.Changed("count") {
-		return nil, common.FlagErrorf("--count is required")
+		return nil, sheetsValidationForFlag("count", "--count is required")
 	}
 	position := strings.TrimSpace(runtime.Str("position"))
 	if _, _, err := parseA1Position(position); err != nil {
-		return nil, common.FlagErrorf("invalid --position %q: %v", position, err)
+		return nil, sheetsValidationForFlag("position", "invalid --position %q: %v", position, err)
 	}
 	count := runtime.Int("count")
 	if count <= 0 {
-		return nil, common.FlagErrorf("--count must be > 0 (got %d)", count)
+		return nil, sheetsValidationForFlag("count", "--count must be > 0 (got %d)", count)
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -211,7 +211,7 @@ var DimDelete = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -300,7 +300,7 @@ var DimFreeze = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -326,13 +326,13 @@ func dimFreezeInput(runtime flagView, token, sheetID, sheetName string) (map[str
 		return nil, err
 	}
 	if !runtime.Changed("dimension") {
-		return nil, common.FlagErrorf("--dimension is required")
+		return nil, sheetsValidationForFlag("dimension", "--dimension is required")
 	}
 	if !runtime.Changed("count") {
-		return nil, common.FlagErrorf("--count is required (0 unfreezes)")
+		return nil, sheetsValidationForFlag("count", "--count is required (0 unfreezes)")
 	}
 	if runtime.Int("count") < 0 {
-		return nil, common.FlagErrorf("--count must be >= 0")
+		return nil, sheetsValidationForFlag("count", "--count must be >= 0")
 	}
 	dim := runtime.Str("dimension")
 	count := runtime.Int("count")
@@ -361,11 +361,11 @@ func dimRangeOpInput(runtime flagView, token, sheetID, sheetName, op string) (ma
 		return nil, err
 	}
 	if !runtime.Changed("range") {
-		return nil, common.FlagErrorf("--range is required")
+		return nil, sheetsValidationForFlag("range", "--range is required")
 	}
 	rangeStr := strings.TrimSpace(runtime.Str("range"))
 	if _, _, _, err := parseA1Range(rangeStr); err != nil {
-		return nil, common.FlagErrorf("invalid --range %q: %v", rangeStr, err)
+		return nil, sheetsValidationForFlag("range", "invalid --range %q: %v", rangeStr, err)
 	}
 	input := map[string]interface{}{
 		"excel_id":  token,
@@ -395,7 +395,7 @@ func newDimRangeOpShortcut(command, desc, op, risk string) common.Shortcut {
 			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -439,7 +439,7 @@ func newDimGroupShortcut(command, desc, op string) common.Shortcut {
 			return invokeToolDryRun(token, ToolKindWrite, "modify_sheet_structure", input)
 		},
 		Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-			token, err := resolveSpreadsheetToken(runtime)
+			token, err := resolveSpreadsheetTokenExec(runtime)
 			if err != nil {
 				return err
 			}
@@ -593,7 +593,7 @@ var DimMove = common.Shortcut{
 			Set("spreadsheet_token", token)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -611,7 +611,7 @@ var DimMove = common.Shortcut{
 			}
 			sheetID = lookedID
 		}
-		data, err := runtime.CallAPI("POST", dimMovePath(token, sheetID), nil, dimMoveBody(runtime))
+		data, err := runtime.CallAPITyped("POST", dimMovePath(token, sheetID), nil, dimMoveBody(runtime))
 		if err != nil {
 			return err
 		}
@@ -632,20 +632,20 @@ type dimMovePlan struct {
 // target dimension matches the source. Used by both Validate and Execute.
 func buildDimMovePlan(runtime flagView) (*dimMovePlan, error) {
 	if !runtime.Changed("source-range") || !runtime.Changed("target") {
-		return nil, common.FlagErrorf("--source-range and --target are required")
+		return nil, common.ValidationErrorf("--source-range and --target are required").WithParams(sheetsInvalidParam("source-range", "required"), sheetsInvalidParam("target", "required"))
 	}
 	src := strings.TrimSpace(runtime.Str("source-range"))
 	dim, startIdx, endIdx, err := parseA1Range(src)
 	if err != nil {
-		return nil, common.FlagErrorf("invalid --source-range %q: %v", src, err)
+		return nil, sheetsValidationForFlag("source-range", "invalid --source-range %q: %v", src, err)
 	}
 	tgt := strings.TrimSpace(runtime.Str("target"))
 	tgtDim, tgtIdx, err := parseA1Position(tgt)
 	if err != nil {
-		return nil, common.FlagErrorf("invalid --target %q: %v", tgt, err)
+		return nil, sheetsValidationForFlag("target", "invalid --target %q: %v", tgt, err)
 	}
 	if tgtDim != dim {
-		return nil, common.FlagErrorf("--target %q dimension (%s) must match --source-range %q dimension (%s)", tgt, tgtDim, src, dim)
+		return nil, common.ValidationErrorf("--target %q dimension (%s) must match --source-range %q dimension (%s)", tgt, tgtDim, src, dim).WithParams(sheetsInvalidParam("target", "dimension mismatch"), sheetsInvalidParam("source-range", "dimension mismatch"))
 	}
 	return &dimMovePlan{dimension: dim, startIdx: startIdx, endIdx: endIdx, targetIdx: tgtIdx}, nil
 }

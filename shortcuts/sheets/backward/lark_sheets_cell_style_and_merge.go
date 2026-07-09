@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -15,40 +16,40 @@ import (
 func validateBatchStyleData(raw string) error {
 	var data interface{}
 	if err := json.Unmarshal([]byte(raw), &data); err != nil {
-		return common.FlagErrorf("--data must be valid JSON: %v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be valid JSON: %v", err).WithParam("--data")
 	}
 	arr, ok := data.([]interface{})
 	if !ok || len(arr) == 0 {
-		return common.FlagErrorf("--data must be a non-empty JSON array")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be a non-empty JSON array").WithParam("--data")
 	}
 	for i, item := range arr {
 		entry, ok := item.(map[string]interface{})
 		if !ok {
-			return common.FlagErrorf("--data[%d] must be an object with ranges and style", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d] must be an object with ranges and style", i).WithParam("--data")
 		}
 		rangesRaw, ok := entry["ranges"]
 		if !ok {
-			return common.FlagErrorf("--data[%d].ranges is required", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].ranges is required", i).WithParam("--data")
 		}
 		ranges, ok := rangesRaw.([]interface{})
 		if !ok || len(ranges) == 0 {
-			return common.FlagErrorf("--data[%d].ranges must be a non-empty array of strings", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].ranges must be a non-empty array of strings", i).WithParam("--data")
 		}
 		for j, r := range ranges {
 			s, ok := r.(string)
 			if !ok || s == "" {
-				return common.FlagErrorf("--data[%d].ranges[%d] must be a non-empty string", i, j)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].ranges[%d] must be a non-empty string", i, j).WithParam("--data")
 			}
 			if _, _, ok := splitSheetRange(s); !ok {
-				return common.FlagErrorf("--data[%d].ranges[%d] %q must include a sheetId! prefix", i, j, s)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].ranges[%d] %q must include a sheetId! prefix", i, j, s).WithParam("--data")
 			}
 		}
 		styleRaw, ok := entry["style"]
 		if !ok {
-			return common.FlagErrorf("--data[%d].style is required", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].style is required", i).WithParam("--data")
 		}
 		if _, ok := styleRaw.(map[string]interface{}); !ok {
-			return common.FlagErrorf("--data[%d].style must be a JSON object", i)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data[%d].style must be a JSON object", i).WithParam("--data")
 		}
 	}
 	return nil
@@ -74,14 +75,14 @@ var SheetSetStyle = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		var style interface{}
 		if err := json.Unmarshal([]byte(runtime.Str("style")), &style); err != nil {
-			return common.FlagErrorf("--style must be valid JSON: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be valid JSON: %v", err).WithParam("--style")
 		}
 		if _, ok := style.(map[string]interface{}); !ok {
-			return common.FlagErrorf("--style must be a JSON object, got %T", style)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be a JSON object, got %T", style).WithParam("--style")
 		}
 		if err := validateSheetRangeInput(runtime.Str("sheet-id"), runtime.Str("range")); err != nil {
 			return err
@@ -115,10 +116,10 @@ var SheetSetStyle = common.Shortcut{
 		r := normalizePointRange(runtime.Str("sheet-id"), runtime.Str("range"))
 		var style interface{}
 		if err := json.Unmarshal([]byte(runtime.Str("style")), &style); err != nil {
-			return common.FlagErrorf("--style must be valid JSON: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be valid JSON: %v", err).WithParam("--style")
 		}
 
-		data, err := runtime.CallAPI("PUT",
+		data, err := runtime.CallAPITyped("PUT",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/style", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{
@@ -154,7 +155,7 @@ var SheetBatchSetStyle = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		return validateBatchStyleData(runtime.Str("data"))
 	},
@@ -181,11 +182,11 @@ var SheetBatchSetStyle = common.Shortcut{
 
 		var data interface{}
 		if err := json.Unmarshal([]byte(runtime.Str("data")), &data); err != nil {
-			return common.FlagErrorf("--data must be valid JSON: %v", err)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--data must be valid JSON: %v", err).WithParam("--data")
 		}
 		normalizeBatchStyleRanges(data)
 
-		result, err := runtime.CallAPI("PUT",
+		result, err := runtime.CallAPITyped("PUT",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/styles_batch_update", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{
@@ -242,7 +243,7 @@ var SheetMergeCells = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		if err := validateSheetRangeInput(runtime.Str("sheet-id"), runtime.Str("range")); err != nil {
 			return err
@@ -271,7 +272,7 @@ var SheetMergeCells = common.Shortcut{
 
 		r := normalizeSheetRange(runtime.Str("sheet-id"), runtime.Str("range"))
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/merge_cells", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{
@@ -306,7 +307,7 @@ var SheetUnmergeCells = common.Shortcut{
 			token = extractSpreadsheetToken(runtime.Str("url"))
 		}
 		if token == "" {
-			return common.FlagErrorf("specify --url or --spreadsheet-token")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 		}
 		if err := validateSheetRangeInput(runtime.Str("sheet-id"), runtime.Str("range")); err != nil {
 			return err
@@ -334,7 +335,7 @@ var SheetUnmergeCells = common.Shortcut{
 
 		r := normalizeSheetRange(runtime.Str("sheet-id"), runtime.Str("range"))
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/unmerge_cells", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{

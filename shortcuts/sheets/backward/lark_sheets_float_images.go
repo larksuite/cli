@@ -7,14 +7,33 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const sheetImageParentType = "sheet_image"
+// Drive media parent_type values for uploading an image into a spreadsheet.
+// Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
+// synthetic token prefixed with "fake_office_" and the backend requires
+// "office_sheet_file" instead.
+const (
+	sheetImageParentType      = "sheet_image"
+	officeSheetFileParentType = "office_sheet_file"
+	fakeOfficeTokenPrefix     = "fake_office_"
+)
+
+// sheetMediaParentType returns the drive media parent_type to use when
+// uploading an image whose parent_node is spreadsheetToken, mapping the
+// "fake_office_" imported-spreadsheet token prefix to "office_sheet_file".
+func sheetMediaParentType(spreadsheetToken string) string {
+	if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {
+		return officeSheetFileParentType
+	}
+	return sheetImageParentType
+}
 
 var SheetMediaUpload = common.Shortcut{
 	Service:     "sheets",
@@ -49,7 +68,7 @@ var SheetMediaUpload = common.Shortcut{
 				POST("/open-apis/drive/v1/medias/upload_prepare").
 				Body(map[string]interface{}{
 					"file_name":   fileName,
-					"parent_type": sheetImageParentType,
+					"parent_type": sheetMediaParentType(parentNode),
 					"parent_node": parentNode,
 					"size":        "<file_size>",
 				}).
@@ -71,7 +90,7 @@ var SheetMediaUpload = common.Shortcut{
 			POST("/open-apis/drive/v1/medias/upload_all").
 			Body(map[string]interface{}{
 				"file_name":   fileName,
-				"parent_type": sheetImageParentType,
+				"parent_type": sheetMediaParentType(parentNode),
 				"parent_node": parentNode,
 				"size":        "<file_size>",
 				"file":        "@" + filePath,
@@ -115,10 +134,14 @@ var SheetMediaUpload = common.Shortcut{
 func validateSheetMediaUploadFile(runtime *common.RuntimeContext, filePath string) (string, fileio.FileInfo, error) {
 	stat, err := runtime.FileIO().Stat(filePath)
 	if err != nil {
-		return "", nil, common.WrapInputStatError(err, "file not found")
+		wrapped := common.WrapInputStatErrorTyped(err, "file not found")
+		if v, ok := wrapped.(*errs.ValidationError); ok {
+			return "", nil, v.WithParam("--file")
+		}
+		return "", nil, wrapped
 	}
 	if !stat.Mode().IsRegular() {
-		return "", nil, output.ErrValidation("file must be a regular file: %s", filePath)
+		return "", nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
 	}
 	return filePath, stat, nil
 }
@@ -131,27 +154,28 @@ func resolveSheetMediaUploadParent(runtime *common.RuntimeContext) (string, erro
 		}
 	}
 	if token == "" {
-		return "", common.FlagErrorf("specify --url or --spreadsheet-token")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 	}
 	return token, nil
 }
 
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
+	parentType := sheetMediaParentType(parentNode)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		pn := parentNode
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
-			ParentType: sheetImageParentType,
+			ParentType: parentType,
 			ParentNode: &pn,
 		})
 	}
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: sheetImageParentType,
+		ParentType: parentType,
 		ParentNode: parentNode,
 	})
 }
@@ -181,7 +205,7 @@ func validateFloatImageToken(runtime *common.RuntimeContext) (string, error) {
 		}
 	}
 	if token == "" {
-		return "", common.FlagErrorf("specify --url or --spreadsheet-token")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "specify --url or --spreadsheet-token").WithParams(errs.InvalidParam{Name: "--url", Reason: "required; specify one"}, errs.InvalidParam{Name: "--spreadsheet-token", Reason: "required; specify one"})
 	}
 	return token, nil
 }
@@ -194,7 +218,7 @@ func validateFloatImageRange(sheetID, rangeVal string) error {
 		return err
 	}
 	if prefix, _, ok := splitSheetRange(rangeVal); ok && sheetID != "" && prefix != sheetID {
-		return common.FlagErrorf("--range prefix %q does not match --sheet-id %q", prefix, sheetID)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--range prefix %q does not match --sheet-id %q", prefix, sheetID).WithParam("--range")
 	}
 	return nil
 }
@@ -206,7 +230,7 @@ func validateFloatImageUpdatePayload(runtime *common.RuntimeContext) error {
 		runtime.Cmd.Flags().Changed("offset-x") ||
 		runtime.Cmd.Flags().Changed("offset-y")
 	if !hasField {
-		return common.FlagErrorf("specify at least one of --range, --width, --height, --offset-x, --offset-y to update")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --range, --width, --height, --offset-x, --offset-y to update").WithParams(errs.InvalidParam{Name: "--range", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--width", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--height", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--offset-x", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--offset-y", Reason: "required; specify at least one"})
 	}
 	return nil
 }
@@ -214,22 +238,22 @@ func validateFloatImageUpdatePayload(runtime *common.RuntimeContext) error {
 func validateFloatImageDims(runtime *common.RuntimeContext) error {
 	if runtime.Cmd.Flags().Changed("width") {
 		if v := runtime.Int("width"); v < 20 {
-			return common.FlagErrorf("--width must be >= 20 pixels, got %d", v)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--width must be >= 20 pixels, got %d", v).WithParam("--width")
 		}
 	}
 	if runtime.Cmd.Flags().Changed("height") {
 		if v := runtime.Int("height"); v < 20 {
-			return common.FlagErrorf("--height must be >= 20 pixels, got %d", v)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--height must be >= 20 pixels, got %d", v).WithParam("--height")
 		}
 	}
 	if runtime.Cmd.Flags().Changed("offset-x") {
 		if v := runtime.Int("offset-x"); v < 0 {
-			return common.FlagErrorf("--offset-x must be >= 0, got %d", v)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--offset-x must be >= 0, got %d", v).WithParam("--offset-x")
 		}
 	}
 	if runtime.Cmd.Flags().Changed("offset-y") {
 		if v := runtime.Int("offset-y"); v < 0 {
-			return common.FlagErrorf("--offset-y must be >= 0, got %d", v)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--offset-y must be >= 0, got %d", v).WithParam("--offset-y")
 		}
 	}
 	return nil
@@ -304,7 +328,7 @@ var SheetCreateFloatImage = common.Shortcut{
 		if s := runtime.Str("float-image-id"); s != "" {
 			body["float_image_id"] = s
 		}
-		data, err := runtime.CallAPI("POST", floatImageBasePath(token, runtime.Str("sheet-id")), nil, body)
+		data, err := runtime.CallAPITyped("POST", floatImageBasePath(token, runtime.Str("sheet-id")), nil, body)
 		if err != nil {
 			return err
 		}
@@ -353,7 +377,7 @@ var SheetUpdateFloatImage = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFloatImageToken(runtime)
 		body := buildFloatImageBody(runtime, false)
-		data, err := runtime.CallAPI("PATCH", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, body)
+		data, err := runtime.CallAPITyped("PATCH", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, body)
 		if err != nil {
 			return err
 		}
@@ -387,7 +411,7 @@ var SheetGetFloatImage = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFloatImageToken(runtime)
-		data, err := runtime.CallAPI("GET", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, nil)
+		data, err := runtime.CallAPITyped("GET", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, nil)
 		if err != nil {
 			return err
 		}
@@ -420,7 +444,7 @@ var SheetListFloatImages = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFloatImageToken(runtime)
-		data, err := runtime.CallAPI("GET", floatImageBasePath(token, runtime.Str("sheet-id"))+"/query", nil, nil)
+		data, err := runtime.CallAPITyped("GET", floatImageBasePath(token, runtime.Str("sheet-id"))+"/query", nil, nil)
 		if err != nil {
 			return err
 		}
@@ -454,7 +478,7 @@ var SheetDeleteFloatImage = common.Shortcut{
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateFloatImageToken(runtime)
-		data, err := runtime.CallAPI("DELETE", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, nil)
+		data, err := runtime.CallAPITyped("DELETE", floatImageItemPath(token, runtime.Str("sheet-id"), runtime.Str("float-image-id")), nil, nil)
 		if err != nil {
 			return err
 		}

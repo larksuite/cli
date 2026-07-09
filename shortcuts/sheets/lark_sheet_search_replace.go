@@ -36,7 +36,7 @@ var CellsSearch = common.Shortcut{
 			return err
 		}
 		if strings.TrimSpace(runtime.Str("find")) == "" {
-			return common.FlagErrorf("--find is required")
+			return sheetsValidationForFlag("find", "--find is required")
 		}
 		return nil
 	},
@@ -46,7 +46,7 @@ var CellsSearch = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindRead, "search_data", searchInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ var CellsReplace = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "replace_data", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -151,10 +151,10 @@ func replaceInput(runtime flagView, token, sheetID, sheetName string) (map[strin
 		return nil, err
 	}
 	if strings.TrimSpace(runtime.Str("find")) == "" {
-		return nil, common.FlagErrorf("--find is required")
+		return nil, sheetsValidationForFlag("find", "--find is required")
 	}
 	if !runtime.Changed("replacement") {
-		return nil, common.FlagErrorf("--replacement is required (pass an empty string to delete matches)")
+		return nil, sheetsValidationForFlag("replacement", "--replacement is required (pass an empty string to delete matches)")
 	}
 	input := map[string]interface{}{
 		"excel_id":     token,

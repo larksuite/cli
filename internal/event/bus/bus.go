@@ -262,19 +262,41 @@ func (b *Bus) handleConn(conn net.Conn) {
 
 // handleHello registers a consume connection with the hub; reader carries bytes already pulled off conn.
 func (b *Bus) handleHello(conn net.Conn, reader *bufio.Reader, hello *protocol.Hello) {
-	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID)
+	subID := hello.SubscriptionID
+	if subID == "" {
+		subID = hello.EventKey
+	}
+	bc := NewConn(conn, reader, hello.EventKey, hello.EventTypes, hello.PID, subID)
 	bc.SetLogger(b.logger)
 
-	// Register + isFirst under one lock; blocks on any in-progress cleanup lock for the same EventKey.
-	firstForKey := b.hub.RegisterAndIsFirst(bc)
+	// SingleConsumer EventKeys allow only one consumer per SubscriptionID: reject extras at handshake.
+	exclusive := false
+	if def, ok := event.Lookup(hello.EventKey); ok {
+		exclusive = def.SingleConsumer
+	}
+	var firstForKey bool
+	if exclusive {
+		ok, reason := b.hub.TryRegisterExclusive(bc)
+		if !ok {
+			if err := bc.writeFrame(protocol.NewHelloAckRejected("v1", reason)); err != nil {
+				b.logger.Printf("WARN: reject hello_ack write to pid=%d key=%q failed: %v", hello.PID, hello.EventKey, err)
+			}
+			bc.Close()
+			return
+		}
+		firstForKey = true
+	} else {
+		// Register + isFirst under one lock; blocks on any in-progress cleanup lock for the same EventKey.
+		firstForKey = b.hub.RegisterAndIsFirst(bc)
+	}
 
-	bc.SetCheckLastForKey(func(eventKey string) bool {
-		return b.hub.AcquireCleanupLock(eventKey)
+	bc.SetCheckLastForKey(func(scope string) bool {
+		return b.hub.AcquireCleanupLock(scope)
 	})
 	bc.SetOnClose(func(c *Conn) {
 		b.hub.UnregisterAndIsLast(c)
 		// Release is idempotent and must fire on every disconnect path so waiters don't block forever.
-		b.hub.ReleaseCleanupLock(c.EventKey())
+		b.hub.ReleaseCleanupLock(c.SubscriptionID())
 		b.mu.Lock()
 		delete(b.conns, c)
 		remaining := len(b.conns)

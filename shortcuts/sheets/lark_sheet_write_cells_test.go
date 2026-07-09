@@ -4,6 +4,7 @@
 package sheets
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -241,18 +242,16 @@ func TestDropdownSet_HighlightTriState(t *testing.T) {
 // cycles the rest through a built-in palette).
 func TestDropdownSet_ColorsLongerThanOptions(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, DropdownSet, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A2:A4",
 		"--options", `["a","b"]`,
 		"--colors", `["#FFE699","#bff7d9","#ffb3b3"]`,
 		"--dry-run",
 	})
-	if err == nil {
-		t.Fatal("expected --colors length error, got nil")
-	}
-	if !strings.Contains(stderr, "must not exceed dropdown source size") && !strings.Contains(err.Error(), "must not exceed dropdown source size") {
-		t.Errorf("error message missing length-overflow hint:\nerr=%v\nstderr=%s", err, stderr)
+	ve := requireValidation(t, err, "must not exceed dropdown source size")
+	if ve.Param != "--colors" {
+		t.Errorf("param = %q, want --colors", ve.Param)
 	}
 }
 
@@ -318,7 +317,7 @@ func TestDropdownSet_ListFromRange(t *testing.T) {
 // must be refused).
 func TestDropdownSet_ListFromRange_ColorsLongerThanCells(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, DropdownSet, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "B2:B21",
 		"--source-range", "Sheet1!T1:T3",
@@ -326,11 +325,9 @@ func TestDropdownSet_ListFromRange_ColorsLongerThanCells(t *testing.T) {
 		"--highlight",
 		"--dry-run",
 	})
-	if err == nil {
-		t.Fatal("expected --colors length error, got nil")
-	}
-	if !strings.Contains(stderr, "must not exceed dropdown source size") && !strings.Contains(err.Error(), "must not exceed dropdown source size") {
-		t.Errorf("error message missing source-size hint:\nerr=%v\nstderr=%s", err, stderr)
+	ve := requireValidation(t, err, "must not exceed dropdown source size")
+	if ve.Param != "--colors" {
+		t.Errorf("param = %q, want --colors", ve.Param)
 	}
 }
 
@@ -338,36 +335,26 @@ func TestDropdownSet_ListFromRange_ColorsLongerThanCells(t *testing.T) {
 // --source-range.
 func TestDropdownSet_XorBothSet(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, DropdownSet, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "B2:B21",
 		"--options", `["a","b"]`,
 		"--source-range", "Sheet1!T1:T3",
 		"--dry-run",
 	})
-	if err == nil {
-		t.Fatal("expected XOR error, got nil")
-	}
-	if !strings.Contains(stderr, "mutually exclusive") && !strings.Contains(err.Error(), "mutually exclusive") {
-		t.Errorf("error message missing XOR hint:\nerr=%v\nstderr=%s", err, stderr)
-	}
+	requireValidation(t, err, "mutually exclusive")
 }
 
 // TestDropdownSet_XorNeitherSet rejects passing neither --options nor
 // --source-range.
 func TestDropdownSet_XorNeitherSet(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, DropdownSet, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "B2:B21",
 		"--dry-run",
 	})
-	if err == nil {
-		t.Fatal("expected required-one error, got nil")
-	}
-	if !strings.Contains(stderr, "one of --options") && !strings.Contains(err.Error(), "one of --options") {
-		t.Errorf("error message missing required-one hint:\nerr=%v\nstderr=%s", err, stderr)
-	}
+	requireValidation(t, err, "one of --options")
 }
 
 // TestCellsSetStyle_FlatFlags verifies that the 11 flat style flags +
@@ -400,30 +387,60 @@ func TestCellsSetStyle_FlatFlags(t *testing.T) {
 
 func TestCellsSetStyle_RequiresAtLeastOneFlag(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, CellsSetStyle, []string{
+	_, _, err := runShortcutCapturingErr(t, CellsSetStyle, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:B2", "--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "at least one style flag") {
-		t.Errorf("expected style-flag guard; got=%s|%s|%v", stdout, stderr, err)
-	}
+	requireValidation(t, err, "at least one style flag")
 }
 
 func TestCellsSet_RequiresJSONArray(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, CellsSet, []string{
+	_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1", "--cells", `{"foo":"bar"}`, "--dry-run",
 	})
-	if err == nil {
-		t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-	}
 	// Schema validator fires first now: "--cells: expected type \"array\", got \"object\"".
 	// Either the schema phrasing or the legacy requireJSONArray phrasing is
 	// acceptable — both pin the same contract.
-	combined := stdout + stderr + err.Error()
-	if !strings.Contains(combined, `expected type "array"`) && !strings.Contains(combined, "must be a JSON array") {
-		t.Errorf("expected array-type guard; got=%s|%s|%v", stdout, stderr, err)
+	ve := requireValidation(t, err, "")
+	if !strings.Contains(ve.Message, `expected type "array"`) && !strings.Contains(ve.Message, "must be a JSON array") {
+		t.Errorf("expected array-type guard; got message=%q", ve.Message)
+	}
+}
+
+// TestCellsSet_RejectsUnsupportedMentionType pins the mention_type enum in
+// data/flag-schemas.json (synced from the upstream tool schema): a rich_text
+// mention whose mention_type is outside MENTION_FILE_TYPE (here 6 = cloud
+// shared folder) is rejected by the schema validator at flag-parse time,
+// before it can reach the server and blow up pb serialization
+// ("mentionFileInfo.fileType: enum value expected").
+func TestCellsSet_RejectsUnsupportedMentionType(t *testing.T) {
+	t.Parallel()
+	cells := `[[{"rich_text":[{"type":"mention","text":"x","mention_type":6,"mention_token":"t"}]}]]`
+	_, _, err := runShortcutCapturingErr(t, CellsSet, []string{
+		"--url", testURL, "--sheet-id", testSheetID,
+		"--range", "A1", "--cells", cells, "--dry-run",
+	})
+	ve := requireValidation(t, err, "mention_type")
+	if !strings.Contains(ve.Message, "not in enum") {
+		t.Errorf("expected enum guard; got message=%q", ve.Message)
+	}
+}
+
+// TestCellsSet_AllowsValidMentionTypes confirms the guard lets through a
+// user @mention (mention_type 0) and a render-supported file type (22 = DOCX).
+func TestCellsSet_AllowsValidMentionTypes(t *testing.T) {
+	t.Parallel()
+	for _, mt := range []int{0, 22} {
+		cells := fmt.Sprintf(`[[{"rich_text":[{"type":"mention","text":"x","mention_type":%d,"mention_token":"t"}]}]]`, mt)
+		stdout, stderr, err := runShortcutCapturingErr(t, CellsSet, []string{
+			"--url", testURL, "--sheet-id", testSheetID,
+			"--range", "A1", "--cells", cells, "--dry-run",
+		})
+		if err != nil {
+			t.Errorf("mention_type %d: unexpected error: stdout=%s stderr=%s err=%v", mt, stdout, stderr, err)
+		}
 	}
 }
 
@@ -479,14 +496,40 @@ func TestCellsSetImage_DryRun(t *testing.T) {
 	}
 }
 
+// TestCellsSetImage_DryRunOfficeParentType confirms that an imported "office"
+// spreadsheet (token prefixed with "fake_office_") uploads with
+// parent_type=office_sheet_file instead of the native sheet_image, and that the
+// preview's parent_node carries the same token.
+func TestCellsSetImage_DryRunOfficeParentType(t *testing.T) {
+	t.Parallel()
+	const officeToken = "fake_office_abc123"
+	calls := parseDryRunAPI(t, CellsSetImage, []string{
+		"--spreadsheet-token", officeToken, "--sheet-id", testSheetID,
+		"--range", "A1",
+		"--image", "./README.md", // any existing-shaped path; dry-run skips stat
+	})
+	if len(calls) != 2 {
+		t.Fatalf("api calls = %d, want 2 (upload + set_cell_range)", len(calls))
+	}
+	upload := calls[0].(map[string]interface{})
+	ubody, _ := upload["body"].(map[string]interface{})
+	if ubody["parent_type"] != officeSheetFileParentType {
+		t.Errorf("parent_type = %v, want %s", ubody["parent_type"], officeSheetFileParentType)
+	}
+	if ubody["parent_node"] != officeToken {
+		t.Errorf("parent_node = %v, want %s", ubody["parent_node"], officeToken)
+	}
+}
+
 func TestCellsSetImage_RangeMustBeSingleCell(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, CellsSetImage, []string{
+	_, _, err := runShortcutCapturingErr(t, CellsSetImage, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1:B2", "--image", "./foo.png", "--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must be exactly one cell") {
-		t.Errorf("expected single-cell guard; got=%s|%s|%v", stdout, stderr, err)
+	ve := requireValidation(t, err, "must be exactly one cell")
+	if ve.Param != "--range" {
+		t.Errorf("param = %q, want --range", ve.Param)
 	}
 }
 
@@ -495,12 +538,13 @@ func TestCellsSetImage_RangeMustBeSingleCell(t *testing.T) {
 // same way as a real run instead of printing a misleading success preview.
 func TestCellsSetImage_DryRunRejectsUnsafePath(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, CellsSetImage, []string{
+	_, _, err := runShortcutCapturingErr(t, CellsSetImage, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--range", "A1", "--image", "/etc/hosts", "--dry-run",
 	})
-	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "must be a relative path") {
-		t.Errorf("expected unsafe-path guard during dry-run; got=%s|%s|%v", stdout, stderr, err)
+	ve := requireValidation(t, err, "must be a relative path")
+	if ve.Param != "--image" {
+		t.Errorf("param = %q, want --image", ve.Param)
 	}
 }
 

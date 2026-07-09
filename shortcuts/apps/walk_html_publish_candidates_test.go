@@ -113,6 +113,102 @@ func TestIsUnsafeRelPath(t *testing.T) {
 	}
 }
 
+func TestWalkHTMLPublishCandidates_ExcludesGitDir(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"index.html":               "<html></html>",
+		".git/config":              "[core]\n",
+		".git/HEAD":                "ref: refs/heads/main\n",
+		".git/objects/ab/cdef123":  "binary",
+		".github/workflows/ci.yml": "on: push\n",
+		".gitignore":               "node_modules\n",
+	}
+	for rel, content := range files {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	got, err := walkHTMLPublishCandidates(newTestFIO(), dir)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	rels := make(map[string]bool)
+	for _, c := range got {
+		rels[c.RelPath] = true
+	}
+	// .git 子树整体排除
+	for _, banned := range []string{".git/config", ".git/HEAD", ".git/objects/ab/cdef123"} {
+		if rels[banned] {
+			t.Errorf("%q should be excluded from candidates", banned)
+		}
+	}
+	// 相邻名不受影响
+	for _, kept := range []string{"index.html", ".github/workflows/ci.yml", ".gitignore"} {
+		if !rels[kept] {
+			t.Errorf("%q should be kept in candidates, got %+v", kept, got)
+		}
+	}
+}
+
+func TestWalkHTMLPublishCandidates_ExcludesNestedGitDir(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"index.html":      "<html></html>",
+		"sub/.git/config": "[core]\n",
+		"sub/page.html":   "<html></html>",
+	}
+	for rel, content := range files {
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	got, err := walkHTMLPublishCandidates(newTestFIO(), dir)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	rels := make(map[string]bool)
+	for _, c := range got {
+		rels[c.RelPath] = true
+	}
+	if rels["sub/.git/config"] {
+		t.Errorf("nested sub/.git/config should be excluded, got %+v", got)
+	}
+	if !rels["sub/page.html"] || !rels["index.html"] {
+		t.Errorf("non-git files should be kept, got %+v", got)
+	}
+}
+
+func TestWalkHTMLPublishCandidates_ExcludesGitFile(t *testing.T) {
+	// submodule / worktree 场景：.git 是个 gitdir 指针文件，不是目录。
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "index.html"), []byte("<html></html>"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /elsewhere\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := walkHTMLPublishCandidates(newTestFIO(), dir)
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	for _, c := range got {
+		if c.RelPath == ".git" {
+			t.Errorf(".git pointer file should be excluded, got %+v", got)
+		}
+	}
+}
+
 func TestWalkHTMLPublishCandidates_SymlinkSkipped(t *testing.T) {
 	// Walker 只接受 regular file —— symlink 跳过（避免 loop + out-of-root 引用，
 	// 且 fio.Open 对 symlink 行为不一致）。real.html 仍然被收，link.html 不在结果里。

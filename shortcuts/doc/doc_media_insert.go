@@ -15,8 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -67,10 +67,16 @@ var DocMediaInsert = common.Shortcut{
 		filePath := runtime.Str("file")
 		fromClipboard := runtime.Bool("from-clipboard")
 		if filePath == "" && !fromClipboard {
-			return common.FlagErrorf("one of --file or --from-clipboard is required")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "one of --file or --from-clipboard is required").WithParams(
+				errs.InvalidParam{Name: "--file", Reason: "provide either --file or --from-clipboard"},
+				errs.InvalidParam{Name: "--from-clipboard", Reason: "provide either --file or --from-clipboard"},
+			)
 		}
 		if filePath != "" && fromClipboard {
-			return common.FlagErrorf("--file and --from-clipboard are mutually exclusive")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file and --from-clipboard are mutually exclusive").WithParams(
+				errs.InvalidParam{Name: "--file", Reason: "mutually exclusive with --from-clipboard"},
+				errs.InvalidParam{Name: "--from-clipboard", Reason: "mutually exclusive with --file"},
+			)
 		}
 
 		docRef, err := parseDocumentRef(runtime.Str("doc"))
@@ -78,7 +84,7 @@ var DocMediaInsert = common.Shortcut{
 			return err
 		}
 		if docRef.Kind == "doc" {
-			return output.ErrValidation("docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx").WithParam("--doc")
 		}
 		rawSelection := runtime.Str("selection-with-ellipsis")
 		trimmedSelection := strings.TrimSpace(rawSelection)
@@ -87,36 +93,43 @@ var DocMediaInsert = common.Shortcut{
 		// trim-to-empty would make +media-insert fall back to append-mode and
 		// write at the wrong location.
 		if rawSelection != "" && trimmedSelection == "" {
-			return output.ErrValidation("--selection-with-ellipsis must not be blank or whitespace-only")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--selection-with-ellipsis must not be blank or whitespace-only").WithParam("--selection-with-ellipsis")
 		}
 		if runtime.Bool("before") && trimmedSelection == "" {
-			return output.ErrValidation("--before requires --selection-with-ellipsis")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--before requires --selection-with-ellipsis").WithParam("--before")
 		}
 		if view := runtime.Str("file-view"); view != "" {
 			if _, ok := fileViewMap[view]; !ok {
-				return output.ErrValidation("invalid --file-view value %q, expected one of: card | preview | inline", view)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --file-view value %q, expected one of: card | preview | inline", view).WithParam("--file-view")
 			}
 			if runtime.Str("type") != "file" {
-				return output.ErrValidation("--file-view only applies when --type=file")
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--file-view only applies when --type=file").WithParam("--file-view")
 			}
 		}
 		widthChanged := runtime.Changed("width")
 		heightChanged := runtime.Changed("height")
 		if (widthChanged || heightChanged) && runtime.Str("type") != "image" {
-			return output.ErrValidation("--width/--height only apply when --type=image")
+			var params []errs.InvalidParam
+			if widthChanged {
+				params = append(params, errs.InvalidParam{Name: "--width", Reason: "only applies when --type=image"})
+			}
+			if heightChanged {
+				params = append(params, errs.InvalidParam{Name: "--height", Reason: "only applies when --type=image"})
+			}
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--width/--height only apply when --type=image").WithParams(params...)
 		}
 		if widthChanged && runtime.Int("width") <= 0 {
-			return output.ErrValidation("--width must be a positive integer")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--width must be a positive integer").WithParam("--width")
 		}
 		if heightChanged && runtime.Int("height") <= 0 {
-			return output.ErrValidation("--height must be a positive integer")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--height must be a positive integer").WithParam("--height")
 		}
 		const maxDimension = 10000
 		if widthChanged && runtime.Int("width") > maxDimension {
-			return output.ErrValidation("--width must not exceed %d pixels", maxDimension)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--width must not exceed %d pixels", maxDimension).WithParam("--width")
 		}
 		if heightChanged && runtime.Int("height") > maxDimension {
-			return output.ErrValidation("--height must not exceed %d pixels", maxDimension)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--height must not exceed %d pixels", maxDimension).WithParam("--height")
 		}
 		return nil
 	},
@@ -269,10 +282,10 @@ var DocMediaInsert = common.Shortcut{
 		} else {
 			stat, err := runtime.FileIO().Stat(filePath)
 			if err != nil {
-				return common.WrapInputStatError(err, "file not found")
+				return wrapDocInputFileErr(err, "file not found")
 			}
 			if !stat.Mode().IsRegular() {
-				return output.ErrValidation("file must be a regular file: %s", filePath)
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "file must be a regular file: %s", filePath).WithParam("--file")
 			}
 			fileSize = stat.Size()
 			fileName = filepath.Base(filePath)
@@ -284,7 +297,7 @@ var DocMediaInsert = common.Shortcut{
 		}
 
 		// Step 1: Get document root block to find where to insert
-		rootData, err := runtime.CallAPI("GET",
+		rootData, err := runtime.CallAPITyped("GET",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s", validate.EncodePathSegment(documentID), validate.EncodePathSegment(documentID)),
 			nil, nil)
 		if err != nil {
@@ -318,7 +331,7 @@ var DocMediaInsert = common.Shortcut{
 		// Step 2: Create an empty block at the target position
 		fmt.Fprintf(runtime.IO().ErrOut, "Creating block at index %d\n", insertIndex)
 
-		createData, err := runtime.CallAPI("POST",
+		createData, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children", validate.EncodePathSegment(documentID), validate.EncodePathSegment(parentBlockID)),
 			nil, buildCreateBlockData(mediaType, insertIndex, fileViewType))
 		if err != nil {
@@ -328,7 +341,7 @@ var DocMediaInsert = common.Shortcut{
 		blockId, uploadParentNode, replaceBlockID := extractCreatedBlockTargets(createData, mediaType)
 
 		if blockId == "" {
-			return output.Errorf(output.ExitAPI, "api_error", "failed to create block: no block_id returned")
+			return errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to create block: no block_id returned")
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Block created: %s\n", blockId)
@@ -340,7 +353,7 @@ var DocMediaInsert = common.Shortcut{
 		// later steps should try to remove it instead of leaving an empty artifact.
 		rollback := func() error {
 			fmt.Fprintf(runtime.IO().ErrOut, "Rolling back: deleting block %s\n", blockId)
-			_, err := runtime.CallAPI("DELETE",
+			_, err := runtime.CallAPITyped("DELETE",
 				fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s/children/batch_delete", validate.EncodePathSegment(documentID), validate.EncodePathSegment(parentBlockID)),
 				nil, buildDeleteBlockData(insertIndex))
 			return err
@@ -379,15 +392,21 @@ var DocMediaInsert = common.Shortcut{
 				} else {
 					f, openErr := runtime.FileIO().Open(filePath)
 					if openErr != nil {
-						return withRollbackWarning(output.ErrValidation(
-							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+						return withRollbackWarning(errs.NewValidationError(errs.SubtypeInvalidArgument,
+							"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName).WithCause(openErr).WithParams(
+							errs.InvalidParam{Name: "--width", Reason: "provide explicitly; source image dimensions could not be detected"},
+							errs.InvalidParam{Name: "--height", Reason: "provide explicitly; source image dimensions could not be detected"},
+						))
 					}
 					nativeW, nativeH, dimErr = detectImageDimensions(f)
 					f.Close()
 				}
 				if dimErr != nil {
-					return withRollbackWarning(output.ErrValidation(
-						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName))
+					return withRollbackWarning(errs.NewValidationError(errs.SubtypeInvalidArgument,
+						"unable to detect image dimensions from %s for aspect-ratio calculation; provide both --width and --height", fileName).WithCause(dimErr).WithParams(
+						errs.InvalidParam{Name: "--width", Reason: "provide explicitly; source image dimensions could not be detected"},
+						errs.InvalidParam{Name: "--height", Reason: "provide explicitly; source image dimensions could not be detected"},
+					))
 				}
 				dims := computeMissingDimension(userWidth, userHeight, nativeW, nativeH)
 				finalWidth = dims.width
@@ -417,7 +436,7 @@ var DocMediaInsert = common.Shortcut{
 		// Step 4: Bind file token to block via batch_update
 		fmt.Fprintf(runtime.IO().ErrOut, "Binding uploaded media to block %s\n", replaceBlockID)
 
-		if _, err := runtime.CallAPI("PATCH",
+		if _, err := runtime.CallAPITyped("PATCH",
 			fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/batch_update", validate.EncodePathSegment(documentID)),
 			nil, buildBatchUpdateData(replaceBlockID, mediaType, fileToken, alignStr, caption, finalWidth, finalHeight)); err != nil {
 			return withRollbackWarning(err)
@@ -512,10 +531,10 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 	case "docx":
 		return docRef.Token, nil
 	case "doc":
-		return "", output.ErrValidation("docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx").WithParam("--doc")
 	case "wiki":
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
-		data, err := runtime.CallAPI(
+		data, err := runtime.CallAPITyped(
 			"GET",
 			"/open-apis/wiki/v2/spaces/get_node",
 			map[string]interface{}{"token": docRef.Token},
@@ -529,16 +548,16 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 		objType := common.GetString(node, "obj_type")
 		objToken := common.GetString(node, "obj_token")
 		if objType == "" || objToken == "" {
-			return "", output.Errorf(output.ExitAPI, "api_error", "wiki get_node returned incomplete node data")
+			return "", errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki get_node returned incomplete node data")
 		}
 		if objType != "docx" {
-			return "", output.ErrValidation("wiki resolved to %q, but docs +media-insert only supports docx documents", objType)
+			return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "wiki resolved to %q, but docs +media-insert only supports docx documents", objType).WithParam("--doc")
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolved wiki to docx: %s\n", common.MaskToken(objToken))
 		return objToken, nil
 	default:
-		return "", output.ErrValidation("docs +media-insert only supports docx documents")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "docs +media-insert only supports docx documents").WithParam("--doc")
 	}
 }
 
@@ -622,7 +641,7 @@ func buildBatchUpdateData(blockID, mediaType, fileToken, alignStr, caption strin
 func extractAppendTarget(rootData map[string]interface{}, fallbackBlockID string) (parentBlockID string, insertIndex int, children []interface{}, err error) {
 	block, _ := rootData["block"].(map[string]interface{})
 	if len(block) == 0 {
-		return "", 0, nil, output.Errorf(output.ExitAPI, "api_error", "failed to query document root block")
+		return "", 0, nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "failed to query document root block")
 	}
 
 	parentBlockID = fallbackBlockID
@@ -653,12 +672,10 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 
 	matches := common.GetSlice(result, "matches")
 	if len(matches) == 0 {
-		return 0, output.ErrWithHint(
-			output.ExitValidation,
-			"no_match",
-			fmt.Sprintf("locate-doc did not find any block matching selection (%s)", redactSelection(selection)),
-			"check spelling or use 'start...end' syntax to narrow the selection",
-		)
+		return 0, errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"locate-doc did not find any block matching selection (%s)", redactSelection(selection)).
+			WithParam("--selection-with-ellipsis").
+			WithHint("check spelling or use 'start...end' syntax to narrow the selection")
 	}
 	if len(matches) > 1 {
 		// Silently picking the first match surprises users whose selection appears
@@ -682,7 +699,7 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		}
 	}
 	if anchorBlockID == "" {
-		return 0, output.Errorf(output.ExitAPI, "api_error", "locate-doc response missing anchor_block_id")
+		return 0, errs.NewInternalError(errs.SubtypeInvalidResponse, "locate-doc response missing anchor_block_id")
 	}
 	parentBlockID := common.GetString(matchMap, "parent_block_id")
 
@@ -740,7 +757,7 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		nextParent = "" // clear hint after first use
 		if parent == "" || parent == cur {
 			// Need to fetch this block to find its parent.
-			data, err := runtime.CallAPI("GET",
+			data, err := runtime.CallAPITyped("GET",
 				fmt.Sprintf("/open-apis/docx/v1/documents/%s/blocks/%s",
 					validate.EncodePathSegment(documentID), validate.EncodePathSegment(cur)),
 				nil, nil)
@@ -757,12 +774,10 @@ func locateInsertIndex(runtime *common.RuntimeContext, documentID string, select
 		walkDepth++
 	}
 
-	return 0, output.ErrWithHint(
-		output.ExitValidation,
-		"block_not_reachable",
-		fmt.Sprintf("block matching selection (%s) is not reachable from document root", redactSelection(selection)),
-		"try a top-level heading or paragraph as the selection",
-	)
+	return 0, errs.NewValidationError(errs.SubtypeInvalidArgument,
+		"block matching selection (%s) is not reachable from document root", redactSelection(selection)).
+		WithParam("--selection-with-ellipsis").
+		WithHint("try a top-level heading or paragraph as the selection")
 }
 
 func extractCreatedBlockTargets(createData map[string]interface{}, mediaType string) (blockID, uploadParentNode, replaceBlockID string) {

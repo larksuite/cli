@@ -4,7 +4,6 @@
 package sheets
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -21,7 +20,6 @@ func TestCsvPutInput_RangeAliasForStartCell(t *testing.T) {
 		{"start-cell direct (unchanged)", map[string]interface{}{"csv": "a,b", "start-cell": "B2"}, "B2"},
 		{"range alias, single cell", map[string]interface{}{"csv": "a,b", "range": "B2"}, "B2"},
 		{"range alias collapses to top-left", map[string]interface{}{"csv": "a,b", "range": "A1:H17"}, "A1"},
-		{"start-cell wins when both set", map[string]interface{}{"csv": "a,b", "start-cell": "C3", "range": "A1:H17"}, "C3"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -38,6 +36,16 @@ func TestCsvPutInput_RangeAliasForStartCell(t *testing.T) {
 	}
 }
 
+func TestCsvPutInput_RejectsStartCellAndRangeTogether(t *testing.T) {
+	fv := newMapFlagViewForCommand("+csv-put", map[string]interface{}{
+		"csv":        "a,b",
+		"start-cell": "C3",
+		"range":      "A1:H17",
+	})
+	_, err := csvPutInput(fv, "tok", "sid", "")
+	requireValidation(t, err, "--start-cell and --range are mutually exclusive")
+}
+
 // With neither --start-cell nor --range explicitly set, csvPutInput rejects the
 // call instead of silently anchoring at the "A1" flag default. Standalone never
 // reaches this path — cobra's MarkFlagsOneRequired(start-cell, range) catches it
@@ -47,12 +55,7 @@ func TestCsvPutInput_RangeAliasForStartCell(t *testing.T) {
 func TestCsvPutInput_RequiresStartCellOrRange(t *testing.T) {
 	fv := newMapFlagViewForCommand("+csv-put", map[string]interface{}{"csv": "a,b"})
 	_, err := csvPutInput(fv, "tok", "sid", "")
-	if err == nil {
-		t.Fatal("csvPutInput accepted missing start-cell/range; want a required-flag error")
-	}
-	if !strings.Contains(err.Error(), "--start-cell or --range is required") {
-		t.Errorf("error = %q, want it to mention '--start-cell or --range is required'", err.Error())
-	}
+	requireValidation(t, err, "--start-cell or --range is required")
 }
 
 // csvPutWriteRangeFromInput surfaces the real paste footprint so agents can see

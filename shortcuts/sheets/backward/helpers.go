@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -27,7 +27,7 @@ var sheetRangeSeparatorReplacer = strings.NewReplacer(`\ÔºÅ`, "!", `\!`, "!", "Ô
 
 // getFirstSheetID queries the spreadsheet and returns the first sheet's ID.
 func getFirstSheetID(runtime *common.RuntimeContext, spreadsheetToken string) (string, error) {
-	data, err := runtime.CallAPI("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/query", validate.EncodePathSegment(spreadsheetToken)), nil, nil)
+	data, err := runtime.CallAPITyped("GET", fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/query", validate.EncodePathSegment(spreadsheetToken)), nil, nil)
 	if err != nil {
 		return "", err
 	}
@@ -38,7 +38,7 @@ func getFirstSheetID(runtime *common.RuntimeContext, spreadsheetToken string) (s
 			return id, nil
 		}
 	}
-	return "", output.Errorf(output.ExitAPI, "not_found", "no sheets found in this spreadsheet")
+	return "", errs.NewValidationError(errs.SubtypeFailedPrecondition, "no sheets found in this spreadsheet")
 }
 
 // extractSpreadsheetToken extracts spreadsheet token from URL.
@@ -104,7 +104,7 @@ func validateSheetRangeInput(sheetID, input string) error {
 		return nil
 	}
 	if looksLikeRelativeRange(input) {
-		return common.FlagErrorf("--range %q requires --sheet-id or a <sheetId>! prefix", input)
+		return common.ValidationErrorf("--range %q requires --sheet-id or a <sheetId>! prefix", input).WithParam("--range")
 	}
 	return nil
 }
@@ -127,7 +127,7 @@ func validateSingleCellRange(input string) error {
 		if strings.EqualFold(parts[0], parts[1]) {
 			return nil
 		}
-		return common.FlagErrorf("--range %q must be a single cell (e.g. A1 or A1:A1), got a multi-cell span", input)
+		return common.ValidationErrorf("--range %q must be a single cell (e.g. A1 or A1:A1), got a multi-cell span", input).WithParam("--range")
 	}
 	return nil
 }
@@ -197,11 +197,11 @@ func matrixDimensions(values interface{}) (rows, cols int) {
 func offsetCell(cell string, rowOffset, colOffset int) (string, error) {
 	matches := cellRefPattern.FindStringSubmatch(strings.TrimSpace(cell))
 	if len(matches) != 3 {
-		return "", fmt.Errorf("invalid cell reference: %s", cell)
+		return "", fmt.Errorf("invalid cell reference: %s", cell) //nolint:forbidigo // intermediate sentinel; sole caller buildRectRange discards it and falls back
 	}
 	colIndex := columnNameToIndex(matches[1])
 	if colIndex < 1 {
-		return "", fmt.Errorf("invalid column: %s", matches[1])
+		return "", fmt.Errorf("invalid column: %s", matches[1]) //nolint:forbidigo // intermediate sentinel; sole caller buildRectRange discards it and falls back
 	}
 	rowIndex, err := strconv.Atoi(matches[2])
 	if err != nil {

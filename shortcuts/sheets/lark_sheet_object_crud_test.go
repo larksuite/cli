@@ -4,9 +4,12 @@
 package sheets
 
 import (
+	"encoding/json"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -137,25 +140,24 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 		// covered separately in the +pivot-create empty-selector / mutex
 		// tests below.
 		{
-			name: "+pivot-create with placement / source / range flags",
+			name: "+pivot-create with placement / source / target-position flags",
 			sc:   PivotCreate,
 			args: []string{
 				"--url", testURL, "--target-sheet-id", testSheetID,
 				"--properties", `{"rows":[{"field":"A"}]}`,
 				"--source", "Sheet1!A1:F1000",
-				"--range", "F1",
 				"--target-position", "B5",
 			},
 			toolName: "manage_pivot_table_object",
 			wantInput: map[string]interface{}{
-				"excel_id":        testToken,
-				"sheet_id":        testSheetID,
-				"operation":       "create",
-				"target_position": "B5",
+				"excel_id":  testToken,
+				"sheet_id":  testSheetID,
+				"operation": "create",
 				"properties": map[string]interface{}{
 					"rows":   []interface{}{map[string]interface{}{"field": "A"}},
 					"source": "Sheet1!A1:F1000",
-					"range":  "F1",
+					// --target-position 映射到 properties.range。
+					"range": "B5",
 				},
 			},
 		},
@@ -202,7 +204,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 			args: []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--rule-id", "ruleA",
-				"--properties", `{"attrs":[{"operator":"greaterThan","value":"100"}],"style":{"back_color":"#FFD7D7"}}`,
+				"--properties", `{"attrs":[{"compare_type":"greaterThan","value":"100"}],"style":{"back_color":"#FFD7D7"}}`,
 				"--rule-type", "cellIs",
 				"--ranges", `["A1:A100"]`,
 			},
@@ -214,7 +216,7 @@ func TestObjectCRUDShortcuts_DryRun(t *testing.T) {
 				"conditional_format_id": "ruleA",
 				"properties": map[string]interface{}{
 					"rule_type": "cellIs",
-					"attrs":     []interface{}{map[string]interface{}{"operator": "greaterThan", "value": "100"}},
+					"attrs":     []interface{}{map[string]interface{}{"compare_type": "greaterThan", "value": "100"}},
 					"style":     map[string]interface{}{"back_color": "#FFD7D7"},
 					"ranges":    []interface{}{"A1:A100"},
 				},
@@ -471,24 +473,18 @@ func TestPivotCreate_SheetSelectorSemantics(t *testing.T) {
 
 	t.Run("both set is rejected", func(t *testing.T) {
 		t.Parallel()
-		_, stderr, err := runShortcutCapturingErr(t, PivotCreate, []string{
+		_, _, err := runShortcutCapturingErr(t, PivotCreate, []string{
 			"--url", testURL,
 			"--target-sheet-id", testSheetID,
 			"--target-sheet-name", "Sheet1",
 			"--properties", `{"rows":[{"field":"A"}]}`,
 			"--source", "Sheet1!A1:F1000",
 		})
-		if err == nil {
-			t.Fatalf("expected CLI to reject both --target-sheet-id and --target-sheet-name set; stderr=%s", stderr)
-		}
-		combined := stderr + err.Error()
-		if !strings.Contains(combined, "mutually exclusive") {
-			t.Errorf("expected error to say 'mutually exclusive'; got=%s|%v", stderr, err)
-		}
+		ve := requireValidation(t, err, "mutually exclusive")
 		// 错误信息必须用真实的 flag 名（target-*），否则模型按消息提示去
 		// 改 --sheet-id 还是错的。
-		if !strings.Contains(combined, "--target-sheet-id") {
-			t.Errorf("expected error to quote --target-sheet-id flag name; got=%s|%v", stderr, err)
+		if !strings.Contains(ve.Message, "--target-sheet-id") {
+			t.Errorf("expected error to quote --target-sheet-id flag name; got message=%q", ve.Message)
 		}
 	})
 
@@ -507,6 +503,49 @@ func TestPivotCreate_SheetSelectorSemantics(t *testing.T) {
 	})
 }
 
+// TestPivotCreate_TargetPositionRangeMutex regresses the "--target-position
+// and --range cannot both be set" guardrail on +pivot-create. They map to
+// the same wire field (properties.range), so two non-default values are
+// ambiguous; the CLI rejects up front (mirrors the --target-sheet-id /
+// --target-sheet-name mutex). --target-position=A1 is the documented default
+// and is treated as "not set" — pairing it with --range still works.
+func TestPivotCreate_TargetPositionRangeMutex(t *testing.T) {
+	t.Parallel()
+
+	t.Run("both non-default values rejected", func(t *testing.T) {
+		t.Parallel()
+		_, _, err := runShortcutCapturingErr(t, PivotCreate, []string{
+			"--url", testURL,
+			"--target-sheet-id", testSheetID,
+			"--properties", `{"rows":[{"field":"A"}]}`,
+			"--source", "Sheet1!A1:F1000",
+			"--target-position", "B5",
+			"--range", "F1",
+		})
+		ve := requireValidation(t, err, "mutually exclusive")
+		if !strings.Contains(ve.Message, "--target-position") || !strings.Contains(ve.Message, "--range") {
+			t.Errorf("expected error to quote both --target-position and --range; got message=%q", ve.Message)
+		}
+	})
+
+	t.Run("default A1 with --range is accepted (range wins)", func(t *testing.T) {
+		t.Parallel()
+		body := parseDryRunBody(t, PivotCreate, []string{
+			"--url", testURL,
+			"--target-sheet-id", testSheetID,
+			"--properties", `{"rows":[{"field":"A"}]}`,
+			"--source", "Sheet1!A1:F1000",
+			"--target-position", "A1",
+			"--range", "F1",
+		})
+		input := decodeToolInput(t, body, "manage_pivot_table_object")
+		props, _ := input["properties"].(map[string]interface{})
+		if got, _ := props["range"].(string); got != "F1" {
+			t.Errorf("properties.range = %q, want %q", got, "F1")
+		}
+	})
+}
+
 // TestPivotCreate_SchemaValidates exercises the schema-driven
 // validator wired into objectCreateInput. The pivot create schema
 // doesn't constrain rows/columns/values to be present (the backend
@@ -518,35 +557,27 @@ func TestPivotCreate_SchemaValidates(t *testing.T) {
 
 	t.Run("rejects wrong type for rows", func(t *testing.T) {
 		t.Parallel()
-		_, stderr, err := runShortcutCapturingErr(t, PivotCreate, []string{
+		_, _, err := runShortcutCapturingErr(t, PivotCreate, []string{
 			"--url", testURL,
 			"--properties", `{"rows":"not-an-array"}`,
 			"--source", "Sheet1!A1:F1000",
 			"--dry-run",
 		})
-		if err == nil {
-			t.Fatalf("expected schema validator to reject rows=string; stderr=%s", stderr)
-		}
-		combined := stderr + err.Error()
-		if !strings.Contains(combined, "rows") || !strings.Contains(combined, "array") {
-			t.Errorf("expected error to mention rows/array; got=%s|%v", stderr, err)
+		ve := requireValidation(t, err, "rows")
+		if !strings.Contains(ve.Message, "array") {
+			t.Errorf("expected error to mention array; got message=%q", ve.Message)
 		}
 	})
 
 	t.Run("rejects out-of-enum summarize_by", func(t *testing.T) {
 		t.Parallel()
-		_, stderr, err := runShortcutCapturingErr(t, PivotCreate, []string{
+		_, _, err := runShortcutCapturingErr(t, PivotCreate, []string{
 			"--url", testURL,
 			"--properties", `{"values":[{"field":"A","summarize_by":"BOGUS"}]}`,
 			"--source", "Sheet1!A1:F1000",
 			"--dry-run",
 		})
-		if err == nil {
-			t.Fatalf("expected schema validator to reject summarize_by=BOGUS; stderr=%s", stderr)
-		}
-		if !strings.Contains(stderr+err.Error(), "summarize_by") {
-			t.Errorf("expected error to mention summarize_by; got=%s|%v", stderr, err)
-		}
+		requireValidation(t, err, "summarize_by")
 	})
 
 	t.Run("schema-conformant input is accepted", func(t *testing.T) {
@@ -580,14 +611,8 @@ func TestObjectCreate_RequiresSheetSelector(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, stderr, err := runShortcutCapturingErr(t, tt.sc, tt.args)
-			if err == nil {
-				t.Fatalf("expected CLI to reject empty sheet selector for +%s-create; stderr=%s", tt.name, stderr)
-			}
-			combined := stderr + err.Error()
-			if !strings.Contains(combined, "specify at least one of --sheet-id or --sheet-name") {
-				t.Errorf("expected 'specify at least one of --sheet-id or --sheet-name'; got=%s|%v", stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, tt.sc, tt.args)
+			requireValidation(t, err, "specify at least one of --sheet-id or --sheet-name")
 		})
 	}
 }
@@ -598,19 +623,184 @@ func TestObjectCreate_RequiresSheetSelector(t *testing.T) {
 // +sparkline-list, before any server call goes out.
 func TestSparklineUpdate_MissingSparklineID(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, SparklineUpdate, []string{
+	_, _, err := runShortcutCapturingErr(t, SparklineUpdate, []string{
 		"--url", testURL, "--sheet-id", testSheetID, "--group-id", "grpA",
 		"--properties", `{"sparklines":[{"source":"Sheet1!A1:A10"}]}`,
 	})
-	if err == nil {
-		t.Fatalf("expected CLI to reject missing sparkline_id; stderr=%s", stderr)
+	ve := requireValidation(t, err, "missing sparkline_id")
+	if !strings.Contains(ve.Message, "+sparkline-list") {
+		t.Errorf("expected error to point at +sparkline-list; got message=%q", ve.Message)
 	}
-	combined := stderr + err.Error()
-	if !strings.Contains(combined, "missing sparkline_id") {
-		t.Errorf("expected error to mention missing sparkline_id; got=%s|%v", stderr, err)
+}
+
+// TestCondFormatAttrs_ShapeMatchesRuleType regresses the cross-field
+// guard that rejects attrs whose shape doesn't match the sibling
+// rule_type — the gap behind the "缺 color 的 colorScale 脏数据导致表格
+// 打不开" report: a colorScale rule fed cellIs-shaped attrs
+// ({compare_type,value}, no color) passed both the CLI's per-entry oneOf
+// schema check and the tool, writing a color-less segment that crashed
+// the frontend on open. The check covers create and update symmetrically.
+func TestCondFormatAttrs_ShapeMatchesRuleType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		sc      common.Shortcut
+		args    []string
+		wantErr bool
+		wantMsg string // substring expected in the error, when wantErr
+	}{
+		{
+			name: "colorScale fed cellIs-shaped attrs (missing color) is rejected",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"compare_type":"greaterThan","value":"0"},{"compare_type":"lessThan","value":"100"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: "colorScale",
+		},
+		{
+			name: "colorScale with empty color string is rejected",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"value_type":"minValue","color":""},{"value_type":"maxValue","color":"#FF0000"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: `"color"`,
+		},
+		{
+			name: "well-formed colorScale attrs pass",
+			sc:   CondFormatCreate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID,
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"value_type":"minValue","color":"#FFFFFF"},{"value_type":"maxValue","color":"#FF0000"}]}`, "--dry-run",
+			},
+			wantErr: false,
+		},
+		{
+			name: "update path is guarded too (colorScale + cellIs attrs)",
+			sc:   CondFormatUpdate,
+			args: []string{
+				"--url", testURL, "--sheet-id", testSheetID, "--rule-id", "ruleA",
+				"--rule-type", "colorScale", "--ranges", `["C1:C10"]`,
+				"--properties", `{"style":{},"attrs":[{"compare_type":"greaterThan","value":"0"}]}`, "--dry-run",
+			},
+			wantErr: true,
+			wantMsg: "colorScale",
+		},
 	}
-	if !strings.Contains(combined, "+sparkline-list") {
-		t.Errorf("expected error to point at +sparkline-list; got=%s|%v", stderr, err)
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, stderr, err := runShortcutCapturingErr(t, tt.sc, tt.args)
+			if tt.wantErr {
+				requireValidation(t, err, tt.wantMsg)
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected acceptance (dry-run); got err=%v stderr=%s", err, stderr)
+			}
+		})
+	}
+}
+
+// TestCondFormatAttrsRequired_MatchesSchemaOneOf guards against drift
+// between the hand-maintained condFormatAttrsRequired table (the source
+// validateCondFormatAttrs enforces) and the embedded flag-schemas.json
+// attrs oneOf (the authoritative shape contract synced from the spec
+// repo). The cross-field validator only works if its per-rule_type
+// required keys mirror the schema branches; if a future schema sync adds
+// or drops a required key on any branch without updating the table, the
+// CLI would silently under- or over-validate. They share no compile-time
+// link, so this test is the only thing pinning them together.
+//
+// The schema oneOf branches are NOT labeled by rule_type (that's the whole
+// point — rule_type is a sibling field the per-entry oneOf can't see), so
+// we can't match branch→rule_type. We instead compare the *multiset* of
+// required-key sets: every branch's required array must appear as some
+// table entry's value and vice versa. This catches any added/dropped
+// required key (real drift); it tolerates only a relabeling between two
+// branches that happen to share an identical required set (dataBar and
+// colorScale both require {color,value_type}), which is harmless here.
+func TestCondFormatAttrsRequired_MatchesSchemaOneOf(t *testing.T) {
+	t.Parallel()
+
+	// multiset key: required keys sorted + joined, so order within a
+	// branch's required array doesn't matter.
+	keyOf := func(req []string) string {
+		s := append([]string(nil), req...)
+		sort.Strings(s)
+		return strings.Join(s, "+")
+	}
+
+	tableMS := map[string]int{}
+	for _, req := range condFormatAttrsRequired {
+		tableMS[keyOf(req)]++
+	}
+
+	schemaMS := func(t *testing.T, command string) map[string]int {
+		idx, err := loadFlagSchemas()
+		if err != nil {
+			t.Fatalf("loadFlagSchemas: %v", err)
+		}
+		raw, ok := idx.Flags[command]["properties"]
+		if !ok {
+			t.Fatalf("no embedded schema for %s --properties", command)
+		}
+		var schema map[string]interface{}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatalf("unmarshal %s properties schema: %v", command, err)
+		}
+		dig := func(m map[string]interface{}, key string) map[string]interface{} {
+			next, _ := m[key].(map[string]interface{})
+			if next == nil {
+				t.Fatalf("%s: missing %q while navigating to attrs oneOf", command, key)
+			}
+			return next
+		}
+		attrs := dig(dig(schema, "properties"), "attrs")
+		items := dig(attrs, "items")
+		oneOf, ok := items["oneOf"].([]interface{})
+		if !ok || len(oneOf) == 0 {
+			t.Fatalf("%s: attrs.items.oneOf is missing or empty", command)
+		}
+		ms := map[string]int{}
+		for i, branchRaw := range oneOf {
+			branch, ok := branchRaw.(map[string]interface{})
+			if !ok {
+				t.Fatalf("%s: oneOf[%d] is not an object", command, i)
+			}
+			reqRaw, _ := branch["required"].([]interface{})
+			req := make([]string, 0, len(reqRaw))
+			for _, r := range reqRaw {
+				if s, ok := r.(string); ok {
+					req = append(req, s)
+				}
+			}
+			ms[keyOf(req)]++
+		}
+		return ms
+	}
+
+	for _, command := range []string{"+cond-format-create", "+cond-format-update"} {
+		got := schemaMS(t, command)
+		if len(got) != len(tableMS) {
+			t.Errorf("%s: schema oneOf has %d distinct required-sets, table has %d", command, len(got), len(tableMS))
+		}
+		for k, n := range tableMS {
+			if got[k] != n {
+				t.Errorf("%s: required-set %q appears %d× in schema but %d× in condFormatAttrsRequired — table drifted from schema; re-sync the table", command, k, got[k], n)
+			}
+		}
+		for k, n := range got {
+			if tableMS[k] != n {
+				t.Errorf("%s: schema branch with required-set %q (×%d) has no matching condFormatAttrsRequired entry — add it to the table", command, k, n)
+			}
+		}
 	}
 }
 
@@ -625,18 +815,13 @@ func TestSparklineUpdate_MissingSparklineID(t *testing.T) {
 // create still mandates one of --image / --image-token / --image-uri.
 func TestFloatImageCreate_RequiresImageSource(t *testing.T) {
 	t.Parallel()
-	_, stderr, err := runShortcutCapturingErr(t, FloatImageCreate, []string{
+	_, _, err := runShortcutCapturingErr(t, FloatImageCreate, []string{
 		"--url", testURL, "--sheet-id", testSheetID,
 		"--image-name", "x.png",
 		"--position-row", "0", "--position-col", "A",
 		"--size-width", "10", "--size-height", "10",
 	})
-	if err == nil {
-		t.Fatalf("expected CLI to require an image source on create; stderr=%s", stderr)
-	}
-	if combined := stderr + err.Error(); !strings.Contains(combined, "one of --image, --image-token, or --image-uri is required") {
-		t.Errorf("expected error to require an image source; got=%s|%v", stderr, err)
-	}
+	requireValidation(t, err, "one of --image, --image-token, or --image-uri is required")
 }
 
 // TestObjectDelete_AllHighRisk asserts every delete shortcut blocks
@@ -659,14 +844,8 @@ func TestObjectDelete_AllHighRisk(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, tt.sc, tt.args)
-			if err == nil {
-				t.Fatalf("expected confirmation_required; stdout=%s stderr=%s", stdout, stderr)
-			}
-			combined := stdout + stderr + err.Error()
-			if !strings.Contains(combined, "confirmation_required") && !strings.Contains(combined, "requires confirmation") {
-				t.Errorf("expected confirmation gate; got=%s|%s|%v", stdout, stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, tt.sc, tt.args)
+			requireProblem(t, err, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired, "")
 		})
 	}
 }

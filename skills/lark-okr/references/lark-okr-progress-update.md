@@ -7,15 +7,16 @@
 ## 推荐命令
 
 ```bash
-# 更新进展记录内容
+# 更新进展记录内容（默认 simple 风格，半纯文本格式）
 lark-cli okr +progress-update \
   --progress-id 1234567890123456789 \
-  --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"更新后的进展内容"}}]}}]}'
+  --content '{"text":"更新后的进展内容","mention":["ou_123"]}'
 
-# 更新进展记录内容并同时更新进度
+# 更新进展记录内容并同时更新进度（richtext 风格，完整 ContentBlock 格式）
 lark-cli okr +progress-update \
   --progress-id 1234567890123456789 \
   --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"进度已更新至 90%"}}]}}]}' \
+  --style richtext \
   --progress-percent 90 \
   --progress-status normal
 
@@ -27,7 +28,7 @@ lark-cli okr +progress-update \
 # 预览 API 调用而不实际执行
 lark-cli okr +progress-update \
   --progress-id 1234567890123456789 \
-  --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"test"}}]}}]}' \
+  --content '{"text":"test"}' \
   --dry-run
 ```
 
@@ -36,7 +37,8 @@ lark-cli okr +progress-update \
 | 参数                   | 必填 | 默认值       | 说明                                                                                                             |
 |----------------------|----|-----------|----------------------------------------------------------------------------------------------------------------|
 | `--progress-id`      | 是  | —         | 进展记录 ID（int64 类型，正整数）                                                                                          |
-| `--content`          | 是  | —         | 进展内容，ContentBlock JSON 格式。支持 `@文件路径` 从文件读取。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。                    |
+| `--content`          | 是  | —         | 进展内容。根据 `--style` 指定格式：`simple` 风格为 SemiPlainContent JSON，`richtext` 风格为 ContentBlock JSON。支持 `@文件路径` 从文件读取。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。 |
+| `--style`            | 否  | `simple`  | 输入风格：`simple`（半纯文本 JSON，推荐） \| `richtext`（完整 ContentBlock JSON）。请参考 [ContentBlock 格式](lark-okr-contentblock.md) 了解两种格式。          |
 | `--progress-percent` | 否  | —         | 进度百分比(-99999999999 - 99999999999)。百分比的取值通常在 0-100，但允许超过此范围，以表示超额完成或负增长等情况。挂载的目标或关键结果的量化指标不使用百分比单位时，以这个字段更新当前值。系统内最多保留两位小数 |
 | `--progress-status`  | 否  | —         | 进度状态：`normal`（正常） \| `overdue`（逾期） \| `done`（已完成）。仅在指定 `--progress-percent` 时生效。                               |
 | `--user-id-type`     | 否  | `open_id` | 用户 ID 类型：`open_id` \| `union_id` \| `user_id`                                                                  |
@@ -46,7 +48,9 @@ lark-cli okr +progress-update \
 ## 工作流程
 
 1. 使用 `+progress-get` 获取要更新的进展记录的 ID 和当前内容。
-2. 修改 ContentBlock JSON 格式的进展内容。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。
+2. 修改进展内容：
+   - **推荐**：使用 `simple` 风格（默认），构造 SemiPlainContent JSON：`{"text":"内容","mention":["ou_xxx"]}`，mention 中提及的用户会统一连接在文本末尾。
+   - 如需复杂格式：使用 `richtext` 风格，构造 ContentBlock JSON。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。若需要插入图片/飞书文档或复杂文本格式，则必须使用 richtext 风格
 3. 执行 `lark-cli okr +progress-update --progress-id "..." --content "..."`。
 4. 报告结果：更新后的进展记录 ID、修改时间、进度百分比等。
 

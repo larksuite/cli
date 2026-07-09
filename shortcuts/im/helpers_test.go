@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -46,6 +47,56 @@ func TestDetectIMFileType(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := detectIMFileType(tt.path); got != tt.want {
 				t.Fatalf("detectIMFileType(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateAudioMessageInput(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{name: "empty", value: ""},
+		{name: "existing file key", value: "file_abc"},
+		{name: "opus file", value: "./voice.opus"},
+		{name: "ogg opus file", value: "./voice.ogg"},
+		{name: "uppercase opus", value: "./VOICE.OPUS"},
+		{name: "mp3 local file", value: "./voice.mp3", wantErr: true},
+		{name: "wav local file", value: "./voice.wav", wantErr: true},
+		{name: "extensionless local path", value: "./voice"},
+		{name: "opus url", value: "https://example.com/voice.opus?download=1"},
+		{name: "ogg url", value: "https://example.com/voice.ogg?download=1"},
+		{name: "mp3 url", value: "https://example.com/voice.mp3?download=1", wantErr: true},
+		{name: "extensionless url", value: "https://example.com/download?id=1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateAudioMessageInput("--audio", tt.value)
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
+					t.Fatalf("validateAudioMessageInput(%q) error = %v", tt.value, err)
+				}
+				p, ok := errs.ProblemOf(err)
+				if !ok {
+					t.Fatalf("validateAudioMessageInput(%q) error is not typed: %v", tt.value, err)
+				}
+				if p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeInvalidArgument {
+					t.Fatalf("ProblemOf(%q) = category %q subtype %q", tt.value, p.Category, p.Subtype)
+				}
+				validationErr, ok := err.(*errs.ValidationError)
+				if !ok || validationErr.Param != "--audio" {
+					t.Fatalf("validateAudioMessageInput(%q) param = %q, want --audio", tt.value, validationErr.Param)
+				}
+				if !strings.Contains(p.Hint, "use --file") || !strings.Contains(p.Hint, "ffmpeg") {
+					t.Fatalf("validateAudioMessageInput(%q) hint = %q, want --file and ffmpeg guidance", tt.value, p.Hint)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("validateAudioMessageInput(%q) unexpected error = %v", tt.value, err)
 			}
 		})
 	}
@@ -559,16 +610,16 @@ func TestParseContentDispositionFilename(t *testing.T) {
 
 func TestResolveIMResourceDownloadPath(t *testing.T) {
 	tests := []struct {
-		name                string
-		safePath            string
-		contentType         string
-		contentDisposition  string
-		userSpecifiedOutput bool
-		want                string
+		name               string
+		safePath           string
+		contentType        string
+		contentDisposition string
+		preserveBasename   bool
+		want               string
 	}{
 		// safePath already has extension: always return as-is
-		{name: "user path with ext, no CD", safePath: "out.xlsx", contentType: "application/pdf", userSpecifiedOutput: true, want: "out.xlsx"},
-		{name: "user path with ext, CD present", safePath: "out.xlsx", contentDisposition: `attachment; filename="server.pdf"`, userSpecifiedOutput: true, want: "out.xlsx"},
+		{name: "user path with ext, no CD", safePath: "out.xlsx", contentType: "application/pdf", preserveBasename: true, want: "out.xlsx"},
+		{name: "user path with ext, CD present", safePath: "out.xlsx", contentDisposition: `attachment; filename="server.pdf"`, preserveBasename: true, want: "out.xlsx"},
 		// No --output: use CD filename when present
 		{name: "default path, CD filename", safePath: "file_xxx", contentDisposition: `attachment; filename="季度报告.xlsx"`, want: "季度报告.xlsx"},
 		{name: "default path, CD RFC5987", safePath: "file_xxx", contentDisposition: `attachment; filename*=UTF-8''%E5%AD%A3%E5%BA%A6%E6%8A%A5%E5%91%8A.xlsx`, want: "季度报告.xlsx"},
@@ -576,14 +627,20 @@ func TestResolveIMResourceDownloadPath(t *testing.T) {
 		{name: "default path, no CD, unknown MIME", safePath: "file_xxx", contentType: "application/x-unknown", want: "file_xxx"},
 		{name: "default path, CD with dir component", safePath: "downloads/file_xxx", contentDisposition: `attachment; filename="report.xlsx"`, want: filepath.Join("downloads", "report.xlsx")},
 		// User --output without extension: use CD filename's extension
-		{name: "user path no ext, CD with ext", safePath: "myfile", contentDisposition: `attachment; filename="server.pdf"`, userSpecifiedOutput: true, want: "myfile.pdf"},
-		{name: "user path no ext, CD no ext, MIME ext", safePath: "myfile", contentDisposition: `attachment; filename="noext"`, contentType: "image/png", userSpecifiedOutput: true, want: "myfile.png"},
-		{name: "user path no ext, no CD, MIME ext", safePath: "myfile", contentType: "image/jpeg", userSpecifiedOutput: true, want: "myfile.jpg"},
+		{name: "user path no ext, CD with ext", safePath: "myfile", contentDisposition: `attachment; filename="server.pdf"`, preserveBasename: true, want: "myfile.pdf"},
+		{name: "user path no ext, CD no ext, MIME ext", safePath: "myfile", contentDisposition: `attachment; filename="noext"`, contentType: "image/png", preserveBasename: true, want: "myfile.png"},
+		{name: "user path no ext, no CD, MIME ext", safePath: "myfile", contentType: "image/jpeg", preserveBasename: true, want: "myfile.jpg"},
+		// Batch --download-resources (preserveBasename=true): the file_key basename
+		// is kept and only the extension borrowed, so two resources whose servers
+		// return the SAME Content-Disposition filename still resolve to distinct
+		// paths instead of clobbering each other.
+		{name: "batch key A, shared CD filename", safePath: "lark-im-resources/file_aaa", contentDisposition: `attachment; filename="download.bin"`, preserveBasename: true, want: "lark-im-resources/file_aaa.bin"},
+		{name: "batch key B, shared CD filename", safePath: "lark-im-resources/file_bbb", contentDisposition: `attachment; filename="download.bin"`, preserveBasename: true, want: "lark-im-resources/file_bbb.bin"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveIMResourceDownloadPath(tt.safePath, tt.contentType, tt.contentDisposition, tt.userSpecifiedOutput)
+			got := resolveIMResourceDownloadPath(tt.safePath, tt.contentType, tt.contentDisposition, tt.preserveBasename)
 			if got != tt.want {
 				t.Fatalf("resolveIMResourceDownloadPath() = %q, want %q", got, tt.want)
 			}
@@ -600,6 +657,7 @@ func TestShortcuts(t *testing.T) {
 	want := []string{
 		"+chat-create",
 		"+chat-list",
+		"+chat-members-list",
 		"+chat-messages-list",
 		"+chat-search",
 		"+chat-update",

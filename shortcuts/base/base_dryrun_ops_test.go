@@ -22,12 +22,23 @@ func assertDryRunContains(t *testing.T, dr interface{ Format() string }, wants .
 func TestDryRunTableOps(t *testing.T) {
 	ctx := context.Background()
 
-	listRT := newBaseTestRuntime(map[string]string{"base-token": "app_x"}, nil, map[string]int{"offset": -1, "limit": 999})
+	listRT := newBaseTestRuntime(map[string]string{"base-token": "app_x"}, nil, map[string]int{"offset": -1, "limit": 100})
 	assertDryRunContains(t, dryRunTableList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables", "offset=0", "limit=100")
+
+	pageSizeAliasRT := newBaseTestRuntime(map[string]string{"base-token": "app_x"}, nil, map[string]int{"page-size": 40})
+	assertDryRunContains(t, dryRunTableList(ctx, pageSizeAliasRT), "limit=40")
 
 	rt := newBaseTestRuntime(map[string]string{"base-token": "app_x", "table-id": "tbl_1", "name": "Orders"}, nil, nil)
 	assertDryRunContains(t, dryRunTableGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1")
 	assertDryRunContains(t, dryRunTableCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables")
+
+	tableCreateWithFieldsRT := newBaseTestRuntime(
+		map[string]string{"base-token": "app_x", "name": "Orders", "fields": `[{"name":"Title","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunTableCreate(ctx, tableCreateWithFieldsRT), "POST /open-apis/base/v3/bases/app_x/tables", `"fields":[{"name":"Title","type":"text"}]`)
+
 	assertDryRunContains(t, dryRunTableUpdate(ctx, rt), "PATCH /open-apis/base/v3/bases/app_x/tables/tbl_1")
 	assertDryRunContains(t, dryRunTableDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1")
 }
@@ -61,7 +72,7 @@ func TestDryRunFieldOps(t *testing.T) {
 	listRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1"},
 		nil,
-		map[string]int{"offset": -2, "limit": 999},
+		map[string]int{"offset": -2, "limit": 200},
 	)
 	assertDryRunContains(t, dryRunFieldList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields", "offset=0", "limit=200")
 
@@ -74,10 +85,22 @@ func TestDryRunFieldOps(t *testing.T) {
 			"keyword":    " open ",
 		},
 		nil,
-		map[string]int{"offset": 3, "limit": 0},
+		map[string]int{"offset": 3, "limit": 30},
 	)
 	assertDryRunContains(t, dryRunFieldGet(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldCreate(ctx, rt), "POST /open-apis/base/v3/bases/app_x/tables/tbl_1/fields")
+
+	arrayRT := newBaseTestRuntime(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"json":       `[{"name":"A","type":"text"},{"name":"B","type":"text"}]`,
+		},
+		nil,
+		nil,
+	)
+	assertDryRunContains(t, dryRunFieldCreate(ctx, arrayRT), `"name":"A"`, `"name":"B"`)
+
 	assertDryRunContains(t, dryRunFieldUpdate(ctx, rt), "PUT /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldDelete(ctx, rt), "DELETE /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1")
 	assertDryRunContains(t, dryRunFieldSearchOptions(ctx, rt), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/fields/fld_1/options", "offset=3", "limit=30", "query=open")
@@ -90,7 +113,7 @@ func TestDryRunRecordOps(t *testing.T) {
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1"},
 		map[string][]string{"field-id": {"Name", "Age"}},
 		nil,
-		map[string]int{"offset": -3, "limit": 500},
+		map[string]int{"offset": -3, "limit": 200},
 	)
 	assertDryRunContains(t, dryRunRecordList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/records", "offset=0", "limit=200", "view_id=viw_1", "field_id=Name", "field_id=Age")
 
@@ -171,6 +194,18 @@ func TestDryRunRecordOps(t *testing.T) {
 		`"filter":{"conditions":[["Status","!=","Done"]],"logic":"and"}`,
 		`"sort":[{"desc":true,"field":"Updated At"}]`,
 	)
+
+	searchPageSizeAliasRT := newBaseTestRuntimeWithArrays(
+		map[string]string{
+			"base-token": "app_x",
+			"table-id":   "tbl_1",
+			"keyword":    "Alice",
+		},
+		map[string][]string{"search-field": {"Name"}},
+		nil,
+		map[string]int{"page-size": 25},
+	)
+	assertDryRunContains(t, dryRunRecordSearch(ctx, searchPageSizeAliasRT), `"limit":25`)
 
 	upsertCreateRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "json": `{"Name":"A"}`},
@@ -264,6 +299,51 @@ func TestDryRunBaseOps(t *testing.T) {
 		nil,
 	)
 	assertDryRunContains(t, dryRunBaseCreate(ctx, createRT), "POST /open-apis/base/v3/bases")
+
+	createWithFieldsRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "table-name": "Tasks", "fields": `[{"name":"Title","type":"text"},{"name":"Status","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithFieldsRT),
+		"POST /open-apis/base/v3/bases",
+		"GET /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables?limit=100&offset=0",
+		"POST /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables",
+		`"name":"Tasks"`,
+		`"fields":[{"name":"Title","type":"text"},{"name":"Status","type":"text"}]`,
+		"DELETE /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+	)
+
+	createWithFieldsDefaultNameRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "fields": `[{"name":"Title","type":"text"}]`},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithFieldsDefaultNameRT),
+		"POST /open-apis/base/v3/bases",
+		"POST /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables",
+		`"name":"Table 1"`,
+		`"fields":[{"name":"Title","type":"text"}]`,
+		"DELETE /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+	)
+
+	createWithTableNameRT := newBaseTestRuntime(
+		map[string]string{"name": "New Base", "table-name": "Tasks"},
+		nil,
+		nil,
+	)
+	assertDryRunContains(
+		t,
+		dryRunBaseCreate(ctx, createWithTableNameRT),
+		"POST /open-apis/base/v3/bases",
+		"GET /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables?limit=100&offset=0",
+		"PATCH /open-apis/base/v3/bases/%3Ccreated_base_token%3E/tables/%3Cdefault_table_id%3E",
+		`"name":"Tasks"`,
+	)
 }
 
 func TestDryRunDashboardOps(t *testing.T) {
@@ -279,11 +359,10 @@ func TestDryRunDashboardOps(t *testing.T) {
 			"type":         "bar",
 			"data-config":  `{"table_name":"orders"}`,
 			"user-id-type": "open_id",
-			"page-size":    "50",
 			"page-token":   "pt_1",
 		},
 		nil,
-		nil,
+		map[string]int{"page-size": 50},
 	)
 
 	assertDryRunContains(t, dryRunDashboardList(ctx, rt), "GET /open-apis/base/v3/bases/app_x/dashboards", "page_size=50", "page_token=pt_1")
@@ -305,7 +384,7 @@ func TestDryRunViewOps(t *testing.T) {
 	listRT := newBaseTestRuntime(
 		map[string]string{"base-token": "app_x", "table-id": "tbl_1", "view-id": "viw_1"},
 		nil,
-		map[string]int{"offset": -1, "limit": 500},
+		map[string]int{"offset": -1, "limit": 200},
 	)
 	assertDryRunContains(t, dryRunViewList(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views", "offset=0", "limit=200")
 	assertDryRunContains(t, dryRunViewGet(ctx, listRT), "GET /open-apis/base/v3/bases/app_x/tables/tbl_1/views/viw_1")

@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -31,7 +32,7 @@ var SheetAddDimension = common.Shortcut{
 		}
 		length := runtime.Int("length")
 		if length < 1 || length > 5000 {
-			return common.FlagErrorf("--length must be between 1 and 5000, got %d", length)
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--length must be between 1 and 5000, got %d", length).WithParam("--length")
 		}
 		return nil
 	},
@@ -51,7 +52,7 @@ var SheetAddDimension = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/dimension_range", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{
@@ -91,10 +92,10 @@ var SheetInsertDimension = common.Shortcut{
 			return err
 		}
 		if runtime.Int("start-index") < 0 {
-			return common.FlagErrorf("--start-index must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-index must be >= 0").WithParam("--start-index")
 		}
 		if runtime.Int("end-index") <= runtime.Int("start-index") {
-			return common.FlagErrorf("--end-index must be greater than --start-index")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-index must be greater than --start-index").WithParam("--end-index")
 		}
 		return nil
 	},
@@ -131,7 +132,7 @@ var SheetInsertDimension = common.Shortcut{
 			body["inheritStyle"] = s
 		}
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/insert_dimension_range", validate.EncodePathSegment(token)),
 			nil, body,
 		)
@@ -165,16 +166,16 @@ var SheetUpdateDimension = common.Shortcut{
 			return err
 		}
 		if runtime.Int("start-index") < 1 {
-			return common.FlagErrorf("--start-index must be >= 1")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-index must be >= 1").WithParam("--start-index")
 		}
 		if runtime.Int("end-index") < runtime.Int("start-index") {
-			return common.FlagErrorf("--end-index must be >= --start-index")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-index must be >= --start-index").WithParam("--end-index")
 		}
 		if !runtime.Cmd.Flags().Changed("visible") && !runtime.Cmd.Flags().Changed("fixed-size") {
-			return common.FlagErrorf("specify at least one of --visible or --fixed-size")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "specify at least one of --visible or --fixed-size").WithParams(errs.InvalidParam{Name: "--visible", Reason: "required; specify at least one"}, errs.InvalidParam{Name: "--fixed-size", Reason: "required; specify at least one"})
 		}
 		if runtime.Cmd.Flags().Changed("fixed-size") && runtime.Int("fixed-size") < 1 {
-			return common.FlagErrorf("--fixed-size must be >= 1")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--fixed-size must be >= 1").WithParam("--fixed-size")
 		}
 		return nil
 	},
@@ -211,7 +212,7 @@ var SheetUpdateDimension = common.Shortcut{
 			props["fixedSize"] = runtime.Int("fixed-size")
 		}
 
-		data, err := runtime.CallAPI("PUT",
+		data, err := runtime.CallAPITyped("PUT",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/dimension_range", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{
@@ -253,13 +254,13 @@ var SheetMoveDimension = common.Shortcut{
 			return err
 		}
 		if runtime.Int("start-index") < 0 {
-			return common.FlagErrorf("--start-index must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-index must be >= 0").WithParam("--start-index")
 		}
 		if runtime.Int("end-index") < runtime.Int("start-index") {
-			return common.FlagErrorf("--end-index must be >= --start-index")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-index must be >= --start-index").WithParam("--end-index")
 		}
 		if runtime.Int("destination-index") < 0 {
-			return common.FlagErrorf("--destination-index must be >= 0")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--destination-index must be >= 0").WithParam("--destination-index")
 		}
 		return nil
 	},
@@ -281,7 +282,7 @@ var SheetMoveDimension = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
 
-		data, err := runtime.CallAPI("POST",
+		data, err := runtime.CallAPITyped("POST",
 			fmt.Sprintf("/open-apis/sheets/v3/spreadsheets/%s/sheets/%s/move_dimension",
 				validate.EncodePathSegment(token),
 				validate.EncodePathSegment(runtime.Str("sheet-id")),
@@ -324,10 +325,10 @@ var SheetDeleteDimension = common.Shortcut{
 			return err
 		}
 		if runtime.Int("start-index") < 1 {
-			return common.FlagErrorf("--start-index must be >= 1")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--start-index must be >= 1").WithParam("--start-index")
 		}
 		if runtime.Int("end-index") < runtime.Int("start-index") {
-			return common.FlagErrorf("--end-index must be >= --start-index")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-index must be >= --start-index").WithParam("--end-index")
 		}
 		return nil
 	},
@@ -348,7 +349,7 @@ var SheetDeleteDimension = common.Shortcut{
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		token, _ := validateSheetManageToken(runtime)
 
-		data, err := runtime.CallAPI("DELETE",
+		data, err := runtime.CallAPITyped("DELETE",
 			fmt.Sprintf("/open-apis/sheets/v2/spreadsheets/%s/dimension_range", validate.EncodePathSegment(token)),
 			nil,
 			map[string]interface{}{

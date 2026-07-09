@@ -2,29 +2,23 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先用 Read 工具读取以下文件，缺一不可：
 > 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
-> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、并行执行策略）
+> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 写作原则（默认段落、按体裁、组件克制）
+> 3. [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、单 Agent 串行撰写）
 >
-> **未读完以上文件就生成内容会导致格式错误或样式不达标。**
+> **未读完以上文件就生成内容会导致格式错误。**
 
 从 XML（默认）或 Markdown 内容创建一个新的飞书云文档。
 
-> **⚠️ 格式选择规则：** 创建 / 导入场景下 XML 和 Markdown 都可以——用户提供 `.md` 本地文件、或明确说"导入 Markdown"时，直接用 Markdown；没有明确指示时默认 XML（表达能力更强，支持 callout、grid、checkbox 等富 block 类型）。不要在用户没要求的情况下主动从 XML 切到 Markdown，也不要在用户已给出 Markdown 时强行改成 XML。
+> **⚠️ 格式选择规则：** 创建 / 导入场景下 XML 和 Markdown 都可以——用户提供 `.md` 本地文件、或明确说"导入 Markdown"时，直接用 Markdown；没有明确指示时默认 XML（表达能力更强，可承载更丰富的结构化内容）。不要在用户没要求的情况下主动从 XML 切到 Markdown，也不要在用户已给出 Markdown 时强行改成 XML。
 
 ## 命令
 
 ```bash
 # 创建 XML 文档（默认格式，推荐）
-lark-cli docs +create --api-version v2 --content '<title>项目计划</title><h1>目标</h1><ul><li>目标 1</li><li>目标 2</li></ul>'
+lark-cli docs +create --content '<title>项目计划</title><h1>目标</h1><p>记录本周重点。</p>'
 
-# 创建到指定文件夹（XML）
-lark-cli docs +create --api-version v2 --parent-token fldcnXXXX --content '<title>标题</title><p>首段内容</p>'
-
-# 创建到个人知识库（XML）
-lark-cli docs +create --api-version v2 --parent-position my_library --content '<title>标题</title><p>内容</p>'
-
-# 仅当用户明确要求时才使用 Markdown
-lark-cli docs +create --api-version v2 --doc-format markdown --content $'# 项目计划\n\n## 目标\n\n- 目标 1\n- 目标 2'
+# 仅当用户明确要求导入 Markdown 时才使用；文档标题用 --title，正文标题按内容自然组织
+lark-cli docs +create --doc-format markdown --title "项目计划" --content $'## 目标\n\n- 明确重点\n- 记录待办'
 ```
 
 ## 返回值
@@ -35,9 +29,9 @@ lark-cli docs +create --api-version v2 --doc-format markdown --content $'# 项�
   "identity": "user",
   "data": {
     "document": {
-      "document_id": "doxcnXXXXXXXXXXXXXXXXXXX",
+      "document_id": "docx_token",
       "revision_id": 1,
-      "url": "https://xxx.feishu.cn/docx/doxcnXXXXXXXXXXXXXXXXXXX",
+      "url": "https://xxx.feishu.cn/docx/docx_token",
       "new_blocks": [
         { "block_id": "blkcnXXXX", "block_type": "whiteboard", "block_token": "boardXXXX" }
       ]
@@ -64,22 +58,22 @@ lark-cli docs +create --api-version v2 --doc-format markdown --content $'# 项�
 
 | 参数                  | 必填 | 说明                                          |
 | ------------------- | -- |---------------------------------------------|
-| `--api-version`     | 是  | 固定传 `v2`                                    |
-| `--content`         | 是  | 文档内容（XML 或 Markdown 格式）                     |
+| `--title`           | 否  | 文档标题，Markdown 导入时使用；XML 创建推荐在 `--content` 开头写 `<title>...</title>`；多个标题仅保留第一个并在 `warnings` / `degrade_details` 提示 |
+| `--content`         | 视情况 | 文档内容（XML 或 Markdown 格式）；不传 `--content` 时必须传 `--title` |
+| `--reference-map` | 否 | 结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；该参数主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。 |
 | `--doc-format`      | 否  | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `--parent-token`    | 否  | 父文件夹或知识库节点 token（与 `--parent-position` 互斥）  |
 | `--parent-position` | 否  | 父节点位置，如 `my_library`（与 `--parent-token` 互斥） |
 
 ## 最佳实践
 
-- 文档标题从内容中自动提取（XML `<title>` 或 Markdown `#`），不要在内容开头重复写标题
-- **创建较长的文档时只建骨架**：`--content` 仅传标题 + 各级 heading + 简短占位摘要；正文留给后续 `docs +update --command append` 或 `block_insert_after` 分段追加。一次性塞超长 `--content` 既容易触发参数限制，调试也更难。
-- **视觉丰富度**：必须遵循 [`lark-doc-style.md`](style/lark-doc-style.md) 中的样式指南，主动使用结构化 block 丰富文档
+- **较长文档**：参考 [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) 先建骨架再分段写入；短文档可一次写完整内容
+- **表达形式**：由用户目标和内容决定。需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要默认套用固定开头、固定富 block 比例或固定图表
 
 ## 参考
 
-- [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、并行执行策略）
-- [`lark-doc-style.md`](style/lark-doc-style.md) — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
+- [`lark-doc-create-workflow.md`](style/lark-doc-create-workflow.md) — 从零创作工作流（Code-Act Loop、单 Agent 串行撰写）
+- [`lark-doc-style.md`](style/lark-doc-style.md) — 文档写作原则（默认段落、按体裁、组件克制）
 - [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规范
 - [`lark-doc-fetch.md`](lark-doc-fetch.md) — 获取文档
 - [`lark-doc-update.md`](lark-doc-update.md) — 更新文档

@@ -26,6 +26,10 @@ func TestSafeOutputPath_RejectsPathTraversalAndDangerousInput(t *testing.T) {
 		{"unicode normal", "报告.xlsx", false},
 		{"dot-dot resolves to cwd", "subdir/..", false},
 
+		// ── GIVEN: empty or blank paths → THEN: rejected ──
+		{"empty path", "", true},
+		{"blank path", "   ", true},
+
 		// ── GIVEN: path traversal via .. → THEN: rejected ──
 		{"dot-dot escape", "../../.ssh/authorized_keys", true},
 		{"dot-dot mid path", "subdir/../../etc/passwd", true},

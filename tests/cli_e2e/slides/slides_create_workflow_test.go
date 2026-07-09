@@ -75,7 +75,7 @@ func TestSlides_CreateWorkflowAsUser(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		require.Equal(t, presentationID, gjson.Get(result.Stdout, "data.xml_presentation.presentation_id").String(), "stdout:\n%s", result.Stdout)
 		content := gjson.Get(result.Stdout, "data.xml_presentation.content").String()

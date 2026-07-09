@@ -6,12 +6,14 @@ package slides
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
@@ -32,10 +34,10 @@ func TestSlidesCreateBasic(t *testing.T) {
 			"data": map[string]interface{}{
 				"xml_presentation_id": "pres_abc123",
 				"revision_id":         1,
+				"url":                 "https://tenant.example.com/slides/pres_abc123",
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_abc123", "https://example.feishu.cn/slides/pres_abc123")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -53,8 +55,8 @@ func TestSlidesCreateBasic(t *testing.T) {
 	if data["title"] != "项目汇报" {
 		t.Fatalf("title = %v, want 项目汇报", data["title"])
 	}
-	if data["url"] != "https://example.feishu.cn/slides/pres_abc123" {
-		t.Fatalf("url = %v, want https://example.feishu.cn/slides/pres_abc123", data["url"])
+	if data["url"] != "https://tenant.example.com/slides/pres_abc123" {
+		t.Fatalf("url = %v, want https://tenant.example.com/slides/pres_abc123", data["url"])
 	}
 	if _, ok := data["permission_grant"]; ok {
 		t.Fatalf("did not expect permission_grant in user mode")
@@ -78,7 +80,6 @@ func TestSlidesCreateBotAutoGrant(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_bot", "https://example.feishu.cn/slides/pres_bot")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/drive/v1/permissions/pres_bot/members",
@@ -131,7 +132,6 @@ func TestSlidesCreateBotSkippedWithoutCurrentUser(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_no_user", "https://example.feishu.cn/slides/pres_no_user")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -168,7 +168,6 @@ func TestSlidesCreateBotAutoGrantFailed(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_grant_fail", "https://example.feishu.cn/slides/pres_grant_fail")
 
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
@@ -238,7 +237,6 @@ func TestSlidesCreateDefaultTitle(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_default", "https://example.feishu.cn/slides/pres_default")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -301,7 +299,6 @@ func TestSlidesCreateWithSlides(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_with_slides", "https://example.feishu.cn/slides/pres_with_slides")
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/slides_ai/v1/xml_presentations/pres_with_slides/slide",
@@ -404,15 +401,21 @@ func TestSlidesCreateWithSlidesPartialFailure(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for partial failure, got nil")
 	}
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "pres_partial") {
-		t.Fatalf("error should contain presentation ID, got: %s", errMsg)
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected a typed errs.* error, got %v", err)
 	}
-	if !strings.Contains(errMsg, "slide 2/2") {
-		t.Fatalf("error should indicate slide 2/2 failed, got: %s", errMsg)
+	// The presentation was created but a slide add failed; the recovery hint
+	// carries the partial-progress context (which presentation exists, how many
+	// slides landed) so the caller can resume without recreating.
+	if !strings.Contains(p.Hint, "pres_partial") {
+		t.Fatalf("hint should contain presentation ID, got: %s", p.Hint)
 	}
-	if !strings.Contains(errMsg, "1 slide(s) added") {
-		t.Fatalf("error should report 1 slide added before failure, got: %s", errMsg)
+	if !strings.Contains(p.Hint, "slide 2/2") {
+		t.Fatalf("hint should indicate slide 2/2 failed, got: %s", p.Hint)
+	}
+	if !strings.Contains(p.Hint, "1 slide(s) added") {
+		t.Fatalf("hint should report 1 slide added before failure, got: %s", p.Hint)
 	}
 }
 
@@ -461,6 +464,71 @@ func TestSlidesCreateWithSlidesExceedsMax(t *testing.T) {
 	}
 }
 
+// TestSlidesCreateValidationParam locks Param=="--slides" on the pure
+// validation rejections, so callers route on the typed field rather than the
+// message.
+func TestSlidesCreateValidationParam(t *testing.T) {
+	t.Parallel()
+
+	elems := make([]string, 11)
+	for i := range elems {
+		elems[i] = `"<slide/>"`
+	}
+	exceedsMax := "[" + strings.Join(elems, ",") + "]"
+
+	tests := []struct {
+		name   string
+		slides string
+	}{
+		{"invalid JSON", "not json"},
+		{"exceeds max", exceedsMax},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+			err := runSlidesCreateShortcut(t, f, stdout, []string{
+				"+create",
+				"--slides", tt.slides,
+				"--as", "user",
+			})
+
+			var ve *errs.ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("err = %v, want *errs.ValidationError", err)
+			}
+			if ve.Param != "--slides" {
+				t.Fatalf("Param = %q, want --slides", ve.Param)
+			}
+		})
+	}
+}
+
+// TestSlidesCreatePlaceholderMissingParam guards the create.go caller wiring:
+// a missing @-placeholder file must surface a --slides-tagged validation error
+// through the shared slidesInputStatError helper.
+func TestSlidesCreatePlaceholderMissingParam(t *testing.T) {
+	dir := t.TempDir()
+	withSlidesTestWorkingDir(t, dir)
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
+	slidesJSON := `["<slide><data><img src=\"@./missing.png\"/></data></slide>"]`
+	err := runSlidesCreateShortcut(t, f, stdout, []string{
+		"+create",
+		"--slides", slidesJSON,
+		"--as", "user",
+	})
+
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("err = %v, want *errs.ValidationError", err)
+	}
+	if ve.Param != "--slides" {
+		t.Fatalf("Param = %q, want --slides", ve.Param)
+	}
+}
+
 // TestSlidesCreateWithSlidesEmptyArray verifies that --slides '[]' behaves like no --slides.
 func TestSlidesCreateWithSlidesEmptyArray(t *testing.T) {
 	t.Parallel()
@@ -478,7 +546,6 @@ func TestSlidesCreateWithSlidesEmptyArray(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_empty_slides", "https://example.feishu.cn/slides/pres_empty_slides")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -551,7 +618,6 @@ func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
 			},
 		},
 	})
-	registerBatchQueryStub(reg, "pres_no_slides", "https://example.feishu.cn/slides/pres_no_slides")
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
@@ -580,8 +646,12 @@ func TestSlidesCreateWithoutSlidesUnchanged(t *testing.T) {
 	}
 }
 
-// TestSlidesCreateURLFetchBestEffort verifies that the shortcut succeeds even when batch_query fails.
-func TestSlidesCreateURLFetchBestEffort(t *testing.T) {
+// TestSlidesCreateURLFallsBackToLocalBuild verifies the presentation URL is
+// constructed locally from the token when presentation.create omits url — no
+// drive metas/batch_query call is made, so creation works for users who only
+// authorized slides scopes. The httpmock registry has no batch_query stub
+// registered; if the shortcut tried to call it, the request would fail the test.
+func TestSlidesCreateURLFallsBackToLocalBuild(t *testing.T) {
 	t.Parallel()
 
 	f, stdout, _, reg := cmdutil.TestFactory(t, slidesTestConfig(t, ""))
@@ -592,24 +662,16 @@ func TestSlidesCreateURLFetchBestEffort(t *testing.T) {
 			"code": 0,
 			"msg":  "ok",
 			"data": map[string]interface{}{
-				"xml_presentation_id": "pres_no_url",
+				"xml_presentation_id": "pres_local_url",
 				"revision_id":         1,
+				"url":                 "",
 			},
-		},
-	})
-	// batch_query returns an error — URL fetch should be silently skipped
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/metas/batch_query",
-		Body: map[string]interface{}{
-			"code": 99999,
-			"msg":  "no permission",
 		},
 	})
 
 	err := runSlidesCreateShortcut(t, f, stdout, []string{
 		"+create",
-		"--title", "No URL",
+		"--title", "Local URL",
 		"--as", "user",
 	})
 	if err != nil {
@@ -617,11 +679,11 @@ func TestSlidesCreateURLFetchBestEffort(t *testing.T) {
 	}
 
 	data := decodeSlidesCreateEnvelope(t, stdout)
-	if data["xml_presentation_id"] != "pres_no_url" {
-		t.Fatalf("xml_presentation_id = %v, want pres_no_url", data["xml_presentation_id"])
+	if data["xml_presentation_id"] != "pres_local_url" {
+		t.Fatalf("xml_presentation_id = %v, want pres_local_url", data["xml_presentation_id"])
 	}
-	if _, ok := data["url"]; ok {
-		t.Fatalf("did not expect url when batch_query fails")
+	if data["url"] != "https://www.feishu.cn/slides/pres_local_url" {
+		t.Fatalf("url = %v, want https://www.feishu.cn/slides/pres_local_url", data["url"])
 	}
 }
 
@@ -670,22 +732,6 @@ func runSlidesCreateShortcut(t *testing.T, f *cmdutil.Factory, stdout *bytes.Buf
 		stdout.Reset()
 	}
 	return parent.Execute()
-}
-
-// registerBatchQueryStub registers a drive meta batch_query mock that returns the given URL.
-func registerBatchQueryStub(reg *httpmock.Registry, token, url string) {
-	reg.Register(&httpmock.Stub{
-		Method: "POST",
-		URL:    "/open-apis/drive/v1/metas/batch_query",
-		Body: map[string]interface{}{
-			"code": 0,
-			"data": map[string]interface{}{
-				"metas": []map[string]interface{}{
-					{"doc_token": token, "doc_type": "slides", "title": "", "url": url},
-				},
-			},
-		},
-	})
 }
 
 // decodeSlidesCreateEnvelope parses the JSON output and returns the data map.
@@ -758,7 +804,6 @@ func TestSlidesCreateWithImagePlaceholders(t *testing.T) {
 	}
 	reg.Register(slideStub1)
 	reg.Register(slideStub2)
-	registerBatchQueryStub(reg, "pres_img", "https://x.feishu.cn/slides/pres_img")
 
 	slidesJSON := `[
 	  "<slide xmlns=\"http://www.larkoffice.com/sml/2.0\"><data><img src=\"@a.png\" topLeftX=\"10\"/><img src=\"@b.png\" topLeftX=\"20\"/></data></slide>",

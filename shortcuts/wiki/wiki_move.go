@@ -5,13 +5,12 @@ package wiki
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -65,7 +64,7 @@ var WikiMove = common.Shortcut{
 		// for a tenant_access_token (--as bot), so reject early with a clear
 		// hint instead of letting the API return a confusing error.
 		if runtime.As().IsBot() && spec.TargetSpaceID == wikiMyLibrarySpaceID {
-			return output.ErrValidation("--target-space-id my_library is a per-user personal library alias and cannot be used with --as bot; resolve it to a real space_id first via `lark-cli wiki spaces get --params '{\"space_id\":\"my_library\"}' --as user`")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-space-id my_library is a per-user personal library alias and cannot be used with --as bot; resolve it to a real space_id first via `lark-cli wiki spaces get --params '{\"space_id\":\"my_library\"}' --as user`").WithParam("--target-space-id")
 		}
 		return validateWikiMoveSpec(spec)
 	},
@@ -230,7 +229,7 @@ type wikiMoveAPI struct {
 }
 
 func (api wikiMoveAPI) GetNode(ctx context.Context, token string) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
 		map[string]interface{}{"token": token},
@@ -243,7 +242,7 @@ func (api wikiMoveAPI) GetNode(ctx context.Context, token string) (*wikiNodeReco
 }
 
 func (api wikiMoveAPI) MoveNode(ctx context.Context, sourceSpaceID string, spec wikiMoveSpec) (*wikiNodeRecord, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"POST",
 		fmt.Sprintf(
 			"/open-apis/wiki/v2/spaces/%s/nodes/%s/move",
@@ -260,7 +259,7 @@ func (api wikiMoveAPI) MoveNode(ctx context.Context, sourceSpaceID string, spec 
 }
 
 func (api wikiMoveAPI) MoveDocsToWiki(ctx context.Context, targetSpaceID string, spec wikiMoveSpec) (*wikiMoveDocsResponse, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"POST",
 		fmt.Sprintf(
 			"/open-apis/wiki/v2/spaces/%s/nodes/move_docs_to_wiki",
@@ -281,7 +280,7 @@ func (api wikiMoveAPI) MoveDocsToWiki(ctx context.Context, targetSpaceID string,
 }
 
 func (api wikiMoveAPI) GetMoveTask(ctx context.Context, taskID string) (wikiMoveTaskStatus, error) {
-	data, err := api.runtime.CallAPI(
+	data, err := api.runtime.CallAPITyped(
 		"GET",
 		fmt.Sprintf("/open-apis/wiki/v2/tasks/%s", validate.EncodePathSegment(taskID)),
 		map[string]interface{}{"task_type": "move"},
@@ -324,28 +323,42 @@ func validateWikiMoveSpec(spec wikiMoveSpec) error {
 
 	if spec.NodeToken != "" {
 		if spec.ObjType != "" || spec.ObjToken != "" || spec.Apply {
-			return output.ErrValidation("--node-token cannot be combined with --obj-type, --obj-token, or --apply")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--node-token cannot be combined with --obj-type, --obj-token, or --apply").
+				WithParams(
+					errs.InvalidParam{Name: "--obj-type", Reason: "cannot be combined with --node-token"},
+					errs.InvalidParam{Name: "--obj-token", Reason: "cannot be combined with --node-token"},
+					errs.InvalidParam{Name: "--apply", Reason: "cannot be combined with --node-token"},
+				)
 		}
 		if spec.TargetParentToken == "" && spec.TargetSpaceID == "" {
-			return output.ErrValidation("--target-parent-token and --target-space-id cannot both be empty for wiki node move")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-parent-token and --target-space-id cannot both be empty for wiki node move").
+				WithParams(
+					errs.InvalidParam{Name: "--target-parent-token", Reason: "provide --target-parent-token or --target-space-id"},
+					errs.InvalidParam{Name: "--target-space-id", Reason: "provide --target-parent-token or --target-space-id"},
+				)
 		}
 		return nil
 	}
 
 	if spec.SourceSpaceID != "" {
-		return output.ErrValidation("--source-space-id can only be used with --node-token")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--source-space-id can only be used with --node-token").WithParam("--source-space-id")
 	}
 	if spec.ObjType == "" && spec.ObjToken == "" && !spec.Apply {
-		return output.ErrValidation("provide --node-token for wiki node move, or provide --obj-type and --obj-token for docs-to-wiki move")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "provide --node-token for wiki node move, or provide --obj-type and --obj-token for docs-to-wiki move").
+			WithParams(
+				errs.InvalidParam{Name: "--node-token", Reason: "provide --node-token, or --obj-type and --obj-token"},
+				errs.InvalidParam{Name: "--obj-type", Reason: "provide --node-token, or --obj-type and --obj-token"},
+				errs.InvalidParam{Name: "--obj-token", Reason: "provide --node-token, or --obj-type and --obj-token"},
+			)
 	}
 	if spec.ObjType == "" {
-		return output.ErrValidation("--obj-type is required for docs-to-wiki move")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--obj-type is required for docs-to-wiki move").WithParam("--obj-type")
 	}
 	if spec.ObjToken == "" {
-		return output.ErrValidation("--obj-token is required for docs-to-wiki move")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--obj-token is required for docs-to-wiki move").WithParam("--obj-token")
 	}
 	if spec.TargetSpaceID == "" {
-		return output.ErrValidation("--target-space-id is required for docs-to-wiki move")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--target-space-id is required for docs-to-wiki move").WithParam("--target-space-id")
 	}
 
 	return nil
@@ -426,7 +439,7 @@ func runWikiMove(ctx context.Context, client wikiMoveClient, runtime *common.Run
 	case wikiMoveModeDocsToWiki:
 		return runWikiDocsToWikiMove(ctx, client, runtime, spec)
 	default:
-		return nil, output.ErrValidation("unknown wiki move mode")
+		return nil, errs.NewInternalError(errs.SubtypeUnknown, "unknown wiki move mode")
 	}
 }
 
@@ -479,11 +492,11 @@ func resolveWikiNodeMoveSpaces(ctx context.Context, client wikiMoveClient, spec 
 		if targetSpaceID == "" {
 			targetSpaceID = parentSpaceID
 		} else if targetSpaceID != parentSpaceID {
-			return "", "", output.ErrValidation(
+			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"--target-space-id %q does not match target parent node space %q",
 				spec.TargetSpaceID,
 				parentSpaceID,
-			)
+			).WithParam("--target-space-id")
 		}
 	}
 
@@ -549,7 +562,7 @@ func runWikiDocsToWikiMove(ctx context.Context, client wikiMoveClient, runtime *
 		}
 		return out, nil
 	default:
-		return nil, output.Errorf(output.ExitAPI, "api_error", "move_docs_to_wiki returned neither wiki_token, task_id, nor applied result")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "move_docs_to_wiki returned neither wiki_token, task_id, nor applied result")
 	}
 }
 
@@ -592,7 +605,7 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 			return status, true, nil
 		}
 		if status.Failed() {
-			return status, false, output.Errorf(output.ExitAPI, "api_error", "wiki move task failed: %s", status.PrimaryStatusLabel())
+			return status, false, errs.NewAPIError(errs.SubtypeServerError, "wiki move task failed: %s", status.PrimaryStatusLabel())
 		}
 
 		fmt.Fprintf(runtime.IO().ErrOut, "Wiki move status %d/%d: %s\n", attempt, wikiMovePollAttempts, status.PrimaryStatusLabel())
@@ -605,14 +618,18 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 			taskID,
 			nextCommand,
 		)
-		var exitErr *output.ExitError
-		if errors.As(lastErr, &exitErr) && exitErr.Detail != nil {
-			if strings.TrimSpace(exitErr.Detail.Hint) != "" {
-				hint = exitErr.Detail.Hint + "\n" + hint
+		// The poll error comes from a typed CallAPITyped path; append the resume
+		// hint in place so the original category / subtype / code / log_id
+		// survives a fully failed poll (per ERROR_CONTRACT.md "propagate typed
+		// errors unchanged").
+		if p, ok := errs.ProblemOf(lastErr); ok {
+			if strings.TrimSpace(p.Hint) != "" {
+				hint = p.Hint + "\n" + hint
 			}
-			return lastStatus, false, output.ErrWithHint(exitErr.Code, exitErr.Detail.Type, exitErr.Detail.Message, hint)
+			p.Hint = hint
+			return lastStatus, false, lastErr
 		}
-		return lastStatus, false, output.ErrWithHint(output.ExitAPI, "api_error", lastErr.Error(), hint)
+		return lastStatus, false, errs.NewInternalError(errs.SubtypeSDKError, "%s", lastErr.Error()).WithHint("%s", hint).WithCause(lastErr)
 	}
 
 	return lastStatus, false, nil
@@ -620,7 +637,7 @@ func pollWikiMoveTask(ctx context.Context, client wikiMoveClient, runtime *commo
 
 func parseWikiMoveTaskStatus(taskID string, task map[string]interface{}) (wikiMoveTaskStatus, error) {
 	if task == nil {
-		return wikiMoveTaskStatus{}, output.Errorf(output.ExitAPI, "api_error", "wiki task response missing task")
+		return wikiMoveTaskStatus{}, errs.NewInternalError(errs.SubtypeInvalidResponse, "wiki task response missing task")
 	}
 
 	status := wikiMoveTaskStatus{

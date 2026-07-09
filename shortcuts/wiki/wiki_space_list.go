@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -103,7 +104,7 @@ func fetchWikiSpaces(runtime *common.RuntimeContext) ([]map[string]interface{}, 
 		if pageToken != "" {
 			params["page_token"] = pageToken
 		}
-		data, err := runtime.CallAPI("GET", wikiSpacesAPIPath, params, nil)
+		data, err := runtime.CallAPITyped("GET", wikiSpacesAPIPath, params, nil)
 		if err != nil {
 			return nil, false, "", err
 		}
@@ -181,10 +182,10 @@ func valueOrDash(v interface{}) string {
 // +space-list and +node-list.
 func validateWikiListPagination(runtime *common.RuntimeContext, maxPageSize int) error {
 	if n := runtime.Int("page-size"); n < 1 || n > maxPageSize {
-		return common.FlagErrorf("--page-size must be between 1 and %d", maxPageSize)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-size must be between 1 and %d", maxPageSize).WithParam("--page-size")
 	}
 	if n := runtime.Int("page-limit"); n < 0 {
-		return common.FlagErrorf("--page-limit must be a non-negative integer")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--page-limit must be a non-negative integer").WithParam("--page-limit")
 	}
 	return nil
 }

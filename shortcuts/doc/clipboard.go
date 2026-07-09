@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/larksuite/cli/errs"
 )
 
 // readClipboardImageBytes reads the current clipboard image and returns the
@@ -35,13 +37,13 @@ func readClipboardImageBytes() ([]byte, error) {
 	case "linux":
 		data, err = readClipboardLinux()
 	default:
-		return nil, fmt.Errorf("clipboard image upload is not supported on %s", runtime.GOOS)
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard image upload is not supported on %s", runtime.GOOS)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if len(data) == 0 {
-		return nil, fmt.Errorf("clipboard contains no image data")
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard contains no image data")
 	}
 	return data, nil
 }
@@ -91,9 +93,9 @@ func readClipboardDarwin() ([]byte, error) {
 	}
 
 	if stderrText != "" {
-		return nil, fmt.Errorf("clipboard contains no image data (osascript: %s)", stderrText)
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard contains no image data (osascript: %s)", stderrText)
 	}
-	return nil, fmt.Errorf("clipboard contains no image data")
+	return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard contains no image data")
 }
 
 // runOsascript invokes osascript with a single AppleScript expression and
@@ -188,14 +190,14 @@ func decodeOsascriptData(s string) ([]byte, error) {
 // decodeHex decodes an uppercase hex string (as produced by osascript) to bytes.
 func decodeHex(h string) ([]byte, error) {
 	if len(h)%2 != 0 {
-		return nil, fmt.Errorf("odd hex length")
+		return nil, fmt.Errorf("odd hex length") //nolint:forbidigo // intermediate decode helper; result discarded by caller on error
 	}
 	b := make([]byte, len(h)/2)
 	for i := 0; i < len(h); i += 2 {
 		hi := hexVal(h[i])
 		lo := hexVal(h[i+1])
 		if hi < 0 || lo < 0 {
-			return nil, fmt.Errorf("invalid hex char at %d", i)
+			return nil, fmt.Errorf("invalid hex char at %d", i) //nolint:forbidigo // intermediate decode helper; result discarded by caller on error
 		}
 		b[i/2] = byte(hi<<4 | lo)
 	}
@@ -237,12 +239,12 @@ $img.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("clipboard read failed (%s)", msg)
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard read failed (%s)", msg).WithCause(err)
 	}
 	b64 := strings.TrimSpace(string(out))
 	data, decErr := base64.StdEncoding.DecodeString(b64)
 	if decErr != nil {
-		return nil, fmt.Errorf("clipboard image decode failed: %w", decErr)
+		return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard image decode failed: %s", decErr).WithCause(decErr)
 	}
 	return data, nil
 }
@@ -325,15 +327,15 @@ func readClipboardLinux() ([]byte, error) {
 		foundTool = true
 		out, err := exec.Command(t.name, t.args...).Output()
 		if err != nil {
-			lastErr = fmt.Errorf("clipboard image read failed via %s: %w", t.name, err)
+			lastErr = errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard image read failed via %s: %s", t.name, err).WithCause(err)
 			continue
 		}
 		if len(out) == 0 {
-			lastErr = fmt.Errorf("clipboard contains no image data (%s returned empty output)", t.name)
+			lastErr = errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard contains no image data (%s returned empty output)", t.name)
 			continue
 		}
 		if t.validatePNG && !hasPNGMagic(out) {
-			lastErr = fmt.Errorf("clipboard contains no PNG image data (%s output is not a PNG)", t.name)
+			lastErr = errs.NewValidationError(errs.SubtypeFailedPrecondition, "clipboard contains no PNG image data (%s output is not a PNG)", t.name)
 			continue
 		}
 		return out, nil
@@ -342,8 +344,8 @@ func readClipboardLinux() ([]byte, error) {
 	if foundTool && lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fmt.Errorf(
-		"clipboard image read failed: no supported tool found. " +
-			"Install one of xclip, wl-clipboard, or xsel via your distro's package manager " +
+	return nil, errs.NewValidationError(errs.SubtypeFailedPrecondition,
+		"clipboard image read failed: no supported tool found. "+
+			"Install one of xclip, wl-clipboard, or xsel via your distro's package manager "+
 			"(apt, dnf, pacman, apk, brew, etc.).")
 }

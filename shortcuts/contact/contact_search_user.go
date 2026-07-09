@@ -15,6 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -80,16 +81,11 @@ type searchUserAPIFilter struct {
 	HasEnterpriseEmail  bool     `json:"has_enterprise_email,omitempty"`
 }
 
-type searchUserAPIEnvelope struct {
-	Code int                `json:"code"`
-	Msg  string             `json:"msg"`
-	Data *searchUserAPIData `json:"data"`
-}
-
 type searchUserAPIData struct {
 	Items     []searchUserAPIItem `json:"items"`
 	HasMore   bool                `json:"has_more"`
 	PageToken string              `json:"page_token"`
+	Notice    string              `json:"notice"`
 }
 
 type searchUserAPIItem struct {
@@ -131,6 +127,7 @@ type searchUser struct {
 type searchUserResponse struct {
 	Users   []searchUser `json:"users"`
 	HasMore bool         `json:"has_more"`
+	Notice  string       `json:"notice,omitempty"`
 }
 
 var ContactSearchUser = common.Shortcut{
@@ -153,12 +150,10 @@ var ContactSearchUser = common.Shortcut{
 		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat users[] with matched_query plus a queries[] sidecar"},
 	},
 	Tips: []string{
-		"Keyword search: lark-cli contact +search-user --query 'alice'",
-		"Look up by ID (or 'me' for self): lark-cli contact +search-user --user-ids 'ou_xxx,me'",
 		"Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted",
 		"Refine same-name hits: lark-cli contact +search-user --query '张三' --has-chatted --exclude-external-users",
 		"Multi-name fanout: lark-cli contact +search-user --queries 'alice,bob,张三'",
-		"open_id is the stable identifier for follow-up commands; on has_more=true add filters or tighten --query — there is no auto-pagination.",
+		"on has_more=true add filters or tighten --query — there is no auto-pagination.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateSearchUser(runtime)
@@ -194,6 +189,7 @@ var ContactSearchUser = common.Shortcut{
 	Execute: executeSearchUser,
 }
 
+// executeSearchUser dispatches contact search to single-query or fanout mode.
 func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) error {
 	if strings.TrimSpace(runtime.Str("queries")) != "" {
 		return executeSearchUserFanout(ctx, runtime)
@@ -201,6 +197,7 @@ func executeSearchUser(ctx context.Context, runtime *common.RuntimeContext) erro
 	return executeSearchUserSingle(ctx, runtime)
 }
 
+// executeSearchUserSingle performs one contact search and preserves server notices.
 func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext) error {
 	body, err := buildSearchUserBody(runtime)
 	if err != nil {
@@ -216,20 +213,18 @@ func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext
 	if err != nil {
 		return err
 	}
-	if apiResp.StatusCode != http.StatusOK {
-		return output.ErrAPI(apiResp.StatusCode, http.StatusText(apiResp.StatusCode), string(apiResp.RawBody))
+
+	data, err := runtime.ClassifyAPIResponse(apiResp)
+	if err != nil {
+		return err
+	}
+	respData, err := decodeSearchUserAPIData(data)
+	if err != nil {
+		return err
 	}
 
-	var resp searchUserAPIEnvelope
-	if err := json.Unmarshal(apiResp.RawBody, &resp); err != nil {
-		return output.ErrWithHint(output.ExitInternal, "validation", "unmarshal response failed", err.Error())
-	}
-	if resp.Code != 0 {
-		return output.ErrAPI(resp.Code, resp.Msg, string(apiResp.RawBody))
-	}
-
-	users, hasMore := projectUsers(resp.Data, runtime.Str("lang"), runtime.Config.Brand)
-	out := searchUserResponse{Users: users, HasMore: hasMore}
+	users, hasMore := projectUsers(respData, runtime.Str("lang"), runtime.Config.Brand)
+	out := searchUserResponse{Users: users, HasMore: hasMore, Notice: respData.Notice}
 
 	runtime.OutFormat(out, &output.Meta{Count: len(users)}, func(w io.Writer) {
 		if len(users) == 0 {
@@ -243,6 +238,20 @@ func executeSearchUserSingle(ctx context.Context, runtime *common.RuntimeContext
 			"\nhint: more matches exist; refine the query (e.g., add --has-chatted, a full email, or a department keyword)")
 	}
 	return nil
+}
+
+func decodeSearchUserAPIData(data map[string]interface{}) (*searchUserAPIData, error) {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return nil, contactInvalidResponseError("marshal search user response data failed").
+			WithCause(err)
+	}
+	var out searchUserAPIData
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, contactInvalidResponseError("decode search user response data failed").
+			WithCause(err)
+	}
+	return &out, nil
 }
 
 func isHumanReadableFormat(format string) bool {
@@ -373,52 +382,74 @@ func rowFromItem(item *searchUserAPIItem, lang string, brand core.LarkBrand) sea
 
 func validateSearchUser(runtime *common.RuntimeContext) error {
 	if !hasAnySearchInput(runtime) {
-		return common.FlagErrorf(
+		return common.ValidationErrorf(
 			"specify at least one of --query, --queries, --user-ids, --has-chatted, --has-enterprise-email, --exclude-external-users, --left-organization",
+		).WithParams(
+			errs.InvalidParam{Name: "--query", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--queries", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--user-ids", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--has-chatted", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--has-enterprise-email", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--exclude-external-users", Reason: "required; specify at least one search input"},
+			errs.InvalidParam{Name: "--left-organization", Reason: "required; specify at least one search input"},
 		)
 	}
 
 	queriesRaw := strings.TrimSpace(runtime.Str("queries"))
 	if queriesRaw != "" {
 		if strings.TrimSpace(runtime.Str("query")) != "" {
-			return common.FlagErrorf("--query and --queries are mutually exclusive")
+			return common.ValidationErrorf("--query and --queries are mutually exclusive").
+				WithParams(
+					errs.InvalidParam{Name: "--query", Reason: "mutually exclusive with --queries"},
+					errs.InvalidParam{Name: "--queries", Reason: "mutually exclusive with --query"},
+				)
 		}
 		if strings.TrimSpace(runtime.Str("user-ids")) != "" {
-			return common.FlagErrorf("--user-ids and --queries are mutually exclusive")
+			return common.ValidationErrorf("--user-ids and --queries are mutually exclusive").
+				WithParams(
+					errs.InvalidParam{Name: "--user-ids", Reason: "mutually exclusive with --queries"},
+					errs.InvalidParam{Name: "--queries", Reason: "mutually exclusive with --user-ids"},
+				)
 		}
 		queries := parseAndDedupQueries(queriesRaw)
 		if len(queries) == 0 {
-			return common.FlagErrorf("--queries: no valid query parsed from %q (separate entries with ',')", queriesRaw)
+			return common.ValidationErrorf("--queries: no valid query parsed from %q (separate entries with ',')", queriesRaw).
+				WithParam("--queries")
 		}
 		if len(queries) > maxFanoutQueries {
-			return common.FlagErrorf("--queries: must be at most %d entries (got %d)", maxFanoutQueries, len(queries))
+			return common.ValidationErrorf("--queries: must be at most %d entries (got %d)", maxFanoutQueries, len(queries)).
+				WithParam("--queries")
 		}
 		for _, q := range queries {
 			if utf8.RuneCountInString(q) > maxSearchUserQueryChars {
-				return common.FlagErrorf("--queries: entry %q exceeds %d characters", q, maxSearchUserQueryChars)
+				return common.ValidationErrorf("--queries: entry %q exceeds %d characters", q, maxSearchUserQueryChars).
+					WithParam("--queries")
 			}
 		}
 	}
 
 	if q := strings.TrimSpace(runtime.Str("query")); q != "" {
 		if utf8.RuneCountInString(q) > maxSearchUserQueryChars {
-			return common.FlagErrorf("--query: length must be between 1 and %d characters", maxSearchUserQueryChars)
+			return common.ValidationErrorf("--query: length must be between 1 and %d characters", maxSearchUserQueryChars).
+				WithParam("--query")
 		}
 	}
 
 	if raw := strings.TrimSpace(runtime.Str("user-ids")); raw != "" {
-		ids, err := common.ResolveOpenIDs("--user-ids", common.SplitCSV(raw), runtime)
+		ids, err := common.ResolveOpenIDsTyped("--user-ids", common.SplitCSV(raw), runtime)
 		if err != nil {
 			return err
 		}
 		if len(ids) == 0 {
-			return common.FlagErrorf("--user-ids: no valid open_id parsed from %q (separate entries with ',')", raw)
+			return common.ValidationErrorf("--user-ids: no valid open_id parsed from %q (separate entries with ',')", raw).
+				WithParam("--user-ids")
 		}
 		if len(ids) > maxSearchUserUserIDs {
-			return common.FlagErrorf("--user-ids: must be at most %d entries", maxSearchUserUserIDs)
+			return common.ValidationErrorf("--user-ids: must be at most %d entries", maxSearchUserUserIDs).
+				WithParam("--user-ids")
 		}
 		for _, id := range ids {
-			if _, err := common.ValidateUserID(id); err != nil {
+			if _, err := common.ValidateUserIDTyped("--user-ids", id); err != nil {
 				return err
 			}
 		}
@@ -429,15 +460,16 @@ func validateSearchUser(runtime *common.RuntimeContext) error {
 	// silent wrong-result bugs.
 	for _, bf := range searchUserBoolFilters {
 		if runtime.Cmd.Flags().Changed(bf.Flag) && !runtime.Bool(bf.Flag) {
-			return common.FlagErrorf(
+			return common.ValidationErrorf(
 				"--%s: pass the flag to enable the filter; omit it to disable filtering (=false is rejected to prevent silent wrong results)",
 				bf.Flag,
-			)
+			).WithParam("--" + bf.Flag)
 		}
 	}
 
 	if n := runtime.Int("page-size"); n < 1 || n > maxSearchUserPageSize {
-		return common.FlagErrorf("--page-size: must be between 1 and %d", maxSearchUserPageSize)
+		return common.ValidationErrorf("--page-size: must be between 1 and %d", maxSearchUserPageSize).
+			WithParam("--page-size")
 	}
 	return nil
 }
@@ -473,7 +505,7 @@ func buildSearchUserBody(runtime *common.RuntimeContext) (*searchUserAPIRequest,
 	hasFilter := false
 
 	if raw := strings.TrimSpace(runtime.Str("user-ids")); raw != "" {
-		ids, err := common.ResolveOpenIDs("--user-ids", common.SplitCSV(raw), runtime)
+		ids, err := common.ResolveOpenIDsTyped("--user-ids", common.SplitCSV(raw), runtime)
 		if err != nil {
 			return nil, err
 		}

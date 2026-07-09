@@ -50,12 +50,32 @@ func TestListeningText_NonTTY_MaxEventsAndTimeout(t *testing.T) {
 }
 
 // AI-facing contract: must name "kill -9" + "cleanup" so agents parsing stderr are steered away from SIGKILL.
-func TestStopHintText_Content(t *testing.T) {
-	got := stopHintText()
-	mustContain := []string{"SIGTERM", "kill -9", "cleanup"}
+func TestStopHintText_Unbounded(t *testing.T) {
+	got := stopHintText(Options{})
+	mustContain := []string{"SIGTERM", "kill -9", "cleanup", "close stdin"}
 	for _, s := range mustContain {
 		if !bytes.Contains([]byte(got), []byte(s)) {
-			t.Errorf("stopHintText missing %q; got %q", s, got)
+			t.Errorf("stopHintText(unbounded) missing %q; got %q", s, got)
+		}
+	}
+}
+
+// AI-facing contract: must name "kill -9" + "cleanup" so agents parsing stderr are steered away from SIGKILL.
+func TestStopHintText_Bounded(t *testing.T) {
+	cases := []Options{
+		{MaxEvents: 1},
+		{Timeout: 30 * time.Second},
+	}
+	for _, opts := range cases {
+		got := stopHintText(opts)
+		mustContain := []string{"SIGTERM", "kill -9", "cleanup"}
+		for _, s := range mustContain {
+			if !bytes.Contains([]byte(got), []byte(s)) {
+				t.Errorf("stopHintText(bounded) missing %q; got %q", s, got)
+			}
+		}
+		if bytes.Contains([]byte(got), []byte("close stdin")) {
+			t.Errorf("stopHintText(bounded) must not contain \"close stdin\"; got %q", got)
 		}
 	}
 }

@@ -6,6 +6,7 @@ package event
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/lockfile"
 	"github.com/larksuite/cli/internal/output"
@@ -144,7 +146,7 @@ var EventSubscribe = common.Shortcut{
 		if outputDir != "" {
 			safePath, err := validate.SafeOutputPath(outputDir)
 			if err != nil {
-				return output.ErrValidation("unsafe output path: %s", err)
+				return eventValidationParamErrorWithCause(err, "--output-dir", "unsafe --output-dir")
 			}
 			outputDir = safePath
 		}
@@ -162,15 +164,18 @@ var EventSubscribe = common.Shortcut{
 		if !forceFlag {
 			lock, err := lockfile.ForSubscribe(runtime.Config.AppID)
 			if err != nil {
-				return fmt.Errorf("failed to create lock: %w", err)
+				return eventFileIOError(err, "failed to create event subscriber lock")
 			}
 			if err := lock.TryLock(); err != nil {
-				return output.ErrValidation(
-					"another event +subscribe instance is already running for app %s\n"+
-						"  Only one subscriber per app is allowed to prevent competing consumers.\n"+
-						"  Use --force to bypass this check.",
-					runtime.Config.AppID,
-				)
+				if errors.Is(err, lockfile.ErrHeld) {
+					return errs.NewValidationError(errs.SubtypeFailedPrecondition,
+						"another event +subscribe instance is already running for app %s\n"+
+							"  Only one subscriber per app is allowed to prevent competing consumers.\n"+
+							"  Use --force to bypass this check.",
+						runtime.Config.AppID,
+					).WithHint("stop the existing subscriber for this app, or rerun with --force if you accept split event delivery").WithCause(err)
+				}
+				return eventFileIOError(err, "failed to acquire event subscriber lock")
 			}
 			defer lock.Unlock()
 		}
@@ -179,7 +184,7 @@ var EventSubscribe = common.Shortcut{
 		eventTypeFilter := NewEventTypeFilter(eventTypesStr)
 		regexFilter, err := NewRegexFilter(filterStr)
 		if err != nil {
-			return output.ErrValidation("invalid --filter regex: %s", filterStr)
+			return eventValidationParamErrorWithCause(err, "--filter", "invalid --filter regex %q", filterStr)
 		}
 		var filterList []EventFilter
 		if eventTypeFilter != nil {
@@ -193,7 +198,7 @@ var EventSubscribe = common.Shortcut{
 		// --- Parse route ---
 		router, err := ParseRoutes(routeSpecs)
 		if err != nil {
-			return output.ErrValidation("invalid --route: %v", err)
+			return err
 		}
 
 		// --- Build pipeline ---
@@ -292,7 +297,7 @@ var EventSubscribe = common.Shortcut{
 				return nil
 			}
 			if err != nil {
-				return output.ErrNetwork("WebSocket connection failed: %v", err)
+				return eventNetworkError(err, "WebSocket connection failed")
 			}
 			return nil
 		}
