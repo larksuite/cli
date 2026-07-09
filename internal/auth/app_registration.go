@@ -260,7 +260,7 @@ func RequestAppRegistration(ctx context.Context, httpClient *http.Client, brand 
 			base = ep.Open + "/page/launcher"
 		}
 		// The server may return verification_uri with its own query (e.g.
-		// client_id when registering against an existing app), so join with
+		// app_id when registering against an existing app), so join with
 		// the same ?/& logic as BuildVerificationURL.
 		sep := "?"
 		if strings.Contains(base, "?") {
@@ -300,14 +300,42 @@ func parseAuthMethods(v interface{}) []string {
 }
 
 // BuildVerificationURL appends CLI tracking parameters to the verification URL.
-func BuildVerificationURL(baseURL, cliVersion string) string {
+// When targetAppID is non-empty, it is also included so the launcher can lock
+// authorization to that existing app.
+func BuildVerificationURL(baseURL, cliVersion string, targetAppID ...string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return appendVerificationURLFallback(baseURL, cliVersion, targetAppID...)
+	}
+	q := u.Query()
+	if q.Get("lpv") == "" {
+		q.Set("lpv", cliVersion)
+	}
+	if q.Get("ocv") == "" {
+		q.Set("ocv", cliVersion)
+	}
+	if q.Get("from") == "" {
+		q.Set("from", "cli")
+	}
+	if len(targetAppID) > 0 && targetAppID[0] != "" && q.Get("app_id") == "" {
+		q.Set("app_id", targetAppID[0])
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func appendVerificationURLFallback(baseURL, cliVersion string, targetAppID ...string) string {
 	sep := "&"
 	if !strings.Contains(baseURL, "?") {
 		sep = "?"
 	}
-	return baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
+	out := baseURL + sep + "lpv=" + url.QueryEscape(cliVersion) +
 		"&ocv=" + url.QueryEscape(cliVersion) +
 		"&from=cli"
+	if len(targetAppID) > 0 && targetAppID[0] != "" && !strings.Contains(baseURL, "app_id=") {
+		out += "&app_id=" + url.QueryEscape(targetAppID[0])
+	}
+	return out
 }
 
 // pollOnce performs one ctx-bound poll request and decodes the payload.
@@ -400,6 +428,8 @@ func RegisterAppWithDiscovery(ctx context.Context, httpClient *http.Client, resp
 		}
 
 		errStr := getStr(data, "error")
+		// A successful response carries the app id in client_id. Empty, non-error
+		// responses are incomplete rather than terminal, so keep polling below.
 		if errStr == "" {
 			result := &AppRegistrationResult{
 				ClientID:     getStr(data, "client_id"),
