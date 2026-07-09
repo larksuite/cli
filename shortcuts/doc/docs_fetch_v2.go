@@ -24,8 +24,8 @@ func v2FetchFlags() []common.Flag {
 		{Name: "lang", Desc: "user cite display language, e.g. en-US, zh-CN, ja-JP"},
 		{Name: "revision-id", Desc: "document revision id; -1 means latest", Type: "int", Default: "-1"},
 		{Name: "scope", Desc: "read scope; full reads whole doc, outline lists headings, section expands from heading anchor, range uses block ids, keyword searches text", Default: "full", Enum: []string{"full", "outline", "range", "keyword", "section"}},
-		{Name: "start-block-id", Desc: "range/section anchor block id; range also accepts #share-xxx/#part-xxx selection anchors"},
-		{Name: "end-block-id", Desc: "range end block id; -1 means through document end; selection anchors are not supported"},
+		{Name: "start-block-id", Desc: "range/section anchor block id; required for section and optional start for range"},
+		{Name: "end-block-id", Desc: "range end block id; -1 means through document end"},
 		{Name: "keyword", Desc: "keyword scope query; supports case-insensitive substring/regex fallback and '|' OR branches, e.g. foo|bar or bug|缺陷"},
 		{Name: "context-before", Desc: "range/keyword/section context: sibling blocks before selected top-level blocks", Type: "int", Default: "0"},
 		{Name: "context-after", Desc: "range/keyword/section context: sibling blocks after selected top-level blocks", Type: "int", Default: "0"},
@@ -337,7 +337,7 @@ func validateFetchSelectionAnchorUsage(runtime *common.RuntimeContext, mode stri
 		return err
 	}
 	if endIsAnchor {
-		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-block-id does not support selection anchors; pass #share/#part through --start-block-id with --scope range").WithParam("--end-block-id")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--end-block-id does not support selection anchors; pass the #share anchor in --doc URL").WithParam("--end-block-id")
 	}
 	if !startIsAnchor {
 		_, _, err := parseFetchSelectionAnchorFromDoc(runtime)
