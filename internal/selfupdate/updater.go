@@ -313,17 +313,17 @@ func (u *Updater) ListGlobalSkillsJSON() *NpmResult {
 }
 
 func (u *Updater) InstallSkill(nameList []string) *NpmResult {
-	r := u.runSkillsInstall("https://open.feishu.cn", nameList)
+	r := u.runSkillsInstall("larksuite/cli", nameList)
 	if r.Err != nil {
-		r = u.runSkillsInstall("larksuite/cli", nameList)
+		r = u.runSkillsInstall("https://open.feishu.cn", nameList)
 	}
 	return r
 }
 
 func (u *Updater) InstallAllSkills() *NpmResult {
-	r := u.runSkillsAdd("https://open.feishu.cn")
+	r := u.runSkillsAdd("larksuite/cli")
 	if r.Err != nil {
-		r = u.runSkillsAdd("larksuite/cli")
+		r = u.runSkillsAdd("https://open.feishu.cn")
 	}
 	return r
 }

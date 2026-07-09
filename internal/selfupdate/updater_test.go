@@ -238,6 +238,59 @@ func TestSkillsCommandsUseExpectedArgs(t *testing.T) {
 	}
 }
 
+func TestInstallSkillsPreferRepoSourceForUpdateTracking(t *testing.T) {
+	calls := []string{}
+	u := &Updater{SkillsCommandOverride: func(args ...string) *NpmResult {
+		calls = append(calls, strings.Join(args, " "))
+		return &NpmResult{}
+	}}
+
+	if result := u.InstallSkill([]string{"lark-mail"}); result.Err != nil {
+		t.Fatalf("InstallSkill() err = %v, want nil", result.Err)
+	}
+	if result := u.InstallAllSkills(); result.Err != nil {
+		t.Fatalf("InstallAllSkills() err = %v, want nil", result.Err)
+	}
+
+	want := []string{
+		"-y skills add larksuite/cli -s lark-mail -g -y",
+		"-y skills add larksuite/cli -g -y",
+	}
+	if strings.Join(calls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("skills install calls = %#v, want %#v", calls, want)
+	}
+}
+
+func TestInstallSkillsFallBackToWellKnownSource(t *testing.T) {
+	calls := []string{}
+	u := &Updater{SkillsCommandOverride: func(args ...string) *NpmResult {
+		call := strings.Join(args, " ")
+		calls = append(calls, call)
+		r := &NpmResult{}
+		if strings.Contains(call, "larksuite/cli") {
+			r.Err = errors.New("repo source unavailable")
+		}
+		return r
+	}}
+
+	if result := u.InstallSkill([]string{"lark-mail"}); result.Err != nil {
+		t.Fatalf("InstallSkill() err = %v, want nil after fallback", result.Err)
+	}
+	if result := u.InstallAllSkills(); result.Err != nil {
+		t.Fatalf("InstallAllSkills() err = %v, want nil after fallback", result.Err)
+	}
+
+	want := []string{
+		"-y skills add larksuite/cli -s lark-mail -g -y",
+		"-y skills add https://open.feishu.cn -s lark-mail -g -y",
+		"-y skills add larksuite/cli -g -y",
+		"-y skills add https://open.feishu.cn -g -y",
+	}
+	if strings.Join(calls, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("skills install calls = %#v, want %#v", calls, want)
+	}
+}
+
 func TestListOfficialSkillsIndexSuccess(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"skills":[{"name":"lark-calendar"}]}`)
