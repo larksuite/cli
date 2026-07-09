@@ -13,6 +13,7 @@ import (
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -73,6 +74,40 @@ func TestResolveRegisterAuthMethod(t *testing.T) {
 	f.IOStreams = &cmdutil.IOStreams{IsTerminal: true}
 	if m, err := resolveRegisterAuthMethod(ctx, f, ""); err != nil || m != core.AuthMethodClientSecret {
 		t.Errorf("default with terminal signer: got (%q, %v), want (client_secret, nil)", m, err)
+	}
+}
+
+func TestResolveRegisterAuthMethod_PrivateKeyJWTAllowsKeylessHelper(t *testing.T) {
+	t.Setenv(envvars.CliKeylessSignerCmd, "/helper")
+	prevSigner := keysigner.Active()
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+	keysigner.Register(nil)
+
+	m, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
+	if err != nil {
+		t.Fatalf("private_key_jwt with helper: %v", err)
+	}
+	if m != core.AuthMethodPrivateKeyJWT {
+		t.Fatalf("method = %q", m)
+	}
+}
+
+func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsInvalidKeylessHelper(t *testing.T) {
+	t.Setenv(envvars.CliKeylessSignerCmd, `[""]`)
+	prevSigner := keysigner.Active()
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+	keysigner.Register(nil)
+
+	_, err := resolveRegisterAuthMethod(context.Background(), &cmdutil.Factory{}, core.AuthMethodPrivateKeyJWT)
+	if err == nil {
+		t.Fatal("expected invalid helper error")
+	}
+	prob, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error, got %T %v", err, err)
+	}
+	if prob.Category != errs.CategoryConfig {
+		t.Fatalf("category = %q, want %q", prob.Category, errs.CategoryConfig)
 	}
 }
 
