@@ -23,6 +23,7 @@ func TestChangesetGet_DryRun(t *testing.T) {
 			name: "start + end bounded range",
 			args: []string{"--url", testURL, "--start-revision", "120", "--end-revision", "135"},
 			wantInput: map[string]interface{}{
+				"excel_id":       testToken,
 				"start_revision": float64(120),
 				"end_revision":   float64(135),
 			},
@@ -31,6 +32,7 @@ func TestChangesetGet_DryRun(t *testing.T) {
 			name: "start only → end omitted (server defaults to latest)",
 			args: []string{"--url", testURL, "--start-revision", "120"},
 			wantInput: map[string]interface{}{
+				"excel_id":       testToken,
 				"start_revision": float64(120),
 			},
 		},

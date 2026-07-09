@@ -43,15 +43,15 @@ var ChangesetGet = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
-		input, _ := changesetInput(runtime)
+		input, _ := changesetInput(runtime, token)
 		return invokeToolDryRun(token, ToolKindRead, "get_changeset", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
-		input, err := changesetInput(runtime)
+		input, err := changesetInput(runtime, token)
 		if err != nil {
 			return err
 		}
@@ -90,12 +90,13 @@ func changesetRevisions(runtime flagView) (start int, end int, err error) {
 
 // changesetInput builds the get_changeset tool input. end_revision is only
 // sent when explicitly provided; otherwise the server defaults to latest.
-func changesetInput(runtime flagView) (map[string]interface{}, error) {
+func changesetInput(runtime flagView, token string) (map[string]interface{}, error) {
 	start, end, err := changesetRevisions(runtime)
 	if err != nil {
 		return nil, err
 	}
 	input := map[string]interface{}{
+		"excel_id":       token,
 		"start_revision": start,
 	}
 	if end > 0 {
