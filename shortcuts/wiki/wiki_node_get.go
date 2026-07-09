@@ -69,8 +69,8 @@ var WikiNodeGet = common.Shortcut{
 		{Name: "space-id", Desc: "optional: assert the resolved node lives in this space"},
 	},
 	Tips: []string{
-		"--node-token accepts a raw token (wikcnXXX, docxXXX, ...) or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>.",
-		"For raw obj_tokens (not starting with wik), pass --obj-type so the API knows how to resolve them; URL inputs infer it from the path.",
+		"--node-token accepts a raw wiki node_token, obj_token, or a Lark URL like https://feishu.cn/wiki/<token> or https://feishu.cn/docx/<token>.",
+		"For raw obj_tokens, pass --obj-type so the API knows how to resolve them; URL inputs infer it from the path.",
 		"Pair with +move / +node-copy / +delete-space to confirm space_id, obj_type, and parent before mutating.",
 		"--token is the deprecated original name and still works for backward compatibility; new scripts should use --node-token.",
 	},
@@ -235,29 +235,10 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		).WithParam("--node-token")
 	} else {
 		spec.Token = tokenInput
-		if looksLikeWikiNodeToken(spec.Token) {
+		if spec.ObjType == "" {
 			spec.SourceKind = "raw-node"
-			// node_tokens take no obj_type; reject a conflicting flag rather
-			// than silently passing it (the API would just ignore it, but the
-			// mismatch signals caller confusion).
-			if spec.ObjType != "" {
-				return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-					"--obj-type is only valid for obj_tokens; %q looks like a node_token",
-					spec.Token,
-				).WithParam("--obj-type")
-			}
 		} else {
 			spec.SourceKind = "raw-obj"
-			// A raw obj_token needs an explicit obj_type: get_node would
-			// otherwise default to "doc" and fail confusingly for docx /
-			// sheet / bitable / ... Fail fast with the same upfront contract
-			// as +node-delete instead of deferring to an opaque API error.
-			if spec.ObjType == "" {
-				return wikiNodeGetSpec{}, errs.NewValidationError(errs.SubtypeInvalidArgument,
-					"--obj-type is required for a raw obj_token %q (one of: %s); or pass a typed Lark URL (e.g. /docx/<token>) so it can be inferred",
-					spec.Token, strings.Join(wikiNodeGetObjTypeEnum, ", "),
-				).WithParam("--obj-type")
-			}
 		}
 	}
 
@@ -268,18 +249,6 @@ func parseWikiNodeGetSpec(rawToken, rawObjType, rawSpaceID string) (wikiNodeGetS
 		return wikiNodeGetSpec{}, err
 	}
 	return spec, nil
-}
-
-// looksLikeWikiNodeToken returns true when the token has the `wik` prefix used
-// for node_tokens. Lark wiki tokens are case-insensitive in practice; callers
-// pass `wikcn`/`wikus`/`Wik...` interchangeably, so normalize for the check.
-//
-// This is a heuristic based on the current Lark token-naming convention, not a
-// guaranteed invariant: if Lark ever introduces a non-node token type that
-// also starts with `wik`, it would be misclassified. Worst case is a
-// confusing API error (no data risk); revisit if the token scheme changes.
-func looksLikeWikiNodeToken(token string) bool {
-	return strings.HasPrefix(strings.ToLower(token), "wik")
 }
 
 // tokenAndObjTypeFromWikiURL extracts the token and inferred obj_type from a

@@ -34,9 +34,9 @@ lark-cli docs +media-download --type whiteboard --token "wbcnxxxxxxxx" --output 
 
 ## token 从哪里来
 
-- 若你是从文档内容里提取：`lark-doc-fetch` 返回的 Markdown 里可能包含：
-  - 图片：`<image token="..." .../>`
-  - 文件：`<file token="..." name="..."/>`
+- 若你是从文档内容里提取：`lark-doc-fetch` 返回的内容里可能包含：
+  - 图片：`<img token="..." .../>`
+  - 文件：`<source token="..." name="..."/>`
   - 画板：`<whiteboard token="..."/>`
 
 ## 排障

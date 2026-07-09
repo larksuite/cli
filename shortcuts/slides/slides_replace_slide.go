@@ -43,8 +43,10 @@ var SlidesReplaceSlide = common.Shortcut{
 	Command:     "+replace-slide",
 	Description: "Replace elements on a slide via block_replace / block_insert parts (auto-injects id + <content/> on shape elements)",
 	Risk:        "write",
-	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only", "wiki:node:read"},
-	AuthTypes:   []string{"user", "bot"},
+	Scopes:      []string{"slides:presentation:update", "slides:presentation:write_only"},
+	// wiki:node:read is required only when --presentation is a wiki URL.
+	ConditionalScopes: []string{"wiki:node:read"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "presentation", Desc: "xml_presentation_id, slides URL, or wiki URL that resolves to slides", Required: true},
 		{Name: "slide-id", Desc: "slide page identifier (slide_id)", Required: true},
@@ -53,8 +55,14 @@ var SlidesReplaceSlide = common.Shortcut{
 		{Name: "tid", Desc: "transaction id for concurrent-edit locking (usually empty)"},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		if _, err := parsePresentationRef(runtime.Str("presentation")); err != nil {
+		ref, err := parsePresentationRef(runtime.Str("presentation"))
+		if err != nil {
 			return err
+		}
+		if ref.Kind == "wiki" {
+			if err := runtime.EnsureScopes([]string{"wiki:node:read"}); err != nil {
+				return err
+			}
 		}
 		if strings.TrimSpace(runtime.Str("slide-id")) == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--slide-id cannot be empty").WithParam("--slide-id")

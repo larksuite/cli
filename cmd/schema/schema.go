@@ -65,13 +65,13 @@ func NewCmdSchema(f *cmdutil.Factory, runF func(*SchemaOptions) error) *cobra.Co
 	return cmd
 }
 
-// completeSchemaPath is a thin adapter over the embedded catalog's Complete.
-// It uses the embedded source so completion candidates match what `schema`
-// execution can resolve (both overlay-free).
+// completeSchemaPath is a thin adapter over the schema catalog's Complete.
+// It uses the same source as schema execution so completion candidates match
+// what `schema` can resolve.
 func completeSchemaPath(f *cmdutil.Factory) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 	return func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		mode := f.ResolveStrictMode(cmd.Context())
-		completions, noSpace := registry.EmbeddedCatalog().Complete(args, toComplete, registry.FilterForStrictMode(mode))
+		completions, noSpace := registry.SchemaCatalog().Complete(args, toComplete, registry.FilterForStrictMode(mode))
 		directive := cobra.ShellCompDirectiveNoFileComp
 		if noSpace {
 			directive |= cobra.ShellCompDirectiveNoSpace
@@ -86,13 +86,19 @@ func schemaRun(opts *SchemaOptions) error {
 	return runSchema(out, apicatalog.ParsePath(opts.Args), mode)
 }
 
-// runSchema resolves the path through the embedded catalog and renders the
+// runSchema resolves the path through the schema catalog and renders the
 // matching envelope(s). The catalog owns navigation (Resolve + MethodRefs) and
 // schema owns rendering (Envelope/Envelopes); this adapter only chooses the
 // output shape — a single resolved method renders as one envelope object,
 // anything broader as an array — and maps resolve failures to hints.
 func runSchema(out io.Writer, parts []string, mode core.StrictMode) error {
-	catalog := registry.EmbeddedCatalog()
+	catalog := registry.SchemaCatalog()
+	if len(catalog.Services()) == 0 {
+		// No embedded metadata and the runtime fallback is empty too: offline
+		// with a cold cache, remote meta off, or an unwritable cache dir.
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "No API metadata available").
+			WithHint("this binary has no embedded API metadata; run any command with network access to the open platform once so metadata can be fetched and cached")
+	}
 	target, err := catalog.Resolve(parts)
 	if err != nil {
 		return resolveError(err)

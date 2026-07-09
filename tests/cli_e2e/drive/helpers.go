@@ -14,6 +14,18 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const (
+	driveDeleteVisibilityTimeout = 30 * time.Second
+	driveDeleteVisibilityPoll    = 3 * time.Second
+)
+
+var driveDeleteVisibilityWait = clie2e.WaitOptions{
+	// This wait only covers the post-delete visibility lag after Drive accepts
+	// deletion. The delete command itself is bounded by clie2e.CleanupContext.
+	Timeout:  driveDeleteVisibilityTimeout,
+	Interval: driveDeleteVisibilityPoll,
+}
+
 // CreateDriveFolder creates a Drive folder, optionally under a parent folder, and
 // deletes it during parent cleanup.
 func CreateDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, name string, defaultAs string, parentFolderToken string) string {
@@ -60,14 +72,18 @@ func CreateDriveFolder(t *testing.T, parentT *testing.T, ctx context.Context, na
 // returned a suppressed not_found or partial API error but the resource still
 // exists.
 func DeleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs string) (*clie2e.Result, error) {
+	return deleteDriveResourceAndVerify(ctx, token, docType, defaultAs, driveDeleteVisibilityWait)
+}
+
+func deleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs string, visibilityWait clie2e.WaitOptions) (*clie2e.Result, error) {
 	if defaultAs == "" {
 		defaultAs = "bot"
 	}
 
-	deleteResult, deleteErr := clie2e.RunCmdWithRetry(ctx, clie2e.Request{
+	deleteResult, deleteErr := clie2e.RunCmd(ctx, clie2e.Request{
 		Args:      []string{"drive", "+delete", "--file-token", token, "--type", docType, "--yes"},
 		DefaultAs: defaultAs,
-	}, clie2e.RetryOptions{})
+	})
 	if deleteErr != nil || deleteResult == nil {
 		return deleteResult, deleteErr
 	}
@@ -82,35 +98,21 @@ func DeleteDriveResourceAndVerify(ctx context.Context, token, docType, defaultAs
 		}
 		return deleteResult, fmt.Errorf("drive resource %s/%s still exists after delete failed: exit=%d stdout=%s stderr=%s", docType, token, deleteResult.ExitCode, deleteResult.Stdout, deleteResult.Stderr)
 	}
-	if err := WaitDriveResourceDeleted(ctx, token, docType, defaultAs); err != nil {
-		return deleteResult, err
+	if err := waitDriveResourceDeleted(ctx, token, docType, defaultAs, visibilityWait); err != nil {
+		return deleteResult, clie2e.CleanupWarning(
+			fmt.Errorf("drive resource %s/%s still visible after accepted delete: %w", docType, token, err),
+		)
 	}
 	return deleteResult, nil
 }
 
-func WaitDriveResourceDeleted(ctx context.Context, token, docType, defaultAs string) error {
-	deadline := time.NewTimer(20 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-
-	for {
-		deleted, err := IsDriveResourceDeleted(ctx, token, docType, defaultAs)
-		if err != nil {
-			return err
-		}
-		if deleted {
-			return nil
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("drive resource %s/%s still exists after delete", docType, token)
-		case <-ticker.C:
-		}
+func waitDriveResourceDeleted(ctx context.Context, token, docType, defaultAs string, opts clie2e.WaitOptions) error {
+	opts.TimeoutError = func() error {
+		return fmt.Errorf("drive resource %s/%s still exists %s after delete", docType, token, opts.Timeout)
 	}
+	return clie2e.WaitForCondition(ctx, opts, func() (bool, error) {
+		return IsDriveResourceDeleted(ctx, token, docType, defaultAs)
+	})
 }
 
 func IsDriveResourceDeleted(ctx context.Context, token, docType, defaultAs string) (bool, error) {

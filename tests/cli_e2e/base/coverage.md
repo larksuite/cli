@@ -2,12 +2,13 @@
 
 ## Metrics
 - Denominator: 78 leaf commands
-- Covered: 18
-- Coverage: 23.1%
+- Covered: 19
+- Coverage: 24.4%
 
 ## Summary
 - TestBase_BasicWorkflow: proves `+base-create`, `+base-get`, `+table-create`, `+table-get`, and `+table-list`; key `t.Run(...)` proof points are `get base as bot`, `get table as bot`, and `list tables and find created table as bot`.
 - TestBaseBlockDryRun: proves the five `+base-block-*` shortcuts request shapes without touching live data.
+- TestBaseFieldCreateDryRunArrayCompat: proves `+field-create` dry-run request shape for the internal JSON-array compatibility path.
 - TestBase_RoleWorkflow: proves `+advperm-enable`, `+role-create`, `+role-list`, `+role-get`, and `+role-update`; key `t.Run(...)` proof points are `list as bot`, `get as bot`, and `update as bot`.
 - Cleanup note: `+table-delete` and `+role-delete` only run in cleanup and are intentionally left uncovered.
 - Blocked area: dashboard, field, form, record, view, and workflow operations still lack deterministic create/read/update workflows in this suite.
@@ -38,7 +39,7 @@
 | ✕ | base +dashboard-list | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +dashboard-update | shortcut |  | none | dashboard workflows not covered |
 | ✕ | base +data-query | shortcut |  | none | no data-query assertions yet |
-| ✕ | base +field-create | shortcut |  | none | field workflows not covered |
+| ✓ | base +field-create | shortcut | base_field_dryrun_test.go::TestBaseFieldCreateDryRunArrayCompat | `--base-token`; `--table-id`; `--json`; dry-run only | request shape only |
 | ✕ | base +field-delete | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-get | shortcut |  | none | field workflows not covered |
 | ✕ | base +field-list | shortcut |  | none | field workflows not covered |

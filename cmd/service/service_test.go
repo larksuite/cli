@@ -4,10 +4,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"mime"
+	"mime/multipart"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1129,6 +1133,63 @@ func TestDetectFileFields(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// parseMultipartFilenames drives one service-method --file upload through the
+// mock transport and returns a map of field name -> part filename parsed from
+// the captured multipart body. Mirrors cmd/api's helper of the same name
+// (inlined here rather than shared, since the two live in different packages)
+// to give BuildFormdata's shared local-file fix a second real entry-point
+// covering it.
+func parseMultipartFilenames(t *testing.T, stub *httpmock.Stub) map[string]string {
+	t.Helper()
+	ct := stub.CapturedHeaders.Get("Content-Type")
+	mediaType, params, err := mime.ParseMediaType(ct)
+	if err != nil {
+		t.Fatalf("parse Content-Type %q: %v", ct, err)
+	}
+	if !strings.HasPrefix(mediaType, "multipart/") {
+		t.Fatalf("Content-Type = %q, want multipart/*", mediaType)
+	}
+	filenames := map[string]string{}
+	mr := multipart.NewReader(bytes.NewReader(stub.CapturedBody), params["boundary"])
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		if fn := part.FileName(); fn != "" {
+			filenames[part.FormName()] = fn
+		}
+	}
+	return filenames
+}
+
+func TestServiceMethod_FileUpload_PreservesFilename(t *testing.T) {
+	f, _, _, reg := cmdutil.TestFactory(t, testConfig)
+
+	dir := t.TempDir()
+	cmdutil.TestChdir(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "photo.jpg"), []byte("fake-image"), 0600); err != nil {
+		t.Fatalf("write test file: %v", err)
+	}
+
+	stub := &httpmock.Stub{
+		URL:  "/open-apis/im/v1/images",
+		Body: map[string]interface{}{"code": 0, "msg": "ok", "data": map[string]interface{}{"image_key": "img_xxx"}},
+	}
+	reg.Register(stub)
+
+	cmd := NewCmdServiceMethod(f, imSpec(), imImageMethod(), "create", "images", nil)
+	cmd.SetArgs([]string{"--file", "photo.jpg", "--data", `{"image_type":"message"}`, "--as", "bot"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	filenames := parseMultipartFilenames(t, stub)
+	if got := filenames["image"]; got != "photo.jpg" {
+		t.Fatalf("part filename for field %q = %q, want %q", "image", got, "photo.jpg")
 	}
 }
 

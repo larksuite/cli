@@ -11,6 +11,8 @@ import (
 )
 
 const (
+	eventTypeMeetingStarted               = "vc.meeting.participant_meeting_started_v1"
+	eventTypeMeetingJoined                = "vc.meeting.participant_meeting_joined_v1"
 	eventTypeMeetingEnded                 = "vc.meeting.participant_meeting_ended_v1"
 	eventTypeNoteGenerated                = "vc.note.generated_v1"
 	eventTypeRecordingStarted             = "vc.recording.recording_started_v1"
@@ -30,6 +32,38 @@ const (
 // Keys returns all VC-domain EventKey definitions.
 func Keys() []event.KeyDefinition {
 	return []event.KeyDefinition{
+		{
+			Key:         eventTypeMeetingStarted,
+			DisplayName: "Participant meeting started",
+			Description: "Triggered when a meeting the current user participates in has started",
+			EventType:   eventTypeMeetingStarted,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCParticipantMeetingStartedOutput{})},
+			},
+			Process:    processVCParticipantMeetingStarted,
+			PreConsume: subscriptionPreConsume(eventTypeMeetingStarted, pathMeetingSubscribe, pathMeetingUnsubscribe),
+			Scopes:     []string{"vc:meeting.meetingevent:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeMeetingStarted},
+		},
+		{
+			Key:         eventTypeMeetingJoined,
+			DisplayName: "Participant meeting joined",
+			Description: "Triggered when the current user joins a meeting",
+			EventType:   eventTypeMeetingJoined,
+			Schema: event.SchemaDef{
+				Custom: &event.SchemaSpec{Type: reflect.TypeOf(VCParticipantMeetingJoinedOutput{})},
+			},
+			Process:    processVCParticipantMeetingJoined,
+			PreConsume: subscriptionPreConsume(eventTypeMeetingJoined, pathMeetingSubscribe, pathMeetingUnsubscribe),
+			Scopes:     []string{"vc:meeting.meetingevent:read"},
+			AuthTypes: []string{
+				"user",
+			},
+			RequiredConsoleEvents: []string{eventTypeMeetingJoined},
+		},
 		{
 			Key:         eventTypeMeetingEnded,
 			DisplayName: "Participant meeting ended",

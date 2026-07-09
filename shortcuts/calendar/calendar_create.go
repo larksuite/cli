@@ -67,6 +67,26 @@ func parseAttendees(attendeesStr string, currentUserId string) ([]map[string]str
 	return attendees, nil
 }
 
+func attendeesIncludeRoom(attendees []map[string]string) bool {
+	for _, attendee := range attendees {
+		if attendee["type"] == "resource" || attendee["room_id"] != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func guideApprovalRoomReasonError(err error, attendees []map[string]string) error {
+	if err == nil || !attendeesIncludeRoom(attendees) {
+		return err
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || !strings.Contains(strings.ToLower(p.Hint), "approval_reason") {
+		return err
+	}
+	return withStepContext(err, "approval meeting rooms require attendees[].approval_reason; calendar +create does not expose this low-frequency field. Create the event with the raw API flow, then use `lark-cli calendar event.attendees create --as user` with attendees[].approval_reason for the room attendee.")
+}
+
 var CalendarCreate = common.Shortcut{
 	Service:     "calendar",
 	Command:     "+create",
@@ -225,6 +245,7 @@ var CalendarCreate = common.Shortcut{
 					"need_notification": true,
 				})
 			if err != nil {
+				err = guideApprovalRoomReasonError(err, attendees)
 				// Rollback: delete the event
 				_, rollbackErr := runtime.CallAPITyped("DELETE",
 					fmt.Sprintf("/open-apis/calendar/v4/calendars/%s/events/%s", validate.EncodePathSegment(calendarId), validate.EncodePathSegment(eventId)),
@@ -284,6 +305,9 @@ var CalendarCreate = common.Shortcut{
 			"summary":  event["summary"],
 			"start":    startStr,
 			"end":      endStr,
+		}
+		if recurrence, _ := event["recurrence"].(string); recurrence != "" {
+			resultData["recurrence"] = recurrence
 		}
 
 		runtime.OutFormat(resultData, nil, func(w io.Writer) {

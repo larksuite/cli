@@ -5,7 +5,9 @@ package doc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -22,12 +24,17 @@ var validCommandsV2 = map[string]bool{
 	"append":                  true,
 }
 
+const docsReferenceMapFlagDesc = "结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；`--reference-map` 主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。"
+
+const docsUpdateReferenceMapFlagDesc = docsReferenceMapFlagDesc
+
 // v2UpdateFlags returns the flag definitions for the v2 (OpenAPI) update path.
 func v2UpdateFlags() []common.Flag {
 	return []common.Flag{
 		{Name: "command", Desc: "operation; requirements: str_replace(--pattern), block_delete(--block-id, comma-separated for batch), block_insert_after/block_replace(--block-id,--content), block_copy_insert_after/block_move_after(--block-id,--src-block-ids), overwrite/append(--content)", Enum: validCommandsV2Keys()},
 		{Name: "doc-format", Desc: "content format for --content; xml is default for precise rich edits, markdown for user-provided Markdown or plain append/overwrite", Default: "xml", Enum: []string{"xml", "markdown"}},
 		{Name: "content", Desc: "replacement or inserted content; XML by default or Markdown when --doc-format markdown; empty with str_replace deletes match. " + docsContentSkillHelp + "; use --help for the latest command flags", Input: []string{common.File, common.Stdin}},
+		{Name: "reference-map", Desc: docsUpdateReferenceMapFlagDesc, Input: []string{common.File, common.Stdin}},
 		{Name: "pattern", Desc: "str_replace match pattern; XML mode is inline text, Markdown mode can match multiline text"},
 		{Name: "block-id", Desc: "target block ID(s) for block operations (comma-separated for batch delete); -1 means document end where supported"},
 		{Name: "src-block-ids", Desc: "comma-separated source block ids for block_copy_insert_after and block_move_after"},
@@ -54,6 +61,9 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid --command %q, valid: str_replace | block_delete | block_insert_after | block_copy_insert_after | block_replace | block_move_after | overwrite | append", cmd).WithParam("--command")
 	}
 	content := runtime.Str("content")
+	if err := validateUpdateReferenceMap(runtime, cmd, content); err != nil {
+		return err
+	}
 	pattern := runtime.Str("pattern")
 	blockID := runtime.Str("block-id")
 	srcBlockIDs := runtime.Str("src-block-ids")
@@ -107,13 +117,20 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command append requires --content").WithParam("--content")
 		}
 	}
+	if content != "" {
+		_, err := resolveDocsV2ContentReferenceMap(runtime)
+		return err
+	}
 	return nil
 }
 
 func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 	// Validate has already accepted --doc; parseDocumentRef cannot fail here.
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
-	body := buildUpdateBody(runtime)
+	body, err := buildUpdateBodyWithHTML5ReferenceMap(runtime)
+	if err != nil {
+		return common.NewDryRunAPI().Set("error", err.Error())
+	}
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
 	return common.NewDryRunAPI().
 		PUT(apiPath).
@@ -126,7 +143,10 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 	ref, _ := parseDocumentRef(runtime.Str("doc"))
 
 	apiPath := fmt.Sprintf("/open-apis/docs_ai/v1/documents/%s", ref.Token)
-	body := buildUpdateBody(runtime)
+	body, err := buildUpdateBodyWithHTML5ReferenceMap(runtime)
+	if err != nil {
+		return err
+	}
 
 	data, err := doDocAPI(runtime, "PUT", apiPath, body)
 	if err != nil {
@@ -138,6 +158,24 @@ func executeUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 }
 
 func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
+	body, _ := buildUpdateBodyWithReferenceMap(runtime)
+	return body
+}
+
+func buildUpdateBodyWithReferenceMap(runtime *common.RuntimeContext) (map[string]interface{}, error) {
+	body := buildUpdateBodyBase(runtime)
+	if !runtime.Changed("reference-map") {
+		return body, nil
+	}
+	refMap, err := parseUpdateReferenceMap(runtime.Str("reference-map"))
+	if err != nil {
+		return body, err
+	}
+	body["reference_map"] = refMap
+	return body, nil
+}
+
+func buildUpdateBodyBase(runtime *common.RuntimeContext) map[string]interface{} {
 	cmd := runtime.Str("command")
 
 	// append is a shorthand for block_insert_after with block_id "-1" (end of document)
@@ -168,4 +206,41 @@ func buildUpdateBody(runtime *common.RuntimeContext) map[string]interface{} {
 	}
 	injectDocsScene(runtime, body)
 	return body
+}
+
+func validateUpdateReferenceMap(runtime *common.RuntimeContext, command string, content string) error {
+	if !runtime.Changed("reference-map") {
+		return nil
+	}
+	if !updateCommandAcceptsReferenceMap(command) {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--reference-map is only supported with update commands that send --content").WithParam("--reference-map")
+	}
+	if content == "" {
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "--reference-map requires --content that uses matching sidecar refs").WithParam("--reference-map")
+	}
+	_, err := parseUpdateReferenceMap(runtime.Str("reference-map"))
+	return err
+}
+
+func updateCommandAcceptsReferenceMap(command string) bool {
+	switch command {
+	case "str_replace", "block_insert_after", "block_replace", "overwrite", "append":
+		return true
+	default:
+		return false
+	}
+}
+
+func parseUpdateReferenceMap(raw string) (map[string]interface{}, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--reference-map must be a non-empty JSON object").WithParam("--reference-map")
+	}
+	var refMap map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &refMap); err != nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--reference-map must be a valid JSON object: %v", err).WithParam("--reference-map").WithCause(err)
+	}
+	if refMap == nil {
+		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--reference-map must be a JSON object, got null").WithParam("--reference-map")
+	}
+	return refMap, nil
 }

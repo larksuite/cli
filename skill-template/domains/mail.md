@@ -65,7 +65,7 @@
 
 1. `+triage --from spam@x.com` → 列出 N 条结果
 2. 展示："将删除 N 封邮件（发件人 spam@x.com，主题：…），确认？"
-3. 用户确认后 → `*.batch_trash`
+3. 用户确认后 → `+message-trash --message-ids ... --yes`
 
 ## 身份选择：优先使用 user 身份
 
@@ -82,12 +82,13 @@
 1. **确认身份** — 首次操作邮箱前先调用 `lark-cli mail user_mailboxes profile --params '{"user_mailbox_id":"me"}'` 获取当前用户的真实邮箱地址（`primary_email_address`），不要通过系统用户名猜测。后续判断"发件人是否为用户本人"时以此地址为准。
 2. **浏览** — `+triage` 查看收件箱摘要，获取 `message_id` / `thread_id`
 3. **阅读** — `+message` 读单封邮件，`+thread` 读整个会话
-4. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
-5. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
-6. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
-7. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
-8. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
-9. **已读回执** —
+4. **整理** — 标签、已读/未读状态和移动文件夹优先用 `+message-modify`；软删除优先用 `+message-trash`
+5. **回复** — `+reply` / `+reply-all`（默认存草稿，加 `--confirm-send` 则立即发送）
+6. **转发** — `+forward`（默认存草稿，加 `--confirm-send` 则立即发送）
+7. **新邮件** — `+send` 存草稿（默认），加 `--confirm-send` 发送
+8. **确认投递** — 立即发送后用 `send_status` 查询投递状态，定时发送后在预定时间后再查询；取消定时发送用 `cancel_scheduled_send`
+9. **编辑草稿** — `+draft-edit` 修改已有草稿。正文编辑通过 `--patch-file`：回复/转发草稿用 `set_reply_body` op 保留引用区，普通草稿用 `set_body` op
+10. **已读回执** —
    - **请求回执（写信侧）**：`--request-receipt` 仅在**用户显式要求**时添加，**不要从 subject / body 内容推断意图**。
    - **响应回执（拉信侧）**：拉信看到 `label_ids` 含 `READ_RECEIPT_REQUEST`（或 `-607`）时，**必须先问用户**是否回执（不要自动回执，涉及隐私）。用户同意 → `+send-receipt` 响应；用户不同意但想消掉提示 → `+decline-receipt` 只清本地标签、不发邮件。
 
@@ -417,7 +418,7 @@ lark-cli mail +message --message-id <id>
 
 ## 原生 API 调用规则
 
-没有 Shortcut 覆盖的操作才使用原生 API。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
+没有 Shortcut 覆盖的操作才使用原生 API。标签、已读状态、移动文件夹优先使用 `+message-modify`；软删除优先使用 `+message-trash`。调用步骤以本节为准（API Resources 章节的 resource/method 列表可辅助查阅）。
 
 ### Step 1 — 用 `-h` 确定要调用的 API（必须，不可跳过）
 

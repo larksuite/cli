@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
@@ -35,12 +36,37 @@ type createProgressRecordParams struct {
 
 // parseCreateProgressRecordParams parses and validates flags from runtime into request-ready parameters.
 func parseCreateProgressRecordParams(runtime *common.RuntimeContext) (*createProgressRecordParams, error) {
+	style := runtime.Str("style")
 	content := runtime.Str("content")
-	var cb ContentBlock
-	if err := json.Unmarshal([]byte(content), &cb); err != nil {
-		return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
+	var contentV1 *ContentBlockV1
+
+	if style == "simple" {
+		var sp SemiPlainContent
+		if err := json.Unmarshal([]byte(content), &sp); err != nil {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %s", err).WithParam("--content").WithCause(err)
+		}
+		if strings.TrimSpace(sp.Text) == "" {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content text is required and cannot be empty").WithParam("--content")
+		}
+		// Validate mention IDs are non-empty
+		for i, m := range sp.Mention {
+			if strings.TrimSpace(m) == "" {
+				return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content mention[%d] cannot be empty", i).WithParam("--content")
+			}
+		}
+		if len(sp.Docs) > 0 || len(sp.Images) > 0 {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content docs and images are not supported in simple style input; use richtext style or remove these fields").WithParam("--content")
+		}
+		// Build ContentBlock from semi-plain content (text + mentions)
+		contentV1 = sp.ToContentBlock().ToV1()
+	} else {
+		// richtext mode
+		var cb ContentBlock
+		if err := json.Unmarshal([]byte(content), &cb); err != nil {
+			return nil, errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
+		}
+		contentV1 = cb.ToV1()
 	}
-	contentV1 := cb.ToV1()
 
 	targetType := runtime.Str("target-type")
 	targetTypeVal := targetTypeAllowed[targetType]
@@ -92,7 +118,7 @@ var OKRCreateProgressRecord = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
-		{Name: "content", Desc: "progress content in ContentBlock JSON format", Required: true, Input: []string{common.File, common.Stdin}},
+		{Name: "content", Desc: "progress content: semi-plain JSON {\"text\":\"...\",\"mention\":[\"...\"]} (simple style) or ContentBlock JSON (richtext style)", Required: true, Input: []string{common.File, common.Stdin}},
 		{Name: "target-id", Desc: "target ID (objective or key result ID)", Required: true},
 		{Name: "target-type", Desc: "target type: objective | key_result", Required: true, Enum: []string{"objective", "key_result"}},
 		{Name: "progress-percent", Desc: "progress percentage"},
@@ -100,6 +126,7 @@ var OKRCreateProgressRecord = common.Shortcut{
 		{Name: "source-title", Default: "created by lark-cli", Desc: "source title for display"},
 		{Name: "source-url", Desc: "source URL for display (defaults to open platform URL based on brand)"},
 		{Name: "user-id-type", Default: "open_id", Desc: "user ID type: open_id | union_id | user_id"},
+		{Name: "style", Default: "simple", Desc: "input style: simple (semi-plain text JSON) | richtext (ContentBlock JSON)", Enum: []string{"simple", "richtext"}},
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		content := runtime.Str("content")
@@ -109,10 +136,36 @@ var OKRCreateProgressRecord = common.Shortcut{
 		if err := common.RejectDangerousCharsTyped("--content", content); err != nil {
 			return err
 		}
-		// Validate content is valid JSON and can be parsed as ContentBlock
-		var cb ContentBlock
-		if err := json.Unmarshal([]byte(content), &cb); err != nil {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
+
+		style := runtime.Str("style")
+		if style != "simple" && style != "richtext" {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--style must be one of: simple | richtext").WithParam("--style")
+		}
+
+		// Validate content based on style
+		if style == "simple" {
+			var sp SemiPlainContent
+			if err := json.Unmarshal([]byte(content), &sp); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid semi-plain JSON: {\"text\":\"...\",\"mention\":[\"...\"]}: %s", err).WithParam("--content").WithCause(err)
+			}
+			if strings.TrimSpace(sp.Text) == "" {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content text is required and cannot be empty").WithParam("--content")
+			}
+			for i, m := range sp.Mention {
+				if strings.TrimSpace(m) == "" {
+					return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content mention[%d] cannot be empty", i).WithParam("--content")
+				}
+			}
+			// If user provided docs or images in simple mode, warn that they are ignored
+			if len(sp.Docs) > 0 || len(sp.Images) > 0 {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content docs and images are not supported in simple style input; use richtext style or remove these fields").WithParam("--content")
+			}
+		} else {
+			// richtext mode
+			var cb ContentBlock
+			if err := json.Unmarshal([]byte(content), &cb); err != nil {
+				return errs.NewValidationError(errs.SubtypeInvalidArgument, "--content must be valid ContentBlock JSON: %s", err).WithParam("--content").WithCause(err)
+			}
 		}
 
 		targetID := runtime.Str("target-id")
@@ -213,21 +266,43 @@ var OKRCreateProgressRecord = common.Shortcut{
 			return err
 		}
 
-		resp := record.ToResp()
-		result := map[string]interface{}{
-			"progress": resp,
-		}
+		style := runtime.Str("style")
+		var result map[string]interface{}
+		if style == "simple" {
+			resp := record.ToSimple()
+			result = map[string]interface{}{
+				"progress": resp,
+				"style":    style,
+			}
 
-		runtime.OutFormat(result, nil, func(w io.Writer) {
-			fmt.Fprintf(w, "Created Progress [%s]\n", resp.ID)
-			fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
-			if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
-				fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Created Progress [%s] (style: %s)\n", resp.ID, style)
+				fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
+				if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
+					fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+				}
+				if resp.Content != nil {
+					fmt.Fprintf(w, "  Content: %s\n", resp.Content.Text)
+				}
+			})
+		} else {
+			resp := record.ToResp()
+			result = map[string]interface{}{
+				"progress": resp,
+				"style":    style,
 			}
-			if resp.Content != nil {
-				fmt.Fprintf(w, "  Content: %s\n", *resp.Content)
-			}
-		})
+
+			runtime.OutFormat(result, nil, func(w io.Writer) {
+				fmt.Fprintf(w, "Created Progress [%s] (style: %s)\n", resp.ID, style)
+				fmt.Fprintf(w, "  ModifyTime: %s\n", resp.ModifyTime)
+				if resp.ProgressRate != nil && resp.ProgressRate.Percent != nil {
+					fmt.Fprintf(w, "  ProgressRate: %.1f%%\n", *resp.ProgressRate.Percent)
+				}
+				if resp.Content != nil {
+					fmt.Fprintf(w, "  Content: %s\n", *resp.Content)
+				}
+			})
+		}
 		return nil
 	},
 }

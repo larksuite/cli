@@ -170,6 +170,27 @@ func TestRegisterShortcutsMountsDocsMediaPreview(t *testing.T) {
 	}
 }
 
+func TestRegisterShortcutsMountsDocsHistoryCommands(t *testing.T) {
+	program := &cobra.Command{Use: "root"}
+	RegisterShortcuts(program, newRegisterTestFactory(t))
+
+	for _, name := range []string{"+history-list", "+history-revert", "+history-revert-status"} {
+		cmd, _, err := program.Find([]string{"docs", name})
+		if err != nil {
+			t.Fatalf("find docs %s shortcut: %v", name, err)
+		}
+		if cmd == nil || cmd.Name() != name {
+			t.Fatalf("docs %s shortcut not mounted: %#v", name, cmd)
+		}
+		if cmd.Flags().Lookup("api-version") != nil {
+			t.Fatalf("docs %s should not expose --api-version", name)
+		}
+		if !strings.Contains(cmd.Long, "lark-cli skills read lark-doc references/lark-doc-history.md") {
+			t.Fatalf("docs %s help missing history skill guidance:\n%s", name, cmd.Long)
+		}
+	}
+}
+
 func TestRegisterShortcutsDocsHelpAddsSkillReadGuidance(t *testing.T) {
 	program := &cobra.Command{Use: "root"}
 	RegisterShortcuts(program, newRegisterTestFactory(t))

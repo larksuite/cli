@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 
@@ -26,6 +27,25 @@ type Manager struct {
 	Issuer    Issuer
 	Now       func() time.Time
 }
+
+// credentialKeys is the shared list of credential field names to redact; the
+// bare, double-quoted (JSON), and single-quoted forms all reuse it.
+const credentialKeys = `access_token|refresh_token|app_secret|token|pat|password|secret`
+
+var (
+	credentialURLUserinfoRE = regexp.MustCompile(`(?i)(https?://)[^/\s]+@`)
+	// credentialAssignmentRE matches credential key assignments, including JSON
+	// quoted forms. Capture group 1 is the key and separator; only the value is
+	// replaced with <redacted>. The key is one of three forms — double-quoted,
+	// single-quoted, or bare with a word boundary — so concatenated words like
+	// mytoken are not matched. Each form wraps the key list in (?:...) so the |
+	// alternation does not bind the quote/boundary to only the first and last key.
+	credentialAssignmentRE = regexp.MustCompile(
+		`(?i)((?:"(?:` + credentialKeys + `)"|'(?:` + credentialKeys + `)'|\b(?:` + credentialKeys + `)\b)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)`,
+	)
+	credentialBearerRE  = regexp.MustCompile(`(?i)(authorization\s*:\s*bearer\s+)[^\s,;]+`)
+	credentialPATLikeRE = regexp.MustCompile(`(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|pat-[A-Za-z0-9._-]+)\b`)
+)
 
 func NewManager(store *Store, secrets *SecretStore, gitConfig GitConfig, issuer Issuer) *Manager {
 	return &Manager{
@@ -172,12 +192,12 @@ func (m *Manager) List() (*ListResult, error) {
 func (m *Manager) Get(ctx context.Context, input CredentialInput, current ProfileContext, out, errOut io.Writer) error {
 	url, err := NormalizeCredentialInput(input)
 	if err != nil {
-		fmt.Fprintf(errOut, "Git credential unavailable: %s\n", err)
+		writeCredentialError(errOut, "Git credential unavailable", err)
 		return nil
 	}
 	record, pat, ok, err := m.readConfirmed(url, current)
 	if err != nil {
-		fmt.Fprintf(errOut, "Git credential unavailable: %s\n", err)
+		writeCredentialError(errOut, "Git credential unavailable", err)
 		return nil
 	}
 	if !ok {
@@ -187,18 +207,28 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 		return writeGitCredential(out, record.Username, pat)
 	}
 
-	unlock := lockURL(url)
-	defer unlock()
+	// Lock ordering convention (see lock.go package comment): always acquire
+	// lockApp before lockURL. lockApp is a cross-process file lock with a
+	// timeout and possible setup failure; acquiring it first avoids holding an
+	// in-process mutex on the failure path, which would risk a deadlock.
 	unlockApp, err := lockApp(record.AppID)
 	if err != nil {
-		fmt.Fprintf(errOut, "Git credential refresh failed: acquire lock for %s: %s\n", record.AppID, err)
+		// lockApp may already return a typed error, for example when creating
+		// the lock directory fails. Preserve those classifications and only wrap
+		// raw lockfile errors to add app context.
+		if _, ok := errs.ProblemOf(err); !ok {
+			err = errs.NewInternalError(errs.SubtypeStorage, "acquire Git credential lock for %s: %v", record.AppID, err).WithCause(err)
+		}
+		writeCredentialError(errOut, "Git credential refresh failed", err)
 		return nil
 	}
 	defer unlockApp()
+	unlockURL := lockURL(url)
+	defer unlockURL()
 
 	record, pat, ok, err = m.readConfirmed(url, current)
 	if err != nil {
-		fmt.Fprintf(errOut, "Git credential unavailable: %s\n", err)
+		writeCredentialError(errOut, "Git credential unavailable", err)
 		return nil
 	}
 	if !ok {
@@ -213,16 +243,17 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 	}
 	issued, err := m.Issuer.Issue(ctx, record.AppID, current)
 	if err != nil {
-		fmt.Fprintf(errOut, "Git credential refresh failed: %s\nNext step: lark-cli apps +git-credential-init --app-id %s\n", err, record.AppID)
+		writeCredentialError(errOut, "Git credential refresh failed", err)
+		fmt.Fprintf(errOut, "Next step: lark-cli apps +git-credential-init --app-id %s\n", record.AppID)
 		return nil
 	}
 	issuedURL, urlErr := NormalizeGitHTTPURL(issued.GitHTTPURL)
 	if urlErr != nil {
-		fmt.Fprintf(errOut, "Git credential refresh failed: %s\n", urlErr)
+		writeCredentialError(errOut, "Git credential refresh failed", urlErr)
 		return nil
 	}
 	if err := validateIssuedCredential(record.AppID, issuedURL, issued, m.nowUnix()); err != nil {
-		fmt.Fprintf(errOut, "Git credential refresh failed: %s\n", err)
+		writeCredentialError(errOut, "Git credential refresh failed", err)
 		return nil
 	}
 	if issuedURL != url {
@@ -232,7 +263,7 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 	if issued.ExpiresAt < record.ExpiresAt {
 		latest, latestPAT, found, readErr := m.readConfirmed(url, current)
 		if readErr != nil {
-			fmt.Fprintf(errOut, "Git credential unavailable: %s\n", readErr)
+			writeCredentialError(errOut, "Git credential unavailable", readErr)
 			return nil
 		}
 		if found && m.usable(latest, latestPAT) {
@@ -247,15 +278,62 @@ func (m *Manager) Get(ctx context.Context, input CredentialInput, current Profil
 	record.Status = StatusConfirmed
 	oldPAT := pat
 	if err := m.Secrets.Set(record.PATRef, issued.PAT); err != nil {
-		fmt.Fprintf(errOut, "Git credential refresh failed: %s\n", err)
+		writeCredentialError(errOut, "Git credential refresh failed", err)
 		return nil
 	}
 	if err := m.Store.Upsert(record); err != nil {
 		_ = m.Secrets.Set(record.PATRef, oldPAT)
-		fmt.Fprintf(errOut, "Git credential refresh failed: %s\n", err)
+		writeCredentialError(errOut, "Git credential refresh failed", err)
 		return nil
 	}
 	return writeGitCredential(out, record.Username, issued.PAT)
+}
+
+func writeCredentialError(w io.Writer, prefix string, err error) {
+	if w == nil || err == nil {
+		return
+	}
+	fmt.Fprintf(w, "%s: %s\n", prefix, safeCredentialErrorMessage(err))
+}
+
+func safeCredentialErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	if p, ok := errs.ProblemOf(err); ok {
+		message := RedactCredentialText(p.Message)
+		if p.LogID != "" {
+			if message != "" {
+				message += "; "
+			}
+			message += "log_id=" + p.LogID
+		}
+		if p.Hint != "" {
+			if message != "" {
+				message += "; "
+			}
+			message += "hint: " + RedactCredentialText(p.Hint)
+		}
+		if message != "" {
+			return message
+		}
+		if p.Category != "" || p.Subtype != "" {
+			return strings.Trim(strings.TrimSpace(string(p.Category)+"/"+string(p.Subtype)), "/")
+		}
+	}
+	return RedactCredentialText(err.Error())
+}
+
+// RedactCredentialText masks credential fragments that may appear in free
+// text, covering URL userinfo, Authorization bearer headers, credential
+// assignments including JSON-quoted forms, and PAT-shaped strings. Shared by
+// the gitcred and apps packages so the redaction logic does not fork.
+func RedactCredentialText(text string) string {
+	text = credentialURLUserinfoRE.ReplaceAllString(text, "${1}***@")
+	text = credentialBearerRE.ReplaceAllString(text, "${1}<redacted>")
+	text = credentialAssignmentRE.ReplaceAllString(text, "${1}<redacted>")
+	text = credentialPATLikeRE.ReplaceAllString(text, "<redacted>")
+	return text
 }
 
 func (m *Manager) currentAppRecord(appID string) (*CredentialRecord, error) {

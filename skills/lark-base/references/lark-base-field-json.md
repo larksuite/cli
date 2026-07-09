@@ -243,6 +243,7 @@
 
 默认值 / 约束：
 - `style.format` 默认 `yyyy/MM/dd` 可用格式：`yyyy/MM/dd`、`yyyy/MM/dd HH:mm`、`yyyy/MM/dd HH:mm Z`、`yyyy-MM-dd`、`yyyy-MM-dd HH:mm`、`yyyy-MM-dd HH:mm Z`、`MM-dd`、`MM/dd/yyyy`、`dd/MM/yyyy`
+- `style.format` 只控制前端显示格式；当前可配置格式最多显示到分钟，底层时间值仍可保留秒级精度。
 
 常用写法：
 

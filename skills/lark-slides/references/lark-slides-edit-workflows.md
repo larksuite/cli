@@ -1,6 +1,6 @@
 # 编辑已有 PPT：读-改-写闭环
 
-编辑走 **shortcut [`+replace-slide`](lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。
+局部编辑走 **shortcut [`+replace-slide`](lark-slides-replace-slide.md)**（块级替换 / 插入），配合 `xml_presentation.slide.get` 读原页拿 `block_id`。已有 Slides 的多页整页重建走 **[`+replace-pages`](lark-slides-replace-pages.md)**，保持原 presentation 链接不变。
 
 > 生成 XML 前**必读** [xml-schema-quick-ref.md](xml-schema-quick-ref.md)。
 
@@ -11,6 +11,7 @@
 | 已知某块的 `block_id`，要换这块内容（改标题、换图、挪坐标） | `block_replace` | 精准替换，原子性好；`replacement` 根 `id` 由 CLI 自动注入为 `block_id` |
 | 只加 1~N 个元素、不动现有布局 | `block_insert` | 新增不覆盖，可选 `insert_before_block_id` 指定位置 |
 | 一次动多个元素（如：换标题 + 加图） | 单次 `--parts` 里拼多条 | 整批作为原子事务，任一失败整批不生效；`block_replace` 和 `block_insert` 可混用 |
+| 多页版式重建、整页坐标重排 | `+replace-pages` | 原 presentation 内批量 create-before/delete-old，不生成新 Slides 链接 |
 
 > **没有字段级 patch**：即便只想改一个 `shape` 的 `topLeftX`，也得把整个块的新 XML 写出来用 `block_replace`。这不是"微调"，是块级重写。
 
@@ -136,6 +137,7 @@ cat parts.json | lark-cli slides +replace-slide --as user --presentation "$PID" 
 ## 相关文档
 
 - [lark-slides-replace-slide.md](lark-slides-replace-slide.md) — +replace-slide shortcut 参数详情
+- [lark-slides-replace-pages.md](lark-slides-replace-pages.md) — 多页整页重建 shortcut
 - [lark-slides-xml-presentation-slide-get.md](lark-slides-xml-presentation-slide-get.md) — slide.get 参考（拿 `block_id` / `revision_id`）
 - [lark-slides-xml-presentation-slide-replace.md](lark-slides-xml-presentation-slide-replace.md) — 底层 replace API 参考（一般直接用 shortcut 即可）
 - [lark-slides-media-upload.md](lark-slides-media-upload.md) — 上传图片拿 file_token

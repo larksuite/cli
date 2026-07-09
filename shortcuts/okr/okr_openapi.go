@@ -5,7 +5,9 @@ package okr
 
 import (
 	"encoding/json"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -261,14 +263,9 @@ func (c *Cycle) ToResp() *RespCycle {
 		return nil
 	}
 	resp := &RespCycle{
-		ID:            c.ID,
-		CreateTime:    formatTimestamp(c.CreateTime),
-		UpdateTime:    formatTimestamp(c.UpdateTime),
-		TenantCycleID: c.TenantCycleID,
-		Owner:         *c.Owner.ToResp(),
-		StartTime:     formatTimestamp(c.StartTime),
-		EndTime:       formatTimestamp(c.EndTime),
-		Score:         c.Score,
+		ID:        c.ID,
+		StartTime: formatTimestamp(c.StartTime),
+		EndTime:   formatTimestamp(c.EndTime),
 	}
 	if c.CycleStatus != nil {
 		s := c.CycleStatus.ToString()
@@ -731,6 +728,131 @@ func (p *ContentPersonV1) ToV2() *ContentMention {
 	return &ContentMention{
 		UserID: p.OpenID,
 	}
+}
+
+// ========== SemiPlainContent (半纯文本格式) ==========
+
+// Regex patterns for semi-plain text processing (pre-compiled for performance).
+var (
+	placeholderRE = regexp.MustCompile(`\s*@\{[^}]+\}\s*`)
+	multiSpaceRE  = regexp.MustCompile(`\s+`)
+)
+
+// SemiPlainDoc represents a document link in semi-plain content.
+type SemiPlainDoc struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
+}
+
+// SemiPlainContent is a simplified, lossy representation of ContentBlock.
+// It contains plain text, mentions, docs, and images without rich formatting or position info.
+type SemiPlainContent struct {
+	Text    string         `json:"text"`
+	Mention []string       `json:"mention,omitempty"`
+	Docs    []SemiPlainDoc `json:"docs,omitempty"`
+	Images  []string       `json:"images,omitempty"`
+}
+
+// ToSemiPlain converts ContentBlock to SemiPlainContent (lossy conversion).
+// Position information and formatting are discarded; only text, mentions, docs, and images are extracted.
+func (c *ContentBlock) ToSemiPlain() *SemiPlainContent {
+	if c == nil {
+		return nil
+	}
+	result := &SemiPlainContent{}
+	var textParts []string
+
+	for _, block := range c.Blocks {
+		if block.Paragraph != nil {
+			for _, elem := range block.Paragraph.Elements {
+				switch {
+				case elem.TextRun != nil && elem.TextRun.Text != nil:
+					textParts = append(textParts, *elem.TextRun.Text)
+				case elem.Mention != nil && elem.Mention.UserID != nil:
+					textParts = append(textParts, " @{"+*elem.Mention.UserID+"} ")
+					result.Mention = append(result.Mention, *elem.Mention.UserID)
+				case elem.DocsLink != nil:
+					doc := SemiPlainDoc{}
+					if elem.DocsLink.Title != nil {
+						doc.Title = *elem.DocsLink.Title
+					}
+					if elem.DocsLink.URL != nil {
+						doc.URL = *elem.DocsLink.URL
+					}
+					result.Docs = append(result.Docs, doc)
+				}
+			}
+		}
+		if block.Gallery != nil {
+			for _, img := range block.Gallery.Images {
+				if img.Src != nil {
+					result.Images = append(result.Images, *img.Src)
+				}
+			}
+		}
+	}
+
+	result.Text = strings.Join(textParts, "")
+	return result
+}
+
+// ToContentBlock converts SemiPlainContent to ContentBlock.
+// Text and mentions are placed in a single paragraph (text first, then mentions).
+// Docs and images are NOT converted (input semi-plain format only supports text+mention).
+func (s *SemiPlainContent) ToContentBlock() *ContentBlock {
+	if s == nil {
+		return nil
+	}
+	elements := make([]ContentParagraphElement, 0, len(s.Mention)+1)
+
+	// Strip @{userID} placeholders from text to avoid duplicate mentions
+	// (these placeholders are only for readability in the output format)
+	strippedText := placeholderRE.ReplaceAllString(s.Text, " ")
+	// Collapse multiple spaces and trim
+	strippedText = multiSpaceRE.ReplaceAllString(strippedText, " ")
+	strippedText = strings.TrimSpace(strippedText)
+
+	// Add text element if stripped text is not empty
+	if strippedText != "" {
+		text := strippedText
+		elements = append(elements, ContentParagraphElement{
+			ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
+			TextRun: &ContentTextRun{
+				Text: &text,
+			},
+		})
+	}
+
+	// Add mention elements
+	for _, mention := range s.Mention {
+		m := mention
+		elements = append(elements, ContentParagraphElement{
+			ParagraphElementType: ParagraphElementTypeMention.Ptr(),
+			Mention: &ContentMention{
+				UserID: &m,
+			},
+		})
+	}
+
+	return &ContentBlock{
+		Blocks: []ContentBlockElement{
+			{
+				BlockElementType: BlockElementTypeParagraph.Ptr(),
+				Paragraph: &ContentParagraph{
+					Elements: elements,
+				},
+			},
+		},
+	}
+}
+
+// BuildContentBlock converts text and mentions to a ContentBlock.
+// This is a convenience wrapper around SemiPlainContent.ToContentBlock().
+func BuildContentBlock(text string, mentions []string) *ContentBlock {
+	return (&SemiPlainContent{
+		Text:    text,
+		Mention: mentions,
+	}).ToContentBlock()
 }
 
 // ProgressRateV1 进度率
