@@ -313,7 +313,7 @@ func ResolveConfigFromMulti(raw *MultiAppConfig, kc keychain.KeychainAccess, pro
 		if app.KeyRef == nil || app.KeyRef.Source != "tee" || app.KeyRef.ID == "" {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidConfig,
 				"private_key_jwt requires a valid tee key handle (keyRef)").
-				WithHint("re-run: lark-cli config init --new --auth-method private_key_jwt")
+				WithHint("re-run: lark-cli config init --new --private_key_jwt")
 		}
 	} else {
 		if err := ValidateSecretKeyMatch(app.AppId, app.AppSecret); err != nil {

@@ -5,7 +5,6 @@ package config
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"slices"
@@ -156,58 +155,35 @@ func runExistingAppForm(f *cmdutil.Factory, msg *initMsg) (*configInitResult, er
 }
 
 // resolveRegisterAuthMethod decides the auth method for a new-app registration.
-// An explicit --auth-method flag wins; otherwise, on an interactive terminal with
-// a TEE signer available, the user is prompted; the default is client_secret.
-func resolveRegisterAuthMethod(f *cmdutil.Factory, flag string) (string, error) {
+// An explicit private_key_jwt request wins; otherwise the default is
+// client_secret with no extra prompt.
+func resolveRegisterAuthMethod(_ *cmdutil.Factory, requested string) (string, error) {
 	signerAvailable := keysigner.Active() != nil
-	switch flag {
+	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
 		if !signerAvailable {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-				"--auth-method private_key_jwt requires a platform key signer, which is unavailable on this device/build").
-				WithHint("omit --auth-method (or pass --auth-method client_secret) to register with an app secret")
+				"--private_key_jwt requires a platform key signer, which is unavailable on this device/build").
+				WithHint("omit --private_key_jwt to register with an app secret")
 		}
 		return core.AuthMethodPrivateKeyJWT, nil
 	case core.AuthMethodClientSecret:
 		return core.AuthMethodClientSecret, nil
 	case "":
-		// fall through to interactive / default
+		return core.AuthMethodClientSecret, nil
 	default:
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument,
-			"unknown --auth-method %q (use client_secret or private_key_jwt)", flag)
+			"unknown auth method %q (use client_secret or private_key_jwt)", requested)
 	}
-
-	if signerAvailable && f.IOStreams.IsTerminal {
-		var choice string
-		form := huh.NewForm(
-			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Authentication method").
-					Options(
-						huh.NewOption("App Secret (client_secret)", core.AuthMethodClientSecret),
-						huh.NewOption("Secure key signer, no secret (private_key_jwt)", core.AuthMethodPrivateKeyJWT),
-					).
-					Value(&choice),
-			),
-		).WithTheme(cmdutil.ThemeFeishu())
-		if err := form.Run(); err != nil {
-			if errors.Is(err, huh.ErrUserAborted) {
-				return "", output.ErrBare(1)
-			}
-			return "", err
-		}
-		return choice, nil
-	}
-	return core.AuthMethodClientSecret, nil
 }
 
 // runCreateAppFlow runs the "create new app" flow via OpenClaw device flow.
 // If brandOverride is non-empty, skip the interactive brand selection.
-// authMethodFlag is the raw --auth-method value ("" when unset).
+// requestedAuthMethod is the requested auth method; empty means client_secret.
 // restoreAppID, when non-empty, is sent on the registration begin request so the
 // server re-registers that existing app (credential recovery) instead of creating
 // a new one. Empty preserves the normal new-app flow.
-func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, authMethodFlag string, msg *initMsg, restoreAppID string) (*configInitResult, error) {
+func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride core.LarkBrand, requestedAuthMethod string, msg *initMsg, restoreAppID string) (*configInitResult, error) {
 	var larkBrand core.LarkBrand
 	if brandOverride != "" {
 		larkBrand = brandOverride
@@ -235,7 +211,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		larkBrand = parseBrand(brand)
 	}
 
-	authMethod, err := resolveRegisterAuthMethod(f, authMethodFlag)
+	authMethod, err := resolveRegisterAuthMethod(f, requestedAuthMethod)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +239,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		if len(initResp.SupportedAuthMethods) > 0 && !slices.Contains(initResp.SupportedAuthMethods, core.AuthMethodPrivateKeyJWT) {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
 				"server does not support private_key_jwt for this app type (supported: %s)", strings.Join(initResp.SupportedAuthMethods, ", ")).
-				WithHint("register with --auth-method client_secret instead")
+				WithHint("omit --private_key_jwt to register with an app secret instead")
 		}
 		keyLabel = keysigner.DefaultKeyLabel
 		attestation, signErr := jwt.SignAttestation(ctx, signer, keysigner.KeyRef{Label: keyLabel}, initResp.Nonce, time.Now())
@@ -400,7 +376,7 @@ func validatePKJWTKeyBinding(finalMethod, keyLabel string) error {
 	if finalMethod == core.AuthMethodPrivateKeyJWT && keyLabel == "" {
 		return errs.NewConfigError(errs.SubtypeInvalidClient,
 			"registration resolved to private_key_jwt but no signing key was bound to this app (an existing secret-based app may have been selected)").
-			WithHint("re-register with: lark-cli config init --new --auth-method private_key_jwt")
+			WithHint("re-register with: lark-cli config init --new --private_key_jwt")
 	}
 	return nil
 }
