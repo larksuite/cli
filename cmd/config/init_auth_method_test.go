@@ -148,6 +148,41 @@ func TestResolveRegisterAuthMethod_PrivateKeyJWTRejectsProbeError(t *testing.T) 
 	}
 }
 
+func TestConfigInitRun_PrivateKeyJWTRejectsBeforeInteractiveMode(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+	prevSigner := keysigner.Active()
+	t.Cleanup(func() { keysigner.Register(prevSigner) })
+	keysigner.Register(authMethodTestSigner{info: keysigner.HardwareInfo{
+		Backend: "tpm2",
+		Reason:  "not available",
+	}})
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	f.IOStreams.IsTerminal = true
+	opts := &ConfigInitOptions{
+		Factory:       f,
+		Ctx:           context.Background(),
+		PrivateKeyJWT: true,
+		Lang:          "zh_cn",
+		UILang:        "zh_cn",
+	}
+
+	err := configInitRun(opts)
+	if err == nil {
+		t.Fatal("config init --private_key_jwt on unsupported machine: expected error before interactive mode")
+	}
+	problem, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("error is not typed: %T %[1]v", err)
+	}
+	if problem.Category != errs.CategoryConfig || problem.Subtype != errs.SubtypeInvalidClient {
+		t.Fatalf("problem = %s/%s, want config/invalid_client", problem.Category, problem.Subtype)
+	}
+	if problem.Message != "this machine does not support --private_key_jwt" {
+		t.Fatalf("message = %q", problem.Message)
+	}
+}
+
 func TestExistingAppRequiresSecret(t *testing.T) {
 	if !existingAppRequiresSecret(core.AuthMethodClientSecret) {
 		t.Error("client_secret existing app should require App Secret")
