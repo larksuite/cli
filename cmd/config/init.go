@@ -532,6 +532,15 @@ func configInitRun(opts *ConfigInitOptions) error {
 		}
 	}
 
+	// A user who explicitly asks for private_key_jwt needs immediate feedback
+	// before any interactive prompt. Otherwise unsupported machines enter the
+	// TUI and fail only after the user chooses a create flow.
+	if opts.PrivateKeyJWT && !opts.New && !opts.Restore {
+		if _, err := resolveRegisterAuthMethod(opts.Ctx, f, core.AuthMethodPrivateKeyJWT); err != nil {
+			return err
+		}
+	}
+
 	// Mode 1: Non-interactive
 	if opts.AppID != "" && opts.appSecret != "" {
 		brand := parseBrand(opts.Brand)
