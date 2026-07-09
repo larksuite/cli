@@ -67,6 +67,39 @@ func TestConfigInitCmd_FlagParsing(t *testing.T) {
 	}
 }
 
+func TestConfigInitCmd_PrivateKeyJWTFlag(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	var gotOpts *ConfigInitOptions
+	cmd := NewCmdConfigInit(f, func(opts *ConfigInitOptions) error {
+		gotOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--new", "--private_key_jwt"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !gotOpts.PrivateKeyJWT {
+		t.Error("PrivateKeyJWT = false, want true")
+	}
+}
+
+func TestConfigInitCmd_AuthMethodFlagRemoved(t *testing.T) {
+	clearAgentEnv(t) // assumes local workspace; guard refuses init in agent contexts
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+	cmd := NewCmdConfigInit(f, func(opts *ConfigInitOptions) error { return nil })
+	cmd.SetArgs([]string{"--new", "--auth-method", core.AuthMethodPrivateKeyJWT})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected unknown flag error")
+	}
+	if !strings.Contains(err.Error(), "unknown flag: --auth-method") {
+		t.Fatalf("error = %v, want unknown --auth-method flag", err)
+	}
+}
+
 func TestConfigShowCmd_FlagParsing(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
