@@ -25,7 +25,7 @@ import (
 const (
 	registryURL  = "https://registry.npmjs.org/@larksuite/cli/latest"
 	cacheTTL     = 24 * time.Hour
-	fetchTimeout = 5 * time.Second
+	fetchTimeout = 15 * time.Second
 	stateFile    = "update-state.json"
 	maxBody      = 256 << 10 // 256 KB
 

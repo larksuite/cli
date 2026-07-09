@@ -6,6 +6,7 @@
 - 用户要把本地 `.xlsx` / `.csv` / `.base` 导入成 Base / 多维表格 / bitable，第一步必须使用 `lark-cli drive +import --type bitable`。
 - 用户要把本地 `.md` / `.docx` / `.doc` / `.txt` / `.html` 导入成在线文档，使用 `lark-cli drive +import --type docx`。
 - 用户要把本地 `.xlsx` / `.xls` / `.csv` 导入成电子表格，使用 `lark-cli drive +import --type sheet`。
+- 批量执行 `drive +import` 且目标是同一个位置（同一 `--folder-token`、默认根目录，或同一 `--target-token`）时，必须串行执行；不要并发导入到同一位置，服务端可能返回并发冲突错误。
 - 用户要在云空间里新建文件夹，优先使用 `lark-cli drive +create-folder`。
 - `lark-base` 只负责导入完成后的 Base 内部操作（表、字段、记录、视图），不要在“本地文件 -> Base”这一步提前切到 `lark-base`。
 
@@ -194,6 +195,7 @@ lark-cli drive file.comments list --params '{"file_token": "xxx", "file_type": "
 | `not exist` | 使用了错误的 token | 检查 token 类型，wiki 链接必须先查询获取 `obj_token` |
 | `permission denied` | 没有相关操作权限 | 引导用户检查当前身份对文档/文件是否有相应操作权限；如果需要，可以授予相应权限 |
 | `invalid file_type` | file_type 参数错误 | 根据 `obj_type` 传入正确的 file_type（docx/doc/sheet/slides/bitable） |
+| `232140101` / `232140100` / `233523001`（常见于 `drive +import` 的 `job_error_msg`） | 同一位置下存在并发导入 / 创建操作 | 批量导入到同一文件夹、根目录或同一 `--target-token` 时改为串行执行；每个失败项每次重试前等待几秒，总共最多重试 3 次，仍失败就停止并报告冲突 |
 
 ### 授权当前应用访问文档
 

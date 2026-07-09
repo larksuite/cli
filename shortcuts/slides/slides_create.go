@@ -204,13 +204,11 @@ var SlidesCreate = common.Shortcut{
 			}
 		}
 
-		// Build the presentation URL locally from the token. The brand-standard
-		// host transparently redirects to the tenant domain (same fallback used by
-		// drive +upload / wiki +node-create). This avoids the prior best-effort
-		// drive metas/batch_query call, which needed an extra drive scope and 403'd
-		// for users who only authorized slides scopes — without ever blocking an
-		// otherwise-successful creation.
-		if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
+		// Prefer the URL returned by presentation.create. Fall back to a local
+		// brand-standard URL only when the API omits it.
+		if url := common.GetString(data, "url"); url != "" {
+			result["url"] = url
+		} else if url := common.BuildResourceURL(runtime.Config.Brand, "slides", presentationID); url != "" {
 			result["url"] = url
 		}
 

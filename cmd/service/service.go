@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/larksuite/cli/errs"
@@ -64,13 +65,36 @@ func registerServiceWithContext(ctx context.Context, parent *cobra.Command, svc 
 	// resource-command chain — one level for a flat dotted resource like
 	// "chat.members", deeper for genuinely nested resources. A service with no
 	// methods keeps its bare command (svcCmd is created above regardless).
-	for _, ref := range apicatalog.ServiceMethods(svc, nil) {
+	refs := apicatalog.ServiceMethods(svc, nil)
+
+	// Collect each resource's verbs up front so resourceShort can summarize a
+	// resource as its verb list from the first ensureChildCommand call.
+	verbs := map[string][]string{}
+	for _, ref := range refs {
+		key := strings.Join(ref.ResourcePath, ".")
+		verbs[key] = append(verbs[key], ref.Method.Name)
+	}
+
+	for _, ref := range refs {
 		resCmd := svcCmd
+		var path []string
 		for _, seg := range ref.ResourcePath {
-			resCmd = ensureChildCommand(resCmd, seg, seg+" operations")
+			path = append(path, seg)
+			resCmd = ensureChildCommand(resCmd, seg, resourceShort(seg, verbs[strings.Join(path, ".")]))
 		}
 		resCmd.AddCommand(buildMethodCommand(ctx, f, newMethodCommandSpec(ref), nil, parent.PersistentFlags()))
 	}
+}
+
+// resourceShort summarizes a resource as its sorted verb list, or the
+// "<name> operations" placeholder for an intermediate group with no methods.
+func resourceShort(seg string, verbs []string) string {
+	if len(verbs) == 0 {
+		return seg + " operations"
+	}
+	sorted := append([]string(nil), verbs...)
+	sort.Strings(sorted)
+	return strings.Join(sorted, ", ")
 }
 
 // serviceShort is the service command's help summary: the localized description
@@ -177,7 +201,19 @@ type methodCommandSpec struct {
 	// the API declares a body.
 	acceptsBody  bool
 	declaresBody bool
-	affordance   string // rendered hand-authored usage guidance (when-to-use, examples); "" if none
+	paginates    bool   // method accepts a page_token param (so --page-all is meaningful)
+	serviceName  string // owning service name (e.g. "approval"), for the lazy affordance lookup
+}
+
+// methodPaginates reports whether a method takes a page_token param, the signal
+// that makes the --page-all/--page-limit/--page-delay flags meaningful.
+func methodPaginates(m meta.Method) bool {
+	for _, f := range m.Params() {
+		if f.Name == "page_token" {
+			return true
+		}
+	}
+	return false
 }
 
 func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
@@ -186,6 +222,7 @@ func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
 		method:       m,
 		schemaPath:   ref.SchemaPath(),
 		servicePath:  ref.Service.ServicePath,
+		serviceName:  ref.Service.Name,
 		risk:         m.Risk,
 		restricts:    m.RestrictsIdentity(),
 		identities:   m.Identities(),
@@ -193,7 +230,7 @@ func newMethodCommandSpec(ref apicatalog.MethodRef) methodCommandSpec {
 		fileFields:   detectFileFields(m),
 		acceptsBody:  methodTakesBody(m.HTTPMethod),
 		declaresBody: len(m.Data()) > 0 || len(m.Files()) > 0,
-		affordance:   renderAffordance(m),
+		paginates:    methodPaginates(m),
 	}
 }
 
@@ -254,6 +291,14 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	cmd.Flags().BoolVar(&opts.PageAll, "page-all", false, "automatically paginate through all pages")
 	cmd.Flags().IntVar(&opts.PageLimit, "page-limit", 10, "max pages to fetch with --page-all (0 = unlimited)")
 	cmd.Flags().IntVar(&opts.PageDelay, "page-delay", 200, "delay in ms between pages")
+	// Keep the pagination flags registered (a harmless no-op if passed) but hide
+	// them from help on non-paginating commands, so help doesn't imply a
+	// get/write can paginate.
+	if !spec.paginates {
+		for _, name := range []string{"page-all", "page-limit", "page-delay"} {
+			_ = cmd.Flags().MarkHidden(name)
+		}
+	}
 	cmd.Flags().StringVar(&opts.Format, "format", "json", "output format: json|ndjson|table|csv")
 	cmd.Flags().Bool("json", false, "shorthand for --format json")
 	cmd.Flags().StringVarP(&opts.JqExpr, "jq", "q", "", "jq expression to filter JSON output")
@@ -271,10 +316,11 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 
 	// Registered last so the collision guard sees the standard flags above.
 	opts.binder = newParamFlagBinder(cmd, spec.params, reserved)
-	// Single composition point for Long: description, affordance, schema
-	// pointer, and the binder's params-only addendum (params whose flag name is
-	// taken, reachable via --params only).
-	cmd.Long = methodLong(m.Description, spec.affordance, spec.schemaPath, opts.binder.paramsOnlyHelp())
+	// Build-time Long; the agent guidance is added lazily by PrepareMethodHelp
+	// (setMethodHelpData records the coordinates it needs).
+	paramsOnly := opts.binder.paramsOnlyHelp()
+	cmd.Long = methodLong(m.Description, spec.schemaPath, paramsOnly)
+	setMethodHelpData(cmd, spec.serviceName, m.ID, spec.schemaPath, paramsOnly)
 
 	// Group flags for the grouped --help renderer (typed param flags are grouped
 	// as API Parameters by the binder). tagFlagGroup is a no-op for flags not
@@ -292,13 +338,11 @@ func buildMethodCommand(ctx context.Context, f *cmdutil.Factory, spec methodComm
 	tagFlagGroup(cmd.Flags(), "file", groupBody)
 	if fl := cmd.Flags().Lookup("params"); fl != nil {
 		annotate(fl, flagGroupAnnotation, []string{groupRaw})
-		// State the precedence rule where the agent reads it: --params is the
-		// base, typed flags override. Only meaningful when typed flags exist.
+		// Keep the precedence rule on the flag's own one line (not a multi-line
+		// note that breaks the one-entry-per-flag rhythm an agent parses). Only
+		// meaningful when typed flags exist to override.
 		if len(spec.params) > 0 {
-			annotate(fl, flagNoteAnnotation, []string{
-				"Typed API parameter flags above are preferred.",
-				"If both are set, typed flags override matching keys in --params.",
-			})
+			fl.Usage = "Raw URL/query params JSON. Supports - and @file. If both set, typed flags override matching keys in --params."
 		}
 	}
 	for _, name := range []string{"as", "dry-run", "page-all", "page-limit", "page-delay", "yes"} {

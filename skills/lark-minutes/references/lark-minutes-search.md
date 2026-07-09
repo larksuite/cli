@@ -1,6 +1,5 @@
 # minutes +search
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 搜索妙记列表，支持关键词、所有者、参与者以及时间范围等多条件过滤。所有者与参与者都支持传入多个 open\_id，也支持传入 `me` 表示当前用户。只读操作，不修改任何妙记数据。
 
@@ -199,6 +198,5 @@ lark-cli minutes +detail --minute-tokens <minute_token> --summary
 
 - [lark-minutes](../SKILL.md) -- 妙记相关命令
 - [lark-minutes-detail](lark-minutes-detail.md) -- 基于 `minute_token` 获取逐字稿、总结、待办、章节等产物
-- [lark-shared](../../lark-shared/SKILL.md) -- 认证和全局参数
 - [lark-vc](../../lark-vc/SKILL.md) -- 视频会议全部命令
 

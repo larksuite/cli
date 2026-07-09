@@ -8,7 +8,17 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 script="$repo_root/scripts/resolve-changed-from.sh"
 
 tmp="${TMPDIR:-/tmp}/resolve-changed-from-test-$$"
-trap 'rm -rf "$tmp"' EXIT
+
+cleanup_tmp() {
+  local attempt
+  for attempt in 1 2 3; do
+    rm -rf "$tmp" && return 0
+    sleep 1
+  done
+  rm -rf "$tmp"
+}
+
+trap cleanup_tmp EXIT
 mkdir -p "$tmp"
 
 git_init() {

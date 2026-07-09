@@ -215,6 +215,73 @@ if ! grep -Fq "if: \${{ $fork_safe_guard }}" <<<"$section"; then
   exit 1
 fi
 
+if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$dry_run_section" ||
+   ! grep -Fq "id: e2e_domains" <<<"$dry_run_section" ||
+   ! grep -Fq "run: node scripts/e2e_domains.js" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should resolve changed-file CLI E2E domains before running tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_domains.outputs.dry_packages" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should use resolved dry_packages instead of always running the full suite"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_REASON: \${{ steps.e2e_domains.outputs.reason }}" <<<"$dry_run_section" ||
+   ! grep -Fq 'echo "Dry-run CLI E2E domains: $E2E_MODE ($E2E_REASON)"' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should pass dynamic domain output through env before shell use"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_DRY_ROOT_PACKAGE: \${{ steps.e2e_domains.outputs.dry_root_package }}" <<<"$dry_run_section" ||
+   ! grep -Fq 'go test -v -count=1 -timeout=5m "$E2E_DRY_ROOT_PACKAGE"' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should run the root CLI E2E harness package without the DryRun/Regression filter"
+  exit 1
+fi
+
+if ! grep -Fq "No dry-run CLI E2E needed" <<<"$dry_run_section"; then
+  echo "e2e-dry-run should explicitly skip when domain mode is skip"
+  exit 1
+fi
+
+if ! grep -Fq "name: Resolve CLI E2E domains" <<<"$section" ||
+   ! grep -Fq "id: e2e_domains" <<<"$section" ||
+   ! grep -Fq "run: node scripts/e2e_domains.js" <<<"$section"; then
+  echo "e2e-live should resolve changed-file CLI E2E domains before credentials and tests"
+  exit 1
+fi
+
+if ! grep -Fq "steps.e2e_domains.outputs.live_packages" <<<"$section"; then
+  echo "e2e-live should use resolved live_packages instead of always running the full suite"
+  exit 1
+fi
+
+if ! grep -Fq "E2E_REASON: \${{ steps.e2e_domains.outputs.reason }}" <<<"$section" ||
+   ! grep -Fq 'echo "Live CLI E2E domains: $E2E_MODE ($E2E_REASON)"' <<<"$section"; then
+  echo "e2e-live should pass dynamic domain output through env before shell use"
+  exit 1
+fi
+
+if ! awk '
+  /^      - name: Build lark-cli/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Build lark-cli/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$dry_run_section"; then
+  echo "e2e-dry-run should skip building lark-cli when domain mode is skip"
+  exit 1
+fi
+
+if ! awk '
+  /^      - name: Build lark-cli/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Build lark-cli/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$section"; then
+  echo "e2e-live should skip building lark-cli when domain mode is skip"
+  exit 1
+fi
+
 if ! grep -Fq "permissions:" <<<"$section" ||
    ! grep -Fq "contents: read" <<<"$section" ||
    ! grep -Fq "checks: write" <<<"$section"; then
@@ -237,13 +304,23 @@ if ! grep -Fq "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_A
   exit 1
 fi
 
+if ! awk '
+  /^      - name: Configure bot credentials/ { in_step = 1 }
+  in_step && /if: \$\{\{ steps\.e2e_domains\.outputs\.mode != '\''skip'\'' \}\}/ { found = 1 }
+  in_step && /^      - name:/ && !/Configure bot credentials/ { in_step = 0 }
+  END { exit found ? 0 : 1 }
+' <<<"$section"; then
+  echo "e2e-live should only configure bot credentials when domain mode is not skip"
+  exit 1
+fi
+
 if grep -Fq "steps.live_e2e_credentials.outputs.configured" <<<"$section"; then
   echo "e2e-live build, configure, test, and report steps should not be gated by a skip-state output"
   exit 1
 fi
 
-if ! grep -Fq "if: \${{ !cancelled() }}" <<<"$section"; then
-  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled"
+if ! grep -Fq "if: \${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}" <<<"$section"; then
+  echo "e2e-live report step should run after attempted live tests unless the workflow is cancelled or domain mode is skip"
   exit 1
 fi
 

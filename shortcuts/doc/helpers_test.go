@@ -55,7 +55,7 @@ func TestParseDocumentRef(t *testing.T) {
 		{
 			name:      "native mindnote url",
 			input:     "https://example.larksuite.com/mindnote/xxxxxx",
-			wantErr:   "native Mind Note",
+			wantErr:   "Mind Note URLs are not Docx inputs",
 			wantParam: "--doc",
 		},
 	}

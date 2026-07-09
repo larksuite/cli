@@ -27,6 +27,13 @@ func TestLookupCodeMeta_DriveCodes(t *testing.T) {
 		// 1069302: comment endpoint's opaque "Invalid or missing parameters"
 		// (shortcuts/drive/drive_add_comment.go) → API-side parameter rejection.
 		{1069302, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
+		// Secure label endpoint codes observed from drive +secure-label-update
+		// failure telemetry.
+		{1063001, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
+		{1063002, errs.CategoryAuthorization, errs.SubtypePermissionDenied, false},
+		{1063013, errs.CategoryValidation, errs.SubtypeFailedPrecondition, false},
+		{99992402, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
+		{9499, errs.CategoryAPI, errs.SubtypeInvalidParameters, false},
 	}
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%d", tc.code), func(t *testing.T) {

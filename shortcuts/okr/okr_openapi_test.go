@@ -57,7 +57,9 @@ func TestToRespMethods(t *testing.T) {
 			convey.So(resp, convey.ShouldNotBeNil)
 			convey.So(resp.ID, convey.ShouldEqual, "cycle-id")
 			convey.So(*resp.CycleStatus, convey.ShouldEqual, "normal")
-			convey.So(*resp.Score, convey.ShouldEqual, 0.75)
+			// Verify removed fields are not present in RespCycle
+			convey.So(resp.StartTime, convey.ShouldNotBeEmpty)
+			convey.So(resp.EndTime, convey.ShouldNotBeEmpty)
 		})
 
 		convey.Convey("Objective", func() {
@@ -517,6 +519,450 @@ func float64Ptr(v float64) *float64 { return &v }
 
 // boolPtr returns a pointer to the given bool value.
 func boolPtr(v bool) *bool { return &v }
+
+// ========== SemiPlainContent Conversion Tests ==========
+
+func TestContentBlockToSemiPlain_TextOnly(t *testing.T) {
+	t.Parallel()
+	cb := &ContentBlock{
+		Blocks: []ContentBlockElement{
+			{
+				BlockElementType: BlockElementTypeParagraph.Ptr(),
+				Paragraph: &ContentParagraph{
+					Elements: []ContentParagraphElement{
+						{
+							ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
+							TextRun: &ContentTextRun{
+								Text: strPtr("Hello world"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	sp := cb.ToSemiPlain()
+	if sp == nil {
+		t.Fatal("expected non-nil SemiPlainContent")
+	}
+	if sp.Text != "Hello world" {
+		t.Fatalf("expected text 'Hello world', got '%s'", sp.Text)
+	}
+	if len(sp.Mention) != 0 {
+		t.Fatalf("expected 0 mentions, got %d", len(sp.Mention))
+	}
+	if len(sp.Docs) != 0 {
+		t.Fatalf("expected 0 docs, got %d", len(sp.Docs))
+	}
+	if len(sp.Images) != 0 {
+		t.Fatalf("expected 0 images, got %d", len(sp.Images))
+	}
+}
+
+func TestContentBlockToSemiPlain_WithMention(t *testing.T) {
+	t.Parallel()
+	cb := &ContentBlock{
+		Blocks: []ContentBlockElement{
+			{
+				BlockElementType: BlockElementTypeParagraph.Ptr(),
+				Paragraph: &ContentParagraph{
+					Elements: []ContentParagraphElement{
+						{
+							ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
+							TextRun: &ContentTextRun{
+								Text: strPtr("Hello "),
+							},
+						},
+						{
+							ParagraphElementType: ParagraphElementTypeMention.Ptr(),
+							Mention: &ContentMention{
+								UserID: strPtr("ou_123"),
+							},
+						},
+						{
+							ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
+							TextRun: &ContentTextRun{
+								Text: strPtr(", how are you?"),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	sp := cb.ToSemiPlain()
+	if sp == nil {
+		t.Fatal("expected non-nil SemiPlainContent")
+	}
+	// Text includes @{userID} placeholder to preserve positional context
+	if sp.Text != "Hello  @{ou_123} , how are you?" {
+		t.Fatalf("expected text 'Hello  @{ou_123} , how are you?', got '%s'", sp.Text)
+	}
+	if len(sp.Mention) != 1 || sp.Mention[0] != "ou_123" {
+		t.Fatalf("expected mention [ou_123], got %v", sp.Mention)
+	}
+}
+
+func TestContentBlockToSemiPlain_WithDocsAndImages(t *testing.T) {
+	t.Parallel()
+	cb := &ContentBlock{
+		Blocks: []ContentBlockElement{
+			{
+				BlockElementType: BlockElementTypeParagraph.Ptr(),
+				Paragraph: &ContentParagraph{
+					Elements: []ContentParagraphElement{
+						{
+							ParagraphElementType: ParagraphElementTypeTextRun.Ptr(),
+							TextRun: &ContentTextRun{
+								Text: strPtr("Check out this doc: "),
+							},
+						},
+						{
+							ParagraphElementType: ParagraphElementTypeDocsLink.Ptr(),
+							DocsLink: &ContentDocsLink{
+								Title: strPtr("Design Doc"),
+								URL:   strPtr("https://example.feishu.cn/docx/xxx"),
+							},
+						},
+					},
+				},
+			},
+			{
+				BlockElementType: BlockElementTypeGallery.Ptr(),
+				Gallery: &ContentGallery{
+					Images: []ContentImageItem{
+						{
+							Src: strPtr("https://example.com/img1.png"),
+						},
+						{
+							Src: strPtr("https://example.com/img2.png"),
+						},
+					},
+				},
+			},
+		},
+	}
+	sp := cb.ToSemiPlain()
+	if sp == nil {
+		t.Fatal("expected non-nil SemiPlainContent")
+	}
+	if sp.Text != "Check out this doc: " {
+		t.Fatalf("unexpected text: '%s'", sp.Text)
+	}
+	if len(sp.Docs) != 1 {
+		t.Fatalf("expected 1 doc, got %d", len(sp.Docs))
+	}
+	if sp.Docs[0].Title != "Design Doc" || sp.Docs[0].URL != "https://example.feishu.cn/docx/xxx" {
+		t.Fatalf("unexpected doc: %+v", sp.Docs[0])
+	}
+	if len(sp.Images) != 2 {
+		t.Fatalf("expected 2 images, got %d", len(sp.Images))
+	}
+	if sp.Images[0] != "https://example.com/img1.png" || sp.Images[1] != "https://example.com/img2.png" {
+		t.Fatalf("unexpected images: %v", sp.Images)
+	}
+}
+
+func TestContentBlockToSemiPlain_Nil(t *testing.T) {
+	t.Parallel()
+	var cb *ContentBlock
+	sp := cb.ToSemiPlain()
+	if sp != nil {
+		t.Fatal("expected nil SemiPlainContent for nil ContentBlock")
+	}
+}
+
+func TestSemiPlainContentToContentBlock_TextOnly(t *testing.T) {
+	t.Parallel()
+	sp := &SemiPlainContent{
+		Text: "Hello world",
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	if len(cb.Blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(cb.Blocks))
+	}
+	block := cb.Blocks[0]
+	if block.BlockElementType == nil || *block.BlockElementType != BlockElementTypeParagraph {
+		t.Fatal("expected paragraph block")
+	}
+	if block.Paragraph == nil || len(block.Paragraph.Elements) != 1 {
+		t.Fatalf("expected 1 paragraph element, got %d", len(block.Paragraph.Elements))
+	}
+	elem := block.Paragraph.Elements[0]
+	if elem.ParagraphElementType == nil || *elem.ParagraphElementType != ParagraphElementTypeTextRun {
+		t.Fatal("expected textRun element")
+	}
+	if elem.TextRun == nil || elem.TextRun.Text == nil || *elem.TextRun.Text != "Hello world" {
+		t.Fatalf("unexpected text: %v", elem.TextRun)
+	}
+}
+
+func TestSemiPlainContentToContentBlock_WithMentions(t *testing.T) {
+	t.Parallel()
+	sp := &SemiPlainContent{
+		Text:    "Please review",
+		Mention: []string{"ou_123", "ou_456"},
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	if len(cb.Blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(cb.Blocks))
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	if len(elems) != 3 {
+		t.Fatalf("expected 3 elements (1 text + 2 mentions), got %d", len(elems))
+	}
+	if *elems[0].ParagraphElementType != ParagraphElementTypeTextRun || *elems[0].TextRun.Text != "Please review" {
+		t.Fatal("unexpected first element")
+	}
+	if *elems[1].ParagraphElementType != ParagraphElementTypeMention || *elems[1].Mention.UserID != "ou_123" {
+		t.Fatal("unexpected second element")
+	}
+	if *elems[2].ParagraphElementType != ParagraphElementTypeMention || *elems[2].Mention.UserID != "ou_456" {
+		t.Fatal("unexpected third element")
+	}
+}
+
+func TestSemiPlainContentToContentBlock_EmptyText(t *testing.T) {
+	t.Parallel()
+	sp := &SemiPlainContent{
+		Text:    "   ",
+		Mention: []string{"ou_123"},
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	// Empty text should be skipped, only mention remains
+	if len(elems) != 1 {
+		t.Fatalf("expected 1 element (mention only), got %d", len(elems))
+	}
+	if *elems[0].ParagraphElementType != ParagraphElementTypeMention {
+		t.Fatal("expected mention element")
+	}
+}
+
+func TestSemiPlainContentToContentBlock_DocsImagesIgnored(t *testing.T) {
+	t.Parallel()
+	sp := &SemiPlainContent{
+		Text:    "Test",
+		Mention: []string{"ou_123"},
+		Docs:    []SemiPlainDoc{{Title: "Doc", URL: "https://..."}},
+		Images:  []string{"https://img.png"},
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	// Docs and images are ignored in input conversion
+	if len(elems) != 2 {
+		t.Fatalf("expected 2 elements (text + mention), got %d", len(elems))
+	}
+}
+
+func TestSemiPlainContentToContentBlock_PlaceholderStripping(t *testing.T) {
+	t.Parallel()
+	// Simulate round-trip: output format has @{userID} in text,
+	// input conversion should strip them to avoid duplicate mentions
+	sp := &SemiPlainContent{
+		Text:    "任务一 @{ou_zhangsan} ，任务二 @{ou_lisi} ",
+		Mention: []string{"ou_zhangsan", "ou_lisi"},
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	// Should have 3 elements: 1 text (stripped) + 2 mentions
+	if len(elems) != 3 {
+		t.Fatalf("expected 3 elements (1 text + 2 mentions), got %d", len(elems))
+	}
+	// Text should have placeholders stripped
+	if *elems[0].ParagraphElementType != ParagraphElementTypeTextRun {
+		t.Fatal("expected first element to be textRun")
+	}
+	// Note: space before comma is preserved from the placeholder's trailing space
+	expectedText := "任务一 ，任务二"
+	if *elems[0].TextRun.Text != expectedText {
+		t.Fatalf("expected stripped text '%s', got '%s'", expectedText, *elems[0].TextRun.Text)
+	}
+	// Mentions should be preserved as separate elements
+	if *elems[1].ParagraphElementType != ParagraphElementTypeMention || *elems[1].Mention.UserID != "ou_zhangsan" {
+		t.Fatal("unexpected second element")
+	}
+	if *elems[2].ParagraphElementType != ParagraphElementTypeMention || *elems[2].Mention.UserID != "ou_lisi" {
+		t.Fatal("unexpected third element")
+	}
+}
+
+func TestSemiPlainContentToContentBlock_OnlyPlaceholders(t *testing.T) {
+	t.Parallel()
+	// Text that is only placeholders should result in no text element
+	sp := &SemiPlainContent{
+		Text:    " @{ou_123}  @{ou_456} ",
+		Mention: []string{"ou_123", "ou_456"},
+	}
+	cb := sp.ToContentBlock()
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	// Should have only 2 mention elements, no text element
+	if len(elems) != 2 {
+		t.Fatalf("expected 2 elements (mentions only), got %d", len(elems))
+	}
+	if *elems[0].ParagraphElementType != ParagraphElementTypeMention {
+		t.Fatal("expected first element to be mention")
+	}
+	if *elems[1].ParagraphElementType != ParagraphElementTypeMention {
+		t.Fatal("expected second element to be mention")
+	}
+}
+
+func TestSemiPlainContentToContentBlock_Nil(t *testing.T) {
+	t.Parallel()
+	var sp *SemiPlainContent
+	cb := sp.ToContentBlock()
+	if cb != nil {
+		t.Fatal("expected nil ContentBlock for nil SemiPlainContent")
+	}
+}
+
+func TestBuildContentBlock_Conversion(t *testing.T) {
+	t.Parallel()
+	cb := BuildContentBlock("Test text", []string{"ou_123", "ou_456"})
+	if cb == nil {
+		t.Fatal("expected non-nil ContentBlock")
+	}
+	elems := cb.Blocks[0].Paragraph.Elements
+	if len(elems) != 3 {
+		t.Fatalf("expected 3 elements, got %d", len(elems))
+	}
+	if *elems[0].TextRun.Text != "Test text" {
+		t.Fatalf("unexpected text: %s", *elems[0].TextRun.Text)
+	}
+	if *elems[1].Mention.UserID != "ou_123" {
+		t.Fatalf("unexpected mention: %s", *elems[1].Mention.UserID)
+	}
+	if *elems[2].Mention.UserID != "ou_456" {
+		t.Fatalf("unexpected mention: %s", *elems[2].Mention.UserID)
+	}
+}
+
+func TestToSimpleMethods(t *testing.T) {
+	t.Parallel()
+
+	// Test Objective.ToSimple()
+	text := "Objective text"
+	obj := &Objective{
+		ID:       "obj-1",
+		Content:  BuildContentBlock(text, []string{"ou_123"}),
+		Notes:    BuildContentBlock("Note text", nil),
+		Owner:    Owner{OwnerType: OwnerTypeUser, UserID: strPtr("ou_owner")},
+		CycleID:  "cycle-1",
+		Score:    float64Ptr(0.7),
+		Weight:   float64Ptr(0.5),
+		Deadline: strPtr("1735776000000"),
+	}
+	simpleObj := obj.ToSimple()
+	if simpleObj == nil {
+		t.Fatal("expected non-nil RespObjectiveSimple")
+	}
+	if simpleObj.ID != "obj-1" {
+		t.Fatalf("expected ID obj-1, got %s", simpleObj.ID)
+	}
+	// Text includes @{userID} placeholder for positional context
+	expectedContentText := "Objective text @{ou_123} "
+	if simpleObj.Content == nil || simpleObj.Content.Text != expectedContentText {
+		t.Fatalf("unexpected content text: expected '%s', got '%s'", expectedContentText, simpleObj.Content.Text)
+	}
+	if simpleObj.Notes == nil || simpleObj.Notes.Text != "Note text" {
+		t.Fatalf("unexpected notes: %+v", simpleObj.Notes)
+	}
+	if simpleObj.Score == nil || *simpleObj.Score != 0.7 {
+		t.Fatalf("unexpected score: %v", simpleObj.Score)
+	}
+	if len(simpleObj.Content.Mention) != 1 || simpleObj.Content.Mention[0] != "ou_123" {
+		t.Fatalf("unexpected mentions: %v", simpleObj.Content.Mention)
+	}
+
+	// Test KeyResult.ToSimple()
+	kr := &KeyResult{
+		ID:          "kr-1",
+		ObjectiveID: "obj-1",
+		Content:     BuildContentBlock("KR text", nil),
+		Owner:       Owner{OwnerType: OwnerTypeUser, UserID: strPtr("ou_kr_owner")},
+		Score:       float64Ptr(0.5),
+	}
+	simpleKR := kr.ToSimple()
+	if simpleKR == nil {
+		t.Fatal("expected non-nil RespKeyResultSimple")
+	}
+	if simpleKR.Content == nil || simpleKR.Content.Text != "KR text" {
+		t.Fatalf("unexpected KR content: %+v", simpleKR.Content)
+	}
+
+	// Test ProgressV1.ToSimple()
+	progress := &ProgressV1{
+		ID:         "prog-1",
+		ModifyTime: "1735776000000",
+		Content:    BuildContentBlock("Progress text", []string{"ou_mention"}).ToV1(),
+	}
+	simpleProgress := progress.ToSimple()
+	if simpleProgress == nil {
+		t.Fatal("expected non-nil RespProgressSimple")
+	}
+	// Text includes @{userID} placeholder for positional context
+	expectedProgressText := "Progress text @{ou_mention} "
+	if simpleProgress.Content == nil || simpleProgress.Content.Text != expectedProgressText {
+		t.Fatalf("unexpected progress text: expected '%s', got '%s'", expectedProgressText, simpleProgress.Content.Text)
+	}
+	if len(simpleProgress.Content.Mention) != 1 || simpleProgress.Content.Mention[0] != "ou_mention" {
+		t.Fatalf("unexpected progress mentions: %v", simpleProgress.Content.Mention)
+	}
+
+	// Test Progress.ToSimple() (V2 progress record)
+	progressV2 := &Progress{
+		ID:         "prog-v2-1",
+		CreateTime: "1735689600000",
+		UpdateTime: "1735776000000",
+		Content:    BuildContentBlock("V2 progress text", []string{"ou_v2_mention"}),
+		ProgressRate: &ProgressRate{
+			ProgressPercent: float64Ptr(80.0),
+			ProgressStatus:  int32Ptr(int32(ProgressStatusDone)),
+		},
+	}
+	simpleProgressV2 := progressV2.ToSimple()
+	if simpleProgressV2 == nil {
+		t.Fatal("expected non-nil RespProgressSimple for Progress V2")
+	}
+	if simpleProgressV2.ID != "prog-v2-1" {
+		t.Fatalf("expected ID prog-v2-1, got %s", simpleProgressV2.ID)
+	}
+	if simpleProgressV2.CreateTime == nil || *simpleProgressV2.CreateTime == "" {
+		t.Fatal("expected non-empty CreateTime for Progress V2")
+	}
+	expectedV2Text := "V2 progress text @{ou_v2_mention} "
+	if simpleProgressV2.Content == nil || simpleProgressV2.Content.Text != expectedV2Text {
+		t.Fatalf("unexpected V2 progress text: expected '%s', got '%s'", expectedV2Text, simpleProgressV2.Content.Text)
+	}
+	if simpleProgressV2.ProgressRate == nil || simpleProgressV2.ProgressRate.Status == nil || *simpleProgressV2.ProgressRate.Status != "done" {
+		t.Fatalf("expected progress status 'done', got %+v", simpleProgressV2.ProgressRate)
+	}
+	if simpleProgressV2.ProgressRate.Percent == nil || *simpleProgressV2.ProgressRate.Percent != 80.0 {
+		t.Fatalf("expected progress percent 80.0, got %v", simpleProgressV2.ProgressRate.Percent)
+	}
+	if len(simpleProgressV2.Content.Mention) != 1 || simpleProgressV2.Content.Mention[0] != "ou_v2_mention" {
+		t.Fatalf("unexpected V2 progress mentions: %v", simpleProgressV2.Content.Mention)
+	}
+}
 
 // listTypePtr returns a pointer to the given ListType value.
 func listTypePtr(v ListType) *ListType { return &v }

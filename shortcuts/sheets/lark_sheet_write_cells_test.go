@@ -496,6 +496,31 @@ func TestCellsSetImage_DryRun(t *testing.T) {
 	}
 }
 
+// TestCellsSetImage_DryRunOfficeParentType confirms that an imported "office"
+// spreadsheet (token prefixed with "fake_office_") uploads with
+// parent_type=office_sheet_file instead of the native sheet_image, and that the
+// preview's parent_node carries the same token.
+func TestCellsSetImage_DryRunOfficeParentType(t *testing.T) {
+	t.Parallel()
+	const officeToken = "fake_office_abc123"
+	calls := parseDryRunAPI(t, CellsSetImage, []string{
+		"--spreadsheet-token", officeToken, "--sheet-id", testSheetID,
+		"--range", "A1",
+		"--image", "./README.md", // any existing-shaped path; dry-run skips stat
+	})
+	if len(calls) != 2 {
+		t.Fatalf("api calls = %d, want 2 (upload + set_cell_range)", len(calls))
+	}
+	upload := calls[0].(map[string]interface{})
+	ubody, _ := upload["body"].(map[string]interface{})
+	if ubody["parent_type"] != officeSheetFileParentType {
+		t.Errorf("parent_type = %v, want %s", ubody["parent_type"], officeSheetFileParentType)
+	}
+	if ubody["parent_node"] != officeToken {
+		t.Errorf("parent_node = %v, want %s", ubody["parent_node"], officeToken)
+	}
+}
+
 func TestCellsSetImage_RangeMustBeSingleCell(t *testing.T) {
 	t.Parallel()
 	_, _, err := runShortcutCapturingErr(t, CellsSetImage, []string{

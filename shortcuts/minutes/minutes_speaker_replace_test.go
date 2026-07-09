@@ -153,58 +153,14 @@ func TestMinutesSpeakerReplace_DryRun(t *testing.T) {
 	}
 }
 
-func TestMinutesSpeakerReplace_DryRun_ResolveFromSpeakerID(t *testing.T) {
-	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
-	f, stdout, _, _ := cmdutil.TestFactory(t, defaultConfig())
-	warmTokenCache(t)
-
-	err := mountAndRun(t, MinutesSpeakerReplace, []string{
-		"+speaker-replace",
-		"--minute-token", minutesSpeakerReplaceTestToken,
-		"--from-speaker-id", "说话人1",
-		"--to-user-id", "ou_new_speaker",
-		"--dry-run", "--as", "user",
-	}, f, stdout)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	out := stdout.String()
-	if !strings.Contains(out, "GET") {
-		t.Errorf("expected GET for internal speaker list, got:\n%s", out)
-	}
-	if !strings.Contains(out, "/transcript/speakerlist") {
-		t.Errorf("expected speakerlist path, got:\n%s", out)
-	}
-	if !strings.Contains(out, "PUT") {
-		t.Errorf("expected PUT for speaker replace, got:\n%s", out)
-	}
-	if !strings.Contains(out, "ou_new_speaker") {
-		t.Errorf("expected to_user_id in body, got:\n%s", out)
-	}
-}
-
-func TestMinutesSpeakerReplace_Execute_ResolveFromSpeakerID(t *testing.T) {
+func TestMinutesSpeakerReplace_Execute_OpaqueSpeakerIDNoPrefetch(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	f, stdout, _, reg := cmdutil.TestFactory(t, defaultConfig())
 	warmTokenCache(t)
 
-	reg.Register(&httpmock.Stub{
-		Method: http.MethodGet,
-		URL:    "/open-apis/minutes/v1/minutes/" + minutesSpeakerReplaceTestToken + "/transcript/speakerlist",
-		Body: map[string]interface{}{
-			"code": 0,
-			"msg":  "ok",
-			"data": map[string]interface{}{
-				"speakers": []interface{}{
-					map[string]interface{}{
-						"speaker_id": "ENCRYPTED_TOKEN_ABC",
-						"name":       "说话人1",
-					},
-				},
-			},
-		},
-	})
+	// Only the PUT is registered on purpose: an opaque speaker_id must be passed
+	// straight through without a second speakerlist call. If the code still
+	// prefetched speakerlist, the unregistered GET would fail the request.
 	reg.Register(&httpmock.Stub{
 		Method: http.MethodPut,
 		URL:    "/open-apis/minutes/v1/minutes/" + minutesSpeakerReplaceTestToken + "/transcript/speaker",
@@ -218,7 +174,7 @@ func TestMinutesSpeakerReplace_Execute_ResolveFromSpeakerID(t *testing.T) {
 	err := mountAndRun(t, MinutesSpeakerReplace, []string{
 		"+speaker-replace",
 		"--minute-token", minutesSpeakerReplaceTestToken,
-		"--from-speaker-id", "说话人1",
+		"--from-speaker-id", "ENCRYPTED_TOKEN_ABC",
 		"--to-user-id", "ou_new_speaker",
 		"--format", "json", "--as", "user",
 	}, f, stdout)
@@ -228,20 +184,18 @@ func TestMinutesSpeakerReplace_Execute_ResolveFromSpeakerID(t *testing.T) {
 
 	var envelope struct {
 		Data struct {
-			MinuteToken      string `json:"minute_token"`
-			FromSpeakerInput string `json:"from_speaker_input"`
-			FromSpeakerID    string `json:"from_speaker_id"`
-			ToUserID         string `json:"to_user_id"`
+			FromSpeakerID string `json:"from_speaker_id"`
+			ToUserID      string `json:"to_user_id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
 		t.Fatalf("unmarshal stdout: %v", err)
 	}
-	if envelope.Data.FromSpeakerInput != "说话人1" {
-		t.Errorf("data.from_speaker_input = %q, want 说话人1", envelope.Data.FromSpeakerInput)
-	}
 	if envelope.Data.FromSpeakerID != "ENCRYPTED_TOKEN_ABC" {
 		t.Errorf("data.from_speaker_id = %q, want ENCRYPTED_TOKEN_ABC", envelope.Data.FromSpeakerID)
+	}
+	if envelope.Data.ToUserID != "ou_new_speaker" {
+		t.Errorf("data.to_user_id = %q, want ou_new_speaker", envelope.Data.ToUserID)
 	}
 }
 
@@ -262,8 +216,11 @@ func TestMinutesSpeakerReplace_DryRun_FromSpeakerID(t *testing.T) {
 	}
 
 	out := stdout.String()
-	if !strings.Contains(out, "GET") {
-		t.Errorf("expected GET for internal speaker list, got:\n%s", out)
+	if strings.Contains(out, "/transcript/speakerlist") {
+		t.Errorf("opaque speaker_id should not prefetch speakerlist, got:\n%s", out)
+	}
+	if !strings.Contains(out, "PUT") {
+		t.Errorf("expected PUT for speaker replace, got:\n%s", out)
 	}
 	if !strings.Contains(out, "from_speaker_id") || !strings.Contains(out, "ENCRYPTED_TOKEN_ABC") {
 		t.Errorf("expected from_speaker_id in body, got:\n%s", out)

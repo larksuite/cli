@@ -14,11 +14,13 @@ import (
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/service"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
@@ -104,6 +106,11 @@ func parseTypedEnvelope(t *testing.T, stderr *bytes.Buffer) typedErrorEnvelope {
 
 func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
 	t.Helper()
+	return buildStrictModeIntegrationRootCmdWithCatalog(t, f, nil)
+}
+
+func buildStrictModeIntegrationRootCmdWithCatalog(t *testing.T, f *cmdutil.Factory, catalog *apicatalog.Catalog) *cobra.Command {
+	t.Helper()
 	rootCmd := &cobra.Command{Use: "lark-cli"}
 	rootCmd.SilenceErrors = true
 	rootCmd.SetOut(f.IOStreams.Out)
@@ -113,12 +120,39 @@ func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.
 	}
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
-	service.RegisterServiceCommands(rootCmd, f)
+	if catalog != nil {
+		service.RegisterServiceCommandsFromCatalog(context.Background(), rootCmd, f, *catalog)
+	} else {
+		service.RegisterServiceCommands(rootCmd, f)
+	}
 	shortcuts.RegisterShortcuts(rootCmd, f)
 	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
 	return rootCmd
+}
+
+func strictModeFixtureCatalog() apicatalog.Catalog {
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{
+		{
+			Name:        "fixture",
+			ServicePath: "/open-apis/fixture/v1",
+			Resources: map[string]meta.Resource{
+				"things": {
+					Methods: map[string]meta.Method{
+						"create": {
+							Path:         "things",
+							HTTPMethod:   "POST",
+							AccessTokens: []meta.Token{meta.TokenTenant},
+							RequestBody: map[string]meta.Field{
+								"name": {Type: "string"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
 }
 
 func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictMode) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
@@ -355,10 +389,11 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnv
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
-	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+	catalog := strictModeFixtureCatalog()
+	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "images", "create", "--data", `{"image_type":"message","image":"x"}`, "--dry-run",
+		"fixture", "things", "create", "--data", `{"name":"probe"}`, "--dry-run",
 	})
 
 	if code != output.ExitValidation {

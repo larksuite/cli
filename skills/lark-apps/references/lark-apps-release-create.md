@@ -22,7 +22,7 @@ lark-cli apps +release-create --app-id app_xxx --branch sprint/default --dry-run
 ## 输出契约
 
 - 成功读取 `data.release_id` 和 `data.status`；`release_id` 是后续 `+release-get` 的入参。
-- `status=publishing` 表示发布仍在进行；继续用 `+release-get` 轮询。
+- `status=publishing` 表示发布仍在进行；继续用 `+release-get` 轮询，轮询间隔应该为 20s。应用发布平均耗时大约 2min，整体超时时间大约 5min。
 - `+release-create` 返回 release 只代表发布已发起。只有 `+release-get` 对同一个 `release_id` 返回 `finished` 后，才能说本轮最新版本已部署。
 
 ## Agent 规则

@@ -32,6 +32,7 @@ type InstallMethod int
 
 const (
 	InstallNpm InstallMethod = iota
+	InstallPnpm
 	InstallManual
 )
 
@@ -53,22 +54,32 @@ var (
 
 // DetectResult holds installation detection results.
 type DetectResult struct {
-	Method       InstallMethod
-	ResolvedPath string
-	NpmAvailable bool
+	Method        InstallMethod
+	ResolvedPath  string
+	NpmAvailable  bool
+	PnpmAvailable bool
 }
 
 // CanAutoUpdate returns true if the CLI can update itself automatically.
 func (d DetectResult) CanAutoUpdate() bool {
-	return d.Method == InstallNpm && d.NpmAvailable
+	switch d.Method {
+	case InstallNpm:
+		return d.NpmAvailable
+	case InstallPnpm:
+		return d.PnpmAvailable
+	}
+	return false
 }
 
 // ManualReason returns a human-readable explanation of why auto-update is unavailable.
 func (d DetectResult) ManualReason() string {
-	if d.Method == InstallNpm && !d.NpmAvailable {
+	switch {
+	case d.Method == InstallNpm && !d.NpmAvailable:
 		return "installed via npm, but npm is not available in PATH"
+	case d.Method == InstallPnpm && !d.PnpmAvailable:
+		return "installed via pnpm, but pnpm is not available in PATH"
 	}
-	return "not installed via npm"
+	return "not installed via npm or pnpm"
 }
 
 // NpmResult holds the result of an npm install or skills update execution.
@@ -92,6 +103,7 @@ func (r *NpmResult) CombinedOutput() string {
 type Updater struct {
 	DetectOverride           func() DetectResult
 	NpmInstallOverride       func(version string) *NpmResult
+	PnpmInstallOverride      func(version string) *NpmResult
 	SkillsIndexFetchOverride func() *NpmResult
 	SkillsCommandOverride    func(args ...string) *NpmResult
 	VerifyOverride           func(expectedVersion string) error
@@ -101,17 +113,38 @@ type Updater struct {
 	// running binary is successfully renamed to .old. Used by
 	// CanRestorePreviousVersion to report whether rollback is possible.
 	backupCreated bool
+
+	// detectCache memoizes the first real DetectInstallMethod result. How this
+	// binary was installed cannot change during a single process, so caching is
+	// the correct semantics — and it is required for correctness: the update
+	// flow mutates the install (pnpm add -g / npm install -g) before syncing
+	// skills, so a re-detection at skills time could resolve a now-stale
+	// os.Executable path and misclassify. Seeded pre-update by the first call
+	// (updateRun), it keeps the post-update skills launcher consistent with the
+	// launcher reported to the user. Not goroutine-safe; the update flow is
+	// sequential.
+	detectCache *DetectResult
 }
 
 // New creates an Updater with default (real) behavior.
 func New() *Updater { return &Updater{} }
 
-// DetectInstallMethod determines how the CLI was installed and whether
-// npm is available for auto-update.
+// DetectInstallMethod determines how the CLI was installed and whether the
+// owning package manager is available for auto-update.
 func (u *Updater) DetectInstallMethod() DetectResult {
 	if u.DetectOverride != nil {
 		return u.DetectOverride()
 	}
+	if u.detectCache != nil {
+		return *u.detectCache
+	}
+	result := u.detectInstallMethod()
+	u.detectCache = &result
+	return result
+}
+
+// detectInstallMethod performs the real (uncached) detection.
+func (u *Updater) detectInstallMethod() DetectResult {
 	exe, err := vfs.Executable()
 	if err != nil {
 		return DetectResult{Method: InstallManual}
@@ -120,24 +153,54 @@ func (u *Updater) DetectInstallMethod() DetectResult {
 	if err != nil {
 		return DetectResult{Method: InstallManual, ResolvedPath: exe}
 	}
+	_, npmErr := exec.LookPath("npm")
+	_, pnpmErr := exec.LookPath("pnpm")
+	return detectFromResolved(resolved, npmErr == nil, pnpmErr == nil)
+}
 
+// detectFromResolved classifies the resolved binary path into an install
+// method and records package-manager availability. Split out from
+// DetectInstallMethod so the classification is unit-testable without touching
+// the filesystem or PATH.
+func detectFromResolved(resolved string, npmOnPath, pnpmOnPath bool) DetectResult {
 	method := InstallManual
 	if strings.Contains(resolved, "node_modules") {
-		method = InstallNpm
-	}
-
-	npmAvailable := false
-	if method == InstallNpm {
-		if _, err := exec.LookPath("npm"); err == nil {
-			npmAvailable = true
+		if containsPnpmMarker(resolved) {
+			method = InstallPnpm
+		} else {
+			method = InstallNpm
 		}
 	}
-
-	return DetectResult{
-		Method:       method,
-		ResolvedPath: resolved,
-		NpmAvailable: npmAvailable,
+	d := DetectResult{Method: method, ResolvedPath: resolved}
+	switch method {
+	case InstallNpm:
+		d.NpmAvailable = npmOnPath
+	case InstallPnpm:
+		d.PnpmAvailable = pnpmOnPath
 	}
+	return d
+}
+
+// containsPnpmMarker reports whether the resolved binary path belongs to a
+// pnpm-managed install. pnpm exposes two layouts: the classic virtual store
+// (a ".pnpm" directory segment) and the global content-addressable store,
+// whose resolved path runs through pnpm's home directory (e.g.
+// "~/Library/pnpm/store/v11/links/...") — a "pnpm" segment immediately
+// followed by "store". Matching only these two shapes (rather than any bare
+// "pnpm" segment) avoids misclassifying an npm install that merely lives under
+// a directory named "pnpm". Windows separators are normalized to "/" so the
+// classification is OS-independent and unit-testable anywhere.
+func containsPnpmMarker(p string) bool {
+	parts := strings.Split(strings.ReplaceAll(p, `\`, "/"), "/")
+	for i, part := range parts {
+		if part == ".pnpm" {
+			return true
+		}
+		if part == "pnpm" && i+1 < len(parts) && parts[i+1] == "store" {
+			return true
+		}
+	}
+	return false
 }
 
 // RunNpmInstall executes npm install -g @larksuite/cli@<version>.
@@ -159,6 +222,29 @@ func (u *Updater) RunNpmInstall(version string) *NpmResult {
 	r.Err = cmd.Run()
 	if ctx.Err() == context.DeadlineExceeded {
 		r.Err = fmt.Errorf("npm install timed out after %s", npmInstallTimeout)
+	}
+	return r
+}
+
+// RunPnpmInstall executes pnpm add -g @larksuite/cli@<version>.
+func (u *Updater) RunPnpmInstall(version string) *NpmResult {
+	if u.PnpmInstallOverride != nil {
+		return u.PnpmInstallOverride(version)
+	}
+	r := &NpmResult{}
+	pnpmPath, err := exec.LookPath("pnpm")
+	if err != nil {
+		r.Err = fmt.Errorf("pnpm not found in PATH: %w", err)
+		return r
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), npmInstallTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, pnpmPath, "add", "-g", NpmPackage+"@"+version)
+	cmd.Stdout = &r.Stdout
+	cmd.Stderr = &r.Stderr
+	r.Err = cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		r.Err = fmt.Errorf("pnpm install timed out after %s", npmInstallTimeout)
 	}
 	return r
 }
@@ -261,19 +347,40 @@ func (u *Updater) runSkillsInstall(source string, nameList []string) *NpmResult 
 	return u.runSkillsCommand(args...)
 }
 
+// skillsInvocation decides how to launch the `skills` CLI. When the lark-cli
+// itself was installed via pnpm and pnpm is available, it uses `pnpm dlx` so
+// pnpm-only environments (pnpm's standalone installer bundles Node without
+// putting npm/npx on PATH) can still sync skills after a self-update.
+// Otherwise it uses `npx`. The npx auto-confirm flag "-y", when present as the
+// leading arg, maps to `pnpm dlx`'s default non-interactive behavior and is
+// dropped for the pnpm launcher. Kept pure (no exec/PATH access) so the
+// launcher selection is unit-testable on any platform.
+func skillsInvocation(method InstallMethod, pnpmAvailable bool, args []string) (launcher string, rest []string) {
+	if method == InstallPnpm && pnpmAvailable {
+		r := args
+		if len(r) > 0 && r[0] == "-y" {
+			r = r[1:]
+		}
+		return "pnpm", append([]string{"dlx"}, r...)
+	}
+	return "npx", args
+}
+
 func (u *Updater) runSkillsCommand(args ...string) *NpmResult {
 	if u.SkillsCommandOverride != nil {
 		return u.SkillsCommandOverride(args...)
 	}
 	r := &NpmResult{}
-	npxPath, err := exec.LookPath("npx")
+	det := u.DetectInstallMethod()
+	launcher, cmdArgs := skillsInvocation(det.Method, det.PnpmAvailable, args)
+	binPath, err := exec.LookPath(launcher)
 	if err != nil {
-		r.Err = fmt.Errorf("npx not found in PATH: %w", err)
+		r.Err = fmt.Errorf("%s not found in PATH: %w", launcher, err)
 		return r
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), skillsUpdateTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, npxPath, args...)
+	cmd := exec.CommandContext(ctx, binPath, cmdArgs...)
 	cmd.Stdout = &r.Stdout
 	cmd.Stderr = &r.Stderr
 	r.Err = cmd.Run()

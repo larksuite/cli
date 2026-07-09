@@ -422,8 +422,8 @@ func TestConsoleURL_FeishuBrand(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errs.PermissionError, got %T", err)
 	}
-	if !strings.Contains(pe.ConsoleURL, "open.feishu.cn/app/cli_a123") {
-		t.Fatalf("ConsoleURL = %q, want open.feishu.cn prefix", pe.ConsoleURL)
+	if !strings.Contains(pe.ConsoleURL, "open.feishu.cn/page/scope-apply?clientID=cli_a123") {
+		t.Fatalf("ConsoleURL = %q, want open.feishu.cn scope-apply page", pe.ConsoleURL)
 	}
 }
 
@@ -434,8 +434,8 @@ func TestConsoleURL_LarkBrand(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *errs.PermissionError, got %T", err)
 	}
-	if !strings.Contains(pe.ConsoleURL, "open.larksuite.com/app/cli_a123") {
-		t.Fatalf("ConsoleURL = %q, want open.larksuite.com prefix", pe.ConsoleURL)
+	if !strings.Contains(pe.ConsoleURL, "open.larksuite.com/page/scope-apply?clientID=cli_a123") {
+		t.Fatalf("ConsoleURL = %q, want open.larksuite.com scope-apply page", pe.ConsoleURL)
 	}
 }
 
@@ -485,35 +485,35 @@ func TestConsoleURL_EscapesDangerousChars(t *testing.T) {
 			name:      "ampersand in scope smuggles extra param",
 			appID:     "cli_good",
 			scopes:    []string{"scope&evil=injected"},
-			wantInURL: []string{"q=scope%26evil%3Dinjected"},
-			denyInURL: []string{"q=scope&evil=injected"},
+			wantInURL: []string{"scopes=scope%26evil%3Dinjected"},
+			denyInURL: []string{"scopes=scope&evil=injected"},
 		},
 		{
 			name:      "hash in scope splits fragment",
 			appID:     "cli_good",
 			scopes:    []string{"scope#fragment"},
-			wantInURL: []string{"q=scope%23fragment"},
-			denyInURL: []string{"q=scope#fragment"},
+			wantInURL: []string{"scopes=scope%23fragment"},
+			denyInURL: []string{"scopes=scope#fragment"},
 		},
 		{
 			name:      "question mark in appID prematurely opens query",
 			appID:     "good?q=injected",
 			scopes:    []string{"docx:document"},
-			wantInURL: []string{"/app/good%3Fq=injected/auth"},
-			denyInURL: []string{"/app/good?q=injected/auth"},
+			wantInURL: []string{"clientID=good%3Fq%3Dinjected"},
+			denyInURL: []string{"clientID=good?q=injected"},
 		},
 		{
 			name:      "hash in appID truncates URL",
 			appID:     "good#fragment",
 			scopes:    []string{"docx:document"},
-			wantInURL: []string{"/app/good%23fragment/auth"},
-			denyInURL: []string{"/app/good#fragment/auth"},
+			wantInURL: []string{"clientID=good%23fragment"},
+			denyInURL: []string{"clientID=good#fragment"},
 		},
 		{
-			name:      "slash in appID escapes path segment",
+			name:      "slash in appID does not open a new path segment",
 			appID:     "good/extra/segment",
 			scopes:    []string{"docx:document"},
-			wantInURL: []string{"/app/good%2Fextra%2Fsegment/auth"},
+			wantInURL: []string{"clientID=good%2Fextra%2Fsegment"},
 		},
 	}
 
@@ -553,8 +553,8 @@ func TestPermissionError_NoViolations(t *testing.T) {
 	if pe.MissingScopes != nil {
 		t.Errorf("MissingScopes should be nil; got %v", pe.MissingScopes)
 	}
-	if !strings.HasSuffix(pe.ConsoleURL, "/app/cli_a123/auth") {
-		t.Errorf("ConsoleURL (no scopes) = %q, want trailing /app/cli_a123/auth", pe.ConsoleURL)
+	if !strings.HasSuffix(pe.ConsoleURL, "/page/scope-apply?clientID=cli_a123") {
+		t.Errorf("ConsoleURL (no scopes) = %q, want trailing /page/scope-apply?clientID=cli_a123", pe.ConsoleURL)
 	}
 }
 
@@ -758,7 +758,7 @@ func TestBuildPermissionHint_AppMissingScopeRoutesToConsole(t *testing.T) {
 	// at the app level — re-authenticating cannot fix it. The hint must
 	// point to the developer console regardless of caller identity, or
 	// agents will loop on `auth login` forever.
-	consoleURL := "https://open.feishu.cn/app/cli_x/auth?q=contact%3Acontact"
+	consoleURL := "https://open.feishu.cn/page/scope-apply?clientID=cli_x&scopes=contact%3Acontact"
 	for _, identity := range []string{"user", "bot", ""} {
 		got := errclass.PermissionHint([]string{"contact:contact"}, identity, errs.SubtypeAppScopeNotApplied, consoleURL)
 		if !strings.Contains(got, "developer console") {

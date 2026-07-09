@@ -371,3 +371,147 @@ func TestListOfficialSkillsFallsBack(t *testing.T) {
 		t.Fatalf("fallback call = %q, want larksuite/cli --list", called[1])
 	}
 }
+
+func TestContainsPnpmMarker(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// Classic virtual-store layout (.pnpm segment).
+		{"/Users/x/Library/pnpm/global/5/node_modules/.pnpm/@larksuite+cli@1.0.44/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{`C:\Users\x\AppData\Local\pnpm\global\5\node_modules\.pnpm\@larksuite+cli@1.0.44\node_modules\@larksuite\cli\bin\lark-cli.exe`, true},
+		// Global content-addressable store layout (pnpm 11): resolved path runs
+		// through the pnpm home store, a "pnpm" segment with no ".pnpm".
+		{"/Users/x/Library/pnpm/store/v11/links/@larksuite/cli/1.0.59/abc123/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{"/home/x/.local/share/pnpm/store/v10/@larksuite/cli/node_modules/@larksuite/cli/bin/lark-cli", true},
+		{`C:\Users\x\AppData\Local\pnpm\store\v11\links\@larksuite\cli\node_modules\@larksuite\cli\bin\lark-cli.exe`, true},
+		// npm and non-package installs — no pnpm/.pnpm segment.
+		{"/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
+		{"/usr/local/bin/lark-cli", false},
+		// Substrings that must NOT match: segment must be exactly .pnpm, or
+		// "pnpm" immediately followed by "store".
+		{"/opt/homebrew/.pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
+		{"/opt/pnpmfoo/node_modules/@larksuite/cli/bin/lark-cli", false},
+		// A bare "pnpm" directory NOT followed by "store" (e.g. an npm install
+		// living under a dir named pnpm) must not be misclassified as pnpm.
+		{"/opt/pnpm/lib/node_modules/@larksuite/cli/bin/lark-cli", false},
+	}
+	for _, c := range cases {
+		if got := containsPnpmMarker(c.path); got != c.want {
+			t.Errorf("containsPnpmMarker(%q) = %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
+func TestDetectInstallMethod_Pnpm(t *testing.T) {
+	u := &Updater{DetectOverride: nil}
+	u.DetectOverride = func() DetectResult {
+		// Exercise the real classification by feeding a resolved path via a small shim.
+		return detectFromResolved("/x/node_modules/.pnpm/@larksuite+cli@1.0.44/node_modules/@larksuite/cli/bin/lark-cli", true, true)
+	}
+	got := u.DetectInstallMethod()
+	if got.Method != InstallPnpm {
+		t.Errorf("Method = %v, want InstallPnpm", got.Method)
+	}
+	if !got.PnpmAvailable {
+		t.Errorf("PnpmAvailable = false, want true")
+	}
+}
+
+func TestDetectInstallMethod_NpmVsManual(t *testing.T) {
+	if m := detectFromResolved("/usr/local/lib/node_modules/@larksuite/cli/bin/lark-cli", true, false).Method; m != InstallNpm {
+		t.Errorf("npm path Method = %v, want InstallNpm", m)
+	}
+	if m := detectFromResolved("/usr/local/bin/lark-cli", false, false).Method; m != InstallManual {
+		t.Errorf("manual path Method = %v, want InstallManual", m)
+	}
+}
+
+func TestCanAutoUpdate_Pnpm(t *testing.T) {
+	if !(DetectResult{Method: InstallPnpm, PnpmAvailable: true}).CanAutoUpdate() {
+		t.Error("pnpm available should CanAutoUpdate")
+	}
+	if (DetectResult{Method: InstallPnpm, PnpmAvailable: false}).CanAutoUpdate() {
+		t.Error("pnpm unavailable should not CanAutoUpdate")
+	}
+}
+
+func TestManualReason_Pnpm(t *testing.T) {
+	if got := (DetectResult{Method: InstallPnpm, NpmAvailable: false, PnpmAvailable: false}).ManualReason(); got != "installed via pnpm, but pnpm is not available in PATH" {
+		t.Errorf("pnpm reason = %q", got)
+	}
+	if got := (DetectResult{Method: InstallManual}).ManualReason(); got != "not installed via npm or pnpm" {
+		t.Errorf("manual reason = %q", got)
+	}
+}
+
+func TestRunPnpmInstall_Override(t *testing.T) {
+	u := &Updater{PnpmInstallOverride: func(version string) *NpmResult {
+		r := &NpmResult{}
+		r.Stdout.WriteString("added @larksuite/cli@" + version)
+		return r
+	}}
+	got := u.RunPnpmInstall("2.0.0")
+	if got.Err != nil {
+		t.Fatalf("unexpected err: %v", got.Err)
+	}
+	if !strings.Contains(got.CombinedOutput(), "2.0.0") {
+		t.Errorf("output = %q, want version echoed", got.CombinedOutput())
+	}
+}
+
+func TestRunPnpmInstall_Error(t *testing.T) {
+	wantErr := errors.New("boom")
+	u := &Updater{PnpmInstallOverride: func(string) *NpmResult { return &NpmResult{Err: wantErr} }}
+	if got := u.RunPnpmInstall("2.0.0"); !errors.Is(got.Err, wantErr) {
+		t.Errorf("err = %v, want %v", got.Err, wantErr)
+	}
+}
+
+func TestSkillsInvocation(t *testing.T) {
+	addArgs := []string{"-y", "skills", "add", "https://open.feishu.cn", "-g", "-y"}
+	cases := []struct {
+		name          string
+		method        InstallMethod
+		pnpmAvailable bool
+		args          []string
+		wantLauncher  string
+		wantRest      []string
+	}{
+		{"pnpm install + pnpm available → pnpm dlx, drop leading -y", InstallPnpm, true, addArgs,
+			"pnpm", []string{"dlx", "skills", "add", "https://open.feishu.cn", "-g", "-y"}},
+		{"pnpm install but pnpm unavailable → npx unchanged", InstallPnpm, false, addArgs,
+			"npx", addArgs},
+		{"npm install → npx unchanged", InstallNpm, false, addArgs,
+			"npx", addArgs},
+		{"manual install → npx unchanged", InstallManual, false, []string{"-y", "skills", "ls", "-g"},
+			"npx", []string{"-y", "skills", "ls", "-g"}},
+		{"pnpm without a leading -y → prepend dlx only", InstallPnpm, true, []string{"skills", "ls", "-g"},
+			"pnpm", []string{"dlx", "skills", "ls", "-g"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotLauncher, gotRest := skillsInvocation(c.method, c.pnpmAvailable, c.args)
+			if gotLauncher != c.wantLauncher {
+				t.Errorf("launcher = %q, want %q", gotLauncher, c.wantLauncher)
+			}
+			if strings.Join(gotRest, " ") != strings.Join(c.wantRest, " ") {
+				t.Errorf("rest = %v, want %v", gotRest, c.wantRest)
+			}
+		})
+	}
+}
+
+// TestDetectInstallMethod_Caches locks the fix for the post-update re-detection
+// hazard: DetectInstallMethod must return the first (pre-update) detection on
+// subsequent calls, so the skills launcher chosen after the binary is replaced
+// stays consistent with what was detected — and reported — before the update.
+func TestDetectInstallMethod_Caches(t *testing.T) {
+	u := New()
+	cached := DetectResult{Method: InstallPnpm, PnpmAvailable: true, ResolvedPath: "/x/pnpm/store/v11/links/@larksuite/cli/1.0.0/node_modules/@larksuite/cli/bin/lark-cli"}
+	u.detectCache = &cached
+	got := u.DetectInstallMethod()
+	if got.Method != InstallPnpm || !got.PnpmAvailable {
+		t.Errorf("expected cached pnpm result to be returned, got %+v", got)
+	}
+}
