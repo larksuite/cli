@@ -67,9 +67,15 @@ func NewUATCallOptions(cfg *core.CliConfig, errOut io.Writer) UATCallOptions {
 
 var refreshLocks sync.Map
 
+var (
+	getStoredUAToken    = GetStoredToken
+	setStoredUAToken    = SetStoredToken
+	removeStoredUAToken = RemoveStoredToken
+)
+
 // GetValidAccessToken obtains a valid access token for the given user.
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
-	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
+	stored := getStoredUAToken(opts.AppId, opts.UserOpenId)
 	if stored == nil {
 		return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
@@ -92,7 +98,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 	}
 
 	// expired
-	if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
+	if err := removeStoredUAToken(opts.AppId, opts.UserOpenId); err != nil {
 		if opts.ErrOut != nil {
 			fmt.Fprintf(opts.ErrOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
 		} else {
@@ -116,7 +122,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 			// fallback in case of unexpected type
 			refreshLocks.Delete(key)
 		}
-		return GetStoredToken(opts.AppId, opts.UserOpenId), nil
+		return getStoredUAToken(opts.AppId, opts.UserOpenId), nil
 	}
 
 	// We own the process lock; done is the channel stored in the map
@@ -154,7 +160,7 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 	defer fileLock.Unlock()
 
 	// 3. Double-checked locking: Check if another process has already refreshed the token
-	freshStored := GetStoredToken(opts.AppId, opts.UserOpenId)
+	freshStored := getStoredUAToken(opts.AppId, opts.UserOpenId)
 	if freshStored != nil {
 		status := TokenStatus(freshStored)
 		if status == "valid" {
@@ -180,7 +186,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	now := time.Now().UnixMilli()
 	if now >= stored.RefreshExpiresAt {
 		fmt.Fprintf(errOut, "[lark-cli] uat-client: refresh_token expired for %s, clearing\n", opts.UserOpenId)
-		if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
+		if err := removeStoredUAToken(opts.AppId, opts.UserOpenId); err != nil {
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove expired token: %v\n", err)
 		}
 		return nil, nil
@@ -251,29 +257,19 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh transient error (code=%d) for %s, retrying once\n", code, opts.UserOpenId)
 			data, err = callEndpoint()
 			if err != nil {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh retry network error for %s, clearing token\n", opts.UserOpenId)
-				if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-					fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-				}
-				return nil, nil
+				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh retry network error for %s; preserving token state for retry\n", opts.UserOpenId)
+				return nil, err
 			}
 			code = getInt(data, "code", -1)
 			errStr = getStr(data, "error")
 			if (code != -1 && code != 0) || errStr != "" {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed after retry (code=%d) for %s, clearing token\n", code, opts.UserOpenId)
-				if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-					fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-				}
-				return nil, nil
+				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed after retry (code=%d) for %s; preserving token state for retry/diagnosis\n", code, opts.UserOpenId)
+				return nil, buildRefreshFailureError(data, opts)
 			}
 			// Retry succeeded, fall through to parse token below.
 		} else {
-			// All other errors: clear token, require re-authorization.
-			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed (code=%d), clearing token for %s\n", code, opts.UserOpenId)
-			if err := RemoveStoredToken(opts.AppId, opts.UserOpenId); err != nil {
-				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
-			}
-			return nil, nil
+			fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh failed (code=%d) for %s; preserving token state for retry/diagnosis\n", code, opts.UserOpenId)
+			return nil, buildRefreshFailureError(data, opts)
 		}
 	}
 
@@ -310,8 +306,41 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 		GrantedAt:        stored.GrantedAt,
 	}
 
-	if err := SetStoredToken(updated); err != nil {
+	if err := setStoredUAToken(updated); err != nil {
 		return nil, err
 	}
 	return updated, nil
+}
+
+func buildRefreshFailureError(data map[string]interface{}, opts UATCallOptions) error {
+	code := getInt(data, "code", -1)
+	msg := getStr(data, "msg")
+	if msg == "" {
+		msg = getStr(data, "error_description")
+	}
+	if msg == "" {
+		msg = getStr(data, "error")
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("token refresh failed with code %d", code)
+	}
+	if err := errclass.BuildAPIError(map[string]interface{}{
+		"code": code,
+		"msg":  msg,
+	}, errclass.ClassifyContext{
+		Brand: string(opts.Domain),
+		AppID: opts.AppId,
+	}); err != nil {
+		if authErr, ok := err.(*errs.AuthenticationError); ok {
+			authErr.UserOpenID = opts.UserOpenId
+			if authErr.Hint == "" {
+				authErr.Hint = "refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked"
+			}
+		}
+		return err
+	}
+	return errs.NewAuthenticationError(errs.SubtypeRefreshServerError, "%s", msg).
+		WithCode(code).
+		WithUserOpenID(opts.UserOpenId).
+		WithHint("refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked")
 }
