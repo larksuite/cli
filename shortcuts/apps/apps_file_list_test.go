@@ -95,13 +95,7 @@ func TestAppsFileList_DryRunSendsFiltersAndPagination(t *testing.T) {
 		factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Method string                 `json:"method"`
-			URL    string                 `json:"url"`
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	if err := json.Unmarshal([]byte(stdout.String()), &env); err != nil {
 		t.Fatalf("decode dry-run: %v\n%s", err, stdout.String())
 	}
@@ -139,11 +133,7 @@ func TestAppsFileList_DryRunOmitsEmptyFilters(t *testing.T) {
 		[]string{"+file-list", "--app-id", "app_x", "--dry-run", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
 	for _, banned := range []string{"name", "path", "type", "size_gt", "size_lt", "uploaded_since", "uploaded_until", "page_token"} {
 		if _, ok := env.API[0].Params[banned]; ok {

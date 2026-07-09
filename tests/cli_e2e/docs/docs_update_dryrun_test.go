@@ -150,6 +150,7 @@ func TestDocs_DryRunDefaultsToV2OpenAPI(t *testing.T) {
 			})
 			require.NoError(t, err)
 			result.AssertExitCode(t, 0)
+			result.Stdout = clie2e.DryRunData(result.Stdout)
 
 			combined := result.Stdout + "\n" + result.Stderr
 			for _, want := range append(tt.wantContains, "docs_ai/v1") {
@@ -219,6 +220,7 @@ func TestDocs_CreateTitleDryRunPrependsContent(t *testing.T) {
 		DefaultAs: "bot",
 	})
 	require.NoError(t, err)
+	result.Stdout = clie2e.DryRunData(result.Stdout)
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout

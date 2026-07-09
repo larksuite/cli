@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 // TestDrive_ApplyPermissionDryRun locks in the request shape the shortcut
@@ -127,20 +126,20 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 
 			out := result.Stdout
 			// Dry-run output is the JSON envelope; gjson walks into api[0].
-			if got := gjson.Get(out, "api.0.method").String(); got != "POST" {
+			if got := clie2e.DryRunGet(out, "api.0.method").String(); got != "POST" {
 				t.Fatalf("method = %q, want POST\nstdout:\n%s", got, out)
 			}
-			if got := gjson.Get(out, "api.0.url").String(); got != tt.wantURL {
+			if got := clie2e.DryRunGet(out, "api.0.url").String(); got != tt.wantURL {
 				t.Fatalf("url = %q, want %q\nstdout:\n%s", got, tt.wantURL, out)
 			}
-			if got := gjson.Get(out, "api.0.params.type").String(); got != tt.wantType {
+			if got := clie2e.DryRunGet(out, "api.0.params.type").String(); got != tt.wantType {
 				t.Fatalf("params.type = %q, want %q\nstdout:\n%s", got, tt.wantType, out)
 			}
-			if got := gjson.Get(out, "api.0.body.perm").String(); got != tt.wantPerm {
+			if got := clie2e.DryRunGet(out, "api.0.body.perm").String(); got != tt.wantPerm {
 				t.Fatalf("body.perm = %q, want %q\nstdout:\n%s", got, tt.wantPerm, out)
 			}
 			for k, v := range tt.wantBody {
-				if got := gjson.Get(out, "api.0.body."+k).String(); got != v {
+				if got := clie2e.DryRunGet(out, "api.0.body."+k).String(); got != v {
 					t.Fatalf("body.%s = %q, want %q\nstdout:\n%s", k, got, v, out)
 				}
 			}
@@ -148,7 +147,7 @@ func TestDrive_ApplyPermissionDryRun(t *testing.T) {
 			// remark field (the owner's request card would otherwise render
 			// a blank note).
 			if _, wantsRemark := tt.wantBody["remark"]; !wantsRemark {
-				if gjson.Get(out, "api.0.body.remark").Exists() {
+				if clie2e.DryRunGet(out, "api.0.body.remark").Exists() {
 					t.Fatalf("body.remark should be omitted when --remark is empty, stdout:\n%s", out)
 				}
 			}

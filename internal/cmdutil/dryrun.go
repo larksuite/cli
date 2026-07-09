@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -16,6 +17,18 @@ import (
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/util"
 )
+
+var dryRunURLPlaceholderRE = regexp.MustCompile(`:([A-Za-z_][A-Za-z0-9_]*)`)
+
+// DryRunOutputOptions controls dry-run stdout/stderr rendering.
+type DryRunOutputOptions struct {
+	Format      string
+	JqExpr      string
+	CommandPath string
+	Identity    core.Identity
+	Out         io.Writer
+	ErrOut      io.Writer
+}
 
 // DryRunAPICall describes a single API call in dry-run output.
 type DryRunAPICall struct {
@@ -100,10 +113,14 @@ func (d *DryRunAPI) Set(key string, value interface{}) *DryRunAPI {
 
 // resolveURL replaces :key placeholders in url with path-escaped values from extra.
 func (d *DryRunAPI) resolveURL(rawURL string) string {
-	for k, v := range d.extra {
-		rawURL = strings.ReplaceAll(rawURL, ":"+k, url.PathEscape(fmt.Sprintf("%v", v)))
-	}
-	return rawURL
+	return dryRunURLPlaceholderRE.ReplaceAllStringFunc(rawURL, func(token string) string {
+		name := token[1:]
+		value, ok := d.extra[name]
+		if !ok {
+			return token
+		}
+		return url.PathEscape(fmt.Sprintf("%v", value))
+	})
 }
 
 // MarshalJSON serializes as {"description": "...", "api": [...calls with resolved URLs], ...extra}.
@@ -217,7 +234,7 @@ func encodeParams(params map[string]interface{}) string {
 
 // PrintDryRunWithFile outputs a dry-run summary for file upload requests.
 // Instead of serializing the Formdata body, it shows file metadata.
-func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format, fileField, filePath string, formFields any) error {
+func PrintDryRunWithFile(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions, fileField, filePath string, formFields any) error {
 	dr := NewDryRunAPI()
 	switch request.Method {
 	case "POST":
@@ -251,18 +268,12 @@ func PrintDryRunWithFile(w io.Writer, request client.RawApiRequest, config *core
 	if config.UserOpenId != "" {
 		dr.Set("userOpenId", config.UserOpenId)
 	}
-	fmt.Fprintln(w, "=== Dry Run ===")
-	if format == "pretty" {
-		fmt.Fprint(w, dr.Format())
-	} else {
-		output.PrintJson(w, dr)
-	}
-	return nil
+	return WriteDryRun(dr, opts)
 }
 
 // PrintDryRun outputs a standardised dry-run summary using DryRunAPI.
 // When format is "pretty", outputs human-readable text; otherwise JSON.
-func PrintDryRun(w io.Writer, request client.RawApiRequest, config *core.CliConfig, format string) error {
+func PrintDryRun(request client.RawApiRequest, config *core.CliConfig, opts DryRunOutputOptions) error {
 	dr := NewDryRunAPI()
 	switch request.Method {
 	case "POST":
@@ -287,11 +298,30 @@ func PrintDryRun(w io.Writer, request client.RawApiRequest, config *core.CliConf
 	if config.UserOpenId != "" {
 		dr.Set("userOpenId", config.UserOpenId)
 	}
-	fmt.Fprintln(w, "=== Dry Run ===")
-	if format == "pretty" {
-		fmt.Fprint(w, dr.Format())
-	} else {
-		output.PrintJson(w, dr)
+	return WriteDryRun(dr, opts)
+}
+
+// WriteDryRun emits a DryRunAPI using the shared dry-run output contract.
+func WriteDryRun(dr *DryRunAPI, opts DryRunOutputOptions) error {
+	if opts.Out == nil {
+		opts.Out = io.Discard
 	}
-	return nil
+	if opts.Identity == "" {
+		opts.Identity = core.AsUser
+	}
+	if opts.Format == "pretty" && opts.JqExpr == "" {
+		if opts.ErrOut != nil {
+			fmt.Fprintln(opts.ErrOut, "=== Dry Run ===")
+		}
+		fmt.Fprint(opts.Out, dr.Format())
+		return nil
+	}
+	return output.WriteSuccessEnvelope(dr, output.SuccessEnvelopeOptions{
+		CommandPath: opts.CommandPath,
+		Identity:    string(opts.Identity),
+		DryRun:      true,
+		JqExpr:      opts.JqExpr,
+		Out:         opts.Out,
+		ErrOut:      opts.ErrOut,
+	})
 }

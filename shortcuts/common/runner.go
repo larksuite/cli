@@ -1153,14 +1153,15 @@ func handleShortcutDryRun(f *cmdutil.Factory, rctx *RuntimeContext, s *Shortcut)
 		return ValidationErrorf("--dry-run is not supported for %s %s", s.Service, s.Command).
 			WithParam("--dry-run")
 	}
-	fmt.Fprintln(f.IOStreams.ErrOut, "=== Dry Run ===")
 	dryResult := s.DryRun(rctx.ctx, rctx)
-	if rctx.Format == "pretty" {
-		fmt.Fprint(f.IOStreams.Out, dryResult.Format())
-	} else {
-		output.PrintJson(f.IOStreams.Out, dryResult)
-	}
-	return nil
+	return cmdutil.WriteDryRun(dryResult, cmdutil.DryRunOutputOptions{
+		Format:      rctx.Format,
+		JqExpr:      rctx.JqExpr,
+		CommandPath: rctx.Cmd.CommandPath(),
+		Identity:    rctx.As(),
+		Out:         f.IOStreams.Out,
+		ErrOut:      f.IOStreams.ErrOut,
+	})
 }
 
 // rejectPositionalArgs returns a cobra.PositionalArgs that rejects any

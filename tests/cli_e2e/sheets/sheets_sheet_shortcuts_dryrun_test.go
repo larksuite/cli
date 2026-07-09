@@ -11,7 +11,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func setSheetsDryRunEnv(t *testing.T) {
@@ -169,9 +168,9 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			},
 			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
 			wantFn: func(t *testing.T, out string) {
-				require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "Data", gjson.Get(out, "api.0.body.requests.0.addSheet.properties.title").String(), "stdout:\n%s", out)
-				require.Equal(t, int64(0), gjson.Get(out, "api.0.body.requests.0.addSheet.properties.index").Int(), "stdout:\n%s", out)
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "Data", clie2e.DryRunGet(out, "api.0.body.requests.0.addSheet.properties.title").String(), "stdout:\n%s", out)
+				require.Equal(t, int64(0), clie2e.DryRunGet(out, "api.0.body.requests.0.addSheet.properties.index").Int(), "stdout:\n%s", out)
 			},
 		},
 		{
@@ -186,12 +185,12 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			},
 			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
 			wantFn: func(t *testing.T, out string) {
-				require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", gjson.Get(out, "api.0.body.requests.0.copySheet.source.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, "Copy", gjson.Get(out, "api.0.body.requests.0.copySheet.destination.title").String(), "stdout:\n%s", out)
-				require.Equal(t, "POST", gjson.Get(out, "api.1.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "<copied_sheet_id>", gjson.Get(out, "api.1.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, int64(2), gjson.Get(out, "api.1.body.requests.0.updateSheet.properties.index").Int(), "stdout:\n%s", out)
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.copySheet.source.sheetId").String(), "stdout:\n%s", out)
+				require.Equal(t, "Copy", clie2e.DryRunGet(out, "api.0.body.requests.0.copySheet.destination.title").String(), "stdout:\n%s", out)
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "<copied_sheet_id>", clie2e.DryRunGet(out, "api.1.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
+				require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.1.body.requests.0.updateSheet.properties.index").Int(), "stdout:\n%s", out)
 			},
 		},
 		{
@@ -204,8 +203,8 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			},
 			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
 			wantFn: func(t *testing.T, out string) {
-				require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", gjson.Get(out, "api.0.body.requests.0.deleteSheet.sheetId").String(), "stdout:\n%s", out)
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.deleteSheet.sheetId").String(), "stdout:\n%s", out)
 			},
 		},
 		{
@@ -226,14 +225,14 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			},
 			wantURL: "/open-apis/sheets/v2/spreadsheets/shtDryRun/sheets_batch_update",
 			wantFn: func(t *testing.T, out string) {
-				require.Equal(t, "POST", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-				require.Equal(t, "open_id", gjson.Get(out, "api.0.params.user_id_type").String(), "stdout:\n%s", out)
-				require.Equal(t, "sheet1", gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
-				require.Equal(t, "Renamed", gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.title").String(), "stdout:\n%s", out)
-				require.Equal(t, false, gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.hidden").Bool(), "stdout:\n%s", out)
-				require.Equal(t, int64(2), gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.frozenRowCount").Int(), "stdout:\n%s", out)
-				require.Equal(t, int64(1), gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.frozenColCount").Int(), "stdout:\n%s", out)
-				require.Equal(t, "LOCK", gjson.Get(out, "api.0.body.requests.0.updateSheet.properties.protect.lock").String(), "stdout:\n%s", out)
+				require.Equal(t, "POST", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+				require.Equal(t, "open_id", clie2e.DryRunGet(out, "api.0.params.user_id_type").String(), "stdout:\n%s", out)
+				require.Equal(t, "sheet1", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.sheetId").String(), "stdout:\n%s", out)
+				require.Equal(t, "Renamed", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.title").String(), "stdout:\n%s", out)
+				require.Equal(t, false, clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.hidden").Bool(), "stdout:\n%s", out)
+				require.Equal(t, int64(2), clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.frozenRowCount").Int(), "stdout:\n%s", out)
+				require.Equal(t, int64(1), clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.frozenColCount").Int(), "stdout:\n%s", out)
+				require.Equal(t, "LOCK", clie2e.DryRunGet(out, "api.0.body.requests.0.updateSheet.properties.protect.lock").String(), "stdout:\n%s", out)
 			},
 		},
 	}
@@ -251,7 +250,7 @@ func TestSheets_SheetShortcutsDryRun(t *testing.T) {
 			result.AssertExitCode(t, 0)
 
 			out := result.Stdout
-			require.Equal(t, tt.wantURL, gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
+			require.Equal(t, tt.wantURL, clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
 			tt.wantFn(t, out)
 		})
 	}

@@ -31,6 +31,7 @@ func TestMail_TriageDryRunPreservesMailboxInRequestChain(t *testing.T) {
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
+	result.Stdout = clie2e.DryRunData(result.Stdout)
 
 	require.Equal(t, int64(2), gjson.Get(result.Stdout, "api.#").Int(), "stdout:\n%s", result.Stdout)
 	require.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String(), "stdout:\n%s", result.Stdout)

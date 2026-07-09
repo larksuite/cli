@@ -44,11 +44,11 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "origin", gjson.Get(result.Stdout, "api.0.body.node_type").String())
-		assert.Equal(t, "docx", gjson.Get(result.Stdout, "api.0.body.obj_type").String())
-		assert.Equal(t, "TestDoc", gjson.Get(result.Stdout, "api.0.body.title").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "origin", clie2e.DryRunGet(result.Stdout, "api.0.body.node_type").String())
+		assert.Equal(t, "docx", clie2e.DryRunGet(result.Stdout, "api.0.body.obj_type").String())
+		assert.Equal(t, "TestDoc", clie2e.DryRunGet(result.Stdout, "api.0.body.title").String())
 	})
 
 	t.Run("HappyPath_WithParentNodeToken", func(t *testing.T) {
@@ -70,13 +70,13 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		result.AssertExitCode(t, 0)
 
 		// 2-step: resolve parent node -> create node
-		assert.Equal(t, "GET", gjson.Get(result.Stdout, "api.0.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/get_node", gjson.Get(result.Stdout, "api.0.url").String())
-		assert.Equal(t, "wikcnABC123", gjson.Get(result.Stdout, "api.0.params.token").String())
+		assert.Equal(t, "GET", clie2e.DryRunGet(result.Stdout, "api.0.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/get_node", clie2e.DryRunGet(result.Stdout, "api.0.url").String())
+		assert.Equal(t, "wikcnABC123", clie2e.DryRunGet(result.Stdout, "api.0.params.token").String())
 
-		assert.Equal(t, "POST", gjson.Get(result.Stdout, "api.1.method").String())
-		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", gjson.Get(result.Stdout, "api.1.url").String())
-		assert.Equal(t, "wikcnABC123", gjson.Get(result.Stdout, "api.1.body.parent_node_token").String())
+		assert.Equal(t, "POST", clie2e.DryRunGet(result.Stdout, "api.1.method").String())
+		assert.Equal(t, "/open-apis/wiki/v2/spaces/123456/nodes", clie2e.DryRunGet(result.Stdout, "api.1.url").String())
+		assert.Equal(t, "wikcnABC123", clie2e.DryRunGet(result.Stdout, "api.1.body.parent_node_token").String())
 	})
 
 	t.Run("HappyPath_ShortcutNodeType", func(t *testing.T) {
@@ -98,8 +98,8 @@ func TestWikiNodeCreateDryRun(t *testing.T) {
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
 
-		assert.Equal(t, "shortcut", gjson.Get(result.Stdout, "api.0.body.node_type").String())
-		assert.Equal(t, "wikcnORIG", gjson.Get(result.Stdout, "api.0.body.origin_node_token").String())
+		assert.Equal(t, "shortcut", clie2e.DryRunGet(result.Stdout, "api.0.body.node_type").String())
+		assert.Equal(t, "wikcnORIG", clie2e.DryRunGet(result.Stdout, "api.0.body.origin_node_token").String())
 	})
 
 	t.Run("RejectsShortcutWithoutOriginNodeToken", func(t *testing.T) {

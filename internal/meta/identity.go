@@ -3,7 +3,10 @@
 
 package meta
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // Token is the metadata accessTokens vocabulary: which token kind a method
 // accepts. It is a distinct type so the two directions of the token<->identity
@@ -58,6 +61,9 @@ func (m Method) RestrictsIdentity() bool {
 // the single source of truth for the predicate; registry scope policy and
 // command identity checks build on it.
 func (m Method) SupportsToken(token Token) bool {
+	if identity, ok := m.descriptionOnlyIdentity(); ok {
+		return TokenForIdentity(identity) == token
+	}
 	if !m.RestrictsIdentity() {
 		return true
 	}
@@ -79,6 +85,10 @@ func (m Method) SupportsToken(token Token) bool {
 // that. Identities() lists only CLI-known identities, so a method restricted
 // solely to unrecognized tokens returns empty yet RestrictsIdentity() is true.
 func (m Method) Identities() []string {
+	if identity, ok := m.descriptionOnlyIdentity(); ok {
+		return []string{identity}
+	}
+
 	seen := make(map[string]bool, len(m.AccessTokens))
 	for _, t := range m.AccessTokens {
 		if id, ok := IdentityForToken(t); ok {
@@ -91,4 +101,16 @@ func (m Method) Identities() []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func (m Method) descriptionOnlyIdentity() (string, bool) {
+	description := strings.ToLower(m.Description)
+	switch {
+	case strings.Contains(description, "identity: `bot` only"):
+		return "bot", true
+	case strings.Contains(description, "identity: `user` only"):
+		return "user", true
+	default:
+		return "", false
+	}
 }

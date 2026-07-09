@@ -270,10 +270,11 @@ func TestReplacePagesDryRunPlansOnly(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
 		t.Fatalf("decode dry-run: %v\nraw=%s", err, stdout.String())
 	}
-	if out["xml_presentation_id"] != "pres_abc" {
-		t.Fatalf("xml_presentation_id = %v", out["xml_presentation_id"])
+	data, _ := out["data"].(map[string]interface{})
+	if data["xml_presentation_id"] != "pres_abc" {
+		t.Fatalf("xml_presentation_id = %v", data["xml_presentation_id"])
 	}
-	plan, _ := out["plan"].([]interface{})
+	plan, _ := data["plan"].([]interface{})
 	if len(plan) != 1 {
 		t.Fatalf("plan len = %d, want 1", len(plan))
 	}
@@ -281,7 +282,7 @@ func TestReplacePagesDryRunPlansOnly(t *testing.T) {
 	if item["old_slide_id"] != "old2" || item["action"] != "create_before_then_delete_old" {
 		t.Fatalf("plan item = %#v", item)
 	}
-	api, _ := out["api"].([]interface{})
+	api, _ := data["api"].([]interface{})
 	if len(api) != 2 {
 		t.Fatalf("api len = %d, want create/delete plan", len(api))
 	}

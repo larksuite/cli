@@ -33,6 +33,17 @@ func TestExtractDryRunJSONSkipsBanner(t *testing.T) {
 	}
 }
 
+func TestExtractDryRunJSONReadsSuccessEnvelope(t *testing.T) {
+	raw := `{"ok":true,"dry_run":true,"data":{"api":[{"method":"GET","url":"/open-apis/test"}]}}`
+	got, apiCallCount, err := extractDryRunJSON([]byte(raw))
+	if err != nil {
+		t.Fatalf("extractDryRunJSON() error = %v", err)
+	}
+	if got.Method != "GET" || got.URL != "/open-apis/test" || apiCallCount != 1 {
+		t.Fatalf("got request=%#v apiCallCount=%d, want enveloped GET and count 1", got, apiCallCount)
+	}
+}
+
 func TestExtractDryRunJSONSkipsBannerWithBraces(t *testing.T) {
 	raw := "banner {not json}\n{\"api\":[{\"method\":\"GET\",\"url\":\"/open-apis/test\"}]}\n"
 	got, apiCallCount, err := extractDryRunJSON([]byte(raw))

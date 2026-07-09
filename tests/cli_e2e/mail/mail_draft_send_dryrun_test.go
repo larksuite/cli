@@ -31,6 +31,9 @@ func TestMail_DraftSendDryRun(t *testing.T) {
 		},
 		DefaultAs: "user",
 	})
+	if result != nil {
+		result.Stdout = clie2e.DryRunData(result.Stdout)
+	}
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
 

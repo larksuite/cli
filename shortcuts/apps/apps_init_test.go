@@ -737,15 +737,12 @@ func newAppsExecuteFactoryWithStderr(t *testing.T) (*cmdutil.Factory, *bytes.Buf
 }
 
 func TestAppsInit_Req1_Wording(t *testing.T) {
-	// The --dry-run output is a flat object (DryRunAPI marshals to top-level keys
-	// description/scaffold/api/...), NOT wrapped in {"data":...}, so parse stdout
-	// directly rather than via parseEnvelopeData.
 	factory, stdout, _ := newAppsExecuteFactoryWithStderr(t)
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var data map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &data); err != nil {
+	data, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
 		t.Fatalf("decode dry-run output: %v (raw=%q)", err, stdout.String())
 	}
 	desc, _ := data["description"].(string)
@@ -1447,8 +1444,8 @@ func TestAppsInit_DryRun_DescribesEnvPull(t *testing.T) {
 	if err := runAppsShortcut(t, AppsInit, []string{"+init", "--app-id", "app_x", "--dir", dir, "--as", "user", "--dry-run"}, factory, stdout); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	var m map[string]interface{}
-	if err := json.Unmarshal(stdout.Bytes(), &m); err != nil {
+	m, err := decodeDryRunDataMap(stdout.Bytes())
+	if err != nil {
 		t.Fatalf("decode dry-run: %v (raw=%q)", err, stdout.String())
 	}
 	ep, _ := m["env_pull"].(string)

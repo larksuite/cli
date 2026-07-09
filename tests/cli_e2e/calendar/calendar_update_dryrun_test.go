@@ -10,7 +10,6 @@ import (
 
 	clie2e "github.com/larksuite/cli/tests/cli_e2e"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 func TestCalendar_UpdateDryRun(t *testing.T) {
@@ -41,19 +40,19 @@ func TestCalendar_UpdateDryRun(t *testing.T) {
 	result.AssertExitCode(t, 0)
 
 	out := result.Stdout
-	require.Equal(t, "PATCH", gjson.Get(out, "api.0.method").String(), "stdout:\n%s", out)
-	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry", gjson.Get(out, "api.0.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "updated dry-run", gjson.Get(out, "api.0.body.summary").String(), "stdout:\n%s", out)
-	require.False(t, gjson.Get(out, "api.0.body.need_notification").Bool(), "stdout:\n%s", out)
+	require.Equal(t, "PATCH", clie2e.DryRunGet(out, "api.0.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry", clie2e.DryRunGet(out, "api.0.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "updated dry-run", clie2e.DryRunGet(out, "api.0.body.summary").String(), "stdout:\n%s", out)
+	require.False(t, clie2e.DryRunGet(out, "api.0.body.need_notification").Bool(), "stdout:\n%s", out)
 
-	require.Equal(t, "POST", gjson.Get(out, "api.1.method").String(), "stdout:\n%s", out)
-	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry/attendees/batch_delete", gjson.Get(out, "api.1.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "ou_old", gjson.Get(out, `api.1.body.delete_ids.#(type=="user").user_id`).String(), "stdout:\n%s", out)
-	require.Equal(t, "omm_oldroom", gjson.Get(out, `api.1.body.delete_ids.#(type=="resource").room_id`).String(), "stdout:\n%s", out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.1.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry/attendees/batch_delete", clie2e.DryRunGet(out, "api.1.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "ou_old", clie2e.DryRunGet(out, `api.1.body.delete_ids.#(type=="user").user_id`).String(), "stdout:\n%s", out)
+	require.Equal(t, "omm_oldroom", clie2e.DryRunGet(out, `api.1.body.delete_ids.#(type=="resource").room_id`).String(), "stdout:\n%s", out)
 
-	require.Equal(t, "POST", gjson.Get(out, "api.2.method").String(), "stdout:\n%s", out)
-	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry/attendees", gjson.Get(out, "api.2.url").String(), "stdout:\n%s", out)
-	require.Equal(t, "ou_new", gjson.Get(out, `api.2.body.attendees.#(type=="user").user_id`).String(), "stdout:\n%s", out)
-	require.Equal(t, "oc_group", gjson.Get(out, `api.2.body.attendees.#(type=="chat").chat_id`).String(), "stdout:\n%s", out)
-	require.Equal(t, "omm_newroom", gjson.Get(out, `api.2.body.attendees.#(type=="resource").room_id`).String(), "stdout:\n%s", out)
+	require.Equal(t, "POST", clie2e.DryRunGet(out, "api.2.method").String(), "stdout:\n%s", out)
+	require.Equal(t, "/open-apis/calendar/v4/calendars/cal_dry/events/evt_dry/attendees", clie2e.DryRunGet(out, "api.2.url").String(), "stdout:\n%s", out)
+	require.Equal(t, "ou_new", clie2e.DryRunGet(out, `api.2.body.attendees.#(type=="user").user_id`).String(), "stdout:\n%s", out)
+	require.Equal(t, "oc_group", clie2e.DryRunGet(out, `api.2.body.attendees.#(type=="chat").chat_id`).String(), "stdout:\n%s", out)
+	require.Equal(t, "omm_newroom", clie2e.DryRunGet(out, `api.2.body.attendees.#(type=="resource").room_id`).String(), "stdout:\n%s", out)
 }
