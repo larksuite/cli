@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	credentialAssignmentRE = regexp.MustCompile(`(?i)["']?\b[A-Za-z0-9_-]*(?:api[_-]?key|access[_-]?key|private[_-]?key|secret|password|passwd|token|webhook|access[_-]?token|client[_-]?secret)[A-Za-z0-9_-]*\b["']?\s*[:=]\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|(\$\([^)]*\))|(\$\{\{[^}]+\}\})|([^"'\s,}\]]+))`)
+	credentialAssignmentRE = regexp.MustCompile(`(?i)["']?\b[A-Za-z0-9_-]*(?:api[_-]?key|access[_-]?key|private[_-]?key|secret|password|passwd|token|webhook|access[_-]?token|client[_-]?secret)[A-Za-z0-9_-]*\b["']?\s*(?::=|[:=])\s*(?:!!str\s+)?(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|(\x60[^\x60]*\x60)|(\$\([^)]*\))|(\$\{\{[^}]+\}\})|([^"'\x60\s,}\]]+))`)
 	jwtLikeRE              = regexp.MustCompile(`\b[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b`)
 	credentialURLRE        = regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^/\s:@]*:[^@\s/]+@[^)\s]+`)
 	bearerHeaderRE         = regexp.MustCompile(`(?i)(?:\bAuthorization\s*:\s*Bearer\s+|["']Authorization["']\s*:\s*["']Bearer\s+)[A-Za-z0-9._+/=-]{12,}`)
@@ -383,31 +383,61 @@ func anglePlaceholderIdentifier(value string) bool {
 }
 
 func credentialShapedValue(value string) bool {
-	normalized := strings.ToLower(strings.Trim(value, `"'<>`))
+	normalized := strings.TrimSpace(strings.Trim(strings.TrimSpace(value), `"'<>`))
 	return credentialShapedIdentifier(normalized)
 }
 
 func credentialShapedIdentifier(value string) bool {
+	return providerCredentialIdentifier(value)
+}
+
+func providerCredentialIdentifier(value string) bool {
+	value = strings.TrimSpace(value)
 	switch {
-	case strings.HasPrefix(value, "sk_live_"),
-		strings.HasPrefix(value, "sk_test_"),
-		strings.HasPrefix(value, "ghp_"),
-		strings.HasPrefix(value, "gho_"),
-		strings.HasPrefix(value, "ghu_"),
-		strings.HasPrefix(value, "github_pat_"),
-		strings.HasPrefix(value, "xoxb_"),
-		strings.HasPrefix(value, "xoxp_"),
-		strings.HasPrefix(value, "xoxa_"):
-		return true
-	case strings.HasPrefix(value, "real-") &&
-		(strings.Contains(value, "secret") ||
-			strings.Contains(value, "token") ||
-			strings.Contains(value, "key") ||
-			strings.Contains(value, "password")):
+	case providerTokenWithBody(value, "sk_live_", 16, ""),
+		providerTokenWithBody(value, "sk_test_", 16, ""),
+		providerTokenWithBody(value, "ghp_", 16, ""),
+		providerTokenWithBody(value, "gho_", 16, ""),
+		providerTokenWithBody(value, "ghu_", 16, ""),
+		providerTokenWithBody(value, "github_pat_", 16, "_"),
+		providerTokenWithBody(value, "xoxb_", 16, "-"),
+		providerTokenWithBody(value, "xoxp_", 16, "-"),
+		providerTokenWithBody(value, "xoxa_", 16, "-"),
+		providerTokenWithBody(value, "xoxb-", 16, "-"),
+		providerTokenWithBody(value, "xoxp-", 16, "-"),
+		providerTokenWithBody(value, "xoxa-", 16, "-"),
+		awsAccessKeyIdentifier(value):
 		return true
 	default:
 		return false
 	}
+}
+
+func providerTokenWithBody(value, prefix string, minBodyLength int, separators string) bool {
+	body, ok := strings.CutPrefix(value, prefix)
+	if !ok || len(body) < minBodyLength {
+		return false
+	}
+	for _, r := range body {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune(separators, r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func awsAccessKeyIdentifier(value string) bool {
+	if len(value) != 20 || (!strings.HasPrefix(value, "AKIA") && !strings.HasPrefix(value, "ASIA")) {
+		return false
+	}
+	for _, r := range value[4:] {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func resourceTokenPlaceholderValue(value string) bool {
