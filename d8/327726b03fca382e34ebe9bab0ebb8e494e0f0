@@ -1,0 +1,32 @@
+cmd/auth/login_messages.go
+  h_a6070985e8bc1b 131
+internal/registry/registry_test.go
+  s_62ec5fec853ca0::t_0fce4782795452 251-263
+internal/registry/scope_overrides.json
+  s_62ec5fec853ca0::t_63f9518626df8b 15-18
+skills/lark-application/SKILL.md
+  s_62ec5fec853ca0::t_ed010841568657 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d8327726b03fca382e34ebe9bab0ebb8e494e0f0",
+  "prompts": {},
+  "humans": {
+    "h_a6070985e8bc1b": {
+      "author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_62ec5fec853ca0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e94a384-b022-4e6d-bc25-3678626ab355",
+        "model": "unknown"
+      },
+      "human_author": "leave330 <xinjiawei@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

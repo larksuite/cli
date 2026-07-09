@@ -1,0 +1,134 @@
+skills/lark-calendar/SKILL.md
+  h_240304df382660 176,179-180,182-183,185,190-191 gitai:{"mixed_line_ranges":[{"Single":176},{"Range":[179,180]},{"Range":[182,183]},{"Single":191}],"operations":[]}
+  s_3564acf61ae5d0::t_d729f1df857b49 177-178,181,184 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a4610fc3a0cce60bff8a0a6","tool_type":"agent","tool_id":"Edit","line_ranges":[{"Range":[177,178]},{"Single":181},{"Single":184}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0b4f565034edfd8594f7a8d137cb84f5c24cafe7",
+  "prompts": {},
+  "humans": {
+    "h_240304df382660": {
+      "author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "sessions": {
+    "s_3564acf61ae5d0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a45d11d3a0cce60bff89fd2",
+        "model": "openrouter-2o__dev"
+      },
+      "human_author": "胡港 <hugang.g1230@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "skills/lark-calendar/SKILL.md": [
+      {
+        "hash": "h_240304df382660",
+        "line_ranges": [
+          {
+            "Single": 176
+          },
+          {
+            "Range": [
+              179,
+              180
+            ]
+          },
+          {
+            "Range": [
+              182,
+              183
+            ]
+          },
+          {
+            "Single": 185
+          },
+          {
+            "Range": [
+              190,
+              191
+            ]
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 176
+          },
+          {
+            "Range": [
+              179,
+              180
+            ]
+          },
+          {
+            "Range": [
+              182,
+              183
+            ]
+          },
+          {
+            "Single": 191
+          }
+        ],
+        "operations": []
+      },
+      {
+        "hash": "s_3564acf61ae5d0::t_d729f1df857b49",
+        "line_ranges": [
+          {
+            "Range": [
+              177,
+              178
+            ]
+          },
+          {
+            "Single": 181
+          },
+          {
+            "Single": 184
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a4610fc3a0cce60bff8a0a6",
+            "tool_type": "agent",
+            "tool_id": "Edit",
+            "line_ranges": [
+              {
+                "Range": [
+                  177,
+                  178
+                ]
+              },
+              {
+                "Single": 181
+              },
+              {
+                "Single": 184
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_3564acf61ae5d0": {
+      "tool": "trae",
+      "conversation_id": "6a45d11d3a0cce60bff89fd2",
+      "session_id": "6a45d11d3a0cce60bff89fd2",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_3564acf61ae5d0::t_d729f1df857b49": {
+      "tool": "trae",
+      "conversation_id": "6a45d11d3a0cce60bff89fd2",
+      "session_id": "6a45d11d3a0cce60bff89fd2",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
