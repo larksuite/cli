@@ -23,8 +23,8 @@ var ImMessagesMGet = common.Shortcut{
 	Description: "Batch get messages by IDs; user/bot; fetches up to 50 om_ message IDs, formats sender names, expands thread replies",
 	Risk:        "read",
 	Scopes:      []string{"im:message:readonly"},
-	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
-	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read", "contact:user.base:readonly"},
+	UserScopes:  []string{"im:message.group_msg:get_as_user", "im:message.p2p_msg:get_as_user", "im:message.reactions:read"},
+	BotScopes:   []string{"im:message.group_msg", "im:message.p2p_msg:readonly", "im:message.reactions:read"},
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -112,8 +112,8 @@ var ImMessagesMGet = common.Shortcut{
 					"type":       msg["msg_type"],
 				}
 				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if name, _ := sender["name"].(string); name != "" {
-						row["sender"] = name
+					if disp := senderDisplay(sender); disp != "" {
+						row["sender"] = disp
 					}
 				}
 				if content, _ := msg["content"].(string); content != "" {

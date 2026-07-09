@@ -54,12 +54,31 @@ func normalizeAtMentions(content string) string {
 // Uses repeated params (?message_ids=x&message_ids=y) — RFC 6570 standard array
 // encoding, shorter and more broadly compatible than indexed params ([0]=x).
 func buildMGetURL(ids []string) string {
-	parts := make([]string, 0, len(ids)+1)
+	parts := make([]string, 0, len(ids)+2)
 	parts = append(parts, "card_msg_content_type=raw_card_content")
+	// Opt into server-side sender name filling (user + bot); without it the server
+	// omits sender_name / sender_i18n_names / open_bot_id. Used by messages-mget and
+	// the mget step of messages-search.
+	parts = append(parts, "with_sender_name=true")
 	for _, id := range ids {
 		parts = append(parts, "message_ids="+url.QueryEscape(id))
 	}
 	return "/open-apis/im/v1/messages/mget?" + strings.Join(parts, "&")
+}
+
+// senderDisplay returns the human-readable sender column value: the resolved
+// display name (set by convertlib.AttachSenderNames from the producer-filled
+// sender_name / sender_i18n_names or contact enrichment) when available,
+// otherwise the sender id as a fallback (AC3). System messages carrying neither
+// yield an empty string — an absent sender name is normal, not an error.
+func senderDisplay(sender map[string]interface{}) string {
+	if name, _ := sender["name"].(string); name != "" {
+		return name
+	}
+	if id, _ := sender["id"].(string); id != "" {
+		return id
+	}
+	return ""
 }
 
 func validateMessageID(input string) (string, error) {

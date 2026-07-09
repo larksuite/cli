@@ -30,7 +30,7 @@ var ImMessagesSearch = common.Shortcut{
 	Command:     "+messages-search",
 	Description: "Search messages across chats (supports keyword, sender, time range filters) with user identity; user-only; filters by chat/sender/attachment/time, enriches results via mget and chats batch_query",
 	Risk:        "read",
-	Scopes:      []string{"search:message", "im:message.reactions:read", "contact:user.basic_profile:readonly"},
+	Scopes:      []string{"search:message", "im:message.reactions:read"},
 	AuthTypes:   []string{"user"},
 	HasFormat:   true,
 	Flags: []common.Flag{
@@ -227,8 +227,8 @@ var ImMessagesSearch = common.Shortcut{
 					"type": msg["msg_type"],
 				}
 				if sender, ok := msg["sender"].(map[string]interface{}); ok {
-					if name, _ := sender["name"].(string); name != "" {
-						row["sender"] = name
+					if disp := senderDisplay(sender); disp != "" {
+						row["sender"] = disp
 					}
 				}
 				if chatName, ok := msg["chat_name"].(string); ok && chatName != "" {

@@ -18,6 +18,12 @@ func TestExpandThreadReplies(t *testing.T) {
 			if req.URL.Query().Get("container_id") != "omt_1" {
 				return nil, fmt.Errorf("unexpected thread lookup: %s", req.URL.String())
 			}
+			// Reply senders that appear only inside the thread have no name
+			// unless we opt into server-side sender names; there is no
+			// contact/mention fallback anymore.
+			if got := req.URL.Query().Get("with_sender_name"); got != "true" {
+				t.Fatalf("with_sender_name = %q, want %q", got, "true")
+			}
 			return convertlibJSONResponse(200, map[string]interface{}{
 				"code": 0,
 				"data": map[string]interface{}{

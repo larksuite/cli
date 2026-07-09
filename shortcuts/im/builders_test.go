@@ -879,7 +879,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"message-ids": "om_1,om_2",
 		}, nil)
 		got := mustMarshalDryRun(t, ImMessagesMGet.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v1/messages/mget?card_msg_content_type=raw_card_content\u0026message_ids=om_1\u0026message_ids=om_2"`) {
+		if !strings.Contains(got, `"/open-apis/im/v1/messages/mget?card_msg_content_type=raw_card_content\u0026with_sender_name=true\u0026message_ids=om_1\u0026message_ids=om_2"`) {
 			t.Fatalf("ImMessagesMGet.DryRun() = %s", got)
 		}
 	})
