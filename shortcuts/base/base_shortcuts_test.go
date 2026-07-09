@@ -607,7 +607,7 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"workflow-id must start with wkf",
 				"steps may be an empty array",
 				"Use +workflow-get before +workflow-update",
-				"lark-base-workflow-schema.md",
+				"lark-base-workflow-quick.md",
 			},
 		},
 		{
@@ -621,7 +621,7 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"Step ids must be unique",
 				"lark-base-workflow-guide.md as the entry guide",
 				"lark-base-workflow-schema.md as the steps JSON SSOT",
-				"do not invent steps[].type/data/next/children from natural language",
+				"Do not invent steps[].type/data/next/children from natural language",
 			},
 		},
 		{
@@ -634,7 +634,8 @@ func TestBaseWorkflowHelpGuidesAgents(t *testing.T) {
 				"keep title/status/steps fields",
 				"workflow-id must start with wkf",
 				"Updating does not enable or disable",
-				"do not invent steps[].type/data/next/children from natural language",
+				"lark-base-workflow-quick.md first",
+				"Do not invent steps[].type/data/next/children from natural language",
 			},
 		},
 		{

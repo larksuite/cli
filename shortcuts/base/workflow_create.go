@@ -27,7 +27,8 @@ var BaseWorkflowCreate = common.Shortcut{
 		"New workflows are created disabled; call +workflow-enable after creation when the user wants it active.",
 		"Before constructing steps, use +table-list and +field-list to confirm real table and field names.",
 		"Step ids must be unique, and every next/children link must reference an existing step id.",
-		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT; do not invent steps[].type/data/next/children from natural language.",
+		"Use lark-base-workflow-guide.md as the entry guide and lark-base-workflow-schema.md as the steps JSON SSOT.",
+		"Do not invent steps[].type/data/next/children from natural language.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if strings.TrimSpace(runtime.Str("base-token")) == "" {
