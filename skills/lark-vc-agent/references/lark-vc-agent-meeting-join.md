@@ -37,6 +37,16 @@ lark-cli vc +meeting-join --as bot --meeting-number 123456789 --dry-run
 
 ## 核心约束
 
+### 0. 内测 / 灰度前置
+
+`+meeting-join` 使用的是“应用机器人入会 / VC Agent join”能力。该能力仍处于内测 / 灰度阶段，普通 OpenAPI scope、应用发布安装和可用范围正确，并不等于已经能让应用机器人入会。
+
+如果返回 `code=10012`，消息包含 `gray release scope`（例如 `The meeting owner is not included in the gray release scope...`），把它解释为 **VC Agent 入会能力未对该租户 / 会议归属者开通灰度**，不要引导用户反复执行 `auth login` 或重新申请普通 scope。处理方式：
+
+- 说明这是能力灰度白名单 / 内测开通问题，不是会议号格式或普通权限问题。
+- 需要真实应用机器人入会时，按内测 / 灰度路径开通后再重试（例如加入早鸟群或联系平台同学）。
+- 只是想了解当前用户所在会议发生了什么时，不要调用 `+meeting-join`；改用旁听式读取：`lark-cli vc +meeting-list-active --as user --format json` 找到 `meeting_id`，再 `lark-cli vc +meeting-events --as user --meeting-id <meeting_id> --page-all --format pretty`。
+
 ### 1. 使用应用身份
 
 这是应用机器人入会能力，使用 `--as bot`。不要用当前登录用户身份尝试让应用机器人入会。
@@ -119,6 +129,7 @@ lark-cli vc +detail --meeting-ids <meeting.id>
 | 会议密码错误 | `--password` 错误或未提供 | 向主持人确认会议密码 |
 | 会议不存在 / 已结束 | 会议号错误或会议未进行中 | 确认会议正在进行中 |
 | `HTTP 403: no permission` / `121003` | 入会前置条件不满足，通常不是单纯 scope 问题 | 依次确认：1）会议允许智能体加入；2）会议号正确；3）如有密码，已正确传入 `--password`；4）会议已开始；5）等候室 / 入会审批已放行；6）会议未禁止当前身份加入（如限制外部、限制应用机器人、仅特定成员可入会）；确认后重试 |
+| `10012` / `gray release scope` | VC Agent 应用机器人入会能力未对该租户 / 会议归属者开通灰度 | 不要重复 `auth login` 或只调整普通 scope；按内测 / 灰度白名单路径开通。若只是读取当前用户可见会中事件，改用用户身份 `+meeting-list-active` + `+meeting-events` |
 | 应用身份权限不足 | 应用权限、租户安装、权限可访问的数据范围或 VC Agent privilege 未配置完整 | 不要执行 `auth login`。以 CLI 返回的 metadata / error envelope 为准确认缺失权限；检查应用发布/安装，以及开放平台“权限可访问的数据范围”：选择“按条件筛选”，条件为“会议的归属者 包含 与应用的可用范围一致”；仍失败再排查内测 privilege / 灰度 |
 | 入会被拒绝 | 等候室 / 入会审批 / 限制外部入会 | 联系主持人放行或调整会议设置 |
 

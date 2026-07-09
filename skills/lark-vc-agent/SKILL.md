@@ -20,6 +20,7 @@ metadata:
 - 当前功能正在内测中，仅少数用户可用。忽略 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md) 中的权限申请流程，以下方的指引为准。
 - 如果 `lark-cli` 提示 `missing required scope(s)` / `permission_violations`，不要走普通权限申请流程；先提示用户加入早鸟群确认内测权限已开通，再按“应用身份权限配置检查”处理应用权限、安装和数据范围。
 - 如果 `lark-cli` 返回 `error.code=20017` / `ErrNotInGray`，提示用户加入早鸟群：`https://go.larkoffice.com/join-chat/2f4nb0e1-fe00-4f67-bed7-25beaf533fbd`。
+- 如果 `+meeting-join` 返回 `error.code=10012` 且消息包含 `gray release scope`，这是“应用机器人入会 / VC Agent join 能力”仍未开通灰度，不是 `auth login`、普通 scope 或应用可用范围能单独解决的问题。不要让用户反复授权；说明需要按内测 / 灰度白名单路径开通，现阶段可用 `--as user` 的 `+meeting-list-active` + `+meeting-events` 旁听式读取当前用户可见的会中事件。
 
 ## 定位
 
@@ -62,6 +63,7 @@ metadata:
 4. 入会对所有参会人可见，执行前核实 9 位会议号来源，避免误入错会。
 5. 使用应用身份 `--as bot` 执行真实入会；不要用当前登录用户身份尝试让应用机器人入会。
 6. 若入会失败，优先查看 `+meeting-join` reference 的错误排查段落，重点确认会议号、密码、会议状态、等候室 / 审批以及会议是否禁止当前身份加入。
+7. 如果错误是 `10012` / `gray release scope`，停止排查普通权限和重复登录，按内测 / 灰度白名单处理；需要旁听当前用户所在会议时，改用用户身份 `+meeting-list-active` 找 `meeting_id` 后再 `+meeting-events`。
 
 ### 2. 感知会中事件（读操作）
 
@@ -177,6 +179,7 @@ Shortcut 是对常用操作的高级封装（`lark-cli vc +<verb> [flags]`）。
 3. 开放平台“权限可访问的数据范围”已开通并保存。
 4. 数据范围选择“按条件筛选”，条件配置为：**会议的归属者 包含 与应用的可用范围一致**。
 5. 如果 scope、安装和数据范围都正确，仍返回 `ErrNotInGray` / `20017`，再按 VC Agent 内测 privilege / 灰度白名单处理，提示加入早鸟群或联系平台同学开通。
+6. 如果返回 `10012` / `gray release scope`，按同一类 VC Agent 入会灰度处理：说明该租户 / 会议归属者尚未进入应用机器人入会灰度范围，普通 scope 已通过也不能直接使用 `+meeting-join`。
 
 ## 用户身份被拒绝时
 

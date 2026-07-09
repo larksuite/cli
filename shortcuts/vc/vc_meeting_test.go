@@ -155,6 +155,15 @@ func TestBuildMeetingJoinBody_TrimsCallIDWhitespace(t *testing.T) {
 	}
 }
 
+func TestMeetingJoinDescriptionMentionsGrayRelease(t *testing.T) {
+	desc := VCMeetingJoin.Description
+	for _, want := range []string{"gray release", "10012"} {
+		if !strings.Contains(desc, want) {
+			t.Fatalf("Description = %q, want it to mention %q", desc, want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Validate tests: VCMeetingJoin
 // ---------------------------------------------------------------------------
