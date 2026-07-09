@@ -164,10 +164,18 @@ func baseAPIErrorFromResult(resultMap map[string]interface{}, cc errclass.Classi
 	if err == nil {
 		return nil
 	}
-	if p, ok := errs.ProblemOf(err); ok && hint != "" {
-		p.Hint = hint
+	if p, ok := errs.ProblemOf(err); ok {
+		if hint != "" {
+			p.Hint = hint
+		} else if p.Code == 91403 {
+			p.Hint = basePermissionDeniedHint()
+		}
 	}
 	return err
+}
+
+func basePermissionDeniedHint() string {
+	return "Base permission denied. Verify user auth and identity with `lark-cli auth login --domain all`, `lark-cli config default-as user`, then `lark-cli auth status --json --verify`. If scopes are present, grant the CLI app Base collaborator access to this bitable and ensure the app has the required base:app permissions enabled and published."
 }
 
 func enrichBaseAPIErrorFromBody(err error, body []byte, cc errclass.ClassifyContext) error {
