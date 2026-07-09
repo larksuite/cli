@@ -32,6 +32,7 @@ metadata:
 > 1. 在输出任务详情时，如果需要渲染负责人、创建人等人员字段，除了展示 `id` (例如 open_id) 外，还必须通过其他方式（例如调用通讯录技能）尝试获取并展示这个人的真实名字，以便用户更容易识别。
 > 2. 在输出清单详情时，如果需要渲染 owner、member、角色成员等人员字段，也必须像任务成员展示一样，除了展示 `id` 外，尽量解析并展示对应人员的真实名字。
 > 3. 在输出任务或清单详情时，如果需要渲染创建时间、截止时间等字段，需要使用本地时区来渲染（格式为2006-01-02 15:04:05）。
+> 4. Task description/comment inline images are not downloadable through current Task OpenAPI responses: they are returned only as the literal `[Image]` placeholder and no media/file token is exposed. Do not invent `task +media-download` or use `+upload-attachment` as a download workaround. `+upload-attachment` only uploads normal attachments for `task` or `task_delivery`; it cannot retrieve inline images from descriptions or comments. Ask the user to attach the screenshot as a normal task attachment or download it manually from the Lark UI.
 
 > **Task GUID 定义**：
 > Task OpenAPI 中用于更新/操作任务的 `guid` 是任务的全局唯一标识（GUID），不是客户端展示的任务编号（例如 `t104121` / `suite_entity_num`）。

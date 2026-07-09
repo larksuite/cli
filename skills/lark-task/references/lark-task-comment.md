@@ -4,6 +4,9 @@
 
 Add a comment to an existing task.
 
+> [!IMPORTANT]
+> Task comment inline images are not downloadable through current Task OpenAPI responses. Existing image-only comments may be returned as the literal `[Image]` placeholder without any media/file token. The Task attachment endpoint only works for normal `task` / `task_delivery` attachments, so it cannot retrieve inline images from comments. Ask the user to upload the screenshot as a normal task attachment or download it manually from the Lark UI.
+
 ## Recommended Commands
 
 ```bash

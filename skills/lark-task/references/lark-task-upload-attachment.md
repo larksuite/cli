@@ -4,6 +4,9 @@
 
 Upload a single local file as an attachment to a task (or any resource type accepted by the Task attachment endpoint). Max file size per upload is **50 MB**. For task agents, use `--resource-type=task_delivery`.
 
+> [!IMPORTANT]
+> Task description/comment inline images are not downloadable through this command. Current Task OpenAPI responses expose those images only as the literal `[Image]` placeholder and do not return a media/file token. The attachment endpoint only accepts normal attachments for `task` and `task_delivery`; it does not list or download inline images embedded in descriptions or comments.
+
 ## Recommended Commands
 
 ```bash
@@ -57,3 +60,4 @@ The command returns the single created attachment record as a flat JSON object â
 
 > [!NOTE]
 > The Task attachment upload endpoint accepts exactly one file per call. To upload multiple files, invoke the shortcut once per file.
+> If a screenshot is needed by an agent, ask the user to upload it as a normal task attachment or download it manually from the Lark UI; do not retry `+upload-attachment` as a download path for `[Image]` inline images.
