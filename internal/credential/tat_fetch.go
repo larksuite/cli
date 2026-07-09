@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/auth"
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -158,21 +159,31 @@ func tatRetryAfterSeconds(header http.Header) int {
 // The unified v2 token endpoint returns the minted token as access_token
 // (tenant_access_token is accepted as a fallback).
 func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
-	if signer == nil {
+	if signer == nil && !keylesshelper.Configured() {
 		return "", fmt.Errorf("private_key_jwt requires a key signer, but none is available on this build")
 	}
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Open + auth.PathOAuthTokenV2
 
-	assertion, err := jwt.SignClientAssertion(ctx, signer, keysigner.KeyRef{Label: keyLabel}, clientID, core.OpenAPIAudience(brand), time.Now())
-	if err != nil {
-		return "", err
+	assertionType := jwt.ClientAssertionType
+	var assertion string
+	var err error
+	if keylesshelper.Configured() {
+		assertionType, assertion, err = keylesshelper.SignClientAssertion(ctx, keyLabel, clientID, core.OpenAPIAudience(brand))
+		if err != nil {
+			return "", err
+		}
+	} else {
+		assertion, err = jwt.SignClientAssertion(ctx, signer, keysigner.KeyRef{Label: keyLabel}, clientID, core.OpenAPIAudience(brand), time.Now())
+		if err != nil {
+			return "", err
+		}
 	}
 
 	form := url.Values{}
 	form.Set("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
 	form.Set("client_id", clientID)
-	form.Set("client_assertion_type", jwt.ClientAssertionType)
+	form.Set("client_assertion_type", assertionType)
 	form.Set("client_assertion", assertion)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
@@ -187,7 +198,7 @@ func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand c
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return "", fmt.Errorf("read token response: %w", err)
 	}

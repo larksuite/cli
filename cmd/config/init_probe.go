@@ -16,6 +16,7 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -99,7 +100,7 @@ func runProbe(parent context.Context, factory *cmdutil.Factory, appID, appSecret
 // the canonical envelope; untyped errors (transport / HTTP / parse / timeout)
 // are swallowed (return nil). The mint itself is the probe — no second call.
 func runProbePKJWT(parent context.Context, factory *cmdutil.Factory, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) error {
-	if factory == nil || signer == nil {
+	if factory == nil || (signer == nil && !keylesshelper.Configured()) {
 		return nil
 	}
 	httpClient, err := factory.HttpClient()
