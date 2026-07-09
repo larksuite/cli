@@ -122,7 +122,14 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 			// fallback in case of unexpected type
 			refreshLocks.Delete(key)
 		}
-		return getStoredUAToken(opts.AppId, opts.UserOpenId), nil
+		refreshed := getStoredUAToken(opts.AppId, opts.UserOpenId)
+		if refreshed == nil {
+			return nil, nil
+		}
+		if TokenStatus(refreshed) == "valid" {
+			return refreshed, nil
+		}
+		return nil, preservedRefreshStateError(opts)
 	}
 
 	// We own the process lock; done is the channel stored in the map
@@ -138,7 +145,8 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 
 	lockDir := filepath.Join(configDir, "locks")
 	if err := vfs.MkdirAll(lockDir, 0700); err != nil {
-		return nil, fmt.Errorf("failed to create lock directory: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeFileIO, "failed to create token refresh lock directory").
+			WithCause(err)
 	}
 
 	safeAppId := sanitizeID(opts.AppId)
@@ -152,10 +160,11 @@ func refreshWithLock(httpClient *http.Client, opts UATCallOptions, stored *Store
 
 	locked, err := fileLock.TryLockContext(ctx, 500*time.Millisecond)
 	if err != nil {
-		return nil, fmt.Errorf("failed to acquire cross-process lock: %w", err)
+		return nil, errs.NewInternalError(errs.SubtypeFileIO, "failed to acquire token refresh lock").
+			WithCause(err)
 	}
 	if !locked {
-		return nil, fmt.Errorf("timeout waiting for cross-process lock")
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "timeout waiting for token refresh lock")
 	}
 	defer fileLock.Unlock()
 
@@ -227,7 +236,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 
 	data, err := callEndpoint()
 	if err != nil {
-		return nil, err
+		return nil, wrapRefreshTransportError(err)
 	}
 
 	code := getInt(data, "code", -1)
@@ -258,7 +267,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 			data, err = callEndpoint()
 			if err != nil {
 				fmt.Fprintf(errOut, "[lark-cli] [WARN] uat-client: refresh retry network error for %s; preserving token state for retry\n", opts.UserOpenId)
-				return nil, err
+				return nil, wrapRefreshTransportError(err)
 			}
 			code = getInt(data, "code", -1)
 			errStr = getStr(data, "error")
@@ -275,7 +284,7 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 
 	accessToken := getStr(data, "access_token")
 	if accessToken == "" {
-		return nil, fmt.Errorf("Token refresh returned no access_token")
+		return nil, errs.NewInternalError(errs.SubtypeInvalidResponse, "token refresh returned no access_token")
 	}
 
 	refreshToken := getStr(data, "refresh_token")
@@ -307,9 +316,24 @@ func doRefreshToken(httpClient *http.Client, opts UATCallOptions, stored *Stored
 	}
 
 	if err := setStoredUAToken(updated); err != nil {
-		return nil, err
+		return nil, errs.NewInternalError(errs.SubtypeStorage, "failed to store refreshed user access token").
+			WithCause(err)
 	}
 	return updated, nil
+}
+
+func preservedRefreshStateError(opts UATCallOptions) error {
+	return errs.NewAuthenticationError(errs.SubtypeRefreshServerError, "token refresh did not produce a valid access token").
+		WithUserOpenID(opts.UserOpenId).
+		WithHint("refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked")
+}
+
+func wrapRefreshTransportError(err error) error {
+	if _, ok := errs.ProblemOf(err); ok {
+		return err
+	}
+	return errs.NewNetworkError(errs.SubtypeNetworkTransport, "token refresh retry failed: %v", err).
+		WithCause(err)
 }
 
 func buildRefreshFailureError(data map[string]interface{}, opts UATCallOptions) error {
@@ -324,23 +348,21 @@ func buildRefreshFailureError(data map[string]interface{}, opts UATCallOptions) 
 	if msg == "" {
 		msg = fmt.Sprintf("token refresh failed with code %d", code)
 	}
-	if err := errclass.BuildAPIError(map[string]interface{}{
-		"code": code,
-		"msg":  msg,
-	}, errclass.ClassifyContext{
-		Brand: string(opts.Domain),
-		AppID: opts.AppId,
-	}); err != nil {
-		if authErr, ok := err.(*errs.AuthenticationError); ok {
-			authErr.UserOpenID = opts.UserOpenId
-			if authErr.Hint == "" {
-				authErr.Hint = "refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked"
+	if code != -1 {
+		if err := errclass.BuildAPIError(data, errclass.ClassifyContext{
+			Brand: string(opts.Domain),
+			AppID: opts.AppId,
+		}); err != nil {
+			if authErr, ok := err.(*errs.AuthenticationError); ok {
+				authErr.UserOpenID = opts.UserOpenId
+				if authErr.Hint == "" {
+					authErr.Hint = "refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked"
+				}
 			}
+			return err
 		}
-		return err
 	}
 	return errs.NewAuthenticationError(errs.SubtypeRefreshServerError, "%s", msg).
-		WithCode(code).
 		WithUserOpenID(opts.UserOpenId).
 		WithHint("refresh failed but local auth state was preserved; retry after any concurrent lark-cli command finishes, or run `lark-cli auth login` if the refresh token was revoked")
 }
