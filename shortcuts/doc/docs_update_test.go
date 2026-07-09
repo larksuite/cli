@@ -207,6 +207,42 @@ func TestValidateUpdateV2RejectsInvalidReferenceMap(t *testing.T) {
 	}
 }
 
+func TestValidateUpdateV2RejectsStrReplacePunctuationOnlyInlineCode(t *testing.T) {
+	t.Parallel()
+
+	runtime := newUpdateShortcutTestRuntime(t, "", map[string]string{
+		"command": "str_replace",
+		"pattern": "TEST :: and .",
+		"content": `<p>TEST <code>::</code> and <code>.</code> and <code>ok</code></p>`,
+	})
+
+	err := validateUpdateV2(context.Background(), runtime)
+	assertValidationContract(t, err, errs.SubtypeInvalidArgument, "--content")
+	for _, want := range []string{
+		"punctuation-only <code>",
+		"docs_ai str_replace",
+		"block_replace",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("validateUpdateV2() error missing %q: %v", want, err)
+		}
+	}
+}
+
+func TestValidateUpdateV2AllowsStrReplaceAlphanumericInlineCode(t *testing.T) {
+	t.Parallel()
+
+	runtime := newUpdateShortcutTestRuntime(t, "", map[string]string{
+		"command": "str_replace",
+		"pattern": "TEST fmt.Println",
+		"content": `<p>TEST <code>fmt.Println</code></p>`,
+	})
+
+	if err := validateUpdateV2(context.Background(), runtime); err != nil {
+		t.Fatalf("validateUpdateV2() error = %v", err)
+	}
+}
+
 func TestDocsUpdateRejectsLegacyFlags(t *testing.T) {
 	tests := []struct {
 		name     string

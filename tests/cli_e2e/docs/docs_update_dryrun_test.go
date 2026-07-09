@@ -226,3 +226,36 @@ func TestDocs_CreateTitleDryRunPrependsContent(t *testing.T) {
 	require.Equal(t, "markdown", gjson.Get(out, "api.0.body.format").String(), "stdout:\n%s", out)
 	require.Equal(t, "<title>Dry Run &amp; Title</title>\n## Body", gjson.Get(out, "api.0.body.content").String(), "stdout:\n%s", out)
 }
+
+func TestDocs_UpdateRejectsStrReplacePunctuationOnlyInlineCode(t *testing.T) {
+	// Fake creds are enough — validation fails before any real API call.
+	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
+	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
+	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	t.Cleanup(cancel)
+
+	result, err := clie2e.RunCmd(ctx, clie2e.Request{
+		Args: []string{
+			"docs", "+update",
+			"--doc", "doxcnDryRunE2E",
+			"--command", "str_replace",
+			"--pattern", "TEST :: and .",
+			"--content", `<p>TEST <code>::</code> and <code>.</code></p>`,
+			"--dry-run",
+		},
+		DefaultAs: "bot",
+	})
+	require.NoError(t, err)
+	result.AssertExitCode(t, 2)
+
+	combined := result.Stdout + "\n" + result.Stderr
+	for _, want := range []string{
+		"--content",
+		"punctuation-only <code>",
+		"block_replace",
+	} {
+		require.Contains(t, combined, want, "stdout:\n%s\nstderr:\n%s", result.Stdout, result.Stderr)
+	}
+}

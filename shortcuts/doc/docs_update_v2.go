@@ -6,8 +6,11 @@ package doc
 import (
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io"
 	"strings"
+	"unicode"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -73,6 +76,9 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		if pattern == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command str_replace requires --pattern").WithParam("--pattern")
 		}
+		if err := validateStrReplaceInlineCodeContent(runtime.Str("doc-format"), content); err != nil {
+			return err
+		}
 	case "block_delete":
 		if blockID == "" {
 			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--command block_delete requires --block-id").WithParam("--block-id")
@@ -122,6 +128,81 @@ func validateUpdateV2(_ context.Context, runtime *common.RuntimeContext) error {
 		return err
 	}
 	return nil
+}
+
+func validateStrReplaceInlineCodeContent(format, content string) error {
+	if strings.TrimSpace(format) != "xml" || content == "" {
+		return nil
+	}
+	code, ok := firstPunctuationOnlyInlineCode(content)
+	if !ok {
+		return nil
+	}
+	return errs.NewValidationError(errs.SubtypeInvalidArgument, "docs_ai str_replace can strip punctuation-only <code> content %q; fetch block ids and use --command block_replace for this rich-text edit", code).WithParam("--content")
+}
+
+func firstPunctuationOnlyInlineCode(raw string) (string, bool) {
+	decoder := xml.NewDecoder(strings.NewReader("<root>" + raw + "</root>"))
+	var inCode bool
+	var depth int
+	var text strings.Builder
+
+	for {
+		tok, err := decoder.Token()
+		if err == io.EOF {
+			return "", false
+		}
+		if err != nil {
+			return "", false
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			if inCode {
+				depth++
+				continue
+			}
+			if t.Name.Local == "code" {
+				inCode = true
+				depth = 1
+				text.Reset()
+			}
+		case xml.EndElement:
+			if !inCode {
+				continue
+			}
+			depth--
+			if depth == 0 {
+				code := strings.TrimSpace(text.String())
+				if isPunctuationOnlyCodeText(code) {
+					return code, true
+				}
+				inCode = false
+			}
+		case xml.CharData:
+			if inCode {
+				text.Write([]byte(t))
+			}
+		}
+	}
+}
+
+func isPunctuationOnlyCodeText(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+		if unicode.IsPunct(r) || unicode.IsSymbol(r) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func dryRunUpdateV2(_ context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
