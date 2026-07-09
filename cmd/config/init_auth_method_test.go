@@ -55,6 +55,11 @@ func TestResolveRegisterAuthMethod(t *testing.T) {
 	if m, err := resolveRegisterAuthMethod(f, core.AuthMethodPrivateKeyJWT); err != nil || m != core.AuthMethodPrivateKeyJWT {
 		t.Errorf("private_key_jwt with signer: got (%q, %v), want (private_key_jwt, nil)", m, err)
 	}
+
+	f.IOStreams = &cmdutil.IOStreams{IsTerminal: true}
+	if m, err := resolveRegisterAuthMethod(f, ""); err != nil || m != core.AuthMethodClientSecret {
+		t.Errorf("default with terminal signer: got (%q, %v), want (client_secret, nil)", m, err)
+	}
 }
 
 // TestValidatePKJWTKeyBinding covers the guard that rejects a registration
