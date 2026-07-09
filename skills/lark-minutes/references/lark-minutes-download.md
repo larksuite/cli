@@ -1,7 +1,6 @@
 
 # minutes +download
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 下载妙记的音视频媒体文件到本地，或获取有效期 1 天的下载链接。只读操作。
 
@@ -43,7 +42,7 @@ lark-cli minutes +download --minute-tokens obcnxxxxxxxxxxxxxxxxxxxx --dry-run
 | `--url-only` | 否 | 仅返回下载链接，不下载文件 |
 | `--dry-run` | 否 | 预览 API 调用，不执行 |
 
-> **默认落点**：未指定 `--output` / `--output-dir` 时，文件落到 `./minutes/{minute_token}/<server-filename>`。文件名沿用服务端 Content-Disposition / Content-Type 推断，Agent 可从 `saved_path` 字段读取实际路径。同一 minute_token 的录像和 `vc +notes` 的逐字稿默认会落在**同一目录**下，方便聚合。
+> **默认落点**：未指定 `--output` / `--output-dir` 时，文件落到 `./minutes/{minute_token}/<server-filename>`。文件名沿用服务端 Content-Disposition / Content-Type 推断，Agent 可从 `saved_path` 字段读取实际路径。同一 minute_token 的录像和 `minutes +detail` 的逐字稿默认会落在**同一目录**下，方便聚合。
 
 ## 核心约束
 
@@ -85,7 +84,7 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 | 字段 | 说明 |
 |------|------|
 | `minute_token` | 妙记 Token（用于 Agent 索引） |
-| `artifact_type` | 固定为 `"recording"`（与 `vc +notes` 的 `"transcript"` 区分） |
+| `artifact_type` | 固定为 `"recording"`（与 `minutes +detail` 的 `"transcript"` 区分） |
 | `saved_path` | 文件保存的本地路径（绝对路径） |
 | `size_bytes` | 文件大小（字节） |
 
@@ -125,13 +124,12 @@ API 限流 5 次/秒，批量下载时需注意控制频率。
 ## 提示
 
 - 音视频文件可能较大，下载无固定超时限制（由用户 Ctrl+C 控制取消）。
-- 默认落点 `./minutes/{minute_token}/` 与 `vc +notes` 的逐字稿共享同一目录，方便 Agent 聚合同一会议的所有产物。
+- 默认落点 `./minutes/{minute_token}/` 与 `minutes +detail` 的逐字稿共享同一目录，方便 Agent 聚合同一会议的所有产物。
 - 单 token 模式下 `--output` 若传入已存在目录（如 `--output ./existing-dir`），等价于 `--output-dir`，文件落入该目录（cp 语义）。
 - 批量模式下 `--output` 不接受已存在的文件路径（会报错），应改用 `--output-dir`。
-- 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 [vc +notes](../../lark-vc/references/lark-vc-notes.md)。
+- 如需获取妙记的纪要内容（逐字稿、AI 总结等），请使用 [minutes +detail](lark-minutes-detail.md)。
 
 ## 参考
 
 - [lark-minutes](../SKILL.md) — 妙记全部命令
-- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 会议纪要查询
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
+- [lark-minutes-detail](lark-minutes-detail.md) — 妙记详情与 AI 产物查询

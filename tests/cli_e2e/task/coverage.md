@@ -2,8 +2,8 @@
 
 ## Metrics
 - Denominator: 29 leaf commands
-- Covered: 14
-- Coverage: 48.3%
+- Covered: 15
+- Coverage: 51.7%
 
 ## Summary
 - TestTask_StatusWorkflow: creates a task via `task +create`, then proves `task +complete`, `task tasks get`, and `task +reopen` through `complete`, `get completed task`, `reopen`, and `get reopened task`; asserts `status` flips between `done` and `todo` and `completed_at` is set then cleared.
@@ -13,9 +13,10 @@
 - TestTask_TasklistWorkflowAsBot: runs `create tasklist with task`, then `get tasklist`, `list tasklist tasks`, and `get task`; proves `task +tasklist-create`, `task tasklists get`, `task tasklists tasks`, and `task tasks get` with seeded task payload and task-to-tasklist linkage.
 - TestTask_TasklistWorkflowAsUser: creates a tasklist as `--as user`, patches its name through `task tasklists patch`, then proves both `task tasklists get` and `task tasklists list` return the patched tasklist.
 - TestTask_TasklistAddTaskWorkflow: creates a standalone tasklist and task, runs `add task to tasklist`, then `list tasklist tasks` and `get task with tasklist link`; proves `task +tasklist-task-add`, `task tasklists tasks`, and `task tasks get`, including no failed tasks in the add response.
+- TestTask_GetMyTasksDryRun: validates `task +get-my-tasks --dry-run` request shape for `type=my_tasks`, `user_id_type=open_id`, `completed`, `page_token`, and default `page_size` without calling live APIs.
 - Cleanup path note: workflow-created tasks and tasklists are deleted through direct `task tasks delete` / `task tasklists delete` cleanup paths in `helpers_test.go::createTask`, `helpers_test.go::createTasklist`, `tasklist_workflow_test.go::TestTask_TasklistWorkflowAsBot`, and `tasklist_workflow_test.go::TestTask_TasklistWorkflowAsUser`, but those cleanup-only executions are not counted as command coverage because no testcase asserts delete behavior as the primary proof surface.
 - Blocked area: assignee, follower, and tasklist member mutations still require stable real-user `open_id` fixtures; the current suite is bot-safe only.
-- Blocked area: `task +get-my-tasks` and `task tasks list` did not return the workflow-created user task deterministically in UAT, so they are left uncovered instead of being counted from flaky list visibility.
+- Blocked area: `task +get-my-tasks` live result assertions and `task tasks list` did not return the workflow-created user task deterministically in UAT, so live list visibility remains uncovered instead of being counted from flaky results.
 - Blocked area: the remaining user-oriented shortcuts still need deterministic user-owned fixtures or collaborator fixtures beyond the self-owned task created inside the testcase.
 - Gap pattern: direct `tasks create/delete/list/patch`, `tasklists create/delete/list/patch`, `members *`, and `subtasks *` APIs still lack deterministic direct-call workflows, so shortcut coverage does not count for those leaf commands.
 
@@ -28,7 +29,7 @@
 | ✓ | task +complete | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow/complete | `--task-id` | |
 | ✓ | task +create | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow; task_comment_workflow_test.go::TestTask_CommentWorkflow; task_reminder_workflow_test.go::TestTask_ReminderWorkflow; tasklist_add_task_workflow_test.go::TestTask_TasklistAddTaskWorkflow | `summary` + `description`; `due.timestamp` + `due.is_all_day` | |
 | ✕ | task +followers | shortcut |  | none | requires real follower open_id fixtures; shortcut defaults to `--as user` |
-| ✕ | task +get-my-tasks | shortcut |  | none | UAT did not return the workflow-created user task deterministically in my-tasks views |
+| ✓ | task +get-my-tasks | shortcut | task_get_my_tasks_dryrun_test.go::TestTask_GetMyTasksDryRun | `--complete`; `--page-token`; dry-run only | live UAT did not return the workflow-created user task deterministically in my-tasks views |
 | ✓ | task +reminder | shortcut | task_reminder_workflow_test.go::TestTask_ReminderWorkflow/set reminder; task_reminder_workflow_test.go::TestTask_ReminderWorkflow/remove reminder | `--task-id --set 30m`; `--task-id --remove` | |
 | ✓ | task +reopen | shortcut | task_status_workflow_test.go::TestTask_StatusWorkflow/reopen | `--task-id` | |
 | ✓ | task +tasklist-create | shortcut | tasklist_workflow_test.go::TestTask_TasklistWorkflowAsBot/create tasklist with task as bot; tasklist_workflow_test.go::TestTask_TasklistWorkflowAsUser/create tasklist as user; tasklist_add_task_workflow_test.go::TestTask_TasklistAddTaskWorkflow | `--name` only; `--name` plus task array in `--data` | |

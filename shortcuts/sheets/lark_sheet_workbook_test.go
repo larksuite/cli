@@ -4,12 +4,9 @@
 package sheets
 
 import (
-	"errors"
-	"net/http"
+	"encoding/json"
 	"strings"
 	"testing"
-
-	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/shortcuts/common"
@@ -145,6 +142,28 @@ func TestWorkbookShortcuts_DryRun(t *testing.T) {
 				"tab_color": "",
 			},
 		},
+		{
+			name:     "+sheet-show-gridline",
+			sc:       SheetShowGridline,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID},
+			toolName: "modify_workbook_structure",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"operation": "show_gridline",
+				"sheet_id":  testSheetID,
+			},
+		},
+		{
+			name:     "+sheet-hide-gridline",
+			sc:       SheetHideGridline,
+			args:     []string{"--url", testURL, "--sheet-id", testSheetID},
+			toolName: "modify_workbook_structure",
+			wantInput: map[string]interface{}{
+				"excel_id":  testToken,
+				"operation": "hide_gridline",
+				"sheet_id":  testSheetID,
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -209,14 +228,8 @@ func TestSheetMove_DryRunResolvePlaceholders(t *testing.T) {
 // high-risk-write — exit code 10 (confirmation_required) without --yes.
 func TestSheetDelete_HighRiskWriteRequiresYes(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, SheetDelete, []string{"--url", testURL, "--sheet-id", testSheetID})
-	if err == nil {
-		t.Fatalf("expected confirmation_required error; got nil. stdout=%s stderr=%s", stdout, stderr)
-	}
-	combined := stdout + stderr + err.Error()
-	if !strings.Contains(combined, "confirmation_required") && !strings.Contains(combined, "requires confirmation") {
-		t.Errorf("expected confirmation envelope; got=%s|%s|%v", stdout, stderr, err)
-	}
+	_, _, err := runShortcutCapturingErr(t, SheetDelete, []string{"--url", testURL, "--sheet-id", testSheetID})
+	requireProblem(t, err, errs.CategoryConfirmation, errs.SubtypeConfirmationRequired, "")
 }
 
 // TestWorkbook_Validation covers a few critical validation paths shared
@@ -230,6 +243,11 @@ func TestWorkbook_Validation(t *testing.T) {
 		sc      common.Shortcut
 		args    []string
 		wantMsg string
+		// cobraNative=true means the error originates from cobra's native
+		// flag parsing (e.g. required-flag enforcement) which is not wrapped
+		// into a typed errs.ValidationError, so the test falls back to a
+		// substring match on err.Error().
+		cobraNative bool
 	}{
 		{
 			name:    "+workbook-info needs --url or --spreadsheet-token",
@@ -238,10 +256,11 @@ func TestWorkbook_Validation(t *testing.T) {
 			wantMsg: "at least one of --url or --spreadsheet-token",
 		},
 		{
-			name:    "+workbook-info rejects both url and token",
-			sc:      WorkbookInfo,
-			args:    []string{"--url", testURL, "--spreadsheet-token", testToken},
-			wantMsg: "mutually exclusive",
+			name:        "+workbook-info rejects both url and token",
+			sc:          WorkbookInfo,
+			args:        []string{"--url", testURL, "--spreadsheet-token", testToken},
+			wantMsg:     "mutually exclusive",
+			cobraNative: true,
 		},
 		{
 			name:    "+sheet-delete needs sheet selector",
@@ -250,10 +269,11 @@ func TestWorkbook_Validation(t *testing.T) {
 			wantMsg: "at least one of --sheet-id or --sheet-name",
 		},
 		{
-			name:    "+sheet-create requires --title",
-			sc:      SheetCreate,
-			args:    []string{"--url", testURL},
-			wantMsg: "required flag(s) \"title\" not set",
+			name:        "+sheet-create requires --title",
+			sc:          SheetCreate,
+			args:        []string{"--url", testURL},
+			wantMsg:     "required flag(s) \"title\" not set",
+			cobraNative: true,
 		},
 		{
 			name:    "+sheet-create row-count over cap",
@@ -265,14 +285,14 @@ func TestWorkbook_Validation(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
-			if err == nil {
-				t.Fatalf("expected validation error; got nil. stdout=%s stderr=%s", stdout, stderr)
+			_, _, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
+			if tt.cobraNative {
+				if err == nil || !strings.Contains(err.Error(), tt.wantMsg) {
+					t.Errorf("error message missing %q; got=%v", tt.wantMsg, err)
+				}
+				return
 			}
-			combined := stdout + stderr + err.Error()
-			if !strings.Contains(combined, tt.wantMsg) {
-				t.Errorf("error message missing %q; got=%s", tt.wantMsg, combined)
-			}
+			requireValidation(t, err, tt.wantMsg)
 		})
 	}
 }
@@ -288,7 +308,7 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 		t.Parallel()
 		calls := parseDryRunAPI(t, WorkbookCreate, []string{"--title", "MySheet"})
 		if len(calls) != 1 {
-			t.Fatalf("api calls = %d, want 1 (no headers/data)", len(calls))
+			t.Fatalf("api calls = %d, want 1 (no values)", len(calls))
 		}
 		c := calls[0].(map[string]interface{})
 		if c["url"] != "/open-apis/sheets/v3/spreadsheets" {
@@ -300,12 +320,11 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 		}
 	})
 
-	t.Run("with headers and data → 2-step plan", func(t *testing.T) {
+	t.Run("with values → 2-step plan", func(t *testing.T) {
 		t.Parallel()
 		calls := parseDryRunAPI(t, WorkbookCreate, []string{
 			"--title", "Sales",
-			"--headers", `["Name","Score"]`,
-			"--values", `[["alice",95],["bob",88]]`,
+			"--values", `[["Name","Score"],["alice",95],["bob",88]]`,
 		})
 		if len(calls) != 2 {
 			t.Fatalf("api calls = %d, want 2 (create + fill)", len(calls))
@@ -317,7 +336,138 @@ func TestWorkbookCreate_DryRun(t *testing.T) {
 		body, _ := fill["body"].(map[string]interface{})
 		input := decodeToolInput(t, body, "set_cell_range")
 		if input["range"] != "A1:B3" {
-			t.Errorf("fill range = %v, want A1:B3 (1 header + 2 data rows × 2 cols)", input["range"])
+			t.Errorf("fill range = %v, want A1:B3 (3 rows × 2 cols)", input["range"])
+		}
+	})
+
+	t.Run("with styles merges into set_cell_range cells", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "Sales",
+			"--values", `[["Name","Score"],["alice",95]]`,
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","font_weight":"bold","background_color":"#f5f5f5"},{"range":"B1","number_format":"0","border_styles":{"bottom":{"style":"solid","weight":"thin","color":"#000000"}}},{"range":"B2","font_color":"#0f7b0f"}]}]}`,
+		})
+		if len(calls) != 2 {
+			t.Fatalf("api calls = %d, want 2 (create + fill)", len(calls))
+		}
+		body, _ := calls[1].(map[string]interface{})["body"].(map[string]interface{})
+		input := decodeToolInput(t, body, "set_cell_range")
+		cells, _ := input["cells"].([]interface{})
+		if len(cells) != 2 {
+			t.Fatalf("cells rows = %#v, want 2", input["cells"])
+		}
+		headerRow, _ := cells[0].([]interface{})
+		firstHeader, _ := headerRow[0].(map[string]interface{})
+		firstStyle, _ := firstHeader["cell_styles"].(map[string]interface{})
+		if firstStyle["font_weight"] != "bold" || firstStyle["background_color"] != "#f5f5f5" {
+			t.Errorf("first header style = %#v, want bold + background", firstStyle)
+		}
+		secondHeader, _ := headerRow[1].(map[string]interface{})
+		if secondHeader["border_styles"] == nil {
+			t.Errorf("second header missing border_styles: %#v", secondHeader)
+		}
+		secondStyle, _ := secondHeader["cell_styles"].(map[string]interface{})
+		if secondStyle["number_format"] != "0" {
+			t.Errorf("second header number_format = %#v, want 0", secondStyle)
+		}
+		dataRow, _ := cells[1].([]interface{})
+		firstData, _ := dataRow[0].(map[string]interface{})
+		if _, ok := firstData["cell_styles"]; ok {
+			t.Errorf("null style should leave first data cell unstyled: %#v", firstData)
+		}
+		secondData, _ := dataRow[1].(map[string]interface{})
+		secondDataStyle, _ := secondData["cell_styles"].(map[string]interface{})
+		if secondDataStyle["font_color"] != "#0f7b0f" {
+			t.Errorf("second data style = %#v, want font color", secondDataStyle)
+		}
+	})
+
+	t.Run("cell style range can cover the whole initial range", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "Sales",
+			"--values", `[["Name","Score"],["alice",95]]`,
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:B2","horizontal_alignment":"center"}]}]}`,
+		})
+		body, _ := calls[1].(map[string]interface{})["body"].(map[string]interface{})
+		input := decodeToolInput(t, body, "set_cell_range")
+		raw, _ := json.Marshal(input["cells"])
+		if got := strings.Count(string(raw), "horizontal_alignment"); got != 4 {
+			t.Errorf("horizontal_alignment occurrences = %d, want 4 in 2x2 range; cells=%s", got, raw)
+		}
+	})
+	t.Run("style-only payload (cell_merges) still fills and emits merge_cells", func(t *testing.T) {
+		t.Parallel()
+		// Previously workbookCreateStyleDimensions only counted cell_styles, so a
+		// payload with only cell_merges would compute extent 0; Execute then
+		// skipped writeTypedSheets entirely and the visual ops were silently
+		// dropped. The dry-run plan must include the create + fill + merge_cells.
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "X",
+			"--styles", `{"styles":[{"name":"Sheet1","cell_merges":[{"range":"A1:B1"}]}]}`,
+		})
+		if len(calls) < 3 {
+			t.Fatalf("api calls = %d, want >=3 (create + fill + merge_cells); calls=%#v", len(calls), calls)
+		}
+		// Walk every body and look for the merge_cells tool name in the input JSON.
+		sawMerge := false
+		for _, c := range calls {
+			body, _ := c.(map[string]interface{})["body"].(map[string]interface{})
+			if body == nil {
+				continue
+			}
+			if toolName, _ := body["tool_name"].(string); toolName == "merge_cells" {
+				sawMerge = true
+				break
+			}
+		}
+		if !sawMerge {
+			t.Errorf("merge_cells tool call missing from dry-run plan; calls=%#v", calls)
+		}
+	})
+	t.Run("style-only payload (col_sizes) still fills and emits resize_range", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "X",
+			"--styles", `{"styles":[{"name":"Sheet1","col_sizes":[{"range":"A:C","type":"pixel","size":120}]}]}`,
+		})
+		sawResize := false
+		for _, c := range calls {
+			body, _ := c.(map[string]interface{})["body"].(map[string]interface{})
+			if body == nil {
+				continue
+			}
+			if toolName, _ := body["tool_name"].(string); toolName == "resize_range" {
+				sawResize = true
+				break
+			}
+		}
+		if !sawResize {
+			t.Errorf("resize_range tool call missing from dry-run plan; calls=%#v", calls)
+		}
+	})
+	t.Run("overlapping cell_styles deep-merge fields, no cross-cell pollution", func(t *testing.T) {
+		t.Parallel()
+		calls := parseDryRunAPI(t, WorkbookCreate, []string{
+			"--title", "X",
+			"--values", `[["a","b"]]`,
+			"--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1:B1","font_weight":"bold"},{"range":"B1","font_color":"#ff0000"}]}]}`,
+		})
+		body, _ := calls[1].(map[string]interface{})["body"].(map[string]interface{})
+		input := decodeToolInput(t, body, "set_cell_range")
+		cells, _ := input["cells"].([]interface{})
+		row0, _ := cells[0].([]interface{})
+		// B1 hit by both ops → must keep BOTH font_weight (op1) and font_color (op2).
+		b1, _ := row0[1].(map[string]interface{})
+		b1s, _ := b1["cell_styles"].(map[string]interface{})
+		if b1s["font_weight"] != "bold" || b1s["font_color"] != "#ff0000" {
+			t.Errorf("B1 should deep-merge both ops, got %#v", b1s)
+		}
+		// A1 hit only by op1 → must NOT be polluted by op2's font_color (shared submap).
+		a1, _ := row0[0].(map[string]interface{})
+		a1s, _ := a1["cell_styles"].(map[string]interface{})
+		if a1s["font_color"] != nil {
+			t.Errorf("A1 must not be polluted by op2, got %#v", a1s)
 		}
 	})
 }
@@ -330,35 +480,44 @@ func TestWorkbookCreate_DataValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"headers not array", []string{"--title", "X", "--headers", `"abc"`}, "must be a JSON array"},
 		{"values not 2D", []string{"--title", "X", "--values", `["a","b"]`}, "must be an array"},
+		{"styles not object", []string{"--title", "X", "--styles", `"bold"`}, `shaped as {"styles":[...]}`},
+		{"styles missing array", []string{"--title", "X", "--styles", `{"value":"x"}`}, "--styles.styles is required"},
+		{"styles item missing groups", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","value":"x"}]}`}, "must include at least one of cell_styles/row_sizes/col_sizes/cell_merges"},
+		{"cell styles must be array", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":{"range":"A1","font_weight":"bold"}}]}`}, "cell_styles must be an array"},
+		{"cell style needs range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"font_weight":"bold"}]}]}`}, "range is required"},
+		{"nested cell_styles rejected", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","cell_styles":{"font_weight":"bold"}}]}]}`}, "put style fields directly"},
+		{"row size needs row range", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","row_sizes":[{"range":"A1","type":"pixel","size":20}]}]}`}, "must use row numbers"},
+		{"col size needs pixel size", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","col_sizes":[{"range":"A:A","type":"pixel"}]}]}`}, "requires size"},
+		{"border bad style enum", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","border_styles":{"bottom":{"style":"NONSENSE"}}}]}]}`}, `style "NONSENSE" is invalid`},
+		{"border invalid side", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","border_styles":{"diagonal":{"style":"solid"}}}]}]}`}, "not a valid side"},
+		{"border bad weight", []string{"--title", "X", "--values", `[["a"]]`, "--styles", `{"styles":[{"name":"Sheet1","cell_styles":[{"range":"A1","border_styles":{"top":{"weight":"xxl"}}}]}]}`}, `weight "xxl" is invalid`},
+		{"--values trailing JSON rejected", []string{"--title", "X", "--values", `[["a"]] trailing`}, "trailing data after JSON value"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, WorkbookCreate, append(tt.args, "--dry-run"))
-			if err == nil || !strings.Contains(stdout+stderr+err.Error(), tt.want) {
-				t.Errorf("expected %q; got=%s|%s|%v", tt.want, stdout, stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, WorkbookCreate, append(tt.args, "--dry-run"))
+			requireValidation(t, err, tt.want)
 		})
 	}
 }
 
-// TestWorkbookExport_DryRun checks the 2-or-3 step plan depending on
-// --output-path. The order should be: POST → GET (poll) → optional GET
-// (download).
+// TestWorkbookExport_DryRun verifies the export dry-run now delegates to the
+// shared drive export core: a single create-task POST (poll + download are
+// described inline rather than as separate api entries).
 func TestWorkbookExport_DryRun(t *testing.T) {
 	t.Parallel()
 
-	t.Run("xlsx without --output-path → 2 steps", func(t *testing.T) {
+	t.Run("xlsx create-task body pins type=sheet", func(t *testing.T) {
 		t.Parallel()
 		calls := parseDryRunAPI(t, WorkbookExport, []string{"--url", testURL, "--file-extension", "xlsx"})
-		if len(calls) != 2 {
-			t.Fatalf("api calls = %d, want 2 (create + poll)", len(calls))
+		if len(calls) != 1 {
+			t.Fatalf("api calls = %d, want 1 (create export task)", len(calls))
 		}
 		create := calls[0].(map[string]interface{})
 		if create["url"] != "/open-apis/drive/v1/export_tasks" {
-			t.Errorf("first url = %v", create["url"])
+			t.Errorf("url = %v", create["url"])
 		}
 		body, _ := create["body"].(map[string]interface{})
 		if body["type"] != "sheet" || body["file_extension"] != "xlsx" || body["token"] != testToken {
@@ -366,120 +525,28 @@ func TestWorkbookExport_DryRun(t *testing.T) {
 		}
 	})
 
-	t.Run("csv → 3 steps, with sub_id", func(t *testing.T) {
+	t.Run("csv includes sub_id from --sheet-id", func(t *testing.T) {
 		t.Parallel()
 		calls := parseDryRunAPI(t, WorkbookExport, []string{
 			"--url", testURL, "--file-extension", "csv", "--sheet-id", "sh1",
 			"--output-path", "/tmp/out.csv",
 		})
-		if len(calls) != 3 {
-			t.Fatalf("api calls = %d, want 3", len(calls))
+		if len(calls) != 1 {
+			t.Fatalf("api calls = %d, want 1", len(calls))
 		}
 		body, _ := calls[0].(map[string]interface{})["body"].(map[string]interface{})
-		if body["sub_id"] != "sh1" {
-			t.Errorf("csv export missing sub_id: %#v", body)
-		}
-		dl := calls[2].(map[string]interface{})
-		if !strings.Contains(dl["url"].(string), "/export_tasks/file/") {
-			t.Errorf("download url = %v", dl["url"])
+		if body["type"] != "sheet" || body["sub_id"] != "sh1" {
+			t.Errorf("csv export body = %#v (want type=sheet, sub_id=sh1)", body)
 		}
 	})
 
 	t.Run("csv requires --sheet-id", func(t *testing.T) {
 		t.Parallel()
-		stdout, stderr, err := runShortcutCapturingErr(t, WorkbookExport, []string{
+		_, _, err := runShortcutCapturingErr(t, WorkbookExport, []string{
 			"--url", testURL, "--file-extension", "csv", "--dry-run",
 		})
-		if err == nil || !strings.Contains(stdout+stderr+err.Error(), "--sheet-id is required") {
-			t.Errorf("expected sheet-id guard; got=%s|%s|%v", stdout, stderr, err)
-		}
+		requireValidation(t, err, "--sheet-id is required")
 	})
-}
-
-func TestWorkbookExportDownloadErrorClassification(t *testing.T) {
-	t.Parallel()
-
-	t.Run("preserves typed request errors", func(t *testing.T) {
-		t.Parallel()
-		in := errs.NewAPIError(errs.SubtypeServerError, "typed upstream").WithCode(123)
-		got := sheetsDownloadRequestError(in)
-		if got != in {
-			t.Fatalf("typed error was not preserved: got %T %v", got, got)
-		}
-	})
-
-	t.Run("wraps raw request errors as network transport", func(t *testing.T) {
-		t.Parallel()
-		got := sheetsDownloadRequestError(errors.New("dial refused"))
-		p, ok := errs.ProblemOf(got)
-		if !ok {
-			t.Fatalf("expected typed problem, got %T %v", got, got)
-		}
-		if p.Category != errs.CategoryNetwork || p.Subtype != errs.SubtypeNetworkTransport {
-			t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, errs.CategoryNetwork, errs.SubtypeNetworkTransport)
-		}
-	})
-
-	tests := []struct {
-		name          string
-		status        int
-		wantCategory  errs.Category
-		wantSubtype   errs.Subtype
-		wantRetryable bool
-	}{
-		{
-			name:          "5xx is retryable network server error",
-			status:        http.StatusBadGateway,
-			wantCategory:  errs.CategoryNetwork,
-			wantSubtype:   errs.SubtypeNetworkServer,
-			wantRetryable: true,
-		},
-		{
-			name:         "404 is API not found",
-			status:       http.StatusNotFound,
-			wantCategory: errs.CategoryAPI,
-			wantSubtype:  errs.SubtypeNotFound,
-		},
-		{
-			name:          "429 is retryable API rate limit",
-			status:        http.StatusTooManyRequests,
-			wantCategory:  errs.CategoryAPI,
-			wantSubtype:   errs.SubtypeRateLimit,
-			wantRetryable: true,
-		},
-		{
-			name:         "other 4xx is API unknown",
-			status:       http.StatusForbidden,
-			wantCategory: errs.CategoryAPI,
-			wantSubtype:  errs.SubtypeUnknown,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := sheetsDownloadHTTPStatusError(&larkcore.ApiResp{
-				StatusCode: tt.status,
-				RawBody:    []byte("body"),
-				Header:     http.Header{larkcore.HttpHeaderKeyLogId: []string{"log123"}},
-			})
-			p, ok := errs.ProblemOf(got)
-			if !ok {
-				t.Fatalf("expected typed problem, got %T %v", got, got)
-			}
-			if p.Category != tt.wantCategory || p.Subtype != tt.wantSubtype {
-				t.Fatalf("problem = %s/%s, want %s/%s", p.Category, p.Subtype, tt.wantCategory, tt.wantSubtype)
-			}
-			if p.Code != tt.status {
-				t.Fatalf("code = %d, want %d", p.Code, tt.status)
-			}
-			if p.LogID != "log123" {
-				t.Fatalf("log_id = %q, want log123", p.LogID)
-			}
-			if p.Retryable != tt.wantRetryable {
-				t.Fatalf("retryable = %v, want %v", p.Retryable, tt.wantRetryable)
-			}
-		})
-	}
 }
 
 // assertInputEquals compares the decoded tool input map against the wanted

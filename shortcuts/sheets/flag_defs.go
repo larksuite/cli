@@ -80,3 +80,28 @@ func flagsFor(command string) []common.Flag {
 	}
 	return out
 }
+
+// flagAcceptsStdin reports whether the (command, flag) pair declares stdin as
+// an input source in flag-defs.json. Used to decide whether an "invalid JSON"
+// error should also steer the caller toward stdin. It runs on an error path,
+// so it returns false for an unknown command/flag rather than panicking the
+// way flagsFor does.
+func flagAcceptsStdin(command, name string) bool {
+	defs, _ := loadFlagDefs()
+	spec, ok := defs[command]
+	if !ok {
+		return false
+	}
+	for _, df := range spec.Flags {
+		if df.Name != name {
+			continue
+		}
+		for _, in := range df.Input {
+			if in == common.Stdin {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}

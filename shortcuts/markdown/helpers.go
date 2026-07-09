@@ -715,9 +715,15 @@ func markdownUploadProblem(err error, action string) error {
 		case 90003087:
 			appendMarkdownProblemHint(err, "The current tenant or user may not have document capabilities enabled. Ask an administrator to verify document-module access.")
 		case 1061003, 1061044:
-			appendMarkdownProblemHint(err, "Check whether the target folder or wiki node still exists, and verify the token you passed to the command.")
+			appendMarkdownProblemHint(err, "Check whether the target folder or wiki node still exists, and verify the parent token type. For Drive folders, pass --folder-token with a Drive folder token/URL; for wiki nodes, pass --wiki-token with a wiki node token/URL.")
 		case 1061004, 1062501:
 			appendMarkdownProblemHint(err, "Check whether the current identity has write access to the target folder or wiki node.")
+		case 1061101:
+			appendMarkdownProblemHint(err, "The target Drive/wiki storage quota is exhausted. Free space, choose another parent folder/wiki node, or ask an administrator to raise quota before retrying.")
+		case 233523001:
+			appendMarkdownProblemHint(err, "The upstream document service returned a transient server error. Retry later; if it repeats, keep the log_id/request_id for service-side investigation.")
+		case 99991400:
+			appendMarkdownProblemHint(err, "The upload API is rate limited. Stop immediate retries and retry later with exponential backoff.")
 		}
 	}
 	return err

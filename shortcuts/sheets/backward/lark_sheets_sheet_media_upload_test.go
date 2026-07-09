@@ -91,6 +91,39 @@ func TestSheetMediaUploadDryRunSmallFile(t *testing.T) {
 	}
 }
 
+// TestSheetMediaUploadDryRunSmallFileOfficeParentType pins the small-file
+// upload_all dry-run preview to the token-derived parent_type so the preview
+// agents/users will copy matches what Execute actually sends. Without this the
+// multipart dry-run branch could drift back to a hard-coded "sheet_image".
+func TestSheetMediaUploadDryRunSmallFileOfficeParentType(t *testing.T) {
+	dir := t.TempDir()
+	withSheetsTestWorkingDir(t, dir)
+	if err := os.WriteFile("img.png", []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, _ := cmdutil.TestFactory(t, sheetsTestConfig())
+	err := mountAndRunSheets(t, SheetMediaUpload, []string{
+		"+media-upload",
+		"--spreadsheet-token", "fake_office_abc123",
+		"--file", "img.png",
+		"--dry-run", "--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "/open-apis/drive/v1/medias/upload_all") {
+		t.Fatalf("dry-run should use upload_all for small file, got: %s", out)
+	}
+	if !strings.Contains(out, `"office_sheet_file"`) {
+		t.Fatalf("dry-run should include parent_type=office_sheet_file for fake_office_ token, got: %s", out)
+	}
+	if strings.Contains(out, `"sheet_image"`) {
+		t.Fatalf("dry-run must not emit sheet_image for fake_office_ token, got: %s", out)
+	}
+}
+
 func TestSheetMediaUploadDryRunURLExtractsToken(t *testing.T) {
 	dir := t.TempDir()
 	withSheetsTestWorkingDir(t, dir)
@@ -202,6 +235,47 @@ func TestSheetMediaUploadExecuteSuccess(t *testing.T) {
 	}
 	if got := body.Fields["size"]; got != "9" {
 		t.Fatalf("size = %q, want 9 (len of png-bytes)", got)
+	}
+}
+
+// TestSheetMediaUploadExecuteOfficeParentType confirms that an imported
+// "office" spreadsheet (token prefixed with "fake_office_") uploads with
+// parent_type=office_sheet_file instead of the native sheet_image.
+func TestSheetMediaUploadExecuteOfficeParentType(t *testing.T) {
+	dir := t.TempDir()
+	withSheetsTestWorkingDir(t, dir)
+	if err := os.WriteFile("img.png", []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, sheetsTestConfig())
+	stub := &httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/medias/upload_all",
+		Body: map[string]interface{}{
+			"code": 0,
+			"data": map[string]interface{}{"file_token": "boxTOK123"},
+		},
+	}
+	reg.Register(stub)
+
+	const officeToken = "fake_office_abc123"
+	err := mountAndRunSheets(t, SheetMediaUpload, []string{
+		"+media-upload",
+		"--spreadsheet-token", officeToken,
+		"--file", "img.png",
+		"--as", "user",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body := decodeSheetsMultipartBody(t, stub)
+	if got := body.Fields["parent_type"]; got != officeSheetFileParentType {
+		t.Fatalf("parent_type = %q, want %q", got, officeSheetFileParentType)
+	}
+	if got := body.Fields["parent_node"]; got != officeToken {
+		t.Fatalf("parent_node = %q, want %q", got, officeToken)
 	}
 }
 

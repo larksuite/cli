@@ -37,6 +37,37 @@ func TestCheckRequiresManifestInputs(t *testing.T) {
 	}
 }
 
+func TestCheckAcceptsPublicContentMetadataFlag(t *testing.T) {
+	code, stderr := runCheckCaptureStderr(t, []string{
+		"--repo", t.TempDir(),
+		"--cli-bin", "./lark-cli",
+		"--public-content-metadata", ".tmp/quality-gate/pr.json",
+	})
+	if code != 2 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr)
+	}
+	if strings.Contains(stderr, "flag provided but not defined") {
+		t.Fatalf("public content metadata flag was not registered: %s", stderr)
+	}
+	if !strings.Contains(stderr, "--manifest and --command-index are required") {
+		t.Fatalf("stderr = %s", stderr)
+	}
+}
+
+func TestCheckRejectsUnsafePublicContentMetadataPath(t *testing.T) {
+	code, stderr := runCheckCaptureStderr(t, []string{
+		"--repo", t.TempDir(),
+		"--cli-bin", "./lark-cli",
+		"--public-content-metadata", filepath.Join(t.TempDir(), "pr.json"),
+	})
+	if code != 2 {
+		t.Fatalf("exit code = %d, stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "--public-content-metadata") || !strings.Contains(stderr, "--file") {
+		t.Fatalf("stderr = %s, want unsafe public content metadata path error", stderr)
+	}
+}
+
 func TestCheckReportsManifestReadErrorsWithFlagName(t *testing.T) {
 	dir := t.TempDir()
 	manifestPath := filepath.Join(dir, "command-manifest.json")

@@ -39,7 +39,7 @@ func TestNoteTranscriptRequiresUnifiedNote(t *testing.T) {
 	if problem.Subtype != errs.SubtypeFailedPrecondition {
 		t.Fatalf("subtype = %v, want FailedPrecondition", problem.Subtype)
 	}
-	if !strings.Contains(problem.Hint, "docs +fetch --api-version v2 --doc doc_verbatim") {
+	if !strings.Contains(problem.Hint, "docs +fetch --doc doc_verbatim") {
 		t.Fatalf("hint = %q, want docs +fetch guidance", problem.Hint)
 	}
 	if stdout.Len() != 0 {

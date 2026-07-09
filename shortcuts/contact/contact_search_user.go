@@ -150,12 +150,10 @@ var ContactSearchUser = common.Shortcut{
 		{Name: "queries", Desc: "comma-separated keywords searched in parallel; output is a flat users[] with matched_query plus a queries[] sidecar"},
 	},
 	Tips: []string{
-		"Keyword search: lark-cli contact +search-user --query 'alice'",
-		"Look up by ID (or 'me' for self): lark-cli contact +search-user --user-ids 'ou_xxx,me'",
 		"Filter-only enumeration — users you've chatted with: lark-cli contact +search-user --has-chatted",
 		"Refine same-name hits: lark-cli contact +search-user --query '张三' --has-chatted --exclude-external-users",
 		"Multi-name fanout: lark-cli contact +search-user --queries 'alice,bob,张三'",
-		"open_id is the stable identifier for follow-up commands; on has_more=true add filters or tighten --query — there is no auto-pagination.",
+		"on has_more=true add filters or tighten --query — there is no auto-pagination.",
 	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		return validateSearchUser(runtime)

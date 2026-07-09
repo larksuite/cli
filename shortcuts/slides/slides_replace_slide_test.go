@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +15,21 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/httpmock"
 )
+
+func TestReplaceSlideDeclaredScopes(t *testing.T) {
+	if got := SlidesReplaceSlide.ScopesForIdentity("user"); !reflect.DeepEqual(got, []string{"slides:presentation:update", "slides:presentation:write_only"}) {
+		t.Fatalf("user preflight scopes = %#v, want slides update/write_only only", got)
+	}
+	if got := SlidesReplaceSlide.ScopesForIdentity("bot"); !reflect.DeepEqual(got, []string{"slides:presentation:update", "slides:presentation:write_only"}) {
+		t.Fatalf("bot preflight scopes = %#v, want slides update/write_only only", got)
+	}
+
+	got := SlidesReplaceSlide.DeclaredScopesForIdentity("user")
+	want := []string{"slides:presentation:update", "slides:presentation:write_only", "wiki:node:read"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("declared scopes = %#v, want %#v", got, want)
+	}
+}
 
 // TestReplaceSlideBlockReplaceInjectsID is the core regression: users write
 // <shape>…</shape> as replacement and the CLI must stitch id="<block_id>"

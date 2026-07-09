@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,11 @@ func assertValidationError(t *testing.T, err error, wantSubstr string) {
 	if wantSubstr != "" && !strings.Contains(err.Error(), wantSubstr) {
 		t.Fatalf("expected validation message containing %q, got %v", wantSubstr, err)
 	}
+}
+
+func assertEnvPullBody(t *testing.T, req *http.Request) {
+	t.Helper()
+	assertEnvVarBody(t, req, map[string]interface{}{"env": "dev"})
 }
 
 func TestResolveEnvPullTarget_DefaultProjectPathUsesCWD(t *testing.T) {
@@ -255,7 +261,7 @@ func TestBuildEnvPullSuccessDataSuppressesEnvKeysAndValues(t *testing.T) {
 	}
 }
 
-func TestAppsEnvPull_DryRunUsesPostAndResolvedEnvFile(t *testing.T) {
+func TestAppsEnvPull_DryRunUsesPostBodyAndResolvedEnvFile(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	projectDir := t.TempDir()
 
@@ -272,6 +278,9 @@ func TestAppsEnvPull_DryRunUsesPostAndResolvedEnvFile(t *testing.T) {
 	if !strings.Contains(got, `/open-apis/spark/v1/apps/app_x/env_vars`) {
 		t.Fatalf("dry-run missing endpoint: %s", got)
 	}
+	if !strings.Contains(got, `"env": "dev"`) || strings.Contains(got, `"include_values"`) {
+		t.Fatalf("dry-run must include only env=dev in the request body: %s", got)
+	}
 	if !strings.Contains(got, filepath.Join(projectDir, ".env.local")) {
 		t.Fatalf("dry-run must include resolved env file path: %s", got)
 	}
@@ -283,6 +292,9 @@ func TestAppsEnvPull_PrettyOutput_WithDatabaseLine(t *testing.T) {
 	reg.Register(&httpmock.Stub{
 		Method: "POST",
 		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		OnMatch: func(req *http.Request) {
+			assertEnvPullBody(t, req)
+		},
 		Body: map[string]interface{}{
 			"code": 0,
 			"data": map[string]interface{}{
@@ -547,6 +559,68 @@ func TestAppsEnvPull_ExecuteUsesNestedDataEnvVars(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `AAA="value-a"`) {
 		t.Fatalf("expected nested data env vars to be written, got %q", string(data))
+	}
+}
+
+func TestAppsEnvPull_NonObjectJSONDoesNotCarryAppIDHint(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method:  "POST",
+		URL:     "/open-apis/spark/v1/apps/app_x/env_vars",
+		RawBody: []byte("[]"),
+		OnMatch: func(req *http.Request) {
+			assertEnvPullBody(t, req)
+		},
+	})
+
+	err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", t.TempDir(), "--as", "user"},
+		factory, stdout,
+	)
+	if err == nil {
+		t.Fatalf("expected non-object JSON failure, got nil; stdout=%s", stdout.String())
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed problem, got %T: %v", err, err)
+	}
+	if p.Category != errs.CategoryInternal || p.Subtype != errs.SubtypeInvalidResponse {
+		t.Fatalf("classification = %s/%s, want internal/invalid_response", p.Category, p.Subtype)
+	}
+	if strings.Contains(p.Hint, "apps +list") || strings.Contains(p.Hint, "--app-id") {
+		t.Fatalf("hint should not point to app-id/list recovery for malformed upstream JSON: %q", p.Hint)
+	}
+}
+
+func TestAppsEnvPull_DevDBNotInitializedHintPointsToDBEnvCreate(t *testing.T) {
+	factory, stdout, reg := newAppsExecuteFactory(t)
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/spark/v1/apps/app_x/env_vars",
+		Body: map[string]interface{}{
+			"code": -1,
+			"msg":  "Multi-environment database is not initialized for this app. Invalid DB Branch：dev",
+		},
+		OnMatch: func(req *http.Request) {
+			assertEnvPullBody(t, req)
+		},
+	})
+
+	err := runAppsShortcut(t, AppsEnvPull,
+		[]string{"+env-pull", "--app-id", "app_x", "--project-path", t.TempDir(), "--as", "user"},
+		factory, stdout,
+	)
+	p := requireAppsAPIProblem(t, err)
+	if p.Code != -1 {
+		t.Fatalf("code = %d, want -1", p.Code)
+	}
+	for _, want := range []string{"+db-env-create", "--app-id app_x", "--environment dev", "--dry-run", "--yes"} {
+		if !strings.Contains(p.Hint, want) {
+			t.Fatalf("hint missing %q: %q", want, p.Hint)
+		}
+	}
+	if strings.Contains(p.Hint, "apps +list") {
+		t.Fatalf("hint should not point to app-id/list recovery for missing dev database: %q", p.Hint)
 	}
 }
 

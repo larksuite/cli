@@ -1,9 +1,11 @@
 # note +detail
 
-`note +detail` 只做一件事：按显式 `note_id` 返回纪要展示类型和相关文档 token。
+通过 `note_id` 查询会议纪要详情，获取下挂文档 Token（AI 智能纪要、逐字稿、会中共享文档）。只读，仅支持 `--as user`。
+
+## 命令
 
 ```bash
-lark-cli note +detail --note-id NOTE_ID --format json
+lark-cli note +detail --note-id <note_id>
 ```
 
 ## `note_id` 来源
@@ -16,8 +18,8 @@ lark-cli note +detail --note-id NOTE_ID --format json
 
 | detail 字段 | 后续动作 |
 |---------|---------|
-| `note_doc_token` | 读纪要正文 / 总结 / 待办 / 章节：`docs +fetch --api-version v2 --doc <note_doc_token>` |
-| `note_display_type=normal` + `verbatim_doc_token` | 读逐字稿：`docs +fetch --api-version v2 --doc <verbatim_doc_token>` |
+| `note_doc_token` | 读纪要正文 / 总结 / 待办 / 章节：`docs +fetch --doc <note_doc_token>` |
+| `note_display_type=normal` + `verbatim_doc_token` | 读逐字稿：`docs +fetch --doc <verbatim_doc_token>` |
 | `note_display_type=unknown` + `verbatim_doc_token` | 先按普通独立逐字稿文档读取；不要猜成 unified |
 | `note_display_type=unified` | 读逐字稿 / 原始记录：转 [`note +transcript`](lark-note-transcript.md) |
 

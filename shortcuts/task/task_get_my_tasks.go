@@ -200,15 +200,20 @@ var GetMyTasks = common.Shortcut{
 		for _, item := range filteredItems {
 			urlVal, _ := item["url"].(string)
 			urlVal = truncateTaskURL(urlVal)
+			completed, completedAt := taskCompletionState(item)
 			outputItem := map[string]interface{}{
-				"guid":    item["guid"],
-				"summary": item["summary"],
-				"url":     urlVal,
+				"guid":      item["guid"],
+				"summary":   item["summary"],
+				"url":       urlVal,
+				"completed": completed,
 			}
 			if createdAtStr, ok := item["created_at"].(string); ok {
 				if ts, err := strconv.ParseInt(createdAtStr, 10, 64); err == nil {
 					outputItem["created_at"] = time.UnixMilli(ts).Local().Format(time.RFC3339)
 				}
+			}
+			if !completedAt.IsZero() {
+				outputItem["completed_at"] = completedAt.Local().Format(time.RFC3339)
 			}
 			if dueObj, ok := item["due"].(map[string]interface{}); ok {
 				if tsStr, ok := dueObj["timestamp"].(string); ok {
@@ -237,6 +242,7 @@ var GetMyTasks = common.Shortcut{
 				summary, _ := item["summary"].(string)
 				urlVal, _ := item["url"].(string)
 				urlVal = truncateTaskURL(urlVal)
+				completed, completedAt := taskCompletionState(item)
 
 				var dueTimeStr string
 				if dueObj, ok := item["due"].(map[string]interface{}); ok {
@@ -259,6 +265,10 @@ var GetMyTasks = common.Shortcut{
 				if urlVal != "" {
 					fmt.Fprintf(w, "    URL: %s\n", urlVal)
 				}
+				fmt.Fprintf(w, "    Completed: %t\n", completed)
+				if !completedAt.IsZero() {
+					fmt.Fprintf(w, "    Completed At: %s\n", completedAt.Local().Format("2006-01-02 15:04"))
+				}
 				if dueTimeStr != "" {
 					fmt.Fprintf(w, "    Due: %s\n", dueTimeStr)
 				}
@@ -277,4 +287,16 @@ var GetMyTasks = common.Shortcut{
 
 		return nil
 	},
+}
+
+func taskCompletionState(item map[string]interface{}) (bool, time.Time) {
+	completedAtStr, _ := item["completed_at"].(string)
+	if completedAtStr == "" || completedAtStr == "0" {
+		return false, time.Time{}
+	}
+	ts, err := strconv.ParseInt(completedAtStr, 10, 64)
+	if err != nil {
+		return false, time.Time{}
+	}
+	return true, time.UnixMilli(ts)
 }

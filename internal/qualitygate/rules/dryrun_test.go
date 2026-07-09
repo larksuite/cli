@@ -305,6 +305,161 @@ func TestRunDryRunsMaterializesInlinePlaceholderFlagValues(t *testing.T) {
 	}
 }
 
+func TestRunDryRunsMaterializesNumericPlaceholderFlagValues(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/vc/v1/bots/events","params":{"meeting_id":"400000000001","page_size":50}}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "vc +meeting-events",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "meeting-id", TakesValue: true, Usage: "meeting ID to query; must be a long positive integer, not a 9-digit meeting number"},
+			{Name: "page-size", TakesValue: true, Usage: "page size, 20-100 (default 50)", DefValue: "50"},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli vc +meeting-events --meeting-id <meeting_id> --page-size <page_size>",
+		SourceFile:     "skills/lark-vc-agent/SKILL.md",
+		Line:           120,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("numeric placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"vc", "+meeting-events", "--meeting-id", "400000000001", "--page-size", "50", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestRunDryRunsMaterializesNumericPlaceholdersInsideJSONFlags(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/test","params":{"timestamp":"1893456000","count":"20"}}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "api GET",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "params", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            `lark-cli api GET /open-apis/test --params '{"timestamp":"<timestamp>","count":"<count>"}'`,
+		SourceFile:     "skills/lark-demo/SKILL.md",
+		Line:           20,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("JSON numeric placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"api", "GET", "/open-apis/test", "--params", `{"timestamp":"1893456000","count":"20"}`, "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestRunDryRunsMaterializesLarkDocumentURLPlaceholders(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/drive/v1/metas/batch_query"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "drive +inspect",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "url", TakesValue: true, Usage: "Lark/Feishu document URL (docx, doc, sheet, bitable, wiki, file, folder, mindnote, slides)"},
+			{Name: "format", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli drive +inspect --url '<url>' --format json",
+		SourceFile:     "skills/lark-drive/references/lark-drive-workflow-permission-governance-commands.md",
+		Line:           15,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("Lark URL placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"drive", "+inspect", "--url", "https://example.feishu.cn/docx/doc_test123", "--format", "json", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestRunDryRunsMaterializesResourceIDPlaceholderFlagValues(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"GET","url":"/open-apis/wiki/v2/spaces/space_test123/nodes"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "wiki +node-list",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "space-id", TakesValue: true, Usage: "wiki space ID"},
+			{Name: "page-token", TakesValue: true, Usage: "page token"},
+			{Name: "format", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            "lark-cli wiki +node-list --space-id <space_id> --page-token <PAGE_TOKEN> --format json",
+		SourceFile:     "skills/lark-wiki/references/lark-wiki-node-list.md",
+		Line:           24,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("resource ID placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"wiki", "+node-list", "--space-id", "space_test123", "--page-token", "page_test123", "--format", "json", "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
+func TestRunDryRunsMaterializesResourcePlaceholdersInsideJSONFlags(t *testing.T) {
+	cliBin, argsPath := fakeDryRunCLI(t, `{"api":[{"method":"POST","url":"/open-apis/mail/v1/user_mailboxes/me/drafts/draft_test123/send"}]}`)
+	m := manifest.Manifest{Commands: []manifest.Command{{
+		Path:     "mail user_mailbox.drafts send",
+		Runnable: true,
+		Flags: []manifest.Flag{
+			{Name: "params", TakesValue: true},
+			{Name: "data", TakesValue: true},
+			{Name: "dry-run"},
+		},
+	}}}
+	ex := skillscan.Example{
+		Raw:            `lark-cli mail user_mailbox.drafts send --params '{"user_mailbox_id":"me","draft_id":"<draft_id>"}' --data '{"send_time":"<unix_timestamp>"}'`,
+		SourceFile:     "skills/lark-mail/references/lark-mail-send.md",
+		Line:           172,
+		HasPlaceholder: true,
+	}
+
+	diags, facts := RunDryRuns(context.Background(), cliBin, m, []skillscan.Example{ex})
+	if len(diags) != 0 {
+		t.Fatalf("RunDryRuns() diagnostics = %#v", diags)
+	}
+	if len(facts) != 1 || !facts[0].Executable || facts[0].SkipReason != "" {
+		t.Fatalf("JSON resource placeholder example should be executable after materialization: %#v", facts)
+	}
+	wantArgs := []string{"mail", "user_mailbox.drafts", "send", "--params", `{"user_mailbox_id":"me","draft_id":"draft_test123"}`, "--data", `{"send_time":"1893456000"}`, "--dry-run"}
+	if gotArgs := readArgs(t, argsPath); !reflect.DeepEqual(gotArgs, wantArgs) {
+		t.Fatalf("fake CLI args = %#v, want %#v", gotArgs, wantArgs)
+	}
+}
+
 func TestRunDryRunsSkipsUnknownFlagsBeforeDryRun(t *testing.T) {
 	m := manifest.Manifest{Commands: []manifest.Command{{
 		Path:     "im +chat-messages-list",
@@ -597,6 +752,51 @@ func TestAppendDryRunArgDoesNotDuplicate(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("--dry-run count = %d, want 1 in %#v", count, got)
+	}
+}
+
+func TestAppendDryRunArgForcesJSONFormat(t *testing.T) {
+	got, err := appendDryRunArg("lark-cli vc +meeting-events --meeting-id 400000000001 --format pretty")
+	if err != nil {
+		t.Fatalf("appendDryRunArg() error = %v", err)
+	}
+	want := []string{"vc", "+meeting-events", "--meeting-id", "400000000001", "--format", "json", "--dry-run"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appendDryRunArg() = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendDryRunArgForcesInlineJSONFormat(t *testing.T) {
+	got, err := appendDryRunArg("lark-cli vc +meeting-events --meeting-id 400000000001 --format=pretty --dry-run")
+	if err != nil {
+		t.Fatalf("appendDryRunArg() error = %v", err)
+	}
+	want := []string{"vc", "+meeting-events", "--meeting-id", "400000000001", "--format=json", "--dry-run"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appendDryRunArg() = %#v, want %#v", got, want)
+	}
+}
+
+func TestAppendDryRunArgPreservesNonPrettyFormat(t *testing.T) {
+	for _, raw := range []string{
+		"lark-cli mail +watch --format data --dry-run",
+		"lark-cli export +events --format=ndjson --dry-run",
+		"lark-cli docs +fetch --format table",
+	} {
+		got, err := appendDryRunArg(raw)
+		if err != nil {
+			t.Fatalf("appendDryRunArg(%q) error = %v", raw, err)
+		}
+		for _, arg := range got {
+			if arg == "--format=json" {
+				t.Fatalf("appendDryRunArg(%q) unexpectedly rewrote inline format: %#v", raw, got)
+			}
+		}
+		for i, arg := range got {
+			if arg == "--format" && i+1 < len(got) && got[i+1] == "json" {
+				t.Fatalf("appendDryRunArg(%q) unexpectedly rewrote split format: %#v", raw, got)
+			}
+		}
 	}
 }
 

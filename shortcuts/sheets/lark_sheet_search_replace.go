@@ -46,7 +46,7 @@ var CellsSearch = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindRead, "search_data", searchInput(runtime, token, sheetID, sheetName))
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -122,7 +122,7 @@ var CellsReplace = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "replace_data", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}

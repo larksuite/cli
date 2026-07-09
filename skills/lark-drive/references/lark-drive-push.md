@@ -15,9 +15,10 @@
 | `summary.skipped` | 因 `--if-exists=skip` 或 `--if-exists=smart` 命中“无需传输”而跳过的文件数 |
 | `summary.failed` | 上传 / 覆盖 / 建目录 / 删除失败的条目数；**只要不为 0，命令就以非零状态退出**（结构化 `items[]` 仍在 stdout 上） |
 | `summary.deleted_remote` | 启用 `--delete-remote --yes` 时删除的云端文件数 |
-| `items[]` | 每个条目的明细（`rel_path` / `file_token` / `action` / 覆盖时的 `version` / `size_bytes` / 失败时的 `error`） |
+| `summary.aborted` | 命中终止性错误并停止后续批处理时为 `true` |
+| `items[]` | 每个条目的明细（`rel_path` / `file_token` / `action` / 覆盖时的 `version` / `size_bytes` / 失败时的 `error` / `hint` / `phase` / `error_class` / `code` / `subtype` / `retryable`） |
 
-`items[].action` 取值：`uploaded` / `overwritten` / `skipped` / `folder_created` / `deleted_remote` / `failed` / `delete_failed`。
+`items[].action` 取值：`uploaded` / `overwritten` / `skipped` / `folder_created` / `deleted_remote` / `already_deleted` / `failed` / `delete_failed`。
 
 > 本地目录（包括空目录）会被镜像到 Drive；新建的子目录会以 `action: "folder_created"` 出现在 `items[]` 里，但**不计入** `summary.uploaded`（该字段只数文件）。已存在的远端目录复用其 token，不会重复 `create_folder`，也不会出现在 `items[]` 里。
 
@@ -95,6 +96,7 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
 - `--delete-remote`（无 `--yes`）→ Validate 直接报错：`--delete-remote requires --yes`，不会发起任何列表 / 上传 / 删除请求。
 - `--delete-remote --yes` → Validate 阶段还会**动态做一次** `space:document:delete` 的 scope 预检：缺这条 scope 时整次运行立刻失败、不发任何上传请求，避免出现"上传都成功了，但删除阶段才报 missing_scope"的半同步状态。
 - `--delete-remote --yes`（且 scope 已授权）→ 正常执行：先把本地文件 push 上去，再扫一遍远端 `type=file` 列表，把不在本地清单里的逐个删除。**任何上传 / 覆盖 / 建目录失败时，整段 `--delete-remote` 阶段会被跳过**（stderr 上有提示），命令以非零状态退出，远端不会被破坏。
+- 删除阶段如果服务端返回 `1061007 file has been delete`，说明目标远端文件在本次 DELETE 前已经不存在；这已经满足 `--delete-remote` 的目标状态，输出会记为 `action: "already_deleted"`，不计入 `summary.failed`，也不计入 `summary.deleted_remote`。
 - 远端同名冲突且使用默认 `fail`，或冲突里混有 folder / 其他非 `type=file` 对象 → 在上传阶段前失败，删除阶段不会运行。
 - 不传 `--delete-remote` → `summary.deleted_remote` 永远是 0；命令对远端"多余"文件视而不见。
 - 在线文档（docx / sheet / bitable / ...）和快捷方式即使本地完全没有同名文件，也**不会**进入删除候选，因为它们从来不进 `summary.uploaded` 的对齐域。
@@ -110,21 +112,46 @@ lark-cli drive +push --local-dir ./repo --folder-token fldcnxxxxxxxxx \
     "uploaded": 0,
     "skipped": 0,
     "failed": 0,
-    "deleted_remote": 0
+    "deleted_remote": 0,
+    "aborted": false
   },
   "items": [
     {"rel_path": "...", "file_token": "...", "action": "folder_created"},
     {"rel_path": "...", "file_token": "...", "action": "uploaded",       "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "overwritten",    "version": "...", "size_bytes": 0},
     {"rel_path": "...", "file_token": "...", "action": "skipped",        "size_bytes": 0},
-    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "..."},
+    {"rel_path": "...",                       "action": "failed",        "size_bytes": 0, "error": "...", "hint": "...", "phase": "upload", "error_class": "...", "code": 0, "subtype": "...", "retryable": false},
     {"rel_path": "...", "file_token": "...", "action": "deleted_remote"},
-    {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "..."}
+    {"rel_path": "...", "file_token": "...", "action": "already_deleted"},
+    {"rel_path": "...", "file_token": "...", "action": "delete_failed",  "error": "...", "hint": "...", "phase": "delete", "error_class": "...", "code": 0, "subtype": "...", "retryable": false}
   ]
 }
 ```
 
 `rel_path` 始终用 `/` 作为分隔符（跨平台一致）。
+
+## 失败处理与 agent 行为
+
+`+push` 的失败项带结构化字段，agent 必须优先读 `items[].error_class` / `phase` / `code`，不要只看自然语言 `error` 文本。`summary.aborted=true` 表示命令已经遇到终止性错误并停止后续批处理；这时**不要原样重试**，先修复根因。
+
+常见终止性错误：
+
+| `error_class` | 常见 `code` | 含义 | Agent 应对 |
+|---|---:|---|---|
+| `app_scope_missing` | `99991672` | 应用身份缺少 Drive / 文件夹相关 scope | 停止重试，引导开通错误里列出的应用身份权限，例如 `space:folder:create` 或 `drive:drive` |
+| `user_scope_missing` | `99991679` | 用户身份缺少授权 | 停止重试，走 `lark-cli auth login --scope ...` 补错误里列出的 scope |
+| `permission_denied` | `1061004` / HTTP 403 | 当前身份无权操作目标资源 | 停止重试，检查目标文件夹权限、身份类型（user / bot）和资源可见性 |
+| `invalid_api_parameters` | `1061002` | API 参数被服务端拒绝 | 停止重试，检查 `--folder-token`、覆盖模式、`file_token`、文件名和上传参数；不要对同一参数组合批量重试 |
+| `parent_node_missing` | `1061044` | 上传 / 建目录使用的父文件夹不存在或当前身份不可见 | 停止重试，检查 `--folder-token` 是否仍存在、是否有权限、父目录是否在 push 过程中被删除；不要继续上传同一目录树 |
+| `parent_sibling_limit` | `1062507` | 目标父文件夹单层子节点数量超过上限 | 停止重试，清理目标目录、换一个 `--folder-token`，或把上传内容拆到多个子目录 |
+| `rate_limited` | `99991400` | 触发频控 | 停止当前批次，退避后再重试 |
+| `server_error` | `1061001` / `2200` | Drive 服务端异常 | 停止当前批次，稍后重试；保留 `log_id` 便于排查 |
+
+非终止但需要解释的状态：
+
+- `file_size_limit` / `1061043`：文件超过 Drive 上传限制。不要继续尝试同一文件；改拆分或换存储方式。
+- `upload_size_mismatch` / `1062009`：本地文件在上传过程中发生变化，或声明大小与实际读取大小不一致。重新扫描本地文件后再 push。
+- `remote_not_found` / `1061007`：一般表示远端文件已不存在。删除阶段的 `1061007` 会被视为 `already_deleted` 成功项；其他阶段需重新列表确认远端状态。
 
 ## 性能注意
 

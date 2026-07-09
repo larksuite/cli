@@ -81,6 +81,30 @@ func TestGatekeeperSkillQualityUsesSkillEvidence(t *testing.T) {
 	}
 }
 
+func TestGatekeeperUsesPublicContentEvidence(t *testing.T) {
+	f := facts.Facts{
+		SchemaVersion: 1,
+		PublicContent: []facts.PublicContentFact{{
+			Rule:   "public_content_generic_credential",
+			Action: "REJECT",
+			File:   "docs/public.md",
+			Line:   12,
+			Source: "metadata",
+		}},
+	}
+	review := Review{Findings: []Finding{{
+		Category:        "public_content_leakage",
+		Severity:        "critical",
+		Evidence:        []string{"facts.public_content[0]"},
+		Message:         "public content finding needs review",
+		SuggestedAction: "remove the sensitive public content",
+	}}}
+	got := Decide(f, review, DefaultPolicy())
+	if len(got.Blockers) != 1 || got.Blockers[0].RolloutGroups[0] != "all" {
+		t.Fatalf("expected public content blocker, got %#v", got)
+	}
+}
+
 func TestGatekeeperAppliesSharedWaiverID(t *testing.T) {
 	f := facts.Facts{
 		SchemaVersion: 1,

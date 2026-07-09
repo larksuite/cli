@@ -240,3 +240,62 @@ func TestParseCalendarAttendeeIDs_Valid(t *testing.T) {
 		t.Errorf("dedup/trim failed: got %v", ids)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// unwrapCalendarAPIError helper
+// ---------------------------------------------------------------------------
+
+func TestUnwrapCalendarAPIError_NilReturnsEmpty(t *testing.T) {
+	if got := unwrapCalendarAPIError(nil); got != "" {
+		t.Errorf("nil err should return empty string, got %q", got)
+	}
+}
+
+func TestUnwrapCalendarAPIError_NonAPIErrorReturnsEmpty(t *testing.T) {
+	// Validation, internal, and plain errors are not calendar API business
+	// errors; the helper must signal "no specialization" so callers fall back.
+	cases := []error{
+		errs.NewValidationError(errs.SubtypeInvalidArgument, "bad input"),
+		errs.NewInternalError(errs.SubtypeSDKError, "io failure"),
+		errors.New("plain error"),
+	}
+	for _, e := range cases {
+		if got := unwrapCalendarAPIError(e); got != "" {
+			t.Errorf("unwrapCalendarAPIError(%T) = %q, want empty", e, got)
+		}
+	}
+}
+
+func TestUnwrapCalendarAPIError_Code190014_ReturnsHint(t *testing.T) {
+	ae := errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid params").
+		WithCode(190014).
+		WithHint("end_time should be later than start_time")
+	got := unwrapCalendarAPIError(ae)
+	if got != "end_time should be later than start_time" {
+		t.Errorf("expected lifted hint, got %q", got)
+	}
+}
+
+func TestUnwrapCalendarAPIError_Code190014_WrappedStillResolves(t *testing.T) {
+	// withStepContext wraps the typed error but errors.As must still find it.
+	inner := errs.NewAPIError(errs.SubtypeInvalidParameters, "invalid params").
+		WithCode(190014).
+		WithHint("calendar_id is required")
+	wrapped := withStepContext(inner, "while fetching meeting info for %s", "evt_x")
+	got := unwrapCalendarAPIError(wrapped)
+	if !strings.Contains(got, "calendar_id is required") {
+		t.Errorf("expected wrapped 190014 to surface hint, got %q", got)
+	}
+}
+
+func TestUnwrapCalendarAPIError_UnhandledCodeReturnsEmpty(t *testing.T) {
+	// An APIError carrying a code that isn't specialized here should return
+	// "" so callers fall back to err.Error() — keeps the helper conservative
+	// while we add 19xxxx codes incrementally.
+	ae := errs.NewAPIError(errs.SubtypeInvalidParameters, "some other error").
+		WithCode(190099).
+		WithHint("ignore me")
+	if got := unwrapCalendarAPIError(ae); got != "" {
+		t.Errorf("unhandled code should return empty, got %q", got)
+	}
+}

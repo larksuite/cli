@@ -10,7 +10,7 @@
 | 盘点用户明确确认的 Drive 根目录 | 使用 | 第一层用空 `folder_token`，子文件夹继续按普通文件夹递归 |
 | 验证移动 / 创建后的实际位置 | 使用 | 读取目标目录直接子项，再按需递归验证 |
 | 根据关键词、标题、时间、owner 找资源 | 不使用 | 优先用 `drive +search` |
-| 读取 Docx 正文内容 | 不使用 | 用 `docs +fetch --api-version v2` |
+| 读取 Docx 正文内容 | 不使用 | 用 `docs +fetch` |
 | 读取 Sheet / Base 内部数据 | 不使用 | 切到 `lark-sheets` / `lark-base` |
 
 ## 标准命令模板
@@ -41,12 +41,37 @@ lark-cli drive files list \
 
 也可以省略 `folder_token` 字段来请求根目录，但在 Agent 编排中建议显式传空字符串，避免把“忘记传参数”和“确认请求根目录”混在一起。
 
+## 按时间排序
+
+默认不要传 `order_by` / `direction`；服务端会按默认顺序返回。只有用户明确要求按创建时间或编辑时间排序时，才使用服务端排序参数。
+
+按创建时间升序列出当前文件夹直接子项：
+
+```bash
+lark-cli drive files list \
+  --params '{"folder_token":"<folder_token>","order_by":"CreatedTime","direction":"ASC","page_size":200}' \
+  --format json
+```
+
+按编辑时间降序列出当前文件夹直接子项：
+
+```bash
+lark-cli drive files list \
+  --params '{"folder_token":"<folder_token>","order_by":"EditedTime","direction":"DESC","page_size":200}' \
+  --format json
+```
+
+以上示例返回排序后的当前页；如果返回 `has_more=true`，保持相同 `folder_token` / `order_by` / `direction` / `page_size`，把 `next_page_token` 放入 `page_token` 继续翻页。
+
 ## 参数规则
 
 1. `folder_token` 必须放在 `--params` JSON 里；不要使用不存在的 `--folder-token` flag。
 2. `page_token` 必须放在 `--params` JSON 里；不要依赖 shell 变量拼接不完整的 JSON。
-3. `page_size` 建议显式设置为 `200`。如果服务端或环境返回参数错误，再降级到服务端允许的值，并记录降级原因。
-4. 调用前如果不确定字段结构，先运行 `lark-cli schema drive.files.list` 查看 `--params` 结构。
+3. 默认不要传 `order_by` / `direction`；只有用户明确要求按创建时间 / 编辑时间排序时才使用服务端排序参数。
+4. 排序参数映射：创建时间 -> `order_by:"CreatedTime"`；编辑时间 / 修改时间 -> `order_by:"EditedTime"`；升序 -> `direction:"ASC"`；降序 -> `direction:"DESC"`。不要省略排序参数后再用 Python / shell 客户端排序替代。
+5. 排序查询建议带 `page_size:200` 减少翻页；只有用户要求完整分页、递归盘点、大目录全量导出，或当前页返回 `has_more=true` 后继续翻页时，才加入 `page_token`。
+6. `page_size` 在分页、递归盘点或全量导出时建议显式设置为 `200`。如果服务端或环境返回参数错误，再降级到服务端允许的值，并记录降级原因。
+7. 调用前如果不确定字段结构，先运行 `lark-cli schema drive.files.list` 查看 `--params` 结构。
 
 ## 返回结构与解析
 

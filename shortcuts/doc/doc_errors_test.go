@@ -203,6 +203,13 @@ func TestValidateCreateV2Contract(t *testing.T) {
 	}
 }
 
+func TestValidateCreateV2AllowsTitleWithoutContent(t *testing.T) {
+	rt := docValidateRuntime(t, map[string]string{"title": "Only Title"}, nil, nil)
+	if err := validateCreateV2(context.Background(), rt); err != nil {
+		t.Fatalf("validateCreateV2() error = %v, want nil", err)
+	}
+}
+
 func TestValidateFetchV2Contract(t *testing.T) {
 	cases := []struct {
 		name       string

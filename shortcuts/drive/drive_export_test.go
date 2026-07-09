@@ -5,6 +5,7 @@ package drive
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -161,6 +162,9 @@ func TestDriveExportMarkdownWritesFile(t *testing.T) {
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
 	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
+	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "Weekly Notes.md"))
 	if err != nil {
@@ -211,6 +215,9 @@ func TestDriveExportMarkdownUsesProvidedFileName(t *testing.T) {
 	}
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "custom-notes.md"))
@@ -282,6 +289,9 @@ func TestDriveExportDryRunIncludesLocalFileNameMetadata(t *testing.T) {
 			if !strings.Contains(out, `"output_dir": "./exports"`) {
 				t.Fatalf("stdout missing output_dir metadata: %s", out)
 			}
+			if tt.name == "markdown" && strings.Contains(out, `"extra_param"`) {
+				t.Fatalf("markdown dry-run must not enable docs fetch extra_param: %s", out)
+			}
 		})
 	}
 }
@@ -331,6 +341,9 @@ func TestDriveExportMarkdownFallsBackToTokenWhenTitleLookupFails(t *testing.T) {
 	}
 	if reqBody["format"] != "markdown" {
 		t.Fatalf("docs_ai fetch body format = %v, want %q", reqBody["format"], "markdown")
+	}
+	if _, ok := reqBody["extra_param"]; ok {
+		t.Fatalf("drive markdown export must not enable docs fetch extra_param: %#v", reqBody)
 	}
 
 	data, err := os.ReadFile(filepath.Join(tmpDir, "docx123.md"))
@@ -494,6 +507,72 @@ func TestDriveExportAsyncSuccess(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), `"ticket": "tk_123"`) {
 		t.Fatalf("stdout missing ticket: %s", stdout.String())
+	}
+}
+
+// TestDriveExportEmptyOutputDirDownloadsToCwd guards the export refactor: an
+// explicit empty --output-dir must still download to the current directory
+// (normalized to "."), not trigger the export-only no-download path that the
+// shared RunExport core uses for sheets +workbook-export.
+func TestDriveExportEmptyOutputDirDownloadsToCwd(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/drive/v1/export_tasks",
+		Body:   map[string]interface{}{"code": 0, "data": map[string]interface{}{"ticket": "tk_e"}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "/open-apis/drive/v1/export_tasks/tk_e",
+		Body: map[string]interface{}{"code": 0, "data": map[string]interface{}{
+			"result": map[string]interface{}{
+				"job_status": 0, "file_token": "box_e", "file_name": "report",
+				"file_extension": "pdf", "type": "docx", "file_size": 3,
+			},
+		}},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/export_tasks/file/box_e/download",
+		Status:  200,
+		RawBody: []byte("pdf"),
+		Headers: http.Header{
+			"Content-Type":        []string{"application/pdf"},
+			"Content-Disposition": []string{`attachment; filename="report.pdf"`},
+		},
+	})
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+
+	prevAttempts, prevInterval := driveExportPollAttempts, driveExportPollInterval
+	driveExportPollAttempts, driveExportPollInterval = 1, 0
+	t.Cleanup(func() {
+		driveExportPollAttempts, driveExportPollInterval = prevAttempts, prevInterval
+	})
+
+	err := mountAndRunDrive(t, DriveExport, []string{
+		"+export",
+		"--token", "docx123",
+		"--doc-type", "docx",
+		"--file-extension", "pdf",
+		"--output-dir", "",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Empty --output-dir must still write to cwd, not skip the download.
+	data, err := os.ReadFile(filepath.Join(tmpDir, "report.pdf"))
+	if err != nil {
+		t.Fatalf("empty --output-dir should still download to cwd: %v", err)
+	}
+	if string(data) != "pdf" {
+		t.Fatalf("downloaded content = %q", string(data))
+	}
+	if strings.Contains(stdout.String(), `"downloaded": false`) {
+		t.Fatalf("export-only path must not trigger for drive +export: %s", stdout.String())
 	}
 }
 
@@ -1032,5 +1111,39 @@ func TestDriveTaskResultExportIncludesReadyFlags(t *testing.T) {
 	}
 	if !bytes.Contains(stdout.Bytes(), []byte(`"job_status_label": "processing"`)) {
 		t.Fatalf("stdout missing job_status_label: %s", stdout.String())
+	}
+}
+
+// TestWrapExportContextErr verifies the export poll loop's typed wrapping for
+// context cancellation / deadline. Previously the poll loop returned ctx.Err()
+// directly so an untyped context.Canceled would escape as a plain string at
+// the command layer, bypassing the typed-error contract.
+func TestWrapExportContextErr(t *testing.T) {
+	if err := wrapExportContextErr(nil); err != nil {
+		t.Errorf("wrapExportContextErr(nil) = %v, want nil", err)
+	}
+
+	cancelled := wrapExportContextErr(context.Canceled)
+	var netErrCancel *errs.NetworkError
+	if !errors.As(cancelled, &netErrCancel) {
+		t.Fatalf("wrapExportContextErr(Canceled) = %T, want *errs.NetworkError", cancelled)
+	}
+	if netErrCancel.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("Canceled subtype = %q, want %q", netErrCancel.Subtype, errs.SubtypeNetworkTransport)
+	}
+	if !errors.Is(cancelled, context.Canceled) {
+		t.Error("wrapExportContextErr should preserve context.Canceled via errors.Is")
+	}
+
+	deadline := wrapExportContextErr(context.DeadlineExceeded)
+	var netErrDeadline *errs.NetworkError
+	if !errors.As(deadline, &netErrDeadline) {
+		t.Fatalf("wrapExportContextErr(DeadlineExceeded) = %T, want *errs.NetworkError", deadline)
+	}
+	if netErrDeadline.Subtype != errs.SubtypeNetworkTimeout {
+		t.Errorf("DeadlineExceeded subtype = %q, want %q", netErrDeadline.Subtype, errs.SubtypeNetworkTimeout)
+	}
+	if !errors.Is(deadline, context.DeadlineExceeded) {
+		t.Error("wrapExportContextErr should preserve context.DeadlineExceeded via errors.Is")
 	}
 }

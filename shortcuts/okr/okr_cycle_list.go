@@ -46,10 +46,36 @@ func cycleOverlaps(cycle *Cycle, rangeStart, rangeEnd time.Time) bool {
 	if err1 != nil || err2 != nil {
 		return false
 	}
-	cycleStart := time.UnixMilli(startMs)
-	cycleEnd := time.UnixMilli(endMs)
+	cycleStart := time.UnixMilli(startMs).UTC()
+	cycleEnd := time.UnixMilli(endMs).UTC()
 	// Two ranges overlap iff one starts before the other ends
 	return !cycleStart.After(rangeEnd) && !cycleEnd.Before(rangeStart)
+}
+
+// isCurrentActiveCycle checks whether a cycle is currently active:
+// - current time is within the cycle's start and end time
+// - cycle status is default (0) or normal (1)
+func isCurrentActiveCycle(cycle *Cycle, now time.Time) bool {
+	startMs, err1 := strconv.ParseInt(cycle.StartTime, 10, 64)
+	endMs, err2 := strconv.ParseInt(cycle.EndTime, 10, 64)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	cycleStart := time.UnixMilli(startMs).UTC()
+	cycleEnd := time.UnixMilli(endMs).UTC()
+	nowUTC := now.UTC()
+
+	// Check time range: now must be >= start and <= end
+	if nowUTC.Before(cycleStart) || nowUTC.After(cycleEnd) {
+		return false
+	}
+
+	// Check status: must be default or normal
+	if cycle.CycleStatus == nil {
+		return false
+	}
+	status := *cycle.CycleStatus
+	return status == CycleStatusDefault || status == CycleStatusNormal
 }
 
 var OKRListCycles = common.Shortcut{
@@ -175,13 +201,29 @@ var OKRListCycles = common.Shortcut{
 			respCycles = append(respCycles, filtered[i].ToResp())
 		}
 
+		// Filter current active cycles
+		now := time.Now()
+		currentActiveCycles := make([]*RespCycle, 0)
+		for i := range filtered {
+			if isCurrentActiveCycle(&filtered[i], now) {
+				currentActiveCycles = append(currentActiveCycles, filtered[i].ToResp())
+			}
+		}
+
 		runtime.OutFormat(map[string]interface{}{
-			"cycles": respCycles,
-			"total":  len(respCycles),
+			"cycles":                respCycles,
+			"total":                 len(respCycles),
+			"current_active_cycles": currentActiveCycles,
 		}, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "Found %d cycle(s)\n", len(respCycles))
 			for _, c := range respCycles {
 				fmt.Fprintf(w, "  [%s] %s ~ %s (status: %s)\n", c.ID, c.StartTime, c.EndTime, ptrStr(c.CycleStatus))
+			}
+			if len(currentActiveCycles) > 0 {
+				fmt.Fprintf(w, "\nCurrent active cycle(s):\n")
+				for _, c := range currentActiveCycles {
+					fmt.Fprintf(w, "  [%s] %s ~ %s\n", c.ID, c.StartTime, c.EndTime)
+				}
 			}
 		})
 		return nil

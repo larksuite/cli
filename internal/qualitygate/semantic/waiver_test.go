@@ -21,24 +21,27 @@ func TestLoadWaivers(t *testing.T) {
 
 	writeSemanticFile(t, repo, "waivers.txt", "# waiver_id\tcategory\tfact_kind\tsource_file\tline\tcommand_path\towner\treason\tadded_at\texpires_at\n"+
 		"wiki-move-202606\tskill_quality\tskill\tskills/lark-wiki/SKILL.md\t30\t\twiki-owner\tmigration\t2026-06-08\t2026-07-15\n"+
-		"wiki-move-202606\tskill_quality\tskill\tskills/lark-wiki/references/move.md\t12\t\twiki-owner\tmigration\t2026-06-08\t2026-07-15\n")
+		"wiki-move-202606\tskill_quality\tskill\tskills/lark-wiki/references/move.md\t12\t\twiki-owner\tmigration\t2026-06-08\t2026-07-15\n"+
+		"public-doc-202606\tpublic_content_leakage\tpublic_content\tdocs/public.md\t4\t\tsecurity-owner\treviewed false positive\t2026-06-08\t2026-07-15\n")
 	w, diags, err = LoadWaivers(repo, now)
 	if err != nil {
 		t.Fatalf("LoadWaivers() error = %v", err)
 	}
-	if len(diags) != 0 || len(w.Items) != 2 {
+	if len(diags) != 0 || len(w.Items) != 3 {
 		t.Fatalf("LoadWaivers() = %#v %#v", w, diags)
 	}
 
 	for name, body := range map[string]string{
-		"bad columns":     "one\ttoo-few\n",
-		"bad id":          "BAD\terror_hint\terror\tcmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
-		"bad fact kind":   "id1\terror_hint\tskill_quality\tcmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
-		"missing owner":   "id1\terror_hint\terror\tcmd/root.go\t1\t\t\tr\t2026-06-08\t2026-07-15\n",
-		"missing line":    "id1\terror_hint\terror\tcmd/root.go\t\t\to\tr\t2026-06-08\t2026-07-15\n",
-		"missing command": "id1\tdefault_output\toutput\t\t\t\to\tr\t2026-06-08\t2026-07-15\n",
-		"bad source path": "id1\terror_hint\terror\t../cmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
-		"bad date format": "id1\terror_hint\terror\tcmd/root.go\t1\t\to\tr\t20260608\t2026-07-15\n",
+		"bad columns":                     "one\ttoo-few\n",
+		"bad id":                          "BAD\terror_hint\terror\tcmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"bad fact kind":                   "id1\terror_hint\tskill_quality\tcmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"missing owner":                   "id1\terror_hint\terror\tcmd/root.go\t1\t\t\tr\t2026-06-08\t2026-07-15\n",
+		"missing line":                    "id1\terror_hint\terror\tcmd/root.go\t\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"missing command":                 "id1\tdefault_output\toutput\t\t\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"public content missing line":     "id1\tpublic_content_leakage\tpublic_content\tdocs/public.md\t\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"public content command selector": "id1\tpublic_content_leakage\tpublic_content\t\t\tcmd/foo\to\tr\t2026-06-08\t2026-07-15\n",
+		"bad source path":                 "id1\terror_hint\terror\t../cmd/root.go\t1\t\to\tr\t2026-06-08\t2026-07-15\n",
+		"bad date format":                 "id1\terror_hint\terror\tcmd/root.go\t1\t\to\tr\t20260608\t2026-07-15\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			writeSemanticFile(t, repo, "waivers.txt", body)

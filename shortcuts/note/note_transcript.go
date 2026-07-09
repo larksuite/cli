@@ -153,7 +153,7 @@ func ensureUnifiedNote(ctx context.Context, runtime *common.RuntimeContext, note
 	if detail.DisplayType != "unified" {
 		if detail.VerbatimDocToken != "" {
 			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "note %s is not a unified note (note_display_type=%s, verbatim_doc_token=%s)", noteID, detail.DisplayType, detail.VerbatimDocToken).
-				WithHint("Use docs +fetch --api-version v2 --doc %s for normal note transcripts", detail.VerbatimDocToken)
+				WithHint("Use docs +fetch --doc %s for normal note transcripts", detail.VerbatimDocToken)
 		}
 		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "note %s is not a unified note (note_display_type=%s, verbatim_doc_token=)", noteID, detail.DisplayType).
 			WithHint("Use note +detail to inspect document tokens")

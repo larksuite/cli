@@ -1032,6 +1032,66 @@ func TestDrivePullDownloadFailureSkipsDeleteLocalAndExitsNonZero(t *testing.T) {
 	}
 }
 
+func TestDrivePullAbortsAfterDownloadForbidden(t *testing.T) {
+	f, stdout, _, reg := cmdutil.TestFactory(t, driveTestConfig())
+
+	tmpDir := t.TempDir()
+	withDriveWorkingDir(t, tmpDir)
+	if err := os.MkdirAll("local", 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	reg.Register(&httpmock.Stub{
+		Method: "GET",
+		URL:    "folder_token=folder_root",
+		Body: map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"files": []interface{}{
+					map[string]interface{}{"token": "tok_a", "name": "a.txt", "type": "file"},
+					map[string]interface{}{"token": "tok_b", "name": "b.txt", "type": "file"},
+				},
+				"has_more": false,
+			},
+		},
+	})
+	reg.Register(&httpmock.Stub{
+		Method:  "GET",
+		URL:     "/open-apis/drive/v1/files/tok_a/download",
+		Status:  http.StatusForbidden,
+		RawBody: []byte("forbidden"),
+	})
+
+	err := mountAndRunDrive(t, DrivePull, []string{
+		"+pull",
+		"--local-dir", "local",
+		"--folder-token", "folder_root",
+		"--as", "bot",
+	}, f, stdout)
+	assertDrivePullPartialFailure(t, err)
+
+	summary, items := splitDrivePullStdout(t, stdout.Bytes())
+	if got := summary["aborted"]; got != true {
+		t.Fatalf("summary.aborted = %v, want true", got)
+	}
+	if got := summary["failed"]; got != float64(1) {
+		t.Fatalf("summary.failed = %v, want 1", got)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want 1; items=%#v", len(items), items)
+	}
+	item := items[0]
+	if item["rel_path"] != "a.txt" || item["phase"] != "download" || item["error_class"] != "permission_denied" {
+		t.Fatalf("unexpected failed item: %#v", item)
+	}
+	if item["code"] != float64(http.StatusForbidden) || item["retryable"] != false {
+		t.Fatalf("unexpected failure classification: %#v", item)
+	}
+	if _, statErr := os.Stat(filepath.Join("local", "b.txt")); !os.IsNotExist(statErr) {
+		t.Fatalf("b.txt should not be downloaded after terminal permission failure; stat err=%v", statErr)
+	}
+}
+
 // TestDrivePullDeleteLocalDoesNotEscapeViaSymlinkParentRef is the
 // regression for the "link/.." escape applied to --delete-local — the
 // most dangerous variant, since the bug would otherwise let the kernel

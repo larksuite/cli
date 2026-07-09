@@ -55,7 +55,7 @@ var MailTriage = common.Shortcut{
 	Scopes:      []string{"mail:user_mailbox.message:readonly", "mail:user_mailbox.message.address:read", "mail:user_mailbox.message.subject:read", "mail:user_mailbox.message.body:read"},
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
-		{Name: "format", Default: "table", Desc: "output format: table | json | data (json/data output object with pagination fields)"},
+		{Name: "format", Default: "table", Enum: []string{"table", "json", "data"}, Desc: "output format: table | json | data (json/data output object with pagination fields)"},
 		{Name: "max", Type: "int", Default: "20", Desc: "maximum number of messages to fetch (1-400; auto-paginates internally)"},
 		{Name: "page-size", Type: "int", Desc: "alias for --max"},
 		{Name: "page-token", Desc: "pagination token from a previous response to fetch the next page"},

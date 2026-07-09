@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
@@ -14,7 +15,25 @@ import (
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const sheetImageParentType = "sheet_image"
+// Drive media parent_type values for uploading an image into a spreadsheet.
+// Native spreadsheets use "sheet_image"; imported "office" spreadsheets carry a
+// synthetic token prefixed with "fake_office_" and the backend requires
+// "office_sheet_file" instead.
+const (
+	sheetImageParentType      = "sheet_image"
+	officeSheetFileParentType = "office_sheet_file"
+	fakeOfficeTokenPrefix     = "fake_office_"
+)
+
+// sheetMediaParentType returns the drive media parent_type to use when
+// uploading an image whose parent_node is spreadsheetToken, mapping the
+// "fake_office_" imported-spreadsheet token prefix to "office_sheet_file".
+func sheetMediaParentType(spreadsheetToken string) string {
+	if strings.HasPrefix(spreadsheetToken, fakeOfficeTokenPrefix) {
+		return officeSheetFileParentType
+	}
+	return sheetImageParentType
+}
 
 var SheetMediaUpload = common.Shortcut{
 	Service:     "sheets",
@@ -49,7 +68,7 @@ var SheetMediaUpload = common.Shortcut{
 				POST("/open-apis/drive/v1/medias/upload_prepare").
 				Body(map[string]interface{}{
 					"file_name":   fileName,
-					"parent_type": sheetImageParentType,
+					"parent_type": sheetMediaParentType(parentNode),
 					"parent_node": parentNode,
 					"size":        "<file_size>",
 				}).
@@ -71,7 +90,7 @@ var SheetMediaUpload = common.Shortcut{
 			POST("/open-apis/drive/v1/medias/upload_all").
 			Body(map[string]interface{}{
 				"file_name":   fileName,
-				"parent_type": sheetImageParentType,
+				"parent_type": sheetMediaParentType(parentNode),
 				"parent_node": parentNode,
 				"size":        "<file_size>",
 				"file":        "@" + filePath,
@@ -141,13 +160,14 @@ func resolveSheetMediaUploadParent(runtime *common.RuntimeContext) (string, erro
 }
 
 func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName string, fileSize int64, parentNode string) (string, error) {
+	parentType := sheetMediaParentType(parentNode)
 	if fileSize <= common.MaxDriveMediaUploadSinglePartSize {
 		pn := parentNode
 		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   filePath,
 			FileName:   fileName,
 			FileSize:   fileSize,
-			ParentType: sheetImageParentType,
+			ParentType: parentType,
 			ParentNode: &pn,
 		})
 	}
@@ -155,7 +175,7 @@ func uploadSheetMediaFile(runtime *common.RuntimeContext, filePath, fileName str
 		FilePath:   filePath,
 		FileName:   fileName,
 		FileSize:   fileSize,
-		ParentType: sheetImageParentType,
+		ParentType: parentType,
 		ParentNode: parentNode,
 	})
 }

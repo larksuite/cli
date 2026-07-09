@@ -81,6 +81,53 @@ func runShortcutWithStubs(t *testing.T, sc common.Shortcut, args []string, stubs
 	return stdout.String(), err
 }
 
+// requireProblem asserts err carries a typed errs.Problem with the given
+// category and (optional) subtype, and that its message contains msgContains
+// (skip the message check by passing ""). Returns the Problem so callers can
+// drill into the typed envelope's category-specific fields (e.g. cast to
+// *errs.ValidationError to read .Param / .Params / .Cause).
+//
+// Replaces the older "strings.Contains(stdout+stderr+err.Error(), ...)" pattern
+// across sheets tests: substring on a rendered envelope was brittle (any
+// message tweak silently broke it) and didn't verify that the typed contract —
+// category / subtype / cause preservation — held. Per coding guideline
+// "Error-path tests must assert typed metadata via errs.ProblemOf
+// (category / subtype / param) and cause preservation, not message substrings
+// alone."
+func requireProblem(t *testing.T, err error, wantCategory errs.Category, wantSubtype errs.Subtype, msgContains string) *errs.Problem {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatalf("expected typed error carrying errs.Problem, got %T: %v", err, err)
+	}
+	if p.Category != wantCategory {
+		t.Errorf("category = %q, want %q (err=%v)", p.Category, wantCategory, err)
+	}
+	if wantSubtype != "" && p.Subtype != wantSubtype {
+		t.Errorf("subtype = %q, want %q (err=%v)", p.Subtype, wantSubtype, err)
+	}
+	if msgContains != "" && !strings.Contains(p.Message, msgContains) {
+		t.Errorf("message = %q, want containing %q", p.Message, msgContains)
+	}
+	return p
+}
+
+// requireValidation is shorthand for the most common case: a typed
+// CategoryValidation error with SubtypeInvalidArgument. Returns the
+// *errs.ValidationError so callers can also assert on .Param / .Params / .Cause.
+func requireValidation(t *testing.T, err error, msgContains string) *errs.ValidationError {
+	t.Helper()
+	requireProblem(t, err, errs.CategoryValidation, errs.SubtypeInvalidArgument, msgContains)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	return ve
+}
+
 func TestSheetHelpersValidationMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -268,3 +315,52 @@ const (
 	testSheetID  = "shtSubA"
 	testSheetID2 = "shtSubB"
 )
+
+// TestParseSpreadsheetRef locks the network-free classification of
+// --url / --spreadsheet-token into a sheet token vs an (unresolved) wiki
+// node_token. The wiki node is resolved later, at Execute time only.
+func TestParseSpreadsheetRef(t *testing.T) {
+	t.Parallel()
+	mk := func(url, tok string) *common.RuntimeContext {
+		cmd := &cobra.Command{Use: "sheets"}
+		cmd.Flags().String("url", url, "")
+		cmd.Flags().String("spreadsheet-token", tok, "")
+		return common.TestNewRuntimeContext(cmd, testConfig(t))
+	}
+	cases := []struct {
+		name      string
+		url       string
+		tok       string
+		wantKind  string
+		wantToken string
+		wantErr   bool
+	}{
+		{name: "sheets url", url: "https://x.feishu.cn/sheets/shtABC", wantKind: spreadsheetRefSheet, wantToken: "shtABC"},
+		{name: "spreadsheets url", url: "https://x.feishu.cn/spreadsheets/shtABC", wantKind: spreadsheetRefSheet, wantToken: "shtABC"},
+		{name: "wiki url", url: "https://x.feishu.cn/wiki/wikDEF", wantKind: spreadsheetRefWiki, wantToken: "wikDEF"},
+		{name: "wiki url with query", url: "https://x.feishu.cn/wiki/wikDEF?sheet=xxxxxx", wantKind: spreadsheetRefWiki, wantToken: "wikDEF"},
+		{name: "raw token", tok: "shtRAW", wantKind: spreadsheetRefSheet, wantToken: "shtRAW"},
+		{name: "sheets url with /wiki/ in query stays sheet", url: "https://x.feishu.cn/sheets/shtABC?from=/wiki/wikX", wantKind: spreadsheetRefSheet, wantToken: "shtABC"},
+		{name: "sheets url with /wiki/ in fragment stays sheet", url: "https://x.feishu.cn/sheets/shtABC#/wiki/wikX", wantKind: spreadsheetRefSheet, wantToken: "shtABC"},
+		{name: "docx url unsupported", url: "https://x.feishu.cn/docx/docABC", wantErr: true},
+		{name: "neither provided", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ref, err := parseSpreadsheetRef(mk(tc.url, tc.tok))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("want error, got ref=%+v", ref)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ref.Kind != tc.wantKind || ref.Token != tc.wantToken {
+				t.Fatalf("ref = %+v, want {Kind:%s Token:%s}", ref, tc.wantKind, tc.wantToken)
+			}
+		})
+	}
+}

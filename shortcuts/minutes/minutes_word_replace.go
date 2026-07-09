@@ -148,7 +148,7 @@ func minutesWordReplaceError(err error, minuteToken string) error {
 		if strings.Contains(strings.ToLower(p.Message), "not found in transcript") {
 			p.Subtype = errs.SubtypeNotFound
 			p.Message = fmt.Sprintf("None of the source words were found in minute %q transcript; nothing was replaced.", minuteToken)
-			p.Hint = "Verify each source_word's exact spelling and case against the current transcript (use vc +notes to read it), then retry"
+			p.Hint = "Verify each source_word's exact spelling and case against the current transcript (use `minutes +detail --minute-tokens <token> --transcript` to read it), then retry"
 		}
 	}
 

@@ -142,9 +142,7 @@ func TestNormalizeMCPToolResult(t *testing.T) {
 
 			got, err := normalizeMCPToolResult(tt.raw)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("expected error containing %q, got %v", tt.wantErr, err)
-				}
+				requireProblem(t, err, errs.CategoryAPI, errs.SubtypeUnknown, tt.wantErr)
 				return
 			}
 			if err != nil {

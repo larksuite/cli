@@ -199,16 +199,7 @@ func TestParseDriveMediaMultipartUploadSessionTypedValidatesResponseFields(t *te
 			t.Parallel()
 
 			_, err := parseDriveMediaMultipartUploadSessionTyped(tt.data)
-			if err == nil || !strings.Contains(err.Error(), tt.wantText) {
-				t.Fatalf("err = %v, want substring %q", err, tt.wantText)
-			}
-			p, ok := errs.ProblemOf(err)
-			if !ok {
-				t.Fatalf("expected typed problem, got %T (%v)", err, err)
-			}
-			if p.Subtype != errs.SubtypeInvalidResponse {
-				t.Fatalf("subtype = %s, want invalid_response", p.Subtype)
-			}
+			requireProblem(t, err, errs.CategoryInternal, errs.SubtypeInvalidResponse, tt.wantText)
 		})
 	}
 }

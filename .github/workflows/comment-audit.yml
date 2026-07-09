@@ -1,0 +1,28 @@
+name: Comment Audit
+
+on:
+  issue_comment:
+    types: [created, edited]
+  pull_request_review:
+    types: [submitted, edited]
+  pull_request_review_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  public-content-comment-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Post-publication comment audit
+        run: |
+          mkdir -p .tmp/comment-audit
+          cp "$GITHUB_EVENT_PATH" .tmp/comment-audit/event.json
+          go run ./internal/qualitygate/cmd/comment-audit --event .tmp/comment-audit/event.json --kind "$GITHUB_EVENT_NAME"

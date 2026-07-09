@@ -106,7 +106,7 @@ lark-cli vc +meeting-list-active --as bot --user-id <user_open_id> --format json
 lark-cli vc +meeting-join --as bot --meeting-number 123456789
 
 # 第 2 步：会议结束后，先查询会议产物
-lark-cli vc +notes --meeting-ids <meeting.id>
+lark-cli vc +detail --meeting-ids <meeting.id>
 ```
 
 后续按 `lark-vc` 的产物决策处理：根据 `note_display_type`、`note_id`、`minute_token` 和用户意图选择纪要正文、逐字稿或妙记。
@@ -135,7 +135,7 @@ lark-cli vc +notes --meeting-ids <meeting.id>
 - [lark-vc-agent-meeting-events](lark-vc-agent-meeting-events.md) — 会中事件流
 - [lark-vc-search](../../lark-vc/references/lark-vc-search.md) — 搜索历史会议记录
 - [lark-vc-recording](../../lark-vc/references/lark-vc-recording.md) — 查询 minute_token
-- [lark-vc-notes](../../lark-vc/references/lark-vc-notes.md) — 获取会议纪要
+- [lark-vc-detail](../../lark-vc/references/lark-vc-detail.md) — 获取会议详情
 - [lark-vc-agent](../SKILL.md) — Agent 参会能力（本 skill）
 - [lark-vc](../../lark-vc/SKILL.md) — 视频会议原子域（Meeting / Note 等核心概念）
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

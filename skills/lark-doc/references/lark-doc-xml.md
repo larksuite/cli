@@ -10,10 +10,6 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 | `<title>` | 文档标题（每篇唯一）| `align` |
 | `<checkbox>` | 待办项| `done="true"\|"false"` |
 
-## 创建文档标题
-
-使用 `docs +create` 创建 XML 文档时，文档标题必须写成 `<title>标题</title>`，且每篇文档只写一个 `<title>`。
-
 ## 容器标签
 |标签|说明|关键属性|
 |-|-|-|
@@ -45,7 +41,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 文档中可嵌入外部资源块（属于容器标签的特殊形式），需要额外语法创建：
 
 - `<img>` — `<img href="https://..."/>` 上传网络图片
-- `<whiteboard>` — 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整自包含 SVG</whiteboard>`；复杂图使用 `<whiteboard type="blank"></whiteboard>` 先创建空白画板，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 调用 `lark-whiteboard` 写入；
+- `<whiteboard>` — 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整自包含 SVG</whiteboard>`；也可用本地文件简写 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`、`<whiteboard type="mermaid" path="@flow.mmd"></whiteboard>`、`<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>`，CLI 会写入前展开为内联内容；复杂图使用 `<whiteboard type="blank"></whiteboard>` 先创建空白画板，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 调用 `lark-whiteboard` 写入；
 - `<sheet>` — `<sheet type="blank"></sheet>` 空白；`<sheet sheet-id="SID" token="TOKEN"></sheet>` 复制已有
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id
