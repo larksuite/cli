@@ -30,7 +30,7 @@ var AppsDBAuditStatus = common.Shortcut{
 	Flags: append([]common.Flag{
 		{Name: "app-id", Desc: "Miaoda app id", Required: true},
 		{Name: "table", Desc: "show status for a single table (default: all configured tables)"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -75,7 +75,7 @@ var AppsDBAuditStatus = common.Shortcut{
 
 // buildAuditStatusParams 组装 audit_status 查询参数：env 及可选 table（单表查询）。
 func buildAuditStatusParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": dbEnv(rctx)}
+	params := dbEnvParams(rctx, map[string]interface{}{})
 	if t := strings.TrimSpace(rctx.Str("table")); t != "" {
 		params["table"] = t
 	}

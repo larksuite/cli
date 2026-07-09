@@ -11,7 +11,7 @@
 - 必填：`--app-id`，以及 `--sql` / `--file` 二选一（互斥）。
 - `--sql`：内联 SQL 文本；传 `-` 时从 stdin 读。绝对路径文件经 stdin 传入：`--sql - < <absolute-path>`（shell 解析路径，CLI 仅接收内容）。
 - `--file`：`.sql` 文件路径，需为工作目录内的相对路径（如 `--file ./migration.sql`）；绝对路径、或经 `..`/符号链接越出工作目录的路径会被拒绝。文件不在工作目录内时，改用 `--sql - < <文件路径>` 经 stdin 传入。
-- `--environment` 枚举：`dev` / `online`，**默认 `dev`**；操作线上库、或**未开启多环境的应用（其数据库在 `online`，没有 dev 分支）**时显式 `--environment online`。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。
+- `--environment` 枚举：`dev` / `online`，**不传则由服务端按应用是否开启多环境自动选择（多环境→`dev`，未开启多环境→`online`）**；要固定环境就显式传 `--environment dev|online`。**未开启多环境的应用显式传 `--environment dev` 会报错（无 dev 分支）——这类应用不传 `--environment`（走 `online`）或显式 `--environment online`**。旧名 `--env` 已**移除**：传入会报 validation 错（提示改用 `--environment`），一律用 `--environment`。
 - risk 是 `high-risk-write`（SQL 可含 DML/DDL）：任何执行都需 `--yes`，否则返回 `confirmation_required` / exit 10。`--dry-run` 预览不需要 `--yes`。
 - **不会自动为你包事务，事务边界需自己在 SQL 里控制**：多语句默认逐条独立提交，中间某条失败时前序语句已生效、不会回滚；若需要「要么全部成功、要么全部回滚」的原子性，请在 SQL 内显式写 `BEGIN … COMMIT`（详见下「Agent 规则」）。
 

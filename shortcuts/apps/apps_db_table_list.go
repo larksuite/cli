@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
@@ -42,7 +43,7 @@ var AppsDBTableList = common.Shortcut{
 		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	}, dbEnvFlags("dev", []string{"dev", "online"}, "target db environment (default dev; use online for the online environment, or for an app whose DB is not multi-env)")...),
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
@@ -110,10 +111,9 @@ func projectTableListItems(raw interface{}) []dbTableListItem {
 }
 
 func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       dbEnv(rctx),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	if token := strings.TrimSpace(rctx.Str("page-token")); token != "" {
 		params["page_token"] = token
 	}
@@ -282,6 +282,17 @@ func numericAsFloat(raw interface{}) (float64, bool) {
 		return float64(v), true
 	case json.Number:
 		f, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case string:
+		// 服务端有些数值字段（如 recovery diff 的 inserted/deleted 行数）以字符串下发。
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(s, 64)
 		if err != nil {
 			return 0, false
 		}

@@ -12,6 +12,16 @@ metadata:
 
 妙搭应用属于用户资产。默认用 `--as user`；认证、scope、exit-10、高风险确认、`_notice` 等通用处理只读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，不要在本 skill 里复制。妙搭应用有三条开发路径：**本地全栈**（拉源码本地写）/ **HTML 托管**（发布静态产物）/ **云端会话**（妙搭 AI 生成）。
 
+## 身份与一次性授权
+
+妙搭应用是用户的个人资产，统一 `--as user`（见开头）。**首次操作前先一次性把本域 scope 全拿到**，避免每条命令首次跑都触发新一轮授权，或未授权直接打到 openapi 导致服务端报错：
+
+```bash
+lark-cli auth login --domain apps
+```
+
+因缺权限失败（`error.subtype == "missing_scope"`）时的通用处理见 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)，同样按 `--domain apps` 授权。
+
 ## 意图路由
 
 按具体操作查命令（开发路径先用下方「选择开发路径」判定表定好再进来取命令）：

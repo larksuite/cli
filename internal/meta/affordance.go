@@ -8,8 +8,11 @@ import "encoding/json"
 // Affordance is the typed usage guidance overlaid on a method. It is the single
 // model the envelope renderer and the command help both parse, so the
 // vocabulary is defined once; the JSON tags double as the envelope wire shape.
-// Skills entries are skill names (or name/path) rendered as runnable
-// `lark-cli skills read <entry>` pointers.
+// Skills entries are either a bare skill name (e.g. "lark-doc") or a
+// name/relative-path reference (e.g. "lark-contact/references/x.md"); both
+// render as runnable `lark-cli skills read <entry>` pointers. Help validates
+// each against the embedded skill tree (a name → its SKILL.md, a reference →
+// that path) and drops any that do not resolve.
 type Affordance struct {
 	UseWhen       []string            `json:"use_when,omitempty"`
 	AvoidWhen     []string            `json:"avoid_when,omitempty"`

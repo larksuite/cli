@@ -184,6 +184,7 @@ var DrivePull = common.Shortcut{
 
 		var downloaded, skipped, failed, deletedLocal int
 		downloadFailed := 0
+		aborted := false
 		items := make([]drivePullItem, 0)
 
 		// Deterministic iteration order for output stability.
@@ -194,7 +195,7 @@ var DrivePull = common.Shortcut{
 		sort.Strings(downloadablePaths)
 
 		for _, rel := range downloadablePaths {
-			if drivePullHasTerminalFailure(items) {
+			if aborted {
 				break
 			}
 			targetFile := remoteFiles[rel]
@@ -232,6 +233,7 @@ var DrivePull = common.Shortcut{
 				failed++
 				downloadFailed++
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +pull after terminal %s failure: %v\n", item.Phase, err)
 					break
 				}
@@ -298,7 +300,7 @@ var DrivePull = common.Shortcut{
 				"skipped":       skipped,
 				"failed":        failed,
 				"deleted_local": deletedLocal,
-				"aborted":       drivePullHasTerminalFailure(items),
+				"aborted":       aborted,
 			},
 			"items": items,
 		}
@@ -345,15 +347,6 @@ func drivePullFailedItem(relPath, fileToken, sourceID, action, phase string, err
 		Retryable:  driveBoolPtr(decision.Retryable),
 	}
 	return item, decision.Terminal
-}
-
-func drivePullHasTerminalFailure(items []drivePullItem) bool {
-	for _, item := range items {
-		if driveTerminalBatchErrorClass(item.ErrorClass) {
-			return true
-		}
-	}
-	return false
 }
 
 // drivePullDownload streams one Drive file into the local mirror target and

@@ -35,6 +35,7 @@ type drivePushItem struct {
 	Version    string `json:"version,omitempty"`
 	SizeBytes  int64  `json:"size_bytes,omitempty"`
 	Error      string `json:"error,omitempty"`
+	Hint       string `json:"hint,omitempty"`
 	Phase      string `json:"phase,omitempty"`
 	ErrorClass string `json:"error_class,omitempty"`
 	Code       int    `json:"code,omitempty"`
@@ -48,6 +49,7 @@ type driveBatchFailureDecision struct {
 	Subtype   string
 	Retryable bool
 	Terminal  bool
+	Hint      string
 }
 
 // DrivePush is a one-way, file-level mirror from a local directory onto a
@@ -240,6 +242,7 @@ var DrivePush = common.Shortcut{
 		// locally and now on Drive too), which is the worst-of-both-worlds
 		// outcome the review flagged.
 		uploadFailed := false
+		aborted := false
 
 		// folderCache holds rel_path → folder_token. Seeded from the remote
 		// listing (so we don't recreate folders that already exist) and
@@ -266,6 +269,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
@@ -284,7 +288,7 @@ var DrivePush = common.Shortcut{
 
 		for _, rel := range localPaths {
 			localFile := localFiles[rel]
-			if uploadFailed && drivePushHasTerminalFailure(items) {
+			if uploadFailed && aborted {
 				break
 			}
 
@@ -301,6 +305,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, parentErr)
 						break
 					}
@@ -332,6 +337,7 @@ var DrivePush = common.Shortcut{
 					failed++
 					uploadFailed = true
 					if terminal {
+						aborted = true
 						fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 						break
 					}
@@ -350,6 +356,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, ensureErr)
 					break
 				}
@@ -362,6 +369,7 @@ var DrivePush = common.Shortcut{
 				failed++
 				uploadFailed = true
 				if terminal {
+					aborted = true
 					fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, upErr)
 					break
 				}
@@ -407,10 +415,15 @@ var DrivePush = common.Shortcut{
 						continue
 					}
 					if err := drivePushDeleteFile(ctx, runtime, entry.FileToken); err != nil {
+						if drivePushIsAlreadyDeleted(err) {
+							items = append(items, drivePushItem{RelPath: rel, FileToken: entry.FileToken, Action: "already_deleted"})
+							continue
+						}
 						item, terminal := drivePushFailedItem(rel, entry.FileToken, "delete_failed", "delete", 0, err)
 						items = append(items, item)
 						failed++
 						if terminal {
+							aborted = true
 							fmt.Fprintf(runtime.IO().ErrOut, "Aborting +push after terminal %s failure: %v\n", item.Phase, err)
 							abortDelete = true
 							break
@@ -429,7 +442,7 @@ var DrivePush = common.Shortcut{
 				"skipped":        skipped,
 				"failed":         failed,
 				"deleted_remote": deletedRemote,
-				"aborted":        drivePushHasTerminalFailure(items),
+				"aborted":        aborted,
 			},
 			"items": items,
 		}
@@ -567,6 +580,7 @@ func drivePushFailedItem(relPath, fileToken, action, phase string, sizeBytes int
 		Action:     action,
 		SizeBytes:  sizeBytes,
 		Error:      err.Error(),
+		Hint:       decision.Hint,
 		Phase:      phase,
 		ErrorClass: decision.Class,
 		Code:       decision.Code,
@@ -609,10 +623,18 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	case problem.Subtype == errs.SubtypeRateLimit || problem.Code == 99991400:
 		decision.Class = "rate_limited"
 		decision.Terminal = true
+	case problem.Code == 1062507:
+		decision.Class = "parent_sibling_limit"
+		decision.Terminal = true
+		decision.Hint = "The destination parent folder has reached its child-count limit. Clean up that folder, choose another --folder-token, or split the upload across subfolders before retrying."
 	case problem.Subtype == errs.SubtypeQuotaExceeded || problem.Code == 1061043:
 		decision.Class = "file_size_limit"
 	case problem.Code == 1062009:
 		decision.Class = "upload_size_mismatch"
+	case problem.Code == 1061044:
+		decision.Class = "parent_node_missing"
+		decision.Terminal = true
+		decision.Hint = "The destination parent folder no longer exists or is not visible. Verify --folder-token, folder permissions, and whether a parent directory was deleted during push before retrying."
 	case problem.Subtype == errs.SubtypeNotFound || problem.Code == 1061007:
 		decision.Class = "remote_not_found"
 	case problem.Subtype == errs.SubtypeServerError || problem.Code == 1061001 || problem.Code == 2200:
@@ -626,22 +648,9 @@ func driveClassifyBatchFailure(err error) driveBatchFailureDecision {
 	return decision
 }
 
-func drivePushHasTerminalFailure(items []drivePushItem) bool {
-	for _, item := range items {
-		if driveTerminalBatchErrorClass(item.ErrorClass) {
-			return true
-		}
-	}
-	return false
-}
-
-func driveTerminalBatchErrorClass(errorClass string) bool {
-	switch errorClass {
-	case "app_scope_missing", "user_scope_missing", "permission_denied", "invalid_api_parameters", "rate_limited", "server_error":
-		return true
-	default:
-		return false
-	}
+func drivePushIsAlreadyDeleted(err error) bool {
+	problem, ok := errs.ProblemOf(err)
+	return ok && problem.Code == 1061007
 }
 
 func drivePushRemoteViews(entries []driveRemoteEntry, duplicateRemote string) (map[string]driveRemoteEntry, map[string]driveRemoteEntry, map[string][]driveRemoteEntry, error) {

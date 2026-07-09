@@ -143,4 +143,28 @@ func TestMinutesUpload_Execute(t *testing.T) {
 	if dataMap["minute_url"] != "https://sample.feishu.cn/minutes/obcnq3b9jl72l83w4f149w9c" {
 		t.Errorf("expected minute_url https://sample.feishu.cn/minutes/obcnq3b9jl72l83w4f149w9c, got %v", dataMap["minute_url"])
 	}
+	if dataMap["minute_token"] != "obcnq3b9jl72l83w4f149w9c" {
+		t.Errorf("expected minute_token obcnq3b9jl72l83w4f149w9c, got %v", dataMap["minute_token"])
+	}
+}
+
+func TestExtractUploadedMinuteToken(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "standard", url: "https://sample.feishu.cn/minutes/obcnq3b9jl72l83w4f149w9c", want: "obcnq3b9jl72l83w4f149w9c"},
+		{name: "query", url: "https://sample.feishu.cn/minutes/obcn123?from=upload", want: "obcn123"},
+		{name: "trailing slash", url: "https://sample.feishu.cn/minutes/obcn123/", want: "obcn123"},
+		{name: "invalid", url: "://bad", want: ""},
+		{name: "no minutes path", url: "https://sample.feishu.cn/docx/abc", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := extractUploadedMinuteToken(tt.url); got != tt.want {
+				t.Fatalf("extractUploadedMinuteToken(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
 }

@@ -1,6 +1,5 @@
 # minutes +summary
 
-> **前置条件：** 先阅读 [`../lark-shared/SKILL.md`](../../lark-shared/SKILL.md) 了解认证、全局参数和安全规则。
 
 替换妙记的 AI 总结内容。写操作，会覆盖当前总结。
 
@@ -119,4 +118,3 @@ lark-cli minutes +summary --minute-token obcnxxxxxxxxxxxxxxxxxxxx --summary @sum
 - [lark-minutes](../SKILL.md) — 妙记全部命令
 - [minutes +todo](lark-minutes-todo.md) — 替换待办项
 - [minutes +detail](lark-minutes-detail.md) — 读取总结、待办等 AI 产物
-- [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数

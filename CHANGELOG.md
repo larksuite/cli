@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v1.0.67] - 2026-07-08
+
+### Features
+
+- **mail**: add message modify and trash shortcuts (#1567)
+- support whiteboard file inputs in docs XML (#1784)
+- **vc**: refine meeting-events output and reaction forwarding (#1674)
+- **affordance**: usage guidance for shortcuts and per-command skills (#1793)
+
+### Bug Fixes
+
+- accept opaque wiki node tokens (#1789)
+- **apps**: make db --environment optional, auto-select branch server-side (#1735)
+- preserve original filename in multipart file upload (#1767)
+
+### Documentation
+
+- restore one-time authorization guidance in lark-apps skill (#1794)
+
+### Misc
+
+- e2e: harden CLI E2E retry, cleanup, and domain selection (#1709)
+
+## [v1.0.66] - 2026-07-07
+
+### Features
+
+- support semantic recurring calendar operations (#1723)
+- minute wait (#1768)
+
+### Bug Fixes
+
+- guide drive import concurrency conflicts (#1751)
+- **calendar**: guide approval room booking fallback (#1637)
+- support pnpm global installs in self-update (#1705)
+- resolve schema against runtime metadata in plugin builds; gate cache overlay by version (#1764)
+
+### Documentation
+
+- tighten doc creation validation workflow (#1759)
+- clarify success envelope contract — judge success by ok, not code (#1730)
+
+### Refactoring
+
+- **envvars**: consolidate agent env value access (#1757)
+
+### Misc
+
+- Improve agent-facing error guidance for drive, markdown, and wiki (#1779)
+
 ## [v1.0.65] - 2026-07-03
 
 ### Features
@@ -1371,6 +1421,8 @@ Bundled AI agent skills for intelligent assistance:
 - Bilingual documentation (English & Chinese).
 - CI/CD pipelines: linting, testing, coverage reporting, and automated releases.
 
+[v1.0.67]: https://github.com/larksuite/cli/releases/tag/v1.0.67
+[v1.0.66]: https://github.com/larksuite/cli/releases/tag/v1.0.66
 [v1.0.65]: https://github.com/larksuite/cli/releases/tag/v1.0.65
 [v1.0.64]: https://github.com/larksuite/cli/releases/tag/v1.0.64
 [v1.0.62]: https://github.com/larksuite/cli/releases/tag/v1.0.62

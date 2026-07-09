@@ -97,6 +97,16 @@ var AppsDBEnvMigrate = common.Shortcut{
 		if err != nil {
 			return err
 		}
+		// 先 dry_run 预览拿待发布变更数（对齐 miaoda-cli 的 diff-then-apply）：服务端在未经
+		// dry_run 预热时直接 apply，虽发布成功却把 changes_applied 回填成 0（展示「Migrated (0 changes)」）。
+		// 这一步既预热服务端计数、又作为 apply 仍回 0 时的兜底数。dry_run 报错（如无待发布变更）不阻断，
+		// 交由下面真实 apply 统一报同样的业务错。
+		pending := 0
+		var previewFrom, previewTo string
+		if preview, perr := rctx.CallAPITyped("POST", appEnvMigratePath(appID), nil, map[string]interface{}{"dry_run": true}); perr == nil {
+			pending = len(projectMigrationChanges(preview["changes"]))
+			previewFrom, previewTo = common.GetString(preview, "from"), common.GetString(preview, "to")
+		}
 		stop := rctx.StartSpinner("Applying migration (dev → online)")
 		defer stop()
 		submit, err := rctx.CallAPITyped("POST", appEnvMigratePath(appID), nil, map[string]interface{}{"dry_run": false})
@@ -104,6 +114,12 @@ var AppsDBEnvMigrate = common.Shortcut{
 			return withAppsHint(err, dbEnvMigrateHint)
 		}
 		from, to := common.GetString(submit, "from"), common.GetString(submit, "to")
+		if from == "" {
+			from = previewFrom
+		}
+		if to == "" {
+			to = previewTo
+		}
 		taskID := common.GetString(submit, "task_id")
 		applied := intFromAny(submit["changes_applied"])
 		if applied == 0 {
@@ -130,6 +146,10 @@ var AppsDBEnvMigrate = common.Shortcut{
 			if n := intFromAny(final["changes_applied"]); n > 0 {
 				applied = n
 			}
+		}
+		// 服务端把发布成功的变更数回 0 时，用发布前 dry_run 预览的 pending 数兜底，避免误显示「(0 changes)」。
+		if applied == 0 && pending > 0 {
+			applied = pending
 		}
 		stop() // clear spinner before printing the result
 		out := map[string]interface{}{"status": "migrated", "from": from, "to": to, "changes_applied": applied}

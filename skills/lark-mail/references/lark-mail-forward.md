@@ -215,7 +215,7 @@ lark-cli mail user_mailbox.drafts cancel_scheduled_send --params '{"user_mailbox
 **2. 标记已读**（可选）— 询问用户是否需要将原邮件标记为已读。如果用户同意：
 
 ```bash
-lark-cli mail user_mailbox.messages batch_modify --params '{"user_mailbox_id":"me"}' --data '{"message_ids":["<原邮件ID>"],"remove_label_ids":["UNREAD"]}'
+lark-cli mail +message-modify --message-ids <原邮件ID> --remove-label-ids UNREAD
 ```
 
 ## 编辑转发草稿

@@ -889,6 +889,7 @@ func (s Shortcut) mountDeclarative(ctx context.Context, parent *cobra.Command, f
 		}
 	}
 	cmdmeta.SetSource(cmd, cmdmeta.SourceShortcut, false)
+	cmdmeta.SetAffordanceRef(cmd, shortcut.Service, shortcut.Command)
 	cmdutil.SetSupportedIdentities(cmd, shortcut.AuthTypes)
 	registerShortcutFlagsWithContext(ctx, cmd, f, &shortcut)
 	cmdutil.SetTips(cmd, shortcut.Tips)
@@ -1026,6 +1027,7 @@ func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, conf
 	}
 	rctx.larkSDK = sdk
 
+	applyJSONShorthand(cmd, s)
 	rctx.Format = rctx.Str("format")
 	rctx.JqExpr, _ = cmd.Flags().GetString("jq")
 	return rctx, nil
@@ -1172,6 +1174,75 @@ func registerShortcutFlags(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) 
 	registerShortcutFlagsWithContext(context.Background(), cmd, f, s)
 }
 
+// shortcutDeclaresJSONFlag reports whether the shortcut itself declares a flag
+// named "json" in its Flags list (custom semantics, e.g. event +subscribe's
+// pretty-print switch or base +record-search's request-body payload).
+// Framework-injected flags never appear in s.Flags, so this cleanly separates
+// "self-declared json" from "injected shorthand".
+func shortcutDeclaresJSONFlag(s *Shortcut) bool {
+	for _, fl := range s.Flags {
+		if fl.Name == "json" {
+			return true
+		}
+	}
+	return false
+}
+
+// shortcutFormatSupportsJSON reports whether the command's format flag accepts
+// "json": a self-declared format supports it only when its Enum lists "json";
+// a framework-injected default format (no format entry in s.Flags) always does.
+func shortcutFormatSupportsJSON(s *Shortcut) bool {
+	for _, fl := range s.Flags {
+		if fl.Name == "format" {
+			return slices.Contains(fl.Enum, "json")
+		}
+	}
+	return true // framework-injected: json (default) | pretty | table | ndjson | csv
+}
+
+// ensureJSONShorthand registers --json as a shorthand for --format json when:
+//  1. the command has a format flag (self-declared or framework-injected), AND
+//  2. that format supports "json" (see shortcutFormatSupportsJSON), AND
+//  3. no flag named "json" is registered yet — pflag panics on duplicate
+//     registration, and commands that declare their own --json (event
+//     +subscribe, base +record-search/-get) keep their custom semantics.
+func ensureJSONShorthand(cmd *cobra.Command, s *Shortcut) {
+	// A shortcut that declares its own "json" flag defines custom semantics
+	// (e.g. pretty-print switch, request-body payload) — never a shorthand.
+	if shortcutDeclaresJSONFlag(s) {
+		return
+	}
+	if cmd.Flags().Lookup("format") == nil {
+		return
+	}
+	if !shortcutFormatSupportsJSON(s) {
+		return
+	}
+	// Safety net: pflag panics on duplicate registration.
+	if cmd.Flags().Lookup("json") != nil {
+		return
+	}
+	cmd.Flags().Bool("json", false, "shorthand for --format json")
+}
+
+// applyJSONShorthand folds the injected --json shorthand into the format flag
+// itself, before rctx.Format caches it — so both the cached value (OutFormat,
+// ValidateJqFlags, dry-run) and later runtime.Str("format") reads observe
+// "json". An explicitly passed --format always wins over the shorthand (the
+// shorthand only fills in when the user did not choose a format). Shortcuts
+// that declare their own "json" flag keep its custom semantics untouched.
+func applyJSONShorthand(cmd *cobra.Command, s *Shortcut) {
+	if shortcutDeclaresJSONFlag(s) {
+		return
+	}
+	if cmd.Flags().Lookup("json") == nil || cmd.Flags().Changed("format") {
+		return
+	}
+	if set, _ := cmd.Flags().GetBool("json"); set {
+		_ = cmd.Flags().Set("format", "json")
+	}
+}
+
 func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut) {
 	for _, fl := range s.Flags {
 		desc := fl.Desc
@@ -1235,10 +1306,8 @@ func registerShortcutFlagsWithContext(ctx context.Context, cmd *cobra.Command, f
 		cmdutil.RegisterFlagCompletion(cmd, "format", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 			return []string{"json", "pretty", "table", "ndjson", "csv"}, cobra.ShellCompDirectiveNoFileComp
 		})
-		if cmd.Flags().Lookup("json") == nil {
-			cmd.Flags().Bool("json", false, "shorthand for --format json")
-		}
 	}
+	ensureJSONShorthand(cmd, s)
 	if s.Risk == "high-risk-write" {
 		cmd.Flags().Bool("yes", false, "confirm high-risk operation")
 	}

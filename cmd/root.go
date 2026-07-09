@@ -679,7 +679,11 @@ func installTipsHelpFunc(root *cobra.Command) {
 			defaultHelp(cmd, args)
 			return
 		}
-		if service.PrepareMethodHelp(cmd) {
+		if service.PrepareMethodHelp(cmd, embeddedSkillContent) {
+			defaultHelp(cmd, args)
+			return
+		}
+		if service.PrepareShortcutHelp(cmd, embeddedSkillContent) {
 			defaultHelp(cmd, args)
 			return
 		}

@@ -263,13 +263,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E domains
+        id: e2e_domains
+        run: node scripts/e2e_domains.js
       - name: Build lark-cli
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Run dry-run E2E tests
         env:
@@ -277,7 +283,28 @@ jobs:
           LARKSUITE_CLI_APP_ID: dry-run
           LARKSUITE_CLI_APP_SECRET: dry-run
           LARKSUITE_CLI_BRAND: feishu
-        run: go test -v -count=1 -timeout=5m ./tests/cli_e2e/... -run 'DryRun|Regression'
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
+          E2E_DRY_ROOT_PACKAGE: ${{ steps.e2e_domains.outputs.dry_root_package }}
+          E2E_DRY_PACKAGES: ${{ steps.e2e_domains.outputs.dry_packages }}
+        run: |
+          if [ "$E2E_MODE" = "skip" ]; then
+            echo "No dry-run CLI E2E needed: $E2E_REASON"
+            exit 0
+          fi
+          if [ -z "$E2E_DRY_ROOT_PACKAGE" ] && [ -z "$E2E_DRY_PACKAGES" ]; then
+            echo "::error::No dry-run CLI E2E packages resolved for mode $E2E_MODE"
+            exit 1
+          fi
+          echo "Dry-run CLI E2E domains: $E2E_MODE ($E2E_REASON)"
+          if [ -n "$E2E_DRY_ROOT_PACKAGE" ]; then
+            echo "Dry-run CLI E2E root package: $E2E_DRY_ROOT_PACKAGE"
+            go test -v -count=1 -timeout=5m "$E2E_DRY_ROOT_PACKAGE"
+          fi
+          if [ -n "$E2E_DRY_PACKAGES" ]; then
+            echo "Dry-run CLI E2E packages: $E2E_DRY_PACKAGES"
+            go test -v -count=1 -timeout=5m $E2E_DRY_PACKAGES -run 'DryRun|Regression'
+          fi
 
   e2e-live:
     needs: [unit-test, lint, script-test, deterministic-gate]
@@ -292,15 +319,22 @@ jobs:
       TEST_USER_ACCESS_TOKEN: ${{ secrets.TEST_USER_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
         with:
           python-version: '3.x'
+      - name: Resolve CLI E2E domains
+        id: e2e_domains
+        run: node scripts/e2e_domains.js
       - name: Build lark-cli
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: make build
       - name: Configure bot credentials
+        if: ${{ steps.e2e_domains.outputs.mode != 'skip' }}
         run: |
           if [ -z "$TEST_BOT1_APP_ID" ] || [ -z "$TEST_BOT1_APP_SECRET" ]; then
             echo "::error::Missing required secrets: TEST_BOT1_APP_ID / TEST_BOT1_APP_SECRET"
@@ -310,16 +344,24 @@ jobs:
       - name: Run CLI E2E tests
         env:
           LARK_CLI_BIN: ${{ github.workspace }}/lark-cli
+          E2E_MODE: ${{ steps.e2e_domains.outputs.mode }}
+          E2E_REASON: ${{ steps.e2e_domains.outputs.reason }}
+          E2E_LIVE_PACKAGES: ${{ steps.e2e_domains.outputs.live_packages }}
         run: |
-          packages=$(go list ./tests/cli_e2e/... | grep -v '^github.com/larksuite/cli/tests/cli_e2e$' | grep -v '/demo$')
+          if [ "$E2E_MODE" = "skip" ]; then
+            echo "No live CLI E2E needed: $E2E_REASON"
+            exit 0
+          fi
+          packages="$E2E_LIVE_PACKAGES"
           if [ -z "$packages" ]; then
-            echo "No CLI E2E packages to test after exclusions."
+            echo "::error::No live CLI E2E packages resolved for mode $E2E_MODE"
             exit 1
           fi
-          packages_arg=$(printf '%s\n' "$packages" | paste -sd' ' -)
-          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages_arg" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
+          echo "Live CLI E2E domains: $E2E_MODE ($E2E_REASON)"
+          echo "Live CLI E2E packages: $packages"
+          go run gotest.tools/gotestsum@v1.12.3 --rerun-fails=2 --rerun-fails-max-failures=20 --packages="$packages" --format testname --junitfile cli-e2e-report.xml -- -count=1 -v
       - name: Publish CLI E2E test report
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.e2e_domains.outputs.mode != 'skip' }}
         uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: CLI E2E Tests
