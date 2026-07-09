@@ -74,8 +74,10 @@ func executeFetchV2(_ context.Context, runtime *common.RuntimeContext) error {
 	if err := processHTML5BlockReferenceMapForFetch(runtime, effectiveFetchFormat(runtime), ref.Token, data); err != nil {
 		return err
 	}
-	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" && runtime.Format == "pretty" {
-		fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+	for _, warning := range addFetchWarnings(runtime, data) {
+		if runtime.Format == "pretty" {
+			fmt.Fprintf(runtime.IO().ErrOut, "warning: %s\n", warning)
+		}
 	}
 	if isIMMarkdownFetch(runtime) {
 		applyFetchIMMarkdown(data, runtime.Str("doc"))
@@ -192,6 +194,17 @@ func effectiveFetchDetail(runtime *common.RuntimeContext) string {
 	return detail
 }
 
+func addFetchWarnings(runtime *common.RuntimeContext, data map[string]interface{}) []string {
+	var warnings []string
+	if warning := addFetchDetailDowngradeWarning(runtime, data); warning != "" {
+		warnings = append(warnings, warning)
+	}
+	if warning := addFetchMarkdownHeadingSeqWarning(runtime, data); warning != "" {
+		warnings = append(warnings, warning)
+	}
+	return warnings
+}
+
 func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[string]interface{}) string {
 	format := strings.TrimSpace(runtime.Str("doc-format"))
 	detail := strings.TrimSpace(runtime.Str("detail"))
@@ -202,6 +215,16 @@ func addFetchDetailDowngradeWarning(runtime *common.RuntimeContext, data map[str
 		return ""
 	}
 	warning := fmt.Sprintf("--detail %s is only supported with --doc-format xml; returning %s output and ignoring the unsupported detail option", detail, format)
+	appendDocWarning(data, warning)
+	return warning
+}
+
+func addFetchMarkdownHeadingSeqWarning(runtime *common.RuntimeContext, data map[string]interface{}) string {
+	format := strings.TrimSpace(runtime.Str("doc-format"))
+	if format != "markdown" && format != "im-markdown" {
+		return ""
+	}
+	warning := "markdown output cannot preserve heading auto-numbering metadata (seq/seq-level); refetch with --doc-format xml when heading numbering matters"
 	appendDocWarning(data, warning)
 	return warning
 }

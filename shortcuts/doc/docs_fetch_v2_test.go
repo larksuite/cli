@@ -691,11 +691,65 @@ func TestDocsFetchMarkdownDetailDowngradeWarnsInOutput(t *testing.T) {
 	}
 	data, _ := envelope["data"].(map[string]interface{})
 	warnings, _ := data["warnings"].([]interface{})
-	if len(warnings) != 1 {
-		t.Fatalf("warnings = %#v, want one downgrade warning", data["warnings"])
+	if len(warnings) != 2 {
+		t.Fatalf("warnings = %#v, want downgrade and heading seq warnings", data["warnings"])
 	}
-	if got, _ := warnings[0].(string); !strings.Contains(got, "returning markdown output") || !strings.Contains(got, "ignoring the unsupported detail option") {
-		t.Fatalf("unexpected warning: %q", got)
+	gotWarnings := fmt.Sprint(warnings)
+	for _, want := range []string{
+		"returning markdown output",
+		"ignoring the unsupported detail option",
+		"seq/seq-level",
+	} {
+		if !strings.Contains(gotWarnings, want) {
+			t.Fatalf("warnings missing %q: %#v", want, data["warnings"])
+		}
+	}
+}
+
+func TestDocsFetchMarkdownWarnsAboutHeadingSeqLoss(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+
+	f, stdout, _, reg := cmdutil.TestFactory(t, docsTestConfigWithAppID("docs-fetch-heading-seq-warning"))
+	reg.Register(&httpmock.Stub{
+		Method: "POST",
+		URL:    "/open-apis/docs_ai/v1/documents/doxcnFetchSeqWarning/fetch",
+		Body: map[string]interface{}{
+			"code": 0,
+			"msg":  "ok",
+			"data": map[string]interface{}{
+				"document": map[string]interface{}{
+					"document_id": "doxcnFetchSeqWarning",
+					"revision_id": float64(1),
+					"content":     "# Section A\n\n## Section A.1",
+				},
+			},
+		},
+	})
+
+	err := mountAndRunDocs(t, DocsFetch, []string{
+		"+fetch",
+		"--doc", "doxcnFetchSeqWarning",
+		"--doc-format", "markdown",
+		"--as", "bot",
+	}, f, stdout)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var envelope map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode output: %v\nraw=%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]interface{})
+	warnings, _ := data["warnings"].([]interface{})
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %#v, want one heading seq warning", data["warnings"])
+	}
+	got, _ := warnings[0].(string)
+	for _, want := range []string{"heading", "seq", "seq-level", "--doc-format xml"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("warning missing %q: %q", want, got)
+		}
 	}
 }
 

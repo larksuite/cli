@@ -91,7 +91,7 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 }
 ```
 
-`content` 的格式由 `--doc-format` 决定；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。
+`content` 的格式由 `--doc-format` 决定；`im-markdown` 仅用于获取内容后在 `lark-im` 场景下使用。设置 `--scope` 时会被 `<fragment>` 包裹，详见上文"局部读取的输出结构"。Markdown / im-markdown 输出无法保留标题自动编号元数据（`seq` / `seq-level`）；如果需要判断标题是否启用了自动编号，必须改用 `--doc-format xml`。
 
 ## 参数
 
