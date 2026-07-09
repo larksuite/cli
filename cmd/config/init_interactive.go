@@ -21,6 +21,8 @@ import (
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/transport"
@@ -186,6 +188,15 @@ func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requeste
 
 	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
+		if keylesshelper.Configured() {
+			if err := keylesshelper.ValidateConfigured(); err != nil {
+				return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+					"invalid keyless signer command: %v", err).
+					WithCause(err).
+					WithHint("fix %s or omit --private_key_jwt to register with an app secret", envvars.CliKeylessSignerCmd)
+			}
+			return core.AuthMethodPrivateKeyJWT, nil
+		}
 		info, ok, err := keysigner.ProbeActiveHardware(ctx)
 		if !ok {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
@@ -263,7 +274,6 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 	beginOpts := larkauth.AppRegistrationBeginOptions{}
 	keyLabel := ""
 	if authMethod == core.AuthMethodPrivateKeyJWT {
-		signer := keysigner.Active() // non-nil, guaranteed by resolveRegisterAuthMethod
 		initResp, initErr := larkauth.RequestAppRegistrationInit(ctx, httpClient)
 		if initErr != nil {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "app registration init failed: %v", initErr).WithCause(initErr)
@@ -279,7 +289,14 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 				WithHint("omit --private_key_jwt to register with an app secret instead")
 		}
 		keyLabel = keysigner.DefaultKeyLabel
-		attestation, signErr := jwt.SignAttestation(ctx, signer, keysigner.KeyRef{Label: keyLabel}, initResp.Nonce, time.Now())
+		var attestation string
+		var signErr error
+		if keylesshelper.Configured() {
+			attestation, signErr = keylesshelper.SignAttestation(ctx, keyLabel, initResp.Nonce)
+		} else {
+			signer := keysigner.Active() // non-nil, guaranteed by resolveRegisterAuthMethod
+			attestation, signErr = jwt.SignAttestation(ctx, signer, keysigner.KeyRef{Label: keyLabel}, initResp.Nonce, time.Now())
+		}
 		if signErr != nil {
 			return nil, errs.NewConfigError(errs.SubtypeInvalidClient, "failed to sign registration attestation: %v", signErr).WithCause(signErr)
 		}
