@@ -17,11 +17,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -465,11 +467,82 @@ func TestFetchTATWithAssertion_NilSigner(t *testing.T) {
 	}
 }
 
+func TestFetchTATWithAssertion_KeylessHelper(t *testing.T) {
+	t.Setenv(envvars.CliKeylessSignerCmd, keylessHelperTestCommand(t))
+	t.Setenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT", `{"op":"sign-assertion","keyRef":"agent-key","clientId":"cli_app","aud":"open.feishu.cn"}`)
+
+	rt := &stubRoundTripper{respCode: 200, respBody: `{"access_token":"t-jwt","token_type":"Bearer","expires_in":7200}`}
+	hc := &http.Client{Transport: rt}
+
+	token, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "agent-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "t-jwt" {
+		t.Fatalf("token = %q", token)
+	}
+	form, err := url.ParseQuery(rt.gotBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if form.Get("client_assertion") != "helper.jwt" {
+		t.Fatalf("client_assertion = %q", form.Get("client_assertion"))
+	}
+}
+
+func keylessHelperTestCommand(t *testing.T) string {
+	t.Helper()
+	argv, err := json.Marshal([]string{os.Args[0], "-test.run=TestKeylessHelperProcess", "--"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(argv)
+}
+
+func TestKeylessHelperProcess(t *testing.T) {
+	want := os.Getenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT")
+	if want == "" {
+		return
+	}
+	var got map[string]any
+	if err := json.NewDecoder(os.Stdin).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	var expected map[string]any
+	if err := json.Unmarshal([]byte(want), &expected); err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range expected {
+		if got[k] != v {
+			t.Fatalf("%s = %v, want %v; request=%v", k, got[k], v, got)
+		}
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+		"ok":                    true,
+		"client_assertion_type": "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+		"client_assertion":      "helper.jwt",
+	})
+	os.Exit(0)
+}
+
 func TestFetchTATWithAssertion_ServerError(t *testing.T) {
 	rt := &stubRoundTripper{respCode: 200, respBody: `{"error":"invalid_client","error_description":"unknown key"}`}
 	hc := &http.Client{Transport: rt}
 	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k"); err == nil {
 		t.Fatal("expected error for invalid_client response")
+	}
+}
+
+func TestFetchTATWithAssertion_LimitsErrorBody(t *testing.T) {
+	rt := &stubRoundTripper{respCode: 502, respBody: strings.Repeat("x", 2<<20)}
+	hc := &http.Client{Transport: rt}
+
+	_, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", newFakeTATSigner(t), "k")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if len(err.Error()) > (1<<20)+512 {
+		t.Fatalf("error length = %d, want bounded", len(err.Error()))
 	}
 }
 
