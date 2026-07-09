@@ -33,7 +33,7 @@ type ConfigInitOptions struct {
 	AppSecretStdin bool   // read app-secret from stdin (avoids process list exposure)
 	Brand          string
 	New            bool
-	AuthMethod     string // --auth-method for --new: "" (default client_secret) | private_key_jwt
+	PrivateKeyJWT  bool // --private_key_jwt: request private_key_jwt instead of the default client_secret
 
 	Lang         string // raw --lang (string for cobra); normalized to canonical/"" in validateInitLang
 	langExplicit bool   // true when --lang was explicitly passed
@@ -108,7 +108,7 @@ func NewCmdConfigInit(f *cmdutil.Factory, runF func(*ConfigInitOptions) error) *
 	}
 
 	cmd.Flags().BoolVar(&opts.New, "new", false, "create a new app directly (skip mode selection)")
-	cmd.Flags().StringVar(&opts.AuthMethod, "auth-method", "", "auth method for --new: client_secret (default) or private_key_jwt (signed by a platform key, no app secret)")
+	cmd.Flags().BoolVar(&opts.PrivateKeyJWT, "private_key_jwt", false, "create a new app with private_key_jwt (signed by a platform key, no app secret)")
 	cmd.Flags().StringVar(&opts.AppID, "app-id", "", "App ID (non-interactive)")
 	cmd.Flags().BoolVar(&opts.AppSecretStdin, "app-secret-stdin", false, "Read App Secret from stdin to avoid process list exposure")
 	cmd.Flags().StringVar(&opts.Brand, "brand", "feishu", "feishu or lark (non-interactive, default feishu)")
@@ -137,6 +137,13 @@ func ProjectInitHelp(cmd *cobra.Command, canReferenceBind bool) {
 	if flag := cmd.Flags().Lookup("force-init"); flag != nil {
 		flag.Usage = forceInitUsage
 	}
+}
+
+func requestedInitAuthMethod(opts *ConfigInitOptions) string {
+	if opts.PrivateKeyJWT {
+		return core.AuthMethodPrivateKeyJWT
+	}
+	return core.AuthMethodClientSecret
 }
 
 // printLangPreferenceConfirmation echoes the set preference to stderr, only
@@ -446,8 +453,8 @@ func runRestoreFlow(opts *ConfigInitOptions, existing *core.MultiAppConfig, f *c
 
 	restoreAppID := app.AppId
 	// Reuse the stored auth method authoritatively — never prompt. Empty on disk
-	// means client_secret (omitempty back-compat); pass it explicitly so
-	// resolveRegisterAuthMethod doesn't fall through to the interactive picker.
+	// means client_secret (omitempty back-compat); pass it explicitly so restore
+	// preserves the existing credential type.
 	authMethod := app.AuthMethod
 	if authMethod == "" {
 		authMethod = core.AuthMethodClientSecret
@@ -565,7 +572,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Mode 3: Create new app directly (--new)
 	if opts.New {
-		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), opts.AuthMethod, msg, "")
+		result, err := runCreateAppFlow(opts.Ctx, f, parseBrand(opts.Brand), requestedInitAuthMethod(opts), msg, "")
 		if err != nil {
 			return err
 		}
@@ -577,7 +584,7 @@ func configInitRun(opts *ConfigInitOptions) error {
 
 	// Mode 4: Interactive TUI (terminal)
 	if !opts.hasAnyNonInteractiveFlag() && f.IOStreams.IsTerminal {
-		result, err := runInteractiveConfigInit(opts.Ctx, f, opts.AuthMethod, msg)
+		result, err := runInteractiveConfigInit(opts.Ctx, f, requestedInitAuthMethod(opts), msg)
 		if err != nil {
 			return err
 		}
