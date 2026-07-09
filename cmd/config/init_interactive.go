@@ -181,13 +181,26 @@ func runExistingAppForm(ctx context.Context, f *cmdutil.Factory, requestedAuthMe
 // resolveRegisterAuthMethod decides the auth method for a new-app registration.
 // An explicit private_key_jwt request wins; otherwise the default is
 // client_secret with no extra prompt.
-func resolveRegisterAuthMethod(_ *cmdutil.Factory, requested string) (string, error) {
-	signerAvailable := keysigner.Active() != nil
+func resolveRegisterAuthMethod(ctx context.Context, _ *cmdutil.Factory, requested string) (string, error) {
+	const pkjwtUnsupportedMessage = "this machine does not support --private_key_jwt"
+
 	switch requested {
 	case core.AuthMethodPrivateKeyJWT:
-		if !signerAvailable {
+		info, ok, err := keysigner.ProbeActiveHardware(ctx)
+		if !ok {
 			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
-				"--private_key_jwt requires a platform key signer, which is unavailable on this device/build").
+				pkjwtUnsupportedMessage).
+				WithHint("omit --private_key_jwt to register with an app secret")
+		}
+		if err != nil {
+			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+				pkjwtUnsupportedMessage).
+				WithCause(err).
+				WithHint("omit --private_key_jwt to register with an app secret")
+		}
+		if !info.Available {
+			return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+				pkjwtUnsupportedMessage).
 				WithHint("omit --private_key_jwt to register with an app secret")
 		}
 		return core.AuthMethodPrivateKeyJWT, nil
@@ -235,7 +248,7 @@ func runCreateAppFlow(ctx context.Context, f *cmdutil.Factory, brandOverride cor
 		larkBrand = parseBrand(brand)
 	}
 
-	authMethod, err := resolveRegisterAuthMethod(f, requestedAuthMethod)
+	authMethod, err := resolveRegisterAuthMethod(ctx, f, requestedAuthMethod)
 	if err != nil {
 		return nil, err
 	}
