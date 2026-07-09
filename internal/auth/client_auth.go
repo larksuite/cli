@@ -11,6 +11,7 @@ import (
 
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 )
 
@@ -49,6 +50,15 @@ func (c ClientAuth) isPrivateKeyJWT() bool { return c.AuthMethod == core.AuthMet
 func (c ClientAuth) applyClientAssertion(ctx context.Context, form url.Values, audience string) (bool, error) {
 	if !c.isPrivateKeyJWT() {
 		return false, nil
+	}
+	if keylesshelper.Configured() {
+		assertionType, assertion, err := keylesshelper.SignClientAssertion(ctx, c.KeyLabel, c.AppID, audience)
+		if err != nil {
+			return false, err
+		}
+		form.Set("client_assertion_type", assertionType)
+		form.Set("client_assertion", assertion)
+		return true, nil
 	}
 	if c.Signer == nil {
 		return false, fmt.Errorf("private_key_jwt requires a key signer, but none is available on this build")
