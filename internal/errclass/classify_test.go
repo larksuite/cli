@@ -741,6 +741,23 @@ func TestBuildPermissionHint_MissingScopeRoutesToAuthLogin(t *testing.T) {
 	}
 }
 
+func TestBuildPermissionHint_SingleDomainMissingScopeMentionsAppScopeCheck(t *testing.T) {
+	got := errclass.PermissionHint([]string{
+		"slides:presentation:create",
+		"slides:presentation:write_only",
+	}, "user", errs.SubtypeMissingScope, "")
+	for _, want := range []string{
+		"lark-cli auth login",
+		"lark-cli auth scopes --format json",
+		"Open Platform",
+		"slides:*",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("PermissionHint() = %q, want it to mention %q", got, want)
+		}
+	}
+}
+
 func TestBuildPermissionHint_NoScopes(t *testing.T) {
 	// missing_scope with empty list — still suggests auth login even
 	// without the explicit --scope argument.

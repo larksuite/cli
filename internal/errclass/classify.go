@@ -371,7 +371,10 @@ func PermissionHint(missing []string, identity string, subtype errs.Subtype, con
 		return "the app developer must apply for the required scope(s) at the developer console"
 	case errs.SubtypeMissingScope:
 		if len(missing) > 0 {
-			return fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to re-authorize the user with the updated scope set", strings.Join(missing, " "))
+			return appendAppScopeCheckHint(
+				fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` to re-authorize the user with the updated scope set", strings.Join(missing, " ")),
+				missing,
+			)
 		}
 		return "run `lark-cli auth login` to re-authorize the user with the updated scope set"
 	case errs.SubtypeTokenScopeInsufficient:
@@ -390,6 +393,36 @@ func PermissionHint(missing []string, identity string, subtype errs.Subtype, con
 		return fmt.Sprintf("check the resource owner has granted access to %s", who)
 	}
 	return "check the calling identity has the required scope"
+}
+
+func appendAppScopeCheckHint(hint string, missing []string) string {
+	if domain, ok := singleScopeDomain(missing); ok {
+		return fmt.Sprintf("%s. If re-authorization still reports missing scope, run `lark-cli auth scopes --format json` and verify the current app has %s:* scopes enabled in the Open Platform permission management page before retrying", hint, domain)
+	}
+	return hint
+}
+
+func singleScopeDomain(scopes []string) (string, bool) {
+	if len(scopes) == 0 {
+		return "", false
+	}
+	domain := scopeDomain(scopes[0])
+	if domain == "" {
+		return "", false
+	}
+	for _, scope := range scopes[1:] {
+		if scopeDomain(scope) != domain {
+			return "", false
+		}
+	}
+	return domain, true
+}
+
+func scopeDomain(scope string) string {
+	if before, _, ok := strings.Cut(scope, ":"); ok && before != "" {
+		return before
+	}
+	return ""
 }
 
 // liftErrorDetailValues collects the non-empty resp.error.details[].value reason

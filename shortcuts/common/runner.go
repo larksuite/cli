@@ -1009,7 +1009,39 @@ func checkShortcutScopes(f *cmdutil.Factory, ctx context.Context, as core.Identi
 		"missing required scope(s): %s", strings.Join(missing, ", ")).
 		WithIdentity(string(as)).
 		WithMissingScopes(missing...).
-		WithHint("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", strings.Join(missing, " "))
+		WithHint("%s", missingScopeHint(missing))
+}
+
+func missingScopeHint(missing []string) string {
+	scopeArg := strings.Join(missing, " ")
+	hint := fmt.Sprintf("run `lark-cli auth login --scope \"%s\"` in the background. It blocks and outputs a verification URL — retrieve the URL and open it in a browser to complete login.", scopeArg)
+	if domain, ok := singleScopeDomain(missing); ok {
+		hint += fmt.Sprintf(" If re-authorization still reports missing scope, run `lark-cli auth scopes --format json` and verify the current app has %s:* scopes enabled in the Open Platform permission management page before retrying.", domain)
+	}
+	return hint
+}
+
+func singleScopeDomain(scopes []string) (string, bool) {
+	if len(scopes) == 0 {
+		return "", false
+	}
+	domain := scopeDomain(scopes[0])
+	if domain == "" {
+		return "", false
+	}
+	for _, scope := range scopes[1:] {
+		if scopeDomain(scope) != domain {
+			return "", false
+		}
+	}
+	return domain, true
+}
+
+func scopeDomain(scope string) string {
+	if before, _, ok := strings.Cut(scope, ":"); ok && before != "" {
+		return before
+	}
+	return ""
 }
 
 func newRuntimeContext(cmd *cobra.Command, f *cmdutil.Factory, s *Shortcut, config *core.CliConfig, as core.Identity, botOnly bool) (*RuntimeContext, error) {
