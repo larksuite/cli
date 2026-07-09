@@ -35,6 +35,7 @@ lark-cli docs +update --doc "文档URL或token" --command append --content '<p>�
 ## 快速决策
 - 用户要**复制文档 / 创建文档副本 / 另存为副本**时，切到 [`lark-drive`](../lark-drive/SKILL.md)，按其中的复制指引使用 `lark-cli drive files copy`；不要用 `docs +fetch` + `docs +create` 重建正文，也不要走 `drive +export` / `drive +import`。
 - 先判定任务路径：找文档 / 导入导出走 [`lark-drive`](../lark-drive/SKILL.md)；只读 / 摘要用 `docs +fetch` 默认 `simple`；明确旧文本 → 新文本直接 `str_replace`；只有 block 链接、评论锚点、插入 / 替换 / 删除 / 移动才局部 fetch `with-ids`；保真改写已有内容才读 `full`
+- 用户给出带 `#share-...` / `#part-...` 的文档 URL 时，按 [`lark-doc-fetch.md`](references/lark-doc-fetch.md) 的「选区锚点」优先局部读取；普通 `#block_id` 仍按 block 直达链接处理
 - block 直达链接格式：`文档基础 URL#block_id`；没有 block_id 时局部 fetch `with-ids`
 - 连续执行多个文档写操作时，必须按 [`lark-doc-update.md`](references/lark-doc-update.md) 的「Block ID 生命周期」判断旧 block ID 是否还能复用；`overwrite` / `block_replace` / `block_delete` 后不要复用受影响的旧 ID，插入 / 复制后要重新 fetch 才能拿到新 block ID
 - 用户需要在文档内**创建、复制或移动**资源块（画板、电子表格、多维表格等）时，必须先读取 [`lark-doc-xml.md`](references/lark-doc-xml.md) 的「三、资源块」章节

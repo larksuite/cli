@@ -20,6 +20,21 @@ lark-cli docs +fetch --doc Z1Fj...tnAc --scope outline --max-depth 3
 lark-cli docs +fetch --doc Z1Fj...tnAc \
   --scope range --start-block-id blkA --end-block-id blkB --detail with-ids
 
+# URL 带选区锚点时自动局部读取（仅 #share- / #part-）
+lark-cli docs +fetch \
+  --doc 'https://bytedance.larkoffice.com/wiki/wikcnInnPln2MWskas4CZT6iynf#share-CUE3d6Ykno2fkexEvt8cGF8Wnse'
+
+# 显式读取选区锚点
+lark-cli docs +fetch \
+  --doc 'https://bytedance.larkoffice.com/wiki/wikcnInnPln2MWskas4CZT6iynf' \
+  --scope range \
+  --start-block-id '#share-CUE3d6Ykno2fkexEvt8cGF8Wnse'
+
+# 强制全文读取时忽略选区锚点
+lark-cli docs +fetch \
+  --doc 'https://bytedance.larkoffice.com/wiki/wikcnInnPln2MWskas4CZT6iynf#share-CUE3d6Ykno2fkexEvt8cGF8Wnse' \
+  --scope full
+
 # 读整个章节（以标题 id 为锚点，自动展开到下一个同级/更高级标题前）
 lark-cli docs +fetch --doc Z1Fj...tnAc \
   --scope section --start-block-id <标题id> --detail with-ids
@@ -49,6 +64,18 @@ lark-cli docs +fetch --doc Z1Fj...tnAc \
 | `keyword` | 只有模糊关键词 | `--keyword`（**多级自动 fallback**：子串 → 归一化 → 分词形变 → RE2 正则；`\|` 分隔多分支 OR） | 每处命中按"最小包容单元"输出；**自动去重**（同容器多命中 → 单个容器，同表格多行命中 → 合并切片） |
 
 > 💡 **多关键词用 `\|` 拼接（OR 语义，任一命中即返回）**：例 `"部署\|发布\|上线"`，三词任一命中都进结果，适合**同义词/别名/多业务术语**一次召回（如 `bug\|缺陷\|故障`）。
+
+### 选区锚点（`#share-...` / `#part-...`）
+
+用户给出带 `#share-...` 或 `#part-...` fragment 的文档 URL 时，优先只读取该选区。必须用引号包住 URL 或锚点，避免 shell 把 `#` 当注释。
+
+- 直接传 URL：`--doc '...#share-xxx'`，且未显式 `--scope full` 时，CLI 会自动等价为 `--scope range --start-block-id '#share-xxx'`。
+- 显式写法：`--scope range --start-block-id '#share-xxx'` 或 `--scope range --start-block-id '#part-xxx'`。
+- 强制全文：URL 即使带 `#share-...` / `#part-...`，只要传 `--scope full` 就读全文。
+- 普通 `#block_id` 不是选区锚点，不会自动触发局部读取；需要 block 级读取时显式使用 `range` / `section`。
+- 选区锚点只允许放在 `--start-block-id`，不要传给 `--end-block-id`。
+- 不要在 Agent 侧换算真实 block ID；CLI/SDK 会把选区锚点交给后端解析。
+- 如果当前安装的 `lark-cli` 不支持该语法，说明客户端较旧；可以先全文读取或提示升级，不要手写锚点换算逻辑。
 
 **设置 `--scope` 时共用** `--context-before` / `--context-after` / `--max-depth`。
 
