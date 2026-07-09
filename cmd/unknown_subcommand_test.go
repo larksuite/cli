@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/output"
 )
@@ -126,29 +127,20 @@ func TestUnknownSubcommandRunE_FlagBeforeSubcommandIsStructured(t *testing.T) {
 		t.Errorf("error = %q, want it to mention an unknown flag", err.Error())
 	}
 
-	// The detail must stay schema-compatible with flagDidYouMean's unknown_flag
-	// (same Type → same keys), so a consumer keyed on Type reads a stable shape.
-	exitErr, ok := err.(*output.ExitError)
-	if !ok || exitErr.Detail == nil {
-		t.Fatalf("expected *output.ExitError with Detail, got %T", err)
+	// Typed surface: a validation error (exit 2) whose Params carries the
+	// offending flag so an agent can recover the token without parsing prose.
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	if exitErr.Detail.Type != "unknown_flag" {
-		t.Errorf("detail.Type = %q, want unknown_flag", exitErr.Detail.Type)
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want invalid_argument", verr.Subtype)
 	}
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("expected detail to be map[string]any, got %T", exitErr.Detail.Detail)
+	if output.ExitCodeOf(err) != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", output.ExitCodeOf(err), output.ExitValidation)
 	}
-	if detail["unknown"] != "--badflag" {
-		t.Errorf("detail.unknown = %v, want --badflag", detail["unknown"])
-	}
-	if got, _ := detail["unknown_flags"].([]string); len(got) != 1 || got[0] != "--badflag" {
-		t.Errorf("detail.unknown_flags = %v, want [--badflag]", detail["unknown_flags"])
-	}
-	for _, key := range []string{"suggestions", "valid_flags"} {
-		if _, present := detail[key]; !present {
-			t.Errorf("detail.%s missing; must be present (empty) to match the unknown_flag schema", key)
-		}
+	if len(verr.Params) != 1 || verr.Params[0].Name != "--badflag" {
+		t.Errorf("params = %v, want one entry named --badflag", verr.Params)
 	}
 }
 
@@ -172,25 +164,21 @@ func TestUnknownSubcommandRunE_ValidFlagWithoutSubcommandIsStructured(t *testing
 	if err == nil {
 		t.Fatal("expected a structured missing_subcommand error, got nil (help fallthrough)")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("exit code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if output.ExitCodeOf(err) != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d", output.ExitCodeOf(err), output.ExitValidation)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "missing_subcommand" {
-		t.Fatalf("detail.Type = %v, want missing_subcommand", exitErr.Detail)
+	if !strings.Contains(verr.Message, "missing subcommand") {
+		t.Errorf("message = %q, want it to mention a missing subcommand", verr.Message)
 	}
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("detail is not a map: %#v", exitErr.Detail.Detail)
+	if len(verr.Params) != 1 || verr.Params[0].Name != "--query" {
+		t.Errorf("params = %v, want one entry named --query", verr.Params)
 	}
-	if flags, _ := detail["flags"].([]string); len(flags) != 1 || flags[0] != "--query" {
-		t.Errorf("detail.flags = %v, want [--query]", detail["flags"])
-	}
-	if detail["command_path"] != "lark-cli drive" {
-		t.Errorf("detail.command_path = %v, want lark-cli drive", detail["command_path"])
+	if !strings.Contains(verr.Message, "lark-cli drive") {
+		t.Errorf("message = %q, want it to name the group path", verr.Message)
 	}
 }
 
@@ -241,45 +229,23 @@ func TestUnknownSubcommandRunE_UnknownReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error for unknown subcommand")
 	}
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("expected exit code %d, got %d", output.ExitValidation, exitErr.Code)
+	if output.ExitCodeOf(err) != output.ExitValidation {
+		t.Errorf("expected exit code %d, got %d", output.ExitValidation, output.ExitCodeOf(err))
 	}
-	if exitErr.Detail == nil {
-		t.Fatal("expected ExitError to carry Detail")
+	if !strings.Contains(verr.Message, `"+bogus"`) {
+		t.Errorf("message should echo the unknown token, got %q", verr.Message)
 	}
-	if exitErr.Detail.Type != "unknown_subcommand" {
-		t.Errorf("expected Detail.Type=unknown_subcommand, got %q", exitErr.Detail.Type)
-	}
-	if !strings.Contains(exitErr.Detail.Message, `"+bogus"`) {
-		t.Errorf("message should echo the unknown token, got %q", exitErr.Detail.Message)
+	if !strings.Contains(verr.Message, "lark-cli drive") {
+		t.Errorf("message should name the group path, got %q", verr.Message)
 	}
 	// "+bogus" has no close neighbor among drive's subcommands, so the hint falls
-	// back to pointing at --help; the full machine-readable list lives in
-	// detail.available below (which also excludes hidden commands).
-	if !strings.Contains(exitErr.Detail.Hint, "--help") {
-		t.Errorf("hint should guide to --help when there is no suggestion, got %q", exitErr.Detail.Hint)
-	}
-
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("expected Detail.Detail to be map[string]any, got %T", exitErr.Detail.Detail)
-	}
-	if detail["unknown"] != "+bogus" {
-		t.Errorf("detail.unknown should be +bogus, got %v", detail["unknown"])
-	}
-	if detail["command_path"] != "lark-cli drive" {
-		t.Errorf("detail.command_path should be %q, got %v", "lark-cli drive", detail["command_path"])
-	}
-	available, ok := detail["available"].([]string)
-	if !ok {
-		t.Fatalf("detail.available should be []string, got %T", detail["available"])
-	}
-	if len(available) != 3 {
-		t.Errorf("expected 3 available entries (hidden excluded), got %d: %v", len(available), available)
+	// back to pointing at --help (suggestions, when present, are folded into hint).
+	if !strings.Contains(verr.Hint, "--help") {
+		t.Errorf("hint should guide to --help when there is no suggestion, got %q", verr.Hint)
 	}
 }
 
@@ -288,13 +254,12 @@ func TestUnknownSubcommandRunE_NestedResourceGroup(t *testing.T) {
 	installUnknownSubcommandGuard(root)
 
 	err := files.RunE(files, []string{"bogus"})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError on nested group, got %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError on nested group, got %T", err)
 	}
-	if exitErr.Detail.Detail.(map[string]any)["command_path"] != "lark-cli drive files" {
-		t.Errorf("command_path should reflect the nested resource, got %v",
-			exitErr.Detail.Detail.(map[string]any)["command_path"])
+	if !strings.Contains(verr.Message, "lark-cli drive files") {
+		t.Errorf("message should reflect the nested resource path, got %q", verr.Message)
 	}
 }
 
@@ -337,10 +302,10 @@ func TestAvailableSubcommandNames_SplitsDeprecatedGroup(t *testing.T) {
 	}
 }
 
-// unknownSubcommandRunE must split current vs deprecated subcommands into
-// separate detail buckets, while suggestions still rank across both so a
-// mistyped legacy alias resolves.
-func TestUnknownSubcommandRunE_SplitsDeprecatedBucket(t *testing.T) {
+// unknownSubcommandRunE ranks suggestions across both current and deprecated
+// subcommands so a mistyped legacy alias resolves; the closest match is folded
+// into the hint.
+func TestUnknownSubcommandRunE_SuggestsAcrossDeprecatedBucket(t *testing.T) {
 	svc := &cobra.Command{Use: "sheets"}
 	svc.AddGroup(&cobra.Group{ID: cmdutil.DeprecatedGroupID, Title: "Deprecated"})
 	svc.AddCommand(
@@ -349,31 +314,26 @@ func TestUnknownSubcommandRunE_SplitsDeprecatedBucket(t *testing.T) {
 	)
 
 	err := unknownSubcommandRunE(svc, []string{"+reat"})
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("expected *errs.ValidationError, got %T", err)
 	}
-	detail, ok := exitErr.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("detail is not a map: %#v", exitErr.Detail.Detail)
+	// "+reat" is closest to the deprecated +read: the candidate must surface
+	// both as a machine-readable param suggestion (for agent retry) and in the
+	// hint, proving ranking spans the deprecated bucket.
+	if len(verr.Params) != 1 || verr.Params[0].Name != "+reat" {
+		t.Fatalf("params = %v, want one entry named +reat (the offending subcommand)", verr.Params)
 	}
-
-	if available, _ := detail["available"].([]string); len(available) != 1 || available[0] != "+cells-get" {
-		t.Errorf("available = %v, want [+cells-get]", available)
-	}
-	deprecated, ok := detail["deprecated"].([]string)
-	if !ok || len(deprecated) != 1 || deprecated[0] != "+read" {
-		t.Errorf("deprecated = %v, want [+read]", deprecated)
-	}
-	// suggestions rank across both buckets: "+reat" is closest to +read.
-	suggestions, _ := detail["suggestions"].([]string)
-	found := false
-	for _, s := range suggestions {
+	foundSuggestion := false
+	for _, s := range verr.Params[0].Suggestions {
 		if s == "+read" {
-			found = true
+			foundSuggestion = true
 		}
 	}
-	if !found {
-		t.Errorf("suggestions %v should include +read (typo target)", suggestions)
+	if !foundSuggestion {
+		t.Errorf("Params[0].Suggestions should include +read, got %v", verr.Params[0].Suggestions)
+	}
+	if !strings.Contains(verr.Hint, "+read") {
+		t.Errorf("hint %q should suggest +read (typo target across deprecated bucket)", verr.Hint)
 	}
 }

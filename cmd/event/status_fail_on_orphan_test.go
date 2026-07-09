@@ -19,12 +19,12 @@ func TestExitForOrphan_Orphan(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when failOnOrphan=true and orphan present")
 	}
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("expected *output.ExitError, got %T", err)
+	var bareErr *output.BareError
+	if !errors.As(err, &bareErr) {
+		t.Fatalf("expected *output.BareError, got %T", err)
 	}
-	if exitErr.Code != output.ExitValidation {
-		t.Errorf("Code = %d, want %d", exitErr.Code, output.ExitValidation)
+	if bareErr.Code != output.ExitValidation {
+		t.Errorf("Code = %d, want %d", bareErr.Code, output.ExitValidation)
 	}
 }
 

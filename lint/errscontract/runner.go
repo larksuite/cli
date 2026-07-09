@@ -32,6 +32,7 @@ func RunAllWithNames(path, src string, allowlist, nameset map[string]struct{}) [
 	out = append(out, CheckNoRegistrar(path, src)...)
 	out = append(out, CheckAdHocSubtype(path, src)...)
 	out = append(out, CheckTypedErrorCompleteness(path, src)...)
+	out = append(out, CheckNoBareCommandError(path, src, nil)...)
 	if allowlist != nil {
 		out = append(out, CheckDeclaredSubtypeWithNames(path, src, allowlist, nameset)...)
 	}

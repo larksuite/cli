@@ -112,13 +112,13 @@ lark-cli mail +triage --page-size 10
 ```text
 15 message(s)
 next page: mail +triage --query '合同审批' --page-token 'search:abc123...'
-tip: use mail +message --message-id <id> to read full content
+tip: read full content: single message use mail +message --message-id <id>; multiple messages use mail +messages --message-ids <id1>,<id2>,<id3>
 ```
 
 公共邮箱场景下，`--mailbox` 会自动出现在续页和 tip 中：
 ```text
 next page: mail +triage --mailbox 'shared@example.com' --query '合同审批' --page-token 'search:abc123...'
-tip: use mail +message --mailbox 'shared@example.com' --message-id <id> to read full content
+tip: read full content: single message use mail +message --mailbox 'shared@example.com' --message-id <id>; multiple messages use mail +messages --mailbox 'shared@example.com' --message-ids <id1>,<id2>,<id3>
 ```
 
 ### 搜索分页注意事项

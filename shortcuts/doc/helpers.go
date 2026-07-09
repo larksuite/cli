@@ -91,3 +91,22 @@ func buildDriveRouteExtra(docID string) (string, error) {
 	}
 	return string(extra), nil
 }
+
+func appendDocWarning(data map[string]interface{}, warning string) {
+	if data == nil {
+		return
+	}
+	if strings.TrimSpace(warning) == "" {
+		return
+	}
+	switch existing := data["warnings"].(type) {
+	case []interface{}:
+		data["warnings"] = append(existing, warning)
+	case []string:
+		data["warnings"] = append(existing, warning)
+	case nil:
+		data["warnings"] = []string{warning}
+	default:
+		data["warnings"] = []interface{}{existing, warning}
+	}
+}

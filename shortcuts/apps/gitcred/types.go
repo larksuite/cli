@@ -27,7 +27,7 @@ const (
 )
 
 // CredentialFile is the app-scoped non-secret metadata persisted under the
-// Miaoda app storage directory.
+// app storage directory.
 type CredentialFile struct {
 	Version int `json:"version"`
 	CredentialRecord

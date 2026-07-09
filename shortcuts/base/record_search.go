@@ -29,6 +29,7 @@ var BaseRecordSearch = common.Shortcut{
 		recordSortFlag(),
 		{Name: "offset", Type: "int", Default: "0", Desc: "pagination offset"},
 		{Name: "limit", Type: "int", Default: "10", Desc: "pagination size, range 1-200"},
+		pageSizeLimitAliasFlag(),
 		recordReadFormatFlag(),
 	},
 	Tips: []string{

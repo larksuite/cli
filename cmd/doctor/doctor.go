@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -94,7 +95,7 @@ func doctorRun(opts *DoctorOptions) error {
 		// underlying problem is still visible.
 		msg, hint := err.Error(), ""
 		if errors.Is(err, os.ErrNotExist) {
-			var cfgErr *core.ConfigError
+			var cfgErr *errs.ConfigError
 			if errors.As(core.NotConfiguredError(), &cfgErr) {
 				msg, hint = cfgErr.Message, cfgErr.Hint
 			}
@@ -108,7 +109,7 @@ func doctorRun(opts *DoctorOptions) error {
 	cfg, err := f.Config()
 	if err != nil {
 		hint := ""
-		var cfgErr *core.ConfigError
+		var cfgErr *errs.ConfigError
 		if errors.As(err, &cfgErr) {
 			hint = cfgErr.Hint
 		}
@@ -128,7 +129,10 @@ func doctorRun(opts *DoctorOptions) error {
 	if diagnostics.Bot.Available || diagnostics.User.Available {
 		checks = append(checks, pass("identity_ready", "at least one identity is available"))
 	} else {
-		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", "run: lark-cli auth status --verify"))
+		// No hint: this only summarizes the two checks above, which already carry
+		// the source-appropriate remediation. A command here would be redundant,
+		// or wrong (`auth status` is blocked under an external provider).
+		checks = append(checks, fail("identity_ready", "no usable bot or user identity is available", ""))
 	}
 
 	// ── 4 & 5. Endpoint reachability ──

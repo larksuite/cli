@@ -5,7 +5,6 @@ package apps
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -35,7 +34,7 @@ func (gitCredentialAppStorage) ListAppIDs() ([]string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return []string{}, nil
 		}
-		return nil, fmt.Errorf("apps storage: read root: %w", err)
+		return nil, appsStorageError(err, "apps storage: read root: %v", err)
 	}
 	appIDs := make([]string, 0, len(entries))
 	for _, e := range entries {

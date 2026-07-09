@@ -242,7 +242,6 @@ func Shortcuts() []common.Shortcut {
 		GetMyTasks,
 		GetRelatedTasks,
 		SearchTask,
-		SubscribeTaskEvent,
 		UploadAttachmentTask,
 		CreateTasklist,
 		SearchTasklist,

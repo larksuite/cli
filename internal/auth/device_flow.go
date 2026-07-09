@@ -47,6 +47,7 @@ type DeviceFlowResult struct {
 // OAuthEndpoints contains the OAuth endpoint URLs.
 type OAuthEndpoints struct {
 	DeviceAuthorization string
+	Revoke              string
 	Token               string
 }
 
@@ -55,6 +56,7 @@ func ResolveOAuthEndpoints(brand core.LarkBrand) OAuthEndpoints {
 	ep := core.ResolveEndpoints(brand)
 	return OAuthEndpoints{
 		DeviceAuthorization: ep.Accounts + PathDeviceAuthorization,
+		Revoke:              ep.Accounts + PathOAuthRevoke,
 		Token:               ep.Open + PathOAuthTokenV2,
 	}
 }

@@ -101,9 +101,9 @@ func TestSecurityPolicyErrorUnwrap(t *testing.T) {
 // interface would panic when the root dispatcher or any caller walks the
 // errors.Is / errors.Unwrap chain.
 //
-// The doc comments on these types claim "nil-receiver safe" but until this
-// test landed nothing actually pinned that claim — exactly the
-// behavioral-comment-without-test footgun caught in PR #984 review.
+// The doc comments on these types claim "nil-receiver safe"; this test
+// pins that claim so the behavioral comment cannot silently drift from the
+// implementation.
 func TestTypedErrors_UnwrapNilReceiver(t *testing.T) {
 	t.Helper()
 	checks := []struct {
@@ -319,7 +319,7 @@ func TestPermissionError_FullChain(t *testing.T) {
 		WithHint("run: lark-cli auth login --scope %q", "mail:user_mailbox.message:send").
 		WithMissingScopes("mail:user_mailbox.message:send").
 		WithIdentity("user").
-		WithConsoleURL("https://open.feishu.cn/app/cli_xxx/auth")
+		WithConsoleURL("https://open.feishu.cn/page/scope-apply?clientID=cli_xxx&scopes=mail:user_mailbox.message:send")
 
 	if got.Category != errs.CategoryAuthorization {
 		t.Errorf("Category = %q, want %q", got.Category, errs.CategoryAuthorization)
@@ -419,7 +419,7 @@ func TestBuilder_WireFormat(t *testing.T) {
 		WithHint("run lark-cli auth login --scope calendar:event:create").
 		WithMissingScopes("calendar:event:create").
 		WithIdentity("user").
-		WithConsoleURL("https://open.feishu.cn/app/cli_xxx/auth")
+		WithConsoleURL("https://open.feishu.cn/page/scope-apply?clientID=cli_xxx&scopes=calendar:event:create")
 
 	buf, err := json.Marshal(e)
 	if err != nil {
@@ -439,7 +439,7 @@ func TestBuilder_WireFormat(t *testing.T) {
 		"hint":           "run lark-cli auth login --scope calendar:event:create",
 		"log_id":         "20260520-0a1b2c3d",
 		"identity":       "user",
-		"console_url":    "https://open.feishu.cn/app/cli_xxx/auth",
+		"console_url":    "https://open.feishu.cn/page/scope-apply?clientID=cli_xxx&scopes=calendar:event:create",
 		"missing_scopes": []any{"calendar:event:create"},
 	}
 	for k, want := range wantFields {

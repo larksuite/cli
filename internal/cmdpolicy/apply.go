@@ -6,8 +6,8 @@ package cmdpolicy
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // Apply walks the command tree and installs denyStubs for every path in
@@ -24,12 +24,11 @@ import (
 //     cobra would intercept the call
 //     with "missing required flag"
 //     before we can return our error
-//  3. cmd.RunE = denyStub(denial)      -- returns *output.ExitError so
+//  3. cmd.RunE = denyStub(denial)      -- returns a typed
+//     *errs.ValidationError so
 //     cmd/root.go's envelope writer
-//     emits structured JSON (with
-//     error.type = denial.Layer and
-//     detail.reason_code = ReasonCode);
-//     the wrapped error chain still
+//     emits structured JSON; the
+//     wrapped error chain still
 //     exposes *platform.CommandDeniedError
 //     via errors.As for in-process
 //     consumers
@@ -112,42 +111,17 @@ func CommandDeniedFromDenial(path string, d Denial) *platform.CommandDeniedError
 	}
 }
 
-// DenialDetailMap is the canonical detail.* shape every `command_denied`
-// envelope shares (see docs/extension/reason-codes.md). Use it as
-// ErrDetail.Detail when constructing an envelope outside BuildDenialError.
-func DenialDetailMap(cd *platform.CommandDeniedError) map[string]any {
-	return map[string]any{
-		"path":          cd.Path,
-		"layer":         cd.Layer,
-		"policy_source": cd.PolicySource,
-		"rule_name":     cd.RuleName,
-		"reason_code":   cd.ReasonCode,
-		"reason":        cd.Reason,
-	}
-}
-
-// BuildDenialError is the default envelope for user-layer denials:
-// Message comes from CommandDeniedError.Error(), no Hint. Callers that
-// need a custom Message or an independent Hint (strict-mode) should
-// compose CommandDeniedFromDenial + DenialDetailMap themselves.
-//
-// Deprecated: BuildDenialError produces a legacy *output.ExitError that
-// predates the typed error contract introduced by errs/. New code MUST NOT
-// use it — denial signals should move to a typed *errs.XxxError (a dedicated
-// typed Error for policy denial is tracked for the cmdpolicy migration PR).
-// This helper is retained only while existing call sites are migrated; it
-// will be removed once they have moved to the typed surface.
-func BuildDenialError(path string, d Denial) *output.ExitError {
+// BuildDenialError is the default typed error for user-layer denials:
+// Message comes from CommandDeniedError.Error(); the policy layer, source,
+// rule name, and reason code are folded into the Hint. The
+// *platform.CommandDeniedError is preserved as the Cause so errors.As
+// works for in-process consumers.
+func BuildDenialError(path string, d Denial) *errs.ValidationError {
 	cd := CommandDeniedFromDenial(path, d)
-	return &output.ExitError{
-		Code: output.ExitValidation,
-		Detail: &output.ErrDetail{
-			Type:    "command_denied",
-			Message: cd.Error(),
-			Detail:  DenialDetailMap(cd),
-		},
-		Err: cd,
-	}
+	return errs.NewValidationError(errs.SubtypeFailedPrecondition, "%s", cd.Error()).
+		WithHint("denied by %s policy (source %s, rule %q, reason_code %s); adjust the policy configuration to allow this command",
+			cd.Layer, cd.PolicySource, cd.RuleName, cd.ReasonCode).
+		WithCause(cd)
 }
 
 // installDenyStub mutates a cobra.Command in place. Unlike cmd/prune.go
@@ -221,9 +195,9 @@ func installDenyStub(cmd *cobra.Command, path string, d Denial) bool {
 
 	denial := d // capture by value for the closure
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		// error.type is the user-facing semantic ("a command was denied by
-		// policy"). detail.layer carries the implementation distinction
-		// ("policy" vs "strict_mode") for debugging.
+		// The typed message carries the user-facing semantic ("a command
+		// was denied"); the hint carries the layer / source / rule
+		// distinction ("policy" vs "strict_mode") for debugging.
 		return BuildDenialError(path, denial)
 	}
 	// Clear any pre-existing Run hook: cobra prefers RunE when both are

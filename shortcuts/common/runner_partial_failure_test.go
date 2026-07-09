@@ -19,7 +19,7 @@ import (
 // TestOutPartialFailure pins the batch / multi-status contract: the result
 // rides on stdout as an ok:false envelope (carrying the full payload), and the
 // returned error is the typed partial-failure exit signal (ExitAPI), distinct
-// from the predicate-only ErrBare.
+// from ErrBare (the silent-exit signal).
 func TestOutPartialFailure(t *testing.T) {
 	cfg := &core.CliConfig{Brand: core.BrandFeishu, AppID: "cli_x"}
 	f, stdout, _, _ := cmdutil.TestFactory(t, cfg)

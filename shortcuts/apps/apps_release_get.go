@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
@@ -27,15 +26,15 @@ var AppsReleaseGet = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "release-id", Desc: "release ID (the release_id returned by +release-create)", Required: true},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		if strings.TrimSpace(rctx.Str("release-id")) == "" {
-			return output.ErrValidation("--release-id is required")
+			return appsValidationParamError("--release-id", "--release-id is required")
 		}
 		return nil
 	},
@@ -58,6 +57,9 @@ var AppsReleaseGet = common.Shortcut{
 		out := data
 		if release, ok := data["release"].(map[string]interface{}); ok {
 			out = release
+			if el, ok := data["error_logs"]; ok {
+				out["error_logs"] = el
+			}
 		}
 		rctx.OutFormat(out, nil, func(w io.Writer) {
 			fmt.Fprintf(w, "release_id: %v\nstatus: %v\ncreated_at: %v\nupdated_at: %v\n",

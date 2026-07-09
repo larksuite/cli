@@ -11,7 +11,7 @@
 
 ## 端到端流程（新建应用）
 
-`+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> `git add` + `git commit`（提交本次改动）-> `git push origin sprint/default` -> `+release-create` -> `+release-get`。
+`+create(full_stack)` -> `+init`（或手动 `+git-credential-init` + `git clone`）-> 读仓库 Skill -> `npm install && npm run dev` -> 按需 `+db-*` 调库 -> `git add` + `git commit`（提交本次改动）-> `git push origin sprint/default` -> `+release-create` -> `+release-get`。
 
 ```bash
 # 新建 full_stack 应用
@@ -35,6 +35,8 @@ lark-cli apps +release-create --app-id app_xxx
 ```
 
 `+init` 是推荐便捷入口；想逐步手动控制时，先 `+git-credential-init` 拿 `repository_url`，再用原生 `git clone` / `git checkout sprint/default`。
+
+**`+init` 完成后必须执行**：`cat <project-path>/.agents/skills/plugin-guide/SKILL.md`，读取仓库插件指引。该文件包含插件目录、实例配置规则和调用代码生成方式——不读就无法正确集成插件能力。文件不存在则跳过。
 
 ## 改完代码后部署上线
 

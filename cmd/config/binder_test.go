@@ -51,7 +51,7 @@ func assertCandidate(t *testing.T, got *Candidate, want Candidate) {
 func TestSelectCandidate_ZeroCandidates_OpenClaw(t *testing.T) {
 	b := &fakeBinder{name: "openclaw", path: "/tmp/openclaw.json"}
 	_, err := selectCandidate(b, nil, "", false, tuiUnreachable(t))
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "no Feishu app configured in openclaw.json",
 		Hint:    "configure channels.feishu.appId in openclaw.json",
@@ -64,7 +64,7 @@ func TestSelectCandidate_ZeroCandidates_GenericSource(t *testing.T) {
 	// even before it has a bespoke error message.
 	b := &fakeBinder{name: "hermes", path: "/tmp/.env"}
 	_, err := selectCandidate(b, nil, "", false, tuiUnreachable(t))
-	assertExitError(t, err, output.ExitAuth, output.ErrDetail{
+	assertExitError(t, err, output.ExitAuth, wantErrDetail{
 		Type:    "config",
 		Message: "hermes: no app configured",
 	})
@@ -100,7 +100,7 @@ func TestSelectCandidate_AppIDFlag_NoMatch(t *testing.T) {
 		{AppID: "cli_home", Label: "home"},
 	}
 	_, err := selectCandidate(b, candidates, "nonexistent", false, tuiUnreachable(t))
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--app-id "nonexistent" not found in openclaw.json`,
 		Hint:    "available app IDs:\n  cli_work (work)\n  cli_home (home)",
@@ -117,7 +117,7 @@ func TestSelectCandidate_MultiCandidate_NoFlag_NonTUI(t *testing.T) {
 		{AppID: "cli_home", Label: "home"},
 	}
 	_, err := selectCandidate(b, candidates, "", false, tuiUnreachable(t))
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: "multiple accounts in openclaw.json; pass --app-id <id>",
 		Hint:    "available app IDs:\n  cli_work (work)\n  cli_home (home)",
@@ -152,7 +152,7 @@ func TestSelectCandidate_SingleCandidate_WrongFlag(t *testing.T) {
 	b := &fakeBinder{name: "openclaw", path: "/tmp/openclaw.json"}
 	candidates := []Candidate{{AppID: "cli_only"}}
 	_, err := selectCandidate(b, candidates, "nonexistent", false, tuiUnreachable(t))
-	assertExitError(t, err, output.ExitValidation, output.ErrDetail{
+	assertExitError(t, err, output.ExitValidation, wantErrDetail{
 		Type:    "validation",
 		Message: `--app-id "nonexistent" not found in openclaw.json`,
 		Hint:    "available app IDs:\n  cli_only",

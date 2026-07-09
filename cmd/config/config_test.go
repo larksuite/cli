@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
@@ -92,16 +93,16 @@ func TestConfigShowRun_NotConfiguredReturnsStructuredError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 
-	var cfgErr *core.ConfigError
+	var cfgErr *errs.ConfigError
 	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error type = %T, want *core.ConfigError", err)
+		t.Fatalf("error type = %T, want *errs.ConfigError", err)
 	}
 	// Config errors share ExitAuth (3), not ExitValidation.
-	if cfgErr.Code != output.ExitAuth {
-		t.Fatalf("exit code = %d, want %d (config category → ExitAuth)", cfgErr.Code, output.ExitAuth)
+	if got := output.ExitCodeOf(err); got != output.ExitAuth {
+		t.Fatalf("exit code = %d, want %d (config category → ExitAuth)", got, output.ExitAuth)
 	}
-	if cfgErr.Type != "config" || cfgErr.Message != "not configured" {
-		t.Fatalf("detail = %+v, want config/not configured", cfgErr)
+	if cfgErr.Subtype != errs.SubtypeNotConfigured || cfgErr.Message != "not configured" {
+		t.Fatalf("detail = %+v, want not_configured/not configured", cfgErr)
 	}
 }
 
@@ -233,15 +234,21 @@ func TestConfigInitCmd_InvalidLang(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected validation error for --lang %q, got nil", tc.lang)
 			}
-			exitErr, ok := err.(*output.ExitError)
-			if !ok {
-				t.Fatalf("expected *output.ExitError, got %T: %v", err, err)
+			var valErr *errs.ValidationError
+			if !errors.As(err, &valErr) {
+				t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 			}
-			if exitErr.Code != output.ExitValidation {
-				t.Errorf("exit code = %d, want %d (validation)", exitErr.Code, output.ExitValidation)
+			if valErr.Subtype != errs.SubtypeInvalidArgument {
+				t.Errorf("subtype = %q, want %q", valErr.Subtype, errs.SubtypeInvalidArgument)
 			}
-			if !strings.Contains(exitErr.Error(), "invalid --lang") {
-				t.Errorf("error message %q does not contain 'invalid --lang'", exitErr.Error())
+			if valErr.Param != "--lang" {
+				t.Errorf("param = %q, want %q", valErr.Param, "--lang")
+			}
+			if got := output.ExitCodeOf(err); got != output.ExitValidation {
+				t.Errorf("exit code = %d, want %d (validation)", got, output.ExitValidation)
+			}
+			if !strings.Contains(err.Error(), "invalid --lang") {
+				t.Errorf("error message %q does not contain 'invalid --lang'", err.Error())
 			}
 		})
 	}
@@ -385,8 +392,38 @@ func TestSaveAsProfile_RejectsProfileNameCollisionWithExistingAppID(t *testing.T
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
-	if !strings.Contains(err.Error(), "conflicts with existing appId") {
-		t.Fatalf("error = %v, want conflict with existing appId", err)
+	// A name/appId conflict is user input — a typed validation error naming the
+	// offending flag, not a system storage failure.
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; err=%v", err, err)
+	}
+	if verr.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("subtype = %q, want invalid_argument", verr.Subtype)
+	}
+	if verr.Param != "--name" {
+		t.Errorf("param = %q, want --name", verr.Param)
+	}
+	if output.ExitCodeOf(err) != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (validation)", output.ExitCodeOf(err), output.ExitValidation)
+	}
+	if !strings.Contains(verr.Message, "conflicts with existing appId") {
+		t.Errorf("message = %q, want conflict description", verr.Message)
+	}
+}
+
+// TestWrapSaveConfigError_PassesTypedValidationThrough pins that a user-input
+// validation error (e.g. the --name conflict) is not reclassified as an
+// internal storage failure on its way up through the save call sites.
+func TestWrapSaveConfigError_PassesTypedValidationThrough(t *testing.T) {
+	conflict := errs.NewValidationError(errs.SubtypeInvalidArgument, "name conflict").WithParam("--name")
+	var verr *errs.ValidationError
+	if !errors.As(wrapSaveConfigError(conflict), &verr) {
+		t.Fatalf("typed validation must pass through unchanged, got %T", wrapSaveConfigError(conflict))
+	}
+	var ierr *errs.InternalError
+	if !errors.As(wrapSaveConfigError(errors.New("disk full")), &ierr) || ierr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("untyped failure must become internal/storage")
 	}
 }
 

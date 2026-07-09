@@ -14,12 +14,11 @@ import (
 
 // TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope 验证 server 业务错误
 // （code != 0，如单环境 app 查 env=dev 返 "Invalid DB Branch"）被 CLI 透出成
-// typed error —— 用 BOE 实测的错误码 / 文案做输入。
+// typed error —— 用真实观测到的错误码 / 文案做输入。
 //
-// 迁移到 runtime.CallAPITyped 后，非零 code 的业务错误由 errclass.BuildAPIError
-// 归类为 typed errs.* error（wire type 为 "api" 类别，不再是 legacy 的
-// *output.ExitError / "api_error"），但仍保留 code 与 message。与 drive/okr 等
-// 已迁移域一致：用 errs.ProblemOf 读 typed envelope，断言不弱化。
+// 非零 code 的业务错误由 errclass.BuildAPIError 归类为 typed errs.* error
+// （wire type 为 "api" 类别），保留 code 与 message。与 drive/okr 等域一致：
+// 用 errs.ProblemOf 读 typed envelope，断言不弱化。
 func TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope(t *testing.T) {
 	factory, stdout, reg := newAppsExecuteFactory(t)
 	reg.Register(&httpmock.Stub{
@@ -32,7 +31,7 @@ func TestAppsDBTableList_BusinessErrorSurfacedAsTypedEnvelope(t *testing.T) {
 	})
 
 	err := runAppsShortcut(t, AppsDBTableList,
-		[]string{"+db-table-list", "--app-id", "app_x", "--env", "dev", "--as", "user"},
+		[]string{"+db-table-list", "--app-id", "app_x", "--environment", "dev", "--as", "user"},
 		factory, stdout)
 	if err == nil {
 		t.Fatalf("expected business error to surface, got nil; stdout=%s", stdout.String())
@@ -160,7 +159,7 @@ func TestAppsDBTableList_RequiresAppID(t *testing.T) {
 func TestAppsDBTableList_DryRunSendsPaginationAndEnv(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	if err := runAppsShortcut(t, AppsDBTableList,
-		[]string{"+db-table-list", "--app-id", "app_x", "--env", "dev",
+		[]string{"+db-table-list", "--app-id", "app_x", "--environment", "dev",
 			"--page-size", "50", "--page-token", "cursor-abc",
 			"--dry-run", "--as", "user"},
 		factory, stdout); err != nil {
@@ -213,7 +212,7 @@ func TestAppsDBTableList_DoesNotSendIncludeStatsQuery(t *testing.T) {
 func TestAppsDBTableList_RejectsBadEnv(t *testing.T) {
 	factory, stdout, _ := newAppsExecuteFactory(t)
 	err := runAppsShortcut(t, AppsDBTableList,
-		[]string{"+db-table-list", "--app-id", "app_x", "--env", "prod", "--as", "user"}, factory, stdout)
+		[]string{"+db-table-list", "--app-id", "app_x", "--environment", "prod", "--as", "user"}, factory, stdout)
 	if err == nil || !strings.Contains(err.Error(), "env") {
 		t.Fatalf("expected env enum rejection, got %v", err)
 	}
@@ -237,7 +236,11 @@ func TestNumericAsFloat_AllTypes(t *testing.T) {
 		{"json.Number valid", json.Number("13.5"), 13.5, true},
 		{"json.Number invalid", json.Number("abc"), 0, false},
 		{"nil", nil, 0, false},
-		{"unsupported string", "x", 0, false},
+		{"non-numeric string", "x", 0, false},
+		{"numeric string", "13.5", 13.5, true},
+		{"numeric string int", "2", 2, true},
+		{"numeric string padded", " 13.5 ", 13.5, true},
+		{"empty string", "", 0, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -3,10 +3,10 @@
 
 > **前置条件（MUST READ）：** 生成文档内容前，必须先用 Read 工具读取以下文件，缺一不可：
 > 1. [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规则（使用 Markdown 格式时改读 [`lark-doc-md.md`](lark-doc-md.md)）
-> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 排版指南（元素选择、丰富度规则、颜色语义）
-> 3. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
+> 2. [`lark-doc-style.md`](style/lark-doc-style.md) — 写作原则（默认段落、按体裁、组件克制）
+> 3. [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、单 Agent 串行改写）
 >
-> **未读完以上文件就生成内容会导致格式错误或样式不达标。**
+> **未读完以上文件就生成内容会导致格式错误。**
 
 通过八种指令精确更新飞书云文档。支持字符串级别和 block 级别的操作。
 
@@ -14,17 +14,17 @@
 > - **局部精修**（`str_replace` / `block_insert_after` / `block_replace` / `block_delete` / `block_move_after`）：优先使用 XML（默认）。XML 能稳定表达 block 结构和样式，精准编辑更可控；不要因为 Markdown 写起来更简单就自行切换。
 > - **整段写入**（`append` / `overwrite`）：XML 和 Markdown 都可以。用户提供 `.md` 本地文件或明确要求 Markdown 时直接用 Markdown；否则默认 XML。
 >
-> **Markdown 局限 & block ID 前提：** Markdown 不携带 block ID，也无样式（颜色、对齐、callout 等）。需要按 block ID 定位（`block_*` 指令的 `--block-id`）时，先 `docs +fetch --api-version v2 --detail with-ids` **配合 `--scope`（`outline` / `range` / `keyword` / `section`）局部获取**目标段落，不要全量 fetch。拿到 block ID 后 `--content` 仍可用 Markdown，只是写入内容不带样式。
+> **Markdown 局限 & block ID 前提：** Markdown 不携带 block ID，也无样式（颜色、对齐、callout 等）。需要按 block ID 定位（`block_*` 指令的 `--block-id`）时，先 `docs +fetch --detail with-ids` **配合 `--scope`（`outline` / `range` / `keyword` / `section`）局部获取**目标段落，不要全量 fetch。拿到 block ID 后 `--content` 仍可用 Markdown，只是写入内容不带样式。
 
 ## 参数
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `--api-version` | 是 | 固定传 `v2` |
 | `--doc` | 是 | 文档 URL 或 token |
 | `--command` | 是 | 操作指令（见下方指令速查表） |
 | `--doc-format` | 否 | 内容格式：`xml`（默认，始终优先使用）\| `markdown`（仅用户明确要求时） |
 | `--content` | 视指令 | 写入内容（`str_replace` 传空字符串可实现删除） |
+| `--reference-map` | 否 | 结构化 `reference_map` JSON object；必须与 `--content` 一起使用。普通写入优先把结构写在正文里；该参数主要用于保留或回放已有 `document.reference_map`。支持直接 JSON、`@reference-map.json`（相对路径）或 `-` 从 stdin 读取。 |
 | `--pattern` | 视指令 | 匹配文本（str_replace） |
 | `--block-id` | 视指令 | 目标 block ID（block_* 操作），逗号分隔可批量删除，-1 表示末尾 |
 | `--src-block-ids` | 视指令 | 源 block ID（逗号分隔），用于 block_copy_insert_after / block_move_after |
@@ -43,6 +43,15 @@
 | `append` | ⚠️ 在文档**末尾**追加内容（等价于 `block_insert_after --block-id -1`）。**不适用于逐章填充**——逐章写入请用 `block_insert_after` 并指定对应标题的 `--block-id` | `--content` |
 | `block_move_after` | 移动已有 block 到指定位置 | `--block-id` `--src-block-ids` |
 
+## Block ID 生命周期
+
+写操作后不要默认复用之前 fetch 到的 block ID：
+
+- `overwrite` / `block_replace` / `block_delete`：受影响旧 ID 失效，继续 block 级操作前重新 fetch
+- `block_insert_after` / `append` / `block_copy_insert_after`：锚点 / 源 ID 通常保留，新内容是新 ID；要操作新内容先重新 fetch
+- `block_move_after`：被移动 ID 通常保留，但位置、章节、range 语义变化；后续依赖位置时重新 fetch
+- `str_replace`：简单行内替换通常不改变 ID；跨行 / 大段替换后如继续 block 级操作，先重新 fetch
+
 ## 指令示例
 
 ### str_replace — 全文文本替换
@@ -55,20 +64,20 @@
 
 ```bash
 # 简单文本替换
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --pattern "张三" --content "李四"
 
 # 替换为富文本（加粗 + 链接）
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --pattern "旧链接" --content '<b>新链接</b> <a href="https://example.com">点击查看</a>'
 
 # 仅当用户明确要求时才使用 Markdown
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --doc-format markdown --pattern "旧内容" --content "新内容"
 
 # Markdown 模式下支持跨行匹配（--pattern 与 --content 都需要真实换行；"..."/'...' 里的 \n 是字面量）
 # 多行内容推荐 heredoc 或 --content @file.md，避免 shell 转义踩坑
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --doc-format markdown \
   --pattern "$(printf '## 旧标题\n\n第一段原文\n\n第二段原文')" \
   --content - <<'EOF'
@@ -81,7 +90,7 @@ EOF
 
 # Markdown 模式下使用 `前缀...后缀` 省略号匹配首尾特征明显的大段内容
 # 下例会把「## 旧标题」到「结束语。」之间的所有内容整体替换
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --doc-format markdown \
   --pattern "## 旧标题...结束语。" \
   --content - <<'EOF'
@@ -93,14 +102,14 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
 EOF
 
 # 删除文本：--content 传空字符串即可
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --pattern "废弃的内容" --content ""
 ```
 
 ### block_insert_after — 在指定 block 之后插入
 
 ```bash
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_insert_after \
+lark-cli docs +update --doc "<doc_id>" --command block_insert_after \
   --block-id "目标 block_id" \
   --content '<h2>新章节</h2><ul><li>要点 1</li><li>要点 2</li></ul>'
 ```
@@ -108,7 +117,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_insert_a
 ### block_replace — 替换指定 block
 
 ```bash
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace \
+lark-cli docs +update --doc "<doc_id>" --command block_replace \
   --block-id "目标 block_id" \
   --content '<p>替换后的段落内容</p>'
 ```
@@ -117,14 +126,14 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace 
 
 ```bash
 # 删除多个块时用逗号 "," 分隔
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_delete \
+lark-cli docs +update --doc "<doc_id>" --command block_delete \
   --block-id "block_id_1,block_id_2,block_id_3"
 ```
 
 ### overwrite — 全文覆盖
 
 ```bash
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command overwrite \
+lark-cli docs +update --doc "<doc_id>" --command overwrite \
   --content '<title>全新文档</title><h1>概述</h1><p>新的内容</p>'
 ```
 
@@ -133,7 +142,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command overwrite \
 ### append — 在文档末尾追加
 
 ```bash
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command append \
+lark-cli docs +update --doc "<doc_id>" --command append \
   --content '<h2>新增章节</h2><p>追加的内容</p>'
 ```
 
@@ -145,7 +154,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command append \
 
 ```bash
 # 复制多个块（按顺序插入：anchor → a → b → c）
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_copy_insert_after \
+lark-cli docs +update --doc "<doc_id>" --command block_copy_insert_after \
   --block-id "锚点 block_id" \
   --src-block-ids "block_a,block_b,block_c"
 ```
@@ -156,7 +165,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_copy_ins
 
 ```bash
 # 移动到页面末尾
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_move_after \
+lark-cli docs +update --doc "<doc_id>" --command block_move_after \
   --block-id "-1表示末尾，page_id表示开头，blk" \
   --src-block-ids "block_a,block_b"
 ```
@@ -194,7 +203,7 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_move_aft
 
 1. **获取文档内容和 block ID**：
    ```bash
-   lark-cli docs +fetch --api-version v2 --doc "<doc_id>" --detail with-ids
+   lark-cli docs +fetch --doc "<doc_id>" --detail with-ids
    ```
 
 2. **定位目标 block**：从返回的 XML 中找到要修改的 block 及其 `id` 属性
@@ -202,11 +211,11 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_move_aft
 3. **执行更新**：
    ```bash
    # 替换特定 block
-   lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_replace \
+   lark-cli docs +update --doc "<doc_id>" --command block_replace \
      --block-id "blkcnXXXX" --content "<p>新内容</p>"
 
    # 在某 block 后插入
-   lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_insert_after \
+   lark-cli docs +update --doc "<doc_id>" --command block_insert_after \
      --block-id "blkcnXXXX" --content "<h2>追加的章节</h2>"
    ```
 
@@ -215,15 +224,15 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command block_move_aft
 不需要 block ID，直接匹配替换：
 
 ```bash
-lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
+lark-cli docs +update --doc "<doc_id>" --command str_replace \
   --pattern "v1.0" --content "v2.0"
 ```
 
 ## 画板处理
 
-> **`docs +update` 不能直接编辑已有画板的内容。** 本命令只能**新增**画板块；要修改已有画板，先用 `docs +fetch --api-version v2` 取到 `<whiteboard token="...">`，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 读取 [`lark-whiteboard`](../../lark-whiteboard/SKILL.md) 并写入。
+> **`docs +update` 不能直接编辑已有画板的内容。** 本命令只能**新增**画板块；要修改已有画板，先用 `docs +fetch` 取到 `<whiteboard token="...">`，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 读取 [`lark-whiteboard`](../../lark-whiteboard/SKILL.md) 并写入。
 
-画板的语法选型与插入示例见 [`lark-doc-style.md`](style/lark-doc-style.md) 的「画板语法与插入」章节。
+画板的语法选型与插入示例见 [`lark-doc-xml.md`](lark-doc-xml.md) 与 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md)。
 
 ## 最佳实践
 
@@ -239,12 +248,12 @@ lark-cli docs +update --api-version v2 --doc "<doc_id>" --command str_replace \
   1. 用 `block_insert_after` 在目标位置插入新的富文本结构
   2. 用 `block_delete` 批量删除旧的 block
   3. 这样可以保留文档中其他不相关的内容（图片、评论等）
-- **视觉丰富度**：插入或替换内容时，同样遵循 [`lark-doc-style.md`](style/lark-doc-style.md) 中的样式指南，主动使用结构化 block
+- **表达形式**：插入或替换内容时，优先沿用用户要求和已有文档风格；需要结构化表达时可参考 [`lark-doc-style.md`](style/lark-doc-style.md)，但不要为了固定丰富度主动添加组件
 
 ## 参考
 
-- [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、并行执行策略）
-- [`lark-doc-style.md`](style/lark-doc-style.md) — 文档样式指南（元素选择 + 丰富度规则 + 颜色语义）
+- [`lark-doc-update-workflow.md`](style/lark-doc-update-workflow.md) — 改写增强工作流（Code-Act Loop、单 Agent 串行改写）
+- [`lark-doc-style.md`](style/lark-doc-style.md) — 文档写作原则（默认段落、按体裁、组件克制）
 - [`lark-doc-xml.md`](lark-doc-xml.md) — XML 语法规范
 - [`lark-doc-fetch.md`](lark-doc-fetch.md) — 获取文档
 - [`lark-doc-create.md`](lark-doc-create.md) — 创建文档

@@ -8,6 +8,21 @@ import (
 	"testing"
 )
 
+func TestOrderedProps_Set(t *testing.T) {
+	op := &OrderedProps{}
+	op.Set("b", Property{Type: "string"})
+	op.Set("a", Property{Type: "integer"})
+	op.Set("b", Property{Type: "boolean"}) // re-set: updates value, keeps position
+
+	wantOrder := []string{"b", "a"}
+	if len(op.Order) != len(wantOrder) || op.Order[0] != "b" || op.Order[1] != "a" {
+		t.Errorf("Order = %v, want %v (insertion order, no duplicate on re-set)", op.Order, wantOrder)
+	}
+	if op.Map["b"].Type != "boolean" {
+		t.Errorf("re-set value = %q, want boolean", op.Map["b"].Type)
+	}
+}
+
 // OrderedProps 在测试里验证：MarshalJSON 按 Order 切片顺序输出 key，跳过 Go map 默认字母序。
 func TestOrderedProps_MarshalJSON_PreservesOrder(t *testing.T) {
 	op := &OrderedProps{

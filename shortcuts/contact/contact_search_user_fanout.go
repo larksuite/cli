@@ -45,22 +45,17 @@ type fanoutResult struct {
 	Query   string
 	Users   []searchUser
 	HasMore bool
+	Notice  string
 	ErrMsg  string // empty = success
 	Err     error  // original failure, kept for typed all-failed propagation
 }
 
-// isFanoutSummaryFormat gates the per-fanout stderr summary line. Includes csv
-// because that summary lives on stderr and never corrupts the csv stream on
-// stdout — single-query mode keeps the narrower isHumanReadableFormat predicate
-// for its refine hint, so adding csv here doesn't regress that path.
+// isFanoutSummaryFormat gates the per-fanout stderr summary line.
 func isFanoutSummaryFormat(format string) bool {
 	return format == "pretty" || format == "table" || format == "csv"
 }
 
-// runOneQuery converts every failure mode (transport, HTTP status, parse,
-// API code) into an ErrMsg string instead of returning a Go error. The
-// fanout dispatcher (Task 6) relies on this so a single failed query never
-// short-circuits the remaining workers.
+// runOneQuery converts one fanout request into either users or an error summary.
 func runOneQuery(ctx context.Context, runtime *common.RuntimeContext, index int, query string,
 	filter *searchUserAPIFilter) fanoutResult {
 	// Pre-check ctx so queued workers see cancellation before issuing a
@@ -94,9 +89,10 @@ func runOneQuery(ctx context.Context, runtime *common.RuntimeContext, index int,
 	}
 
 	users, hasMore := projectUsers(respData, runtime.Str("lang"), runtime.Config.Brand)
-	return fanoutResult{Index: index, Query: query, Users: users, HasMore: hasMore}
+	return fanoutResult{Index: index, Query: query, Users: users, HasMore: hasMore, Notice: respData.Notice}
 }
 
+// fanoutErrorResult records a failed fanout query without stopping other workers.
 func fanoutErrorResult(index int, query string, err error) fanoutResult {
 	if err == nil {
 		return fanoutResult{Index: index, Query: query}
@@ -113,17 +109,16 @@ type querySummary struct {
 	Query   string `json:"query"`
 	Error   string `json:"error,omitempty"`
 	HasMore bool   `json:"has_more"`
+	Notice  string `json:"notice,omitempty"`
 }
 
 type fanoutResponse struct {
 	Users   []fanoutUser   `json:"users"`
 	Queries []querySummary `json:"queries"`
+	Notice  string         `json:"notice,omitempty"`
 }
 
-// buildFanoutResponse walks results by Index (input order), flattens users[]
-// with matched_query, lists every input in queries[] (including successes),
-// and returns an error only when every query failed. The error wraps the
-// first failing query's ErrMsg so the CLI exits non-zero on full failure.
+// buildFanoutResponse flattens ordered fanout results and fails only when all queries fail.
 func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutResponse, error) {
 	indexed := make([]fanoutResult, len(queries))
 	for _, r := range results {
@@ -142,6 +137,7 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 			Query:   queries[i],
 			Error:   r.ErrMsg,
 			HasMore: r.HasMore,
+			Notice:  r.Notice,
 		})
 		if r.ErrMsg != "" {
 			failed++
@@ -151,6 +147,9 @@ func buildFanoutResponse(queries []string, results []fanoutResult) (*fanoutRespo
 				firstErr = r.Err
 			}
 			continue
+		}
+		if out.Notice == "" {
+			out.Notice = r.Notice
 		}
 		for _, u := range r.Users {
 			out.Users = append(out.Users, fanoutUser{searchUser: u, MatchedQuery: queries[i]})

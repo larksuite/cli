@@ -11,11 +11,11 @@ This skill maps to the shortcut: `lark-cli im +chat-list` (internally calls `GET
 ## Commands
 
 ```bash
-# List the user's chats (default sort: ByCreateTimeAsc)
+# List the user's chats (default sort: create_time, ascending)
 lark-cli im +chat-list
 
 # Sort by recent activity (most recently active first)
-lark-cli im +chat-list --sort-type ByActiveTimeDesc
+lark-cli im +chat-list --sort active_time
 
 # Limit page size
 lark-cli im +chat-list --page-size 50
@@ -48,7 +48,7 @@ lark-cli im +chat-list --as user --types p2p
 |------|------|------|------|
 | `--user-id-type <type>` | No | `open_id` (default), `union_id`, `user_id` | ID type used for `owner_id` in the response |
 | `--types <strings>` | No | `group`, `p2p` (comma-separated or repeated) | Chat types to include. Omitted = groups only (backward compatible). `p2p` requires user identity (`--as user`); under `--as bot`, `--types=p2p` alone is rejected and `--types=p2p,group` is silently downgraded to `group` |
-| `--sort-type <type>` | No | `ByCreateTimeAsc` (default), `ByActiveTimeDesc` | Result ordering |
+| `--sort <field>` | No | `create_time` (default, ascending), `active_time` (descending) | Result ordering |
 | `--page-size <n>` | No | 1-100, default 20 | Number of results per page |
 | `--page-token <token>` | No | - | Pagination token from the previous response |
 | `--exclude-muted` | No | User identity only | Drop chats the current user has muted (do-not-disturb). Under `--as bot`, the flag is silently inactive; see "Filtering muted chats" below |
@@ -130,13 +130,13 @@ When the flag is set, the JSON envelope gains a `filter` sub-object (absent othe
 ### Scenario 1: List my recent chats
 
 ```bash
-lark-cli im +chat-list --sort-type ByActiveTimeDesc --page-size 10
+lark-cli im +chat-list --sort active_time --page-size 10
 ```
 
 ### Scenario 2: List my non-muted chats sorted by activity
 
 ```bash
-lark-cli im +chat-list --sort-type ByActiveTimeDesc --exclude-muted
+lark-cli im +chat-list --sort active_time --exclude-muted
 ```
 
 ### Scenario 3: Iterate all my chats programmatically

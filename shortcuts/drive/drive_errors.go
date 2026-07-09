@@ -9,7 +9,6 @@ import (
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/fileio"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // wrapDriveNetworkErr returns err unchanged when it is already a typed errs.*
@@ -55,8 +54,8 @@ func driveSaveError(err error) error {
 }
 
 // appendDriveExportRecoveryHint attaches a recovery hint to err while preserving
-// its original classification (typed subtype/code or legacy detail), only falling
-// back to a typed internal error when err is unclassified.
+// its original classification (typed subtype/code), only falling back to a typed
+// internal error when err is unclassified.
 func appendDriveExportRecoveryHint(err error, hint string) error {
 	if err == nil {
 		return nil
@@ -70,18 +69,6 @@ func appendDriveExportRecoveryHint(err error, hint string) error {
 			p.Hint = p.Hint + "\n" + hint
 		} else {
 			p.Hint = hint
-		}
-		return err
-	}
-	// Legacy *output.ExitError fallback: preserve the original error's
-	// class/exit code by appending the hint in place rather than downgrading
-	// to api/server_error.
-	var exitErr *output.ExitError
-	if errors.As(err, &exitErr) && exitErr.Detail != nil {
-		if strings.TrimSpace(exitErr.Detail.Hint) != "" {
-			exitErr.Detail.Hint = exitErr.Detail.Hint + "\n" + hint
-		} else {
-			exitErr.Detail.Hint = hint
 		}
 		return err
 	}

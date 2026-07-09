@@ -7,15 +7,16 @@
 ## 推荐命令
 
 ```bash
-# 为目标创建进展记录
+# 为目标创建进展记录（默认 simple 风格，半纯文本格式）
 lark-cli okr +progress-create \
-  --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"本周完成了核心模块开发"}}]}}]}' \
+  --content '{"text":"本周完成了核心模块开发","mention":["ou_123"]}' \
   --target-id 1234567890123456789 \
   --target-type objective
 
-# 为关键结果创建进展记录（带进度百分比和状态）
+# 为关键结果创建进展记录（richtext 风格，完整 ContentBlock 格式）
 lark-cli okr +progress-create \
   --content '{"blocks":[{"block_element_type":"paragraph","paragraph":{"elements":[{"paragraph_element_type":"textRun","text_run":{"text":"指标已达到 80%"}}]}}]}' \
+  --style richtext \
   --target-id 2345678901234567891 \
   --target-type key_result \
   --progress-percent 80 \
@@ -32,7 +33,8 @@ lark-cli okr +progress-create \
 
 | 参数                   | 必填 | 默认值                   | 说明                                                                                                                                   |
 |----------------------|----|-----------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `--content`          | 是  | —                     | 进展内容，ContentBlock JSON 格式。支持 `@文件路径` 从文件读取。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。                                          |
+| `--content`          | 是  | —                     | 进展内容。根据 `--style` 指定格式：`simple` 风格为 SemiPlainContent JSON，`richtext` 风格为 ContentBlock JSON。支持 `@文件路径` 从文件读取。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。 |
+| `--style`            | 否  | `simple`              | 输入风格：`simple`（半纯文本 JSON，推荐） \| `richtext`（完整 ContentBlock JSON）。请参考 [ContentBlock 格式](lark-okr-contentblock.md) 了解两种格式。          |
 | `--target-id`        | 是  | —                     | 目标 ID 或关键结果 ID（int64 类型，正整数）                                                                                                         |
 | `--target-type`      | 是  | —                     | 目标类型：`objective` \| `key_result`                                                                                                     |
 | `--progress-percent` | 否  | —                     | 进度百分比(-99999999999 - 99999999999)。百分比的取值通常在 0-100，但允许超过此范围，以表示超额完成或负增长等情况。挂载的目标或关键结果的量化指标不使用百分比单位时，以这个字段更新当前值。系统内最多保留两位小数            |
@@ -46,7 +48,9 @@ lark-cli okr +progress-create \
 ## 工作流程
 
 1. 使用 `+cycle-list` 和 `+cycle-detail` 获取目标或关键结果的 ID。
-2. 构造 ContentBlock JSON 格式的进展内容。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。
+2. 构造进展内容：
+   - **推荐**：使用 `simple` 风格（默认），构造 SemiPlainContent JSON：`{"text":"内容","mention":["ou_xxx"]}`，mention 中提及的用户会统一连接在文本末尾。
+   - 如需复杂格式：使用 `richtext` 风格，构造 ContentBlock JSON。请参考 [ContentBlock 格式](lark-okr-contentblock.md)。若需要插入图片/飞书文档或复杂文本格式，则必须使用 richtext 风格
 3. 执行 `lark-cli okr +progress-create --content "..." --target-id "..." --target-type objective`。
 4. 报告结果：新创建的进展记录 ID、修改时间等。
 

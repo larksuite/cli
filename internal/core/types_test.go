@@ -42,6 +42,11 @@ func TestResolveEndpoints_EmptyDefaultsToFeishu(t *testing.T) {
 	if ep.Open != "https://open.feishu.cn" {
 		t.Errorf("Open = %q, want feishu.cn for empty brand", ep.Open)
 	}
+	// The unified OAuth v3 Token Endpoint mints TAT on the accounts domain;
+	// pin the default-brand host so a stray non-production domain revert is caught.
+	if ep.Accounts != "https://accounts.feishu.cn" {
+		t.Errorf("Accounts = %q, want accounts.feishu.cn for empty brand", ep.Accounts)
+	}
 }
 
 func TestResolveOpenBaseURL(t *testing.T) {

@@ -65,7 +65,7 @@ var codeMeta = map[int]CodeMeta{
 
 	// CategoryConfig
 	99991543: {Category: errs.CategoryConfig, Subtype: errs.SubtypeInvalidClient}, // RFC 6749 §5.2 — app_id / app_secret incorrect (Open API)
-	10014:    {Category: errs.CategoryConfig, Subtype: errs.SubtypeInvalidClient}, // TAT endpoint — "app secret invalid" (TAT-mint variant of 99991543)
+	10014:    {Category: errs.CategoryConfig, Subtype: errs.SubtypeInvalidClient}, // legacy TAT endpoint — "app secret invalid" (pre-v3 variant of 99991543; CLI now reports invalid_client)
 
 	// CategoryPolicy
 	21000: {Category: errs.CategoryPolicy, Subtype: errs.SubtypeChallengeRequired},

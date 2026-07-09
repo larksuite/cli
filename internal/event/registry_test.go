@@ -244,3 +244,58 @@ func TestBufferSize_Clamped(t *testing.T) {
 		t.Errorf("BufferSize = %d, want %d", def.BufferSize, MaxBufferSize)
 	}
 }
+
+func TestRegisterKey_SubscriptionTypeDefaultsToEvent(t *testing.T) {
+	const key = "test.subtype.default"
+	RegisterKey(KeyDefinition{
+		Key:       key,
+		EventType: key,
+		Schema:    SchemaDef{Native: &SchemaSpec{Raw: []byte(`{"type":"object"}`)}},
+	})
+	defer UnregisterKeyForTest(key)
+
+	def, ok := Lookup(key)
+	if !ok {
+		t.Fatalf("Lookup(%q) failed", key)
+	}
+	if def.SubscriptionType != SubTypeEvent {
+		t.Errorf("SubscriptionType = %q, want %q", def.SubscriptionType, SubTypeEvent)
+	}
+	if def.SingleConsumer {
+		t.Errorf("SingleConsumer = true, want false (default)")
+	}
+}
+
+func TestRegisterKey_SubscriptionTypeCallbackPreserved(t *testing.T) {
+	const key = "test.subtype.callback"
+	RegisterKey(KeyDefinition{
+		Key:              key,
+		EventType:        key,
+		SubscriptionType: SubTypeCallback,
+		SingleConsumer:   true,
+		Schema:           SchemaDef{Native: &SchemaSpec{Raw: []byte(`{"type":"object"}`)}},
+	})
+	defer UnregisterKeyForTest(key)
+
+	def, _ := Lookup(key)
+	if def.SubscriptionType != SubTypeCallback {
+		t.Errorf("SubscriptionType = %q, want %q", def.SubscriptionType, SubTypeCallback)
+	}
+	if !def.SingleConsumer {
+		t.Errorf("SingleConsumer = false, want true")
+	}
+}
+
+func TestRegisterKey_InvalidSubscriptionTypePanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("expected panic for invalid SubscriptionType")
+		}
+	}()
+	RegisterKey(KeyDefinition{
+		Key:              "test.subtype.bogus",
+		EventType:        "test.subtype.bogus",
+		SubscriptionType: "bogus",
+		Schema:           SchemaDef{Native: &SchemaSpec{Raw: []byte(`{"type":"object"}`)}},
+	})
+}

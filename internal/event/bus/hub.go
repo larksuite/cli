@@ -6,16 +6,40 @@ package bus
 import (
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/larksuite/cli/internal/event"
 	"github.com/larksuite/cli/internal/event/protocol"
 )
 
+// exclusiveCleanupWaitTimeout bounds how long TryRegisterExclusive waits for an
+// in-progress cleanup of the same subscription before rejecting, so a stuck
+// cleanup can never wedge new consumers forever. Kept below the consumer's
+// hello_ack deadline (consume.helloAckTimeout = 5s) so the reject still reaches
+// the consumer as a clean failed_precondition instead of a handshake timeout.
+// Override with LARKSUITE_CLI_EVENT_EXCLUSIVE_WAIT_TIMEOUT (a Go duration such as
+// "2s"); values at or above the 5s handshake deadline are not recommended.
+var exclusiveCleanupWaitTimeout = resolveExclusiveCleanupWaitTimeout()
+
+func resolveExclusiveCleanupWaitTimeout() time.Duration {
+	const def = 3 * time.Second
+	if v := os.Getenv("LARKSUITE_CLI_EVENT_EXCLUSIVE_WAIT_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return def
+}
+
 // Subscriber is the interface a connection must satisfy for Hub registration.
 type Subscriber interface {
 	EventKey() string
+	// SubscriptionID identifies the per-resource subscription for dedup purposes.
+	// When no resource qualifier is needed it equals EventKey.
+	SubscriptionID() string
 	EventTypes() []string
 	SendCh() chan interface{}
 	PID() int
@@ -34,8 +58,11 @@ type Subscriber interface {
 type Hub struct {
 	mu          sync.RWMutex
 	subscribers map[Subscriber]struct{}
-	keyCounts   map[string]int
-	// cleanupInProgress[key] holds a channel closed on release; presence means a cleanup lock is held.
+	// subCounts is keyed by SubscriptionID (not EventKey) so that different
+	// per-resource subscriptions sharing the same EventKey are deduped independently.
+	subCounts map[string]int
+	// cleanupInProgress[subscriptionID] holds a channel closed on release;
+	// presence means a cleanup lock is held for that subscription.
 	cleanupInProgress map[string]chan struct{}
 	logger            atomic.Pointer[log.Logger]
 }
@@ -43,7 +70,7 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		subscribers:       make(map[Subscriber]struct{}),
-		keyCounts:         make(map[string]int),
+		subCounts:         make(map[string]int),
 		cleanupInProgress: make(map[string]chan struct{}),
 	}
 }
@@ -51,7 +78,7 @@ func NewHub() *Hub {
 // SetLogger attaches a logger (nil tolerated).
 func (h *Hub) SetLogger(l *log.Logger) { h.logger.Store(l) }
 
-// UnregisterAndIsLast removes s and reports whether it was last for its EventKey; stale unregisters are no-ops.
+// UnregisterAndIsLast removes s and reports whether it was last for its SubscriptionID; stale unregisters are no-ops.
 func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -59,34 +86,35 @@ func (h *Hub) UnregisterAndIsLast(s Subscriber) bool {
 		return false
 	}
 	delete(h.subscribers, s)
-	h.keyCounts[s.EventKey()]--
-	isLast := h.keyCounts[s.EventKey()] == 0
+	sid := s.SubscriptionID()
+	h.subCounts[sid]--
+	isLast := h.subCounts[sid] == 0
 	if isLast {
-		delete(h.keyCounts, s.EventKey())
+		delete(h.subCounts, sid)
 	}
 	return isLast
 }
 
-// AcquireCleanupLock reserves cleanup rights iff exactly one subscriber exists for eventKey and no lock is held.
+// AcquireCleanupLock reserves cleanup rights iff exactly one subscriber exists for subscriptionID and no lock is held.
 // Count==0 is rejected (would block future Register calls). On true return, caller MUST Release.
-func (h *Hub) AcquireCleanupLock(eventKey string) bool {
+func (h *Hub) AcquireCleanupLock(subscriptionID string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.keyCounts[eventKey] != 1 {
+	if h.subCounts[subscriptionID] != 1 {
 		return false
 	}
-	if _, alreadyLocked := h.cleanupInProgress[eventKey]; alreadyLocked {
+	if _, alreadyLocked := h.cleanupInProgress[subscriptionID]; alreadyLocked {
 		return false
 	}
-	h.cleanupInProgress[eventKey] = make(chan struct{})
+	h.cleanupInProgress[subscriptionID] = make(chan struct{})
 	return true
 }
 
 // ReleaseCleanupLock is idempotent; OnClose calls unconditionally.
-func (h *Hub) ReleaseCleanupLock(eventKey string) {
+func (h *Hub) ReleaseCleanupLock(subscriptionID string) {
 	h.mu.Lock()
-	ch := h.cleanupInProgress[eventKey]
-	delete(h.cleanupInProgress, eventKey)
+	ch := h.cleanupInProgress[subscriptionID]
+	delete(h.cleanupInProgress, subscriptionID)
 	h.mu.Unlock()
 	if ch != nil {
 		close(ch)
@@ -94,26 +122,84 @@ func (h *Hub) ReleaseCleanupLock(eventKey string) {
 }
 
 // RegisterAndIsFirst adds s to the hub and reports whether it's the first
-// subscriber for its EventKey. If a cleanup is in progress for
-// s.EventKey() (another conn holds the cleanup lock), this waits until
+// subscriber for its SubscriptionID. If a cleanup is in progress for
+// s.SubscriptionID() (another conn holds the cleanup lock), this waits until
 // cleanup releases before registering — closing the PreShutdownCheck ×
 // Hello TOCTOU race. The wait releases h.mu before blocking on the
-// channel, so concurrent operations on other keys aren't stalled.
+// channel, so concurrent operations on other subscriptions aren't stalled.
 func (h *Hub) RegisterAndIsFirst(s Subscriber) bool {
+	sid := s.SubscriptionID()
 	for {
 		h.mu.Lock()
-		ch, locked := h.cleanupInProgress[s.EventKey()]
+		ch, locked := h.cleanupInProgress[sid]
 		if locked {
 			h.mu.Unlock()
 			<-ch // wait for release, then re-check (defensive against races)
 			continue
 		}
-		isFirst := h.keyCounts[s.EventKey()] == 0
+		isFirst := h.subCounts[sid] == 0
 		h.subscribers[s] = struct{}{}
-		h.keyCounts[s.EventKey()]++
+		h.subCounts[sid]++
 		h.mu.Unlock()
 		return isFirst
 	}
+}
+
+// TryRegisterExclusive registers s only when no subscriber holds s.SubscriptionID()
+// and any in-progress cleanup for that subscription finishes within
+// exclusiveCleanupWaitTimeout. On failure it returns (false, reason): either a
+// duplicate consumer already holds the subscription, or the cleanup did not
+// finish in time — the timeout guarantees a stuck cleanup can never wedge new
+// consumers forever. reason is "" on success. Mirrors RegisterAndIsFirst's wait
+// on in-progress cleanup, but bounded.
+func (h *Hub) TryRegisterExclusive(s Subscriber) (bool, string) {
+	sid := s.SubscriptionID()
+	deadline := time.Now().Add(exclusiveCleanupWaitTimeout)
+	for {
+		h.mu.Lock()
+		ch, locked := h.cleanupInProgress[sid]
+		if locked {
+			h.mu.Unlock()
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return false, "timed out waiting for the previous consumer's cleanup to finish; retry shortly"
+			}
+			timer := time.NewTimer(remaining)
+			select {
+			case <-ch:
+				// Stop+drain so a timer that fired concurrently with Stop isn't left on .C.
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				continue
+			case <-timer.C:
+				return false, "timed out waiting for the previous consumer's cleanup to finish; retry shortly"
+			}
+		}
+		if h.subCounts[sid] != 0 {
+			pid := h.existingPIDForSubscriptionLocked(sid)
+			h.mu.Unlock()
+			return false, fmt.Sprintf("another consumer (pid %d) is already running for this subscription", pid)
+		}
+		h.subscribers[s] = struct{}{}
+		h.subCounts[sid]++
+		h.mu.Unlock()
+		return true, ""
+	}
+}
+
+// existingPIDForSubscriptionLocked returns the PID of one subscriber for sid.
+// Caller must hold h.mu.
+func (h *Hub) existingPIDForSubscriptionLocked(sid string) int {
+	for sub := range h.subscribers {
+		if sub.SubscriptionID() == sid {
+			return sub.PID()
+		}
+	}
+	return 0
 }
 
 // Publish fans out a RawEvent to all matching subscribers (non-blocking).
@@ -176,11 +262,25 @@ func (h *Hub) ConnCount() int {
 	return len(h.subscribers)
 }
 
-// EventKeyCount returns the number of subscribers registered for eventKey.
+// EventKeyCount returns total subscribers for the given EventKey, aggregating
+// across all SubscriptionIDs. For per-subscription counts use SubCount.
 func (h *Hub) EventKeyCount(eventKey string) int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return h.keyCounts[eventKey]
+	count := 0
+	for s := range h.subscribers {
+		if s.EventKey() == eventKey {
+			count++
+		}
+	}
+	return count
+}
+
+// SubCount returns the count of subscribers for the given SubscriptionID.
+func (h *Hub) SubCount(subscriptionID string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.subCounts[subscriptionID]
 }
 
 // BroadcastSourceStatus fans out a source-level status change to every
@@ -205,10 +305,11 @@ func (h *Hub) Consumers() []protocol.ConsumerInfo {
 	result := make([]protocol.ConsumerInfo, 0, len(h.subscribers))
 	for s := range h.subscribers {
 		result = append(result, protocol.ConsumerInfo{
-			PID:      s.PID(),
-			EventKey: s.EventKey(),
-			Received: s.Received(),
-			Dropped:  s.DroppedCount(),
+			PID:            s.PID(),
+			EventKey:       s.EventKey(),
+			SubscriptionID: s.SubscriptionID(),
+			Received:       s.Received(),
+			Dropped:        s.DroppedCount(),
 		})
 	}
 	return result

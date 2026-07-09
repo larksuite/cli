@@ -9,16 +9,15 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-// AppsReleaseCreate creates a release for a Miaoda app.
+// AppsReleaseCreate creates a release for an app.
 var AppsReleaseCreate = common.Shortcut{
 	Service:     appsService,
 	Command:     "+release-create",
-	Description: "Create a release for a Miaoda app (returns release_id for status polling)",
+	Description: "Create a release for an app (returns release_id for status polling)",
 	Risk:        "write",
 	Tips: []string{
 		"Example: lark-cli apps +release-create --app-id <app_id>",
@@ -28,12 +27,12 @@ var AppsReleaseCreate = common.Shortcut{
 	AuthTypes: []string{"user"},
 	HasFormat: true,
 	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app ID", Required: true},
+		{Name: "app-id", Desc: "app ID", Required: true},
 		{Name: "branch", Desc: "release branch (server uses default if omitted)"},
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		return nil
 	},

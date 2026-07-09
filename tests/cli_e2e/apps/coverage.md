@@ -14,7 +14,7 @@
 - `TestAppsAccessScopeSetDryRun`: CLI input `specific`/`public`/`tenant` -> server enum `Range`/`All`/`Tenant`; `apply_config.approvers` shape; four mutex rejection paths.
 - `TestAppsAccessScopeGetDryRun`: URL shape; no body/params on GET; `--app-id` required.
 - `TestAppsHTMLPublishDryRun`: walker manifest for directory + single file; hidden files intentionally included (design decision); empty dir / missing `index.html` produce envelope `validation_error` field (dry-run exits 0 advisory, not blocking); both required-flag rejections.
-- `TestAppsGitCredentialInitDryRun`: URL shape for issuing a Miaoda Git PAT; no body; `app_id` query metadata included.
+- `TestAppsGitCredentialInitDryRun`: URL shape for issuing an app Git PAT; no body; `app_id` query metadata included.
 - `TestAppsGitCredentialListLocalE2E`: local-only command scans every app storage directory and reports repository URL and status without exposing PAT or expiry details.
 - `TestAppsGitCredentialRemoveLocalE2E`: local cleanup command removes app-scoped metadata under an isolated config dir.
 

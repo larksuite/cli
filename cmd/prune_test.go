@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/extension/platform"
 	"github.com/larksuite/cli/internal/cmdpolicy"
 	"github.com/larksuite/cli/internal/cmdutil"
@@ -247,9 +248,12 @@ func TestStrictModeStub_BypassesArgsValidator(t *testing.T) {
 	}
 }
 
-// Pins the strict-mode envelope shape: structured detail.* / wrapped
-// CommandDeniedError for external agents, AND the historical short
-// Message + independent Hint for existing consumers.
+// Pins the strict-mode typed envelope: a failed_precondition
+// *errs.ValidationError (exit 2) carrying the short historical Message,
+// a Hint that still surfaces the policy layer + reason code (the
+// safety-critical recovery info that lived in the legacy detail map),
+// and the wrapped *platform.CommandDeniedError so external agents can
+// still inspect the structured denial taxonomy via errors.As.
 func TestStrictModeStub_StructuredEnvelope(t *testing.T) {
 	root := newTestTree()
 	pruneForStrictMode(root, core.StrictModeBot)
@@ -262,30 +266,33 @@ func TestStrictModeStub_StructuredEnvelope(t *testing.T) {
 		t.Fatalf("strict-mode stub RunE should return error")
 	}
 
-	var ee *output.ExitError
-	if !errors.As(err, &ee) {
-		t.Fatalf("err is not *output.ExitError: %T", err)
+	var verr *errs.ValidationError
+	if !errors.As(err, &verr) {
+		t.Fatalf("err is not *errs.ValidationError: %T", err)
 	}
-	if ee.Detail == nil {
-		t.Fatalf("ExitError.Detail is nil; envelope writer cannot emit JSON")
+	if verr.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("subtype = %q, want failed_precondition", verr.Subtype)
 	}
-	if ee.Detail.Type != "command_denied" {
-		t.Errorf("Detail.Type = %q, want command_denied", ee.Detail.Type)
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
 	}
-	dm, ok := ee.Detail.Detail.(map[string]any)
-	if !ok {
-		t.Fatalf("Detail.Detail = %T, want map[string]any", ee.Detail.Detail)
+	// Short historical Message is preserved verbatim.
+	if verr.Message != `strict mode is "bot", only bot-identity commands are available` {
+		t.Errorf("Message = %q, want short historical form", verr.Message)
 	}
-	if got, _ := dm["layer"].(string); got != cmdpolicy.LayerStrictMode {
-		t.Errorf("Detail.Detail[layer] = %q, want %q", got, cmdpolicy.LayerStrictMode)
+	// The denial layer + reason code remain user-readable in the hint, and
+	// the historical switch-policy guidance is still appended.
+	if !strings.Contains(verr.Hint, cmdpolicy.LayerStrictMode) {
+		t.Errorf("Hint = %q, want substring %q (policy layer)", verr.Hint, cmdpolicy.LayerStrictMode)
 	}
-	if got, _ := dm["reason_code"].(string); got != "identity_not_supported" {
-		t.Errorf("Detail.Detail[reason_code] = %q, want identity_not_supported", got)
+	if !strings.Contains(verr.Hint, "identity_not_supported") {
+		t.Errorf("Hint = %q, want substring identity_not_supported (reason code)", verr.Hint)
 	}
-	if got, _ := dm["policy_source"].(string); got != "strict-mode" {
-		t.Errorf("Detail.Detail[policy_source] = %q, want strict-mode", got)
+	if !strings.Contains(verr.Hint, "if the user explicitly wants to switch policy") {
+		t.Errorf("Hint = %q, want historical switch-policy guidance", verr.Hint)
 	}
 
+	// The structured denial taxonomy survives on the wrapped cause.
 	var cd *platform.CommandDeniedError
 	if !errors.As(err, &cd) {
 		t.Fatalf("err does not unwrap to *platform.CommandDeniedError")
@@ -296,14 +303,11 @@ func TestStrictModeStub_StructuredEnvelope(t *testing.T) {
 	if cd.ReasonCode != "identity_not_supported" {
 		t.Errorf("CommandDeniedError.ReasonCode = %q, want identity_not_supported", cd.ReasonCode)
 	}
+	if cd.PolicySource != "strict-mode" {
+		t.Errorf("CommandDeniedError.PolicySource = %q, want strict-mode", cd.PolicySource)
+	}
 	if !strings.Contains(cd.Reason, `strict mode is "bot"`) {
 		t.Errorf("CommandDeniedError.Reason = %q, want substring 'strict mode is \"bot\"'", cd.Reason)
-	}
-	if ee.Detail.Message != `strict mode is "bot", only bot-identity commands are available` {
-		t.Errorf("Detail.Message = %q, want short historical form", ee.Detail.Message)
-	}
-	if !strings.HasPrefix(ee.Detail.Hint, "if the user explicitly wants to switch policy") {
-		t.Errorf("Detail.Hint = %q, want historical hint", ee.Detail.Hint)
 	}
 }
 

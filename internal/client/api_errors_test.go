@@ -16,7 +16,6 @@ import (
 	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
 
 	"github.com/larksuite/cli/errs"
-	"github.com/larksuite/cli/internal/output"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,19 +263,16 @@ func TestWrapJSONResponseParseError_Nil(t *testing.T) {
 // Cross-cutting: existing tests already in this file (kept and adjusted below).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestWrapDoAPIError_LegacyExitErrorNoLongerPassesThrough pins that legacy
-// *output.ExitError (auth/validation/api flavours) is NOT a problemCarrier
-// and is therefore not pass-through — only typed *errs.* values are.
-// Legacy values fall through to the network/JSON branches based on their
-// inner shape.
-func TestWrapDoAPIError_LegacyExitErrorNoLongerPassesThrough(t *testing.T) {
-	// An *output.ErrAuth has no embedded Problem and no JSON-decode chain;
-	// it routes to the network branch with the fallback transport subtype.
-	got := WrapDoAPIError(output.ErrAuth("no access token available for user"))
+// TestWrapDoAPIError_UntypedErrorRoutesToNetwork pins that a plain untyped
+// error (no embedded Problem, no JSON-decode chain) is NOT pass-through —
+// only typed *errs.* values are. It routes to the network branch with the
+// fallback transport subtype.
+func TestWrapDoAPIError_UntypedErrorRoutesToNetwork(t *testing.T) {
+	got := WrapDoAPIError(errors.New("no access token available for user"))
 
 	var ne *errs.NetworkError
 	if !errors.As(got, &ne) {
-		t.Fatalf("expected *errs.NetworkError (legacy ExitError no longer pass-through), got %T (%v)", got, got)
+		t.Fatalf("expected *errs.NetworkError for an untyped error, got %T (%v)", got, got)
 	}
 	// Sanity: not silently re-classified as JSON-decode.
 	var ie *errs.InternalError

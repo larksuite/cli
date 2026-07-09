@@ -5,6 +5,7 @@ package whiteboard
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,40 +22,54 @@ import (
 )
 
 const (
+	// WhiteboardQueryAsImage exports a whiteboard preview image.
 	WhiteboardQueryAsImage = "image"
-	WhiteboardQueryAsCode  = "code"
-	WhiteboardQueryAsRaw   = "raw"
+	// WhiteboardQueryAsSvg exports a whiteboard as SVG.
+	WhiteboardQueryAsSvg = "svg"
+	// WhiteboardQueryAsCode exports Mermaid or PlantUML source extracted from the whiteboard.
+	WhiteboardQueryAsCode = "code"
+	// WhiteboardQueryAsRaw exports the raw whiteboard node payload.
+	WhiteboardQueryAsRaw = "raw"
 )
 
+// SyntaxType identifies the diagram syntax extracted from whiteboard code blocks.
 type SyntaxType int
 
 const (
+	// SyntaxTypePlantUML marks PlantUML code blocks.
 	SyntaxTypePlantUML SyntaxType = 1
-	SyntaxTypeMermaid  SyntaxType = 2
+	// SyntaxTypeMermaid marks Mermaid code blocks.
+	SyntaxTypeMermaid SyntaxType = 2
 )
 
+// SyntaxTypeNameMap maps whiteboard syntax types to their CLI output names.
 var SyntaxTypeNameMap = map[SyntaxType]string{
 	SyntaxTypePlantUML: "plantuml",
 	SyntaxTypeMermaid:  "mermaid",
 }
 
+// SyntaxTypeExtensionMap maps whiteboard syntax types to their default file extensions.
 var SyntaxTypeExtensionMap = map[SyntaxType]string{
 	SyntaxTypePlantUML: ".puml",
 	SyntaxTypeMermaid:  ".mmd",
 }
 
+// String returns the CLI-facing name for the syntax type.
 func (s SyntaxType) String() string {
 	return SyntaxTypeNameMap[s]
 }
 
+// ExtensionName returns the default file extension for the syntax type.
 func (s SyntaxType) ExtensionName() string {
 	return SyntaxTypeExtensionMap[s]
 }
 
+// IsValid reports whether the syntax type is one of the supported whiteboard code syntaxes.
 func (s SyntaxType) IsValid() bool {
 	return s == SyntaxTypePlantUML || s == SyntaxTypeMermaid
 }
 
+// WhiteboardQuery registers the `whiteboard +query` shortcut.
 var WhiteboardQuery = common.Shortcut{
 	Service:     "whiteboard",
 	Command:     "+query",
@@ -64,8 +79,8 @@ var WhiteboardQuery = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "whiteboard-token", Desc: "whiteboard token of the whiteboard. You will need read permission to download preview image.", Required: true},
-		{Name: "output_as", Desc: "output whiteboard as: image | code | raw.", Required: true},
-		{Name: "output", Desc: "output directory. It is required when output as image. If not specified when --output_as code/raw, it will output directly.", Required: false},
+		{Name: "output_as", Desc: "output whiteboard as: image | svg | code | raw.", Required: true},
+		{Name: "output", Desc: "output directory. It is required when output as image. If not specified when --output_as svg/code/raw, it will output directly.", Required: false},
 		{Name: "overwrite", Desc: "overwrite existing file if it exists", Required: false, Type: "bool"},
 	},
 	HasFormat: true,
@@ -86,8 +101,8 @@ var WhiteboardQuery = common.Shortcut{
 		}
 
 		as := runtime.Str("output_as")
-		if as != WhiteboardQueryAsImage && as != WhiteboardQueryAsCode && as != WhiteboardQueryAsRaw {
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | code | raw").WithParam("--output_as")
+		if as != WhiteboardQueryAsImage && as != WhiteboardQueryAsSvg && as != WhiteboardQueryAsCode && as != WhiteboardQueryAsRaw {
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | svg | code | raw").WithParam("--output_as")
 		}
 		return nil
 	},
@@ -107,8 +122,13 @@ var WhiteboardQuery = common.Shortcut{
 			return common.NewDryRunAPI().
 				GET(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/nodes", common.MaskToken(url.PathEscape(token)))).
 				Desc("Extract raw nodes structure from given whiteboard")
+		case WhiteboardQueryAsSvg:
+			return common.NewDryRunAPI().
+				POST(fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/export", common.MaskToken(url.PathEscape(token)))).
+				Body(map[string]string{"export_type": "svg"}).
+				Desc("Export SVG of given whiteboard")
 		default:
-			return common.NewDryRunAPI().Desc("invalid --output_as flag, must be one of: image | code | raw")
+			return common.NewDryRunAPI().Desc("invalid --output_as flag, must be one of: image | svg | code | raw")
 		}
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
@@ -119,15 +139,103 @@ var WhiteboardQuery = common.Shortcut{
 		switch as {
 		case WhiteboardQueryAsImage:
 			return exportWhiteboardPreview(ctx, runtime, token, outDir)
+		case WhiteboardQueryAsSvg:
+			return exportWhiteboardSvg(runtime, token, outDir)
 		case WhiteboardQueryAsCode:
 			return exportWhiteboardCode(runtime, token, outDir)
 		case WhiteboardQueryAsRaw:
 			return exportWhiteboardRaw(runtime, token, outDir)
 		default:
-			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | code | raw").WithParam("--output_as")
+			return errs.NewValidationError(errs.SubtypeInvalidArgument, "--output_as flag must be one of: image | svg | code | raw").WithParam("--output_as")
 		}
 
 	},
+}
+
+// exportReq defines the request body for whiteboard export APIs.
+type exportReq struct {
+	ExportType string `json:"export_type"`
+}
+
+// exportResp models the whiteboard export response envelope.
+type exportResp struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Content  string `json:"content"`
+		MimeType string `json:"mime_type"`
+	} `json:"data"`
+}
+
+// exportWhiteboardSvg exports a whiteboard as SVG and writes it to stdout or a file.
+func exportWhiteboardSvg(runtime *common.RuntimeContext, wbToken, outDir string) error {
+	reqBody := exportReq{ExportType: "svg"}
+	req := &larkcore.ApiReq{
+		HttpMethod: http.MethodPost,
+		ApiPath:    fmt.Sprintf("/open-apis/board/v1/whiteboards/%s/export", url.PathEscape(wbToken)),
+		Body:       reqBody,
+	}
+
+	resp, err := runtime.DoAPI(req)
+	if err != nil {
+		return wrapWbNetworkErr(err, "export whiteboard svg failed: %v", err)
+	}
+
+	var exportData exportResp
+	if err := json.Unmarshal(resp.RawBody, &exportData); err == nil {
+		if exportData.Code != 0 {
+			subtype := errs.SubtypeUnknown
+			if resp.StatusCode == http.StatusNotFound {
+				subtype = errs.SubtypeNotFound
+			}
+			return errs.NewAPIError(subtype, "export whiteboard svg failed: %s", exportData.Msg).WithCode(exportData.Code)
+		}
+	} else if resp.StatusCode == http.StatusOK {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "parse export response failed: %v", err).WithCause(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body := common.TruncateStr(strings.TrimSpace(string(resp.RawBody)), 500)
+		if resp.StatusCode >= 500 {
+			return errs.NewNetworkError(errs.SubtypeNetworkServer, "export whiteboard svg failed: HTTP %d: %s", resp.StatusCode, body).
+				WithCode(resp.StatusCode).
+				WithRetryable()
+		}
+		subtype := errs.SubtypeUnknown
+		if resp.StatusCode == http.StatusNotFound {
+			subtype = errs.SubtypeNotFound
+		}
+		return errs.NewAPIError(subtype, "export whiteboard svg failed: HTTP %d: %s", resp.StatusCode, body).
+			WithCode(resp.StatusCode)
+	}
+
+	svgBytes, err := base64.StdEncoding.DecodeString(exportData.Data.Content)
+	if err != nil {
+		return errs.NewInternalError(errs.SubtypeInvalidResponse, "decode svg base64 failed: %v", err).WithCause(err)
+	}
+
+	if outDir == "" {
+		runtime.OutFormat(map[string]interface{}{
+			"svg_content": string(svgBytes),
+		}, nil, func(w io.Writer) {
+			fmt.Fprintf(w, "%s\n", string(svgBytes))
+		})
+		return nil
+	}
+
+	finalPath, size, err := saveOutputFile(outDir, ".svg", wbToken, runtime, bytes.NewReader(svgBytes))
+	if err != nil {
+		return err
+	}
+
+	runtime.OutFormat(map[string]interface{}{
+		"svg_path":   finalPath,
+		"size_bytes": size,
+	}, nil, func(w io.Writer) {
+		fmt.Fprintf(w, "SVG saved to %s\n", finalPath)
+		fmt.Fprintf(w, "File size: %d bytes", size)
+	})
+	return nil
 }
 
 func exportWhiteboardPreview(ctx context.Context, runtime *common.RuntimeContext, wbToken, outDir string) error {
@@ -367,6 +475,8 @@ func saveOutputFile(outPath, ext, token string, runtime *common.RuntimeContext, 
 	switch ext {
 	case ".png":
 		contentType = "image/png"
+	case ".svg":
+		contentType = "image/svg+xml"
 	case ".json":
 		contentType = "application/json"
 	case ".mmd", ".puml":

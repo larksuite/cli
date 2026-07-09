@@ -11,7 +11,7 @@
 
 ```bash
 make build          # Build (runs fetch_meta first)
-make unit-test      # Required before PR (runs with -race)
+make unit-test      # Required before PR (runs with -race where supported, e.g. amd64/arm64)
 make test           # Full: vet + unit + integration
 ```
 

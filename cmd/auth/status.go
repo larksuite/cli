@@ -17,6 +17,7 @@ import (
 type StatusOptions struct {
 	Factory *cmdutil.Factory
 	Verify  bool
+	JSON    bool
 }
 
 // NewCmdAuthStatus creates the auth status subcommand.
@@ -35,6 +36,7 @@ func NewCmdAuthStatus(f *cmdutil.Factory, runF func(*StatusOptions) error) *cobr
 	}
 
 	cmd.Flags().BoolVar(&opts.Verify, "verify", false, "verify token against server (requires network)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "structured JSON output")
 	cmdutil.SetRisk(cmd, "read")
 
 	return cmd

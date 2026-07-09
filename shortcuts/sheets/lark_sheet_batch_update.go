@@ -67,7 +67,7 @@ var BatchUpdate = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -89,8 +89,9 @@ var BatchUpdate = common.Shortcut{
 }
 
 // batchUpdateInput translates the user-supplied CLI-shape operations array
-// into the MCP batch_update payload. Returns FlagErrorf-typed errors on
-// any per-op shape problem (translator validates each entry).
+// into the MCP batch_update payload. Returns ValidationErrorf-typed errors
+// (errs.ValidationError) on any per-op shape problem (translator validates
+// each entry).
 func batchUpdateInput(runtime *common.RuntimeContext, token string) (map[string]interface{}, error) {
 	rawOps, err := parseBatchOperationsFlag(runtime)
 	if err != nil {
@@ -180,7 +181,7 @@ var CellsBatchSetStyle = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -270,7 +271,7 @@ var CellsBatchClear = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -350,7 +351,7 @@ var DropdownUpdate = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}
@@ -396,7 +397,7 @@ var DropdownDelete = common.Shortcut{
 		return invokeToolDryRun(token, ToolKindWrite, "batch_update", input)
 	},
 	Execute: func(ctx context.Context, runtime *common.RuntimeContext) error {
-		token, err := resolveSpreadsheetToken(runtime)
+		token, err := resolveSpreadsheetTokenExec(runtime)
 		if err != nil {
 			return err
 		}

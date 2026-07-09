@@ -8,11 +8,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const dbTableGetHint = "verify --app-id and --table are correct; list tables with `lark-cli apps +db-table-list --app-id <app_id>`; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+const dbTableGetHint = "verify --app-id and --table are correct; list tables with `lark-cli apps +db-table-list --app-id <app_id>`; if targeting --environment dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`"
 
 // AppsDBTableGet gets one table's structure (动词对齐 +db-table-list)。
 //
@@ -35,17 +34,19 @@ var AppsDBTableGet = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app id", Required: true},
+	Flags: append([]common.Flag{
+		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "table", Desc: "table name", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
-	},
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
 			return err
 		}
+		if err := rejectLegacyEnvFlag(rctx); err != nil {
+			return err
+		}
 		if strings.TrimSpace(rctx.Str("table")) == "" {
-			return output.ErrValidation("--table is required")
+			return appsValidationParamError("--table", "--table is required")
 		}
 		return nil
 	},
@@ -53,7 +54,7 @@ var AppsDBTableGet = common.Shortcut{
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(appTablePath(appID, strings.TrimSpace(rctx.Str("table")))).
-			Desc("Get Miaoda app db table schema").
+			Desc("Get app db table schema").
 			Params(buildDBTableGetParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -79,7 +80,7 @@ var AppsDBTableGet = common.Shortcut{
 // CLI 检测 rctx.Format == "pretty" 时给 server 带 format=ddl，要求返 CREATE 语句文本；
 // 其他 format（含默认 json）不传该参数，让 server 返默认结构化字段。
 func buildDBTableGetParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{"env": rctx.Str("env")}
+	params := dbEnvParams(rctx, map[string]interface{}{})
 	if rctx.Format == "pretty" {
 		params["format"] = "ddl"
 	}

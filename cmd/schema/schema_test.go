@@ -4,11 +4,12 @@
 package schema
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 )
@@ -21,29 +22,46 @@ func TestSchemaCmd_FlagParsing(t *testing.T) {
 		gotOpts = opts
 		return nil
 	})
-	cmd.SetArgs([]string{"calendar.events.list", "--format", "pretty"})
+	cmd.SetArgs([]string{"calendar.events.list"})
 	err := cmd.Execute()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if gotOpts.Path != "calendar.events.list" {
-		t.Errorf("expected path calendar.events.list, got %s", gotOpts.Path)
-	}
-	if gotOpts.Format != "pretty" {
-		t.Errorf("expected Format=pretty, got %s", gotOpts.Format)
+	if len(gotOpts.Args) != 1 || gotOpts.Args[0] != "calendar.events.list" {
+		t.Errorf("expected args [calendar.events.list], got %v", gotOpts.Args)
 	}
 }
 
-func TestSchemaCmd_NoArgs_Pretty(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-
-	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{"--format", "pretty"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestSchemaCmd_OutputFlagsAcceptedForCompat(t *testing.T) {
+	// Agents are habituated to --format/--json/--as from api/service commands.
+	// schema must accept them without erroring and always emit the JSON envelope —
+	// its output is structured JSON and identity-independent, so the values have
+	// no effect.
+	argSets := [][]string{
+		{"--format", "json"},
+		{"--format", "pretty"},
+		{"--format", "table"}, // no table rendering for a nested schema -> JSON
+		{"--format", "csv"},
+		{"--json"},
+		{"--json", "--format", "ndjson"},
+		{"--as", "user"},
+		{"--as", "bot"},
+		{"--as", "user", "--json"},
 	}
-	if !strings.Contains(stdout.String(), "Available services") {
-		t.Error("expected service list in pretty mode")
+	for _, extra := range argSets {
+		f, stdout, _, _ := cmdutil.TestFactory(t, nil)
+		cmd := NewCmdSchema(f, nil)
+		cmd.SetArgs(append([]string{"im.images.create"}, extra...))
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("args %v should be accepted, got error: %v", extra, err)
+		}
+		var env map[string]interface{}
+		if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+			t.Fatalf("args %v: output is not a JSON envelope: %v\n%s", extra, err, stdout.String())
+		}
+		if env["name"] != "im images create" {
+			t.Errorf("args %v: expected the im images create envelope, got name=%v", extra, env["name"])
+		}
 	}
 }
 
@@ -51,7 +69,7 @@ func TestSchemaCmd_NoArgs_JSON_IsArray(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{}) // default --format json
+	cmd.SetArgs([]string{})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -76,7 +94,7 @@ func TestSchemaCmd_JSONIsEnvelope(t *testing.T) {
 	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
 
 	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{"im.images.create", "--format", "json"})
+	cmd.SetArgs([]string{"im.images.create"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -179,23 +197,6 @@ func TestSchemaCmd_NoYesForReadRisk(t *testing.T) {
 	}
 }
 
-func TestSchemaCmd_PrettyUnchanged_KeyTextPresent(t *testing.T) {
-	f, stdout, _, _ := cmdutil.TestFactory(t, nil)
-
-	cmd := NewCmdSchema(f, nil)
-	cmd.SetArgs([]string{"im.images.create", "--format", "pretty"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	out := stdout.String()
-	// Existing pretty rendering surfaces these markers — they must still appear
-	for _, want := range []string{"Parameters:", "Response:", "Identity:", "Scopes:", "CLI:"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("pretty output missing marker %q", want)
-		}
-	}
-}
-
 func TestSchemaCmd_UnknownService(t *testing.T) {
 	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
 		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
@@ -210,170 +211,47 @@ func TestSchemaCmd_UnknownService(t *testing.T) {
 	if !strings.Contains(err.Error(), "Unknown service") {
 		t.Errorf("expected 'Unknown service' error, got: %v", err)
 	}
-}
-
-func TestPrintMethodDetail_FileUpload(t *testing.T) {
-	spec := map[string]interface{}{
-		"name":        "im",
-		"servicePath": "/open-apis/im/v1",
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
 	}
-	method := map[string]interface{}{
-		"path":        "images",
-		"httpMethod":  "POST",
-		"description": "Upload an image",
-		"requestBody": map[string]interface{}{
-			"image_type": map[string]interface{}{
-				"type":     "string",
-				"required": true,
-			},
-			"image": map[string]interface{}{
-				"type":     "file",
-				"required": true,
-			},
-		},
-		"accessTokens": []interface{}{"user", "tenant"},
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
 	}
-
-	var buf bytes.Buffer
-	printMethodDetail(&buf, spec, "images", "create", method)
-	out := buf.String()
-
-	if !strings.Contains(out, "file upload") {
-		t.Errorf("expected 'file upload' marker in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "--file") {
-		t.Errorf("expected '--file' in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, `"image"`) {
-		t.Errorf("expected default field name 'image' in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "--file <path>") {
-		t.Errorf("expected CLI example with --file <path>, got:\n%s", out)
+	if !strings.Contains(ve.Hint, "Available:") {
+		t.Errorf("expected hint listing available services, got: %q", ve.Hint)
 	}
 }
 
-func TestPrintMethodDetail_NoFileUpload(t *testing.T) {
-	spec := map[string]interface{}{
-		"name":        "calendar",
-		"servicePath": "/open-apis/calendar/v4",
-	}
-	method := map[string]interface{}{
-		"path":        "events",
-		"httpMethod":  "POST",
-		"description": "Create an event",
-		"requestBody": map[string]interface{}{
-			"summary": map[string]interface{}{
-				"type":     "string",
-				"required": true,
-			},
-		},
-	}
+// TestSchemaCmd_UnknownMethod_TypedValidation pins the typed envelope for the
+// JSON-mode unknown-method path: *errs.ValidationError with
+// subtype invalid_argument and a hint listing the available methods.
+func TestSchemaCmd_UnknownMethod_TypedValidation(t *testing.T) {
+	f, _, _, _ := cmdutil.TestFactory(t, &core.CliConfig{
+		AppID: "test-app", AppSecret: "test-secret", Brand: core.BrandFeishu,
+	})
 
-	var buf bytes.Buffer
-	printMethodDetail(&buf, spec, "events", "create", method)
-	out := buf.String()
-
-	if strings.Contains(out, "file upload") {
-		t.Errorf("did not expect 'file upload' marker for non-file method, got:\n%s", out)
+	cmd := NewCmdSchema(f, nil)
+	cmd.SetArgs([]string{"calendar.events.nonexistent_method"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for unknown method")
 	}
-	if strings.Contains(out, "--file") {
-		t.Errorf("did not expect '--file' for non-file method, got:\n%s", out)
+	var ve *errs.ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *errs.ValidationError, got %T: %v", err, err)
+	}
+	if ve.Subtype != errs.SubtypeInvalidArgument {
+		t.Errorf("Subtype = %q, want %q", ve.Subtype, errs.SubtypeInvalidArgument)
+	}
+	if !strings.Contains(err.Error(), "Unknown method") {
+		t.Errorf("expected 'Unknown method' error, got: %v", err)
+	}
+	if !strings.Contains(ve.Hint, "Available:") {
+		t.Errorf("expected hint listing available methods, got: %q", ve.Hint)
 	}
 }
 
-func TestHasFileFields(t *testing.T) {
-	tests := []struct {
-		name       string
-		method     map[string]interface{}
-		wantBool   bool
-		wantFields []string
-	}{
-		{
-			name: "has file field",
-			method: map[string]interface{}{
-				"requestBody": map[string]interface{}{
-					"image": map[string]interface{}{"type": "file"},
-					"name":  map[string]interface{}{"type": "string"},
-				},
-			},
-			wantBool:   true,
-			wantFields: []string{"image"},
-		},
-		{
-			name: "no file field",
-			method: map[string]interface{}{
-				"requestBody": map[string]interface{}{
-					"name": map[string]interface{}{"type": "string"},
-				},
-			},
-			wantBool:   false,
-			wantFields: nil,
-		},
-		{
-			name:       "no requestBody",
-			method:     map[string]interface{}{},
-			wantBool:   false,
-			wantFields: nil,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, names := hasFileFields(tt.method)
-			if got != tt.wantBool {
-				t.Errorf("hasFileFields() = %v, want %v", got, tt.wantBool)
-			}
-			if tt.wantFields == nil && names != nil {
-				t.Errorf("expected nil names, got %v", names)
-			}
-			if tt.wantFields != nil && len(names) != len(tt.wantFields) {
-				t.Errorf("expected %d field names, got %d", len(tt.wantFields), len(names))
-			}
-		})
-	}
-}
-
-func TestCompleteSchemaPathForSpec(t *testing.T) {
-	resources := map[string]interface{}{
-		"records": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"create": map[string]interface{}{},
-				"list":   map[string]interface{}{},
-			},
-		},
-		"record_permissions": map[string]interface{}{
-			"methods": map[string]interface{}{
-				"get": map[string]interface{}{},
-			},
-		},
-	}
-
-	got := completeSchemaPathForSpec("base", resources, "records.cr")
-	if len(got) != 1 || got[0] != "base.records.create" {
-		t.Fatalf("completions = %v, want [base.records.create]", got)
-	}
-
-	got = completeSchemaPathForSpec("base", resources, "record")
-	if len(got) != 2 || got[0] != "base.record_permissions." || got[1] != "base.records." {
-		t.Fatalf("resource completions = %v", got)
-	}
-}
-
-func TestFilterSpecByStrictMode_RemovesIncompatibleMethodsFromCompletionSource(t *testing.T) {
-	spec := map[string]interface{}{
-		"resources": map[string]interface{}{
-			"records": map[string]interface{}{
-				"methods": map[string]interface{}{
-					"list":   map[string]interface{}{"accessTokens": []interface{}{"tenant"}},
-					"create": map[string]interface{}{"accessTokens": []interface{}{"user"}},
-				},
-			},
-		},
-	}
-
-	filtered := filterSpecByStrictMode(spec, core.StrictModeBot)
-	resources, _ := filtered["resources"].(map[string]interface{})
-	got := completeSchemaPathForSpec("base", resources, "records.")
-	if len(got) != 1 || got[0] != "base.records.list" {
-		t.Fatalf("filtered completions = %v, want [base.records.list]", got)
-	}
-}
+// Completion candidate generation (dotted + space forms, strict-mode filtering,
+// dotted-resource handling) now lives in internal/apicatalog and is covered by
+// apicatalog's TestComplete. cmd/schema only adapts catalog.Complete to cobra.

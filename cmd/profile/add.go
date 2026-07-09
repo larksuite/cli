@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
@@ -53,7 +54,9 @@ func NewCmdProfileAdd(f *cmdutil.Factory) *cobra.Command {
 
 func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, brand, lang string, useAfter bool) error {
 	if err := core.ValidateProfileName(name); err != nil {
-		return output.ErrValidation("%v", err)
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "%v", err).
+			WithCause(err).
+			WithParam("--name")
 	}
 
 	langPref, err := cmdutil.ParseLangFlag(lang)
@@ -64,46 +67,57 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 
 	// Read secret from stdin
 	if !appSecretStdin {
-		return output.ErrValidation("app secret must be provided via stdin: use --app-secret-stdin and pipe the secret")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "app secret must be provided via stdin").
+			WithHint("use --app-secret-stdin and pipe the secret").
+			WithParam("--app-secret-stdin")
 	}
 	scanner := bufio.NewScanner(f.IOStreams.In)
 	if !scanner.Scan() {
 		if err := scanner.Err(); err != nil {
-			return output.ErrValidation("failed to read secret from stdin: %v", err)
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "failed to read secret from stdin: %v", err).
+				WithCause(err).
+				WithParam("--app-secret-stdin")
 		}
-		return output.ErrValidation("stdin is empty, expected app secret")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "stdin is empty, expected app secret").
+			WithHint("pipe the app secret to stdin").
+			WithParam("--app-secret-stdin")
 	}
 	appSecret := strings.TrimSpace(scanner.Text())
 	if appSecret == "" {
-		return output.ErrValidation("app secret read from stdin is empty")
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "app secret read from stdin is empty").
+			WithHint("pipe a non-empty app secret to stdin").
+			WithParam("--app-secret-stdin")
 	}
 
 	// Load or create config
 	multi, err := core.LoadMultiAppConfig()
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
-			return output.Errorf(output.ExitInternal, "internal", "failed to load config: %v", err)
+			return errs.NewInternalError(errs.SubtypeFileIO, "failed to load config: %v", err).WithCause(err)
 		}
 		multi = &core.MultiAppConfig{}
 	}
 
 	// Check name uniqueness
 	if multi.FindApp(name) != nil {
-		return output.ErrValidation("profile %q already exists", name)
+		return errs.NewValidationError(errs.SubtypeFailedPrecondition, "profile %q already exists", name).
+			WithHint("choose a different name, or remove the existing profile first").
+			WithParam("--name")
 	}
 
 	// Check app-id uniqueness — keychain stores secrets by appId, so
 	// multiple profiles sharing the same appId would collide on credentials.
 	for _, a := range multi.Apps {
 		if a.AppId == appID {
-			return output.ErrValidation("app-id %q is already used by profile %q; each profile must have a unique app-id", appID, a.ProfileName())
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "app-id %q is already used by profile %q; each profile must have a unique app-id", appID, a.ProfileName()).
+				WithParam("--app-id")
 		}
 	}
 
 	// Store secret securely
 	secret, err := core.ForStorage(appID, core.PlainSecret(appSecret), f.Keychain)
 	if err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "%v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "%v", err).WithCause(err)
 	}
 
 	parsedBrand := core.ParseBrand(brand)
@@ -134,7 +148,7 @@ func profileAddRun(f *cmdutil.Factory, name, appID string, appSecretStdin bool, 
 	}
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Profile %q added (%s, %s)", name, appID, parsedBrand))

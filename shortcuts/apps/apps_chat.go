@@ -9,7 +9,6 @@ import (
 	"io"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
@@ -43,14 +42,14 @@ var AppsChat = common.Shortcut{
 	},
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
 		if strings.TrimSpace(rctx.Str("app-id")) == "" {
-			return output.ErrValidation("--app-id is required")
+			return appsValidationParamError("--app-id", "--app-id is required")
 		}
 		if strings.TrimSpace(rctx.Str("session-id")) == "" {
-			return output.ErrValidation("--session-id is required")
+			return appsValidationParamError("--session-id", "--session-id is required")
 		}
 		// Do not echo --message content in the error (spec §4 redaction).
 		if strings.TrimSpace(rctx.Str("message")) == "" {
-			return output.ErrValidation("--message is required")
+			return appsValidationParamError("--message", "--message is required")
 		}
 		return nil
 	},

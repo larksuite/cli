@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // Package cmdmeta is the single source of truth for command metadata that the
-// policy engine and the hook selector both consume. It wraps the existing
-// cmdutil annotations (risk_level, supportedIdentities) and adds the
-// "domain" axis that the hook selector and Rule path globs need.
+// policy engine, the hook selector, and help rendering consume. It wraps the
+// existing cmdutil annotations (risk_level, supportedIdentities) and adds the
+// "domain" axis that the hook selector and Rule path globs need, plus the
+// affordance ref (service, method id) that lets service-method and shortcut
+// help share one usage-guidance lookup path.
 //
 // Three axes:
 //
@@ -34,10 +36,30 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 )
 
-// domainAnnotationKey is the cobra Annotation key for the business domain.
-// Kept distinct from cmdutil.* keys so this package can evolve without
-// disturbing existing readers.
-const domainAnnotationKey = "cmdmeta.domain"
+// Source identifies how a command entered the repository-owned command tree.
+type Source string
+
+const (
+	SourceBuiltin  Source = "builtin"
+	SourceShortcut Source = "shortcut"
+	SourceService  Source = "service"
+)
+
+const (
+	// domainAnnotationKey is the cobra Annotation key for the business domain.
+	// Kept distinct from cmdutil.* keys so this package can evolve without
+	// disturbing existing readers.
+	domainAnnotationKey = "cmdmeta.domain"
+
+	sourceAnnotationKey    = "cmdmeta.source"
+	generatedAnnotationKey = "cmdmeta.generated"
+
+	// affordance{Service,Method}Key locate the command's usage-guidance overlay
+	// entry (see internal/affordance). Both service-method commands and
+	// +-prefixed shortcuts set these so help rendering shares one lookup path.
+	affordanceServiceKey = "cmdmeta.affordance.service"
+	affordanceMethodKey  = "cmdmeta.affordance.method"
+)
 
 // Meta groups the three command-level metadata axes consumed by the policy
 // engine and hook selectors.
@@ -93,6 +115,53 @@ func SetDomain(cmd *cobra.Command, domain string) {
 	cmd.Annotations[domainAnnotationKey] = domain
 }
 
+// SetSource stores the command source on a single command. The generated flag
+// is written explicitly so child commands can opt out of inherited service
+// metadata.
+func SetSource(cmd *cobra.Command, source Source, generated bool) {
+	if source == "" {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[sourceAnnotationKey] = string(source)
+	if generated {
+		cmd.Annotations[generatedAnnotationKey] = "true"
+	} else {
+		cmd.Annotations[generatedAnnotationKey] = "false"
+	}
+}
+
+// SetAffordanceRef records which affordance overlay entry (service, method id)
+// a command maps to, so help rendering can look up its usage guidance. Stored
+// on the command itself (no inheritance): each method / shortcut owns its ref.
+// A no-op if either coordinate is empty.
+func SetAffordanceRef(cmd *cobra.Command, service, method string) {
+	if service == "" || method == "" {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[affordanceServiceKey] = service
+	cmd.Annotations[affordanceMethodKey] = method
+}
+
+// AffordanceRef returns the command's own affordance overlay coordinates.
+// ok is false when the command carries no ref.
+func AffordanceRef(cmd *cobra.Command) (service, method string, ok bool) {
+	if cmd.Annotations == nil {
+		return "", "", false
+	}
+	service = cmd.Annotations[affordanceServiceKey]
+	method = cmd.Annotations[affordanceMethodKey]
+	if service == "" || method == "" {
+		return "", "", false
+	}
+	return service, method, true
+}
+
 // Domain returns the nearest-ancestor domain for the command. Empty string
 // when no ancestor has the annotation -- this is the "unknown" state the
 // policy engine must treat as ALLOW.
@@ -106,6 +175,33 @@ func Domain(cmd *cobra.Command) string {
 		}
 	}
 	return ""
+}
+
+// SourceOf returns the nearest-ancestor command source.
+func SourceOf(cmd *cobra.Command) (Source, bool) {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations == nil {
+			continue
+		}
+		if v := c.Annotations[sourceAnnotationKey]; v != "" {
+			return Source(v), true
+		}
+	}
+	return "", false
+}
+
+// Generated returns the nearest generated annotation. An explicit false on a
+// child command stops inheritance from a generated parent.
+func Generated(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations == nil {
+			continue
+		}
+		if v, ok := c.Annotations[generatedAnnotationKey]; ok {
+			return v == "true"
+		}
+	}
+	return false
 }
 
 // Risk returns the nearest-ancestor risk level (via cmdutil.GetRisk).

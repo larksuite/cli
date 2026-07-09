@@ -71,7 +71,7 @@ var refreshLocks sync.Map
 func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, error) {
 	stored := GetStoredToken(opts.AppId, opts.UserOpenId)
 	if stored == nil {
-		return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+		return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 	}
 
 	status := TokenStatus(stored)
@@ -86,7 +86,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			return "", err
 		}
 		if refreshed == nil {
-			return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+			return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 		}
 		return refreshed.AccessToken, nil
 	}
@@ -99,7 +99,7 @@ func GetValidAccessToken(httpClient *http.Client, opts UATCallOptions) (string, 
 			fmt.Fprintf(os.Stderr, "[lark-cli] [WARN] uat-client: failed to remove token: %v\n", err)
 		}
 	}
-	return "", &NeedAuthorizationError{UserOpenId: opts.UserOpenId}
+	return "", NewNeedUserAuthorizationError(opts.UserOpenId)
 }
 
 // refreshWithLock acquires a file lock before attempting to refresh the token.

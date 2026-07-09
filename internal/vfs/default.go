@@ -28,8 +28,10 @@ func OpenFile(name string, flag int, perm fs.FileMode) (*os.File, error) {
 }
 func CreateTemp(dir, pattern string) (*os.File, error) { return DefaultFS.CreateTemp(dir, pattern) }
 func MkdirAll(path string, perm fs.FileMode) error     { return DefaultFS.MkdirAll(path, perm) }
+func MkdirTemp(dir, pattern string) (string, error)    { return DefaultFS.MkdirTemp(dir, pattern) }
 func ReadDir(name string) ([]os.DirEntry, error)       { return DefaultFS.ReadDir(name) }
 func Remove(name string) error                         { return DefaultFS.Remove(name) }
+func RemoveAll(path string) error                      { return DefaultFS.RemoveAll(path) }
 func Rename(oldpath, newpath string) error             { return DefaultFS.Rename(oldpath, newpath) }
 func EvalSymlinks(path string) (string, error)         { return DefaultFS.EvalSymlinks(path) }
 func Executable() (string, error)                      { return DefaultFS.Executable() }

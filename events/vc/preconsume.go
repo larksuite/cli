@@ -13,8 +13,8 @@ import (
 
 const cleanupTimeout = 5 * time.Second
 
-func subscriptionPreConsume(eventType, subscribePath, unsubscribePath string) func(context.Context, event.APIClient, map[string]string) (func(), error) {
-	return func(ctx context.Context, rt event.APIClient, _ map[string]string) (func(), error) {
+func subscriptionPreConsume(eventType, subscribePath, unsubscribePath string) func(context.Context, event.APIClient, map[string]string) (func() error, error) {
+	return func(ctx context.Context, rt event.APIClient, _ map[string]string) (func() error, error) {
 		if rt == nil {
 			return nil, errs.NewInternalError(errs.SubtypeUnknown,
 				"runtime API client is required for pre-consume subscription")
@@ -25,10 +25,13 @@ func subscriptionPreConsume(eventType, subscribePath, unsubscribePath string) fu
 			return nil, err
 		}
 
-		return func() {
+		return func() error {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
 			defer cancel()
-			_, _ = rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body)
+			if _, err := rt.CallAPI(cleanupCtx, "POST", unsubscribePath, body); err != nil {
+				return err
+			}
+			return nil
 		}, nil
 	}
 }

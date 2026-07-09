@@ -21,7 +21,7 @@ func TestConn_SenderWritesEvents(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
-	bc := NewConn(server, nil, "im.msg", []string{"im.message.receive_v1"}, 12345)
+	bc := NewConn(server, nil, "im.msg", []string{"im.message.receive_v1"}, 12345, "")
 	go bc.SenderLoop()
 
 	bc.SendCh() <- &protocol.Event{
@@ -62,7 +62,7 @@ func TestConn_ConcurrentWritesSerialised(t *testing.T) {
 	defer client.Close()
 
 	det := &serializingDetector{Conn: server}
-	bc := NewConn(det, nil, "im.msg", []string{"im.msg"}, 12345)
+	bc := NewConn(det, nil, "im.msg", []string{"im.msg"}, 12345, "")
 
 	go func() { _, _ = io.Copy(io.Discard, client) }()
 
@@ -106,7 +106,7 @@ func TestConn_TrySend_NonEvicting(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 	defer client.Close()
-	bc := NewConn(server, nil, "im.msg", []string{"im.msg"}, 12345)
+	bc := NewConn(server, nil, "im.msg", []string{"im.msg"}, 12345, "")
 
 	for i := 0; i < sendChCap; i++ {
 		if !bc.TrySend(i) {
@@ -126,7 +126,7 @@ func TestConn_ReaderDetectsEOF(t *testing.T) {
 	server, client := net.Pipe()
 	defer server.Close()
 
-	bc := NewConn(server, nil, "im.msg", []string{"im.msg"}, 12345)
+	bc := NewConn(server, nil, "im.msg", []string{"im.msg"}, 12345, "")
 
 	done := make(chan struct{})
 	go func() {
@@ -140,5 +140,25 @@ func TestConn_ReaderDetectsEOF(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("ReaderLoop did not exit on EOF")
+	}
+}
+
+func TestConn_SubscriptionID(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+	conn := NewConn(c1, nil, "mail.x", []string{"mail.x"}, 999, "mail.x:abc")
+	if got := conn.SubscriptionID(); got != "mail.x:abc" {
+		t.Errorf("SubscriptionID() = %q, want %q", got, "mail.x:abc")
+	}
+}
+
+func TestConn_SubscriptionID_EmptyFallsBackToEventKey(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+	conn := NewConn(c1, nil, "mail.x", []string{"mail.x"}, 999, "")
+	if got := conn.SubscriptionID(); got != "mail.x" {
+		t.Errorf("SubscriptionID() with empty input = %q, want fallback %q", got, "mail.x")
 	}
 }

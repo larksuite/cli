@@ -23,8 +23,8 @@ var DocMediaUpload = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)", Required: true},
-		{Name: "parent-type", Desc: "parent type: docx_image | docx_file | whiteboard", Required: true},
-		{Name: "parent-node", Desc: "parent node ID (block_id for docx, board_token for whiteboard)", Required: true},
+		{Name: "parent-type", Desc: "parent type: docx_image | docx_file | whiteboard | mindnote_image", Required: true},
+		{Name: "parent-node", Desc: "parent node ID (block_id for docx, board_token for whiteboard, mindnote token for mindnote)", Required: true},
 		{Name: "doc-id", Desc: "document ID (for drive_route_token)"},
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
@@ -153,7 +153,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 	// Doc media uploads share the generic Drive media transport. The doc-specific
 	// routing only shows up in parent_type/parent_node and optional route extra.
 	if cfg.FileSize <= common.MaxDriveMediaUploadSinglePartSize {
-		return common.UploadDriveMediaAll(runtime, common.DriveMediaUploadAllConfig{
+		return common.UploadDriveMediaAllTyped(runtime, common.DriveMediaUploadAllConfig{
 			FilePath:   cfg.FilePath,
 			Reader:     cfg.Reader,
 			FileName:   cfg.FileName,
@@ -163,7 +163,7 @@ func uploadDocMediaFile(runtime *common.RuntimeContext, cfg UploadDocMediaFileCo
 			Extra:      extra,
 		})
 	}
-	return common.UploadDriveMediaMultipart(runtime, common.DriveMediaMultipartUploadConfig{
+	return common.UploadDriveMediaMultipartTyped(runtime, common.DriveMediaMultipartUploadConfig{
 		FilePath:   cfg.FilePath,
 		Reader:     cfg.Reader,
 		FileName:   cfg.FileName,

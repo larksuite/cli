@@ -12,7 +12,7 @@ metadata:
 
 开始前先读 [`../lark-shared/SKILL.md`](../lark-shared/SKILL.md)（认证、权限处理）。
 
-**CRITICAL — 凡涉及预约日程/会议或查询/搜索会议室，第一步 MUST 读 [`references/lark-calendar-schedule-meeting.md`](references/lark-calendar-schedule-meeting.md)。禁止跳过此步直接调用 API 或 Shortcut！**
+**CRITICAL — 凡涉及预约日程/会议室、调整时间或查询/搜索会议室，第一步 MUST 读 [`references/lark-calendar-schedule-meeting.md`](references/lark-calendar-schedule-meeting.md)。仅编辑字段（改标题/描述）或增删参会人（不涉及时间和会议室）时可跳过，直接读 [`references/lark-calendar-update.md`](references/lark-calendar-update.md)。**
 
 ## 身份
 
@@ -30,29 +30,88 @@ lark-cli calendar +agenda --as user
 
 | Shortcut | 说明 |
 |----------|------|
-| [`+agenda`](references/lark-calendar-agenda.md) | 查看日程安排（默认今天） |
+| `+agenda` | 查看日程安排（默认今天） |
+| [`+meeting`](references/lark-calendar-meeting.md) | 通过日程事件 ID 获取关联的视频会议信息（meeting_id、meeting_note），日程开过视频会议才会有meeting_id |
 | [`+create`](references/lark-calendar-create.md) | 创建日程并邀请参会人（ISO 8601 时间） |
 | [`+update`](references/lark-calendar-update.md) | 更新既有日程字段，或独立增量添加/移除参会人和会议室 |
-| [`+freebusy`](references/lark-calendar-freebusy.md) | 查询用户主日历的忙闲信息和 RSVP 状态 |
+| `+freebusy` | 查询用户主日历的忙闲信息和 RSVP 状态（纯查询场景；预约场景走 `+suggestion`） |
 | [`+room-find`](references/lark-calendar-room-find.md) | 针对一个或多个**明确的**时间块查找可用会议室（无明确时间时禁止直接调用，需先走 +suggestion） |
 | [`+rsvp`](references/lark-calendar-rsvp.md) | 回复日程（接受/拒绝/待定） |
 | [`+suggestion`](references/lark-calendar-suggestion.md) | 根据非明确时间或一段时间范围，推荐多个可用时间块方案 |
+
+### `+get` — 单日程详情
+
+通过 `calendar_id` + `event_id` 获取**单个日程**详情。
+
+```bash
+# calendar_id不传，默认primary
+lark-cli calendar +get --calendar-id <calendar_id> --event-id <event_id>
+```
+
+### `+search-event` — 按关键词、时间范围和参会人搜索日程
+
+仅返回基础字段（`event_id`/`summary`/`start`/`end` 等），需要详情请走 `+get`。
+
+```bash
+# query 按关键词 可选
+# start/end 按时间范围（ISO 8601 或 YYYY-MM-DD）可选
+# attendee-ids 按参会人（自动识别 ou_ 用户 / oc_ 群聊 / omm_ 会议室前缀）可选
+# page-token 分页游标，用于继续翻页 可选
+# page-size 每页数量，默认 30 可选
+lark-cli calendar +search-event --query "周会" --start 2026-04-20 --end 2026-04-27 --attendee-ids "ou_user1,oc_chat1,omm_room1" --page-token <page_token> --page-size 30
+```
+
+### `+agenda` — 查看近期日程安排
+
+默认查询当天。结果应整理为按日期分组、按开始时间升序的易读时间线。
+
+```bash
+# start/end 时间范围（ISO 8601 / YYYY-MM-DD / Unix 秒），均可选；默认当天
+# calendar-id 日历 ID（默认primary）可选
+lark-cli calendar +agenda --start 2026-03-10 --end 2026-03-17 --calendar-id <calendar_id>
+```
+
+注意：
+- 已取消的日程自动过滤；无日程时直接告知"日程清空"。
+- 时间范围超过 40 天会自动拆分查询并合并结果。
+
+### `+freebusy` — 查询主日历忙闲时段和 RSVP 状态
+
+仅返回忙碌时段起止时间，不含日程标题等隐私信息；其他订阅日历不在范围内。
+
+```bash
+# start/end 时间范围（ISO 8601 / YYYY-MM-DD / Unix 秒），均可选；默认当天
+# user-id 目标用户 open_id（ou_ 前缀）可选；默认当前登录用户，bot 身份必须显式指定
+lark-cli calendar +freebusy --start 2026-03-11 --end 2026-03-12 --user-id ou_xxx
+```
+
+用法提示：
+- **仅判断是否有空** → `+freebusy`；**需要日程详情** → `+agenda`。
+- 检查多人可用性：分别调用并对比，找共同空闲。
+- 预约/改约场景下，调用规则（参与人过多、含群组、来自 `+suggestion` 等）详见 [schedule-clear-time.md § 查询忙闲](references/lark-calendar-schedule-clear-time.md#2-查询忙闲)。
 
 ## 前置条件路由
 
 | 场景 | 前置要求 |
 |------|----------|
-| 预约日程/会议、查会议室 | 先读 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) |
-| 编辑已有日程 | 先定位目标日程 `event_id`；若是重复性日程，必须定位到具体实例的 `event_id`（禁止使用原重复日程 ID） |
-| 删除/修改后验证 | 等待 2 秒再查询（API 最终一致性），不要告知用户你等待了 |
+| 预约日程/会议、调整时间、查会议室 | 先读 [lark-calendar-schedule-meeting.md](references/lark-calendar-schedule-meeting.md) |
+| 仅编辑字段（标题/描述）或增删参会人 | 先定位 `event_id`，再读 [lark-calendar-update.md](references/lark-calendar-update.md) |
+| 编辑已有日程（涉及时间或会议室） | 先定位目标日程 `event_id`；若是重复性日程，必须定位到具体实例的 `event_id`（禁止使用原重复日程 ID） |
+| 编辑/删除重复性日程 | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，按操作范围（仅此次/全部/此次及后续）执行 |
 | 调用任何 Shortcut | 先读其对应 reference 文档 |
+
+## 写操作反馈
+
+创建、更新、删除、RSVP 等写操作完成后，直接基于命令返回结果反馈用户；不要为了“确认是否生效”主动发起二次查询。只有用户明确要求复查，或命令返回信息不足以回答用户问题时，才需要再查询。
 
 ## 核心概念
 
-- **日程实例（Instance）**：重复性日程展开后的具体时间实例。操作重复日程的某次实例时，必须先定位该实例的 `event_id`，禁止使用原重复日程的 `event_id`。
+- **日程实例（Instance）**：重复性日程展开后的具体时间实例。「仅此次」操作时使用具体实例的 `event_id`；「全部」或「此次及后续」操作时需对原重复性日程操作（使用原日程 `event_id`），并按需处理例外。
+- **重复性日程例外（Exception）**：对重复性日程某次实例做过「仅此次」编辑后产生的独立日程（拥有独立 `event_id`）。删除/更新「全部」时必须同时处理例外，否则例外会残留。
 - **全天日程（All-day Event）**：只按日期占用、没有具体起止时刻的日程，结束日期是包含在日程时间内的。
 - **时间块 vs 时间范围**：时间块是具体确定的连续时间段（如 `14:00~15:00`），时间范围是泛指（如"今天下午"）。`+room-find` 必须基于确定时间块，不能基于模糊范围。
 - **会议室（Room）**："room"不是"房间"，是"会议室"。会议室是日程的一种参与人（resource attendee），不能脱离日程单独预定。
+- **日程会议 ID（Meeting ID）**：日程的历史视频会议 ID，在日程上开过视频会议才会有。
 
 ## 术语映射
 
@@ -64,7 +123,12 @@ lark-cli calendar +agenda --as user
 |----------|--------|
 | 查询过去的会议（"昨天的会议""上周的会"） | [`../lark-vc/SKILL.md`](../lark-vc/SKILL.md)（会议数据含即时会议，仅查日程会遗漏） |
 | 查询日历/日程或未来时间的会议 | 本 skill |
-| 预约/改约日程、添加/移除参会人、添加/更换会议室、调整时间 | 先判断新建 vs 编辑，再进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md) |
+| 按关键词搜索日程 | 本 skill（`+search-event`） |
+| 从日程获取关联的视频会议 ID 或用户绑定的会议纪要文档 | 本 skill（`+meeting`） |
+| 从日程进一步拿 AI 智能纪要 / 逐字稿 / 妙记产物 | 先 `+meeting` 取 `meeting_id`，再 [`vc +detail`](../lark-vc/references/lark-vc-detail.md) → [`note +detail`](../lark-note/references/lark-note-detail.md) / [`minutes +detail`](../lark-minutes/references/lark-minutes-detail.md) |
+| 预约/改约日程、调整时间、添加/更换会议室、查会议室 | 先判断新建 vs 编辑，再进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md) |
+| 仅编辑日程字段（标题/描述）或增删参会人（不涉及时间和会议室） | 先定位 `event_id`，再读 [+update](references/lark-calendar-update.md) 执行变更 |
+| 编辑/删除重复性日程（「改这个重复日程」「删掉后面的」「全部取消」等） | 先读 [重复性日程操作规范](references/lark-calendar-recurring.md)，确认操作范围后执行 |
 
 ## 任务类型分流
 
@@ -81,7 +145,7 @@ lark-cli calendar +agenda --as user
 
 ## 会议室规则
 
-- 凡是"预定/查询/搜索可用会议室"，都必须进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md)。
+- 凡是"预定/查询/搜索可用会议室"，都必须进入 [schedule-meeting 工作流](references/lark-calendar-schedule-meeting.md)，会议室参数规范详见 [+room-find](references/lark-calendar-room-find.md)。
 - `+room-find` 的时间输入必须是确定时间块，不能是时间区间搜索。
 - 用户仅要求"查会议室"但未提供明确时间时，必须先调用 `+suggestion` 获取可用时间块，再将时间块交给 `+room-find`。严禁猜测时间盲目调用。
 - 编辑已有日程时，"添加会议室"默认是增量语义，保留已有会议室；只有用户明确说"更换会议室""移除会议室"时才删除旧会议室。
@@ -89,43 +153,45 @@ lark-cli calendar +agenda --as user
 ## API Resources
 
 ```bash
+# 通用调用格式
 lark-cli calendar <resource> <method> [flags]
+
+# 查询用户主日历
+lark-cli calendar calendars primary
+
+# 获取日程分享链接
+lark-cli calendar events share_info --calendar-id <calendar_id> --event-id <event_id>
+
+# 删除日程
+lark-cli calendar events delete --calendar-id <calendar_id> --event-id <event_id>
 ```
 
-### calendars
+> `calendar_id` 可以直接传 `primary`，代表当前调用身份的主日历 ID。
 
-  - `create` — 创建共享日历
-  - `delete` — 删除共享日历
-  - `get` — 查询日历信息
-  - `list` — 查询日历列表
-  - `patch` — 更新日历信息
-  - `primary` — 查询用户主日历
-  - `search` — 搜索日历
+### 查询资源的方法列表以及方法的使用方式
 
-### event.attendees
+- 列出某资源下的方法：`lark-cli calendar <resource> -h`
+- 查看方法的cli flag：`lark-cli calendar <resource> <method> -h`
+- 查看方法API参数：`lark-cli schema calendar.<resource>.<method>`
 
-  - `batch_delete` — 删除日程参与人
-  - `create` — 添加日程参与人
-  - `list` — 获取日程参与人列表
+`<resource>` 为 `calendars`（日历本身）/ `events`（日程）/ `event.attendees`（参与人）/ `freebusys`（忙闲）。例：`lark-cli schema calendar.events.delete`。
 
-### events
+## 常用其他域命令
 
-  - `create` — 创建日程
-  - `delete` — 删除日程
-  - `get` — 获取日程
-  - `instance_view` — 查询日程视图
-  - `patch` — 更新日程
-  - `search_event` — 搜索日程（仅返回 日程ID/主题/时间，详情需走 `events get`）
-  - `share_info` — 获取日程分享链接
+```bash
+# 搜索用户，更多参数详见 lark-contact
+lark-cli contact +search-user --query <query> --as user
 
-### freebusys
-
-  - `list` — 查询主日历日程忙闲信息
+# 搜索群聊，更多参数详见 lark-im
+lark-cli im +chat-search --query <query> --as user
+```
 
 ## 不在本 skill 范围
 
 - 查询过去的视频会议记录 → [lark-vc](../lark-vc/SKILL.md)
 - 待办任务管理 → [lark-task](../lark-task/SKILL.md)
+- 通讯录 → [lark-contact](../lark-contact/SKILL.md)
+- 即时通讯 → [lark-im](../lark-im/SKILL.md)
 - 会议室物理设施管理 → 管理员后台
 
 **注意（强制性）：**

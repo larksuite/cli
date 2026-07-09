@@ -31,7 +31,8 @@ var ImThreadsMessagesList = common.Shortcut{
 	HasFormat:   true,
 	Flags: []common.Flag{
 		{Name: "thread", Desc: "thread ID (om_xxx or omt_xxx)", Required: true},
-		{Name: "sort", Default: "asc", Desc: "sort order", Enum: []string{"asc", "desc"}},
+		{Name: "order", Default: "asc", Desc: "sort order: asc | desc", Enum: []string{"asc", "desc"}},
+		{Name: "sort", Hidden: true, Desc: "alias of --order (hidden)", Enum: []string{"asc", "desc"}},
 		{Name: "page-size", Default: "50", Desc: "page size (1-500)"},
 		{Name: "page-token", Desc: "page token"},
 		{Name: "no-reactions", Type: "bool", Desc: "skip auto-fetching reactions for each message (default: enrichment enabled)"},
@@ -39,14 +40,9 @@ var ImThreadsMessagesList = common.Shortcut{
 	},
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		threadFlag := runtime.Str("thread")
-		sortFlag := runtime.Str("sort")
+		dir := resolveThreadsOrder(runtime)
 		pageSizeStr := runtime.Str("page-size")
 		pageToken := runtime.Str("page-token")
-
-		sortType := "ByCreateTimeAsc"
-		if sortFlag == "desc" {
-			sortType = "ByCreateTimeDesc"
-		}
 
 		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
 
@@ -57,21 +53,12 @@ var ImThreadsMessagesList = common.Shortcut{
 			containerID = "<resolved_thread_id>"
 		}
 
-		params := map[string]interface{}{
-			"container_id_type":     "thread",
-			"container_id":          containerID,
-			"sort_type":             sortType,
-			"page_size":             pageSize,
-			"card_msg_content_type": "raw_card_content",
-		}
-		if pageToken != "" {
-			params["page_token"] = pageToken
-		}
+		params := buildThreadsMessagesListParams(dir, containerID, pageSize, pageToken)
 
 		d = d.
 			GET("/open-apis/im/v1/messages").
-			Params(params).
-			Set("thread", threadFlag).Set("sort", sortFlag).Set("page_size", pageSizeStr)
+			Params(toDryParams(params)).
+			Set("thread", threadFlag).Set("order", dir).Set("page_size", pageSizeStr)
 		if !runtime.Bool("no-reactions") {
 			d = d.POST("/open-apis/im/v1/messages/reactions/batch_query").
 				Desc("Reaction enrichment: queries returned thread messages in batches of up to 20. Pass --no-reactions to skip.")
@@ -97,26 +84,12 @@ var ImThreadsMessagesList = common.Shortcut{
 		if err != nil {
 			return err
 		}
-		sortFlag := runtime.Str("sort")
+		dir := resolveThreadsOrder(runtime)
 		pageToken := runtime.Str("page-token")
-
-		sortType := "ByCreateTimeAsc"
-		if sortFlag == "desc" {
-			sortType = "ByCreateTimeDesc"
-		}
 
 		pageSize, _ := common.ValidatePageSizeTyped(runtime, "page-size", threadsMessagesMaxPageSize, 1, threadsMessagesMaxPageSize)
 
-		params := map[string][]string{
-			"container_id_type":     []string{"thread"},
-			"container_id":          []string{threadId},
-			"sort_type":             []string{sortType},
-			"page_size":             []string{strconv.Itoa(pageSize)},
-			"card_msg_content_type": []string{"raw_card_content"},
-		}
-		if pageToken != "" {
-			params["page_token"] = []string{pageToken}
-		}
+		params := buildThreadsMessagesListParams(dir, threadId, pageSize, pageToken)
 
 		data, err := runtime.DoAPIJSONTyped(http.MethodGet, "/open-apis/im/v1/messages", params, nil)
 		if err != nil {
@@ -187,4 +160,46 @@ var ImThreadsMessagesList = common.Shortcut{
 		})
 		return nil
 	},
+}
+
+// buildThreadsMessagesListParams builds the upstream query params shared by
+// DryRun and Execute, so the asc/desc -> sort_type mapping lives in exactly one
+// place (precondition for the dry-run == real alias-parity test).
+func buildThreadsMessagesListParams(dir, containerID string, pageSize int, pageToken string) map[string][]string {
+	sortType := "ByCreateTimeAsc"
+	if dir == "desc" {
+		sortType = "ByCreateTimeDesc"
+	}
+	params := map[string][]string{
+		"container_id_type":     {"thread"},
+		"container_id":          {containerID},
+		"sort_type":             {sortType},
+		"page_size":             {strconv.Itoa(pageSize)},
+		"card_msg_content_type": {"raw_card_content"},
+	}
+	if pageToken != "" {
+		params["page_token"] = []string{pageToken}
+	}
+	return params
+}
+
+// resolveThreadsOrder picks --order, falling back to the hidden --sort alias.
+func resolveThreadsOrder(runtime *common.RuntimeContext) string {
+	dir := runtime.Str("order")
+	if old, ok := aliasFlagValue(runtime, "sort", "order"); ok {
+		dir = old
+	}
+	return dir
+}
+
+// toDryParams flattens single-valued query params to scalars for dry-run preview,
+// matching the historical dry-run JSON shape.
+func toDryParams(p map[string][]string) map[string]interface{} {
+	out := make(map[string]interface{}, len(p))
+	for k, v := range p {
+		if len(v) > 0 {
+			out[k] = v[0]
+		}
+	}
+	return out
 }

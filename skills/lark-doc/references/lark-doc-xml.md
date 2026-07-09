@@ -41,7 +41,7 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
 文档中可嵌入外部资源块（属于容器标签的特殊形式），需要额外语法创建：
 
 - `<img>` — `<img href="https://..."/>` 上传网络图片
-- `<whiteboard>` — 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整自包含 SVG</whiteboard>`；复杂图使用 `<whiteboard type="blank"></whiteboard>` 先创建空白画板，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 调用 `lark-whiteboard` 写入；
+- `<whiteboard>` — 简单图由 SubAgent 直接插入 `<whiteboard type="svg">完整自包含 SVG</whiteboard>`；也可用本地文件简写 `<whiteboard type="svg" path="@diagram.svg"></whiteboard>`、`<whiteboard type="mermaid" path="@flow.mmd"></whiteboard>`、`<whiteboard type="plantuml" path="@sequence.puml"></whiteboard>`，CLI 会写入前展开为内联内容；复杂图使用 `<whiteboard type="blank"></whiteboard>` 先创建空白画板，再按 [`lark-doc-whiteboard.md`](lark-doc-whiteboard.md) 启动 SubAgent 调用 `lark-whiteboard` 写入；
 - `<sheet>` — `<sheet type="blank"></sheet>` 空白；`<sheet sheet-id="SID" token="TOKEN"></sheet>` 复制已有
 - `<task>` — `<task task-id="GUID"></task>`，必传 task-id（任务 guid）
 - `<chat_card>` — `<chat_card chat-id="CHAT_ID"></chat_card>`，必传 chat-id
@@ -77,6 +77,16 @@ p, h1-h9, ul, ol, li, table, thead, tbody, tr, th, td, blockquote, pre, code, hr
    </ul>
    ```
 
+## 代码块
+- 代码块必须写成 `<pre lang="xxx" caption="可选说明"><code>代码内容</code></pre>`。
+- 不要将代码文本直接放在 `<pre>` 下；应放在内层 `<code>` 中。
+
+
+## 用户名写入规则
+
+- 当从 IM 消息、日历、审批、任务等来源获取到用户的 `open_id` 时，写入文档**必须**使用 `<cite type="user" user-id="open_id">` 标签，而非纯文本名字。这样文档中会渲染为可点击的 @人。
+- 典型场景：IM 消息的 `sender`、`mentions`、reactions 的 `operator`、卡片消息中引用的用户、系统消息中的用户名、合并转发中的用户名。
+- 当只有纯文本名字而没有 `open_id` 时（如系统消息、合并转发内容），先通过 `lark-cli contact +search-user --query "名字" --as user` 反查 `open_id`，再写入 cite 标签。
 
 ## 表格扩展
 标准 HTML table 结构不变，扩展点：

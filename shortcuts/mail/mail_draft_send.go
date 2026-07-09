@@ -28,10 +28,9 @@ type sentDraft struct {
 	ThreadID  string `json:"thread_id,omitempty"`
 }
 
-// failedDraft is the per-draft failure entry. error is the
-// human-readable err.Error() string (typically including ClassifyLarkError
-// hints); v2 may surface a structured errno field separately once the server-
-// side mapping stabilises (see tech-design "待确认事项").
+// failedDraft is the per-draft failure entry. error is the human-readable
+// message from the underlying error; v2 may surface a structured errno field
+// separately once the server-side mapping stabilises.
 type failedDraft struct {
 	DraftID string `json:"draft_id"`
 	Error   string `json:"error"`

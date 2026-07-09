@@ -150,6 +150,12 @@ var batchOpDispatch = map[string]batchOpMapping{
 		return sheetVisibilityInput(fv, t, sid, sn, "unhide")
 	}},
 	"+sheet-set-tab-color": {"modify_workbook_structure", sheetSetTabColorInput},
+	"+sheet-show-gridline": {"modify_workbook_structure", func(fv flagView, t, sid, sn string) (map[string]interface{}, error) {
+		return sheetVisibilityInput(fv, t, sid, sn, "show_gridline")
+	}},
+	"+sheet-hide-gridline": {"modify_workbook_structure", func(fv flagView, t, sid, sn string) (map[string]interface{}, error) {
+		return sheetVisibilityInput(fv, t, sid, sn, "hide_gridline")
+	}},
 
 	// ─── 对象族 CRUD (manage_*_object, operation 区分) ─────────────
 	"+chart-create": {"manage_chart_object", objCreateTranslate(chartSpec)},

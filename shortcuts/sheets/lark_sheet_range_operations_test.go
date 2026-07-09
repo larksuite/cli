@@ -287,16 +287,11 @@ func TestRangeSort_RejectsMalformedKeys(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, RangeSort, []string{
+			_, _, err := runShortcutCapturingErr(t, RangeSort, []string{
 				"--url", testURL, "--sheet-id", testSheetID,
 				"--range", "A1:E10", "--sort-keys", c.keys, "--dry-run",
 			})
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), c.want) {
-				t.Errorf("want substring %q in error; got stdout=%s stderr=%s err=%v", c.want, stdout, stderr, err)
-			}
+			requireValidation(t, err, c.want)
 		})
 	}
 }
@@ -349,13 +344,8 @@ func TestResize_TypeAndSizeGuards(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), tt.want) {
-				t.Errorf("expected %q; got=%s|%s|%v", tt.want, stdout, stderr, err)
-			}
+			_, _, err := runShortcutCapturingErr(t, tt.sc, append(tt.args, "--dry-run"))
+			requireValidation(t, err, tt.want)
 		})
 	}
 }

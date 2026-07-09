@@ -18,8 +18,8 @@ const helloAckTimeout = 5 * time.Second // symmetric with bus-side hello read de
 
 // doHello returns a bufio.Reader holding any bytes already pulled off conn so events
 // buffered with the ack in one TCP segment aren't dropped.
-func doHello(conn net.Conn, eventKey string, eventTypes []string) (*protocol.HelloAck, *bufio.Reader, error) {
-	hello := protocol.NewHello(os.Getpid(), eventKey, eventTypes, "v1")
+func doHello(conn net.Conn, eventKey string, eventTypes []string, subscriptionID string) (*protocol.HelloAck, *bufio.Reader, error) {
+	hello := protocol.NewHello(os.Getpid(), eventKey, eventTypes, "v1", subscriptionID)
 	if err := protocol.EncodeWithDeadline(conn, hello, protocol.WriteTimeout); err != nil {
 		return nil, nil, err
 	}

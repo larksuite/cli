@@ -4,7 +4,7 @@
 
 > **注意**：仅当用户明确说了「图片/配图/插图/照片」等词时才进入本场景。单纯说"旅行路线图"、"产品展示"等不触发。
 
-> **前置条件**：进入本场景前，必须已完成 [`references/image.md`](../references/image.md) 的 Step 0（图片准备），拿到所有 media token。
+> **前置条件**：进入本场景前，必须已完成 [`elements/image.md`](../elements/image.md) 的 Step 0（图片准备），拿到所有 media token。
 
 ## Content 约束
 

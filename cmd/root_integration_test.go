@@ -8,18 +8,19 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/cmd/api"
 	"github.com/larksuite/cli/cmd/auth"
 	"github.com/larksuite/cli/cmd/service"
+	"github.com/larksuite/cli/internal/apicatalog"
 	"github.com/larksuite/cli/internal/build"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/httpmock"
+	"github.com/larksuite/cli/internal/meta"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/skillscheck"
 	"github.com/larksuite/cli/internal/update"
@@ -27,12 +28,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Canonical strict-mode envelope strings shared across fixtures
-// (reflect.DeepEqual pins them; keep in sync with strictModeStubFrom).
+// Canonical strict-mode envelope messages shared across fixtures. The
+// switch-policy hint text is asserted by substring in
+// assertStrictModeDenialEnvelope.
 const (
 	strictModeBotMessage  = `strict mode is "bot", only bot-identity commands are available`
 	strictModeUserMessage = `strict mode is "user", only user-identity commands are available`
-	strictModeHint        = "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)"
 )
 
 // buildIntegrationRootCmd creates a root command with api, service, and shortcut
@@ -63,38 +64,52 @@ func executeRootIntegration(t *testing.T, f *cmdutil.Factory, rootCmd *cobra.Com
 	return 0
 }
 
-// parseEnvelope parses stderr bytes into an ErrorEnvelope.
-func parseEnvelope(t *testing.T, stderr *bytes.Buffer) output.ErrorEnvelope {
+// typedErrorEnvelope mirrors the typed wire shape produced by
+// WriteTypedErrorEnvelope: the inner error marshals an errs.Problem
+// directly, so "type" is the category, "subtype" is top-level, and there
+// is no nested "detail" object. Recovery info (policy source, reason
+// code, suggestions) is folded into "hint".
+type typedErrorEnvelope struct {
+	OK       bool   `json:"ok"`
+	Identity string `json:"identity,omitempty"`
+	Error    struct {
+		Type    string `json:"type"`
+		Subtype string `json:"subtype"`
+		Message string `json:"message"`
+		Hint    string `json:"hint"`
+		Param   string `json:"param,omitempty"`
+	} `json:"error"`
+}
+
+// parseTypedEnvelope decodes stderr as the typed envelope and fails if the
+// legacy nested "detail" object is present (the migration removed it).
+func parseTypedEnvelope(t *testing.T, stderr *bytes.Buffer) typedErrorEnvelope {
 	t.Helper()
 	if stderr.Len() == 0 {
 		t.Fatal("expected non-empty stderr, got empty")
 	}
-	var env output.ErrorEnvelope
+	var raw map[string]any
+	if err := json.Unmarshal(stderr.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to parse stderr as JSON: %v\nstderr: %s", err, stderr.String())
+	}
+	if errObj, ok := raw["error"].(map[string]any); ok {
+		if _, hasDetail := errObj["detail"]; hasDetail {
+			t.Errorf("typed envelope must not carry a nested 'detail' object, got: %s", stderr.String())
+		}
+	}
+	var env typedErrorEnvelope
 	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
-		t.Fatalf("failed to parse stderr as ErrorEnvelope: %v\nstderr: %s", err, stderr.String())
+		t.Fatalf("failed to parse stderr as typed envelope: %v\nstderr: %s", err, stderr.String())
 	}
 	return env
 }
 
-// assertEnvelope verifies exit code, stdout is empty, and stderr matches the
-// expected ErrorEnvelope exactly via reflect.DeepEqual.
-func assertEnvelope(t *testing.T, code int, wantCode int, stdout *bytes.Buffer, stderr *bytes.Buffer, want output.ErrorEnvelope) {
+func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
 	t.Helper()
-	if code != wantCode {
-		t.Errorf("exit code: got %d, want %d", code, wantCode)
-	}
-	if stdout.Len() != 0 {
-		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
-	}
-	got := parseEnvelope(t, stderr)
-	if !reflect.DeepEqual(got, want) {
-		gotJSON, _ := json.MarshalIndent(got, "", "  ")
-		wantJSON, _ := json.MarshalIndent(want, "", "  ")
-		t.Errorf("stderr envelope mismatch:\ngot:\n%s\nwant:\n%s", gotJSON, wantJSON)
-	}
+	return buildStrictModeIntegrationRootCmdWithCatalog(t, f, nil)
 }
 
-func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.Command {
+func buildStrictModeIntegrationRootCmdWithCatalog(t *testing.T, f *cmdutil.Factory, catalog *apicatalog.Catalog) *cobra.Command {
 	t.Helper()
 	rootCmd := &cobra.Command{Use: "lark-cli"}
 	rootCmd.SilenceErrors = true
@@ -105,12 +120,39 @@ func buildStrictModeIntegrationRootCmd(t *testing.T, f *cmdutil.Factory) *cobra.
 	}
 	rootCmd.AddCommand(auth.NewCmdAuth(f))
 	rootCmd.AddCommand(api.NewCmdApi(f, nil))
-	service.RegisterServiceCommands(rootCmd, f)
+	if catalog != nil {
+		service.RegisterServiceCommandsFromCatalog(context.Background(), rootCmd, f, *catalog)
+	} else {
+		service.RegisterServiceCommands(rootCmd, f)
+	}
 	shortcuts.RegisterShortcuts(rootCmd, f)
 	if mode := f.ResolveStrictMode(context.Background()); mode.IsActive() {
 		pruneForStrictMode(rootCmd, mode)
 	}
 	return rootCmd
+}
+
+func strictModeFixtureCatalog() apicatalog.Catalog {
+	return apicatalog.New(apicatalog.SourceEmbedded, []meta.Service{
+		{
+			Name:        "fixture",
+			ServicePath: "/open-apis/fixture/v1",
+			Resources: map[string]meta.Resource{
+				"things": {
+					Methods: map[string]meta.Method{
+						"create": {
+							Path:         "things",
+							HTTPMethod:   "POST",
+							AccessTokens: []meta.Token{meta.TokenTenant},
+							RequestBody: map[string]meta.Field{
+								"name": {Type: "string"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
 }
 
 func newStrictModeDefaultFactory(t *testing.T, profile string, mode core.StrictMode) (*cmdutil.Factory, *bytes.Buffer, *bytes.Buffer) {
@@ -205,23 +247,71 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectAuthLoginReturnsEnvelop
 
 	// auth login is user-only, so it gets pruned in strict-mode-bot and the
 	// stub error fires (not login.go's inline check, which is shadowed by
-	// pruning).
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "command_denied",
-			Message: strictModeBotMessage,
-			Hint:    strictModeHint,
-			Detail: map[string]any{
-				"path":          "auth/login",
-				"layer":         "strict_mode",
-				"policy_source": "strict-mode",
-				"rule_name":     "",
-				"reason_code":   "identity_not_supported",
-				"reason":        strictModeBotMessage,
-			},
-		},
-	})
+	// pruning). The typed envelope is a failed_precondition validation
+	// error (exit 2); the strict-mode layer + reason code are folded into
+	// the hint.
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeBotMessage)
+}
+
+// assertStrictModeDenialEnvelope pins the shared strict-mode denial shape:
+// a validation/failed_precondition envelope whose message is the short
+// historical strict-mode line and whose hint still names the strict_mode
+// layer + identity_not_supported reason code (the safety-critical recovery
+// info), plus the historical switch-policy guidance.
+func assertStrictModeDenialEnvelope(t *testing.T, env typedErrorEnvelope, wantMessage string) {
+	t.Helper()
+	if env.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if env.Error.Type != "validation" {
+		t.Errorf("error.type = %q, want validation", env.Error.Type)
+	}
+	if env.Error.Subtype != "failed_precondition" {
+		t.Errorf("error.subtype = %q, want failed_precondition", env.Error.Subtype)
+	}
+	if env.Error.Message != wantMessage {
+		t.Errorf("error.message = %q, want %q", env.Error.Message, wantMessage)
+	}
+	if !strings.Contains(env.Error.Hint, "strict_mode") {
+		t.Errorf("error.hint = %q, want substring strict_mode (policy layer)", env.Error.Hint)
+	}
+	if !strings.Contains(env.Error.Hint, "identity_not_supported") {
+		t.Errorf("error.hint = %q, want substring identity_not_supported (reason code)", env.Error.Hint)
+	}
+	if !strings.Contains(env.Error.Hint, "config strict-mode --help") {
+		t.Errorf("error.hint = %q, want historical switch-policy guidance", env.Error.Hint)
+	}
+}
+
+// assertCheckStrictModeEnvelope pins the typed envelope produced by
+// cmdutil.Factory.CheckStrictMode (the identity-guard path for explicit
+// --as on shortcuts / service methods / api): a *errs.ValidationError with
+// subtype invalid_argument, the canonical strict-mode message, and the
+// switch-policy hint.
+func assertCheckStrictModeEnvelope(t *testing.T, env typedErrorEnvelope, wantMessage string) {
+	t.Helper()
+	if env.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if env.Error.Type != "validation" {
+		t.Errorf("error.type = %q, want validation", env.Error.Type)
+	}
+	if env.Error.Subtype != "invalid_argument" {
+		t.Errorf("error.subtype = %q, want invalid_argument", env.Error.Subtype)
+	}
+	if env.Error.Message != wantMessage {
+		t.Errorf("error.message = %q, want %q", env.Error.Message, wantMessage)
+	}
+	if !strings.Contains(env.Error.Hint, "config strict-mode --help") {
+		t.Errorf("error.hint = %q, want switch-policy guidance", env.Error.Hint)
+	}
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnvelope(t *testing.T) {
@@ -232,22 +322,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_DirectUserShortcutReturnsEnve
 		"im", "+messages-search", "--chat-id", "oc_xxx", "--query", "hello",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "command_denied",
-			Message: strictModeBotMessage,
-			Hint:    strictModeHint,
-			Detail: map[string]any{
-				"path":          "im/+messages-search",
-				"layer":         "strict_mode",
-				"policy_source": "strict-mode",
-				"rule_name":     "",
-				"reason_code":   "identity_not_supported",
-				"reason":        strictModeBotMessage,
-			},
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeBotMessage)
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ChatCreateDryRunSucceeds(t *testing.T) {
@@ -277,15 +359,14 @@ func TestIntegration_StrictModeUser_ProfileOverride_ShortcutExplicitBotReturnsEn
 		"im", "+chat-create", "--name", "probe", "--as", "bot", "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "validation",
-			Message: `strict mode is "user", only user-identity commands are available`,
-			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeUserMessage)
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnvelope(t *testing.T) {
@@ -296,41 +377,33 @@ func TestIntegration_StrictModeBot_ProfileOverride_ServiceExplicitUserReturnsEnv
 		"im", "chats", "get", "--params", `{"chat_id":"oc_test"}`, "--as", "user", "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "user",
-		Error: &output.ErrDetail{
-			Type:    "validation",
-			Message: `strict mode is "bot", only bot-identity commands are available`,
-			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeBotMessage)
 }
 
 func TestIntegration_StrictModeUser_ProfileOverride_ServiceBotOnlyMethodReturnsEnvelope(t *testing.T) {
 	f, stdout, stderr := newStrictModeDefaultFactory(t, "target", core.StrictModeUser)
-	rootCmd := buildStrictModeIntegrationRootCmd(t, f)
+	catalog := strictModeFixtureCatalog()
+	rootCmd := buildStrictModeIntegrationRootCmdWithCatalog(t, f, &catalog)
 
 	code := executeRootIntegration(t, f, rootCmd, []string{
-		"im", "images", "create", "--data", `{"image_type":"message","image":"x"}`, "--dry-run",
+		"fixture", "things", "create", "--data", `{"name":"probe"}`, "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK: false,
-		Error: &output.ErrDetail{
-			Type:    "command_denied",
-			Message: strictModeUserMessage,
-			Hint:    strictModeHint,
-			Detail: map[string]any{
-				"path":          "im/images/create",
-				"layer":         "strict_mode",
-				"policy_source": "strict-mode",
-				"rule_name":     "",
-				"reason_code":   "identity_not_supported",
-				"reason":        strictModeUserMessage,
-			},
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertStrictModeDenialEnvelope(t, env, strictModeUserMessage)
 }
 
 func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelope(t *testing.T) {
@@ -341,15 +414,14 @@ func TestIntegration_StrictModeBot_ProfileOverride_APIExplicitUserReturnsEnvelop
 		"api", "--as", "user", "GET", "/open-apis/im/v1/chats/oc_test", "--dry-run",
 	})
 
-	assertEnvelope(t, code, output.ExitValidation, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "user",
-		Error: &output.ErrDetail{
-			Type:    "validation",
-			Message: `strict mode is "bot", only bot-identity commands are available`,
-			Hint:    "if the user explicitly wants to switch policy, see `lark-cli config strict-mode --help` (confirm with the user before switching; switching does NOT require re-bind)",
-		},
-	})
+	if code != output.ExitValidation {
+		t.Errorf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	env := parseTypedEnvelope(t, stderr)
+	assertCheckStrictModeEnvelope(t, env, strictModeBotMessage)
 }
 
 // --- shortcut command ---
@@ -372,16 +444,43 @@ func TestIntegration_Shortcut_BusinessError_OutputsEnvelope(t *testing.T) {
 		"im", "+messages-send", "--as", "bot", "--chat-id", "oc_xxx", "--text", "test",
 	})
 
-	// shortcut: typed error via DoAPIJSON path
-	assertEnvelope(t, code, output.ExitAPI, stdout, stderr, output.ErrorEnvelope{
-		OK:       false,
-		Identity: "bot",
-		Error: &output.ErrDetail{
-			Type:    "api",
-			Code:    230002,
-			Message: "Bot/User can NOT be out of the chat.",
-		},
-	})
+	// shortcut: typed errs.APIError via the CallAPITyped → BuildAPIError path.
+	if code != output.ExitAPI {
+		t.Errorf("exit code = %d, want %d (ExitAPI)", code, output.ExitAPI)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("expected empty stdout, got:\n%s", stdout.String())
+	}
+	if stderr.Len() == 0 {
+		t.Fatal("expected non-empty stderr, got empty")
+	}
+	var raw struct {
+		OK       bool   `json:"ok"`
+		Identity string `json:"identity"`
+		Error    struct {
+			Type    string `json:"type"`
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &raw); err != nil {
+		t.Fatalf("failed to parse typed envelope: %v\nstderr: %s", err, stderr.String())
+	}
+	if raw.OK {
+		t.Errorf("envelope ok = true, want false")
+	}
+	if raw.Identity != "bot" {
+		t.Errorf("identity = %q, want bot", raw.Identity)
+	}
+	if raw.Error.Type != "api" {
+		t.Errorf("error.type = %q, want api", raw.Error.Type)
+	}
+	if raw.Error.Code != 230002 {
+		t.Errorf("error.code = %d, want 230002", raw.Error.Code)
+	}
+	if raw.Error.Message != "Bot/User can NOT be out of the chat." {
+		t.Errorf("error.message = %q, want %q", raw.Error.Message, "Bot/User can NOT be out of the chat.")
+	}
 }
 
 // TestSetupNotices_ColdStart_NoNotice verifies that missing state

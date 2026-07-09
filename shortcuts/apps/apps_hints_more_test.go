@@ -80,7 +80,7 @@ func TestAppsCreate_4xxFailureCarriesTypeHint(t *testing.T) {
 
 func TestAppsDBEnvCreate_4xxFailureCarriesHint(t *testing.T) {
 	assertHintContains(t, AppsDBEnvCreate,
-		[]string{"+db-env-create", "--app-id", "app_x", "--env", "dev", "--yes", "--as", "user"},
+		[]string{"+db-env-create", "--app-id", "app_x", "--environment", "dev", "--yes", "--as", "user"},
 		&httpmock.Stub{Method: "POST", URL: "/open-apis/spark/v1/apps/app_x/db_dev_init",
 			Status: http.StatusConflict, Body: map[string]interface{}{"msg": "already multi-env"}},
 		"+db-table-list")
@@ -96,7 +96,7 @@ func TestAppsDBTableGet_4xxFailureCarriesHint(t *testing.T) {
 
 func TestAppsDBTableList_4xxFailureCarriesHint(t *testing.T) {
 	assertHintContains(t, AppsDBTableList,
-		[]string{"+db-table-list", "--app-id", "app_x", "--env", "dev", "--as", "user"},
+		[]string{"+db-table-list", "--app-id", "app_x", "--environment", "dev", "--as", "user"},
 		&httpmock.Stub{Method: "GET", URL: "/open-apis/spark/v1/apps/app_x/tables",
 			Status: http.StatusNotFound, Body: map[string]interface{}{"msg": "dev env not found"}},
 		"+db-env-create")

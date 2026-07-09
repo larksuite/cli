@@ -63,20 +63,6 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 				"value_render_option": "formatted_value",
 			},
 		},
-		{
-			// --rows-json is post-processing on +csv-get's response; it must
-			// NOT leak into the get_range_as_csv input.
-			name:     "+csv-get --rows-json builds the same input (flag is post-process)",
-			sc:       CsvGet,
-			args:     []string{"--url", testURL, "--sheet-id", testSheetID, "--range", "A1:C10", "--rows-json"},
-			toolName: "get_range_as_csv",
-			wantInput: map[string]interface{}{
-				"excel_id": testToken,
-				"sheet_id": testSheetID,
-				"range":    "A1:C10",
-				"max_rows": float64(unboundedReadLimit),
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -95,15 +81,12 @@ func TestReadDataShortcuts_DryRun(t *testing.T) {
 // every other get_cell_ranges wrapper uses.
 func TestDropdownGet_RequiresSheetSelector(t *testing.T) {
 	t.Parallel()
-	stdout, stderr, err := runShortcutCapturingErr(t, DropdownGet, []string{
+	_, _, err := runShortcutCapturingErr(t, DropdownGet, []string{
 		"--url", testURL, "--range", "A2:A100", "--dry-run",
 	})
-	if err == nil {
-		t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-	}
-	combined := stdout + stderr + err.Error()
-	if !strings.Contains(combined, "sheet-id") && !strings.Contains(combined, "sheet-name") {
-		t.Errorf("expected --sheet-id/--sheet-name guard; got=%s|%s|%v", stdout, stderr, err)
+	ve := requireValidation(t, err, "")
+	if !strings.Contains(ve.Message, "sheet-id") && !strings.Contains(ve.Message, "sheet-name") {
+		t.Errorf("expected --sheet-id/--sheet-name guard; got message=%q", ve.Message)
 	}
 }
 
@@ -123,15 +106,10 @@ func TestReadData_RequiresRange(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := runShortcutCapturingErr(t, c.sc, []string{
+			_, _, err := runShortcutCapturingErr(t, c.sc, []string{
 				"--url", testURL, "--sheet-id", testSheetID, "--range", "  ", "--dry-run",
 			})
-			if err == nil {
-				t.Fatalf("expected validation error; stdout=%s stderr=%s", stdout, stderr)
-			}
-			if !strings.Contains(stdout+stderr+err.Error(), "--range is required") {
-				t.Errorf("expected --range guard; got=%s|%s|%v", stdout, stderr, err)
-			}
+			requireValidation(t, err, "--range is required")
 		})
 	}
 }
@@ -177,115 +155,5 @@ func TestCsvGet_StripRowPrefix(t *testing.T) {
 	}
 	if out["other"] != "untouched" {
 		t.Errorf("other field corrupted: %v", out["other"])
-	}
-}
-
-// TestAssembleRowsJSON covers the --rows-json reshaping: every logical row
-// emitted (no header singled out), integer row_number, column-letter keyed
-// values, embedded newlines inside quoted fields, and current_region passthrough.
-func TestAssembleRowsJSON(t *testing.T) {
-	t.Parallel()
-	in := map[string]interface{}{
-		"annotated_csv":   "[row=1] 姓名,备注,时间差_分钟\n[row=2] 张三,\"line1\nline2\",8.5\n[row=3] 李四,ok,3",
-		"current_region":  "A1:C3",
-		"col_indices":     []interface{}{"A", "B", "C"},
-		"row_indices":     []interface{}{1, 2, 3},
-		"warning_message": "①定位行号…②定位列字母…",
-	}
-	out, ok := assembleRowsJSON(in, "A1:C3").(map[string]interface{})
-	if !ok {
-		t.Fatalf("assembleRowsJSON did not return a map")
-	}
-
-	// Fields whose info rows-json carries elsewhere are dropped (annotated_csv /
-	// indices → rows; warning_message → moot static nag + structured
-	// data_not_fully_read). Unrelated metadata like current_region is preserved.
-	if _, exists := out["annotated_csv"]; exists {
-		t.Errorf("annotated_csv should be dropped")
-	}
-	if _, exists := out["col_indices"]; exists {
-		t.Errorf("col_indices should be dropped")
-	}
-	if _, exists := out["warning_message"]; exists {
-		t.Errorf("warning_message should be dropped in rows-json mode")
-	}
-	if _, exists := out["columns"]; exists {
-		t.Errorf("columns field should not exist (no header assumption)")
-	}
-	if out["current_region"] != "A1:C3" {
-		t.Errorf("current_region passthrough lost: %v", out["current_region"])
-	}
-
-	rows, _ := out["rows"].([]map[string]interface{})
-	if len(rows) != 3 {
-		t.Fatalf("want all 3 rows (incl. row 1), got %d: %+v", len(rows), rows)
-	}
-	// Row 1 is emitted as a normal row, not consumed as a header.
-	if rows[0]["row_number"].(int) != 1 {
-		t.Errorf("first row_number = %v, want 1", rows[0]["row_number"])
-	}
-	if v := rows[0]["values"].(map[string]interface{}); v["A"] != "姓名" || v["C"] != "时间差_分钟" {
-		t.Errorf("row 1 values wrong: %+v", v)
-	}
-	// Row 2 keeps its embedded newline inside a single cell.
-	v1 := rows[1]["values"].(map[string]interface{})
-	if rows[1]["row_number"].(int) != 2 || v1["A"] != "张三" || v1["B"] != "line1\nline2" || v1["C"] != "8.5" {
-		t.Errorf("row 2 wrong (embedded newline?): %+v", rows[1])
-	}
-}
-
-// TestAssembleRowsJSON_DerivedLetters verifies cell letters are derived from the
-// range start when the tool omits col_indices (e.g. a C-anchored read).
-func TestAssembleRowsJSON_DerivedLetters(t *testing.T) {
-	t.Parallel()
-	in := map[string]interface{}{
-		"annotated_csv": "[row=5] h1,h2\n[row=6] a,b",
-	}
-	out := assembleRowsJSON(in, "C5:D6").(map[string]interface{})
-	rows := out["rows"].([]map[string]interface{})
-	if len(rows) != 2 {
-		t.Fatalf("want 2 rows, got %d", len(rows))
-	}
-	if rows[0]["row_number"].(int) != 5 {
-		t.Errorf("first row_number = %v, want 5", rows[0]["row_number"])
-	}
-	if v := rows[0]["values"].(map[string]interface{}); v["C"] != "h1" || v["D"] != "h2" {
-		t.Errorf("derived-letter values wrong: %+v", v)
-	}
-	if v := rows[1]["values"].(map[string]interface{}); v["C"] != "a" || v["D"] != "b" {
-		t.Errorf("row 6 values wrong: %+v", v)
-	}
-}
-
-// TestAssembleRowsJSON_DataNotFullyRead verifies the structured under-read hint:
-// when current_region extends past actual_range, rows-json surfaces the true data
-// range as a first-class field (mirroring the backend's prose warning).
-func TestAssembleRowsJSON_DataNotFullyRead(t *testing.T) {
-	t.Parallel()
-	// Read only A1:D2, but the data region reaches D4 → 2 rows unread.
-	in := map[string]interface{}{
-		"annotated_csv":  "[row=1] 序号,姓名\n[row=2] 101,张三",
-		"actual_range":   "A1:D2",
-		"current_region": "A1:D4",
-	}
-	out := assembleRowsJSON(in, "A1:D2").(map[string]interface{})
-	hint, ok := out["data_not_fully_read"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("data_not_fully_read missing; out=%+v", out)
-	}
-	if hint["read_through_row"] != 2 || hint["data_extends_through_row"] != 4 ||
-		hint["unread_rows"] != 2 || hint["reread_range"] != "A1:D4" {
-		t.Errorf("data_not_fully_read wrong: %+v", hint)
-	}
-
-	// Fully-read case: no hint emitted.
-	in2 := map[string]interface{}{
-		"annotated_csv":  "[row=1] 序号,姓名\n[row=2] 101,张三",
-		"actual_range":   "A1:D2",
-		"current_region": "A1:D2",
-	}
-	out2 := assembleRowsJSON(in2, "A1:D2").(map[string]interface{})
-	if _, exists := out2["data_not_fully_read"]; exists {
-		t.Errorf("data_not_fully_read should be absent when fully read")
 	}
 }

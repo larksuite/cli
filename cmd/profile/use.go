@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/output"
@@ -40,14 +41,15 @@ func profileUseRun(f *cmdutil.Factory, name string) error {
 	// Handle "-" for toggle-back
 	if name == "-" {
 		if multi.PreviousApp == "" {
-			return output.ErrValidation("no previous profile to switch back to")
+			return errs.NewValidationError(errs.SubtypeFailedPrecondition, "no previous profile to switch back to").
+				WithHint("switch to a profile by name first: lark-cli profile use <name>")
 		}
 		name = multi.PreviousApp
 	}
 
 	app := multi.FindApp(name)
 	if app == nil {
-		return output.ErrValidation("profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
+		return errs.NewValidationError(errs.SubtypeInvalidArgument, "profile %q not found, available profiles: %s", name, strings.Join(multi.ProfileNames(), ", "))
 	}
 
 	targetName := app.ProfileName()
@@ -66,7 +68,7 @@ func profileUseRun(f *cmdutil.Factory, name string) error {
 	multi.CurrentApp = targetName
 
 	if err := core.SaveMultiAppConfig(multi); err != nil {
-		return output.Errorf(output.ExitInternal, "internal", "failed to save config: %v", err)
+		return errs.NewInternalError(errs.SubtypeStorage, "failed to save config: %v", err).WithCause(err)
 	}
 
 	output.PrintSuccess(f.IOStreams.ErrOut, fmt.Sprintf("Switched to profile %q (%s, %s)", targetName, app.AppId, app.Brand))

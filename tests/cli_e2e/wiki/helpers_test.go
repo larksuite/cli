@@ -5,6 +5,7 @@ package wiki
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -98,7 +99,7 @@ func createWikiRootHost(t *testing.T, ctx context.Context) gjson.Result {
 	}, clie2e.RetryOptions{})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	host := gjson.Get(result.Stdout, "data.node")
 	require.True(t, host.Exists(), "stdout:\n%s", result.Stdout)
@@ -130,7 +131,7 @@ func listWikiRootHosts(t *testing.T, ctx context.Context) []gjson.Result {
 		}, clie2e.RetryOptions{})
 		require.NoError(t, err)
 		listResult.AssertExitCode(t, 0)
-		listResult.AssertStdoutStatus(t, 0)
+		listResult.AssertStdoutStatus(t, true)
 
 		parsed := gjson.Parse(listResult.Stdout)
 		hosts = append(hosts, parsed.Get("data.items").Array()...)
@@ -161,7 +162,7 @@ func getWikiNode(t *testing.T, ctx context.Context, nodeToken string) gjson.Resu
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	node := gjson.Get(result.Stdout, "data.node")
 	require.True(t, node.Exists(), "stdout:\n%s", result.Stdout)
@@ -177,7 +178,7 @@ func getWikiSpace(t *testing.T, ctx context.Context, spaceID string) gjson.Resul
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 
 	space := gjson.Get(result.Stdout, "data.space")
 	require.True(t, space.Exists(), "stdout:\n%s", result.Stdout)
@@ -194,7 +195,7 @@ func listWikiSpaces(t *testing.T, ctx context.Context, pageSize int) gjson.Resul
 	})
 	require.NoError(t, err)
 	result.AssertExitCode(t, 0)
-	result.AssertStdoutStatus(t, 0)
+	result.AssertStdoutStatus(t, true)
 	return gjson.Parse(result.Stdout)
 }
 
@@ -202,6 +203,11 @@ type wikiNodeInfo struct {
 	NodeToken string
 	ObjType   string
 }
+
+const (
+	wikiDeleteVisibilityTimeout = 30 * time.Second
+	wikiDeleteVisibilityPoll    = 3 * time.Second
+)
 
 // deleteWikiNodeAndVerify removes a wiki node, then polls get_node until the
 // original node token is gone. Wiki cleanup cannot use drive +delete because
@@ -333,28 +339,34 @@ func listWikiNodeChildren(ctx context.Context, spaceID, parentNodeToken string) 
 }
 
 func waitWikiNodeDeleted(ctx context.Context, nodeToken string) error {
-	deadline := time.NewTimer(20 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
+	var lastTransientErr error
 
-	for {
+	opts := clie2e.WaitOptions{
+		Timeout:  wikiDeleteVisibilityTimeout,
+		Interval: wikiDeleteVisibilityPoll,
+		TimeoutError: func() error {
+			if lastTransientErr != nil {
+				return fmt.Errorf("wiki node %s delete verification kept hitting transient errors: %w", nodeToken, lastTransientErr)
+			}
+			return fmt.Errorf("wiki node %s still exists after delete", nodeToken)
+		},
+	}
+
+	return clie2e.WaitForCondition(ctx, opts, func() (bool, error) {
 		deleted, err := isWikiNodeDeleted(ctx, nodeToken)
 		if err != nil {
-			return err
+			if isWikiVerifyTransientError(err) {
+				lastTransientErr = err
+				return false, nil
+			} else {
+				return false, err
+			}
 		}
 		if deleted {
-			return nil
+			return true, nil
 		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-deadline.C:
-			return fmt.Errorf("wiki node %s still exists after delete", nodeToken)
-		case <-ticker.C:
-		}
-	}
+		return false, nil
+	})
 }
 
 func isWikiNodeDeleted(ctx context.Context, nodeToken string) (bool, error) {
@@ -375,7 +387,29 @@ func isWikiNodeDeleted(ctx context.Context, nodeToken string) (bool, error) {
 	if isWikiNodeDeletedResult(result) {
 		return true, nil
 	}
+	if isWikiVerifyTransientResult(result) {
+		return false, wikiVerifyTransientError{
+			err: fmt.Errorf("verify wiki node %s after delete hit transient response: exit=%d stdout=%s stderr=%s", nodeToken, result.ExitCode, result.Stdout, result.Stderr),
+		}
+	}
 	return false, fmt.Errorf("verify wiki node %s after delete: exit=%d stdout=%s stderr=%s", nodeToken, result.ExitCode, result.Stdout, result.Stderr)
+}
+
+type wikiVerifyTransientError struct {
+	err error
+}
+
+func (e wikiVerifyTransientError) Error() string {
+	return e.err.Error()
+}
+
+func (e wikiVerifyTransientError) Unwrap() error {
+	return e.err
+}
+
+func isWikiVerifyTransientError(err error) bool {
+	var transient wikiVerifyTransientError
+	return err != nil && errors.As(err, &transient)
 }
 
 func wikiAPISuccess(stdout string) bool {
@@ -404,6 +438,55 @@ func isWikiNodeDeletedResult(result *clie2e.Result) bool {
 		strings.Contains(combined, "not found")
 }
 
+func isWikiVerifyTransientResult(result *clie2e.Result) bool {
+	if result == nil {
+		return false
+	}
+	payload := result.Stdout
+	if strings.TrimSpace(payload) == "" {
+		payload = result.Stderr
+	}
+	if gjson.Get(payload, "error.type").String() != "internal" ||
+		gjson.Get(payload, "error.subtype").String() != "invalid_response" {
+		return false
+	}
+	message := strings.ToLower(gjson.Get(payload, "error.message").String())
+	return strings.Contains(message, "http 429") ||
+		strings.Contains(message, "http 500") ||
+		strings.Contains(message, "http 502") ||
+		strings.Contains(message, "http 503") ||
+		strings.Contains(message, "http 504")
+}
+
+func TestWikiVerifyTransientResult(t *testing.T) {
+	t.Run("matches invalid response from transient http status", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 5,
+			Stderr:   `{"ok":false,"error":{"type":"internal","subtype":"invalid_response","message":"SDK returned an invalid JSON response: failed to parse TAT response (HTTP 429): invalid character 'r' looking for beginning of value"}}`,
+		}
+
+		require.True(t, isWikiVerifyTransientResult(result))
+	})
+
+	t.Run("does not match unrelated invalid response", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 5,
+			Stderr:   `{"ok":false,"error":{"type":"internal","subtype":"invalid_response","message":"SDK returned an invalid JSON response: malformed body"}}`,
+		}
+
+		require.False(t, isWikiVerifyTransientResult(result))
+	})
+
+	t.Run("does not match api errors", func(t *testing.T) {
+		result := &clie2e.Result{
+			ExitCode: 1,
+			Stderr:   `{"ok":false,"error":{"type":"api","subtype":"conflict","message":"resource contention occurred, please retry","retryable":true}}`,
+		}
+
+		require.False(t, isWikiVerifyTransientResult(result))
+	})
+}
+
 func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, nodeToken string, parentNodeTokens ...string) gjson.Result {
 	t.Helper()
 
@@ -430,7 +513,7 @@ func findWikiNodeByToken(t *testing.T, ctx context.Context, spaceID string, node
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 
 		lastStdout = result.Stdout
 		parsed := gjson.Parse(result.Stdout)

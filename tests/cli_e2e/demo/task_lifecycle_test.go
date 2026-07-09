@@ -82,7 +82,7 @@ func TestDemo_TaskLifecycle(t *testing.T) {
 		})
 		require.NoError(t, err)
 		result.AssertExitCode(t, 0)
-		result.AssertStdoutStatus(t, 0)
+		result.AssertStdoutStatus(t, true)
 		assert.Equal(t, taskGUID, gjson.Get(result.Stdout, "data.task.guid").String())
 		assert.Equal(t, updatedSummary, gjson.Get(result.Stdout, "data.task.summary").String())
 		assert.Equal(t, updatedDescription, gjson.Get(result.Stdout, "data.task.description").String())

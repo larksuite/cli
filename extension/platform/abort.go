@@ -7,8 +7,8 @@ import "fmt"
 
 // AbortError is returned by a Wrapper that wants to short-circuit the
 // command chain (instead of calling next). The framework converts it
-// to an *output.ExitError with type "hook" so the JSON envelope carries
-// the structured fields agents expect.
+// to a typed errs.* error so the JSON envelope carries the structured
+// fields agents expect.
 //
 // HookName is the framework-namespaced name ("secaudit.approval"); the
 // Registrar adds the plugin-name prefix automatically.

@@ -4,6 +4,7 @@
 
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { labelDomainsForPath } = require("../domain-map");
 
 // ============================================================================
 // Constants & Configuration
@@ -34,33 +35,6 @@ const LOW_RISK_TEST_SUFFIXES = ["_test.go", ".snap"];
 const CORE_PREFIXES = ["internal/auth/", "internal/engine/", "internal/config/", "cmd/"];
 const HEAD_BUSINESS_DOMAINS = new Set(["im", "contact", "ccm", "base", "docx"]);
 const LOW_RISK_TYPES = new Set(["docs", "ci", "test", "chore"]);
-
-// CODEOWNERS-based path to domain label mapping
-// Maps shortcuts and skills paths to business domain labels
-const PATH_TO_DOMAIN_MAP = {
-  // shortcuts
-  "shortcuts/im/": "im",
-  "shortcuts/vc/": "vc",
-  "shortcuts/calendar/": "calendar",
-  "shortcuts/doc/": "ccm",
-  "shortcuts/sheets/": "ccm",
-  "shortcuts/drive/": "ccm",
-  "shortcuts/wiki/": "ccm",
-  "shortcuts/base/": "base",
-  "shortcuts/mail/": "mail",
-  "shortcuts/task/": "task",
-  "shortcuts/contact/": "contact",
-  // skills
-  "skills/lark-im/": "im",
-  "skills/lark-vc/": "vc",
-  "skills/lark-doc/": "ccm",
-  "skills/lark-wiki/": "ccm",
-  "skills/lark-base/": "base",
-  "skills/lark-mail/": "mail",
-  "skills/lark-calendar/": "calendar",
-  "skills/lark-task/": "task",
-  "skills/lark-contact/": "contact",
-};
 
 const SENSITIVE_PATTERN = /(^|\/)(auth|permission|permissions|security)(\/|_|\.|$)/;
 
@@ -285,13 +259,7 @@ function skillDomainForPath(filePath) {
 
 // Get business domain label based on CODEOWNERS path mapping
 function getBusinessDomain(filePath) {
-  const normalized = normalizePath(filePath);
-  for (const [prefix, domain] of Object.entries(PATH_TO_DOMAIN_MAP)) {
-    if (normalized.startsWith(prefix)) {
-      return domain;
-    }
-  }
-  return "";
+  return labelDomainsForPath(filePath)[0] || "";
 }
 
 async function detectNewShortcutDomain(files) {

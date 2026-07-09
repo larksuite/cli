@@ -5610,6 +5610,21 @@
     "recommend": "false"
   },
   {
+    "scope_name": "im:chat.nickname:read",
+    "final_score": "88.0587",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "im:chat.nickname:write",
+    "final_score": "79.5982",
+    "recommend": "true"
+  },
+  {
+    "scope_name": "im:chat.user_setting:write",
+    "final_score": "83.6587",
+    "recommend": "true"
+  },
+  {
     "scope_name": "im:chat.user_setting:read",
     "final_score": "88.0587",
     "recommend": "true"

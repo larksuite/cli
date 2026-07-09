@@ -5,11 +5,11 @@ package apps
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/validate"
 	"github.com/larksuite/cli/internal/vfs" //nolint:depguard // existing apps storage persists CLI config-dir state; it is not user file I/O.
@@ -25,10 +25,10 @@ const storageRoot = "spark"
 // can traverse out of the storage directory.
 func checkSeg(name, what string) error {
 	if err := validate.ResourceName(name, what); err != nil {
-		return fmt.Errorf("apps storage: %w", err)
+		return appsStorageError(err, "apps storage: %v", err)
 	}
 	if name == "." {
-		return fmt.Errorf("apps storage: %s must not be \".\"", what)
+		return errs.NewInternalError(errs.SubtypeStorage, "apps storage: %s must not be \".\"", what)
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func Read(appID, key string) ([]byte, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("apps storage: read: %w", err)
+		return nil, appsStorageError(err, "apps storage: read: %v", err)
 	}
 	return data, nil
 }
@@ -79,10 +79,10 @@ func Write(appID, key string, data []byte) error {
 		return err
 	}
 	if err := vfs.MkdirAll(appDir(appID), 0700); err != nil {
-		return fmt.Errorf("apps storage: create dir: %w", err)
+		return appsStorageError(err, "apps storage: create dir: %v", err)
 	}
 	if err := validate.AtomicWrite(appKeyPath(appID, key), data, 0600); err != nil {
-		return fmt.Errorf("apps storage: write: %w", err)
+		return appsStorageError(err, "apps storage: write: %v", err)
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func Delete(appID, key string) error {
 		return err
 	}
 	if err := vfs.Remove(appKeyPath(appID, key)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("apps storage: delete: %w", err)
+		return appsStorageError(err, "apps storage: delete: %v", err)
 	}
 	return nil
 }
@@ -113,7 +113,7 @@ func List(appID string) ([]string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return []string{}, nil
 		}
-		return nil, fmt.Errorf("apps storage: read dir: %w", err)
+		return nil, appsStorageError(err, "apps storage: read dir: %v", err)
 	}
 	keys := make([]string, 0, len(entries))
 	for _, e := range entries {

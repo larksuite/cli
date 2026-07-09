@@ -12,17 +12,17 @@ import (
 	"path"
 	"strings"
 
-	"github.com/larksuite/cli/internal/output"
+	"github.com/larksuite/cli/errs"
 )
 
 func NormalizeGitHTTPURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", output.ErrValidation("git_http_url is empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "git_http_url is empty")
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", output.ErrValidation("invalid git_http_url %q: %s", raw, err)
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "invalid git_http_url %q: %s", raw, err).WithCause(err)
 	}
 	return normalizeParsedURL(u)
 }
@@ -31,7 +31,7 @@ func NormalizeCredentialInput(input CredentialInput) (string, error) {
 	protocol := strings.TrimSpace(input.Protocol)
 	host := strings.TrimSpace(input.Host)
 	if protocol == "" || host == "" {
-		return "", output.ErrValidation("git credential input must include protocol and host")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "git credential input must include protocol and host")
 	}
 	u := &url.URL{
 		Scheme: protocol,
@@ -44,11 +44,11 @@ func NormalizeCredentialInput(input CredentialInput) (string, error) {
 func normalizeParsedURL(u *url.URL) (string, error) {
 	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
 	if scheme != "http" && scheme != "https" {
-		return "", output.ErrValidation("git credential only supports http/https URLs")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "git credential only supports http/https URLs")
 	}
 	host := normalizeHost(scheme, u.Host)
 	if host == "" {
-		return "", output.ErrValidation("git_http_url host is empty")
+		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "git_http_url host is empty")
 	}
 	cleanPath := cleanURLPath(u.EscapedPath())
 	normalized := (&url.URL{Scheme: scheme, Host: host, Path: cleanPath}).String()

@@ -8,14 +8,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/larksuite/cli/shortcuts/common"
 )
 
-const dbTableListHint = "verify --app-id is correct; if targeting --env dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --env dev`"
+const dbTableListHint = "verify --app-id is correct; if targeting --environment dev, create it first with `lark-cli apps +db-env-create --app-id <app_id> --environment dev`"
 
-// AppsDBTableList lists tables in a Miaoda app's database.
+// AppsDBTableList lists tables in an app's database.
 //
 // GET /apps/{app_id}/tables（cursor 分页），response items[] 含 estimated_row_count /
 // size_bytes optional 字段，默认返回，不必额外传 query。
@@ -29,7 +30,7 @@ const dbTableListHint = "verify --app-id is correct; if targeting --env dev, cre
 var AppsDBTableList = common.Shortcut{
 	Service:     appsService,
 	Command:     "+db-table-list",
-	Description: "List tables in a Miaoda app database (cursor pagination)",
+	Description: "List tables in an app database (cursor pagination)",
 	Risk:        "read",
 	Tips: []string{
 		"Example: lark-cli apps +db-table-list --app-id <app_id>",
@@ -38,21 +39,22 @@ var AppsDBTableList = common.Shortcut{
 	Scopes:    []string{"spark:app:read"},
 	AuthTypes: []string{"user"},
 	HasFormat: true,
-	Flags: []common.Flag{
-		{Name: "app-id", Desc: "Miaoda app id", Required: true},
-		{Name: "env", Default: "online", Enum: []string{"dev", "online"}, Desc: "target db environment"},
+	Flags: append([]common.Flag{
+		{Name: "app-id", Desc: "app id", Required: true},
 		{Name: "page-size", Type: "int", Default: "20", Desc: "page size"},
 		{Name: "page-token", Desc: "pagination cursor from previous response"},
-	},
+	}, dbEnvFlags("", []string{"dev", "online"}, "target db environment; leave unset to auto-select (multi-env app uses dev, single-env uses online), or pass dev/online")...),
 	Validate: func(ctx context.Context, rctx *common.RuntimeContext) error {
-		_, err := requireAppID(rctx.Str("app-id"))
-		return err
+		if _, err := requireAppID(rctx.Str("app-id")); err != nil {
+			return err
+		}
+		return rejectLegacyEnvFlag(rctx)
 	},
 	DryRun: func(ctx context.Context, rctx *common.RuntimeContext) *common.DryRunAPI {
 		appID, _ := requireAppID(rctx.Str("app-id"))
 		return common.NewDryRunAPI().
 			GET(appTablesPath(appID)).
-			Desc("List Miaoda app db tables").
+			Desc("List app db tables").
 			Params(buildDBTableListParams(rctx))
 	},
 	Execute: func(ctx context.Context, rctx *common.RuntimeContext) error {
@@ -109,10 +111,9 @@ func projectTableListItems(raw interface{}) []dbTableListItem {
 }
 
 func buildDBTableListParams(rctx *common.RuntimeContext) map[string]interface{} {
-	params := map[string]interface{}{
-		"env":       rctx.Str("env"),
+	params := dbEnvParams(rctx, map[string]interface{}{
 		"page_size": rctx.Int("page-size"),
-	}
+	})
 	if token := strings.TrimSpace(rctx.Str("page-token")); token != "" {
 		params["page_token"] = token
 	}
@@ -281,6 +282,17 @@ func numericAsFloat(raw interface{}) (float64, bool) {
 		return float64(v), true
 	case json.Number:
 		f, err := v.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	case string:
+		// 服务端有些数值字段（如 recovery diff 的 inserted/deleted 行数）以字符串下发。
+		s := strings.TrimSpace(v)
+		if s == "" {
+			return 0, false
+		}
+		f, err := strconv.ParseFloat(s, 64)
 		if err != nil {
 			return 0, false
 		}

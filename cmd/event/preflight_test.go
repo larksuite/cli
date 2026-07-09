@@ -97,9 +97,9 @@ func TestPreflightEventTypes_MissingBlocks(t *testing.T) {
 		t.Errorf("problem = %s/%s, want %s/%s", p.Category, p.Subtype,
 			errs.CategoryValidation, errs.SubtypeFailedPrecondition)
 	}
-	wantURL := "https://open.feishu.cn/app/cli_XXXXXXXXXXXXXXXX/event"
+	wantURL := "https://open.feishu.cn/page/launcher?clientID=cli_XXXXXXXXXXXXXXXX&addons="
 	if !strings.Contains(p.Hint, wantURL) {
-		t.Errorf("hint missing subscription URL %q\ngot: %s", wantURL, p.Hint)
+		t.Errorf("hint missing scan link %q\ngot: %s", wantURL, p.Hint)
 	}
 }
 
@@ -157,9 +157,8 @@ func TestPreflightScopes_Bot_MissingBlocks(t *testing.T) {
 	}
 	hint := permErr.Hint
 	wantSubstrings := []string{
-		"https://open.feishu.cn/app/cli_x/auth?q=",
-		"im:message.group_at_msg",
-		"token_type=tenant",
+		"grant these scopes by scanning: ",
+		"https://open.feishu.cn/page/launcher?clientID=cli_x&addons=",
 	}
 	for _, want := range wantSubstrings {
 		if !strings.Contains(hint, want) {
@@ -172,5 +171,111 @@ func TestPreflightScopes_NoRequiredScopes_SkipsCheck(t *testing.T) {
 	def := &eventlib.KeyDefinition{Key: "x"}
 	if err := preflightScopes(nil, newPreflightCtx("cli_x", "feishu", core.AsBot, def, nil)); err != nil {
 		t.Fatalf("no required scopes means nothing to verify, got: %v", err)
+	}
+}
+
+func TestPreflightEventTypes_CallbackMissing(t *testing.T) {
+	pf := &preflightCtx{
+		appID:               "cli_x",
+		brand:               core.BrandFeishu,
+		eventKey:            "test.cb",
+		identity:            core.AsBot,
+		subscribedCallbacks: []string{"profile.view.get"},
+		keyDef: &eventlib.KeyDefinition{
+			Key:                   "test.cb",
+			SubscriptionType:      eventlib.SubTypeCallback,
+			RequiredConsoleEvents: []string{"card.action.trigger"},
+		},
+	}
+	err := preflightEventTypes(pf)
+	if err == nil {
+		t.Fatal("expected error for missing callback")
+	}
+	if !strings.Contains(err.Error(), "callbacks not subscribed") {
+		t.Errorf("error = %q, want mention of 'callbacks not subscribed'", err.Error())
+	}
+	if !strings.Contains(err.Error(), "card.action.trigger") {
+		t.Errorf("error should name the missing callback, got: %q", err.Error())
+	}
+	p, ok := errs.ProblemOf(err)
+	if !ok || p.Category != errs.CategoryValidation || p.Subtype != errs.SubtypeFailedPrecondition {
+		t.Errorf("problem = %v, want validation/failed_precondition", p)
+	}
+}
+
+func TestPreflightEventTypes_CallbackSkippedWhenNil(t *testing.T) {
+	pf := &preflightCtx{
+		appID:               "cli_x",
+		brand:               core.BrandFeishu,
+		eventKey:            "test.cb",
+		identity:            core.AsBot,
+		subscribedCallbacks: nil, // fetch 失败/拿不到 -> 弱依赖跳过
+		keyDef: &eventlib.KeyDefinition{
+			Key:                   "test.cb",
+			SubscriptionType:      eventlib.SubTypeCallback,
+			RequiredConsoleEvents: []string{"card.action.trigger"},
+		},
+	}
+	if err := preflightEventTypes(pf); err != nil {
+		t.Errorf("expected skip (nil), got %v", err)
+	}
+}
+
+func TestPreflightEventTypes_CallbackEmptyReportsMissing(t *testing.T) {
+	// fetched but zero callbacks subscribed (non-nil empty) is a definitive
+	// console state: a required callback IS missing and must be reported,
+	// not skipped as a weak dependency.
+	pf := &preflightCtx{
+		appID:               "cli_x",
+		brand:               core.BrandFeishu,
+		eventKey:            "test.cb",
+		identity:            core.AsBot,
+		subscribedCallbacks: []string{}, // fetched, none subscribed
+		keyDef: &eventlib.KeyDefinition{
+			Key:                   "test.cb",
+			SubscriptionType:      eventlib.SubTypeCallback,
+			RequiredConsoleEvents: []string{"card.action.trigger"},
+		},
+	}
+	err := preflightEventTypes(pf)
+	if err == nil {
+		t.Fatal("expected error for missing callback when none are subscribed")
+	}
+	if !strings.Contains(err.Error(), "card.action.trigger") {
+		t.Errorf("error should name the missing callback, got: %q", err.Error())
+	}
+}
+
+func TestPreflightEventTypes_CallbackAllSubscribed_Passes(t *testing.T) {
+	pf := &preflightCtx{
+		appID:               "cli_x",
+		brand:               core.BrandFeishu,
+		eventKey:            "test.cb",
+		identity:            core.AsBot,
+		subscribedCallbacks: []string{"card.action.trigger", "profile.view.get"},
+		keyDef: &eventlib.KeyDefinition{
+			Key:                   "test.cb",
+			SubscriptionType:      eventlib.SubTypeCallback,
+			RequiredConsoleEvents: []string{"card.action.trigger"},
+		},
+	}
+	if err := preflightEventTypes(pf); err != nil {
+		t.Errorf("all callbacks subscribed, unexpected error: %v", err)
+	}
+}
+
+func TestScopeRemediationHint_ByIdentity(t *testing.T) {
+	// bot: scan-to-enable link (adds scopes to app manifest)
+	bot := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsBot, []string{"im:message"})
+	if !strings.Contains(bot, "/page/launcher?clientID=cli_x&addons=") {
+		t.Errorf("bot hint should give the scan link, got: %s", bot)
+	}
+	// user: re-login (scan link cannot grant scopes to the user's own token)
+	user := scopeRemediationHint(core.BrandFeishu, "cli_x", core.AsUser, []string{"im:message"})
+	if !strings.Contains(user, "auth login --scope") {
+		t.Errorf("user hint should direct to auth login, got: %s", user)
+	}
+	if strings.Contains(user, "/page/launcher") {
+		t.Errorf("user hint must NOT use the scan link, got: %s", user)
 	}
 }

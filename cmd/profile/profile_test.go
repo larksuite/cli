@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/i18n"
@@ -49,6 +50,16 @@ func TestProfileAddRun_InvalidExistingConfigReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to load config") {
 		t.Fatalf("error = %v, want failed to load config", err)
+	}
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("error type = %T, want *errs.InternalError; err=%v", err, err)
+	}
+	if internalErr.Subtype != errs.SubtypeFileIO {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeFileIO)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d (ExitInternal)", code, output.ExitInternal)
 	}
 }
 
@@ -95,9 +106,9 @@ func TestProfileAddRun_Lang(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected validation error for --lang ZH, got nil")
 		}
-		exitErr, ok := err.(*output.ExitError)
-		if !ok || exitErr.Code != output.ExitValidation {
-			t.Fatalf("expected ExitValidation, got %T: %v", err, err)
+		var valErr *errs.ValidationError
+		if !errors.As(err, &valErr) || output.ExitCodeOf(err) != output.ExitValidation {
+			t.Fatalf("expected typed validation error with ExitValidation, got %T: %v", err, err)
 		}
 	})
 }
@@ -406,17 +417,226 @@ func TestProfileUseRun_SaveFailureReturnsStructuredError(t *testing.T) {
 func assertInternalExitError(t *testing.T, err error, wantMsg string) {
 	t.Helper()
 
-	var exitErr *output.ExitError
-	if !errors.As(err, &exitErr) {
-		t.Fatalf("error type = %T, want *output.ExitError; err=%v", err, err)
+	var internalErr *errs.InternalError
+	if !errors.As(err, &internalErr) {
+		t.Fatalf("error type = %T, want *errs.InternalError; err=%v", err, err)
 	}
-	if exitErr.Code != output.ExitInternal {
-		t.Fatalf("exit code = %d, want %d", exitErr.Code, output.ExitInternal)
+	if internalErr.Subtype != errs.SubtypeStorage {
+		t.Fatalf("subtype = %q, want %q", internalErr.Subtype, errs.SubtypeStorage)
 	}
-	if exitErr.Detail == nil || exitErr.Detail.Type != "internal" {
-		t.Fatalf("detail = %#v, want internal detail", exitErr.Detail)
+	if internalErr.Cause == nil {
+		t.Fatalf("cause = nil, want wrapped underlying error")
 	}
-	if !strings.Contains(exitErr.Detail.Message, wantMsg) {
-		t.Fatalf("message = %q, want contains %q", exitErr.Detail.Message, wantMsg)
+	if !strings.Contains(internalErr.Message, wantMsg) {
+		t.Fatalf("message = %q, want contains %q", internalErr.Message, wantMsg)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitInternal {
+		t.Fatalf("exit code = %d, want %d (ExitInternal)", code, output.ExitInternal)
+	}
+}
+
+// assertValidationError asserts err is a typed *errs.ValidationError with the
+// given subtype, message fragment, and exit code 2.
+func assertValidationError(t *testing.T, err error, wantSubtype errs.Subtype, wantMsg string) *errs.ValidationError {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	var valErr *errs.ValidationError
+	if !errors.As(err, &valErr) {
+		t.Fatalf("error type = %T, want *errs.ValidationError; err=%v", err, err)
+	}
+	if valErr.Subtype != wantSubtype {
+		t.Fatalf("subtype = %q, want %q", valErr.Subtype, wantSubtype)
+	}
+	if !strings.Contains(valErr.Message, wantMsg) {
+		t.Fatalf("message = %q, want contains %q", valErr.Message, wantMsg)
+	}
+	if code := output.ExitCodeOf(err); code != output.ExitValidation {
+		t.Fatalf("exit code = %d, want %d (ExitValidation)", code, output.ExitValidation)
+	}
+	return valErr
+}
+
+func saveTwoProfiles(t *testing.T) {
+	t.Helper()
+	multi := &core.MultiAppConfig{
+		CurrentApp: "default",
+		Apps: []core.AppConfig{
+			{Name: "default", AppId: "app-default", AppSecret: core.PlainSecret("secret-default"), Brand: core.BrandFeishu},
+			{Name: "target", AppId: "app-target", AppSecret: core.PlainSecret("secret-target"), Brand: core.BrandLark},
+		},
+	}
+	if err := core.SaveMultiAppConfig(multi); err != nil {
+		t.Fatalf("SaveMultiAppConfig() error = %v", err)
+	}
+}
+
+func TestProfileAddRun_ValidationErrors(t *testing.T) {
+	t.Run("invalid profile name", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("secret\n")
+		err := profileAddRun(f, "bad name!", "app-x", true, "feishu", "", false)
+		valErr := assertValidationError(t, err, errs.SubtypeInvalidArgument, "")
+		if valErr.Param != "--name" {
+			t.Fatalf("param = %q, want %q", valErr.Param, "--name")
+		}
+		if valErr.Cause == nil {
+			t.Fatal("cause = nil, want wrapped validation error")
+		}
+	})
+
+	t.Run("missing app-secret-stdin flag", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileAddRun(f, "p", "app-x", false, "feishu", "", false)
+		valErr := assertValidationError(t, err, errs.SubtypeInvalidArgument, "app secret must be provided via stdin")
+		if valErr.Param != "--app-secret-stdin" {
+			t.Fatalf("param = %q, want %q", valErr.Param, "--app-secret-stdin")
+		}
+		if valErr.Hint == "" {
+			t.Fatal("hint is empty, want actionable hint")
+		}
+	})
+
+	t.Run("empty stdin", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("")
+		err := profileAddRun(f, "p", "app-x", true, "feishu", "", false)
+		valErr := assertValidationError(t, err, errs.SubtypeInvalidArgument, "stdin is empty")
+		if valErr.Param != "--app-secret-stdin" {
+			t.Fatalf("param = %q, want %q", valErr.Param, "--app-secret-stdin")
+		}
+	})
+
+	t.Run("blank secret on stdin", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("   \n")
+		err := profileAddRun(f, "p", "app-x", true, "feishu", "", false)
+		assertValidationError(t, err, errs.SubtypeInvalidArgument, "app secret read from stdin is empty")
+	})
+
+	t.Run("duplicate profile name", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("secret\n")
+		err := profileAddRun(f, "default", "app-new", true, "feishu", "", false)
+		valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, `profile "default" already exists`)
+		if valErr.Param != "--name" {
+			t.Fatalf("param = %q, want %q", valErr.Param, "--name")
+		}
+	})
+
+	t.Run("duplicate app-id", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		f.IOStreams.In = strings.NewReader("secret\n")
+		err := profileAddRun(f, "fresh", "app-default", true, "feishu", "", false)
+		valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, "already used by profile")
+		if valErr.Param != "--app-id" {
+			t.Fatalf("param = %q, want %q", valErr.Param, "--app-id")
+		}
+	})
+}
+
+func TestProfileUseRun_ValidationErrors(t *testing.T) {
+	t.Run("no previous profile for toggle", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileUseRun(f, "-")
+		valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, "no previous profile to switch back to")
+		if valErr.Hint == "" {
+			t.Fatal("hint is empty, want actionable hint")
+		}
+	})
+
+	t.Run("profile not found", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileUseRun(f, "ghost")
+		assertValidationError(t, err, errs.SubtypeInvalidArgument, `profile "ghost" not found`)
+	})
+}
+
+func TestProfileRenameRun_ValidationErrors(t *testing.T) {
+	t.Run("invalid new name", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileRenameRun(f, "default", "bad name!")
+		valErr := assertValidationError(t, err, errs.SubtypeInvalidArgument, "")
+		if valErr.Cause == nil {
+			t.Fatal("cause = nil, want wrapped validation error")
+		}
+	})
+
+	t.Run("old profile not found", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileRenameRun(f, "ghost", "fresh")
+		assertValidationError(t, err, errs.SubtypeInvalidArgument, `profile "ghost" not found`)
+	})
+
+	t.Run("new name already exists", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileRenameRun(f, "default", "target")
+		valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, `profile "target" already exists`)
+		if valErr.Hint == "" {
+			t.Fatal("hint is empty, want actionable hint")
+		}
+	})
+}
+
+func TestProfileRemoveRun_ValidationErrors(t *testing.T) {
+	t.Run("profile not found", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		saveTwoProfiles(t)
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileRemoveRun(f, "ghost")
+		assertValidationError(t, err, errs.SubtypeInvalidArgument, `profile "ghost" not found`)
+	})
+
+	t.Run("cannot remove the only profile", func(t *testing.T) {
+		setupProfileConfigDir(t)
+		multi := &core.MultiAppConfig{
+			CurrentApp: "solo",
+			Apps: []core.AppConfig{
+				{Name: "solo", AppId: "app-solo", AppSecret: core.PlainSecret("secret-solo"), Brand: core.BrandFeishu},
+			},
+		}
+		if err := core.SaveMultiAppConfig(multi); err != nil {
+			t.Fatalf("SaveMultiAppConfig() error = %v", err)
+		}
+		f, _, _, _ := cmdutil.TestFactory(t, nil)
+		err := profileRemoveRun(f, "solo")
+		valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, "cannot remove the only profile")
+		if valErr.Hint == "" {
+			t.Fatal("hint is empty, want actionable hint")
+		}
+	})
+}
+
+func TestProfileListRun_InvalidConfigReturnsValidationError(t *testing.T) {
+	dir := setupProfileConfigDir(t)
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte("{invalid json"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	f, _, _, _ := cmdutil.TestFactory(t, nil)
+	err := profileListRun(f)
+	valErr := assertValidationError(t, err, errs.SubtypeFailedPrecondition, "failed to load config")
+	if valErr.Cause == nil {
+		t.Fatal("cause = nil, want wrapped load error")
 	}
 }

@@ -26,9 +26,7 @@ func mustMarshalDryRun(t *testing.T, v interface{}) string {
 	return string(b)
 }
 
-// newTestRuntimeContext builds a *common.RuntimeContext backed by a cobra
-// command whose flags are populated from the provided string and bool maps,
-// for unit-testing shortcut bodies, validators, and dry-run shapes.
+// newTestRuntimeContext builds a RuntimeContext with string and bool test flags.
 func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -59,9 +57,38 @@ func newTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlag
 	return &common.RuntimeContext{Cmd: cmd}
 }
 
-// newMessagesSearchTestRuntimeContext is the messages-search variant of
-// newTestRuntimeContext: registers the search-specific --page-size flag
-// before applying caller-provided values.
+// newChatSearchTestRuntimeContext builds a chat-search RuntimeContext with typed flags.
+func newChatSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
+	t.Helper()
+
+	cmd := &cobra.Command{Use: "test"}
+	cmd.Flags().Int("page-size", 20, "")
+	for name := range stringFlags {
+		if name == "page-size" {
+			continue
+		}
+		cmd.Flags().String(name, "", "")
+	}
+	for name := range boolFlags {
+		cmd.Flags().Bool(name, false, "")
+	}
+	if err := cmd.ParseFlags(nil); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	for name, val := range stringFlags {
+		if err := cmd.Flags().Set(name, val); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	for name, val := range boolFlags {
+		if err := cmd.Flags().Set(name, map[bool]string{true: "true", false: "false"}[val]); err != nil {
+			t.Fatalf("Flags().Set(%q) error = %v", name, err)
+		}
+	}
+	return &common.RuntimeContext{Cmd: cmd}
+}
+
+// newMessagesSearchTestRuntimeContext builds a messages-search RuntimeContext.
 func newMessagesSearchTestRuntimeContext(t *testing.T, stringFlags map[string]string, boolFlags map[string]bool) *common.RuntimeContext {
 	t.Helper()
 
@@ -231,6 +258,7 @@ func TestIsMediaKey(t *testing.T) {
 	}
 }
 
+// TestShortcutValidateBranches covers direct shortcut validation branches.
 func TestShortcutValidateBranches(t *testing.T) {
 
 	t.Run("ImChatCreate valid", func(t *testing.T) {
@@ -297,7 +325,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 
 	t.Run("ImChatSearch invalid page size", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query":     "ok",
 			"page-size": "0",
 		}, nil)
@@ -307,12 +335,24 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
-	t.Run("ImChatSearch query too long", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
-			"query": strings.Repeat("q", 65),
+	t.Run("ImChatSearch allows long query for server-side notice", func(t *testing.T) {
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
+			"query":     strings.Repeat("q", 81),
+			"page-size": "20",
 		}, nil)
 		err := ImChatSearch.Validate(context.Background(), runtime)
-		if err == nil || !strings.Contains(err.Error(), "--query exceeds the maximum of 64 characters") {
+		if err != nil {
+			t.Fatalf("ImChatSearch.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImChatSearch invalid chat-modes value", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "ok",
+			"chat-modes": "group,bogus",
+		}, nil)
+		err := ImChatSearch.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "invalid --chat-modes value") {
 			t.Fatalf("ImChatSearch.Validate() error = %v", err)
 		}
 	})
@@ -429,6 +469,29 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}
 	})
 
+	t.Run("ImMessagesSend audio rejects non-opus local file", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"chat-id": "oc_123",
+			"audio":   "./voice.mp3",
+		}, nil)
+		err := ImMessagesSend.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
+			t.Fatalf("ImMessagesSend.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesSend audio accepts opus and ogg local files", func(t *testing.T) {
+		for _, audio := range []string{"./voice.opus", "./voice.ogg"} {
+			runtime := newTestRuntimeContext(t, map[string]string{
+				"chat-id": "oc_123",
+				"audio":   audio,
+			}, nil)
+			if err := ImMessagesSend.Validate(context.Background(), runtime); err != nil {
+				t.Fatalf("ImMessagesSend.Validate(%q) unexpected error = %v", audio, err)
+			}
+		}
+	})
+
 	t.Run("ImMessagesSend conflicting explicit msg-type", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"chat-id":  "oc_123",
@@ -448,6 +511,17 @@ func TestShortcutValidateBranches(t *testing.T) {
 		}, nil)
 		err := ImMessagesReply.Validate(context.Background(), runtime)
 		if err == nil || !strings.Contains(err.Error(), "must start with om_") {
+			t.Fatalf("ImMessagesReply.Validate() error = %v", err)
+		}
+	})
+
+	t.Run("ImMessagesReply audio rejects non-opus local file", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"message-id": "om_123",
+			"audio":      "./voice.mp3",
+		}, nil)
+		err := ImMessagesReply.Validate(context.Background(), runtime)
+		if err == nil || !strings.Contains(err.Error(), "--audio supports only Opus audio files") {
 			t.Fatalf("ImMessagesReply.Validate() error = %v", err)
 		}
 	})
@@ -596,6 +670,7 @@ func TestShortcutValidateBranches(t *testing.T) {
 	})
 }
 
+// TestMessagesSearchPaginationConfig verifies page-all and page-limit behavior.
 func TestMessagesSearchPaginationConfig(t *testing.T) {
 	t.Run("default single page", func(t *testing.T) {
 		runtime := newMessagesSearchTestRuntimeContext(t, nil, nil)
@@ -639,8 +714,7 @@ func TestMessagesSearchPaginationConfig(t *testing.T) {
 	})
 }
 
-// TestShortcutDryRunShapes verifies that each shortcut's DryRun function
-// produces the expected API path, query parameters, and request body.
+// TestShortcutDryRunShapes verifies shortcut dry-run API paths and payloads.
 func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatCreate dry run includes params and body", func(t *testing.T) {
 		cmd := &cobra.Command{Use: "test"}
@@ -663,19 +737,19 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	})
 
 	t.Run("ImChatSearch dry run includes built params", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query":      "team-alpha",
 			"page-size":  "50",
 			"page-token": "next_page",
 		}, nil)
 		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) || !strings.Contains(got, `"page_size":20`) || !strings.Contains(got, `"query":"\"team-alpha\""`) {
+		if !strings.Contains(got, `"/open-apis/im/v2/chats/search"`) || !strings.Contains(got, `"page_size":50`) || !strings.Contains(got, `"query":"\"team-alpha\""`) {
 			t.Fatalf("ImChatSearch.DryRun() = %s", got)
 		}
 	})
 
 	t.Run("ImChatSearch dry run still works with --exclude-muted set", func(t *testing.T) {
-		runtime := newTestRuntimeContext(t, map[string]string{
+		runtime := newChatSearchTestRuntimeContext(t, map[string]string{
 			"query": "team-alpha",
 		}, map[string]bool{
 			"exclude-muted": true,
@@ -690,6 +764,39 @@ func TestShortcutDryRunShapes(t *testing.T) {
 		}
 		if strings.Contains(got, `"search_types"`) {
 			t.Fatalf("search_types must not be auto-injected by --exclude-muted: %s", got)
+		}
+	})
+
+	t.Run("ImChatSearch dry run maps chat-modes to wire values", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "team-alpha",
+			"chat-modes": "group,topic",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"chat_modes":["default","thread"]`) {
+			t.Fatalf("ImChatSearch.DryRun() chat_modes mapping = %s", got)
+		}
+	})
+
+	t.Run("ImChatSearch dry run maps single chat-mode topic", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "team-alpha",
+			"chat-modes": "topic",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"chat_modes":["thread"]`) {
+			t.Fatalf("ImChatSearch.DryRun() chat_modes mapping = %s", got)
+		}
+	})
+
+	t.Run("ImChatSearch dry run dedupes chat-modes", func(t *testing.T) {
+		runtime := newTestRuntimeContext(t, map[string]string{
+			"query":      "team-alpha",
+			"chat-modes": "group, group",
+		}, nil)
+		got := mustMarshalDryRun(t, ImChatSearch.DryRun(context.Background(), runtime))
+		if !strings.Contains(got, `"chat_modes":["default"]`) {
+			t.Fatalf("ImChatSearch.DryRun() chat_modes dedupe = %s", got)
 		}
 	})
 
@@ -797,7 +904,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 			"page-size": "10",
 		}, nil)
 		got := mustMarshalDryRun(t, ImThreadsMessagesList.DryRun(context.Background(), runtime))
-		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":10`) {
+		if !strings.Contains(got, `"container_id":"omt_123"`) || !strings.Contains(got, `"sort_type":"ByCreateTimeDesc"`) || !strings.Contains(got, `"page_size":"10"`) {
 			t.Fatalf("ImThreadsMessagesList.DryRun() = %s", got)
 		}
 	})
@@ -857,7 +964,7 @@ func TestShortcutDryRunShapes(t *testing.T) {
 	t.Run("ImChatList dry run includes endpoint and params", func(t *testing.T) {
 		runtime := newTestRuntimeContext(t, map[string]string{
 			"user-id-type": "open_id",
-			"sort-type":    "ByCreateTimeAsc",
+			"sort":         "create_time",
 		}, nil)
 		got := mustMarshalDryRun(t, ImChatList.DryRun(context.Background(), runtime))
 		if !strings.Contains(got, `"/open-apis/im/v1/chats"`) {

@@ -247,8 +247,9 @@ func TestIM_FlagDryRun(t *testing.T) {
 	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	t.Setenv("LARKSUITE_CLI_APP_ID", "app")
 	t.Setenv("LARKSUITE_CLI_APP_SECRET", "secret")
-	t.Setenv("LARKSUITE_CLI_USER_ACCESS_TOKEN", "fake_user_token")
 	t.Setenv("LARKSUITE_CLI_BRAND", "feishu")
+	t.Setenv("LARKSUITE_CLI_STRICT_MODE", "user")
+	t.Setenv("LARKSUITE_CLI_DEFAULT_AS", "user")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)

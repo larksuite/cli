@@ -124,8 +124,9 @@ func TestStreamPages_NonBatchAPI_NoArrayField(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/contact/v3/users/u123",
 		As:     "bot",
-	}, func(items []interface{}) {
+	}, func(items []interface{}) error {
 		t.Error("onItems should not be called for non-batch API")
+		return nil
 	}, PaginationOptions{})
 
 	if err != nil {
@@ -168,8 +169,9 @@ func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 		Method: "GET",
 		URL:    "/open-apis/contact/v3/users",
 		As:     "bot",
-	}, func(items []interface{}) {
+	}, func(items []interface{}) error {
 		streamedItems = append(streamedItems, items...)
+		return nil
 	}, PaginationOptions{})
 
 	if err != nil {
@@ -186,6 +188,58 @@ func TestStreamPages_BatchAPI_WithArrayField(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("expected non-nil result")
+	}
+}
+
+func TestStreamPages_OnItemsErrorStopsPagination(t *testing.T) {
+	apiCalls := 0
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		apiCalls++
+		if apiCalls == 1 {
+			return jsonResponse(map[string]interface{}{
+				"code": 0, "msg": "ok",
+				"data": map[string]interface{}{
+					"items":      []interface{}{map[string]interface{}{"id": "1"}},
+					"has_more":   true,
+					"page_token": "next",
+				},
+			}), nil
+		}
+		return jsonResponse(map[string]interface{}{
+			"code": 0, "msg": "ok",
+			"data": map[string]interface{}{
+				"items":    []interface{}{map[string]interface{}{"id": "2"}},
+				"has_more": false,
+			},
+		}), nil
+	})
+
+	ac, _ := newTestAPIClient(t, rt)
+	sentinel := errors.New("stop streaming")
+	var streamedItems []interface{}
+	result, hasItems, err := ac.StreamPages(context.Background(), RawApiRequest{
+		Method: "GET",
+		URL:    "/open-apis/contact/v3/users",
+		As:     "bot",
+	}, func(items []interface{}) error {
+		streamedItems = append(streamedItems, items...)
+		return sentinel
+	}, PaginationOptions{PageDelay: 0})
+
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("err = %v, want sentinel", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %#v, want nil when callback stops pagination", result)
+	}
+	if hasItems {
+		t.Fatal("hasItems = true, want false when callback stops before returning")
+	}
+	if apiCalls != 1 {
+		t.Fatalf("apiCalls = %d, want early stop after first page", apiCalls)
+	}
+	if len(streamedItems) != 1 {
+		t.Fatalf("streamedItems = %d, want first page only", len(streamedItems))
 	}
 }
 
@@ -474,8 +528,7 @@ func (f *failingTokenResolver) ResolveToken(_ context.Context, spec credential.T
 
 // TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError pins that
 // the missing-token path of resolveAccessToken returns the typed
-// *errs.AuthenticationError{Subtype: TokenMissing} rather than the legacy
-// *output.ExitError envelope.
+// *errs.AuthenticationError{Subtype: TokenMissing}.
 func TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
@@ -500,24 +553,22 @@ func TestResolveAccessToken_NoToken_ReturnsTypedAuthenticationError(t *testing.T
 	}
 }
 
-// needAuthTokenResolver returns *internalauth.NeedAuthorizationError to
-// exercise the P1 regression path: a credential chain that signals
-// "user must re-authorize" must surface as typed AuthenticationError, not
-// fall through to the generic err return which WrapDoAPIError would then
-// wrap as NetworkError (the outer-typed dispatcher gate would then skip
-// PromoteAuthError and the user would see exit 4 with no auth-login hint).
+// needAuthTokenResolver mirrors the production credential chain: the
+// missing-UAT case is constructed typed at the source (internal/auth) and
+// carries the legacy *NeedAuthorizationError sentinel in its Cause chain. It
+// must surface as a typed AuthenticationError and flow through resolveAccessToken
+// and WrapDoAPIError unchanged (never mis-classified as NetworkError).
 type needAuthTokenResolver struct {
 	userOpenID string
 }
 
 func (f *needAuthTokenResolver) ResolveToken(_ context.Context, _ credential.TokenSpec) (*credential.TokenResult, error) {
-	return nil, &internalauth.NeedAuthorizationError{UserOpenId: f.userOpenID}
+	return nil, internalauth.NewNeedUserAuthorizationError(f.userOpenID)
 }
 
 // TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication
-// is the codex P1 regression test: without this branch, the credential
-// chain's NeedAuthorizationError would propagate raw and WrapDoAPIError
-// would mis-classify it as NetworkError.
+// pins that the typed missing-UAT error from the credential chain reaches the
+// caller as a typed AuthenticationError with the marker and sentinel intact.
 func TestResolveAccessToken_NeedAuthorization_SurfacesAsTypedAuthentication(t *testing.T) {
 	ac := &APIClient{
 		HTTP:       &http.Client{},
@@ -623,7 +674,7 @@ func TestDoSDKRequest_TransportFailureWrapsAsNetwork(t *testing.T) {
 // *errs.InternalError{Subtype: invalid_response} with the rawAPIJSONHint
 // preserved on Problem.Hint. Pagination / cmd/api / cmd/service callers see
 // the typed JSON stderr envelope (exit 5/internal) — wire `type` is
-// "internal", not the legacy "api_error".
+// "internal".
 func TestCallAPI_ParseJSONFailureWrapsAsAPI(t *testing.T) {
 	rt := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		return &http.Response{
