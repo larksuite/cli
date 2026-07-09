@@ -18,7 +18,6 @@ type dryRunAPIEnvelope struct {
 
 func (e *dryRunAPIEnvelope) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		API  []dryRunAPICall `json:"api"`
 		Data struct {
 			API []dryRunAPICall `json:"api"`
 		} `json:"data"`
@@ -26,10 +25,7 @@ func (e *dryRunAPIEnvelope) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	e.API = raw.API
-	if len(raw.Data.API) > 0 || raw.API == nil {
-		e.API = raw.Data.API
-	}
+	e.API = raw.Data.API
 	return nil
 }
 

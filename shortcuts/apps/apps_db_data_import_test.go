@@ -124,12 +124,11 @@ func TestAppsDBDataImport_DryRunOmitsEnvWhenUnset(t *testing.T) {
 		[]string{"+db-data-import", "--app-id", "app_x", "--file", "orders.csv", "--dry-run", "--yes", "--as", "user"}, factory, stdout); err != nil {
 		t.Fatalf("dry-run err=%v", err)
 	}
-	var env struct {
-		API []struct {
-			Params map[string]interface{} `json:"params"`
-		} `json:"api"`
-	}
+	var env dryRunAPIEnvelope
 	_ = json.Unmarshal([]byte(stdout.String()), &env)
+	if len(env.API) != 1 {
+		t.Fatalf("dry-run API calls = %d, want 1; stdout=%s", len(env.API), stdout.String())
+	}
 	p := env.API[0].Params
 	if _, ok := p["env"]; ok {
 		t.Fatalf("no --environment → env key must be omitted, got params=%v", p)
