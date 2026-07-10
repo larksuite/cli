@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sys
+import unicodedata
 import xml.etree.ElementTree as ET
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -133,6 +135,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
     elements: list[dict[str, Any]] = []
     for match in re.finditer(r"<shape\b([^>]*)>([\s\S]*?)</shape>", slide_xml):
         attrs, content = match.group(1), match.group(2)
+        element_id = extract_attribute(attrs, "id") or f"shape-{len(elements) + 1}"
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
         width = extract_numeric_attribute(attrs, "width")
@@ -141,10 +144,12 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
             font_size = float(extract_attribute(content, "fontSize") or extract_attribute(attrs, "fontSize") or 16)
             elements.append(
                 {
-                    "id": f"shape-{len(elements) + 1}",
+                    "id": element_id,
                     "kind": "shape",
                     "type": extract_attribute(attrs, "type") or "shape",
                     "textType": extract_attribute(content, "textType"),
+                    "textAlign": extract_attribute(content, "textAlign"),
+                    "autoFit": extract_attribute(content, "autoFit"),
                     "x": x,
                     "y": y,
                     "width": width,
@@ -156,6 +161,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
 
     for match in re.finditer(r"<(img|table|chart)\b([^>]*)/?>", slide_xml):
         attrs = match.group(2)
+        element_id = extract_attribute(attrs, "id") or f"{match.group(1)}-{len(elements) + 1}"
         x = extract_numeric_attribute(attrs, "topLeftX")
         y = extract_numeric_attribute(attrs, "topLeftY")
         width = extract_numeric_attribute(attrs, "width")
@@ -163,7 +169,7 @@ def extract_elements(slide_xml: str) -> list[dict[str, Any]]:
         if all(value is not None for value in [x, y, width, height]):
             elements.append(
                 {
-                    "id": f"{match.group(1)}-{len(elements) + 1}",
+                    "id": element_id,
                     "kind": match.group(1),
                     "type": match.group(1),
                     "x": x,
@@ -201,6 +207,24 @@ def normalize_text_for_overlap(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def estimate_character_width(character: str, font_size: int | float) -> int | float:
+    if character.isspace():
+        return font_size * 0.33
+    if unicodedata.east_asian_width(character) in {"F", "W"}:
+        return font_size
+    return font_size * 0.55
+
+
+def estimate_text_width(text: str, font_size: int | float) -> int | float:
+    return sum(estimate_character_width(character, font_size) for character in text)
+
+
+def estimate_text_max_line_width(element: dict[str, Any]) -> int | float:
+    font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
+    paragraphs = [paragraph for paragraph in re.split(r"\n+", element["text"]) if paragraph]
+    return max([estimate_text_width(paragraph, font_size) for paragraph in paragraphs] or [1])
+
+
 def is_similar_text_overlay(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_text = normalize_text_for_overlap(left.get("text") or "")
     right_text = normalize_text_for_overlap(right.get("text") or "")
@@ -213,12 +237,11 @@ def is_similar_text_overlay(left: dict[str, Any], right: dict[str, Any]) -> bool
 
 def estimate_text_line_count(element: dict[str, Any]) -> int:
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
-    chars_per_line = max(1, int(element["width"] // max(font_size * 0.55, 1)))
     paragraphs = [paragraph for paragraph in re.split(r"\n+", element["text"]) if paragraph]
     line_count = 0
     for paragraph in paragraphs:
-        logical_length = max(len(paragraph), 1)
-        line_count += max(1, -(-logical_length // chars_per_line))
+        logical_width = max(estimate_text_width(paragraph, font_size), 1)
+        line_count += max(1, math.ceil(logical_width / max(element["width"], 1)))
     return max(line_count, 1)
 
 
@@ -227,9 +250,8 @@ def estimate_text_visual_bbox(element: dict[str, Any]) -> dict[str, int | float]
         return None
 
     font_size = element["fontSize"] if isinstance(element["fontSize"], (int, float)) else 16
-    char_width = max(font_size * 0.55, 1)
     line_count = estimate_text_line_count(element)
-    visual_width = min(element["width"], max(1, len(element["text"]) * char_width))
+    visual_width = min(element["width"], max(1, estimate_text_max_line_width(element)))
     visual_height = min(element["height"], max(1, line_count * font_size * 1.2))
     return {
         "x": element["x"],
@@ -245,6 +267,11 @@ def intersection_area(left: dict[str, Any], right: dict[str, Any]) -> int | floa
     if width <= 0 or height <= 0:
         return 0
     return width * height
+
+
+def intersection_height(left: dict[str, Any], right: dict[str, Any]) -> int | float:
+    height = min(left["y"] + left["height"], right["y"] + right["height"]) - max(left["y"], right["y"])
+    return max(height, 0)
 
 
 def is_template_text_stack(left: dict[str, Any], right: dict[str, Any]) -> bool:
@@ -269,6 +296,32 @@ def is_template_text_stack(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return same_column and vertical_offset >= top_font_size * 0.75
 
 
+def should_flag_horizontal_text_overflow(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    source, target = sorted([left, right], key=lambda element: element["x"])
+    if source["x"] == target["x"]:
+        return False
+    if source.get("autoFit") == "normal-auto-fit":
+        return False
+    if source.get("textAlign") in {"center", "right"}:
+        return False
+
+    font_size = source["fontSize"] if isinstance(source["fontSize"], (int, float)) else 16
+    visual_width = estimate_text_max_line_width(source)
+    overflow_width = visual_width - source["width"]
+    min_overflow = max(font_size * 1.5, source["width"] * 0.08)
+    if overflow_width < min_overflow:
+        return False
+
+    intrusion_width = source["x"] + visual_width - target["x"]
+    min_intrusion = max(font_size * 1.5, target["width"] * 0.08)
+    if intrusion_width < min_intrusion:
+        return False
+
+    vertical_overlap = intersection_height(source, target)
+    min_vertical_overlap = min(source["height"], target["height"]) * 0.40
+    return vertical_overlap >= min_vertical_overlap
+
+
 def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if is_text_element(left) and not has_text_content(left):
         return False
@@ -279,6 +332,8 @@ def should_flag_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
     if is_text_element(left) and is_text_element(right):
         if is_similar_text_overlay(left, right):
             return False
+        if should_flag_horizontal_text_overflow(left, right):
+            return True
         left_visual = estimate_text_visual_bbox(left)
         right_visual = estimate_text_visual_bbox(right)
         if left_visual is None or right_visual is None:

@@ -182,6 +182,64 @@ class XmlTextOverlapLintTest(unittest.TestCase):
         self.assertEqual(result["summary"]["error_count"], 1)
         self.assertEqual(result["slides"][0]["issues"][0]["code"], "bbox_overlap")
 
+    def test_lint_xml_detects_current_itinerary_cjk_caption_occlusion(self) -> None:
+        result = xml_text_overlap_lint.lint_xml(
+            """
+            <slide id="pQO" xmlns="http://www.larkoffice.com/sml/2.0">
+              <data>
+                <shape width="190" height="80" topLeftX="580" topLeftY="170" presetHandlers="0" type="rect" id="blI">
+                  <fill><fillColor color="rgba(255, 255, 255, 0.9)"/></fill>
+                  <border color="rgba(220, 205, 185, 1)" width="1"/>
+                  <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+                </shape>
+                <shape width="160" height="25" topLeftX="595" topLeftY="180" type="text" id="blX">
+                  <content fontSize="14" fontFamily="思源黑体" color="rgba(120, 80, 40, 1)" bold="true"><p>日照金山</p></content>
+                </shape>
+                <shape width="160" height="40" topLeftX="595" topLeftY="205" type="text" id="blY">
+                  <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(130, 100, 70, 1)"><p>清晨躺在床上看玉龙雪山日照金山奇观</p></content>
+                </shape>
+                <shape width="180" height="80" topLeftX="730" topLeftY="170" presetHandlers="0" type="rect" id="blH">
+                  <fill><fillColor color="rgba(255, 255, 255, 0.9)"/></fill>
+                  <border color="rgba(220, 205, 185, 1)" width="1"/>
+                  <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+                </shape>
+                <shape width="150" height="25" topLeftX="745" topLeftY="180" type="text" id="blp">
+                  <content fontSize="14" fontFamily="思源黑体" color="rgba(120, 80, 40, 1)" bold="true"><p>午餐返程</p></content>
+                </shape>
+                <shape width="150" height="40" topLeftX="745" topLeftY="205" type="text" id="blV">
+                  <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(130, 100, 70, 1)"><p>享用特色午餐，带着美好回忆返程</p></content>
+                </shape>
+                <shape width="190" height="80" topLeftX="580" topLeftY="310" presetHandlers="0" type="rect" id="blP">
+                  <fill><fillColor color="rgba(255, 255, 255, 0.9)"/></fill>
+                  <border color="rgba(220, 205, 185, 1)" width="1"/>
+                  <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+                </shape>
+                <shape width="160" height="25" topLeftX="595" topLeftY="320" type="text" id="blG">
+                  <content fontSize="14" fontFamily="思源黑体" color="rgba(120, 80, 40, 1)" bold="true"><p>高路徒步</p></content>
+                </shape>
+                <shape width="160" height="40" topLeftX="595" topLeftY="345" type="text" id="blQ">
+                  <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(130, 100, 70, 1)"><p>经典高路徒步，28道拐，龙洞瀑布，中虎跳峡</p></content>
+                </shape>
+                <shape width="180" height="80" topLeftX="730" topLeftY="310" presetHandlers="0" type="rect" id="blw">
+                  <fill><fillColor color="rgba(255, 255, 255, 0.9)"/></fill>
+                  <border color="rgba(220, 205, 185, 1)" width="1"/>
+                  <content fontSize="16" fontFamily="思源黑体" color="rgba(31, 35, 41, 1)"/>
+                </shape>
+                <shape width="150" height="25" topLeftX="745" topLeftY="320" type="text" id="blZ">
+                  <content fontSize="14" fontFamily="思源黑体" color="rgba(120, 80, 40, 1)" bold="true"><p>伴手礼</p></content>
+                </shape>
+                <shape width="150" height="40" topLeftX="745" topLeftY="345" type="text" id="blS">
+                  <content textType="caption" fontSize="11" fontFamily="思源黑体" color="rgba(130, 100, 70, 1)"><p>酒店精心准备的归途伴手礼，留下难忘纪念</p></content>
+                </shape>
+              </data>
+            </slide>
+            """
+        )
+        overlap_pairs = {tuple(issue["elements"]) for issue in result["slides"][0]["issues"]}
+        self.assertEqual(result["summary"]["error_count"], 2)
+        self.assertIn(("blY", "blV"), overlap_pairs)
+        self.assertIn(("blQ", "blS"), overlap_pairs)
+
     def test_lint_xml_does_not_check_bounds_or_text_height(self) -> None:
         result = xml_text_overlap_lint.lint_xml(
             """
