@@ -555,7 +555,6 @@ func TestBaseDashboardHelpGuidesAgents(t *testing.T) {
 			wantTips: []string{
 				"lark-cli base +dashboard-block-get --base-token <base_token> --dashboard-id <dashboard_id> --block-id <block_id>",
 				"metadata such as name, type, layout, and data_config",
-				"do not use this command to audit every existing or newly created block",
 				"computed chart result",
 			},
 		},
