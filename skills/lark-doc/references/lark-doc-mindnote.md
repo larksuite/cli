@@ -23,11 +23,6 @@ lark-cli drive +inspect --url "<mindnote_or_wiki_url>"
 - 普通 Mindnote URL：`drive +inspect` 返回的 Mindnote token 可作为 `--mindnote-id`。
 - Wiki URL：不要把 `/wiki/` 路径里的 wiki token 当作 `--mindnote-id`；必须先 `drive +inspect` 解包，确认底层类型是 `mindnote` 后再使用返回的真实 token。直接把 wiki token 传给 `mindnotes nodes list` 通常会返回 `3410003 resource not found`。
 
-## 所需权限
-
-- 读取节点：需要用户授权包含 `mindnote:node:read`。
-- 创建 / 更新节点：需要用户授权包含对应写入 scope；如果命令返回 `missing_scope`，按 [`lark-shared`](../../lark-shared/SKILL.md) 的授权恢复流程，用错误里的 `hint` 或 `missing_scopes` 重新执行 `lark-cli auth login --scope ...`。
-
 ## 命令
 
 ```bash
