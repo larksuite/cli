@@ -78,6 +78,7 @@ var urlPathToType = []struct {
 	{"/chat/drive/", "folder"},
 	{"/docx/", "docx"},
 	{"/doc/", "doc"},
+	{"/spreadsheets/", "sheet"},
 	{"/sheets/", "sheet"},
 	{"/base/", "bitable"},
 	{"/bitable/", "bitable"},
@@ -117,21 +118,30 @@ func ParseResourceURL(rawURL string) (ResourceRef, bool) {
 	path := u.Path
 
 	for _, mapping := range urlPathToType {
-		if !strings.HasPrefix(path, mapping.Prefix) {
-			continue
+		if token, ok := PathSegmentAfterPrefix(path, mapping.Prefix); ok {
+			return ResourceRef{Type: mapping.Type, Token: token}, true
 		}
-		token := path[len(mapping.Prefix):]
-		// Trim trailing slashes and stop at the next path segment boundary.
-		token = strings.TrimRight(token, "/")
-		if idx := strings.IndexByte(token, '/'); idx >= 0 {
-			token = token[:idx]
-		}
-		token = strings.TrimSpace(token)
-		if token == "" {
-			return ResourceRef{}, false
-		}
-		return ResourceRef{Type: mapping.Type, Token: token}, true
 	}
 
 	return ResourceRef{}, false
+}
+
+// PathSegmentAfterPrefix returns the first non-empty path segment after prefix.
+// It only matches when path itself starts with prefix; query strings and
+// fragments must be parsed by the caller and are intentionally ignored.
+func PathSegmentAfterPrefix(path, prefix string) (string, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+	rest := path[len(prefix):]
+	// Trim trailing slashes and stop at the next path segment boundary.
+	rest = strings.TrimRight(rest, "/")
+	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
+		rest = rest[:idx]
+	}
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }

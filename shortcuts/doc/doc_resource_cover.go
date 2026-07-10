@@ -59,7 +59,10 @@ var DocResourceDownload = common.Shortcut{
 	Description: "Download a document resource (type=cover downloads the cover image content)",
 	Risk:        "read",
 	Scopes:      []string{"docx:document:readonly", "docs:document.media:download"},
-	AuthTypes:   []string{"user", "bot"},
+	ConditionalScopes: []string{
+		"wiki:node:retrieve",
+	},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: docCoverResourceType, Desc: "resource type: cover"},
@@ -158,7 +161,10 @@ var DocResourceUpdate = common.Shortcut{
 	Description: "Upload and update a document resource (type=cover)",
 	Risk:        "write",
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only", "docs:document.media:upload"},
-	AuthTypes:   []string{"user", "bot"},
+	ConditionalScopes: []string{
+		"wiki:node:retrieve",
+	},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: docCoverResourceType, Desc: "resource type: cover"},
@@ -260,7 +266,10 @@ var DocResourceDelete = common.Shortcut{
 	Description: "Delete a document resource (type=cover is idempotent when empty)",
 	Risk:        "write",
 	Scopes:      []string{"docx:document:readonly", "docx:document:write_only"},
-	AuthTypes:   []string{"user", "bot"},
+	ConditionalScopes: []string{
+		"wiki:node:retrieve",
+	},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL or document_id", Required: true},
 		{Name: "type", Default: docCoverResourceType, Desc: "resource type: cover"},

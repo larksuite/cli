@@ -27,14 +27,13 @@ func parseDocumentRef(input string) (documentRef, error) {
 		return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc cannot be empty").WithParam("--doc")
 	}
 
-	if token, ok := extractDocumentToken(raw, "/wiki/"); ok {
-		return documentRef{Kind: "wiki", Token: token}, nil
-	}
-	if token, ok := extractDocumentToken(raw, "/docx/"); ok {
-		return documentRef{Kind: "docx", Token: token}, nil
-	}
-	if token, ok := extractDocumentToken(raw, "/doc/"); ok {
-		return documentRef{Kind: "doc", Token: token}, nil
+	if ref, ok := common.ParseResourceURL(raw); ok {
+		switch ref.Type {
+		case "wiki", "docx", "doc":
+			return documentRef{Kind: ref.Type, Token: ref.Token}, nil
+		default:
+			return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a docx URL/token or a wiki URL that resolves to docx", raw).WithParam("--doc")
+		}
 	}
 	if strings.Contains(raw, "://") {
 		return documentRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a docx URL/token or a wiki URL that resolves to docx", raw).WithParam("--doc")
@@ -44,22 +43,6 @@ func parseDocumentRef(input string) (documentRef, error) {
 	}
 
 	return documentRef{Kind: "docx", Token: raw}, nil
-}
-
-func extractDocumentToken(raw, marker string) (string, bool) {
-	idx := strings.Index(raw, marker)
-	if idx < 0 {
-		return "", false
-	}
-	token := raw[idx+len(marker):]
-	if end := strings.IndexAny(token, "/?#"); end >= 0 {
-		token = token[:end]
-	}
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return "", false
-	}
-	return token, true
 }
 
 // doDocAPI executes an OpenAPI request against the docs_ai endpoints and returns

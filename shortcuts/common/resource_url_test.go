@@ -23,6 +23,7 @@ func TestParseResourceURL(t *testing.T) {
 		{"docx", "https://xxx.feishu.cn/docx/doxcnABC", "docx", "doxcnABC", true},
 		{"doc", "https://xxx.feishu.cn/doc/doccnABC", "doc", "doccnABC", true},
 		{"sheet", "https://xxx.feishu.cn/sheets/shtcnABC", "sheet", "shtcnABC", true},
+		{"sheet via /spreadsheets/", "https://xxx.feishu.cn/spreadsheets/shtcnABC", "sheet", "shtcnABC", true},
 		{"bitable via /base/", "https://xxx.feishu.cn/base/bascnABC", "bitable", "bascnABC", true},
 		{"bitable via /bitable/", "https://xxx.feishu.cn/bitable/bascnABC", "bitable", "bascnABC", true},
 		{"wiki", "https://xxx.feishu.cn/wiki/wikcnABC", "wiki", "wikcnABC", true},
@@ -41,6 +42,8 @@ func TestParseResourceURL(t *testing.T) {
 		// With query parameters
 		{"with query", "https://xxx.feishu.cn/docx/doxcnABC?from=wiki", "docx", "doxcnABC", true},
 		{"with fragment", "https://xxx.feishu.cn/docx/doxcnABC#section", "docx", "doxcnABC", true},
+		{"query path does not hijack type", "https://xxx.feishu.cn/docx/doxcnABC?next=/wiki/wikcnBAD", "docx", "doxcnABC", true},
+		{"fragment path does not hijack type", "https://xxx.feishu.cn/sheets/shtcnABC#/wiki/wikcnBAD", "sheet", "shtcnABC", true},
 
 		// With trailing slash
 		{"trailing slash", "https://xxx.feishu.cn/docx/doxcnABC/", "docx", "doxcnABC", true},

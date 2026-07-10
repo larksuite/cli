@@ -32,6 +32,18 @@ func TestParseDocumentRef(t *testing.T) {
 			wantToken: "xxxxxx",
 		},
 		{
+			name:      "query path does not hijack docx url",
+			input:     "https://example.larksuite.com/docx/doxcn123?next=/wiki/wikcnBAD",
+			wantKind:  "docx",
+			wantToken: "doxcn123",
+		},
+		{
+			name:      "fragment path does not hijack docx url",
+			input:     "https://example.larksuite.com/docx/doxcn123#/wiki/wikcnBAD",
+			wantKind:  "docx",
+			wantToken: "doxcn123",
+		},
+		{
 			name:      "doc url",
 			input:     "https://example.larksuite.com/doc/xxxxxx",
 			wantKind:  "doc",

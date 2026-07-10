@@ -129,7 +129,8 @@ var DriveAddComment = common.Shortcut{
 		"docs:document.comment:create",
 		"docs:document.comment:write_only",
 	},
-	AuthTypes: []string{"user", "bot"},
+	ConditionalScopes: []string{"wiki:node:retrieve"},
+	AuthTypes:         []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "doc", Desc: "document URL/token, file URL/token, sheet/slides/base/bitable URL, or wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", Required: true},
 		{Name: "type", Desc: "document type: doc, docx, file, sheet, slides, bitable, base (required when --doc is a bare token; auto-detected for URLs; use bitable as the wire value, base is accepted as a compatibility alias)", Enum: []string{"doc", "docx", "file", "sheet", "slides", "bitable", "base"}},
@@ -515,29 +516,17 @@ func parseCommentDocRef(input, docType string) (commentDocRef, error) {
 		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "--doc cannot be empty").WithParam("--doc")
 	}
 
-	if token, ok := extractURLToken(raw, "/wiki/"); ok {
-		return commentDocRef{Kind: "wiki", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/sheets/"); ok {
-		return commentDocRef{Kind: "sheet", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/base/"); ok {
-		return commentDocRef{Kind: "base", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/bitable/"); ok {
-		return commentDocRef{Kind: "base", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/file/"); ok {
-		return commentDocRef{Kind: "file", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/slides/"); ok {
-		return commentDocRef{Kind: "slides", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/docx/"); ok {
-		return commentDocRef{Kind: "docx", Token: token}, nil
-	}
-	if token, ok := extractURLToken(raw, "/doc/"); ok {
-		return commentDocRef{Kind: "doc", Token: token}, nil
+	if ref, ok := common.ParseResourceURL(raw); ok {
+		kind := ref.Type
+		if kind == "bitable" {
+			kind = "base"
+		}
+		switch kind {
+		case "wiki", "sheet", "base", "file", "slides", "docx", "doc":
+			return commentDocRef{Kind: kind, Token: ref.Token}, nil
+		default:
+			return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides/base/bitable URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", raw).WithParam("--doc")
+		}
 	}
 	if strings.Contains(raw, "://") {
 		return commentDocRef{}, errs.NewValidationError(errs.SubtypeInvalidArgument, "unsupported --doc input %q: use a doc/docx/file/sheet/slides/base/bitable URL, a token with --type, or a wiki URL that resolves to doc/docx/file/sheet/slides/base(bitable)", raw).WithParam("--doc")
@@ -583,6 +572,9 @@ func resolveCommentTarget(ctx context.Context, runtime *common.RuntimeContext, i
 	}
 
 	fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
+	if err := runtime.EnsureScopes([]string{"wiki:node:retrieve"}); err != nil {
+		return resolvedCommentTarget{}, err
+	}
 	data, err := runtime.CallAPITyped(
 		"GET",
 		"/open-apis/wiki/v2/spaces/get_node",
@@ -1256,20 +1248,4 @@ func executeSlidesComment(runtime *common.RuntimeContext, docRef commentDocRef) 
 	}
 	runtime.Out(out, nil)
 	return nil
-}
-
-func extractURLToken(raw, marker string) (string, bool) {
-	idx := strings.Index(raw, marker)
-	if idx < 0 {
-		return "", false
-	}
-	token := raw[idx+len(marker):]
-	if end := strings.IndexAny(token, "/?#"); end >= 0 {
-		token = token[:end]
-	}
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return "", false
-	}
-	return token, true
 }

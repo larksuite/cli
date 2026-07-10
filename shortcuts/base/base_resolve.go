@@ -271,6 +271,9 @@ func resolveBaseURL(u *url.URL) map[string]interface{} {
 
 func resolveWikiBaseURL(runtime *common.RuntimeContext, u *url.URL) (map[string]interface{}, error) {
 	token := firstPathSegmentAfter(u.Path, "/wiki/")
+	if err := runtime.EnsureScopes([]string{"wiki:node:retrieve"}); err != nil {
+		return nil, err
+	}
 	data, err := runtime.CallAPITyped("GET", "/open-apis/wiki/v2/spaces/get_node", map[string]interface{}{"token": token}, nil)
 	if err != nil {
 		return nil, err
@@ -518,14 +521,8 @@ func pathSegmentExists(path, prefix string) bool {
 
 func firstPathSegmentAfter(path, prefix string) string {
 	path = normalizeResolvePath(path)
-	if !strings.HasPrefix(path, prefix) {
-		return ""
-	}
-	rest := path[len(prefix):]
-	if idx := strings.IndexByte(rest, '/'); idx >= 0 {
-		rest = rest[:idx]
-	}
-	return strings.TrimSpace(rest)
+	token, _ := common.PathSegmentAfterPrefix(path, prefix)
+	return token
 }
 
 func valueOrUnknown(s string) string {

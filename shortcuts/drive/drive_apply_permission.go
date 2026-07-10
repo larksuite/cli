@@ -20,24 +20,6 @@ var permApplyTypes = []string{
 	"mindnote", "slides",
 }
 
-// permApplyURLMarkers maps document URL path markers to the `type` value the
-// apply-permission endpoint expects. Markers are disjoint strings (each begins
-// with "/" and ends with "/"), so a simple substring scan disambiguates them.
-var permApplyURLMarkers = []struct {
-	Marker string
-	Type   string
-}{
-	{"/wiki/", "wiki"},
-	{"/docx/", "docx"},
-	{"/sheets/", "sheet"},
-	{"/base/", "bitable"},
-	{"/bitable/", "bitable"},
-	{"/file/", "file"},
-	{"/mindnote/", "mindnote"},
-	{"/slides/", "slides"},
-	{"/doc/", "doc"},
-}
-
 // resolvePermApplyTarget extracts (token, type) from a user-supplied --token
 // value that may be either a bare token or a full document URL, plus an
 // optional explicit --type. Explicit --type wins over URL inference.
@@ -48,20 +30,16 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 	}
 
 	if strings.Contains(raw, "://") {
-		for _, m := range permApplyURLMarkers {
-			if tok, ok := extractURLToken(raw, m.Marker); ok {
-				token = tok
-				if explicitType == "" {
-					docType = m.Type
-				}
-				break
-			}
-		}
-		if token == "" {
+		ref, ok := common.ParseResourceURL(raw)
+		if !ok {
 			return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
 				"could not infer token from URL %q: supported paths are /docx/, /sheets/, /base/, /bitable/, /file/, /wiki/, /doc/, /mindnote/, /slides/. Pass a bare token with --type instead if the URL shape is unusual",
 				raw,
 			).WithParam("--token")
+		}
+		token = ref.Token
+		if explicitType == "" {
+			docType = ref.Type
 		}
 	} else {
 		token = raw
@@ -76,7 +54,23 @@ func resolvePermApplyTarget(raw, explicitType string) (token, docType string, er
 			strings.Join(permApplyTypes, ", "),
 		).WithParam("--type")
 	}
+	if !isPermApplyType(docType) {
+		return "", "", errs.NewValidationError(errs.SubtypeInvalidArgument,
+			"unsupported --type %q; accepted values: %s",
+			docType,
+			strings.Join(permApplyTypes, ", "),
+		).WithParam("--type")
+	}
 	return token, docType, nil
+}
+
+func isPermApplyType(docType string) bool {
+	for _, allowed := range permApplyTypes {
+		if docType == allowed {
+			return true
+		}
+	}
+	return false
 }
 
 // DriveApplyPermission applies to the document owner for view or edit access

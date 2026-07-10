@@ -99,6 +99,18 @@ func TestParseCommentDocRef(t *testing.T) {
 			wantToken: "xxxxxx",
 		},
 		{
+			name:      "query path does not hijack docx url",
+			input:     "https://example.larksuite.com/docx/doxcn123?next=/wiki/wikcnBAD",
+			wantKind:  "docx",
+			wantToken: "doxcn123",
+		},
+		{
+			name:      "fragment path does not hijack sheet url",
+			input:     "https://example.larksuite.com/sheets/sht123#/wiki/wikcnBAD",
+			wantKind:  "sheet",
+			wantToken: "sht123",
+		},
+		{
 			name:      "raw token with type docx",
 			input:     "xxxxxx",
 			docType:   "docx",
@@ -2077,14 +2089,6 @@ func TestParseCommentDocRefPathLikeToken(t *testing.T) {
 	_, err := parseCommentDocRef("token/with/slash", "")
 	if err == nil || !strings.Contains(err.Error(), "unsupported --doc input") {
 		t.Fatalf("expected unsupported doc error, got: %v", err)
-	}
-}
-
-func TestExtractURLTokenEmptyAfterMarker(t *testing.T) {
-	t.Parallel()
-	_, ok := extractURLToken("https://example.com/sheets/", "/sheets/")
-	if ok {
-		t.Fatal("expected false for empty token after marker")
 	}
 }
 

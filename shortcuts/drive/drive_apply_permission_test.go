@@ -42,6 +42,7 @@ func TestResolvePermApplyTarget_URLInference(t *testing.T) {
 		wantType string
 	}{
 		{"docx", "https://example.feishu.cn/docx/doxTok123?from=share", "doxTok123", "docx"},
+		{"query path does not hijack docx url", "https://example.feishu.cn/docx/doxTok123?next=/wiki/wikTokBAD", "doxTok123", "docx"},
 		{"sheets", "https://example.feishu.cn/sheets/shtTok456?sheet=abc", "shtTok456", "sheet"},
 		{"base", "https://example.feishu.cn/base/bscTok789", "bscTok789", "bitable"},
 		{"bitable", "https://example.feishu.cn/bitable/bscTok789", "bscTok789", "bitable"},
@@ -83,6 +84,14 @@ func TestResolvePermApplyTarget_UnrecognizedURL(t *testing.T) {
 	_, _, err := resolvePermApplyTarget("https://example.feishu.cn/unknown/xyz", "")
 	if err == nil || !strings.Contains(err.Error(), "could not infer token") {
 		t.Fatalf("expected infer error, got: %v", err)
+	}
+}
+
+func TestResolvePermApplyTarget_UnsupportedURLType(t *testing.T) {
+	t.Parallel()
+	_, _, err := resolvePermApplyTarget("https://example.feishu.cn/drive/folder/fldTok123", "")
+	if err == nil || !strings.Contains(err.Error(), "unsupported --type") {
+		t.Fatalf("expected unsupported type error, got: %v", err)
 	}
 }
 

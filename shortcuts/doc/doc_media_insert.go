@@ -49,7 +49,10 @@ var DocMediaInsert = common.Shortcut{
 	Description: "Insert a local image or file into a Lark document (4-step orchestration + auto-rollback); appends to end by default, or inserts relative to a text selection with --selection-with-ellipsis",
 	Risk:        "write",
 	Scopes:      []string{"docs:document.media:upload", "docx:document:write_only", "docx:document:readonly"},
-	AuthTypes:   []string{"user", "bot"},
+	ConditionalScopes: []string{
+		"wiki:node:retrieve",
+	},
+	AuthTypes: []string{"user", "bot"},
 	Flags: []common.Flag{
 		{Name: "file", Desc: "local file path (files > 20MB use multipart upload automatically)"},
 		{Name: "from-clipboard", Type: "bool", Desc: "read image from system clipboard instead of a local file (macOS/Windows built-in; Linux requires xclip, xsel or wl-paste)"},
@@ -534,6 +537,9 @@ func resolveDocxDocumentID(runtime *common.RuntimeContext, input string) (string
 		return "", errs.NewValidationError(errs.SubtypeInvalidArgument, "docs +media-insert only supports docx documents; use a docx token/URL or a wiki URL that resolves to docx").WithParam("--doc")
 	case "wiki":
 		fmt.Fprintf(runtime.IO().ErrOut, "Resolving wiki node: %s\n", common.MaskToken(docRef.Token))
+		if err := runtime.EnsureScopes([]string{"wiki:node:retrieve"}); err != nil {
+			return "", err
+		}
 		data, err := runtime.CallAPITyped(
 			"GET",
 			"/open-apis/wiki/v2/spaces/get_node",
