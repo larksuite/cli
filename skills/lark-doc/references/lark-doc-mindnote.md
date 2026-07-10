@@ -11,24 +11,17 @@
 
 ## 获取 `mindnote_id`
 
-`--mindnote-id` 传 **Mindnote 文档 token**，不是节点 ID。`lark-cli mindnotes` 只负责读取和写入思维笔记内部节点，不提供按标题列出 Mindnote 文档的入口；找文档要先走 Drive。
+`--mindnote-id` 传 **Mindnote 文档 token**，不是节点 ID。`lark-cli mindnotes` 只负责读取和写入思维笔记内部节点。
 
 ```bash
 # 用户给了 Mindnote URL，或给了可能包着 Mindnote 的 Wiki URL
 lark-cli drive +inspect --url "<mindnote_or_wiki_url>"
-
-# 用户只给了标题、关键词，或需要在云空间里找思维笔记
-lark-cli drive +search --query "<关键词>" --doc-types mindnote --format table
-
-# 用户想浏览自己负责的思维笔记
-lark-cli drive +search --doc-types mindnote --mine --sort edit_time --format table
 ```
 
 处理规则：
 
 - 普通 Mindnote URL：`drive +inspect` 返回的 Mindnote token 可作为 `--mindnote-id`。
 - Wiki URL：不要把 `/wiki/` 路径里的 wiki token 当作 `--mindnote-id`；必须先 `drive +inspect` 解包，确认底层类型是 `mindnote` 后再使用返回的真实 token。直接把 wiki token 传给 `mindnotes nodes list` 通常会返回 `3410003 resource not found`。
-- 标题 / 关键词：用 `drive +search --doc-types mindnote` 定位；多候选时先让用户确认目标，不要猜。
 
 ## 所需权限
 
@@ -122,7 +115,7 @@ lark-cli mindnotes nodes create \
 
 1. 先判断用户目标是不是“新建一个思维笔记”。
 2. 如果是新建思维笔记，切到 [lark-doc-whiteboard](lark-doc-whiteboard.md)。
-3. 如果是操作已有思维笔记，先按上方「获取 `mindnote_id`」定位 Mindnote 文档 token。
+3. 如果是操作已有思维笔记，先按上方「获取 `mindnote_id`」确认已拿到 Mindnote 文档 token。
 4. 确认目标类型是 **Mindnote** 后，把真实 Mindnote token 作为 `--mindnote-id`。
 5. 先执行 `mindnotes nodes list`，确认目标 `parent_id`。
 6. 新增子节点时，在 `nodes[]` 里传 `parent_id`；更新已有节点时，在 `nodes[]` 里传已有 `node_id`。
@@ -136,5 +129,5 @@ lark-cli mindnotes nodes create \
 
 - [lark-doc-fetch](lark-doc-fetch.md) — 获取文档内容
 - [lark-doc-whiteboard](lark-doc-whiteboard.md) — 新建思维笔记走画板链路
-- [lark-drive](../../lark-drive/SKILL.md) — 搜索和解析 Mindnote / Wiki 等云空间资源
+- [lark-drive](../../lark-drive/SKILL.md) — 解析 Mindnote / Wiki 等云空间资源
 - [lark-shared](../../lark-shared/SKILL.md) — 认证和全局参数
