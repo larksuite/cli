@@ -1,0 +1,23 @@
+skills/lark-slides/references/slides_demo.xml
+  s_9d7c402395b85f::t_c375072814d49d 1
+skills/lark-slides/references/xml-schema-quick-ref.md
+  s_9d7c402395b85f::t_a5d12461c00186 439
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d22ee87a5319c22c9654956e5b6d8aee230d0c11",
+  "prompts": {},
+  "sessions": {
+    "s_9d7c402395b85f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4691-98e9-7bc2-afbd-c51e4b83a956",
+        "model": "unknown"
+      },
+      "human_author": "zhanghuanxu <zhanghuanxu@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
