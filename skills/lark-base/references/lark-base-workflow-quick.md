@@ -65,30 +65,3 @@
 | 查找记录、新增记录、更新记录 | `lark-base-workflow-schema.md` -> Action data |
 | 定时、工作日、提醒时间 | `lark-base-workflow-schema.md` -> TimerTrigger / ReminderTrigger |
 | if/else、switch、loop | `lark-base-workflow-guide.md` 示例，以及 schema 的 branch/system 小节 |
-
-## 最小 Body 形状
-
-```json
-{
-  "title": "workflow title",
-  "status": "disabled",
-  "steps": [
-    {
-      "id": "step_trigger",
-      "type": "AddRecordTrigger",
-      "title": "trigger title",
-      "next": "step_action",
-      "data": {}
-    },
-    {
-      "id": "step_action",
-      "type": "LarkMessageAction",
-      "title": "action title",
-      "next": null,
-      "data": {}
-    }
-  ]
-}
-```
-
-这只是外层结构。每个 `data` 对象必须来自相关 schema 小节或已有 `+workflow-get` 返回；不要根据自然语言编造不支持的字段。
