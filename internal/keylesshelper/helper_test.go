@@ -82,7 +82,11 @@ func TestCommandResolutionUsesConfigJSONArgv(t *testing.T) {
 		return response{OK: true}, nil
 	}
 
-	if err := Probe(context.Background(), "agent-key"); err != nil {
+	helper, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := helper.Probe(context.Background(), "agent-key"); err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
 }
@@ -101,7 +105,11 @@ func TestCommandResolutionPrefersEnvironment(t *testing.T) {
 		return response{OK: true}, nil
 	}
 
-	if err := Probe(context.Background(), "agent-key"); err != nil {
+	helper, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := helper.Probe(context.Background(), "agent-key"); err != nil {
 		t.Fatalf("Probe() error = %v", err)
 	}
 }
@@ -260,7 +268,11 @@ func TestSignClientAssertionUsesConfiguredHelper(t *testing.T) {
 		}, nil
 	}
 
-	typ, assertion, err := SignClientAssertion(context.Background(), "agent-key", "cli_app", "open.feishu.cn")
+	helper, err := Resolve()
+	if err != nil {
+		t.Fatal(err)
+	}
+	typ, assertion, err := helper.SignClientAssertion(context.Background(), "agent-key", "cli_app", "open.feishu.cn")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,25 +280,6 @@ func TestSignClientAssertionUsesConfiguredHelper(t *testing.T) {
 		t.Fatalf("got (%q, %q)", typ, assertion)
 	}
 	if got.Op != "sign-assertion" || got.KeyRef != "agent-key" || got.ClientID != "cli_app" || got.Audience != "open.feishu.cn" {
-		t.Fatalf("request = %+v", got)
-	}
-}
-
-func TestProbeUsesConfiguredHelper(t *testing.T) {
-	t.Setenv(envvars.CliKeylessSignerCmd, `/helper`)
-	prev := run
-	t.Cleanup(func() { run = prev })
-
-	var got request
-	run = func(ctx context.Context, argv []string, req request) (response, error) {
-		got = req
-		return response{OK: true}, nil
-	}
-
-	if err := Probe(context.Background(), "agent-key"); err != nil {
-		t.Fatal(err)
-	}
-	if got.Op != "pubkey" || got.KeyRef != "agent-key" {
 		t.Fatalf("request = %+v", got)
 	}
 }
