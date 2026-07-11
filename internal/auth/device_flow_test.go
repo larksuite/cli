@@ -6,6 +6,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/httpmock"
 	"github.com/larksuite/cli/internal/keychain"
@@ -133,14 +136,31 @@ func TestRequestDeviceAuthorization_NonJSONForbiddenIncludesGatewayDiagnostics(t
 	if err == nil {
 		t.Fatal("expected non-JSON authorization failure")
 	}
+	p, ok := errs.ProblemOf(err)
+	if !ok {
+		t.Fatal("ProblemOf returned !ok")
+	}
+	if p.Category != errs.CategoryNetwork {
+		t.Errorf("Category = %q, want %q", p.Category, errs.CategoryNetwork)
+	}
+	if p.Subtype != errs.SubtypeNetworkTransport {
+		t.Errorf("Subtype = %q, want %q", p.Subtype, errs.SubtypeNetworkTransport)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Error("expected JSON parse cause to be preserved")
+	}
+	var syntaxErr *json.SyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Errorf("expected JSON syntax cause, got %T", errors.Unwrap(err))
+	}
 	for _, want := range []string{
 		"HTTP 403",
 		"text/html; charset=utf-8",
 		"gateway-log-id",
 		"smaller --scope set",
 	} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error = %q, want %q", err, want)
+		if !strings.Contains(p.Message, want) {
+			t.Errorf("Message = %q, want %q", p.Message, want)
 		}
 	}
 }
