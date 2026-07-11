@@ -3,9 +3,9 @@
 
 查询当前用户的审批任务列表，可用于查看待办、已办、知会等分组。只读操作，不会修改审批状态。
 
-需要的 scopes: ["approval:task:read"]
+CLI 元数据 scopes: ["approval:task:read"]（旧）。此端点只接受 `--as user`；`approval:task` 是 tenant-only，不能替代 user token。请阅读主 skill 的“已知 scope 与身份映射（Feishu）”。
 
-> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login`。请先阅读主 skill 的“用户身份的旧 scope 限制”：该 scope 可能已不能作为 user scope 授予，需要由应用管理员核对当前审批权限模型。
+> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login` 或改用 bot。请先阅读主 skill 的“用户身份的旧 scope 限制”和“已知 scope 与身份映射（Feishu）”。
 
 ## 命令
 

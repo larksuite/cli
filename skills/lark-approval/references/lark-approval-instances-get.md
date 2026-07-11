@@ -3,9 +3,9 @@
 
 获取单个审批实例详情（用户级只读操作）。适合在执行 approve / reject / transfer / rollback / cancel / cc / remind 之前，先查看审批表单、当前节点、任务列表、审批动态和整体状态。
 
-需要的 scopes: ["approval:instance:read"]
+CLI 元数据 scopes: ["approval:instance:read"]（旧）。此命令面向 `--as user`；合并后的 `approval:instance` 是 tenant-only，不能替代 user token。请阅读主 skill 的“已知 scope 与身份映射（Feishu）”。
 
-> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login`。请先阅读主 skill 的“用户身份的旧 scope 限制”：该 scope 可能已不能作为 user scope 授予，需要由应用管理员核对当前审批权限模型。
+> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login` 或改用 bot。请先阅读主 skill 的“用户身份的旧 scope 限制”和“已知 scope 与身份映射（Feishu）”。
 
 ## 命令
 

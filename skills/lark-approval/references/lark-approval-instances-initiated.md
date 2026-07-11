@@ -3,9 +3,9 @@
 
 查询当前用户已发起的审批实例列表（用户级只读操作）。适合在需要查看“我发起了哪些审批”、筛选某类审批定义、获取 `instance_code` 供后续 `instances get` / `instances cancel` / `instances cc` 等命令使用时调用。
 
-需要的 scopes: ["approval:instance:read"]
+CLI 元数据 scopes: ["approval:instance:read"]（旧）。此命令面向 `--as user`；合并后的 `approval:instance` 是 tenant-only，不能替代 user token。请阅读主 skill 的“已知 scope 与身份映射（Feishu）”。
 
-> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login`。请先阅读主 skill 的“用户身份的旧 scope 限制”：该 scope 可能已不能作为 user scope 授予，需要由应用管理员核对当前审批权限模型。
+> 如果 `--as user` 提示缺少这个旧 scope，不要重复 `auth login` 或改用 bot。请先阅读主 skill 的“用户身份的旧 scope 限制”和“已知 scope 与身份映射（Feishu）”。
 
 ## 命令
 

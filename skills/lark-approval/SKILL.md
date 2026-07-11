@@ -17,6 +17,16 @@ metadata:
 
 部分审批端点的元数据仍可能要求旧 scope（例如 `approval:task:read`、`approval:task:write`、`approval:instance:read`、`approval:instance:write`）。若 `--as user` 返回这些 scope 缺失，不要反复执行 `auth login`：这些旧 scope 可能已无法作为 user scope 在开发者后台授权。
 
+#### 已知 scope 与身份映射（Feishu）
+
+| 端点 | CLI 元数据要求 | 调用身份 | 当前限制与恢复路径 |
+| --- | --- | --- | --- |
+| `approval tasks query` | `approval:task:read`（旧） | 仅 `user` | `approval:task` 是 tenant-only，不能替代 user token。当前官方文档列出 `approval:approval:readonly` 或 `approval:task:list_by_user`，但 CLI 元数据尚未映射；保留错误并请管理员或维护者核对平台配置。 |
+| `approval instances get` | `approval:instance:read`（旧） | `user` | 合并后的 `approval:instance` 是 tenant-only，不能修复 user 调用；不要改为 bot。 |
+| `approval instances initiated` | `approval:instance:read`（旧） | `user` | 合并后的 `approval:instance` 是 tenant-only，不能修复 user 调用；不要改为 bot。 |
+
+这张表描述的是当前 CLI 元数据与平台授权模型不一致时的处理边界，不代表 tenant/bot scope 可以读取或代办用户的审批任务。
+
 1. 先运行 `lark-cli auth status --verify --format json`，确认当前 user token 和已授予 scope。
 2. 让应用管理员在开发者后台核对当前可申请的审批 scope；不要把旧 scope 名称当作用户可自行补齐的权限。
 3. 只有用户明确要求以应用身份运行、且该端点支持 tenant/bot scope 时，才改用 `--as bot`。审批动作默认是人的动作，禁止因一次 scope 报错静默切换身份。
