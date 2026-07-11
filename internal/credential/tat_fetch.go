@@ -159,8 +159,20 @@ func tatRetryAfterSeconds(header http.Header) int {
 // The unified v2 token endpoint returns the minted token as access_token
 // (tenant_access_token is accepted as a fallback).
 func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, keyLabel string) (string, error) {
-	if signer == nil && !keylesshelper.Configured() {
-		return "", fmt.Errorf("private_key_jwt requires a key signer, but none is available on this build")
+	helper, err := keylesshelper.Resolve()
+	if err != nil {
+		return "", err
+	}
+	return FetchTATWithAssertionWithHelper(ctx, httpClient, brand, clientID, signer, helper, keyLabel)
+}
+
+// FetchTATWithAssertionWithHelper is the single-resolution variant used when
+// the caller must make a preflight decision from the same helper snapshot.
+func FetchTATWithAssertionWithHelper(ctx context.Context, httpClient *http.Client, brand core.LarkBrand, clientID string, signer keysigner.Signer, helper *keylesshelper.Command, keyLabel string) (string, error) {
+	if signer == nil && helper == nil {
+		return "", errs.NewConfigError(errs.SubtypeInvalidClient,
+			"profile uses private_key_jwt but no TEE key signer is available on this build").
+			WithHint("install a build with the platform key-signer extension, configure an external keyless signer, or reconfigure the app to use an app secret")
 	}
 	ep := core.ResolveEndpoints(brand)
 	endpoint := ep.Open + auth.PathOAuthTokenV2
@@ -168,8 +180,8 @@ func FetchTATWithAssertion(ctx context.Context, httpClient *http.Client, brand c
 	assertionType := jwt.ClientAssertionType
 	var assertion string
 	var err error
-	if keylesshelper.Configured() {
-		assertionType, assertion, err = keylesshelper.SignClientAssertion(ctx, keyLabel, clientID, core.OpenAPIAudience(brand))
+	if helper != nil {
+		assertionType, assertion, err = helper.SignClientAssertion(ctx, keyLabel, clientID, core.OpenAPIAudience(brand))
 		if err != nil {
 			return "", err
 		}

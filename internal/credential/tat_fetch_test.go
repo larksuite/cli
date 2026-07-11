@@ -378,6 +378,7 @@ type fakeTATSigner struct{ key *ecdsa.PrivateKey }
 
 func newFakeTATSigner(t *testing.T) *fakeTATSigner {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -461,6 +462,7 @@ func TestFetchTATWithAssertion_Success(t *testing.T) {
 }
 
 func TestFetchTATWithAssertion_NilSigner(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	hc := &http.Client{Transport: &stubRoundTripper{respCode: 200, respBody: `{}`}}
 	if _, err := FetchTATWithAssertion(context.Background(), hc, core.BrandFeishu, "cli_app", nil, "k"); err == nil {
 		t.Fatal("expected error when signer is nil")

@@ -51,8 +51,12 @@ func (c ClientAuth) applyClientAssertion(ctx context.Context, form url.Values, a
 	if !c.isPrivateKeyJWT() {
 		return false, nil
 	}
-	if keylesshelper.Configured() {
-		assertionType, assertion, err := keylesshelper.SignClientAssertion(ctx, c.KeyLabel, c.AppID, audience)
+	helper, err := keylesshelper.Resolve()
+	if err != nil {
+		return false, err
+	}
+	if helper != nil {
+		assertionType, assertion, err := helper.SignClientAssertion(ctx, c.KeyLabel, c.AppID, audience)
 		if err != nil {
 			return false, err
 		}
