@@ -26,7 +26,7 @@ metadata:
 
 `wiki spaces list` 目前可能只返回 `space_type: team`，即使使用 `--as user` 也可能不列出 `person`（个人知识库）和 `my_library`（我的文档库）。这不是调用方没有权限的充分证据，也不要因为列表为空就重复翻页或改用 bot 身份。
 
-当用户需要查找个人空间中的内容时，先用 `lark-cli drive +search --query "<关键词>" --as user --format json` 定位内容；从结果读取 `origin_space_id`，再用 `lark-cli wiki +node-list --space-id "<origin_space_id>" --as user --format json` 查询节点。只有用户已经给出 Wiki URL/token 时，才优先用 `wiki spaces get_node` 解析 space_id。
+当用户已经给出 `my_library` 时，优先用 `lark-cli wiki spaces get --params '{"space_id":"my_library"}' --as user` 直接获取个人文档库。只有用户已经给出 Wiki URL/token 时，才优先用 `wiki spaces get_node` 解析 space_id。目标个人空间未知时，再用 `lark-cli drive +search --query "<关键词>" --as user --format json` 定位内容；从结果读取 `origin_space_id`，再用 `lark-cli wiki +node-list --space-id "<origin_space_id>" --as user --format json` 查询节点。
 
 ## 快速决策
 
