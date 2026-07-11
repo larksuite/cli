@@ -106,6 +106,45 @@ func TestRequestDeviceAuthorization_LogsResponse(t *testing.T) {
 	}
 }
 
+func TestRequestDeviceAuthorization_NonJSONForbiddenIncludesGatewayDiagnostics(t *testing.T) {
+	reg := &httpmock.Registry{}
+	t.Cleanup(func() { reg.Verify(t) })
+
+	reg.Register(&httpmock.Stub{
+		Method:      "POST",
+		URL:         PathDeviceAuthorization,
+		Status:      http.StatusForbidden,
+		RawBody:     []byte("<html>blocked</html>"),
+		ContentType: "text/html; charset=utf-8",
+		Headers: http.Header{
+			"Content-Type": []string{"text/html; charset=utf-8"},
+			"X-Tt-Logid":   []string{"gateway-log-id"},
+		},
+	})
+
+	_, err := RequestDeviceAuthorization(
+		httpmock.NewClient(reg),
+		"cli_a",
+		"secret_b",
+		core.BrandLark,
+		"minutes:minutes.transcript:export task:task:read",
+		nil,
+	)
+	if err == nil {
+		t.Fatal("expected non-JSON authorization failure")
+	}
+	for _, want := range []string{
+		"HTTP 403",
+		"text/html; charset=utf-8",
+		"gateway-log-id",
+		"smaller --scope set",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want %q", err, want)
+		}
+	}
+}
+
 // TestFormatAuthCmdline_TruncatesExtraArgs verifies that long command lines are truncated.
 func TestFormatAuthCmdline_TruncatesExtraArgs(t *testing.T) {
 	got := keychain.FormatAuthCmdline([]string{

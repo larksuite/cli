@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,7 +105,7 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		return nil, fmt.Errorf("Device authorization failed: HTTP %d – response not JSON", resp.StatusCode)
+		return nil, deviceAuthorizationNonJSONError(resp, scope)
 	}
 
 	_, hasError := data["error"]
@@ -136,6 +137,21 @@ func RequestDeviceAuthorization(httpClient *http.Client, appId, appSecret string
 		ExpiresIn:               expiresIn,
 		Interval:                interval,
 	}, nil
+}
+
+func deviceAuthorizationNonJSONError(resp *http.Response, scope string) error {
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	message := fmt.Sprintf("Device authorization failed: HTTP %d returned a non-JSON response", resp.StatusCode)
+	if contentType != "" {
+		message += fmt.Sprintf(" (content-type %q)", contentType)
+	}
+	if logID := strings.TrimSpace(resp.Header.Get("X-Tt-Logid")); logID != "" {
+		message += fmt.Sprintf("; request log id: %s", logID)
+	}
+	if resp.StatusCode == http.StatusForbidden && strings.TrimSpace(scope) != "" {
+		message += "; an upstream gateway may have rejected the requested scope combination; retry with a smaller --scope set and add scopes incrementally"
+	}
+	return errors.New(message)
 }
 
 // PollDeviceToken polls the token endpoint until authorization completes or times out.
