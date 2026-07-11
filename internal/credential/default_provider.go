@@ -15,7 +15,6 @@ import (
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/errclass"
 	"github.com/larksuite/cli/internal/keychain"
-	"github.com/larksuite/cli/internal/keylesshelper"
 
 	extcred "github.com/larksuite/cli/extension/credential"
 	"github.com/larksuite/cli/internal/keysigner"
@@ -184,11 +183,6 @@ func (p *DefaultTokenProvider) doResolveTAT(ctx context.Context) (*TokenResult, 
 	// using a TEE-signed client_assertion instead.
 	if acct.AuthMethod == core.AuthMethodPrivateKeyJWT {
 		signer := keysigner.Active()
-		if signer == nil && !keylesshelper.Configured() {
-			return nil, errs.NewConfigError(errs.SubtypeInvalidClient,
-				"profile uses private_key_jwt but no TEE key signer is available on this build").
-				WithHint("install a build with the platform key-signer extension, or reconfigure the app to use an app secret")
-		}
 		token, err := FetchTATWithAssertion(ctx, httpClient, acct.Brand, acct.AppID, signer, acct.KeyLabel)
 		if err != nil {
 			return nil, err

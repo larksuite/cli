@@ -5,6 +5,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -17,11 +18,13 @@ import (
 	"github.com/larksuite/cli/internal/cmdutil"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/credential"
+	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/i18n"
 	"github.com/larksuite/cli/internal/keychain"
 	"github.com/larksuite/cli/internal/output"
 	"github.com/larksuite/cli/internal/recovery"
 	"github.com/larksuite/cli/internal/surface"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 type noopConfigKeychain struct{}
@@ -251,6 +254,94 @@ func TestSaveInitConfig_OmitLangPreservesPrior(t *testing.T) {
 	if app := got.CurrentAppConfig(""); app == nil || app.Lang != i18n.LangJaJP {
 		t.Errorf("Lang after re-init = %v, want %q (preserved)", app, i18n.LangJaJP)
 	}
+}
+
+func TestSaveInitConfig_SynchronizesKeylessSignerCommand(t *testing.T) {
+	tests := []struct {
+		name       string
+		previous   string
+		envValue   string
+		want       string
+		wantStored bool
+	}{
+		{name: "persists new value", envValue: "/new/helper", want: "/new/helper", wantStored: true},
+		{name: "replaces previous value", previous: "/old/helper", envValue: "/new/helper", want: "/new/helper", wantStored: true},
+		{name: "removes previous value when env is empty", previous: "/old/helper"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
+			t.Setenv(envvars.CliKeylessSignerCmd, tc.envValue)
+			f, _, _, _ := cmdutil.TestFactory(t, nil)
+
+			existing := &core.MultiAppConfig{
+				CurrentApp: "keep",
+				Apps: []core.AppConfig{
+					{Name: "keep", AppId: "cli_keep", AppSecret: core.PlainSecret("keep-secret"), Brand: core.BrandFeishu},
+					{Name: "target", AppId: "cli_old", AppSecret: core.PlainSecret("old-secret"), Brand: core.BrandLark},
+				},
+			}
+			if err := core.SaveMultiAppConfig(existing); err != nil {
+				t.Fatalf("seed config: %v", err)
+			}
+			if tc.previous != "" {
+				setRawConfigField(t, "keylessSignerCmd", tc.previous)
+				var err error
+				existing, err = core.LoadMultiAppConfig()
+				if err != nil {
+					t.Fatalf("reload seeded config: %v", err)
+				}
+			}
+
+			if err := saveInitConfig("target", existing, f, "cli_new", core.PlainSecret("new-secret"), core.BrandFeishu, "", "", nil); err != nil {
+				t.Fatalf("saveInitConfig: %v", err)
+			}
+
+			raw := readRawConfig(t)
+			got, ok := raw["keylessSignerCmd"]
+			if ok != tc.wantStored {
+				t.Fatalf("keylessSignerCmd presence = %v, want %v; config=%v", ok, tc.wantStored, raw)
+			}
+			if tc.wantStored && got != tc.want {
+				t.Fatalf("keylessSignerCmd = %v, want %q", got, tc.want)
+			}
+
+			saved, err := core.LoadMultiAppConfig()
+			if err != nil {
+				t.Fatalf("LoadMultiAppConfig: %v", err)
+			}
+			if saved.CurrentApp != "keep" || len(saved.Apps) != 2 {
+				t.Fatalf("unrelated config changed: currentApp=%q apps=%d", saved.CurrentApp, len(saved.Apps))
+			}
+		})
+	}
+}
+
+func setRawConfigField(t *testing.T, key string, value any) {
+	t.Helper()
+	raw := readRawConfig(t)
+	raw[key] = value
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := vfs.WriteFile(core.GetConfigPath(), append(data, '\n'), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+}
+
+func readRawConfig(t *testing.T) map[string]any {
+	t.Helper()
+	data, err := vfs.ReadFile(core.GetConfigPath())
+	if err != nil {
+		t.Fatalf("read config: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	return raw
 }
 
 func TestKeyRefFromResult_PrivateKeyJWT(t *testing.T) {
