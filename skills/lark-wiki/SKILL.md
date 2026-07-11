@@ -22,6 +22,12 @@ metadata:
 
 知识空间和节点都是用户的个人资源，**策略上应优先显式使用 `--as user`**（CLI 的 `--as` 默认值为 `auto`，不带 `--as` 时常被解析成 `bot`，列出的是应用所属空间而非用户的）。仅当用户明确要求“应用 / bot 视角”时才用 `--as bot`（仍受上面的成员管理硬限制约束）。
 
+### 个人空间与“我的文档库”发现限制
+
+`wiki spaces list` 目前可能只返回 `space_type: team`，即使使用 `--as user` 也可能不列出 `person`（个人知识库）和 `my_library`（我的文档库）。这不是调用方没有权限的充分证据，也不要因为列表为空就重复翻页或改用 bot 身份。
+
+当用户需要查找个人空间中的内容时，先用 `lark-cli drive +search --query "<关键词>" --as user --format json` 定位内容；从结果读取 `origin_space_id`，再用 `lark-cli wiki +node-list --space-id "<origin_space_id>" --as user --format json` 查询节点。只有用户已经给出 Wiki URL/token 时，才优先用 `wiki spaces get_node` 解析 space_id。
+
 ## 快速决策
 
 - 用户要**整理 / 盘点 / 归类 / 重构知识库、个人文档库、文档库目录或 Wiki 节点结构**，或要生成整理方案、目标目录树、移动计划时，不要只使用 Wiki 节点 API。必须先阅读 [`../lark-drive/references/lark-drive-workflow.md`](../lark-drive/references/lark-drive-workflow.md)，再按其中 `Workflow Registry` 进入 [`knowledge_organize`](../lark-drive/references/lark-drive-workflow-knowledge-organize.md) workflow；该 workflow 负责 Drive / Wiki / 个人文档库的统一入口解析、资源盘点、分类计划、写前确认和结果验证。

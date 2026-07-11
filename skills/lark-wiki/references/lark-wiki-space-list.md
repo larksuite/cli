@@ -60,7 +60,9 @@ When the default single-page fetch (or `--page-all` capped by `--page-limit`) do
 
 ## Notes
 
-- **The underlying API never returns the my_library personal library**; resolve it via `lark-cli wiki spaces get --params '{"space_id":"my_library"}'`.
+- `spaces list` cannot reliably enumerate `person` spaces or the `my_library` personal library, even with `--as user`. Do not retry pagination or switch to bot identity solely because they are absent.
+- For the known personal-library ID, resolve it directly with `lark-cli wiki spaces get --params '{"space_id":"my_library"}'`.
+- When the target space is unknown, search the user's Drive first: `lark-cli drive +search --query "<keyword>" --as user --format json`. Then use the matching document's `origin_space_id` with `lark-cli wiki +node-list --space-id "<origin_space_id>" --as user --format json`.
 - Use `space_id` from the output as `--space-id` for `+node-list` or `+node-copy`.
 
 ## Required Scope
