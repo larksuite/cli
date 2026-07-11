@@ -405,7 +405,11 @@ var SheetCopy = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+sheet-copy"),
-	Validate:    validateViaInput(sheetCopyInput),
+	Tips: []string{
+		"Example: lark-cli sheets +sheet-copy --url <URL> --sheet-name 数据源 --title 数据源-副本",
+		"--sheet-name / --sheet-id selects the SOURCE sheet; the copy's new name goes in --title.",
+	},
+	Validate: validateViaInput(sheetCopyInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -965,7 +969,11 @@ func parseWorkbookCreateStyles(runtime flagView) (*workbookCreateStylePayload, e
 	if len(items) != 1 {
 		return nil, common.ValidationErrorf("--styles.styles must contain exactly one item when using --values")
 	}
-	return parseWorkbookCreateStyleItem(items[0], "--styles.styles[0]")
+	payload, probs := parseWorkbookCreateStyleItem(items[0], "--styles.styles[0]")
+	if err := joinStyleValidationErrors(probs); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 // parseWorkbookCreateSheetStyles parses --styles for the typed --sheets path.
@@ -988,20 +996,27 @@ func parseWorkbookCreateSheetStyles(runtime flagView, payload *tablePayload) (*w
 	}
 	out := &workbookCreateSheetStyles{ByName: map[string]*workbookCreateStylePayload{}}
 	out.ByIndex = make([]*workbookCreateStylePayload, len(payload.Sheets))
+	var probs []error
 	for i, item := range items {
 		name, _ := item["name"].(string)
 		if strings.TrimSpace(name) == "" {
-			return nil, common.ValidationErrorf("--styles.styles[%d].name is required", i)
+			probs = append(probs, common.ValidationErrorf("--styles.styles[%d].name is required", i))
+			continue
 		}
 		if name != payload.Sheets[i].Name {
-			return nil, common.ValidationErrorf("--styles.styles[%d].name %q must match --sheets.sheets[%d].name %q", i, name, i, payload.Sheets[i].Name)
+			probs = append(probs, common.ValidationErrorf("--styles.styles[%d].name %q must match --sheets.sheets[%d].name %q", i, name, i, payload.Sheets[i].Name))
+			continue
 		}
-		style, err := parseWorkbookCreateStyleItem(item, fmt.Sprintf("--styles.styles[%d]", i))
-		if err != nil {
-			return nil, err
+		style, itemProbs := parseWorkbookCreateStyleItem(item, fmt.Sprintf("--styles.styles[%d]", i))
+		if len(itemProbs) > 0 {
+			probs = append(probs, itemProbs...)
+			continue
 		}
 		out.ByIndex[i] = style
 		out.ByName[name] = style
+	}
+	if err := joinStyleValidationErrors(probs); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -1030,182 +1045,268 @@ func parseWorkbookCreateStylesItems(v interface{}) ([]map[string]interface{}, er
 	return items, nil
 }
 
-func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*workbookCreateStylePayload, error) {
+// parseWorkbookCreateStyleItem parses one --styles item. All four sections
+// are validated even after one fails, and every issue is returned in the
+// slice: eval traces show agents fixing --styles errors one round trip per
+// error (border side, then row_sizes.type, then size…) because only the
+// first was ever reported.
+func parseWorkbookCreateStyleItem(item map[string]interface{}, path string) (*workbookCreateStylePayload, []error) {
 	payload := &workbookCreateStylePayload{}
-	var err error
+	var probs []error
 	if raw, ok := item["cell_styles"]; ok {
-		payload.CellStyles, err = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
-		if err != nil {
-			return nil, err
-		}
+		var errsHere []error
+		payload.CellStyles, errsHere = parseWorkbookCreateCellStyleOps(raw, path+".cell_styles")
+		probs = append(probs, errsHere...)
 	}
 	if raw, ok := item["row_sizes"]; ok {
-		payload.RowSizes, err = parseWorkbookCreateResizeOps(raw, path+".row_sizes", "row")
-		if err != nil {
-			return nil, err
-		}
+		var errsHere []error
+		payload.RowSizes, errsHere = parseWorkbookCreateResizeOps(raw, path+".row_sizes", "row")
+		probs = append(probs, errsHere...)
 	}
 	if raw, ok := item["col_sizes"]; ok {
-		payload.ColSizes, err = parseWorkbookCreateResizeOps(raw, path+".col_sizes", "column")
-		if err != nil {
-			return nil, err
-		}
+		var errsHere []error
+		payload.ColSizes, errsHere = parseWorkbookCreateResizeOps(raw, path+".col_sizes", "column")
+		probs = append(probs, errsHere...)
 	}
 	if raw, ok := item["cell_merges"]; ok {
-		payload.CellMerges, err = parseWorkbookCreateMergeOps(raw, path+".cell_merges")
-		if err != nil {
-			return nil, err
-		}
+		var errsHere []error
+		payload.CellMerges, errsHere = parseWorkbookCreateMergeOps(raw, path+".cell_merges")
+		probs = append(probs, errsHere...)
+	}
+	if len(probs) > 0 {
+		return nil, probs
 	}
 	if len(payload.CellStyles) == 0 && len(payload.RowSizes) == 0 && len(payload.ColSizes) == 0 && len(payload.CellMerges) == 0 {
-		return nil, common.ValidationErrorf("%s must include at least one of cell_styles/row_sizes/col_sizes/cell_merges", path)
+		return nil, []error{common.ValidationErrorf("%s must include at least one of cell_styles/row_sizes/col_sizes/cell_merges", path)}
 	}
 	return payload, nil
 }
 
-func parseWorkbookCreateCellStyleOps(v interface{}, path string) ([]workbookCreateCellStyleOp, error) {
+// joinStyleValidationErrors folds the issues collected across one --styles
+// parse into a single typed error that lists them all, so the caller can fix
+// the whole payload in one retry instead of one error per round trip.
+func joinStyleValidationErrors(probs []error) error {
+	switch len(probs) {
+	case 0:
+		return nil
+	case 1:
+		return probs[0]
+	}
+	const maxShown = 8
+	msgs := make([]string, 0, len(probs))
+	for _, e := range probs {
+		if p, ok := errs.ProblemOf(e); ok {
+			msgs = append(msgs, p.Message)
+			continue
+		}
+		msgs = append(msgs, e.Error())
+	}
+	suffix := ""
+	if len(msgs) > maxShown {
+		suffix = fmt.Sprintf(" (+%d more)", len(msgs)-maxShown)
+		msgs = msgs[:maxShown]
+	}
+	return common.ValidationErrorf("--styles has %d issues: %s%s", len(probs), strings.Join(msgs, " | "), suffix)
+}
+
+func parseWorkbookCreateCellStyleOps(v interface{}, path string) ([]workbookCreateCellStyleOp, []error) {
 	arr, ok := v.([]interface{})
 	if !ok {
-		return nil, common.ValidationErrorf("%s must be an array", path)
+		return nil, []error{common.ValidationErrorf("%s must be an array", path)}
 	}
 	ops := make([]workbookCreateCellStyleOp, 0, len(arr))
+	var probs []error
 	for i, raw := range arr {
-		op, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil, common.ValidationErrorf("%s[%d] must be an object", path, i)
-		}
-		rangeStr, err := requireWorkbookCreateRange(op, fmt.Sprintf("%s[%d]", path, i))
+		op, err := parseWorkbookCreateCellStyleOp(raw, fmt.Sprintf("%s[%d]", path, i))
 		if err != nil {
-			return nil, err
+			probs = append(probs, err)
+			continue
 		}
-		if _, _, _, _, err := workbookCreateStyleRangeBounds(rangeStr); err != nil {
-			return nil, common.ValidationErrorf("%s[%d].range %q: %v", path, i, rangeStr, err)
-		}
-		styleObj := make(map[string]interface{}, len(op)-1)
-		for k, v := range op {
-			if k == "range" {
-				continue
-			}
-			styleObj[k] = v
-		}
-		style, err := normalizeWorkbookCreateStyleObject(styleObj, fmt.Sprintf("%s[%d]", path, i))
-		if err != nil {
-			return nil, err
-		}
-		if len(style) == 0 {
-			return nil, common.ValidationErrorf("%s[%d] must include at least one style field", path, i)
-		}
-		ops = append(ops, workbookCreateCellStyleOp{Range: rangeStr, Style: style})
+		ops = append(ops, op)
 	}
-	return ops, nil
+	return ops, probs
 }
 
-func parseWorkbookCreateMergeOps(v interface{}, path string) ([]workbookCreateMergeOp, error) {
+func parseWorkbookCreateCellStyleOp(raw interface{}, path string) (workbookCreateCellStyleOp, error) {
+	op, ok := raw.(map[string]interface{})
+	if !ok {
+		return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s must be an object", path)
+	}
+	rangeStr, err := requireWorkbookCreateRange(op, path)
+	if err != nil {
+		return workbookCreateCellStyleOp{}, err
+	}
+	if _, _, _, _, err := workbookCreateStyleRangeBounds(rangeStr); err != nil {
+		return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s.range %q: %v", path, rangeStr, err)
+	}
+	styleObj := make(map[string]interface{}, len(op)-1)
+	for k, v := range op {
+		if k == "range" {
+			continue
+		}
+		styleObj[k] = v
+	}
+	style, err := normalizeWorkbookCreateStyleObject(styleObj, path)
+	if err != nil {
+		return workbookCreateCellStyleOp{}, err
+	}
+	if len(style) == 0 {
+		return workbookCreateCellStyleOp{}, common.ValidationErrorf("%s must include at least one style field", path)
+	}
+	return workbookCreateCellStyleOp{Range: rangeStr, Style: style}, nil
+}
+
+func parseWorkbookCreateMergeOps(v interface{}, path string) ([]workbookCreateMergeOp, []error) {
 	arr, ok := v.([]interface{})
 	if !ok {
-		return nil, common.ValidationErrorf("%s must be an array", path)
+		return nil, []error{common.ValidationErrorf("%s must be an array", path)}
 	}
 	ops := make([]workbookCreateMergeOp, 0, len(arr))
+	var probs []error
 	for i, raw := range arr {
-		op, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil, common.ValidationErrorf("%s[%d] must be an object", path, i)
-		}
-		rangeStr, err := requireWorkbookCreateRange(op, fmt.Sprintf("%s[%d]", path, i))
+		op, err := parseWorkbookCreateMergeOp(raw, fmt.Sprintf("%s[%d]", path, i))
 		if err != nil {
-			return nil, err
+			probs = append(probs, err)
+			continue
 		}
-		if _, _, _, _, err := workbookCreateStyleRangeBounds(rangeStr); err != nil {
-			return nil, common.ValidationErrorf("%s[%d].range %q: %v", path, i, rangeStr, err)
-		}
-		mergeType := "all"
-		if raw, ok := op["merge_type"]; ok {
-			v, ok := raw.(string)
-			if !ok || strings.TrimSpace(v) == "" {
-				return nil, common.ValidationErrorf("%s[%d].merge_type must be a non-empty string", path, i)
-			}
-			mergeType = strings.TrimSpace(v)
-		}
-		switch mergeType {
-		case "all", "rows", "columns":
-		default:
-			return nil, common.ValidationErrorf("%s[%d].merge_type %q is invalid (want all/rows/columns)", path, i, mergeType)
-		}
-		if err := rejectUnexpectedWorkbookStyleFields(op, fmt.Sprintf("%s[%d]", path, i), "range", "merge_type"); err != nil {
-			return nil, err
-		}
-		ops = append(ops, workbookCreateMergeOp{Range: rangeStr, MergeType: mergeType})
+		ops = append(ops, op)
 	}
-	return ops, nil
+	return ops, probs
 }
 
-func parseWorkbookCreateResizeOps(v interface{}, path, dimension string) ([]workbookCreateResizeOp, error) {
+func parseWorkbookCreateMergeOp(raw interface{}, path string) (workbookCreateMergeOp, error) {
+	op, ok := raw.(map[string]interface{})
+	if !ok {
+		return workbookCreateMergeOp{}, common.ValidationErrorf("%s must be an object", path)
+	}
+	rangeStr, err := requireWorkbookCreateRange(op, path)
+	if err != nil {
+		return workbookCreateMergeOp{}, err
+	}
+	if _, _, _, _, err := workbookCreateStyleRangeBounds(rangeStr); err != nil {
+		return workbookCreateMergeOp{}, common.ValidationErrorf("%s.range %q: %v", path, rangeStr, err)
+	}
+	mergeType := "all"
+	if raw, ok := op["merge_type"]; ok {
+		v, ok := raw.(string)
+		if !ok || strings.TrimSpace(v) == "" {
+			return workbookCreateMergeOp{}, common.ValidationErrorf("%s.merge_type must be a non-empty string", path)
+		}
+		mergeType = normalizeMergeType(strings.TrimSpace(v))
+	}
+	switch mergeType {
+	case "all", "rows", "columns":
+	default:
+		return workbookCreateMergeOp{}, common.ValidationErrorf("%s.merge_type %q is invalid (want all/rows/columns)", path, mergeType)
+	}
+	if err := rejectUnexpectedWorkbookStyleFields(op, path, "range", "merge_type"); err != nil {
+		return workbookCreateMergeOp{}, err
+	}
+	return workbookCreateMergeOp{Range: rangeStr, MergeType: mergeType}, nil
+}
+
+// normalizeMergeType maps the raw OpenAPI merge vocabulary (MERGE_ALL /
+// MERGE_ROWS / MERGE_COLUMNS — which agents reproduce from the Lark API
+// docs) onto the CLI's all/rows/columns. Unknown values pass through for
+// the caller's enum check to reject.
+func normalizeMergeType(v string) string {
+	lower := strings.ToLower(v)
+	lower = strings.TrimPrefix(lower, "merge_")
+	switch lower {
+	case "all", "rows", "columns":
+		return lower
+	}
+	return v
+}
+
+func parseWorkbookCreateResizeOps(v interface{}, path, dimension string) ([]workbookCreateResizeOp, []error) {
 	arr, ok := v.([]interface{})
 	if !ok {
-		return nil, common.ValidationErrorf("%s must be an array", path)
+		return nil, []error{common.ValidationErrorf("%s must be an array", path)}
 	}
 	ops := make([]workbookCreateResizeOp, 0, len(arr))
+	var probs []error
 	for i, raw := range arr {
-		op, ok := raw.(map[string]interface{})
-		if !ok {
-			return nil, common.ValidationErrorf("%s[%d] must be an object", path, i)
-		}
-		rangeStr, err := requireWorkbookCreateRange(op, fmt.Sprintf("%s[%d]", path, i))
+		op, err := parseWorkbookCreateResizeOp(raw, fmt.Sprintf("%s[%d]", path, i), dimension)
 		if err != nil {
-			return nil, err
+			probs = append(probs, err)
+			continue
 		}
-		parsedDim, _, _, err := parseA1Range(rangeStr)
-		if err != nil {
-			want := "row numbers like 2:10"
-			if dimension == "column" {
-				want = "column letters like A:E"
-			}
-			return nil, common.ValidationErrorf("%s[%d].range %q must use %s: %v", path, i, rangeStr, want, err)
-		}
-		if parsedDim != dimension {
-			want := "row numbers like 2:10"
-			if dimension == "column" {
-				want = "column letters like A:E"
-			}
-			return nil, common.ValidationErrorf("%s[%d].range %q must use %s", path, i, rangeStr, want)
-		}
-		typeHint := "pixel/standard"
-		if dimension == "row" {
-			typeHint = "pixel/standard/auto"
-		}
-		resizeType, _ := op["type"].(string)
-		resizeType = strings.TrimSpace(resizeType)
-		if resizeType == "" {
-			return nil, common.ValidationErrorf("%s[%d].type is required (%s)", path, i, typeHint)
-		}
-		if dimension == "column" && resizeType == "auto" {
-			return nil, common.ValidationErrorf("%s[%d].type auto is rows-only", path, i)
-		}
-		switch resizeType {
-		case "pixel", "standard", "auto":
-		default:
-			return nil, common.ValidationErrorf("%s[%d].type %q is invalid (want %s)", path, i, resizeType, typeHint)
-		}
-		size := 0
-		if raw, ok := op["size"]; ok {
-			n, ok := util.ToFloat64(raw)
-			if !ok || n <= 0 {
-				return nil, common.ValidationErrorf("%s[%d].size must be a positive number", path, i)
-			}
-			size = int(n)
-		}
-		if resizeType == "pixel" && size <= 0 {
-			return nil, common.ValidationErrorf("%s[%d].type pixel requires size", path, i)
-		}
-		if resizeType != "pixel" && size > 0 {
-			return nil, common.ValidationErrorf("%s[%d].size is only valid with type pixel", path, i)
-		}
-		if err := rejectUnexpectedWorkbookStyleFields(op, fmt.Sprintf("%s[%d]", path, i), "range", "type", "size"); err != nil {
-			return nil, err
-		}
-		ops = append(ops, workbookCreateResizeOp{Range: normalizeWorkbookResizeRange(rangeStr), ResizeType: resizeType, Size: size})
+		ops = append(ops, op)
 	}
-	return ops, nil
+	return ops, probs
+}
+
+// resizeOpExample renders a complete valid op for the dimension, inlined on
+// every type/size error: eval traces show the field errors chaining (type
+// "custom" → fixed to pixel → "pixel requires size"), each costing a round
+// trip, because no error ever showed a whole valid op at once.
+func resizeOpExample(dimension string) string {
+	if dimension == "column" {
+		return `{"range":"A:C","type":"pixel","size":120} (or {"range":"A:C","type":"standard"} to reset)`
+	}
+	return `{"range":"2:10","type":"pixel","size":32} (or "type":"auto" to fit content)`
+}
+
+func parseWorkbookCreateResizeOp(raw interface{}, path, dimension string) (workbookCreateResizeOp, error) {
+	op, ok := raw.(map[string]interface{})
+	if !ok {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s must be an object", path)
+	}
+	rangeStr, err := requireWorkbookCreateRange(op, path)
+	if err != nil {
+		return workbookCreateResizeOp{}, err
+	}
+	parsedDim, _, _, err := parseA1Range(rangeStr)
+	if err != nil {
+		want := "row numbers like 2:10"
+		if dimension == "column" {
+			want = "column letters like A:E"
+		}
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.range %q must use %s: %v", path, rangeStr, want, err)
+	}
+	if parsedDim != dimension {
+		want := "row numbers like 2:10"
+		if dimension == "column" {
+			want = "column letters like A:E"
+		}
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.range %q must use %s", path, rangeStr, want)
+	}
+	typeHint := "pixel/standard"
+	if dimension == "row" {
+		typeHint = "pixel/standard/auto"
+	}
+	resizeType, _ := op["type"].(string)
+	resizeType = strings.TrimSpace(resizeType)
+	if resizeType == "" {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type is required (%s), e.g. %s", path, typeHint, resizeOpExample(dimension))
+	}
+	if dimension == "column" && resizeType == "auto" {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type auto is rows-only", path)
+	}
+	switch resizeType {
+	case "pixel", "standard", "auto":
+	default:
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type %q is invalid (want %s), e.g. %s", path, resizeType, typeHint, resizeOpExample(dimension))
+	}
+	size := 0
+	if raw, ok := op["size"]; ok {
+		n, ok := util.ToFloat64(raw)
+		if !ok || n <= 0 {
+			return workbookCreateResizeOp{}, common.ValidationErrorf("%s.size must be a positive number", path)
+		}
+		size = int(n)
+	}
+	if resizeType == "pixel" && size <= 0 {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.type pixel requires size, e.g. %s", path, resizeOpExample(dimension))
+	}
+	if resizeType != "pixel" && size > 0 {
+		return workbookCreateResizeOp{}, common.ValidationErrorf("%s.size is only valid with type pixel", path)
+	}
+	if err := rejectUnexpectedWorkbookStyleFields(op, path, "range", "type", "size"); err != nil {
+		return workbookCreateResizeOp{}, err
+	}
+	return workbookCreateResizeOp{Range: normalizeWorkbookResizeRange(rangeStr), ResizeType: resizeType, Size: size}, nil
 }
 
 func requireWorkbookCreateRange(op map[string]interface{}, path string) (string, error) {
@@ -1259,6 +1360,7 @@ func normalizeWorkbookCreateStyleObject(in map[string]interface{}, path string) 
 			if !ok {
 				return nil, common.ValidationErrorf("%s.border_styles must be a JSON object", path)
 			}
+			expandBorderAllShorthand(m)
 			if err := validateWorkbookBorderStyles(m, path); err != nil {
 				return nil, err
 			}
@@ -1299,7 +1401,7 @@ func validateWorkbookBorderStyles(m map[string]interface{}, path string) error {
 		switch side {
 		case "top", "bottom", "left", "right":
 		default:
-			return common.ValidationErrorf("%s.border_styles.%s is not a valid side (want top/bottom/left/right)", path, side)
+			return common.ValidationErrorf("%s.border_styles.%s is not a valid side (want top/bottom/left/right; a horizontal line is the top/bottom side of its range, a vertical line is left/right)", path, side)
 		}
 		spec, ok := raw.(map[string]interface{})
 		if !ok {

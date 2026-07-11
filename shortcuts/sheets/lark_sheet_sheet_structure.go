@@ -128,7 +128,11 @@ var DimInsert = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-insert"),
-	Validate:    validateViaInput(dimInsertInput),
+	Tips: []string{
+		"Example: lark-cli sheets +dim-insert --url <URL> --sheet-name Sheet1 --position 3 --count 2 --inherit-style before",
+		"Rows vs columns comes from --position alone: a row number (3) inserts rows, a column letter (C) inserts columns — there is no --dimension flag.",
+	},
+	Validate: validateViaInput(dimInsertInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -292,7 +296,10 @@ var DimFreeze = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+dim-freeze"),
-	Validate:    validateViaInput(dimFreezeInput),
+	Tips: []string{
+		"Example: lark-cli sheets +dim-freeze --url <URL> --sheet-name Sheet1 --dimension row --count 2 (freezes the first 2 rows; --count 0 unfreezes)",
+	},
+	Validate: validateViaInput(dimFreezeInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)

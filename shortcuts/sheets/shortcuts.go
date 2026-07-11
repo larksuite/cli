@@ -35,6 +35,11 @@ func Shortcuts() []common.Shortcut {
 		if hasFlag(all[i].Flags, "spreadsheet-token") {
 			all[i].PostMount = withTokenAlias(all[i].PostMount)
 		}
+		// +chart-create grows --print-example (minimal per-type --properties
+		// templates) — the biggest --print-schema consumer in eval traces.
+		if all[i].Command == "+chart-create" {
+			all[i].PostMount = withChartPrintExample(all[i].PostMount)
+		}
 		// Sheets-scoped flag ergonomics (unknown-flag hints with the valid
 		// flags inlined, enum vocabulary normalization) ride the same
 		// PostMount composition, so no other domain's behavior shifts.

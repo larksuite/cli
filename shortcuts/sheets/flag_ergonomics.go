@@ -38,7 +38,93 @@ func withFlagErgonomics(prev func(cmd *cobra.Command)) func(cmd *cobra.Command) 
 		}
 		cmd.SetFlagErrorFunc(sheetsFlagErrorFunc)
 		chainEnumNormalization(cmd)
+		chainFlagAliases(cmd)
 	}
+}
+
+// ─── intuitive flag names: silent aliases & prescriptions ───────────────
+//
+// Eval traces show unknown-flag failures cluster on a handful of habitual
+// names (--file, --cols, --dimension, --start-cell, --bold, --source…) that
+// agents import from generic CLI / Excel vocabulary. Two tiers, mirroring
+// the enum-normalization contract above: a name whose value semantics are
+// identical to the real flag is rewritten silently (zero round-trips); a
+// name whose fix changes the value or moves it into a JSON field gets a
+// curated prescription on the unknown-flag error instead — never a silent
+// rewrite.
+
+// commandFlagAliases maps, per command, habitual flag names onto the flag
+// actually registered. Only pairs with identical value semantics belong
+// here: the rewrite is invisible, so it must be safe to apply unread
+// (+csv-put --file with a path value still trips the file-path guard, which
+// prescribes @file / stdin).
+var commandFlagAliases = map[string]map[string]string{
+	"+csv-put":      {"file": "csv"},
+	"+sheet-create": {"name": "title"},
+	"+cols-resize":  {"cols": "range"},
+	"+rows-resize":  {"rows": "range"},
+	"+range-fill":   {"source": "source-range", "target": "target-range"},
+	"+range-copy":   {"source": "source-range", "target": "target-range"},
+	"+range-move":   {"source": "source-range", "target": "target-range"},
+}
+
+// intuitiveFlagHints carries the prescription for habitual names whose fix
+// is not a 1:1 rename — the value belongs to a different flag or to a field
+// inside a JSON payload. The hint spells the exact correct form so the
+// retry needs no --help round trip.
+var intuitiveFlagHints = map[string]map[string]string{
+	"+sheet-copy": {
+		"new-sheet-name":    "the copy's name goes in --title; --sheet-name / --sheet-id selects the source sheet",
+		"target-sheet-name": "the copy's name goes in --title; --sheet-name / --sheet-id selects the source sheet",
+		"new-name":          "the copy's name goes in --title; --sheet-name / --sheet-id selects the source sheet",
+	},
+	"+dim-insert": {
+		"dimension": "+dim-insert infers rows vs columns from --position: a row number like 3 inserts rows, a column letter like C inserts columns; pair with --count N",
+	},
+	"+dim-freeze": {
+		"frozen-rows":    "freeze the first N rows with --dimension row --count N",
+		"frozen-cols":    "freeze the first N columns with --dimension column --count N",
+		"frozen-columns": "freeze the first N columns with --dimension column --count N",
+	},
+	"+cells-set-style": {
+		"bold":      "use --font-weight bold",
+		"italic":    "use --font-style italic",
+		"underline": "use --font-line underline",
+	},
+	"+table-put": {
+		"start-cell": `anchor each sub-sheet via the "start_cell" field inside --sheets (e.g. {"sheets":[{"name":"Sheet1","start_cell":"B2",…}]}); to paste CSV at a cell use +csv-put --start-cell`,
+		"sheet-name": `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
+		"sheet-id":   `+table-put has no sheet selector — each --sheets item carries its own "name" field ({"sheets":[{"name":"Sheet1",…}]})`,
+	},
+}
+
+// chainFlagAliases composes two rewrites onto the flag-name normalize hook
+// (on top of any hook a prior PostMount installed, e.g. --token →
+// --spreadsheet-token): the wire-vocabulary underscore form of any flag
+// (--sheet_name, --border_styles — no sheets flag has an underscore in its
+// canonical name), and the command's intuitive-alias table. Either way a
+// habitual name parses as the real flag with zero round trips. Aliases
+// never shadow a registered flag and never appear in --help; an alias whose
+// target vanished (spec-side rename) is dropped, degrading to the
+// unknown-flag prescription.
+func chainFlagAliases(cmd *cobra.Command) {
+	aliases := commandFlagAliases[cmd.Name()]
+	usable := make(map[string]string, len(aliases))
+	for alias, target := range aliases {
+		if cmd.Flags().Lookup(alias) == nil && cmd.Flags().Lookup(target) != nil {
+			usable[alias] = target
+		}
+	}
+	prev := cmd.Flags().GetNormalizeFunc()
+	cmd.Flags().SetNormalizeFunc(func(fs *pflag.FlagSet, name string) pflag.NormalizedName {
+		if strings.Contains(name, "_") {
+			name = strings.ReplaceAll(name, "_", "-")
+		}
+		if target, ok := usable[name]; ok {
+			name = target
+		}
+		return prev(fs, name)
+	})
 }
 
 // sheetsFlagErrorFunc overrides the root FlagErrorFunc for sheets commands.
@@ -65,6 +151,14 @@ func sheetsFlagErrorFunc(c *cobra.Command, ferr error) error {
 		if len(suggestions) > 0 {
 			hint = fmt.Sprintf("did you mean %s? valid flags: %s",
 				strings.Join(suggestions, ", "), list)
+		}
+	}
+	// A curated prescription beats both: it spells the exact correct form
+	// for a habitual name whose fix is not a rename (see intuitiveFlagHints).
+	if rx, ok := intuitiveFlagHints[c.Name()][name]; ok {
+		hint = rx
+		if list := inlineFlagList(valid); list != "" {
+			hint = rx + "; valid flags: " + list
 		}
 	}
 	return errs.NewValidationError(errs.SubtypeInvalidArgument,
@@ -139,6 +233,16 @@ var enumAliases = map[string]string{
 	"center": "middle", // CSS vertical-align: center → Lark "middle"
 	"centre": "center",
 	"middle": "center", // CSS-style middle → Lark horizontal "center"
+	// Raw Lark OpenAPI merge vocabulary (MERGE_ALL/…) — agents reproduce it
+	// from the API docs; lowercased by canonicalEnumValue before lookup.
+	"merge_all":     "all",
+	"merge_rows":    "rows",
+	"merge_columns": "columns",
+	// Boolean-style word-wrap habits: true unambiguously means wrap on;
+	// false means "don't wrap", whose Lark default is overflow (word-clip is
+	// a distinct truncation mode nobody spells "false").
+	"true":  "auto-wrap",
+	"false": "overflow",
 }
 
 // canonicalEnumValue returns the enum entry an off-vocabulary value

@@ -48,7 +48,11 @@ var CellsSet = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-set"),
-	Validate:    validateViaInput(cellsSetInput),
+	Tips: []string{
+		`Example: lark-cli sheets +cells-set --url <URL> --sheet-name Sheet1 --range A1:B1 --cells '[[{"value":"名称"},{"formula":"=SUM(B2:B9)"}]]'`,
+		`--cells is always a 2D array (rows × cells), even for one cell: [[{"value":…}]].`,
+	},
+	Validate: validateViaInput(cellsSetInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)
@@ -124,7 +128,11 @@ var CellsSetStyle = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-set-style"),
-	Validate:    validateViaInput(cellsSetStyleInput),
+	Tips: []string{
+		`Example: lark-cli sheets +cells-set-style --url <URL> --sheet-name Sheet1 --range A1:D1 --font-weight bold --background-color "#F0F0F0" --horizontal-alignment center`,
+		`Borders take JSON: --border-styles '{"top":{"style":"solid","weight":"thin","color":"#000000"}}' (sides: top/bottom/left/right).`,
+	},
+	Validate: validateViaInput(cellsSetStyleInput),
 	DryRun: func(ctx context.Context, runtime *common.RuntimeContext) *common.DryRunAPI {
 		token, _ := resolveSpreadsheetToken(runtime)
 		sheetID, sheetName, _ := resolveSheetSelector(runtime)

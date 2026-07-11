@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/larksuite/cli/errs"
 	"github.com/larksuite/cli/internal/util"
@@ -83,7 +84,7 @@ func callTool(
 	code, _ := util.ToFloat64(envelope["code"])
 	if code != 0 {
 		msg, _ := envelope["msg"].(string)
-		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), msg).
+		return nil, errs.NewAPIError(errs.SubtypeServerError, "tool %q failed: [%d] %s", toolName, int(code), flattenToolErrorMsg(msg)).
 			WithCode(int(code))
 	}
 	data, _ := envelope["data"].(map[string]interface{})
@@ -98,6 +99,47 @@ func callTool(
 			"tool %q returned invalid JSON output: %v", toolName, err).WithCause(err)
 	}
 	return out, nil
+}
+
+// flattenToolErrorMsg unwraps the nested-escaped-JSON error payload some
+// sheet-ai tools put in msg — batch_update in particular wraps its result as
+// {"error":"{\"message\":\"batch_update: N succeeded, M failed\",
+// \"failures\":[…]}","errorType":…,"data":{…}} — into one readable line
+// naming each failed operation. Eval traces show agents (and even the eval
+// aggregator) failing to extract the real cause from the double-escaped
+// form. Anything that doesn't match the nested shape passes through
+// untouched.
+func flattenToolErrorMsg(msg string) string {
+	trimmed := strings.TrimSpace(msg)
+	if !strings.HasPrefix(trimmed, "{") {
+		return msg
+	}
+	var outer struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal([]byte(trimmed), &outer) != nil || strings.TrimSpace(outer.Error) == "" {
+		return msg
+	}
+	inner := strings.TrimSpace(outer.Error)
+	var detail struct {
+		Message  string `json:"message"`
+		Failures []struct {
+			Index    int    `json:"index"`
+			ToolName string `json:"tool_name"`
+			Error    string `json:"error"`
+		} `json:"failures"`
+	}
+	if strings.HasPrefix(inner, "{") && json.Unmarshal([]byte(inner), &detail) == nil && detail.Message != "" {
+		if len(detail.Failures) == 0 {
+			return detail.Message
+		}
+		parts := make([]string, 0, len(detail.Failures))
+		for _, f := range detail.Failures {
+			parts = append(parts, fmt.Sprintf("operations[%d] (%s): %s", f.Index, f.ToolName, f.Error))
+		}
+		return detail.Message + " — " + strings.Join(parts, "; ")
+	}
+	return inner
 }
 
 // invokeToolDryRun renders the One-OpenAPI request the shortcut would send.

@@ -4,6 +4,10 @@
 package cmdutil
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"github.com/larksuite/cli/errs"
 )
 
@@ -14,12 +18,58 @@ import (
 // with --yes.
 //
 // action identifies the operation for the agent (e.g. "mail +send",
-// "drive.files.delete"). The envelope does not carry a pre-built retry
-// command: agents already know their original invocation and only need to
-// append --yes per the hint, which keeps the protocol free of shell-quoting
-// pitfalls.
+// "drive.files.delete"). When the original invocation can be re-run safely,
+// the hint carries the complete retry command with --yes appended — eval
+// traces show agents always self-heal by appending --yes, so handing them
+// the exact line saves the reconstruction step. The retry line is omitted
+// (falling back to the plain hint) when any argument reads stdin ("-",
+// whose piped data a bare re-run would not reproduce) or when the rendered
+// command would be unreasonably long to echo back.
 func RequireConfirmation(action string) error {
-	return errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
-		"%s requires confirmation", action).
-		WithHint("add --yes to confirm")
+	err := errs.NewConfirmationRequiredError(errs.RiskHighRiskWrite, action,
+		"%s requires confirmation", action)
+	if retry := retryCommandWithYes(os.Args); retry != "" {
+		return err.WithHint("add --yes to confirm; re-run: %s", retry)
+	}
+	return err.WithHint("add --yes to confirm")
+}
+
+// retryCommandMaxLen caps the rendered retry command: past this, echoing the
+// full invocation back (e.g. a +batch-update with a large inline JSON)
+// costs more context than it saves.
+const retryCommandMaxLen = 300
+
+// retryCommandWithYes renders args as a shell-safe command line with --yes
+// appended, or "" when a safe rendering isn't possible (see
+// RequireConfirmation).
+func retryCommandWithYes(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(args)+1)
+	parts = append(parts, filepath.Base(args[0]))
+	for _, a := range args[1:] {
+		if a == "-" {
+			return ""
+		}
+		parts = append(parts, shellQuoteArg(a))
+	}
+	parts = append(parts, "--yes")
+	line := strings.Join(parts, " ")
+	if len(line) > retryCommandMaxLen {
+		return ""
+	}
+	return line
+}
+
+// shellQuoteArg single-quotes an argument when it contains any character a
+// POSIX shell could interpret, so the retry line is copy-paste safe.
+func shellQuoteArg(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t\n\"'\\$`!*?[](){}<>|&;#~") {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

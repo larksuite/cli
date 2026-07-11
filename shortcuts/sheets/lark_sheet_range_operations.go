@@ -67,7 +67,7 @@ var CellsClear = common.Shortcut{
 		return nil
 	},
 	Tips: []string{
-		"high-risk-write — always preview with --dry-run; clear is not undoable.",
+		"high-risk-write — pass --yes to confirm (exit 10 without it), or preview with --dry-run first; clear is not undoable.",
 		"Can't delete an embedded pivot/chart by clearing cells — remove the object itself with +pivot-delete / +chart-delete.",
 	},
 }
@@ -266,9 +266,13 @@ var ColsResize = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cols-resize"),
-	Validate:    validateViaResize("column"),
-	DryRun:      resizeDryRun("column"),
-	Execute:     resizeExecute("column"),
+	Tips: []string{
+		"Example: lark-cli sheets +cols-resize --url <URL> --sheet-name Sheet1 --range A:C --width 120",
+		`Different widths per column in one atomic call: --widths '{"A":80,"C:E":120}'. Widths are pixels (px ≈ chars × 8 + 16), not Excel character units.`,
+	},
+	Validate: validateViaResize("column"),
+	DryRun:   resizeDryRun("column"),
+	Execute:  resizeExecute("column"),
 }
 
 // resizeDryRun / resizeExecute route a resize shortcut through resizeToolCall

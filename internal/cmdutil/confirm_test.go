@@ -35,8 +35,11 @@ func TestRequireConfirmation_TypedShape(t *testing.T) {
 	if !strings.Contains(cre.Message, "drive +delete") || !strings.Contains(cre.Message, "requires confirmation") {
 		t.Errorf("Message = %q, want it to mention action and 'requires confirmation'", cre.Message)
 	}
-	if cre.Hint != "add --yes to confirm" {
-		t.Errorf("Hint = %q, want 'add --yes to confirm'", cre.Hint)
+	// The hint may additionally carry a re-run line composed from the live
+	// os.Args (environment-dependent under `go test`), but the add-yes
+	// contract always leads.
+	if !strings.HasPrefix(cre.Hint, "add --yes to confirm") {
+		t.Errorf("Hint = %q, want prefix 'add --yes to confirm'", cre.Hint)
 	}
 	if cre.Risk != errs.RiskHighRiskWrite {
 		t.Errorf("Risk = %q, want %q", cre.Risk, errs.RiskHighRiskWrite)
@@ -61,8 +64,8 @@ func TestRequireConfirmation_JSONShape(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	// No fix_command field leaks into the envelope: the protocol avoids
-	// shell-quoting hazards by delegating retry to agent-side logic.
+	// No fix_command field leaks into the envelope: the retry line lives in
+	// the free-text hint only; the typed protocol stays action-only.
 	if _, has := back["fix_command"]; has {
 		t.Errorf("unexpected fix_command present in JSON: %s", raw)
 	}
@@ -77,4 +80,40 @@ func TestRequireConfirmation_JSONShape(t *testing.T) {
 	if _, has := back["upgraded_by"]; has {
 		t.Errorf("unexpected upgraded_by present in JSON: %s", raw)
 	}
+}
+
+// TestRetryCommandWithYes pins the retry-line contract: shell-safe quoting,
+// basename argv[0], and the two omission guards (stdin args, oversized
+// commands).
+func TestRetryCommandWithYes(t *testing.T) {
+	t.Run("quotes what needs quoting and appends --yes", func(t *testing.T) {
+		got := retryCommandWithYes([]string{
+			"/usr/local/bin/lark-cli", "sheets", "+cells-clear",
+			"--url", "https://x.feishu.cn/sheets/tok",
+			"--range", "A1:B2", "--sheet-name", "第 1 班",
+		})
+		want := `lark-cli sheets +cells-clear --url https://x.feishu.cn/sheets/tok --range A1:B2 --sheet-name '第 1 班' --yes`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("single quotes inside args survive", func(t *testing.T) {
+		got := retryCommandWithYes([]string{"lark-cli", "x", "--title", "it's"})
+		if !strings.Contains(got, `'it'\''s'`) {
+			t.Errorf("got %q", got)
+		}
+	})
+
+	t.Run("stdin arg omits the retry line", func(t *testing.T) {
+		if got := retryCommandWithYes([]string{"lark-cli", "sheets", "+batch-update", "--operations", "-"}); got != "" {
+			t.Errorf("stdin invocation must not render a retry line, got %q", got)
+		}
+	})
+
+	t.Run("oversized command omits the retry line", func(t *testing.T) {
+		if got := retryCommandWithYes([]string{"lark-cli", "x", "--operations", strings.Repeat("a", 400)}); got != "" {
+			t.Errorf("oversized invocation must not render a retry line, got %q", got)
+		}
+	})
 }

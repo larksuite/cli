@@ -83,6 +83,7 @@ var BatchUpdate = common.Shortcut{
 		return nil
 	},
 	Tips: []string{
+		"high-risk-write: always pass --yes (or --dry-run to preview) — without it the call exits 10 asking for confirmation.",
 		"Default is strict transaction — any sub-tool failure rolls the whole batch back. Pass --continue-on-error to keep partial successes.",
 		"Each sub-op is {shortcut, input}. Do NOT pass input.operation (implied by shortcut name) or input.excel_id / input.url (set at the +batch-update top level).",
 	},
@@ -160,6 +161,10 @@ var CellsBatchSetStyle = common.Shortcut{
 	AuthTypes:   []string{"user", "bot"},
 	HasFormat:   true,
 	Flags:       flagsFor("+cells-batch-set-style"),
+	Tips: []string{
+		`Example: lark-cli sheets +cells-batch-set-style --url <URL> --ranges '["Sheet1!A1:B2","汇总!C1:C9"]' --font-weight bold`,
+		"Every range carries its sheet-NAME prefix (Sheet1!A1:B2, not a sheet_id) — there is no --sheet-id / --sheet-name flag here.",
+	},
 	Validate: func(ctx context.Context, runtime *common.RuntimeContext) error {
 		if _, err := resolveSpreadsheetToken(runtime); err != nil {
 			return err

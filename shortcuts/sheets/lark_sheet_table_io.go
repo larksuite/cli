@@ -88,6 +88,7 @@ var TablePut = common.Shortcut{
 		return tablePutWrite(ctx, runtime, token, payload, styles)
 	},
 	Tips: []string{
+		`Example: lark-cli sheets +table-put --url <URL> --sheets '{"sheets":[{"name":"S1","columns":["City","Rev"],"dtypes":{"Rev":"float64"},"data":[["SH",1234.5]]}]}'`,
 		"Writes into an existing spreadsheet — pass --url or --spreadsheet-token. To create a new workbook first, use +workbook-create, then point --spreadsheet-token here.",
 		"Payload sheets are matched to existing sub-sheets by name (created when absent). Date columns take ISO yyyy-mm-dd strings — converted to real dates (serial + date format).",
 		"--styles applies number formats, colors, merges, and row/col sizes in the same call (same shape as +workbook-create's --styles): one styles item per written sheet, name-matched. Skips the separate +cells-set-style round-trip.",
@@ -241,6 +242,11 @@ func decoderExpectEOF(dec *json.Decoder) error {
 	return nil
 }
 
+// tablePutSheetsSkeleton is the one-line --sheets shape inlined on a decode
+// error, so the retry needs no --print-schema round trip. Field vocabulary
+// mirrors tableSheetIn.
+const tablePutSheetsSkeleton = `{"sheets":[{"name":"Sheet1","columns":["City","Revenue"],"dtypes":{"Revenue":"float64"},"data":[["SH",123.4],["BJ",56.7]],"start_cell":"A1"}]}`
+
 // parseTablePutPayload reads --sheets (JSON, supports @file / stdin) into a
 // validated payload. UseNumber keeps numeric cells as json.Number so large
 // integers (order IDs, etc.) survive without precision loss or scientific
@@ -259,7 +265,19 @@ func parseTablePutPayload(runtime flagView) (*tablePayload, error) {
 		Sheets []tableSheetIn `json:"sheets"`
 	}
 	if err := dec.Decode(&wire); err != nil {
-		return nil, common.ValidationErrorf("--sheets: invalid JSON: %v", err).WithCause(err)
+		// Eval traces show two distinct decode failures that each burned
+		// retries: a field with the wrong JSON kind (columns as objects,
+		// dtypes as an array) — fixed by seeing the expected shape once —
+		// and shell-mangled JSON, fixed by moving the payload to stdin/@file.
+		verr := common.ValidationErrorf("--sheets: invalid JSON: %v", err).WithCause(err)
+		var ute *json.UnmarshalTypeError
+		if errors.As(err, &ute) {
+			return nil, verr.WithHint(
+				"expected shape: %s (columns is a flat string array; dtypes/formats are column-name-keyed maps; data is row-major)",
+				tablePutSheetsSkeleton)
+		}
+		return nil, verr.WithHint(
+			"if the payload contains formulas / quotes / commas, pass it via stdin (`--sheets - < file`) or a relative @file (`--sheets @./payload.json`)")
 	}
 	// Reject trailing non-whitespace after the first JSON value: json.Decoder
 	// accepts it silently (unlike json.Unmarshal), so e.g. `--sheets '{...} oops'`

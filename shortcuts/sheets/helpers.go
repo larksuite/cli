@@ -407,6 +407,13 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		}
 		return nil, sheetsValidationForFlag(name, "--%s: invalid JSON: %v", name, err).WithCause(err)
 	}
+	// Unambiguous habitual shapes are rewritten onto the wire contract
+	// before validation (see jsonFlagNormalizers). Runs on the parsed value,
+	// so both the standalone cobra path and +batch-update sub-ops (whose
+	// mapFlagView.Str re-encodes composites through here) get the rewrite.
+	if norm := jsonFlagNormalizers[runtime.Command()][name]; norm != nil {
+		out = norm(out)
+	}
 	// Schema-driven flag validation at the user-input boundary. Skips
 	// --properties (validated at the input-builder tail after enhance
 	// hooks fill in flat-flag-derived fields) and any flag without an
@@ -415,6 +422,92 @@ func parseJSONFlag(runtime flagView, name string) (interface{}, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// jsonFlagNormalizers rewrites, per (command, flag), unambiguous habitual
+// input shapes onto the wire contract before schema validation — same
+// contract as enum normalization: only a shape whose meaning is beyond
+// doubt may be rewritten; anything ambiguous must fail with a prescription
+// instead. Applied to the parsed JSON value inside parseJSONFlag.
+var jsonFlagNormalizers = map[string]map[string]func(interface{}) interface{}{
+	"+cells-set":    {"cells": wrapLoneCellObject},
+	"+chart-create": {"properties": normalizeChartHexColors},
+	"+chart-update": {"properties": normalizeChartHexColors},
+}
+
+// normalizeChartHexColors walks a chart properties payload and prefixes bare
+// 6/8-digit hex values on color keys with '#' (4472C4 → #4472C4 — the
+// Excel-habit form the chart backend rejects with "expected rgba() or
+// #RRGGBB/#RRGGBBAA"). In-place, recursive; anything not unambiguously a
+// bare hex color is untouched.
+func normalizeChartHexColors(v interface{}) interface{} {
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for k, val := range t {
+			if s, ok := val.(string); ok && isColorKey(k) && isBareHexColor(s) {
+				t[k] = "#" + s
+				continue
+			}
+			normalizeChartHexColors(val)
+		}
+	case []interface{}:
+		for _, e := range t {
+			normalizeChartHexColors(e)
+		}
+	}
+	return v
+}
+
+func isColorKey(k string) bool {
+	return k == "color" || strings.HasSuffix(k, "_color") || strings.HasSuffix(k, "Color")
+}
+
+func isBareHexColor(s string) bool {
+	if len(s) != 6 && len(s) != 8 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// cellObjectKeys pins the property vocabulary of a single cell in the
+// +cells-set --cells schema ([[{…}]]). Drift against the embedded schema is
+// guarded by TestCellObjectKeys_MatchEmbeddedSchema.
+var cellObjectKeys = map[string]struct{}{
+	"border_styles":   {},
+	"cell_styles":     {},
+	"data_validation": {},
+	"formula":         {},
+	"multiple_values": {},
+	"note":            {},
+	"rich_text":       {},
+	"value":           {},
+}
+
+// wrapLoneCellObject rewrites a bare cell object into the [[cell]] the
+// --cells contract expects. Eval traces show agents writing a single cell
+// routinely pass {"value":…} without the two array layers; when every key
+// belongs to the cell vocabulary the meaning is a 1×1 write and the wrap is
+// safe. Anything else (unknown keys, arrays — one bracket layer could be a
+// row or a column) is returned untouched for the schema validator to
+// prescribe.
+func wrapLoneCellObject(v interface{}) interface{} {
+	obj, ok := v.(map[string]interface{})
+	if !ok || len(obj) == 0 {
+		return v
+	}
+	for k := range obj {
+		if _, known := cellObjectKeys[k]; !known {
+			return v
+		}
+	}
+	return []interface{}{[]interface{}{obj}}
 }
 
 // requireJSONObject is parseJSONFlag + a type assertion to map[string]interface{}.
@@ -533,8 +626,11 @@ func normalizeCellStyleAliases(style map[string]interface{}, path string) error 
 // normalizeTypedCellsStyleAliases walks a typed --cells 2D array and applies
 // normalizeCellStyleAliases to every cell's inline cell_styles object, so the
 // alignment shorthands are accepted on +cells-set the same as on --styles.
-// Structure is checked leniently to match the pass-through contract: any
-// element that isn't the expected shape is skipped, not rejected.
+// It also expands the border "all" shorthand and intercepts border_styles
+// mis-nested inside cell_styles — both server-rejected shapes that eval
+// traces show surviving CLI validation and costing a full network round
+// trip. Structure is checked leniently to match the pass-through contract:
+// any element that isn't the expected shape is skipped, not rejected.
 func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 	for r, rowRaw := range cells {
 		row, ok := rowRaw.([]interface{})
@@ -546,9 +642,17 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 			if !ok {
 				continue
 			}
+			if bs, ok := cell["border_styles"].(map[string]interface{}); ok {
+				expandBorderAllShorthand(bs)
+			}
 			st, ok := cell["cell_styles"].(map[string]interface{})
 			if !ok {
 				continue
+			}
+			if _, misNested := st["border_styles"]; misNested {
+				return common.ValidationErrorf(
+					"%s[%d][%d].cell_styles.border_styles is not valid — border_styles is a top-level cell field, a sibling of cell_styles; move it up one level",
+					path, r, c)
 			}
 			if err := normalizeCellStyleAliases(st, fmt.Sprintf("%s[%d][%d].cell_styles", path, r, c)); err != nil {
 				return err
@@ -556,6 +660,24 @@ func normalizeTypedCellsStyleAliases(cells []interface{}, path string) error {
 		}
 	}
 	return nil
+}
+
+// expandBorderAllShorthand rewrites the "all" side shorthand — habitual from
+// Excel / openpyxl vocabulary, rejected by the backend — into the four
+// explicit sides, in place. An explicitly set side wins over the shorthand.
+// Applied on both the typed --cells path and the --styles path, so batch
+// sub-ops get the same rewrite as standalone calls.
+func expandBorderAllShorthand(border map[string]interface{}) {
+	all, ok := border["all"]
+	if !ok {
+		return
+	}
+	for _, side := range []string{"top", "bottom", "left", "right"} {
+		if _, exists := border[side]; !exists {
+			border[side] = all
+		}
+	}
+	delete(border, "all")
 }
 
 // borderStylesFromFlag parses --border-styles as a JSON object (top/bottom/
