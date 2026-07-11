@@ -144,7 +144,11 @@ func BuildAPIError(resp map[string]any, cc ClassifyContext) error {
 		}
 	case errs.CategoryAPI:
 		// A server-supplied detail (lifted into base.Hint above) wins over the
-		// context-free APIHint default; only fall back to APIHint when absent.
+		// message-specific and context-free recovery hints; only fill a hint when
+		// the upstream response did not provide a more precise detail.
+		if base.Hint == "" {
+			base.Hint = apiMessageHint(base.Message)
+		}
 		if base.Hint == "" {
 			base.Hint = APIHint(base.Subtype) // "" for subtypes without a context-free default
 		}
@@ -268,6 +272,15 @@ func APIHint(subtype errs.Subtype) string {
 		return "operate on source and target within the same brand environment"
 	case errs.SubtypeQuotaExceeded:
 		return "reduce the request volume or free quota, then retry after the relevant quota resets"
+	}
+	return ""
+}
+
+// apiMessageHint supplies recovery guidance for stable, app-context-specific
+// upstream messages that do not have a distinct API code.
+func apiMessageHint(message string) string {
+	if strings.Contains(strings.ToLower(message), "open_id cross app") {
+		return "the open_id may belong to a different app or profile; run `lark-cli config show` and `lark-cli auth status --verify`, then resolve the ID again under the active app"
 	}
 	return ""
 }
