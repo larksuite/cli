@@ -13,12 +13,14 @@ import (
 	"encoding/json"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
 	"github.com/larksuite/cli/internal/keysigner"
+	"github.com/larksuite/cli/internal/vfs"
 )
 
 // fakeAuthSigner is a real in-memory ECDSA P-256 signer for client-auth tests.
@@ -26,6 +28,7 @@ type fakeAuthSigner struct{ key *ecdsa.PrivateKey }
 
 func newFakeAuthSigner(t *testing.T) *fakeAuthSigner {
 	t.Helper()
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -93,9 +96,31 @@ func TestClientAuth_applyClientAssertion_PrivateKeyJWT(t *testing.T) {
 }
 
 func TestClientAuth_applyClientAssertion_NilSigner(t *testing.T) {
+	t.Setenv("LARKSUITE_CLI_CONFIG_DIR", t.TempDir())
 	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWT} // Signer nil
 	if _, err := ca.applyClientAssertion(context.Background(), url.Values{}, "aud"); err == nil {
 		t.Fatal("expected error when private_key_jwt has no signer")
+	}
+}
+
+func TestClientAuth_applyClientAssertion_MalformedConfigDoesNotFallback(t *testing.T) {
+	signer := newFakeAuthSigner(t)
+	t.Setenv(envvars.CliKeylessSignerCmd, "")
+	if err := vfs.WriteFile(core.GetConfigPath(), []byte("{not-json"), 0600); err != nil {
+		t.Fatalf("write malformed config: %v", err)
+	}
+
+	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWT, Signer: signer, KeyLabel: "k"}
+	form := url.Values{}
+	used, err := ca.applyClientAssertion(context.Background(), form, "aud")
+	if err == nil {
+		t.Fatal("expected malformed config error instead of platform-signer fallback")
+	}
+	if used || form.Has("client_assertion") {
+		t.Fatalf("malformed config used fallback signer: used=%v form=%v", used, form)
+	}
+	if !strings.Contains(err.Error(), "config.json keylessSignerCmd") || !strings.Contains(err.Error(), core.GetConfigPath()) {
+		t.Fatalf("error = %q, want signer source and config path", err)
 	}
 }
 
