@@ -19,6 +19,7 @@ import (
 	"github.com/larksuite/cli/internal/auth/jwt"
 	"github.com/larksuite/cli/internal/core"
 	"github.com/larksuite/cli/internal/envvars"
+	"github.com/larksuite/cli/internal/keylesshelper"
 	"github.com/larksuite/cli/internal/keysigner"
 	"github.com/larksuite/cli/internal/vfs"
 )
@@ -124,21 +125,20 @@ func TestClientAuth_applyClientAssertion_MalformedConfigDoesNotFallback(t *testi
 	}
 }
 
-func TestClientAuth_applyClientAssertion_KeylessHelper(t *testing.T) {
+func TestSignClientAssertion_KeylessHelper(t *testing.T) {
 	t.Setenv(envvars.CliKeylessSignerCmd, keylessHelperTestCommand(t))
 	t.Setenv("LARKSUITE_CLI_KEYLESS_HELPER_ASSERT", `{"op":"sign-assertion","keyRef":"agent-key","clientId":"cli_a","aud":"aud"}`)
 
-	ca := ClientAuth{AppID: "cli_a", AuthMethod: core.AuthMethodPrivateKeyJWT, KeyLabel: "agent-key"}
-	form := url.Values{}
-	used, err := ca.applyClientAssertion(context.Background(), form, "aud")
+	helper, err := keylesshelper.Resolve()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !used {
-		t.Fatal("expected assertion auth")
+	assertionType, assertion, err := SignClientAssertion(context.Background(), nil, helper, "agent-key", "cli_a", "aud")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if form.Get("client_assertion") != "helper.jwt" {
-		t.Fatalf("client_assertion = %q", form.Get("client_assertion"))
+	if assertionType != jwt.ClientAssertionType || assertion != "helper.jwt" {
+		t.Fatalf("assertion = (%q, %q)", assertionType, assertion)
 	}
 }
 
